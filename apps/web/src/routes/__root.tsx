@@ -12,6 +12,14 @@ import { TopNav } from '../components/TopNav'
 import { PUBLIC_PATHS, fetchAuthState, isSetupOpen } from '../lib/auth'
 import appCss from '../styles.css?url'
 
+// Sync, runs in <head> before paint. Reads 'baziu-theme' from localStorage
+// ('system' | 'light' | 'dark'; default 'system'), resolves against the OS
+// preference, and toggles `.dark` on <html> so the dark CSS variables in
+// styles.css apply during the first paint. ThemeToggle reads/writes the
+// same key. Wrapped in try/catch so a denied localStorage (private mode,
+// disabled storage) just falls through to light.
+const THEME_INIT_SCRIPT = `(function(){try{var t=localStorage.getItem('baziu-theme');var sd=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches;var d=t==='dark'||((t===null||t==='system')&&sd);document.documentElement.classList.toggle('dark',d);}catch(e){}})();`
+
 export const Route = createRootRoute({
   beforeLoad: async ({ location }) => {
     const path = location.pathname
@@ -76,8 +84,17 @@ function RootComponent() {
     // scroll internally. Otherwise the global `html { overflow-y: scroll }` rule
     // (which keeps a stable scrollbar gutter on content pages) lets the whole
     // page scroll when chat content overflows.
-    <html lang="en" className={isHome ? 'h-dvh overflow-hidden' : ''}>
+    // suppressHydrationWarning: the THEME_INIT_SCRIPT below adds/removes the
+    // `dark` class on <html> before React hydrates, which would otherwise
+    // trip a hydration mismatch.
+    <html
+      lang="en"
+      className={isHome ? 'h-dvh overflow-hidden' : ''}
+      suppressHydrationWarning
+    >
       <head>
+        {/* Runs before paint to apply the user's theme choice without FOUC. */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
         <HeadContent />
       </head>
       <body className={isHome ? 'h-dvh overflow-hidden' : ''}>

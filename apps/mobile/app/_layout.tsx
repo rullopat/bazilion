@@ -4,7 +4,8 @@ import { JetBrainsMono_400Regular } from '@expo-google-fonts/jetbrains-mono'
 import { useFonts } from 'expo-font'
 import { Stack } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
-import { colors, fonts } from '@/src/theme'
+import { ThemeProvider, useColors, useResolvedScheme } from '@/src/theme-context'
+import { fonts } from '@/src/theme'
 
 export default function RootLayout() {
   // Aliases (BaziuDisplay / BaziuBody / …) are what each StyleSheet
@@ -23,8 +24,20 @@ export default function RootLayout() {
   if (!loaded) return null
 
   return (
+    <ThemeProvider>
+      <ThemedStack />
+    </ThemeProvider>
+  )
+}
+
+// Inner component so it can subscribe to the theme. The Stack needs to
+// re-render with new header/background colors when the user toggles.
+function ThemedStack() {
+  const colors = useColors()
+  const resolved = useResolvedScheme()
+  return (
     <>
-      <StatusBar style="dark" />
+      <StatusBar style={resolved === 'dark' ? 'light' : 'dark'} />
       <Stack
         screenOptions={{
           headerStyle: { backgroundColor: colors.background },

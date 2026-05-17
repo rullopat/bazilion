@@ -1,5 +1,6 @@
 import { Link } from '@tanstack/react-router'
 import { BaziuLogo } from './BaziuLogo'
+import { ThemeToggle } from './ThemeToggle'
 
 const NAV_LINKS = [
   { to: '/profiles', label: 'profiles' },
@@ -25,6 +26,9 @@ export function TopNav() {
           {link.label}
         </Link>
       ))}
+      <div className="ml-auto">
+        <ThemeToggle />
+      </div>
     </nav>
   )
 }

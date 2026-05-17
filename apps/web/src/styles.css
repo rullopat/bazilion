@@ -10,8 +10,12 @@
    utility resolves to the Baziu palette without per-component edits.
    The parallel @theme block exposes the raw palette as Tailwind utilities
    (`bg-cream`, `font-display`, `border-frost`) for cases where the
-   semantic name doesn't match what we want to express. */
-@theme inline {
+   semantic name doesn't match what we want to express.
+   NOT @theme inline: utilities must emit `var(--color-cream)` etc. so
+   :root.dark overrides flip them at runtime. With `inline`, Tailwind bakes
+   the literal hex into every utility at build time and dark-mode rules can't
+   reach them — `text-charcoal` would stay #2A1F16 on a dark background. */
+@theme {
     --font-heading: 'DM Serif Display', Georgia, serif;
     --font-sans: 'DM Sans', system-ui, sans-serif;
     --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
@@ -116,6 +120,70 @@
     --sidebar-ring: #4A7C9B;
 }
 
+/* Dark theme — "Mask & Moonlight".
+   A Neva Masquerade after dark: the seal-point mask becomes the page,
+   cream body fur becomes text, sapphire eyes glow brighter against the
+   dark fur. Flips both the raw palette tokens (so component CSS using
+   var(--color-snow)/var(--color-chocolate) etc. auto-inverts) AND the
+   shadcn semantic tokens (so Tailwind utilities like bg-card/bg-muted
+   resolve correctly). Applied via .dark on <html> by the pre-hydration
+   script in __root.tsx — it picks 'system' / 'light' / 'dark' from
+   localStorage and falls back to prefers-color-scheme. */
+:root.dark {
+    /* Raw palette — re-mapped to the dark side of Baziu */
+    --color-cream: #1A140F;
+    --color-ivory: #211A13;
+    --color-frost: #3B2E24;
+    --color-fawn: #5C4A3D;
+    --color-chocolate: #F5F0E8;
+    --color-charcoal: #FAF8F4;
+    --color-mocha: #C4B3A0;
+    --color-mocha-light: #A89789;
+    --color-sapphire: #7BB4D2;
+    --color-sapphire-deep: #5E9BBA;
+    --color-sapphire-light: #A0CEE3;
+    --color-sapphire-glow: rgba(123, 180, 210, 0.18);
+    --color-rose-baziu: #D89A9D;
+    --color-snow: #2A211A;
+
+    --shadow-baziu-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
+    --shadow-baziu-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+    --shadow-baziu-lg: 0 8px 30px rgba(0, 0, 0, 0.6);
+
+    /* shadcn semantic tokens */
+    --background: #1A140F;
+    --foreground: #F5F0E8;
+    --card: #2A211A;
+    --card-foreground: #F5F0E8;
+    --popover: #2A211A;
+    --popover-foreground: #F5F0E8;
+    --primary: #7BB4D2;
+    --primary-foreground: #0F0A07;
+    --secondary: #211A13;
+    --secondary-foreground: #F5F0E8;
+    --muted: #211A13;
+    --muted-foreground: #A89789;
+    --accent: rgba(123, 180, 210, 0.18);
+    --accent-foreground: #A0CEE3;
+    --destructive: #D87878;
+    --border: #3B2E24;
+    --input: #3B2E24;
+    --ring: #7BB4D2;
+    --chart-1: #7BB4D2;
+    --chart-2: #D89A9D;
+    --chart-3: #C4B3A0;
+    --chart-4: #5C4A3D;
+    --chart-5: #A0CEE3;
+    --sidebar: #1F1812;
+    --sidebar-foreground: #F5F0E8;
+    --sidebar-primary: #7BB4D2;
+    --sidebar-primary-foreground: #0F0A07;
+    --sidebar-accent: rgba(123, 180, 210, 0.18);
+    --sidebar-accent-foreground: #A0CEE3;
+    --sidebar-border: #3B2E24;
+    --sidebar-ring: #7BB4D2;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -216,7 +284,7 @@
   .btn-primary:hover {
     background: var(--color-sapphire-deep);
     color: var(--color-snow);
-    box-shadow: 0 4px 12px rgba(42,31,22,0.08);
+    box-shadow: var(--shadow-baziu-md);
     transform: translateY(-1px);
     }
   button[type='submit']:not(.unstyled):active,
@@ -258,12 +326,12 @@
     border-bottom: 1px solid var(--color-frost);
     }
   td {
-    padding: 0.6rem 1rem; border-bottom: 1px solid rgba(232, 226, 216, 0.5);
+    padding: 0.6rem 1rem; border-bottom: 1px solid var(--color-frost);
     vertical-align: middle; font-size: 0.93em;
     }
   tr:last-child td { border-bottom: none; }
   tbody tr { transition: background 0.2s; }
-  tbody tr:hover { background: rgba(74, 124, 155, 0.03); }
+  tbody tr:hover { background: var(--color-sapphire-glow); }
 
   /* --- markdown (chat output) ---
      `marked` produces standard HTML (<p>/<h*>/<ul>/<code>/<pre>/<blockquote>);
@@ -358,10 +426,10 @@
     border-radius: var(--radius-lg);
     padding: 1.5rem;
     margin: 1.25rem 0;
-    box-shadow: 0 1px 3px rgba(42,31,22,0.06);
+    box-shadow: var(--shadow-baziu-sm);
     transition: box-shadow 0.2s;
     }
-  .card:hover { box-shadow: 0 4px 12px rgba(42,31,22,0.08); }
+  .card:hover { box-shadow: var(--shadow-baziu-md); }
   .card h3 {
     font-family: var(--font-body);
     font-weight: 600; font-size: 0.92em;
@@ -372,9 +440,9 @@
   /* --- helpers --- */
   .muted { color: var(--color-mocha-light); font-size: 0.9em; }
   .err {
-    color: #9B3D3D; padding: 0.75rem 1rem;
-    background: rgba(196, 135, 138, 0.1);
-    border: 1px solid rgba(196, 135, 138, 0.2);
+    color: var(--destructive); padding: 0.75rem 1rem;
+    background: color-mix(in srgb, var(--destructive) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--destructive) 25%, transparent);
     border-radius: var(--radius-md);
     font-size: 0.92em; margin-bottom: 1rem;
     }

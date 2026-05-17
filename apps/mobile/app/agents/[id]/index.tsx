@@ -1,10 +1,11 @@
 import type { ResolvedAgent } from '@bazilion/api-types'
 import { ApiClientError } from '@bazilion/client'
 import { router, useLocalSearchParams } from 'expo-router'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { clearCredentials, clientFor, loadCredentials } from '@/src/auth'
-import { colors, fonts, radii } from '@/src/theme'
+import { useColors } from '@/src/theme-context'
+import { type Colors, fonts, radii } from '@/src/theme'
 
 type Load =
   | { kind: 'loading' }
@@ -14,6 +15,8 @@ type Load =
 export default function AgentDetail() {
   const { id } = useLocalSearchParams<{ id: string }>()
   const [load, setLoad] = useState<Load>({ kind: 'loading' })
+  const colors = useColors()
+  const styles = useMemo(() => makeStyles(colors), [colors])
 
   const fetchAgent = useCallback(async () => {
     setLoad({ kind: 'loading' })
@@ -110,6 +113,8 @@ export default function AgentDetail() {
 }
 
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
+  const colors = useColors()
+  const styles = useMemo(() => makeStyles(colors), [colors])
   return (
     <View style={styles.section}>
       <Text style={styles.sectionLabel}>{label}</Text>
@@ -118,43 +123,44 @@ function Section({ label, children }: { label: string; children: React.ReactNode
   )
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.background },
-  content: { padding: 20, gap: 8 },
-  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24, gap: 12 },
-  name: { fontSize: 26, fontFamily: fonts.display, color: colors.foreground },
-  subtitle: { fontFamily: fonts.mono, fontSize: 12, color: colors.mochaLight, marginBottom: 8 },
-  section: { marginTop: 12 },
-  sectionLabel: {
-    fontSize: 11,
-    color: colors.mocha,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 4,
-    fontFamily: fonts.bodyMedium,
-  },
-  sectionBody: { gap: 2 },
-  mono: { fontFamily: fonts.mono, fontSize: 13, color: colors.charcoal },
-  dim: { color: colors.mochaLight, fontSize: 13, fontFamily: fonts.body },
-  placeholder: {
-    marginTop: 32,
-    padding: 16,
-    borderRadius: radii.md,
-    backgroundColor: colors.ivory,
-    gap: 6,
-  },
-  placeholderTitle: { fontSize: 14, fontFamily: fonts.bodyMedium, color: colors.mocha },
-  placeholderBody: { fontSize: 12, color: colors.mochaLight, lineHeight: 18, fontFamily: fonts.body },
-  errorTitle: { fontSize: 18, fontFamily: fonts.bodyBold, color: colors.foreground },
-  errorBody: { color: colors.destructive, textAlign: 'center', fontFamily: fonts.body },
-  primaryBtn: {
-    marginTop: 24,
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: radii.md,
-    backgroundColor: colors.sapphire,
-    alignItems: 'center',
-  },
-  primaryBtnPressed: { backgroundColor: colors.sapphireDeep },
-  primaryBtnText: { color: colors.snow, fontSize: 15, fontFamily: fonts.bodyMedium },
-})
+const makeStyles = (colors: Colors) =>
+  StyleSheet.create({
+    screen: { flex: 1, backgroundColor: colors.background },
+    content: { padding: 20, gap: 8 },
+    centered: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24, gap: 12 },
+    name: { fontSize: 26, fontFamily: fonts.display, color: colors.foreground },
+    subtitle: { fontFamily: fonts.mono, fontSize: 12, color: colors.mochaLight, marginBottom: 8 },
+    section: { marginTop: 12 },
+    sectionLabel: {
+      fontSize: 11,
+      color: colors.mocha,
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+      marginBottom: 4,
+      fontFamily: fonts.bodyMedium,
+    },
+    sectionBody: { gap: 2 },
+    mono: { fontFamily: fonts.mono, fontSize: 13, color: colors.charcoal },
+    dim: { color: colors.mochaLight, fontSize: 13, fontFamily: fonts.body },
+    placeholder: {
+      marginTop: 32,
+      padding: 16,
+      borderRadius: radii.md,
+      backgroundColor: colors.ivory,
+      gap: 6,
+    },
+    placeholderTitle: { fontSize: 14, fontFamily: fonts.bodyMedium, color: colors.mocha },
+    placeholderBody: { fontSize: 12, color: colors.mochaLight, lineHeight: 18, fontFamily: fonts.body },
+    errorTitle: { fontSize: 18, fontFamily: fonts.bodyBold, color: colors.foreground },
+    errorBody: { color: colors.destructive, textAlign: 'center', fontFamily: fonts.body },
+    primaryBtn: {
+      marginTop: 24,
+      paddingHorizontal: 20,
+      paddingVertical: 12,
+      borderRadius: radii.md,
+      backgroundColor: colors.sapphire,
+      alignItems: 'center',
+    },
+    primaryBtnPressed: { backgroundColor: colors.sapphireDeep },
+    primaryBtnText: { color: colors.primaryForeground, fontSize: 15, fontFamily: fonts.bodyMedium },
+  })

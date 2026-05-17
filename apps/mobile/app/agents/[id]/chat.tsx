@@ -16,7 +16,8 @@ import {
 import Markdown from 'react-native-markdown-display'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { clearCredentials, type Credentials, loadCredentials } from '@/src/auth'
-import { colors, fonts, radii } from '@/src/theme'
+import { useColors } from '@/src/theme-context'
+import { type Colors, fonts, radii } from '@/src/theme'
 
 // Display-side rendering item. Derived from the server's ProviderMessage[]
 // (history) and SessionEvent stream (live turn). Tool-call/result pairs are
@@ -104,6 +105,8 @@ export default function ChatScreen() {
   const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading')
   const [loadError, setLoadError] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
+  const colors = useColors()
+  const styles = useMemo(() => makeStyles(colors), [colors])
   // Real header height (varies with notch / dynamic island / safe-area
   // insets) so KeyboardAvoidingView lifts the input box above the keyboard
   // by exactly the right amount.
@@ -252,7 +255,7 @@ export default function ChatScreen() {
       />
       {sending ? (
         <View style={styles.thinking}>
-          <ActivityIndicator size="small" color="#888" />
+          <ActivityIndicator size="small" color={colors.mochaLight} />
           <Text style={styles.thinkingText}>thinking…</Text>
         </View>
       ) : null}
@@ -261,7 +264,7 @@ export default function ChatScreen() {
           value={draft}
           onChangeText={setDraft}
           placeholder="Message"
-          placeholderTextColor="#aaa"
+          placeholderTextColor={colors.fawn}
           style={styles.input}
           multiline
           editable={!sending}
@@ -283,6 +286,9 @@ export default function ChatScreen() {
 }
 
 function Bubble({ item }: { item: Item }) {
+  const colors = useColors()
+  const styles = useMemo(() => makeStyles(colors), [colors])
+  const markdownStyles = useMemo(() => makeMarkdownStyles(colors), [colors])
   if (item.kind === 'user') {
     return (
       <View style={[styles.bubbleRow, styles.bubbleRowRight]}>
@@ -327,150 +333,154 @@ function Bubble({ item }: { item: Item }) {
   )
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.background },
-  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24, gap: 12 },
-  listContent: { padding: 12, paddingBottom: 24, gap: 8 },
-  empty: { padding: 32, alignItems: 'center' },
-  emptyText: { color: colors.mochaLight, fontSize: 13, fontFamily: fonts.body },
-  bubbleRow: { flexDirection: 'row' },
-  bubbleRowLeft: { justifyContent: 'flex-start' },
-  bubbleRowRight: { justifyContent: 'flex-end' },
-  bubble: { maxWidth: '85%', paddingHorizontal: 12, paddingVertical: 8, borderRadius: radii.lg },
-  bubbleUser: { backgroundColor: colors.sapphire },
-  bubbleUserText: { color: colors.snow, fontSize: 15, fontFamily: fonts.body },
-  bubbleAssistant: { backgroundColor: colors.card },
-  bubbleAssistantText: { color: colors.foreground, fontSize: 15, fontFamily: fonts.body },
-  toolRow: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    backgroundColor: colors.ivory,
-    borderRadius: radii.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    gap: 4,
-  },
-  toolLabel: { fontFamily: fonts.mono, fontSize: 12, color: colors.mocha },
-  toolResult: { fontFamily: fonts.mono, fontSize: 11, color: colors.mochaLight },
-  toolError: { fontFamily: fonts.mono, fontSize: 11, color: colors.destructive },
-  errorRow: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: 'rgba(155, 61, 61, 0.1)',
-    borderRadius: radii.md,
-  },
-  errorBubbleText: { color: colors.destructive, fontSize: 13, fontFamily: fonts.body },
-  thinking: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-  },
-  thinkingText: {
-    color: colors.mochaLight,
-    fontSize: 12,
-    fontStyle: 'italic',
-    fontFamily: fonts.body,
-  },
-  inputRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingTop: 8,
-    paddingBottom: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-    backgroundColor: colors.background,
-  },
-  input: {
-    flex: 1,
-    minHeight: 40,
-    maxHeight: 120,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: radii.xl,
-    backgroundColor: colors.ivory,
-    fontSize: 15,
-    color: colors.foreground,
-    fontFamily: fonts.body,
-  },
-  sendBtn: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: radii.xl,
-    backgroundColor: colors.sapphire,
-    alignSelf: 'flex-end',
-  },
-  sendBtnDisabled: { backgroundColor: colors.mochaLight },
-  sendBtnPressed: { backgroundColor: colors.sapphireDeep },
-  sendBtnText: { color: colors.snow, fontSize: 14, fontFamily: fonts.bodyMedium },
-  errorTitle: { fontSize: 18, fontFamily: fonts.bodyBold, color: colors.foreground },
-  errorBody: { color: colors.destructive, textAlign: 'center', fontFamily: fonts.body },
-})
+const makeStyles = (colors: Colors) =>
+  StyleSheet.create({
+    screen: { flex: 1, backgroundColor: colors.background },
+    centered: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24, gap: 12 },
+    listContent: { padding: 12, paddingBottom: 24, gap: 8 },
+    empty: { padding: 32, alignItems: 'center' },
+    emptyText: { color: colors.mochaLight, fontSize: 13, fontFamily: fonts.body },
+    bubbleRow: { flexDirection: 'row' },
+    bubbleRowLeft: { justifyContent: 'flex-start' },
+    bubbleRowRight: { justifyContent: 'flex-end' },
+    bubble: { maxWidth: '85%', paddingHorizontal: 12, paddingVertical: 8, borderRadius: radii.lg },
+    bubbleUser: { backgroundColor: colors.sapphire },
+    bubbleUserText: { color: colors.primaryForeground, fontSize: 15, fontFamily: fonts.body },
+    bubbleAssistant: { backgroundColor: colors.card },
+    bubbleAssistantText: { color: colors.foreground, fontSize: 15, fontFamily: fonts.body },
+    toolRow: {
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      backgroundColor: colors.ivory,
+      borderRadius: radii.md,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+      gap: 4,
+    },
+    toolLabel: { fontFamily: fonts.mono, fontSize: 12, color: colors.mocha },
+    toolResult: { fontFamily: fonts.mono, fontSize: 11, color: colors.mochaLight },
+    toolError: { fontFamily: fonts.mono, fontSize: 11, color: colors.destructive },
+    errorRow: {
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      // 6-char hex + 1A alpha suffix = ~10% opacity; tracks colors.destructive
+      // across both themes without needing a separate `destructiveBg` token.
+      backgroundColor: `${colors.destructive}1A`,
+      borderRadius: radii.md,
+    },
+    errorBubbleText: { color: colors.destructive, fontSize: 13, fontFamily: fonts.body },
+    thinking: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      paddingHorizontal: 16,
+      paddingVertical: 6,
+    },
+    thinkingText: {
+      color: colors.mochaLight,
+      fontSize: 12,
+      fontStyle: 'italic',
+      fontFamily: fonts.body,
+    },
+    inputRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-end',
+      gap: 8,
+      paddingHorizontal: 12,
+      paddingTop: 8,
+      paddingBottom: 12,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+      backgroundColor: colors.background,
+    },
+    input: {
+      flex: 1,
+      minHeight: 40,
+      maxHeight: 120,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: radii.xl,
+      backgroundColor: colors.ivory,
+      fontSize: 15,
+      color: colors.foreground,
+      fontFamily: fonts.body,
+    },
+    sendBtn: {
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      borderRadius: radii.xl,
+      backgroundColor: colors.sapphire,
+      alignSelf: 'flex-end',
+    },
+    sendBtnDisabled: { backgroundColor: colors.mochaLight },
+    sendBtnPressed: { backgroundColor: colors.sapphireDeep },
+    sendBtnText: { color: colors.primaryForeground, fontSize: 14, fontFamily: fonts.bodyMedium },
+    errorTitle: { fontSize: 18, fontFamily: fonts.bodyBold, color: colors.foreground },
+    errorBody: { color: colors.destructive, textAlign: 'center', fontFamily: fonts.body },
+  })
 
 // Style overrides for assistant-bubble markdown. Matches the surrounding
 // bubble look (Baziu body font, foreground color) and trims default
 // vertical paragraph margins so short replies don't get extra space.
-const markdownStyles = StyleSheet.create({
-  body: { color: colors.foreground, fontSize: 15, fontFamily: fonts.body },
-  paragraph: { marginTop: 0, marginBottom: 0 },
-  heading1: {
-    fontSize: 22,
-    fontFamily: fonts.display,
-    color: colors.foreground,
-    marginTop: 4,
-    marginBottom: 4,
-  },
-  heading2: {
-    fontSize: 19,
-    fontFamily: fonts.display,
-    color: colors.foreground,
-    marginTop: 4,
-    marginBottom: 4,
-  },
-  heading3: {
-    fontSize: 17,
-    fontFamily: fonts.bodyBold,
-    color: colors.foreground,
-    marginTop: 4,
-    marginBottom: 4,
-  },
-  strong: { fontFamily: fonts.bodyBold },
-  code_inline: {
-    fontFamily: fonts.mono,
-    fontSize: 13,
-    backgroundColor: colors.frost,
-    color: colors.charcoal,
-    paddingHorizontal: 4,
-    borderRadius: 4,
-  },
-  code_block: {
-    fontFamily: fonts.mono,
-    fontSize: 12,
-    backgroundColor: colors.frost,
-    color: colors.charcoal,
-    padding: 8,
-    borderRadius: radii.sm,
-  },
-  fence: {
-    fontFamily: fonts.mono,
-    fontSize: 12,
-    backgroundColor: colors.frost,
-    color: colors.charcoal,
-    padding: 8,
-    borderRadius: radii.sm,
-  },
-  link: { color: colors.sapphireDeep },
-  blockquote: {
-    backgroundColor: colors.ivory,
-    borderLeftColor: colors.sapphire,
-    borderLeftWidth: 3,
-    paddingLeft: 8,
-    paddingVertical: 4,
-    marginVertical: 4,
-  },
-  bullet_list: { marginVertical: 2 },
-  ordered_list: { marginVertical: 2 },
-})
+const makeMarkdownStyles = (colors: Colors) =>
+  StyleSheet.create({
+    body: { color: colors.foreground, fontSize: 15, fontFamily: fonts.body },
+    paragraph: { marginTop: 0, marginBottom: 0 },
+    heading1: {
+      fontSize: 22,
+      fontFamily: fonts.display,
+      color: colors.foreground,
+      marginTop: 4,
+      marginBottom: 4,
+    },
+    heading2: {
+      fontSize: 19,
+      fontFamily: fonts.display,
+      color: colors.foreground,
+      marginTop: 4,
+      marginBottom: 4,
+    },
+    heading3: {
+      fontSize: 17,
+      fontFamily: fonts.bodyBold,
+      color: colors.foreground,
+      marginTop: 4,
+      marginBottom: 4,
+    },
+    strong: { fontFamily: fonts.bodyBold },
+    code_inline: {
+      fontFamily: fonts.mono,
+      fontSize: 13,
+      backgroundColor: colors.frost,
+      color: colors.charcoal,
+      paddingHorizontal: 4,
+      borderRadius: 4,
+    },
+    code_block: {
+      fontFamily: fonts.mono,
+      fontSize: 12,
+      backgroundColor: colors.frost,
+      color: colors.charcoal,
+      padding: 8,
+      borderRadius: radii.sm,
+    },
+    fence: {
+      fontFamily: fonts.mono,
+      fontSize: 12,
+      backgroundColor: colors.frost,
+      color: colors.charcoal,
+      padding: 8,
+      borderRadius: radii.sm,
+    },
+    link: { color: colors.sapphireDeep },
+    blockquote: {
+      backgroundColor: colors.ivory,
+      borderLeftColor: colors.sapphire,
+      borderLeftWidth: 3,
+      paddingLeft: 8,
+      paddingVertical: 4,
+      marginVertical: 4,
+    },
+    bullet_list: { marginVertical: 2 },
+    ordered_list: { marginVertical: 2 },
+  })

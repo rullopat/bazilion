@@ -1,6 +1,6 @@
 import { CameraView, useCameraPermissions } from 'expo-camera'
 import { router } from 'expo-router'
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
@@ -14,7 +14,8 @@ import {
 } from 'react-native'
 import { saveCredentials, verifyCredentials } from '@/src/auth'
 import { PairUrlError, parsePairingUrl } from '@/src/pair-url'
-import { colors, fonts, radii } from '@/src/theme'
+import { useColors } from '@/src/theme-context'
+import { type Colors, fonts, radii } from '@/src/theme'
 
 /**
  * Browsers require a secure context (HTTPS or localhost) for
@@ -41,6 +42,8 @@ export default function PairScreen() {
   const [pasteValue, setPasteValue] = useState('')
   // Expo fires the barcode callback repeatedly on every frame — dedupe.
   const handled = useRef(false)
+  const colors = useColors()
+  const styles = useMemo(() => makeStyles(colors), [colors])
 
   const handlePairingUrl = useCallback(async (raw: string) => {
     if (handled.current) return
@@ -169,51 +172,55 @@ export default function PairScreen() {
   )
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
-  centered: { justifyContent: 'center', alignItems: 'center', padding: 24, gap: 12 },
-  title: {
-    fontSize: 22,
-    fontFamily: fonts.display,
-    color: colors.foreground,
-    marginBottom: 8,
-  },
-  hint: { color: colors.mocha, marginBottom: 16, textAlign: 'center', fontFamily: fonts.body },
-  input: {
-    margin: 16,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.md,
-    minHeight: 80,
-    fontFamily: fonts.mono,
-    color: colors.foreground,
-    backgroundColor: colors.ivory,
-  },
-  row: { flexDirection: 'row', gap: 12, justifyContent: 'center', marginTop: 8 },
-  error: { color: colors.destructive, margin: 16, textAlign: 'center', fontFamily: fonts.body },
-  diag: { color: colors.mochaLight, fontFamily: fonts.mono, fontSize: 12, marginBottom: 12 },
-  onCamera: { backgroundColor: 'rgba(0,0,0,0.6)', padding: 8, borderRadius: 4 },
-  camera: { flex: 1 },
-  overlay: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    padding: 24,
-    paddingBottom: 80,
-  },
-  overlayTitle: {
-    color: colors.snow,
-    fontSize: 20,
-    fontFamily: fonts.display,
-    marginBottom: 4,
-  },
-  overlayHint: { color: '#ddd', fontFamily: fonts.body },
-  fallback: {
-    position: 'absolute',
-    bottom: 24,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-  },
-  fallbackText: { color: colors.snow, textDecorationLine: 'underline', fontFamily: fonts.body },
-})
+const makeStyles = (colors: Colors) =>
+  StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.background },
+    centered: { justifyContent: 'center', alignItems: 'center', padding: 24, gap: 12 },
+    title: {
+      fontSize: 22,
+      fontFamily: fonts.display,
+      color: colors.foreground,
+      marginBottom: 8,
+    },
+    hint: { color: colors.mocha, marginBottom: 16, textAlign: 'center', fontFamily: fonts.body },
+    input: {
+      margin: 16,
+      padding: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radii.md,
+      minHeight: 80,
+      fontFamily: fonts.mono,
+      color: colors.foreground,
+      backgroundColor: colors.ivory,
+    },
+    row: { flexDirection: 'row', gap: 12, justifyContent: 'center', marginTop: 8 },
+    error: { color: colors.destructive, margin: 16, textAlign: 'center', fontFamily: fonts.body },
+    diag: { color: colors.mochaLight, fontFamily: fonts.mono, fontSize: 12, marginBottom: 12 },
+    // Camera-overlay backdrop is intentionally theme-independent: sits on top
+    // of live camera video, needs to read as a translucent dark scrim regardless
+    // of light/dark theme.
+    onCamera: { backgroundColor: 'rgba(0,0,0,0.6)', padding: 8, borderRadius: 4 },
+    camera: { flex: 1 },
+    overlay: {
+      flex: 1,
+      justifyContent: 'flex-end',
+      padding: 24,
+      paddingBottom: 80,
+    },
+    overlayTitle: {
+      color: '#FFFFFF',
+      fontSize: 20,
+      fontFamily: fonts.display,
+      marginBottom: 4,
+    },
+    overlayHint: { color: '#ddd', fontFamily: fonts.body },
+    fallback: {
+      position: 'absolute',
+      bottom: 24,
+      left: 0,
+      right: 0,
+      alignItems: 'center',
+    },
+    fallbackText: { color: '#FFFFFF', textDecorationLine: 'underline', fontFamily: fonts.body },
+  })
