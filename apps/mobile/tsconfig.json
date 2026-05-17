@@ -1,0 +1,23 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    // Match the root workspace conventions so typechecking can walk through
+    // workspace packages (`@bazilion/client` → `@bazilion/api-types`), which
+    // use `.ts` import paths and `import.meta`. These settings are
+    // TS-checker-only; Metro's transpile pipeline (babel-preset-expo) is
+    // unaffected. `@bazilion/api-types` is hermetic — it has no dep on the
+    // daemon, so the mobile TS check never reaches Node-only code.
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "noEmit": true,
+    "paths": {
+      "@/*": ["./*"]
+    }
+  },
+  "include": ["**/*.ts", "**/*.tsx", ".expo/types/**/*.ts", "expo-env.d.ts"],
+  "exclude": ["node_modules"]
+}

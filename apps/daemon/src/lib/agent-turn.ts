@@ -1,0 +1,56 @@
+import type { ChatFrame } from '@bazilion/api-types'
+import { mergeSecretsIntoEnv, providerStateRepo, resolveAgent } from '../core/index.ts'
+import { spawnWorkerTurn } from '../runtime/index.ts'
+import { registerAgent, unregisterAgent } from './agent-cancel.ts'
+import { resolveAgentApiKey } from './api-key.ts'
+import { getCtx } from './ctx.ts'
+import { createDbMessagingHost } from './messaging-host.ts'
+
+interface RunAgentTurnOpts {
+  /** If omitted, a fresh AbortController is created internally. */
+  controller?: AbortController
+}
+
+/**
+ * Runs one full agent turn in an isolated subprocess, streaming `ChatFrame`s
+ * in NDJSON-ready order. The heavy lifting (provider calls, tool execution,
+ * pi session journal append) happens inside the child; this function is a
+ * thin relay that:
+ *   - resolves the agent + provider gate + secrets envelope here in the
+ *     daemon (the worker no longer holds a SQLite handle of its own),
+ *   - spawns the worker with an IPC channel and a `MessagingHost` that
+ *     services the inter-agent messaging tools the worker calls back into,
+ *   - forwards stdout frames to the caller and wires cancellation through
+ *     the agent-cancel registry.
+ */
+export async function* runAgentTurn(
+  agentId: string,
+  message: string,
+  opts: RunAgentTurnOpts = {},
+): AsyncGenerator<ChatFrame> {
+  const { db, paths, authToken } = getCtx()
+  const agent = resolveAgent(db, paths, agentId)
+  const enabledProviders = Array.from(providerStateRepo.listEnabled(db))
+  const env = mergeSecretsIntoEnv(db, authToken)
+  const messagingHost = createDbMessagingHost(db)
+  // Pre-fetch the API key for OAuth providers (`openai-codex`) before the
+  // worker spawns — the worker has no DB handle, so it can't reach the
+  // secrets table itself. For env-key providers this is a no-op (`{}`).
+  // Refresher is intentionally skipped: the worker has no IPC channel for
+  // OAuth refresh today, and the initial token comfortably outlives a
+  // single turn for ChatGPT-backed sessions.
+  const { apiKey } = await resolveAgentApiKey(db, authToken, agent)
+
+  const controller = opts.controller ?? new AbortController()
+  registerAgent(agentId, controller)
+  try {
+    for await (const frame of spawnWorkerTurn(
+      { agent, message, enabledProviders, apiKey },
+      { signal: controller.signal, env, messagingHost },
+    )) {
+      yield frame
+    }
+  } finally {
+    unregisterAgent(agentId)
+  }
+}

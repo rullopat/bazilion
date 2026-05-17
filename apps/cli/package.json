@@ -1,0 +1,21 @@
+{
+  "name": "@bazilion/cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "bazilion": "./src/index.ts"
+  },
+  "dependencies": {
+    "@bazilion/api-types": "workspace:*",
+    "@bazilion/client": "workspace:*",
+    "@mariozechner/pi-ai": "^0.69.0",
+    "citty": "^0.1.6",
+    "qrcode-terminal": "^0.12.0"
+  },
+  "devDependencies": {
+    "@types/adm-zip": "^0.5.8",
+    "@types/qrcode-terminal": "^0.12.2",
+    "adm-zip": "^0.5.17"
+  }
+}

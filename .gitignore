@@ -1,0 +1,8 @@
+node_modules
+dist
+.tanstack
+.env
+.env.local
+*.log
+.DS_Store
+bazilion-backup-*.tar.gz

@@ -1,0 +1,39 @@
+{
+  "expo": {
+    "name": "Bazilion",
+    "slug": "bazilion",
+    "version": "0.0.1",
+    "orientation": "portrait",
+    "scheme": "bazilion",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "dev.bazilion.mobile"
+    },
+    "android": {
+      "package": "dev.bazilion.mobile",
+      "adaptiveIcon": {
+        "backgroundColor": "#ffffff"
+      }
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Bazilion to use the camera to scan pairing QR codes."
+        }
+      ],
+      [
+        "expo-secure-store",
+        {
+          "faceIDPermission": "Allow Bazilion to authenticate with Face ID to unlock stored credentials."
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

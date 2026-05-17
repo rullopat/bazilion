@@ -1,0 +1,31 @@
+{
+  "name": "@bazilion/daemon",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "bazilion-daemon": "./src/index.ts"
+  },
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "start": "node --experimental-strip-types src/index.ts"
+  },
+  "dependencies": {
+    "@bazilion/api-types": "workspace:*",
+    "@hono/node-server": "^1.13.0",
+    "@mariozechner/pi-agent-core": "^0.69.0",
+    "@mariozechner/pi-ai": "^0.69.0",
+    "@mariozechner/pi-coding-agent": "^0.69.0",
+    "@mozilla/readability": "^0.6.0",
+    "@tobilu/qmd": "^2.1.0",
+    "adm-zip": "^0.5.17",
+    "hono": "^4.6.0",
+    "linkedom": "^0.18.12",
+    "typebox": "^1.1.32",
+    "undici": "^8.1.0",
+    "yaml": "^2.6.0"
+  },
+  "devDependencies": {
+    "@types/adm-zip": "^0.5.8"
+  }
+}
