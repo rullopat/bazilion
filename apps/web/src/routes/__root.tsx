@@ -35,6 +35,7 @@ export const Route = createRootRoute({
       { title: 'bazilion' },
     ],
     links: [
+      { rel: 'icon', type: 'image/svg+xml', href: '/baziu.svg' },
       { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
       { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossOrigin: '' },
       {

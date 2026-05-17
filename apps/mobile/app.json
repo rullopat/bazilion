@@ -7,6 +7,12 @@
     "scheme": "bazilion",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#F5F0E8"
+    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "dev.bazilion.mobile"
@@ -14,8 +20,12 @@
     "android": {
       "package": "dev.bazilion.mobile",
       "adaptiveIcon": {
-        "backgroundColor": "#ffffff"
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#F5F0E8"
       }
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
     },
     "plugins": [
       "expo-router",

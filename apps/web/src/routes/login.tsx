@@ -1,4 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { BaziuLogo } from '../components/BaziuLogo'
 import { PawIcon } from '../components/PawIcon'
 
 export const Route = createFileRoute('/login')({
@@ -26,7 +27,7 @@ function LoginPage() {
         }}
       />
       <div className="relative w-full max-w-sm rounded-[16px] border border-frost bg-snow p-8 text-center shadow-baziu-md">
-        <PawIcon className="mx-auto mb-3 h-11 w-11 text-sapphire opacity-70" />
+        <BaziuLogo className="mx-auto mb-3 h-16 w-16" />
         <h1 className="font-display text-[2rem] tracking-tight text-charcoal">bazilion</h1>
         {error && <div className="err mt-4">invalid token</div>}
         <form method="POST" action="/api/login" className="mt-6 text-left">
