@@ -13,13 +13,40 @@ interface Props {
   groups: Group[]
   profiles: Profile[]
   selectedAgentId: string | null
+  /** Per-group open/closed map seeded by SSR from the cookie. */
+  initialOpenGroups?: Record<string, boolean>
 }
 
-export function Sidebar({ agents, groups, profiles, selectedAgentId }: Props) {
+// Cookie name shared with the SSR loader in `routes/index.tsx`. Stored as
+// URL-encoded JSON of `Record<string, boolean>` — keys are group IDs, values
+// are the user's explicit open/closed preference. Used over localStorage so
+// the SSR render lands with the correct state and the user never sees a flash
+// of default state before hydration corrects it.
+export const SIDEBAR_OPEN_GROUPS_COOKIE = 'bz_sidebar_open_groups'
+
+function writeOpenGroupsCookie(map: Record<string, boolean>): void {
+  if (typeof document === 'undefined') return
+  const value = encodeURIComponent(JSON.stringify(map))
+  // 1-year retention, Path=/ so every route sees it, Lax for default safety.
+  document.cookie = `${SIDEBAR_OPEN_GROUPS_COOKIE}=${value}; Path=/; Max-Age=31536000; SameSite=Lax`
+}
+
+export function Sidebar({
+  agents,
+  groups,
+  profiles,
+  selectedAgentId,
+  initialOpenGroups,
+}: Props) {
   const router = useRouter()
   const [spawnFor, setSpawnFor] = useState<{ profileId: string; groupHint?: string } | null>(null)
   const [createGroupOpen, setCreateGroupOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
+  // Seeded by SSR from the cookie so the first paint matches the user's
+  // saved preferences — no flash of default state.
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(
+    () => initialOpenGroups ?? {},
+  )
 
   async function rename(a: Agent) {
     const next = window.prompt(`rename "${a.name}" to:`, a.name)?.trim()
@@ -161,11 +188,27 @@ export function Sidebar({ agents, groups, profiles, selectedAgentId }: Props) {
           sortedGroups.map((g) => {
             const groupAgents = agentsByGroup.get(g.id) ?? []
             const containsSelected = selectedGroupId === g.id
-            const defaultOpen = containsSelected || g.id === DEFAULT_GROUP_ID
+            // Explicit user preference wins; otherwise fall back to the
+            // "auto-open if selected or the seeded default group" heuristic.
+            const stored = openGroups[g.id]
+            const isOpen =
+              stored !== undefined ? stored : containsSelected || g.id === DEFAULT_GROUP_ID
             return (
               <details
                 key={g.id}
-                open={defaultOpen}
+                open={isOpen}
+                onToggle={(e) => {
+                  const next = (e.currentTarget as HTMLDetailsElement).open
+                  if (openGroups[g.id] === next) return
+                  const merged = { ...openGroups, [g.id]: next }
+                  // Write the cookie synchronously BEFORE setState so any
+                  // subsequent navigation/loader-fetch in the same tick sees
+                  // the new value, and invalidate the route so TanStack
+                  // Router's cached loader data refreshes from the cookie.
+                  writeOpenGroupsCookie(merged)
+                  setOpenGroups(merged)
+                  void router.invalidate()
+                }}
                 className="group/details mb-1 last:mb-0"
               >
                 <summary className="flex cursor-pointer list-none items-center gap-1.5 rounded-sm px-2 py-1.5 text-xs uppercase tracking-wide text-muted-foreground hover:bg-accent">

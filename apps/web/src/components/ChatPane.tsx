@@ -3,7 +3,7 @@
 // loader; new ones land via fetch + ReadableStream consume.
 
 import type { ChatFrame, ProviderMessage, SessionHeadResponse } from '@bazilion/api-types'
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { renderMd } from '../lib/md'
 
 const INBOX_WAKE_PREFIX = '[[bazilion:inbox-wake]]\n'
@@ -136,7 +136,9 @@ export function ChatPane({
 }: ChatPaneProps) {
   const [serverMessages, setServerMessages] = useState<ProviderMessage[]>(initialMessages)
   const [liveEntries, setLiveEntries] = useState<RenderEntry[]>([])
-  const [systemBubbles, setSystemBubbles] = useState<RenderEntry[]>([])
+  const [systemBubbles, setSystemBubbles] = useState<
+    Array<{ id: number; content: string; afterIdx: number }>
+  >([])
   const [thinking, setThinking] = useState(false)
   const [streaming, setStreaming] = useState(false)
   const [editIdx, setEditIdx] = useState<number | null>(null)
@@ -146,6 +148,11 @@ export function ChatPane({
   const messagesRef = useRef<HTMLDivElement | null>(null)
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
   const currentAbortRef = useRef<AbortController | null>(null)
+  // Slash-command output bubbles are anchored to the count of visible
+  // (non-system) entries at push time, so they stay in place when later
+  // messages arrive instead of being pinned to the bottom of the transcript.
+  const systemIdRef = useRef(0)
+  const visibleEntryCountRef = useRef(0)
   const knownHeadRef = useRef<SessionHeadResponse>(
     initialSessionHead ?? { file: null, size: 0 },
   )
@@ -259,7 +266,10 @@ export function ChatPane({
   // --- system bubble helper (slash command output) ---
   function pushSystem(text: string) {
     captureScroll()
-    setSystemBubbles((prev) => [...prev, { type: 'system', content: text }])
+    setSystemBubbles((prev) => [
+      ...prev,
+      { id: systemIdRef.current++, content: text, afterIdx: visibleEntryCountRef.current },
+    ])
   }
 
   // --- slash commands ---
@@ -330,6 +340,9 @@ export function ChatPane({
       }
       setServerMessages([])
       setLiveEntries([])
+      // Drop prior slash-command bubbles whose anchors point into the wiped
+      // history — they'd otherwise render at the trailing end with stale context.
+      setSystemBubbles([])
       pushSystem('/reset: history wiped')
     } catch (err) {
       pushSystem(`/reset failed: ${(err as Error).message}`)
@@ -625,6 +638,9 @@ export function ChatPane({
 
   // --- render projection ---
   const baseEntries = projectMessages(serverMessages)
+  // Update the anchor reference so the next pushSystem() captures the current
+  // count. Writing to a ref during render is supported by React.
+  visibleEntryCountRef.current = baseEntries.length + liveEntries.length
   const lastUserIdx = (() => {
     if (liveEntries.length > 0 || streaming) return -1
     for (let i = baseEntries.length - 1; i >= 0; i--) {
@@ -695,21 +711,65 @@ export function ChatPane({
         {baseEntries.length === 0 && liveEntries.length === 0 && systemBubbles.length === 0 && (
           <p className="py-12 text-center italic text-fawn">start a conversation…</p>
         )}
-        {baseEntries.map((entry, i) => (
-          <Bubble
-            key={`s-${i}`}
-            entry={entry}
-            isLastUser={i === lastUserIdx && editIdx === null}
-            isWillDrop={willDropFromIdx !== -1 && i >= willDropFromIdx}
-            onEdit={enterEditMode}
-          />
-        ))}
-        {liveEntries.map((entry, i) => (
-          <Bubble key={`l-${i}`} entry={entry} />
-        ))}
-        {systemBubbles.map((entry, i) => (
-          <Bubble key={`y-${i}`} entry={entry} />
-        ))}
+        {(() => {
+          const out: ReactNode[] = []
+          let sysIdx = 0
+          const flushSysUpTo = (idx: number) => {
+            while (
+              sysIdx < systemBubbles.length &&
+              (systemBubbles[sysIdx] as { afterIdx: number }).afterIdx <= idx
+            ) {
+              const sb = systemBubbles[sysIdx] as {
+                id: number
+                content: string
+                afterIdx: number
+              }
+              out.push(
+                <Bubble
+                  key={`y-${sb.id}`}
+                  entry={{ type: 'system', content: sb.content }}
+                />,
+              )
+              sysIdx++
+            }
+          }
+          flushSysUpTo(0)
+          for (let i = 0; i < baseEntries.length; i++) {
+            const entry = baseEntries[i] as RenderEntry
+            out.push(
+              <Bubble
+                key={`s-${i}`}
+                entry={entry}
+                isLastUser={i === lastUserIdx && editIdx === null}
+                isWillDrop={willDropFromIdx !== -1 && i >= willDropFromIdx}
+                onEdit={enterEditMode}
+              />,
+            )
+            flushSysUpTo(i + 1)
+          }
+          for (let i = 0; i < liveEntries.length; i++) {
+            const entry = liveEntries[i] as RenderEntry
+            out.push(<Bubble key={`l-${i}`} entry={entry} />)
+            flushSysUpTo(baseEntries.length + i + 1)
+          }
+          // Anchors past the current real-entry count (e.g. after edit-mode
+          // submit drops the tail) render at the end — better than vanishing.
+          while (sysIdx < systemBubbles.length) {
+            const sb = systemBubbles[sysIdx] as {
+              id: number
+              content: string
+              afterIdx: number
+            }
+            out.push(
+              <Bubble
+                key={`y-${sb.id}`}
+                entry={{ type: 'system', content: sb.content }}
+              />,
+            )
+            sysIdx++
+          }
+          return out
+        })()}
         {thinking && (
           <div className="flex items-center gap-2 px-1 py-1 text-[0.85em] text-mocha-light">
             <Dot />

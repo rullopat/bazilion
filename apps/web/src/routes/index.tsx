@@ -9,8 +9,9 @@ import type {
 } from '@bazilion/api-types'
 import { createFileRoute } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
+import { getCookie } from '@tanstack/react-start/server'
 import { ChatPane } from '../components/ChatPane'
-import { Sidebar } from '../components/Sidebar'
+import { Sidebar, SIDEBAR_OPEN_GROUPS_COOKIE } from '../components/Sidebar'
 import { daemonClient } from '../lib/daemon-client'
 
 interface SelectedView {
@@ -24,6 +25,27 @@ interface HomeData {
   profiles: Profile[]
   groups: Group[]
   selected: SelectedView | null
+  initialOpenGroups: Record<string, boolean>
+}
+
+// Pure parser so the rule lives next to the cookie name. getCookie may or may
+// not URL-decode depending on the harness; handle either form defensively.
+function parseOpenGroupsCookie(raw: string | undefined | null): Record<string, boolean> {
+  if (!raw) return {}
+  try {
+    const decoded = raw.includes('%') ? decodeURIComponent(raw) : raw
+    const parsed = JSON.parse(decoded) as unknown
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const out: Record<string, boolean> = {}
+      for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+        if (typeof v === 'boolean') out[k] = v
+      }
+      return out
+    }
+  } catch {
+    // bad cookie value — fall through to {}
+  }
+  return {}
 }
 
 // POST so we can pass a typed input via `.inputValidator()`. The call site
@@ -37,6 +59,8 @@ const fetchHomeData = createServerFn({ method: 'POST' })
       client.get<Profile[]>('/api/profiles'),
       client.get<Group[]>('/api/groups'),
     ])
+
+    const initialOpenGroups = parseOpenGroupsCookie(getCookie(SIDEBAR_OPEN_GROUPS_COOKIE))
 
     let selected: SelectedView | null = null
     if (data.agentId) {
@@ -63,7 +87,7 @@ const fetchHomeData = createServerFn({ method: 'POST' })
         if (!(err instanceof ApiClientError) || err.status !== 404) throw err
       }
     }
-    return { agents, profiles, groups, selected }
+    return { agents, profiles, groups, selected, initialOpenGroups }
   })
 
 export const Route = createFileRoute('/')({
@@ -86,6 +110,7 @@ function HomePage() {
         groups={data.groups}
         profiles={data.profiles}
         selectedAgentId={selectedAgentId}
+        initialOpenGroups={data.initialOpenGroups}
       />
       <main className="overflow-hidden">
         {data.selected ? (
