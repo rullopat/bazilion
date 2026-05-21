@@ -1,5 +1,7 @@
 # bazilion
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 Multi-agent runtime inspired by [OpenClaw](https://docs.openclaw.ai). Profiles are templates, agents are instances spawned from a profile into a single group (the collaboration context — one filesystem root, one USER.md, one roster, one shared memory), skills attach on the fly, and agents can talk to each other through a DB-backed mailbox.
 
 Local-only. TypeScript + Node monorepo (pnpm + tsx + vitest). The web UI lives at `apps/web` (TanStack Start + React 19 + Tailwind v4 + shadcn/ui) and pairs with the standalone Hono daemon at `apps/daemon`. The CLI talks over HTTP, so keep `bazilion serve` running while you work in another terminal.
