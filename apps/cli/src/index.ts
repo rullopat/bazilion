@@ -1,6 +1,8 @@
-#!/usr/bin/env -S tsx
 import { defineCommand, runCommand, showUsage } from 'citty'
+import pkg from '../package.json' with { type: 'json' }
 import { ApiClientError } from './client.ts'
+
+const VERSION = pkg.version
 import { agentCommand } from './commands/agent.ts'
 import { authCommand } from './commands/auth.ts'
 import { backupCommand } from './commands/backup.ts'
@@ -23,7 +25,7 @@ import { uninstallCommand } from './commands/uninstall.ts'
 const main = defineCommand({
   meta: {
     name: 'bazilion',
-    version: '0.0.0',
+    version: VERSION,
     description: 'Multi-agent runtime',
   },
   subCommands: {
@@ -106,7 +108,7 @@ function printError(err: unknown): void {
  * citty's built-in renderer.
  */
 function printTopLevelHelp(): void {
-  console.log('Multi-agent runtime (bazilion v0.0.0)')
+  console.log(`Multi-agent runtime (bazilion v${VERSION})`)
   console.log('')
   console.log('USAGE bazilion <command> [args]')
   console.log('')
@@ -183,7 +185,7 @@ async function entry(): Promise<void> {
       process.exit(0)
     }
     if (rawArgs.length === 1 && (rawArgs[0] === '--version' || rawArgs[0] === '-v')) {
-      console.log('0.0.0')
+      console.log(VERSION)
       return
     }
     await runCommand(main, { rawArgs })

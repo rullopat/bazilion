@@ -1,21 +1,67 @@
 {
-  "name": "@bazilion/cli",
-  "version": "0.0.0",
-  "private": true,
+  "name": "bazilion",
+  "version": "0.1.0",
+  "description": "Multi-agent runtime CLI — spawn LLM agents, manage profiles/groups/skills, and run the local daemon.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rullopat/bazilion.git",
+    "directory": "apps/cli"
+  },
+  "homepage": "https://bazilion.com",
+  "bugs": {
+    "url": "https://github.com/rullopat/bazilion/issues"
+  },
+  "keywords": [
+    "agent",
+    "agents",
+    "ai",
+    "cli",
+    "daemon",
+    "llm",
+    "local-first",
+    "multi-agent",
+    "openclaw",
+    "skills"
+  ],
   "type": "module",
   "bin": {
-    "bazilion": "./src/index.ts"
+    "bazilion": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsup"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "dependencies": {
-    "@bazilion/api-types": "workspace:*",
-    "@bazilion/client": "workspace:*",
+    "@hono/node-server": "^1.13.0",
+    "@mariozechner/pi-agent-core": "^0.69.0",
     "@mariozechner/pi-ai": "^0.69.0",
+    "@mariozechner/pi-coding-agent": "^0.69.0",
+    "@mozilla/readability": "^0.6.0",
+    "@tobilu/qmd": "^2.1.0",
+    "adm-zip": "^0.5.17",
     "citty": "^0.1.6",
-    "qrcode-terminal": "^0.12.0"
+    "hono": "^4.6.0",
+    "linkedom": "^0.18.12",
+    "qrcode-terminal": "^0.12.0",
+    "typebox": "^1.1.32",
+    "undici": "^8.1.0",
+    "yaml": "^2.6.0"
   },
   "devDependencies": {
+    "@bazilion/api-types": "workspace:*",
+    "@bazilion/client": "workspace:*",
     "@types/adm-zip": "^0.5.8",
-    "@types/qrcode-terminal": "^0.12.2",
-    "adm-zip": "^0.5.17"
+    "@types/qrcode-terminal": "^0.12.2"
   }
 }

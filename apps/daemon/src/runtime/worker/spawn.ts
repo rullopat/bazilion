@@ -21,6 +21,7 @@
 // exit within `killGraceMs`, we SIGKILL it.
 
 import { type ChildProcess, spawn } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import type { ChatFrame, ResolvedAgent } from '@bazilion/api-types'
@@ -28,23 +29,25 @@ import type { IpcReply, IpcRequest, MessagingHost } from './ipc-protocol.ts'
 
 const DEFAULT_KILL_GRACE_MS = 3_000
 
-const entryPath = fileURLToPath(new URL('./entry.ts', import.meta.url))
+// In dev, this file is at apps/daemon/src/runtime/worker/spawn.ts and the
+// worker entry is its `entry.ts` sibling. In the published bundle, all of
+// spawn.ts's code is inlined into dist/daemon.js, where `./entry.ts` does
+// not exist — the worker is bundled separately to dist/worker.js. Pick at
+// load time by probing the filesystem.
+const sourceEntryPath = fileURLToPath(new URL('./entry.ts', import.meta.url))
+const bundledEntryPath = fileURLToPath(new URL('./worker.js', import.meta.url))
+const entryPath = existsSync(sourceEntryPath) ? sourceEntryPath : bundledEntryPath
+const entryIsTs = entryPath.endsWith('.ts')
 
-// Node 22.12+ (the project's minimum) runs `.ts` files directly via
-// `--experimental-strip-types`, which just strips type annotations without
-// any transform / loader plumbing. We prefer it over tsx for worker spawns
-// because it shaves ~1s off the subprocess boot (no tsx module to resolve,
-// no TypeScript compiler to initialize per turn). tsx remains available as
-// a fallback for environments where strip-types is disabled — detected at
-// spawn time by probing `process.features.typescript`.
+// .ts dev entry: Node 24+ runs TS directly via native type-stripping (no
+// `--experimental-strip-types` flag needed in stable 24, but we still pass
+// it for older 22.x dev environments). tsx is the fallback for any runtime
+// where strip-types is missing. `--no-warnings` silences the experimental
+// banner that older Node versions emit on every child start.
 //
-// `--no-warnings` silences Node's "ExperimentalWarning: Type Stripping"
-// banner that would otherwise appear on every child start.
+// .js bundled entry: plain `node entry.js` — no type stripping, no tsx.
 function workerSpawnArgs(): string[] {
-  // `process.features.typescript` is 'strip' on builds where strip-types is
-  // enabled, 'transform' on nightly/experimental, undefined otherwise. Cast
-  // through unknown because the typing of ProcessFeatures doesn't yet
-  // include this field in our @types/node.
+  if (!entryIsTs) return [entryPath]
   const tsFeature = (process.features as unknown as Record<string, unknown>).typescript
   if (typeof tsFeature === 'string' || tsFeature === true) {
     return ['--experimental-strip-types', '--no-warnings', entryPath]

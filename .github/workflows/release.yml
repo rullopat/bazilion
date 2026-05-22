@@ -1,0 +1,66 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+# Don't cancel an in-flight release if a new push lands — let it finish.
+concurrency:
+  group: release-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+# Default permissions = none; the job grants only what it needs.
+permissions: {}
+
+jobs:
+  release:
+    name: Version & publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write       # create the "Version Packages" PR commits + tags
+      pull-requests: write  # open/update the version PR
+      id-token: write       # mint OIDC token so npm can attach provenance
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # changesets needs full history to diff against main
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      # Two modes, decided by the action based on repo state:
+      #   - Pending changesets present → opens/updates the "Version Packages" PR
+      #     (runs `pnpm version-packages`, commits bumped package.jsons + CHANGELOG)
+      #   - No pending changesets, versions ahead of npm → runs `pnpm release`
+      #     (which is `pnpm build && changeset publish`) and tags the commit
+      - name: Create release PR or publish to npm
+        uses: changesets/action@v1
+        with:
+          version: pnpm version-packages
+          publish: pnpm release
+          commit: 'chore(release): version packages'
+          title: 'chore(release): version packages'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          # Tells npm to attach a provenance attestation built from the OIDC
+          # token granted above — every published version gets a verifiable
+          # "Built and signed on GitHub Actions" badge on npmjs.com.
+          NPM_CONFIG_PROVENANCE: 'true'

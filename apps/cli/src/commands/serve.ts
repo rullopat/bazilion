@@ -3,8 +3,12 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { defineCommand } from 'citty'
 
-// apps/cli/src/commands/serve.ts → apps/daemon/src/index.ts
-const daemonEntry = join(import.meta.dirname, '..', '..', '..', 'daemon', 'src', 'index.ts')
+// In published builds, serve.ts is inlined into dist/cli.js — the daemon
+// sits next to it as dist/daemon.js. In dev (running .ts source via tsx),
+// fall back to walking up to apps/daemon/src/index.ts.
+const bundledDaemonEntry = join(import.meta.dirname, 'daemon.js')
+const sourceDaemonEntry = join(import.meta.dirname, '..', '..', '..', 'daemon', 'src', 'index.ts')
+const daemonEntry = existsSync(bundledDaemonEntry) ? bundledDaemonEntry : sourceDaemonEntry
 
 export const serveCommand = defineCommand({
   meta: {
@@ -43,14 +47,16 @@ export const serveCommand = defineCommand({
     console.log(`starting bazilion daemon at http://${host}:${port}`)
     console.log('(web UI runs separately: cd apps/web && pnpm dev)')
 
-    // Spawn the daemon under tsx. Stdio inherited so the daemon's startup log
-    // and any console.error go to the user's terminal directly. The daemon
-    // installs its own SIGINT/SIGTERM handlers and shuts the HTTP server
-    // gracefully — we just need to keep this process alive long enough for it.
-    //
-    // No vite anywhere in this tree → the daemon never flips the TTY into raw
-    // mode, so the post-Ctrl+C arrow-key-echo bug is gone by construction.
-    const proc = spawn('node', ['--import', 'tsx/esm', daemonEntry], {
+    // Spawn the daemon. In dev mode the entry is .ts so we go through tsx;
+    // in published builds it's bundled .js so plain node is enough. Stdio
+    // inherited so the daemon's startup log and any console.error go to the
+    // user's terminal directly. The daemon installs its own SIGINT/SIGTERM
+    // handlers and shuts the HTTP server gracefully — we just need to keep
+    // this process alive long enough for it.
+    const nodeArgs = daemonEntry.endsWith('.ts')
+      ? ['--import', 'tsx/esm', daemonEntry]
+      : [daemonEntry]
+    const proc = spawn('node', nodeArgs, {
       env,
       stdio: 'inherit',
     })

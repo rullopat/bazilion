@@ -12,37 +12,58 @@ Whole-run subprocess isolation with worker↔daemon Node-IPC for messaging, Chat
 
 ## Quickstart
 
+Requires **Node 24 or newer**.
+
 ```sh
-# Install dependencies (Node 22.12+ and pnpm 10+ required)
+# One-shot — npx downloads `bazilion` and runs the daemon.
+npx bazilion serve
+
+# Or install globally and re-use the binary.
+npm install -g bazilion
+bazilion serve
+```
+
+The daemon auto-bootstraps `~/.bazilion` on first run (creates dirs, runs migrations, mints the bootstrap token, writes `auth.json`) and prints the token before binding `127.0.0.1:4321`. Save it somewhere — the local CLI picks it up automatically from `~/.bazilion/auth.json`, but you'll need it to pair the web UI or remote clients.
+
+The web UI is **not bundled into the npm package yet** — to run it today, clone the repo and start the Vite dev server alongside the daemon (see [Develop from source](#develop-from-source) below). For the CLI-only flow:
+
+```sh
+# Configure a provider — env var works, or persist via `bazilion config set`.
+export ANTHROPIC_API_KEY=sk-ant-...
+bazilion provider enable anthropic
+bazilion provider models anthropic claude-sonnet-4-6
+
+# Spawn an agent from the auto-created `default` profile.
+bazilion agent spawn --profile default --name first
+# → spawned agent <uuid> (first)
+
+# Chat — interactive REPL or one-shot.
+bazilion agent chat <uuid>
+bazilion agent chat <uuid> --message "say hi"
+```
+
+If you'd rather use the web UI: open `http://127.0.0.1:4322` after starting the dev server. On a fresh install every page redirects to `/welcome` until you finish first-run setup: enable a provider on `/config` and list at least one model for it. The moment both conditions hold, a `default` profile + `default` group (at `~/.bazilion/groups/default/`) are auto-created wired to that model. The default profile uses `skillsMode: 'all'` so spawned agents inherit every installed skill out of the box.
+
+Other provider env vars: `OPENAI_API_KEY`, `GEMINI_API_KEY`, `LMSTUDIO_URL`/`LMSTUDIO_API_KEY`, `OLLAMA_URL`, etc. You still need to enable the provider and list its models (via `bazilion provider enable|models` or the web UI) to clear the first-run gate.
+
+## Develop from source
+
+Contributors and anyone wanting the web UI today: clone the repo. Node 24+ and pnpm 10+.
+
+```sh
+git clone https://github.com/rullopat/bazilion
+cd bazilion
 pnpm install
 
-# Start the daemon — on first run it auto-bootstraps ~/.bazilion
-# (creates dirs, runs migrations, mints the bootstrap token, writes auth.json).
-# The bootstrap message prints the token before the HTTP port binds.
+# Start the daemon directly from source — no build step, tsx executes .ts.
 pnpm tsx apps/cli/src/index.ts serve
 
-# In another terminal, start the web UI (Vite dev server on 4322)
+# In another terminal, start the web UI (Vite dev server on 4322).
 cd apps/web && pnpm dev
 # → http://127.0.0.1:4322 — paste the bootstrap token to log in
 ```
 
-Open `http://127.0.0.1:4322` in a browser. On a fresh install every page redirects to `/welcome` until you finish first-run setup: enable a provider on `/config` and list at least one model for it. The moment both conditions hold, a `default` profile + `default` group (at `~/.bazilion/groups/default/`) are auto-created wired to that model. The default profile uses `skillsMode: 'all'` so spawned agents inherit every installed skill out of the box. The homepage unlocks with a one-click spawn dropdown.
-
-From there:
-
-```sh
-# Homepage: click "+ new ▾" in the sidebar and pick the default profile to
-# spawn an agent, or select any other profile you've created.
-
-# From the CLI — one-shot or interactive:
-pnpm tsx apps/cli/src/index.ts agent spawn --profile default --name first
-# → spawned agent <uuid> (first)
-
-pnpm tsx apps/cli/src/index.ts agent chat <uuid>               # readline REPL
-pnpm tsx apps/cli/src/index.ts agent chat <uuid> --message "say hi"
-```
-
-Credentials can also come from the environment if you'd rather not use `/config` (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `LMSTUDIO_URL`/`LMSTUDIO_API_KEY`, `OLLAMA_URL`, etc.) — but you still need to enable the provider and list its models in the web UI (or via the provider-state / provider-models APIs) to clear the first-run gate.
+From the source checkout, every CLI command is `pnpm tsx apps/cli/src/index.ts <cmd>` instead of `bazilion <cmd>`. Example: `pnpm tsx apps/cli/src/index.ts agent spawn --profile default --name first`. Build the distributable bundle with `pnpm build`.
 
 ## CLI commands
 
