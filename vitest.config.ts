@@ -13,10 +13,8 @@ export default defineConfig({
     // same 30s budget as hooks. Real hangs still show up quickly.
     testTimeout: 30_000,
     pool: 'forks',
-    poolOptions: {
-      forks: {
-        maxForks: 8,
-      },
+    forks: {
+      maxForks: 8,
     },
   },
 })

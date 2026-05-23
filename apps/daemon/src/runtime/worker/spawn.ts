@@ -25,7 +25,7 @@ import { existsSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import type { ChatFrame, ResolvedAgent } from '@bazilion/api-types'
-import type { IpcReply, IpcRequest, MessagingHost } from './ipc-protocol.ts'
+import type { IpcReply, IpcRequest, MessagingHost, UserMdHost } from './ipc-protocol.ts'
 
 const DEFAULT_KILL_GRACE_MS = 3_000
 
@@ -101,6 +101,11 @@ export interface SpawnWorkerOpts {
    * costs nothing for turns that don't use messaging.
    */
   messagingHost?: MessagingHost
+  /**
+   * Daemon-side implementation of the USER.md append tool. Omit and the
+   * `user_md_append` tool will be unavailable on this turn.
+   */
+  userMdHost?: UserMdHost
 }
 
 export async function* spawnWorkerTurn(
@@ -112,7 +117,9 @@ export async function* spawnWorkerTurn(
     stdio: ['pipe', 'pipe', 'inherit', 'ipc'],
   })
 
-  if (opts.messagingHost) attachIpcHandler(child, opts.messagingHost)
+  if (opts.messagingHost || opts.userMdHost) {
+    attachIpcHandler(child, opts.messagingHost, opts.userMdHost)
+  }
 
   child.stdin?.write(JSON.stringify(spec))
   child.stdin?.end()
@@ -205,10 +212,14 @@ function parseFrame(line: string): ChatFrame {
   }
 }
 
-function attachIpcHandler(child: ChildProcess, host: MessagingHost): void {
+function attachIpcHandler(
+  child: ChildProcess,
+  messagingHost: MessagingHost | undefined,
+  userMdHost: UserMdHost | undefined,
+): void {
   child.on('message', (msg: unknown) => {
     if (!isIpcRequest(msg)) return
-    void dispatch(msg, host).then((reply) => {
+    void dispatch(msg, messagingHost, userMdHost).then((reply) => {
       try {
         child.send?.(reply)
       } catch {
@@ -224,25 +235,55 @@ function isIpcRequest(msg: unknown): msg is IpcRequest {
   return m.type === 'rpc' && typeof m.id === 'string' && typeof m.method === 'string'
 }
 
-async function dispatch(req: IpcRequest, host: MessagingHost): Promise<IpcReply> {
+function requireMessagingHost(host: MessagingHost | undefined, method: string): MessagingHost {
+  if (!host) throw new Error(`worker called messaging method "${method}" without a messagingHost`)
+  return host
+}
+
+function requireUserMdHost(host: UserMdHost | undefined, method: string): UserMdHost {
+  if (!host) throw new Error(`worker called user_md method "${method}" without a userMdHost`)
+  return host
+}
+
+async function dispatch(
+  req: IpcRequest,
+  messagingHost: MessagingHost | undefined,
+  userMdHost: UserMdHost | undefined,
+): Promise<IpcReply> {
   try {
     let result: unknown
     switch (req.method) {
       case 'agentExists':
-        result = await host.agentExists(req.args.agentId)
+        result = await requireMessagingHost(messagingHost, req.method).agentExists(req.args.agentId)
         break
       case 'sendMessage':
-        result = await host.sendMessage(req.args)
+        result = await requireMessagingHost(messagingHost, req.method).sendMessage(req.args)
         break
       case 'listInbox':
-        result = await host.listInbox(req.args.agentId, { unreadOnly: req.args.unreadOnly })
+        result = await requireMessagingHost(messagingHost, req.method).listInbox(
+          req.args.agentId,
+          { unreadOnly: req.args.unreadOnly },
+        )
         break
       case 'markRead':
-        await host.markRead(req.args.messageId)
+        await requireMessagingHost(messagingHost, req.method).markRead(req.args.messageId)
         result = null
         break
       case 'findReplies':
-        result = await host.findReplies(req.args.agentId, req.args.replyTo)
+        result = await requireMessagingHost(messagingHost, req.method).findReplies(
+          req.args.agentId,
+          req.args.replyTo,
+        )
+        break
+      case 'userMdGet':
+        result = await requireUserMdHost(userMdHost, req.method).get(req.args.groupId)
+        break
+      case 'userMdWrite':
+        result = await requireUserMdHost(userMdHost, req.method).write(
+          req.args.groupId,
+          req.args.content,
+          req.args.ifMatch,
+        )
         break
     }
     return { type: 'rpc-reply', id: req.id, ok: true, result }

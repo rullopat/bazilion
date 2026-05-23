@@ -62,7 +62,7 @@ function htmlToMarkdown(html: string): { text: string; title?: string } {
   return { text: normalizeWhitespace(text), title }
 }
 
-function markdownToPlain(md: string): string {
+export function markdownToPlain(md: string): string {
   let t = md
   t = t.replace(/!\[[^\]]*]\([^)]+\)/g, '')
   t = t.replace(/\[([^\]]+)]\([^)]+\)/g, '$1')

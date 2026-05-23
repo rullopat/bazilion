@@ -15,7 +15,7 @@ import {
   useEffect,
   useState,
 } from 'react'
-import { useColorScheme } from 'react-native'
+import { type ColorSchemeName, useColorScheme } from 'react-native'
 import { type Colors, darkColors, lightColors, type ThemeMode } from './theme'
 
 const STORAGE_KEY = 'baziu-theme'
@@ -30,7 +30,7 @@ type ThemeCtx = {
 
 const Ctx = createContext<ThemeCtx | null>(null)
 
-function resolveScheme(mode: ThemeMode, system: 'light' | 'dark' | null | undefined): 'light' | 'dark' {
+function resolveScheme(mode: ThemeMode, system: ColorSchemeName): 'light' | 'dark' {
   if (mode === 'light' || mode === 'dark') return mode
   return system === 'dark' ? 'dark' : 'light'
 }

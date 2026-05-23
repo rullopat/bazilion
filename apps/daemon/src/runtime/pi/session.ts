@@ -38,7 +38,7 @@
 import { existsSync, mkdirSync, readdirSync, statSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import type { ResolvedAgent } from '@bazilion/api-types'
-import type { AgentMessage, ThinkingLevel } from '@mariozechner/pi-agent-core'
+import type { AgentMessage, ThinkingLevel } from '@earendil-works/pi-agent-core'
 import {
   type AgentSession,
   AuthStorage,
@@ -48,14 +48,14 @@ import {
   type ResourceLoader,
   SessionManager,
   SettingsManager,
-} from '@mariozechner/pi-coding-agent'
+} from '@earendil-works/pi-coding-agent'
 import type { BazilionDb, Paths } from '../../core/index.ts'
 import { providerStateRepo } from '../../core/index.ts'
 import type { MemoryBackend } from '../memory/types.ts'
 import { resolveModel as resolvePiModel } from '../providers/pi-adapter.ts'
 import { createProviderRegistry, loadProviderConfigFromEnv } from '../providers/registry.ts'
 import { buildSystemPrompt } from '../session/prompt.ts'
-import type { MessagingHost } from '../worker/ipc-protocol.ts'
+import type { MessagingHost, UserMdHost } from '../worker/ipc-protocol.ts'
 import { createBazilionCustomTools } from './tools.ts'
 
 const BUILTIN_TOOL_NAMES = ['read', 'bash', 'edit', 'write', 'grep', 'find', 'ls'] as const
@@ -80,6 +80,12 @@ export interface CreateBazilionSessionOptions {
    * tests that don't exercise inbox flows).
    */
   messagingHost?: MessagingHost
+  /**
+   * Optional host for the group-shared USER.md append tool. Like
+   * `messagingHost`, this is wired via the worker's IPC channel. Omit to
+   * disable the `user_md_append` tool.
+   */
+  userMdHost?: UserMdHost
   /**
    * Optional explicit API key for the agent's provider. Wins over any value
    * derived from `env`. Required for OAuth-backed providers (`openai-codex`)
@@ -118,7 +124,8 @@ export interface BazilionSessionHandle {
 export async function createBazilionSession(
   opts: CreateBazilionSessionOptions,
 ): Promise<BazilionSessionHandle> {
-  const { agent, paths, env, memory, enabledProviders, messagingHost, refreshApiKey } = opts
+  const { agent, paths, env, memory, enabledProviders, messagingHost, userMdHost, refreshApiKey } =
+    opts
 
   const { providerName, modelId } = splitModelString(agent.model)
 
@@ -198,7 +205,12 @@ export async function createBazilionSession(
   // used to apply before pi-adoption.
   const settingsManager = SettingsManager.inMemory({
     compaction: { enabled: false },
-    retry: { enabled: true, maxRetries: 2, baseDelayMs: 500, maxDelayMs: 8_000 },
+    retry: {
+      enabled: true,
+      maxRetries: 2,
+      baseDelayMs: 500,
+      provider: { maxRetryDelayMs: 8_000 },
+    },
   })
 
   // Bazilion-authored system prompt becomes an `appendSystemPrompt` entry.
@@ -215,7 +227,7 @@ export async function createBazilionSession(
   // Bazilion custom tool we want the LLM to see. Missing the custom names
   // from the allowlist would silently drop memory/messaging/web/bootstrap
   // tools from the agent's surface.
-  const customTools = createBazilionCustomTools({ agent, memory, messagingHost, env })
+  const customTools = createBazilionCustomTools({ agent, memory, messagingHost, userMdHost, env })
   const allowedTools = [...BUILTIN_TOOL_NAMES, ...customTools.map((t) => t.name)]
 
   const { session } = await createAgentSession({

@@ -2,8 +2,8 @@
 // exposed at pi-ai's `/oauth` subpath; types come from pi-ai's main export
 // and `OpenAICodexStatus` (the wire shape) from api-types.
 import type { OpenAICodexStatus } from '@bazilion/api-types'
-import type { OAuthAuthInfo, OAuthPrompt } from '@mariozechner/pi-ai'
-import { loginOpenAICodex } from '@mariozechner/pi-ai/oauth'
+import type { OAuthAuthInfo, OAuthPrompt } from '@earendil-works/pi-ai'
+import { loginOpenAICodex } from '@earendil-works/pi-ai/oauth'
 import { defineCommand } from 'citty'
 import { createClient } from '../client.ts'
 

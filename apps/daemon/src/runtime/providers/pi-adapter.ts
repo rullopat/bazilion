@@ -1,6 +1,6 @@
 // Adapter from Bazilion's Provider interface → pi-ai's streamSimple.
 //
-// Pi-ai (`@mariozechner/pi-ai`) is Mario Zechner's unified LLM SDK — 15+
+// Pi-ai (`@earendil-works/pi-ai`) is Mario Zechner's unified LLM SDK — 15+
 // providers behind one event-stream API. This file is the only place in the
 // codebase that touches pi-ai directly; everything else downstream
 // (`runTurnStream`, `persistRun`, the worker entry, CLI, web) sees the same
@@ -26,7 +26,7 @@ import {
   streamSimple,
   type TextContent,
   Type,
-} from '@mariozechner/pi-ai'
+} from '@earendil-works/pi-ai'
 import type { Provider, ProviderRequest, ProviderResponse, StopReason } from './types.ts'
 
 export interface PiProviderConfig {

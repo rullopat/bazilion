@@ -5,6 +5,7 @@ import { registerAgent, unregisterAgent } from './agent-cancel.ts'
 import { resolveAgentApiKey } from './api-key.ts'
 import { getCtx } from './ctx.ts'
 import { createDbMessagingHost } from './messaging-host.ts'
+import { createDbUserMdHost } from './user-md-host.ts'
 
 interface RunAgentTurnOpts {
   /** If omitted, a fresh AbortController is created internally. */
@@ -33,6 +34,7 @@ export async function* runAgentTurn(
   const enabledProviders = Array.from(providerStateRepo.listEnabled(db))
   const env = mergeSecretsIntoEnv(db, authToken)
   const messagingHost = createDbMessagingHost(db)
+  const userMdHost = createDbUserMdHost(db, paths)
   // Pre-fetch the API key for OAuth providers (`openai-codex`) before the
   // worker spawns — the worker has no DB handle, so it can't reach the
   // secrets table itself. For env-key providers this is a no-op (`{}`).
@@ -46,7 +48,7 @@ export async function* runAgentTurn(
   try {
     for await (const frame of spawnWorkerTurn(
       { agent, message, enabledProviders, apiKey },
-      { signal: controller.signal, env, messagingHost },
+      { signal: controller.signal, env, messagingHost, userMdHost },
     )) {
       yield frame
     }

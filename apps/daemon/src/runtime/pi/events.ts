@@ -25,9 +25,9 @@
 //                                    eventual success or failure
 
 import type { ProviderMessage, SessionEvent, ToolCall } from '@bazilion/api-types'
-import type { AgentMessage, AgentToolResult } from '@mariozechner/pi-agent-core'
-import type { AssistantMessage } from '@mariozechner/pi-ai'
-import type { AgentSessionEvent } from '@mariozechner/pi-coding-agent'
+import type { AgentMessage, AgentToolResult } from '@earendil-works/pi-agent-core'
+import type { AssistantMessage } from '@earendil-works/pi-ai'
+import type { AgentSessionEvent } from '@earendil-works/pi-coding-agent'
 
 export function translatePiEvent(e: AgentSessionEvent): SessionEvent[] {
   switch (e.type) {

@@ -72,7 +72,7 @@ After connecting, enable `openai-codex` and curate at least one model. Credentia
 
 - **CLI + daemon**, both spawned via `bazilion serve`. The daemon binds `127.0.0.1:4321` and owns `~/.bazilion/` (SQLite DB, profiles, agents, groups, skills, logs).
 - **17 subcommand families**: `agent`, `profile`, `group`, `skill`, `provider`, `config`, `auth`, `memory`, `send`, `inbox`, `trigger`, `serve`, `doctor`, `backup`, `token`, `login`, `uninstall`.
-- **Provider support** via [pi-ai](https://www.npmjs.com/package/@mariozechner/pi-ai): Anthropic, OpenAI (key + ChatGPT OAuth), Google AI Studio + Vertex, Azure OpenAI, AWS Bedrock, Mistral, Groq, Cerebras, xAI, Z.AI, Hugging Face, OpenRouter, Vercel AI Gateway, LM Studio, Ollama.
+- **Provider support** via [pi-ai](https://www.npmjs.com/package/@earendil-works/pi-ai): Anthropic, OpenAI (key + ChatGPT OAuth), Google AI Studio + Vertex, Azure OpenAI, AWS Bedrock, Mistral, Groq, Cerebras, xAI, Z.AI, Hugging Face, OpenRouter, Vercel AI Gateway, LM Studio, Ollama.
 - **OpenClaw-compatible skills**: drop a `SKILL.md` into `~/.bazilion/skills/<name>/`, or import in bulk via `bazilion skill import --from openclaw`.
 
 ## Uninstall

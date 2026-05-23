@@ -68,18 +68,25 @@ const fetchHomeData = createServerFn({ method: 'POST' })
         const resolved = await client.get<ResolvedAgent>(
           `/api/agents/${encodeURIComponent(data.agentId)}`,
         )
-        const [msgs, head] = await Promise.all([
-          client.get<{ messages: ProviderMessage[] }>(
-            `/api/agents/${encodeURIComponent(resolved.agent.id)}/sessions/messages`,
-          ),
-          client.get<SessionHeadResponse>(
-            `/api/agents/${encodeURIComponent(resolved.agent.id)}/sessions/head`,
-          ),
-        ])
-        selected = {
-          resolved,
-          initialMessages: msgs.messages,
-          sessionHead: head,
+        // Archived agents are hidden from the sidebar (includeArchived=false
+        // above), so loading their chat via a stale URL would surface a
+        // conversation no longer reachable from any UI — treat the same as
+        // 404 here so the pane goes empty. Hard-deleted agents already
+        // 404 from the GET above and are caught below.
+        if (resolved.agent.status !== 'archived') {
+          const [msgs, head] = await Promise.all([
+            client.get<{ messages: ProviderMessage[] }>(
+              `/api/agents/${encodeURIComponent(resolved.agent.id)}/sessions/messages`,
+            ),
+            client.get<SessionHeadResponse>(
+              `/api/agents/${encodeURIComponent(resolved.agent.id)}/sessions/head`,
+            ),
+          ])
+          selected = {
+            resolved,
+            initialMessages: msgs.messages,
+            sessionHead: head,
+          }
         }
       } catch (err) {
         // 404 = bad ?agent= id. Drop the selection silently and render the

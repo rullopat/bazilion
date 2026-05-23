@@ -3,6 +3,7 @@ import pkg from '../package.json' with { type: 'json' }
 import { ApiClientError } from './client.ts'
 
 const VERSION = pkg.version
+
 import { agentCommand } from './commands/agent.ts'
 import { authCommand } from './commands/auth.ts'
 import { backupCommand } from './commands/backup.ts'

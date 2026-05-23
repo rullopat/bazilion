@@ -7,7 +7,7 @@ export function memoryTools(memory: MemoryBackend): ToolHandler[] {
       def: {
         name: 'memory_write',
         description:
-          'Write or update a memory note in the GROUP-SHARED memory. All agents in this group can read what you write. Use it for project knowledge, codebase notes, decisions, and findings — anything other agents in the group should benefit from. For personal notes about yourself (preferences, persona), use `home_write` on IDENTITY.md instead. Key is a path-like string with a markdown extension, e.g. "auth-flow.md" or "people/alice.md".',
+          'Write or update a memory note in the GROUP-SHARED memory. All agents in this group can read what you write. Use it for project knowledge, codebase notes, decisions, and findings — anything other agents in the group should benefit from. For personal notes about yourself (preferences, persona) use `home_write` on IDENTITY.md. For STABLE facts about the human you\'re working with (their preferences, role, working hours, how they like to be addressed) use `user_md_get` then `user_md_write` — those land in every agent\'s system prompt directly. Key is a path-like string with a markdown extension, e.g. "auth-flow.md" or "decisions/2026-05-migration.md".',
         parameters: {
           type: 'object',
           properties: {

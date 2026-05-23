@@ -14,7 +14,14 @@
 
 import type { Message } from '@bazilion/api-types'
 
-export type RpcMethod = 'agentExists' | 'sendMessage' | 'listInbox' | 'markRead' | 'findReplies'
+export type RpcMethod =
+  | 'agentExists'
+  | 'sendMessage'
+  | 'listInbox'
+  | 'markRead'
+  | 'findReplies'
+  | 'userMdGet'
+  | 'userMdWrite'
 
 export interface AgentExistsArgs {
   agentId: string
@@ -41,12 +48,37 @@ export interface FindRepliesArgs {
   replyTo: string
 }
 
+export interface UserMdGetArgs {
+  groupId: string
+}
+
+export interface UserMdGetResult {
+  content: string
+  /** Short content-derived hash. Pass back in `ifMatch` on the next write. */
+  etag: string
+}
+
+export interface UserMdWriteArgs {
+  groupId: string
+  content: string
+  /** Etag from the most recent get. Write fails with a conflict if it no longer matches. */
+  ifMatch: string
+}
+
+export interface UserMdWriteResult {
+  /** Etag of the newly-stored content — pass to the next write. */
+  etag: string
+  totalBytes: number
+}
+
 export type RpcArgs =
   | { method: 'agentExists'; args: AgentExistsArgs }
   | { method: 'sendMessage'; args: SendMessageArgs }
   | { method: 'listInbox'; args: ListInboxArgs }
   | { method: 'markRead'; args: MarkReadArgs }
   | { method: 'findReplies'; args: FindRepliesArgs }
+  | { method: 'userMdGet'; args: UserMdGetArgs }
+  | { method: 'userMdWrite'; args: UserMdWriteArgs }
 
 export type RpcResult =
   | { method: 'agentExists'; value: boolean }
@@ -54,6 +86,8 @@ export type RpcResult =
   | { method: 'listInbox'; value: Message[] }
   | { method: 'markRead'; value: null }
   | { method: 'findReplies'; value: Message[] }
+  | { method: 'userMdGet'; value: UserMdGetResult }
+  | { method: 'userMdWrite'; value: UserMdWriteResult }
 
 export type IpcRequest = { type: 'rpc'; id: string } & RpcArgs
 
@@ -72,4 +106,20 @@ export interface MessagingHost {
   listInbox(agentId: string, opts: { unreadOnly: boolean }): Message[] | Promise<Message[]>
   markRead(messageId: string): void | Promise<void>
   findReplies(agentId: string, replyTo: string): Message[] | Promise<Message[]>
+}
+
+/**
+ * Host-side surface for the group-shared USER.md. Daemon implements against
+ * `groupRepo.get` + `setUserMd`; worker proxies through IPC. Optimistic
+ * concurrency via etag: `get` returns a content hash, `write` must echo it
+ * back; if the stored content has moved on in the meantime the write fails
+ * with a typed conflict the model handles by re-reading.
+ */
+export interface UserMdHost {
+  get(groupId: string): UserMdGetResult | Promise<UserMdGetResult>
+  write(
+    groupId: string,
+    content: string,
+    ifMatch: string,
+  ): UserMdWriteResult | Promise<UserMdWriteResult>
 }

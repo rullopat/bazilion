@@ -33,7 +33,11 @@ export function spawnAgent(db: BazilionDb, paths: Paths, input: SpawnAgentInput)
   mkdirSync(dir, { recursive: true })
   mkdirSync(join(dir, 'sessions'), { recursive: true })
 
-  // Copy profile templates so the agent can diverge per-instance.
+  // Copy profile templates verbatim so the agent can diverge per-instance.
+  // BOOTSTRAP.md is intentionally NOT personalized with the spawn slug —
+  // the slug is a routing label, not necessarily the persona name. Bootstrap
+  // is a pure conversation: the agent asks, the human answers, IDENTITY.md
+  // is populated from that exchange.
   writeFileSync(join(dir, 'SOUL.md'), loaded.files.soul)
   writeFileSync(join(dir, 'IDENTITY.md'), loaded.files.identity)
   if (loaded.files.bootstrap !== null) {

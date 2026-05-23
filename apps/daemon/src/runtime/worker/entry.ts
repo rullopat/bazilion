@@ -30,7 +30,15 @@ import { resolvePaths } from '../../core/index.ts'
 import { qmdBackend } from '../memory/qmd.ts'
 import { piMessagesToProviderView, translatePiEvent } from '../pi/events.ts'
 import { createBazilionSession } from '../pi/session.ts'
-import type { IpcReply, IpcRequest, MessagingHost, RpcMethod } from './ipc-protocol.ts'
+import type {
+  IpcReply,
+  IpcRequest,
+  MessagingHost,
+  RpcMethod,
+  UserMdGetResult,
+  UserMdHost,
+  UserMdWriteResult,
+} from './ipc-protocol.ts'
 
 interface WorkerInput {
   agent: ResolvedAgent
@@ -61,13 +69,17 @@ async function readInput(): Promise<WorkerInput> {
 }
 
 /**
- * Build a `MessagingHost` that proxies every method through the IPC channel
- * back to the parent. Each call gets a fresh correlation id and waits for the
- * matching `rpc-reply`. The promise rejects when the channel disconnects mid-
- * request — that path only fires during shutdown, where the LLM loop has
- * already been aborted, so the unresolved tool call doesn't matter.
+ * Single shared IPC client. Both `MessagingHost` and `UserMdHost` route
+ * through this — the `id` correlation id disambiguates replies, so multiple
+ * concurrent tool calls (e.g. read_inbox + user_md_append on the same turn)
+ * each get their own promise resolved without crosstalk. The promise
+ * rejects when the channel disconnects mid-request; that path only fires
+ * during shutdown, where the LLM loop has already been aborted, so the
+ * unresolved tool call doesn't matter.
  */
-function createIpcMessagingHost(): MessagingHost {
+type IpcCall = <T>(method: RpcMethod, args: unknown) => Promise<T>
+
+function createIpcClient(): IpcCall {
   type Pending = { resolve: (value: unknown) => void; reject: (err: Error) => void }
   const pending = new Map<string, Pending>()
 
@@ -85,7 +97,7 @@ function createIpcMessagingHost(): MessagingHost {
     pending.clear()
   })
 
-  function call<T>(method: RpcMethod, args: unknown): Promise<T> {
+  return <T>(method: RpcMethod, args: unknown): Promise<T> => {
     if (!process.send) {
       return Promise.reject(new Error('worker: no IPC channel — daemon must spawn with stdio:ipc'))
     }
@@ -96,10 +108,7 @@ function createIpcMessagingHost(): MessagingHost {
     // every call site.
     const message = { type: 'rpc', id, method, args } as unknown as IpcRequest
     return new Promise<T>((resolve, reject) => {
-      pending.set(id, {
-        resolve: (v) => resolve(v as T),
-        reject,
-      })
+      pending.set(id, { resolve: (v) => resolve(v as T), reject })
       // process.send is fire-and-forget; the callback only signals serialization
       // failure. Treat it as a reject to surface the bug rather than hang.
       process.send?.(message, undefined, undefined, (err) => {
@@ -110,7 +119,9 @@ function createIpcMessagingHost(): MessagingHost {
       })
     })
   }
+}
 
+function createIpcMessagingHost(call: IpcCall): MessagingHost {
   return {
     agentExists: (agentId) => call<boolean>('agentExists', { agentId }),
     sendMessage: (input) => call<{ messageId: string }>('sendMessage', input),
@@ -119,6 +130,14 @@ function createIpcMessagingHost(): MessagingHost {
       await call<null>('markRead', { messageId })
     },
     findReplies: (agentId, replyTo) => call('findReplies', { agentId, replyTo }),
+  }
+}
+
+function createIpcUserMdHost(call: IpcCall): UserMdHost {
+  return {
+    get: (groupId) => call<UserMdGetResult>('userMdGet', { groupId }),
+    write: (groupId, content, ifMatch) =>
+      call<UserMdWriteResult>('userMdWrite', { groupId, content, ifMatch }),
   }
 }
 
@@ -160,7 +179,9 @@ async function main(): Promise<void> {
   const memory = qmdBackend(join(agent.group.path, 'memory'))
   await memory.init()
 
-  const messagingHost = createIpcMessagingHost()
+  const ipcCall = createIpcClient()
+  const messagingHost = createIpcMessagingHost(ipcCall)
+  const userMdHost = createIpcUserMdHost(ipcCall)
 
   const { session, dispose } = await createBazilionSession({
     agent,
@@ -169,6 +190,7 @@ async function main(): Promise<void> {
     memory,
     enabledProviders: new Set(enabledProviders),
     messagingHost,
+    userMdHost,
     apiKey,
   })
 

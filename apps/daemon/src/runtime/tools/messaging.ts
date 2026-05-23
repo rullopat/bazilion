@@ -21,7 +21,8 @@ export function messagingTools(host: MessagingHost, fromAgentId: string): ToolHa
     {
       def: {
         name: 'send_message',
-        description: "Send a message to another agent. Use the recipient's agent id (UUID).",
+        description:
+          "Send a message to another agent. Use the recipient's agent id (UUID). Use this ONLY for things the recipient needs to ACT on: delegating a task, asking a peer for information you cannot get yourself, escalating a decision. Do NOT use it for status updates or to announce changes to group-shared resources — USER.md and the group memory backend both propagate to every agent in the group automatically on their next turn, so messages like \"I updated USER.md\" or \"I wrote a new memory note\" are pure noise and will trigger an inbox-wake loop on the recipient.",
         parameters: {
           type: 'object',
           properties: {

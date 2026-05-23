@@ -87,6 +87,7 @@ configRouter.get('/services', (c) => {
     id: svc.id,
     displayName: svc.displayName,
     ...(svc.hint ? { hint: svc.hint } : {}),
+    ...(svc.group ? { group: svc.group } : {}),
     fields: resolveFieldStates(svc, configValues, secretValues),
   }))
 

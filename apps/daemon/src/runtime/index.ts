@@ -1,4 +1,4 @@
-export type { OAuthAuthInfo, OAuthPrompt } from '@mariozechner/pi-ai'
+export type { OAuthAuthInfo, OAuthPrompt } from '@earendil-works/pi-ai'
 export type { StoredCredentials } from './auth/openai-codex.ts'
 export {
   clearCredentials as clearOpenAICodexCredentials,
@@ -72,6 +72,11 @@ export { createToolRegistry } from './tools/registry.ts'
 export type { ToolHandler, ToolRegistry } from './tools/types.ts'
 export { webTools } from './tools/web.ts'
 
-export type { MessagingHost } from './worker/ipc-protocol.ts'
+export type {
+  MessagingHost,
+  UserMdGetResult,
+  UserMdHost,
+  UserMdWriteResult,
+} from './worker/ipc-protocol.ts'
 export type { SpawnWorkerOpts } from './worker/spawn.ts'
 export { spawnWorkerTurn } from './worker/spawn.ts'

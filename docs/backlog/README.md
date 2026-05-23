@@ -27,11 +27,13 @@ docs/backlog/
 
 ---
 
-## Draft (1)
+## Draft (3)
 
 | ID | Title | Size | Notes |
 |----|-------|------|-------|
 | [BAZ-001](draft/BAZ-001-a2a-federation-spike.md) | Spike — federated multi-employee Bazilion via A2A | S | Investigation only; output is a follow-up implementation BAZ |
+| [BAZ-002](draft/BAZ-002-profile-groups.md) | Profile Groups — preconfigured team templates | M | Additive — bundles existing spawn primitives, single-profile path untouched |
+| [BAZ-003](draft/BAZ-003-hermes-self-learning.md) | Hermes-style self-learning loop — background reviewer + skill self-editing | L | MVP = reviewer + human-approval gate; curator / FTS5 / runtime skill authoring deferred to v2 BAZs |
 
 ## Todo (0)
 

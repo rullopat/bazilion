@@ -4,7 +4,7 @@ Engineer-to-engineer walkthrough of how a chat turn actually runs, end to end.
 
 > **What Bazilion vs. pi-coding-agent owns**: the per-turn session loop,
 > transcript storage, compaction, tool execution, and provider retries are
-> [pi-coding-agent](https://www.npmjs.com/package/@mariozechner/pi-coding-agent).
+> [pi-coding-agent](https://www.npmjs.com/package/@earendil-works/pi-coding-agent).
 > Bazilion provides profiles, groups, skills, messaging, memory, the scheduler,
 > the HTTP API (`apps/daemon`), the web UI (`apps/web`), and a thin bridge
 > (`apps/daemon/src/runtime/pi/*`) that glues them together. The on-disk JSONL
@@ -141,7 +141,7 @@ Implementation: calls `buildSystemPrompt(resolved)` for the total, re-renders th
 
 ## 5. Provider layer (`providers/pi-adapter.ts` + `registry.ts`)
 
-All provider traffic goes through pi-ai (`@mariozechner/pi-ai`). `piProvider(cfg)` adapts pi's `streamSimple(model, {systemPrompt, messages, tools}, {signal, apiKey, reasoning, …})` to Bazilion's `Provider.chat(ProviderRequest): Promise<ProviderResponse>`.
+All provider traffic goes through pi-ai (`@earendil-works/pi-ai`). `piProvider(cfg)` adapts pi's `streamSimple(model, {systemPrompt, messages, tools}, {signal, apiKey, reasoning, …})` to Bazilion's `Provider.chat(ProviderRequest): Promise<ProviderResponse>`.
 
 Model lookup tries `getModel(piProviderName, modelId)` first — returns a typed `Model<>` with cost/context-window metadata for catalog hits. Miss falls back to a hand-built literal (32k ctx, 4k maxTokens, zero cost) — this is what makes `lmstudio:<any-loaded-model>` or unreleased OpenAI models Just Work.
 

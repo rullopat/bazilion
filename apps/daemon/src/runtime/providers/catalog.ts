@@ -14,7 +14,8 @@
 // fetches are surfaced so callers can show "couldn't reach lmstudio" rather
 // than a silent empty list.
 
-import { getModels as piGetModels } from '@mariozechner/pi-ai'
+import { getModels as piGetModels } from '@earendil-works/pi-ai'
+import { fetch as undiciFetch } from 'undici'
 
 // piProviderName: what pi-ai's catalog indexes by. For bedrock we use the
 // Bazilion-registry-key 'bedrock' externally but pi uses 'amazon-bedrock'.
@@ -35,6 +36,8 @@ function liveEndpointFor(providerName: string, env: NodeJS.ProcessEnv): string |
       // Ollama has its own /api/tags for model list; its OpenAI-compat /v1
       // endpoint supports /models though, so use that.
       return env.OLLAMA_URL ?? 'http://127.0.0.1:11434/v1'
+    case 'llamacpp':
+      return env.LLAMACPP_URL ?? 'http://127.0.0.1:8080/v1'
     case 'openrouter':
       return 'https://openrouter.ai/api/v1'
     case 'vercel-ai-gateway':
@@ -77,7 +80,7 @@ async function fetchModelsFrom(
   try {
     const headers: Record<string, string> = { accept: 'application/json' }
     if (apiKey) headers.authorization = `Bearer ${apiKey}`
-    const res = await fetch(`${baseURL.replace(/\/$/, '')}/models`, { headers, signal })
+    const res = await undiciFetch(`${baseURL.replace(/\/$/, '')}/models`, { headers, signal })
     if (!res.ok) return { models: [], error: `${res.status} ${res.statusText}` }
     const body = (await res.json()) as { data?: Array<{ id?: string }> } | null
     const ids = (body?.data ?? []).map((m) => m.id).filter((id): id is string => !!id)

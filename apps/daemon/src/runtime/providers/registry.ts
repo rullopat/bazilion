@@ -24,8 +24,21 @@ export interface ProviderConfig {
   huggingface?: { apiKey: string; baseURL?: string }
   openrouter?: { apiKey: string; baseURL?: string }
   vercelAiGateway?: { apiKey: string; baseURL?: string }
+  // Providers added in pi-ai 0.70–0.75.
+  deepseek?: { apiKey: string; baseURL?: string }
+  fireworks?: { apiKey: string; baseURL?: string }
+  together?: { apiKey: string; baseURL?: string }
+  moonshotai?: { apiKey: string; baseURL?: string }
+  kimiCoding?: { apiKey: string; baseURL?: string }
+  minimax?: { apiKey: string; baseURL?: string }
+  xiaomi?: { apiKey: string; baseURL?: string }
+  opencode?: { apiKey: string; baseURL?: string }
+  githubCopilot?: { apiKey: string }
+  cloudflareAiGateway?: { apiKey: string; accountId?: string; gatewayId?: string }
+  cloudflareWorkersAi?: { apiKey: string; accountId?: string }
   lmstudio?: { baseURL?: string; apiKey?: string }
   ollama?: { baseURL?: string; apiKey?: string }
+  llamacpp?: { baseURL?: string; apiKey?: string }
 }
 
 export interface ResolvedModel {
@@ -54,6 +67,10 @@ export function loadProviderConfigFromEnv(
       ...(env.OLLAMA_URL !== undefined ? { baseURL: env.OLLAMA_URL } : {}),
       ...(env.OLLAMA_API_KEY !== undefined ? { apiKey: env.OLLAMA_API_KEY } : {}),
     },
+    llamacpp: {
+      ...(env.LLAMACPP_URL !== undefined ? { baseURL: env.LLAMACPP_URL } : {}),
+      ...(env.LLAMACPP_API_KEY !== undefined ? { apiKey: env.LLAMACPP_API_KEY } : {}),
+    },
   }
   if (env.ANTHROPIC_API_KEY || env.ANTHROPIC_OAUTH_TOKEN) {
     config.anthropic = { apiKey: env.ANTHROPIC_OAUTH_TOKEN ?? env.ANTHROPIC_API_KEY ?? '' }
@@ -79,6 +96,28 @@ export function loadProviderConfigFromEnv(
   if (env.HF_TOKEN) config.huggingface = { apiKey: env.HF_TOKEN }
   if (env.OPENROUTER_API_KEY) config.openrouter = { apiKey: env.OPENROUTER_API_KEY }
   if (env.AI_GATEWAY_API_KEY) config.vercelAiGateway = { apiKey: env.AI_GATEWAY_API_KEY }
+  if (env.DEEPSEEK_API_KEY) config.deepseek = { apiKey: env.DEEPSEEK_API_KEY }
+  if (env.FIREWORKS_API_KEY) config.fireworks = { apiKey: env.FIREWORKS_API_KEY }
+  if (env.TOGETHER_API_KEY) config.together = { apiKey: env.TOGETHER_API_KEY }
+  if (env.MOONSHOT_API_KEY) config.moonshotai = { apiKey: env.MOONSHOT_API_KEY }
+  if (env.KIMI_API_KEY) config.kimiCoding = { apiKey: env.KIMI_API_KEY }
+  if (env.MINIMAX_API_KEY) config.minimax = { apiKey: env.MINIMAX_API_KEY }
+  if (env.XIAOMI_API_KEY) config.xiaomi = { apiKey: env.XIAOMI_API_KEY }
+  if (env.OPENCODE_API_KEY) config.opencode = { apiKey: env.OPENCODE_API_KEY }
+  if (env.COPILOT_GITHUB_TOKEN) config.githubCopilot = { apiKey: env.COPILOT_GITHUB_TOKEN }
+  if (env.CLOUDFLARE_API_KEY && env.CLOUDFLARE_ACCOUNT_ID) {
+    config.cloudflareWorkersAi = {
+      apiKey: env.CLOUDFLARE_API_KEY,
+      accountId: env.CLOUDFLARE_ACCOUNT_ID,
+    }
+    if (env.CLOUDFLARE_GATEWAY_ID) {
+      config.cloudflareAiGateway = {
+        apiKey: env.CLOUDFLARE_API_KEY,
+        accountId: env.CLOUDFLARE_ACCOUNT_ID,
+        gatewayId: env.CLOUDFLARE_GATEWAY_ID,
+      }
+    }
+  }
   if (oauth && hasOpenAICodexCredentials(oauth.db, oauth.authToken)) {
     config.openaiCodex = oauth
   }
@@ -270,6 +309,124 @@ const PROVIDERS: Record<string, ProviderEntry> = {
       }),
     hint: 'AI_GATEWAY_API_KEY',
   },
+  deepseek: {
+    configured: (c) => !!c.deepseek,
+    build: (c) =>
+      piProvider({
+        providerName: 'deepseek',
+        fallbackApi: 'openai-completions',
+        apiKey: c.deepseek?.apiKey,
+        baseUrl: c.deepseek?.baseURL,
+      }),
+    hint: 'DEEPSEEK_API_KEY',
+  },
+  fireworks: {
+    configured: (c) => !!c.fireworks,
+    build: (c) =>
+      piProvider({
+        providerName: 'fireworks',
+        fallbackApi: 'anthropic-messages',
+        apiKey: c.fireworks?.apiKey,
+        baseUrl: c.fireworks?.baseURL,
+      }),
+    hint: 'FIREWORKS_API_KEY',
+  },
+  together: {
+    configured: (c) => !!c.together,
+    build: (c) =>
+      piProvider({
+        providerName: 'together',
+        fallbackApi: 'openai-completions',
+        apiKey: c.together?.apiKey,
+        baseUrl: c.together?.baseURL,
+      }),
+    hint: 'TOGETHER_API_KEY',
+  },
+  moonshotai: {
+    configured: (c) => !!c.moonshotai,
+    build: (c) =>
+      piProvider({
+        providerName: 'moonshotai',
+        fallbackApi: 'openai-completions',
+        apiKey: c.moonshotai?.apiKey,
+        baseUrl: c.moonshotai?.baseURL,
+      }),
+    hint: 'MOONSHOT_API_KEY',
+  },
+  'kimi-coding': {
+    configured: (c) => !!c.kimiCoding,
+    build: (c) =>
+      piProvider({
+        providerName: 'kimi-coding',
+        fallbackApi: 'anthropic-messages',
+        apiKey: c.kimiCoding?.apiKey,
+        baseUrl: c.kimiCoding?.baseURL,
+      }),
+    hint: 'KIMI_API_KEY',
+  },
+  minimax: {
+    configured: (c) => !!c.minimax,
+    build: (c) =>
+      piProvider({
+        providerName: 'minimax',
+        fallbackApi: 'anthropic-messages',
+        apiKey: c.minimax?.apiKey,
+        baseUrl: c.minimax?.baseURL,
+      }),
+    hint: 'MINIMAX_API_KEY',
+  },
+  xiaomi: {
+    configured: (c) => !!c.xiaomi,
+    build: (c) =>
+      piProvider({
+        providerName: 'xiaomi',
+        fallbackApi: 'openai-completions',
+        apiKey: c.xiaomi?.apiKey,
+        baseUrl: c.xiaomi?.baseURL,
+      }),
+    hint: 'XIAOMI_API_KEY',
+  },
+  opencode: {
+    configured: (c) => !!c.opencode,
+    build: (c) =>
+      piProvider({
+        providerName: 'opencode',
+        fallbackApi: 'openai-completions',
+        apiKey: c.opencode?.apiKey,
+        baseUrl: c.opencode?.baseURL,
+      }),
+    hint: 'OPENCODE_API_KEY',
+  },
+  'github-copilot': {
+    configured: (c) => !!c.githubCopilot,
+    build: (c) =>
+      piProvider({
+        providerName: 'github-copilot',
+        fallbackApi: 'anthropic-messages',
+        apiKey: c.githubCopilot?.apiKey,
+      }),
+    hint: 'COPILOT_GITHUB_TOKEN (generic GH_TOKEN/GITHUB_TOKEN are ignored)',
+  },
+  'cloudflare-ai-gateway': {
+    configured: (c) => !!c.cloudflareAiGateway,
+    build: (c) =>
+      piProvider({
+        providerName: 'cloudflare-ai-gateway',
+        fallbackApi: 'anthropic-messages',
+        apiKey: c.cloudflareAiGateway?.apiKey,
+      }),
+    hint: 'CLOUDFLARE_API_KEY + CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_GATEWAY_ID',
+  },
+  'cloudflare-workers-ai': {
+    configured: (c) => !!c.cloudflareWorkersAi,
+    build: (c) =>
+      piProvider({
+        providerName: 'cloudflare-workers-ai',
+        fallbackApi: 'openai-completions',
+        apiKey: c.cloudflareWorkersAi?.apiKey,
+      }),
+    hint: 'CLOUDFLARE_API_KEY + CLOUDFLARE_ACCOUNT_ID',
+  },
   lmstudio: {
     configured: () => true,
     build: (c) =>
@@ -291,6 +448,21 @@ const PROVIDERS: Record<string, ProviderEntry> = {
         baseUrl: c.ollama?.baseURL ?? 'http://127.0.0.1:11434/v1',
       }),
     hint: 'OLLAMA_URL (default http://127.0.0.1:11434/v1)',
+  },
+  llamacpp: {
+    // Like lmstudio/ollama, always considered "configured" — the daemon
+    // can't tell if llama-server is actually running until a request hits
+    // it. Falls back to the documented default port + a placeholder
+    // apiKey (llama-server ignores it unless --api-key was passed).
+    configured: () => true,
+    build: (c) =>
+      piProvider({
+        providerName: 'llamacpp',
+        fallbackApi: 'openai-completions',
+        apiKey: c.llamacpp?.apiKey ?? 'no-key',
+        baseUrl: c.llamacpp?.baseURL ?? 'http://127.0.0.1:8080/v1',
+      }),
+    hint: 'LLAMACPP_URL (default http://127.0.0.1:8080/v1)',
   },
 }
 

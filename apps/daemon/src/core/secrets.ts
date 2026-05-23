@@ -21,7 +21,9 @@ export interface AuthFile {
  */
 export function readAuthFile(authFile: string): AuthFile {
   if (!existsSync(authFile)) {
-    throw new Error(`${authFile} not found. Start the daemon (\`bazilion serve\`) — it auto-bootstraps on first run.`)
+    throw new Error(
+      `${authFile} not found. Start the daemon (\`bazilion serve\`) — it auto-bootstraps on first run.`,
+    )
   }
   const raw = readFileSync(authFile, 'utf8')
   const parsed = JSON.parse(raw) as Partial<AuthFile>

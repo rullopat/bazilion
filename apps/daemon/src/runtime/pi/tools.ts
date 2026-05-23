@@ -16,7 +16,7 @@
 //     tools are *not* here — pi's createCodingTools(cwd, …) replaces them.
 
 import type { ResolvedAgent } from '@bazilion/api-types'
-import type { ToolDefinition } from '@mariozechner/pi-coding-agent'
+import type { ToolDefinition } from '@earendil-works/pi-coding-agent'
 import { Type } from 'typebox'
 import type { MemoryBackend } from '../memory/types.ts'
 import { bootstrapTool } from '../tools/bootstrap.ts'
@@ -24,8 +24,9 @@ import { homeTools } from '../tools/home.ts'
 import { memoryTools } from '../tools/memory.ts'
 import { messagingTools } from '../tools/messaging.ts'
 import type { ToolHandler } from '../tools/types.ts'
+import { userMdTools } from '../tools/user-md.ts'
 import { webTools } from '../tools/web.ts'
-import type { MessagingHost } from '../worker/ipc-protocol.ts'
+import type { MessagingHost, UserMdHost } from '../worker/ipc-protocol.ts'
 
 /**
  * Wrap a Bazilion `ToolHandler` as a pi `ToolDefinition` so it can be passed
@@ -57,6 +58,8 @@ export interface BazilionCustomToolsOpts {
   memory: MemoryBackend
   /** If provided, enables inter-agent messaging tools. */
   messagingHost?: MessagingHost
+  /** If provided, enables the `user_md_append` tool. */
+  userMdHost?: UserMdHost
   /** Merged env (process.env + secrets). */
   env?: NodeJS.ProcessEnv
 }
@@ -80,6 +83,9 @@ export function createBazilionCustomTools(opts: BazilionCustomToolsOpts): ToolDe
   ]
   if (opts.messagingHost) {
     handlers.push(...messagingTools(opts.messagingHost, opts.agent.agent.id))
+  }
+  if (opts.userMdHost) {
+    handlers.push(...userMdTools(opts.userMdHost, opts.agent.group.id))
   }
   return handlers.map(ourToolToPiTool)
 }

@@ -35,10 +35,12 @@ export const Route = createFileRoute('/config/')({
 
 function ProvidersPage() {
   const { providers, openaiCodex } = Route.useLoaderData()
+  const setupComplete = providers.some((p) => p.enabled && p.curated.length > 0)
   return (
     <main className="mx-auto max-w-5xl px-6 py-8">
       <h1 className="font-serif text-3xl text-foreground mb-2">config</h1>
       <ConfigTabs active="providers" />
+      {!setupComplete && <SetupBlockerBanner providers={providers} openaiCodex={openaiCodex} />}
       <p className="text-muted-foreground text-sm mb-6">
         Each card configures one LLM provider end to end: credentials (encrypted in the{' '}
         <code className="font-mono">secrets</code> table), URLs and IDs (plaintext in the{' '}
@@ -53,6 +55,49 @@ function ProvidersPage() {
         />
       ))}
     </main>
+  )
+}
+
+function SetupBlockerBanner({
+  providers,
+  openaiCodex,
+}: {
+  providers: ProviderConfigEntry[]
+  openaiCodex: OpenAICodexStatus
+}) {
+  const issues: string[] = []
+  for (const p of providers) {
+    if (!p.enabled) continue
+    if (p.id === 'openai-codex' && !openaiCodex.connected) {
+      issues.push(`${p.id}: enabled but ChatGPT is not connected — click "Connect ChatGPT" below`)
+    }
+    if (p.curated.length === 0) {
+      issues.push(
+        `${p.id}: enabled but no curated models — add at least one name in the "curated models" box below and save`,
+      )
+    }
+  }
+  const enabledCount = providers.filter((p) => p.enabled).length
+  return (
+    <div className="rounded-md border-2 border-amber-400 bg-amber-50 px-4 py-3 mb-4 text-sm">
+      <div className="font-semibold text-amber-900 mb-1">First-run setup is not complete</div>
+      <p className="text-amber-900 mb-2">
+        The rest of the app stays on the Welcome screen until at least one provider is{' '}
+        <strong>enabled</strong> and has <strong>at least one curated model</strong>.
+      </p>
+      {issues.length > 0 ? (
+        <ul className="list-disc pl-5 text-amber-900 space-y-0.5">
+          {issues.map((i) => (
+            <li key={i}>{i}</li>
+          ))}
+        </ul>
+      ) : enabledCount === 0 ? (
+        <p className="text-amber-900">
+          No providers are enabled yet — pick one below, flip the toggle on, set credentials,
+          and add a model name.
+        </p>
+      ) : null}
+    </div>
   )
 }
 
@@ -154,6 +199,13 @@ function ProviderCard({
           <h4 className="mt-4 mb-1 text-xs uppercase tracking-wide text-muted-foreground">
             curated models (one per line)
           </h4>
+          {p.curated.length === 0 && (
+            <p className="mb-2 text-xs font-medium text-amber-700">
+              First-run setup needs at least one model name here — type one (e.g.{' '}
+              <code className="font-mono">{exampleModelFor(p.id)}</code>) and click{' '}
+              <em>save models</em>.
+            </p>
+          )}
           <form onSubmit={saveModels}>
             <textarea
               value={models}
@@ -209,6 +261,74 @@ function ProviderCard({
       )}
     </section>
   )
+}
+
+// Examples mirror pi-ai 0.75's current catalog. Update when bumping pi-ai.
+function exampleModelFor(providerId: string): string {
+  switch (providerId) {
+    case 'openai-codex':
+      return 'gpt-5.3-codex'
+    case 'openai':
+      return 'gpt-5.4'
+    case 'anthropic':
+      return 'claude-opus-4-7'
+    case 'google':
+      return 'gemini-2.5-pro'
+    case 'google-vertex':
+      return 'gemini-2.5-pro'
+    case 'xai':
+      return 'grok-4.3'
+    case 'groq':
+      return 'llama-3.3-70b-versatile'
+    case 'cerebras':
+      return 'qwen-3-235b-a22b-instruct-2507'
+    case 'mistral':
+      return 'mistral-large-latest'
+    case 'zai':
+      return 'glm-5.1'
+    case 'huggingface':
+      return 'Qwen/Qwen3-235B-A22B-Thinking-2507'
+    case 'openrouter':
+      return 'anthropic/claude-opus-4.7'
+    case 'vercel-ai-gateway':
+      return 'anthropic/claude-opus-4.7'
+    case 'deepseek':
+      return 'deepseek-v4-pro'
+    case 'fireworks':
+      return 'accounts/fireworks/models/deepseek-v4-pro'
+    case 'together':
+      return 'Qwen/Qwen3.6-Plus'
+    case 'moonshotai':
+      return 'kimi-k2.6'
+    case 'kimi-coding':
+      return 'kimi-for-coding'
+    case 'minimax':
+      return 'MiniMax-M2.7'
+    case 'cloudflare-workers-ai':
+      return '@cf/moonshotai/kimi-k2.6'
+    case 'cloudflare-ai-gateway':
+      return 'claude-opus-4-7'
+    case 'github-copilot':
+      return 'claude-opus-4.7'
+    case 'xiaomi':
+      return 'mimo-v2.5'
+    case 'opencode':
+      return 'claude-opus-4-5'
+    case 'azure-openai':
+      return 'gpt-5.4'
+    case 'bedrock':
+      return 'anthropic.claude-opus-4-7-20251101-v1:0'
+    case 'ollama':
+      return 'llama3.3'
+    case 'lmstudio':
+      return 'qwen3-coder-30b'
+    case 'llamacpp':
+      // llama-server exposes whatever .gguf was loaded; the id reported via
+      // /v1/models is the model alias or filename. Pick something illustrative.
+      return 'unsloth/Qwen3.6-35B-A3B-MTP-GGUF:MXFP4_MOE'
+    default:
+      return 'model-name'
+  }
 }
 
 function ChipList({ items, onPick }: { items: string[]; onPick: (name: string) => void }) {

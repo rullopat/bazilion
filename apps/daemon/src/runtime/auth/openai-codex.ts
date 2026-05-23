@@ -1,6 +1,6 @@
 // OpenAI ChatGPT / Codex OAuth — token storage + refresh on top of pi-ai.
 //
-// Pi-ai ships a complete OAuth flow for the ChatGPT backend (`@mariozechner/pi-ai`
+// Pi-ai ships a complete OAuth flow for the ChatGPT backend (`@earendil-works/pi-ai`
 // exports `loginOpenAICodex` + `refreshOpenAICodexToken`), so this module is
 // thin: it adapts the credential I/O to Bazilion's encrypted secrets store
 // and exposes a single `loadAccessToken(db, authToken)` call that refreshes
@@ -12,8 +12,8 @@
 // stateful, so every call reads and writes through the live secrets store.
 
 import type { OpenAICodexStatus } from '@bazilion/api-types'
-import type { OAuthCredentials } from '@mariozechner/pi-ai'
-import { loginOpenAICodex, refreshOpenAICodexToken } from '@mariozechner/pi-ai/oauth'
+import type { OAuthCredentials } from '@earendil-works/pi-ai'
+import { loginOpenAICodex, refreshOpenAICodexToken } from '@earendil-works/pi-ai/oauth'
 import { type BazilionDb, openSecrets } from '../../core/index.ts'
 
 export const OPENAI_CODEX_SECRET_KEY = 'OPENAI_CODEX_OAUTH'

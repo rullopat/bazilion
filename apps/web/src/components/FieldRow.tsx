@@ -84,7 +84,7 @@ export function FieldRow({ field }: { field: ServiceFieldState }) {
       <button
         type="submit"
         disabled={busy}
-        className="rounded-md border bg-background px-2 py-1.5 text-xs hover:bg-accent disabled:opacity-50"
+        className="unstyled rounded-md border bg-background px-2 py-1.5 text-xs text-foreground hover:bg-accent disabled:opacity-50"
       >
         save
       </button>

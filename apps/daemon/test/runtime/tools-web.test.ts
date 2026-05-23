@@ -83,6 +83,152 @@ test('web_fetch truncates at max_length', async () => {
   expect(result.length).toBeLessThan(200)
 })
 
+test('web_fetch caps oversized bodies before extraction and flags truncation', async () => {
+  // 50 KB body — easily over a 1 KB cap. Plain text so the reader path runs.
+  const big = 'x'.repeat(50_000)
+  const base = await startMock(
+    () => new Response(big, { headers: { 'content-type': 'text/plain' } }),
+  )
+  const tools = createToolRegistry(
+    webTools({ fetchImpl: fetch, allowPrivate: true, maxBodyBytes: 1024 }),
+  )
+  const result = await tools.invoke('web_fetch', JSON.stringify({ url: `${base}/huge` }))
+  expect(result).toContain('raw body truncated at 1024 bytes')
+})
+
+test('web_fetch unwraps err.cause so the agent sees the real reason', async () => {
+  // Force a fetch failure with a stacked cause chain.
+  const tools = createToolRegistry(
+    webTools({
+      allowPrivate: true,
+      fetchImpl: async () => {
+        const cause = new Error('socket hang up')
+        ;(cause as { code?: string }).code = 'ECONNRESET'
+        throw Object.assign(new TypeError('fetch failed'), { cause })
+      },
+    }),
+  )
+  await expect(
+    tools.invoke('web_fetch', JSON.stringify({ url: 'https://example.com/' })),
+  ).rejects.toThrow(/ECONNRESET[\s\S]*socket hang up/)
+})
+
+test('web_fetch falls back to Firecrawl when primary extraction is too thin', async () => {
+  // JS shell: 2xx HTML but virtually no extractable body. Readability will
+  // produce a near-empty result, which should trigger the fallback.
+  let primaryHits = 0
+  let firecrawlHits = 0
+  let firecrawlBody: unknown = null
+  let firecrawlAuth: string | null = null
+  const base = await startMock(async (req) => {
+    const u = new URL(req.url)
+    if (u.pathname === '/v1/scrape') {
+      firecrawlHits += 1
+      firecrawlAuth = req.headers.get('authorization')
+      firecrawlBody = await req.json()
+      return new Response(
+        JSON.stringify({
+          success: true,
+          data: {
+            markdown: '# Rendered Page\n\nFull article body after JS execution.',
+            metadata: { title: 'Rendered Page' },
+          },
+        }),
+        { headers: { 'content-type': 'application/json' } },
+      )
+    }
+    primaryHits += 1
+    return new Response(
+      '<html><head><title>Loading</title></head><body><div id="root"></div><script src="/app.js"></script></body></html>',
+      { headers: { 'content-type': 'text/html' } },
+    )
+  })
+  const tools = createToolRegistry(
+    webTools({
+      fetchImpl: fetch,
+      allowPrivate: true,
+      env: { FIRECRAWL_API_KEY: 'fc-test', FIRECRAWL_URL: base },
+    }),
+  )
+  const result = await tools.invoke('web_fetch', JSON.stringify({ url: `${base}/spa` }))
+  expect(primaryHits).toBe(1)
+  expect(firecrawlHits).toBe(1)
+  expect(firecrawlAuth).toBe('Bearer fc-test')
+  expect(firecrawlBody).toMatchObject({
+    url: `${base}/spa`,
+    formats: ['markdown'],
+    onlyMainContent: true,
+  })
+  expect(result).toContain('Full article body after JS execution.')
+  expect(result).toContain('content rendered via Firecrawl fallback')
+})
+
+test('web_fetch leaves primary extraction alone when FIRECRAWL_API_KEY is unset', async () => {
+  let firecrawlHits = 0
+  const base = await startMock(async (req) => {
+    const u = new URL(req.url)
+    if (u.pathname === '/v1/scrape') {
+      firecrawlHits += 1
+      return new Response('should not be called', { status: 500 })
+    }
+    return new Response('<html><body><div></div></body></html>', {
+      headers: { 'content-type': 'text/html' },
+    })
+  })
+  const tools = createToolRegistry(
+    webTools({ fetchImpl: fetch, allowPrivate: true, env: { FIRECRAWL_URL: base } }),
+  )
+  const result = await tools.invoke('web_fetch', JSON.stringify({ url: `${base}/spa` }))
+  expect(firecrawlHits).toBe(0)
+  expect(result).not.toContain('Firecrawl')
+})
+
+test('web_fetch swallows Firecrawl failures and returns primary extraction', async () => {
+  const base = await startMock((req) => {
+    const u = new URL(req.url)
+    if (u.pathname === '/v1/scrape') {
+      return new Response('{"error":"rate limited"}', { status: 429 })
+    }
+    return new Response('<html><body><p>tiny</p></body></html>', {
+      headers: { 'content-type': 'text/html' },
+    })
+  })
+  const tools = createToolRegistry(
+    webTools({
+      fetchImpl: fetch,
+      allowPrivate: true,
+      env: { FIRECRAWL_API_KEY: 'fc-test', FIRECRAWL_URL: base },
+    }),
+  )
+  const result = await tools.invoke('web_fetch', JSON.stringify({ url: `${base}/spa` }))
+  expect(result).not.toContain('Firecrawl')
+  expect(result).not.toThrow
+})
+
+test('web_fetch firecrawlDisabled opt suppresses fallback even with API key set', async () => {
+  let firecrawlHits = 0
+  const base = await startMock(async (req) => {
+    const u = new URL(req.url)
+    if (u.pathname === '/v1/scrape') {
+      firecrawlHits += 1
+      return new Response('should not be called', { status: 500 })
+    }
+    return new Response('<html><body></body></html>', {
+      headers: { 'content-type': 'text/html' },
+    })
+  })
+  const tools = createToolRegistry(
+    webTools({
+      fetchImpl: fetch,
+      allowPrivate: true,
+      firecrawlDisabled: true,
+      env: { FIRECRAWL_API_KEY: 'fc-test', FIRECRAWL_URL: base },
+    }),
+  )
+  await tools.invoke('web_fetch', JSON.stringify({ url: `${base}/spa` }))
+  expect(firecrawlHits).toBe(0)
+})
+
 test('web_fetch throws on non-2xx', async () => {
   const base = await startMock(() => new Response('nope', { status: 404 }))
   const tools = createToolRegistry(webTools({ fetchImpl: fetch, allowPrivate: true }))

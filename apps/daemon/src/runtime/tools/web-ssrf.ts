@@ -1,6 +1,6 @@
 import { lookup as dnsLookupCb, type LookupAddress } from 'node:dns'
 import { lookup as dnsLookup } from 'node:dns/promises'
-import { Agent, type Dispatcher } from 'undici'
+import { Agent, type Dispatcher, fetch as undiciFetch } from 'undici'
 
 export class SsrFBlockedError extends Error {
   constructor(message: string) {
@@ -152,7 +152,13 @@ async function closeDispatcher(d: Dispatcher | null): Promise<void> {
 }
 
 export async function guardedFetch(opts: GuardedFetchOptions): Promise<GuardedFetchResult> {
-  const fetcher: FetchLike = opts.fetchImpl ?? (globalThis.fetch as FetchLike)
+  // Use undici's own fetch (not globalThis.fetch) so the `dispatcher` Agent
+  // we attach below is the same undici major version as the fetch impl
+  // consuming it. Node 24 ships undici 7.x as its built-in fetch; mixing
+  // a standalone undici 8.x Agent with the 7.x dispatcher fails with
+  // `UND_ERR_INVALID_ARG: invalid onRequestStart method` because the
+  // diagnostics-channel handler signatures changed between majors.
+  const fetcher: FetchLike = opts.fetchImpl ?? (undiciFetch as unknown as FetchLike)
   const maxRedirects = opts.maxRedirects ?? 3
   const abortController = new AbortController()
   const timeoutId = opts.timeoutMs

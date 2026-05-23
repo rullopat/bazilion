@@ -28,6 +28,8 @@ export interface ServiceDef {
   id: string
   displayName: string
   category: ServiceCategory
+  /** Display grouping label shown above the card on the /config tabs. */
+  group?: string
   /** Sign-up link, docs, or 1-line description shown on the card. */
   hint?: string
   fields: ServiceField[]
@@ -39,6 +41,25 @@ export interface ServiceDef {
  */
 export const SERVICES: ServiceDef[] = [
   // --- LLM providers (configured via API keys / URLs) ---
+  // Top 3: openai-codex (ChatGPT OAuth), openai (API key), anthropic.
+  // Everything else in rough popularity order; locals last.
+  {
+    id: 'openai-codex',
+    displayName: 'OpenAI ChatGPT (OAuth)',
+    category: 'provider',
+    hint: 'Use your ChatGPT Plus/Pro/Team account (same login as Codex CLI)',
+    // No form fields — credentials come from an OAuth flow. The /config page
+    // renders a Connect/Disconnect card using /api/auth/openai instead of the
+    // standard field inputs.
+    fields: [],
+  },
+  {
+    id: 'openai',
+    displayName: 'OpenAI',
+    category: 'provider',
+    hint: 'GPT models · platform.openai.com',
+    fields: [{ envVar: 'OPENAI_API_KEY', kind: 'secret', label: 'API key', placeholder: 'sk-...' }],
+  },
   {
     id: 'anthropic',
     displayName: 'Anthropic',
@@ -53,23 +74,6 @@ export const SERVICES: ServiceDef[] = [
         description: 'Takes precedence over ANTHROPIC_API_KEY when set',
       },
     ],
-  },
-  {
-    id: 'openai',
-    displayName: 'OpenAI',
-    category: 'provider',
-    hint: 'GPT models · platform.openai.com',
-    fields: [{ envVar: 'OPENAI_API_KEY', kind: 'secret', label: 'API key', placeholder: 'sk-...' }],
-  },
-  {
-    id: 'openai-codex',
-    displayName: 'OpenAI ChatGPT (OAuth)',
-    category: 'provider',
-    hint: 'Use your ChatGPT Plus/Pro/Team account (same login as Codex CLI)',
-    // No form fields — credentials come from an OAuth flow. The /config page
-    // renders a Connect/Disconnect card using /api/auth/openai instead of the
-    // standard field inputs.
-    fields: [],
   },
   {
     id: 'google',
@@ -114,11 +118,40 @@ export const SERVICES: ServiceDef[] = [
     fields: [],
   },
   {
+    id: 'github-copilot',
+    displayName: 'GitHub Copilot',
+    category: 'provider',
+    hint: 'Use a GitHub Copilot subscription to call Claude/GPT/Gemini via Copilot',
+    fields: [
+      {
+        envVar: 'COPILOT_GITHUB_TOKEN',
+        kind: 'secret',
+        label: 'GitHub token',
+        description:
+          'Generic GH_TOKEN/GITHUB_TOKEN are ignored — set this scoped variable explicitly (or run `bazilion auth copilot login` once available).',
+      },
+    ],
+  },
+  {
+    id: 'deepseek',
+    displayName: 'DeepSeek',
+    category: 'provider',
+    hint: 'DeepSeek V4 Flash / Pro · platform.deepseek.com',
+    fields: [{ envVar: 'DEEPSEEK_API_KEY', kind: 'secret', label: 'API key' }],
+  },
+  {
     id: 'mistral',
     displayName: 'Mistral',
     category: 'provider',
     hint: 'mistral.ai',
     fields: [{ envVar: 'MISTRAL_API_KEY', kind: 'secret', label: 'API key' }],
+  },
+  {
+    id: 'xai',
+    displayName: 'xAI',
+    category: 'provider',
+    hint: 'Grok · x.ai',
+    fields: [{ envVar: 'XAI_API_KEY', kind: 'secret', label: 'API key' }],
   },
   {
     id: 'groq',
@@ -134,11 +167,46 @@ export const SERVICES: ServiceDef[] = [
     fields: [{ envVar: 'CEREBRAS_API_KEY', kind: 'secret', label: 'API key' }],
   },
   {
-    id: 'xai',
-    displayName: 'xAI',
+    id: 'fireworks',
+    displayName: 'Fireworks AI',
     category: 'provider',
-    hint: 'Grok · x.ai',
-    fields: [{ envVar: 'XAI_API_KEY', kind: 'secret', label: 'API key' }],
+    hint: 'DeepSeek/GLM/Kimi via fireworks.ai',
+    fields: [{ envVar: 'FIREWORKS_API_KEY', kind: 'secret', label: 'API key' }],
+  },
+  {
+    id: 'together',
+    displayName: 'Together AI',
+    category: 'provider',
+    hint: 'Open-weight models · together.ai',
+    fields: [{ envVar: 'TOGETHER_API_KEY', kind: 'secret', label: 'API key' }],
+  },
+  {
+    id: 'moonshotai',
+    displayName: 'Moonshot AI',
+    category: 'provider',
+    hint: 'Kimi K2/K2.5/K2.6 · platform.moonshot.ai',
+    fields: [{ envVar: 'MOONSHOT_API_KEY', kind: 'secret', label: 'API key' }],
+  },
+  {
+    id: 'kimi-coding',
+    displayName: 'Kimi Coding',
+    category: 'provider',
+    hint: 'Coding-tuned Kimi endpoint · platform.moonshot.cn',
+    fields: [{ envVar: 'KIMI_API_KEY', kind: 'secret', label: 'API key' }],
+  },
+  {
+    id: 'minimax',
+    displayName: 'MiniMax',
+    category: 'provider',
+    hint: 'MiniMax M2 family · platform.minimaxi.com',
+    fields: [{ envVar: 'MINIMAX_API_KEY', kind: 'secret', label: 'API key' }],
+  },
+  {
+    id: 'xiaomi',
+    displayName: 'Xiaomi MiMo',
+    category: 'provider',
+    hint: 'API billing endpoint · platform.xiaomimimo.com',
+    fields: [{ envVar: 'XIAOMI_API_KEY', kind: 'secret', label: 'API key' }],
   },
   {
     id: 'zai',
@@ -152,6 +220,27 @@ export const SERVICES: ServiceDef[] = [
     category: 'provider',
     hint: 'Inference endpoints · huggingface.co',
     fields: [{ envVar: 'HF_TOKEN', kind: 'secret', label: 'Access token', placeholder: 'hf_...' }],
+  },
+  {
+    id: 'cloudflare-ai-gateway',
+    displayName: 'Cloudflare AI Gateway',
+    category: 'provider',
+    hint: 'Per-gateway routing to OpenAI/Anthropic/Workers AI',
+    fields: [
+      { envVar: 'CLOUDFLARE_API_KEY', kind: 'secret', label: 'API key' },
+      { envVar: 'CLOUDFLARE_ACCOUNT_ID', kind: 'config', label: 'Account ID' },
+      { envVar: 'CLOUDFLARE_GATEWAY_ID', kind: 'config', label: 'Gateway ID' },
+    ],
+  },
+  {
+    id: 'cloudflare-workers-ai',
+    displayName: 'Cloudflare Workers AI',
+    category: 'provider',
+    hint: 'Inference on Cloudflare Workers · ai.cloudflare.com',
+    fields: [
+      { envVar: 'CLOUDFLARE_API_KEY', kind: 'secret', label: 'API key' },
+      { envVar: 'CLOUDFLARE_ACCOUNT_ID', kind: 'config', label: 'Account ID' },
+    ],
   },
   {
     id: 'openrouter',
@@ -175,6 +264,13 @@ export const SERVICES: ServiceDef[] = [
         placeholder: 'https://ai-gateway.vercel.sh/v1',
       },
     ],
+  },
+  {
+    id: 'opencode',
+    displayName: 'OpenCode',
+    category: 'provider',
+    hint: 'OpenAI-compatible proxy from the OpenCode CLI',
+    fields: [{ envVar: 'OPENCODE_API_KEY', kind: 'secret', label: 'API key' }],
   },
   {
     id: 'lmstudio',
@@ -214,12 +310,57 @@ export const SERVICES: ServiceDef[] = [
       },
     ],
   },
+  {
+    id: 'llamacpp',
+    displayName: 'llama.cpp',
+    category: 'provider',
+    hint: 'Local inference · llama.cpp llama-server (OpenAI-compat /v1 endpoint)',
+    fields: [
+      {
+        envVar: 'LLAMACPP_URL',
+        kind: 'config',
+        label: 'Endpoint URL',
+        placeholder: 'http://127.0.0.1:8080/v1',
+      },
+      {
+        envVar: 'LLAMACPP_API_KEY',
+        kind: 'secret',
+        label: 'API key (only if started with --api-key)',
+        description:
+          'llama-server runs without auth by default. Set this only if you launched the server with the `--api-key KEY` flag.',
+      },
+    ],
+  },
 
   // --- Ancillary services (web search, etc) ---
+  {
+    id: 'firecrawl',
+    displayName: 'Firecrawl',
+    category: 'service',
+    group: 'Web Search',
+    hint: 'web_fetch fallback for JS-heavy/blocked pages · firecrawl.dev (free tier available)',
+    fields: [
+      {
+        envVar: 'FIRECRAWL_API_KEY',
+        kind: 'secret',
+        label: 'API key',
+        placeholder: 'fc-...',
+        description:
+          'When set, web_fetch automatically falls back to Firecrawl if the primary Readability extraction yields too little content.',
+      },
+      {
+        envVar: 'FIRECRAWL_URL',
+        kind: 'config',
+        label: 'Base URL (optional, for self-hosted)',
+        placeholder: 'https://api.firecrawl.dev',
+      },
+    ],
+  },
   {
     id: 'brave-search',
     displayName: 'Brave Search',
     category: 'service',
+    group: 'Web Search',
     hint: 'Web search tool · free tier at brave.com/search/api/',
     fields: [{ envVar: 'BRAVE_API_KEY', kind: 'secret', label: 'API key', placeholder: 'BSA...' }],
   },
@@ -227,6 +368,7 @@ export const SERVICES: ServiceDef[] = [
     id: 'searxng',
     displayName: 'SearXNG',
     category: 'service',
+    group: 'Web Search',
     hint: 'Self-hosted meta-search engine · searxng.org',
     fields: [
       {

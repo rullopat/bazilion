@@ -397,6 +397,8 @@ export interface ServiceCard {
   enabled?: boolean
   envHint?: string
   hint?: string
+  /** Display grouping label (e.g. "Web tools"). Cards without a group are bucketed under "Other". */
+  group?: string
   fields: ServiceFieldState[]
 }
 
