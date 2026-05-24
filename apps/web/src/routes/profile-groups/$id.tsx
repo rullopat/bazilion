@@ -1,8 +1,8 @@
-import type { Profile, ProfileGroupDetail, ProfileGroupSlot } from '@bazilion/api-types'
+import type { Profile, ProfileGroupDetail, ProfileGroupMember } from '@bazilion/api-types'
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { useState } from 'react'
-import { type ModelGroup, type SlotDraft, SlotsEditor } from '../../components/SlotsEditor'
+import { type MemberDraft, MembersEditor, type ModelGroup } from '../../components/MembersEditor'
 import { daemonClient } from '../../lib/daemon-client'
 
 interface ProfileGroupDetailData {
@@ -28,12 +28,12 @@ export const Route = createFileRoute('/profile-groups/$id')({
   component: ProfileGroupDetailPage,
 })
 
-function toDraft(s: ProfileGroupSlot): SlotDraft {
+function toDraft(m: ProfileGroupMember): MemberDraft {
   return {
-    profileId: s.profileId,
-    agentName: s.agentName,
-    modelOverride: s.modelOverride,
-    reasoningLevel: s.reasoningLevel,
+    profileId: m.profileId,
+    agentName: m.agentName,
+    modelOverride: m.modelOverride,
+    reasoningLevel: m.reasoningLevel,
   }
 }
 
@@ -46,14 +46,15 @@ function ProfileGroupDetailPage() {
     <div>
       <h1>{group.name}</h1>
       <p className="muted">
-        <code>{group.id}</code> · {detail.slots.length} slot{detail.slots.length === 1 ? '' : 's'}
+        <code>{group.id}</code> · {detail.members.length} member
+        {detail.members.length === 1 ? '' : 's'}
       </p>
 
       <BasicsCard group={group} onSaved={() => router.invalidate()} />
 
-      <SlotsCard
+      <MembersCard
         groupId={group.id}
-        initialSlots={detail.slots.map(toDraft)}
+        initialMembers={detail.members.map(toDraft)}
         profiles={profiles}
         modelGroups={modelGroups}
         onSaved={() => router.invalidate()}
@@ -121,32 +122,32 @@ function BasicsCard({
   )
 }
 
-function SlotsCard({
+function MembersCard({
   groupId,
-  initialSlots,
+  initialMembers,
   profiles,
   modelGroups,
   onSaved,
 }: {
   groupId: string
-  initialSlots: SlotDraft[]
+  initialMembers: MemberDraft[]
   profiles: Profile[]
   modelGroups: ModelGroup[]
   onSaved: () => void
 }) {
-  const [slots, setSlots] = useState<SlotDraft[]>(initialSlots)
+  const [members, setMembers] = useState<MemberDraft[]>(initialMembers)
   const [err, setErr] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
-  const dirty = JSON.stringify(slots) !== JSON.stringify(initialSlots)
+  const dirty = JSON.stringify(members) !== JSON.stringify(initialMembers)
 
   async function save() {
     setErr(null)
     setSaving(true)
     try {
-      const res = await fetch(`/api/profile-groups/${groupId}/slots`, {
+      const res = await fetch(`/api/profile-groups/${groupId}/members`, {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ slots }),
+        body: JSON.stringify({ members }),
       })
       if (!res.ok) {
         const e = (await res.json().catch(() => null)) as { error?: string } | null
@@ -162,21 +163,21 @@ function SlotsCard({
 
   return (
     <div className="card">
-      <h3>slots</h3>
+      <h3>members</h3>
       {err && <div className="err">{err}</div>}
       <p className="muted">
-        Each slot becomes one agent at spawn time. Duplicate agent-names within a template are
+        Each member becomes one agent at spawn time. Duplicate agent-names within a template are
         fine — the spawn op auto-suffixes collisions with <code>-2</code>, <code>-3</code>, …
       </p>
-      <SlotsEditor
-        slots={slots}
-        onChange={setSlots}
+      <MembersEditor
+        members={members}
+        onChange={setMembers}
         profiles={profiles}
         modelGroups={modelGroups}
       />
       <div className="mt-3">
         <button type="button" onClick={save} disabled={saving || !dirty}>
-          {saving ? 'saving…' : 'save slots'}
+          {saving ? 'saving…' : 'save members'}
         </button>
       </div>
     </div>

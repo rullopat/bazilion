@@ -46,7 +46,7 @@ export type { UpdateProfileInput } from './profile/update.ts'
 export { updateProfile } from './profile/update.ts'
 export type { SpawnProfileGroupInput, SpawnProfileGroupResult } from './profile-group/spawn.ts'
 export {
-  resolveSlotNames,
+  resolveMemberNames,
   SpawnProfileGroupError,
   spawnProfileGroup,
 } from './profile-group/spawn.ts'

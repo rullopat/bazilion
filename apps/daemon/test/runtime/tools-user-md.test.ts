@@ -29,9 +29,7 @@ function makeInMemoryHost(initial: Record<string, string> = {}): {
     write(groupId, content, ifMatch): UserMdWriteResult {
       const prev = store.current[groupId] ?? ''
       if (etag(prev) !== ifMatch) {
-        throw new Error(
-          `etag mismatch — current is ${etag(prev)}, you passed ${ifMatch}`,
-        )
+        throw new Error(`etag mismatch — current is ${etag(prev)}, you passed ${ifMatch}`)
       }
       store.current[groupId] = content
       return { etag: etag(content), totalBytes: Buffer.byteLength(content, 'utf8') }
@@ -84,9 +82,9 @@ describe('user_md_get + user_md_write', () => {
   test('write rejects when if_match is missing', async () => {
     const { host } = makeInMemoryHost()
     const tools = createToolRegistry(userMdTools(host, 'g1'))
-    await expect(
-      tools.invoke('user_md_write', JSON.stringify({ content: 'x' })),
-    ).rejects.toThrow(/if_match/i)
+    await expect(tools.invoke('user_md_write', JSON.stringify({ content: 'x' }))).rejects.toThrow(
+      /if_match/i,
+    )
   })
 
   test('two-agent read-modify-write: second agent must re-read after conflict', async () => {

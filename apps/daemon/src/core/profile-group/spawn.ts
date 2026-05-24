@@ -1,5 +1,5 @@
 import { readdirSync, rmSync } from 'node:fs'
-import type { ProfileGroupSlot } from '@bazilion/api-types'
+import type { ProfileGroupMember } from '@bazilion/api-types'
 import { spawnAgent } from '../agent/spawn.ts'
 import type { BazilionDb } from '../db/client.ts'
 import { inTx } from '../db/client.ts'
@@ -45,26 +45,26 @@ export class SpawnProfileGroupError extends Error {
 }
 
 /**
- * Walk slots in `position` order, resolving each `agentName` to a unique
+ * Walk members in `position` order, resolving each `agentName` to a unique
  * final name by appending `-2`, `-3`, ... when taken. The `existing` set
  * starts with whatever agents already live in the target group; resolved
- * names are added back into it so two slots that share an `agentName`
+ * names are added back into it so two members that share an `agentName`
  * collide with each other as well as with pre-existing agents.
  *
  * Pure function — exported so the spawn integration test can target the
  * algorithm directly without orchestrating a full spawn.
  */
-export function resolveSlotNames(
+export function resolveMemberNames(
   existing: ReadonlySet<string>,
-  slots: ProfileGroupSlot[],
+  members: ProfileGroupMember[],
 ): string[] {
   const taken = new Set(existing)
   const out: string[] = []
-  for (const slot of slots) {
-    let candidate = slot.agentName
+  for (const m of members) {
+    let candidate = m.agentName
     let n = 2
     while (taken.has(candidate)) {
-      candidate = `${slot.agentName}-${n}`
+      candidate = `${m.agentName}-${n}`
       n++
     }
     taken.add(candidate)
@@ -82,13 +82,13 @@ export async function spawnProfileGroup(
   if (!template) {
     throw new Error(`profile group not found: ${input.profileGroupId}`)
   }
-  const slots = profileGroupRepo.slots(db, input.profileGroupId)
+  const members = profileGroupRepo.members(db, input.profileGroupId)
 
   // Pre-flight: every referenced profile must still exist. Bail before any
   // side effect rather than discovering it mid-loop.
   const missing: string[] = []
-  for (const s of slots) {
-    if (!profileRepo.get(db, s.profileId)) missing.push(s.profileId)
+  for (const m of members) {
+    if (!profileRepo.get(db, m.profileId)) missing.push(m.profileId)
   }
   if (missing.length > 0) {
     throw new Error(`profile group spawn: missing profiles: ${missing.join(', ')}`)
@@ -104,7 +104,7 @@ export async function spawnProfileGroup(
           .map((r) => r.name)
       : [],
   )
-  const resolvedNames = resolveSlotNames(existingNames, slots)
+  const resolvedNames = resolveMemberNames(existingNames, members)
 
   // Snapshot dir contents so the rollback path can identify fs orphans by
   // diff regardless of whether spawnAgent crashed before or after its DB
@@ -131,15 +131,15 @@ export async function spawnProfileGroup(
       if (groupCreated && seedUserMd) {
         groupRepo.setUserMd(db, targetSlug, seedUserMd)
       }
-      for (let i = 0; i < slots.length; i++) {
-        const slot = slots[i]
+      for (let i = 0; i < members.length; i++) {
+        const member = members[i]
         const name = resolvedNames[i]
-        if (!slot || !name) continue
+        if (!member || !name) continue
         const agent = spawnAgent(db, paths, {
-          profileId: slot.profileId,
+          profileId: member.profileId,
           name,
-          modelOverride: slot.modelOverride,
-          reasoningLevel: slot.reasoningLevel ?? 'medium',
+          modelOverride: member.modelOverride,
+          reasoningLevel: member.reasoningLevel ?? 'medium',
           groupId: targetSlug,
         })
         created.push({ id: agent.id, name: agent.name })

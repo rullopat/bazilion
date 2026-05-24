@@ -178,7 +178,7 @@ function SpawnFromTemplateCard({
   profileGroups: ProfileGroupWithCount[]
   onSpawned: () => void
 }) {
-  const eligible = profileGroups.filter((g) => g.slotCount > 0)
+  const eligible = profileGroups.filter((g) => g.memberCount > 0)
   const [selected, setSelected] = useState<string>(eligible[0]?.id ?? '')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -220,7 +220,7 @@ function SpawnFromTemplateCard({
       </p>
       {eligible.length === 0 ? (
         <p className="text-muted-foreground text-sm">
-          No profile groups with slots yet. Build one on{' '}
+          No profile groups with members yet. Build one on{' '}
           <a href="/profile-groups" className="text-primary underline">
             /profile-groups
           </a>{' '}
@@ -235,7 +235,7 @@ function SpawnFromTemplateCard({
           >
             {eligible.map((g) => (
               <option key={g.id} value={g.id}>
-                {g.name} ({g.slotCount} slot{g.slotCount === 1 ? '' : 's'})
+                {g.name} ({g.memberCount} member{g.memberCount === 1 ? '' : 's'})
               </option>
             ))}
           </select>

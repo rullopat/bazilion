@@ -145,7 +145,7 @@ export interface ProfileGroup {
   updatedAt: Timestamp
 }
 
-export interface ProfileGroupSlot {
+export interface ProfileGroupMember {
   profileGroupId: string
   position: number
   profileId: string
@@ -156,11 +156,11 @@ export interface ProfileGroupSlot {
 
 export interface ProfileGroupDetail {
   group: ProfileGroup
-  slots: ProfileGroupSlot[]
+  members: ProfileGroupMember[]
 }
 
 export interface ProfileGroupWithCount extends ProfileGroup {
-  slotCount: number
+  memberCount: number
 }
 
 export interface LoadedProfile {

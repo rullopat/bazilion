@@ -43,9 +43,9 @@ test('insert accepts null user_md', () => {
   expect(fetched?.userMd).toBeNull()
 })
 
-test('replaceSlots preserves position order', () => {
+test('replaceMembers preserves position order', () => {
   profileGroupRepo.insert(env.db, { id: 'team', name: 'team', userMd: null })
-  profileGroupRepo.replaceSlots(env.db, 'team', [
+  profileGroupRepo.replaceMembers(env.db, 'team', [
     { profileId: 'p1', agentName: 'planner', modelOverride: null, reasoningLevel: null },
     {
       profileId: 'p2',
@@ -55,38 +55,38 @@ test('replaceSlots preserves position order', () => {
     },
     { profileId: 'p1', agentName: 'implementer', modelOverride: null, reasoningLevel: null },
   ])
-  const slots = profileGroupRepo.slots(env.db, 'team')
-  expect(slots.map((s) => s.position)).toEqual([0, 1, 2])
-  expect(slots.map((s) => s.agentName)).toEqual(['planner', 'reviewer', 'implementer'])
-  expect(slots[1]?.modelOverride).toBe('anthropic:claude-opus-4-6')
-  expect(slots[1]?.reasoningLevel).toBe('high')
+  const members = profileGroupRepo.members(env.db, 'team')
+  expect(members.map((s) => s.position)).toEqual([0, 1, 2])
+  expect(members.map((s) => s.agentName)).toEqual(['planner', 'reviewer', 'implementer'])
+  expect(members[1]?.modelOverride).toBe('anthropic:claude-opus-4-6')
+  expect(members[1]?.reasoningLevel).toBe('high')
 })
 
-test('replaceSlots PUT semantics: add, remove, reorder', () => {
+test('replaceMembers PUT semantics: add, remove, reorder', () => {
   profileGroupRepo.insert(env.db, { id: 'team', name: 'team', userMd: null })
-  profileGroupRepo.replaceSlots(env.db, 'team', [
+  profileGroupRepo.replaceMembers(env.db, 'team', [
     { profileId: 'p1', agentName: 'a', modelOverride: null, reasoningLevel: null },
     { profileId: 'p1', agentName: 'b', modelOverride: null, reasoningLevel: null },
     { profileId: 'p1', agentName: 'c', modelOverride: null, reasoningLevel: null },
   ])
   // Reorder + drop one + add one
-  profileGroupRepo.replaceSlots(env.db, 'team', [
+  profileGroupRepo.replaceMembers(env.db, 'team', [
     { profileId: 'p1', agentName: 'c', modelOverride: null, reasoningLevel: null },
     { profileId: 'p2', agentName: 'd', modelOverride: null, reasoningLevel: null },
     { profileId: 'p1', agentName: 'a', modelOverride: null, reasoningLevel: null },
   ])
-  const slots = profileGroupRepo.slots(env.db, 'team')
-  expect(slots.map((s) => s.agentName)).toEqual(['c', 'd', 'a'])
-  expect(slots.map((s) => s.profileId)).toEqual(['p1', 'p2', 'p1'])
+  const members = profileGroupRepo.members(env.db, 'team')
+  expect(members.map((s) => s.agentName)).toEqual(['c', 'd', 'a'])
+  expect(members.map((s) => s.profileId)).toEqual(['p1', 'p2', 'p1'])
 })
 
-test('replaceSlots accepts duplicate agentName values (spawn handles via -2 suffix)', () => {
+test('replaceMembers accepts duplicate agentName values (spawn handles via -2 suffix)', () => {
   profileGroupRepo.insert(env.db, { id: 'team', name: 'team', userMd: null })
-  profileGroupRepo.replaceSlots(env.db, 'team', [
+  profileGroupRepo.replaceMembers(env.db, 'team', [
     { profileId: 'p1', agentName: 'reviewer', modelOverride: null, reasoningLevel: null },
     { profileId: 'p1', agentName: 'reviewer', modelOverride: null, reasoningLevel: null },
   ])
-  expect(profileGroupRepo.slots(env.db, 'team')).toHaveLength(2)
+  expect(profileGroupRepo.members(env.db, 'team')).toHaveLength(2)
 })
 
 test('update with partial patch only touches included keys', () => {
@@ -130,47 +130,47 @@ test('update with empty patch is a no-op (no SQL run)', () => {
   expect(after?.updatedAt).toBe(t0.updatedAt)
 })
 
-test('remove cascades to slots, leaves profiles intact', () => {
+test('remove cascades to members, leaves profiles intact', () => {
   profileGroupRepo.insert(env.db, { id: 'team', name: 't', userMd: null })
-  profileGroupRepo.replaceSlots(env.db, 'team', [
+  profileGroupRepo.replaceMembers(env.db, 'team', [
     { profileId: 'p1', agentName: 'a', modelOverride: null, reasoningLevel: null },
     { profileId: 'p2', agentName: 'b', modelOverride: null, reasoningLevel: null },
   ])
-  expect(profileGroupRepo.slots(env.db, 'team')).toHaveLength(2)
+  expect(profileGroupRepo.members(env.db, 'team')).toHaveLength(2)
 
   profileGroupRepo.remove(env.db, 'team')
   expect(profileGroupRepo.get(env.db, 'team')).toBeNull()
-  expect(profileGroupRepo.slots(env.db, 'team')).toEqual([])
+  expect(profileGroupRepo.members(env.db, 'team')).toEqual([])
   // Profiles unaffected.
   expect(profileRepo.get(env.db, 'p1')).not.toBeNull()
   expect(profileRepo.get(env.db, 'p2')).not.toBeNull()
 })
 
-test('ON DELETE RESTRICT blocks deleting a profile referenced by a slot', () => {
+test('ON DELETE RESTRICT blocks deleting a profile referenced by a member', () => {
   profileGroupRepo.insert(env.db, { id: 'team', name: 't', userMd: null })
-  profileGroupRepo.replaceSlots(env.db, 'team', [
+  profileGroupRepo.replaceMembers(env.db, 'team', [
     { profileId: 'p1', agentName: 'planner', modelOverride: null, reasoningLevel: null },
   ])
   expect(() => profileRepo.remove(env.db, 'p1')).toThrow()
-  // Profile still exists, slot still references it.
+  // Profile still exists, member still references it.
   expect(profileRepo.get(env.db, 'p1')).not.toBeNull()
-  expect(profileGroupRepo.slots(env.db, 'team')).toHaveLength(1)
+  expect(profileGroupRepo.members(env.db, 'team')).toHaveLength(1)
 })
 
-test('list returns slotCount matching actual slot rows', () => {
+test('list returns memberCount matching actual member rows', () => {
   profileGroupRepo.insert(env.db, { id: 'empty', name: 'e', userMd: null })
   profileGroupRepo.insert(env.db, { id: 'one', name: 'o', userMd: null })
   profileGroupRepo.insert(env.db, { id: 'three', name: 't', userMd: null })
-  profileGroupRepo.replaceSlots(env.db, 'one', [
+  profileGroupRepo.replaceMembers(env.db, 'one', [
     { profileId: 'p1', agentName: 'a', modelOverride: null, reasoningLevel: null },
   ])
-  profileGroupRepo.replaceSlots(env.db, 'three', [
+  profileGroupRepo.replaceMembers(env.db, 'three', [
     { profileId: 'p1', agentName: 'a', modelOverride: null, reasoningLevel: null },
     { profileId: 'p1', agentName: 'b', modelOverride: null, reasoningLevel: null },
     { profileId: 'p2', agentName: 'c', modelOverride: null, reasoningLevel: null },
   ])
   const all = profileGroupRepo.list(env.db)
-  const counts = Object.fromEntries(all.map((g) => [g.id, g.slotCount]))
+  const counts = Object.fromEntries(all.map((g) => [g.id, g.memberCount]))
   expect(counts).toEqual({ empty: 0, one: 1, three: 3 })
 })
 

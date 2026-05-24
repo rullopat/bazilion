@@ -1,7 +1,7 @@
 import type { Profile, ReasoningLevel } from '@bazilion/api-types'
 import { REASONING_LEVELS } from '../lib/wire-constants'
 
-export interface SlotDraft {
+export interface MemberDraft {
   profileId: string
   agentName: string
   modelOverride: string | null
@@ -13,33 +13,33 @@ export interface ModelGroup {
   models: string[]
 }
 
-interface SlotsEditorProps {
-  slots: SlotDraft[]
-  onChange: (slots: SlotDraft[]) => void
+interface MembersEditorProps {
+  members: MemberDraft[]
+  onChange: (members: MemberDraft[]) => void
   profiles: Profile[]
   modelGroups: ModelGroup[]
-  /** Optional heading rendered above the table. */
+  /** Optional message rendered when the list is empty. */
   emptyHint?: string
 }
 
-// Controlled slot editor — used on both the create form and the detail
-// page. Parent owns the slot array; this component handles row edits,
+// Controlled member editor — used on both the create form and the detail
+// page. Parent owns the member array; this component handles row edits,
 // reorders, add, and remove, then notifies via onChange.
-export function SlotsEditor({
-  slots,
+export function MembersEditor({
+  members,
   onChange,
   profiles,
   modelGroups,
-  emptyHint = 'No slots yet. Add one to define your first team member.',
-}: SlotsEditorProps) {
-  function update(i: number, patch: Partial<SlotDraft>) {
-    onChange(slots.map((s, idx) => (idx === i ? { ...s, ...patch } : s)))
+  emptyHint = 'No members yet. Add one to define your first team member.',
+}: MembersEditorProps) {
+  function update(i: number, patch: Partial<MemberDraft>) {
+    onChange(members.map((m, idx) => (idx === i ? { ...m, ...patch } : m)))
   }
 
   function move(i: number, delta: -1 | 1) {
     const j = i + delta
-    if (j < 0 || j >= slots.length) return
-    const next = [...slots]
+    if (j < 0 || j >= members.length) return
+    const next = [...members]
     const tmp = next[i]
     const swap = next[j]
     if (!tmp || !swap) return
@@ -48,15 +48,15 @@ export function SlotsEditor({
     onChange(next)
   }
 
-  function removeSlot(i: number) {
-    onChange(slots.filter((_, idx) => idx !== i))
+  function removeMember(i: number) {
+    onChange(members.filter((_, idx) => idx !== i))
   }
 
-  function addSlot() {
+  function addMember() {
     const firstProfile = profiles[0]
     if (!firstProfile) return
     onChange([
-      ...slots,
+      ...members,
       {
         profileId: firstProfile.id,
         agentName: 'agent',
@@ -69,7 +69,7 @@ export function SlotsEditor({
   if (profiles.length === 0) {
     return (
       <p className="muted">
-        Create a profile first under <a href="/profiles">/profiles</a> — slots reference
+        Create a profile first under <a href="/profiles">/profiles</a> — members reference
         existing profiles.
       </p>
     )
@@ -77,7 +77,7 @@ export function SlotsEditor({
 
   return (
     <>
-      {slots.length === 0 ? (
+      {members.length === 0 ? (
         <p className="muted">{emptyHint}</p>
       ) : (
         <table>
@@ -92,13 +92,13 @@ export function SlotsEditor({
             </tr>
           </thead>
           <tbody>
-            {slots.map((s, i) => (
+            {members.map((m, i) => (
               // biome-ignore lint/suspicious/noArrayIndexKey: rows are addressed by position; the index IS the key.
               <tr key={i}>
                 <td>{i}</td>
                 <td>
                   <select
-                    value={s.profileId}
+                    value={m.profileId}
                     onChange={(e) => update(i, { profileId: e.target.value })}
                   >
                     {profiles.map((p) => (
@@ -110,13 +110,13 @@ export function SlotsEditor({
                 </td>
                 <td>
                   <input
-                    value={s.agentName}
+                    value={m.agentName}
                     onChange={(e) => update(i, { agentName: e.target.value })}
                   />
                 </td>
                 <td>
                   <select
-                    value={s.modelOverride ?? ''}
+                    value={m.modelOverride ?? ''}
                     onChange={(e) =>
                       update(i, { modelOverride: e.target.value === '' ? null : e.target.value })
                     }
@@ -124,9 +124,9 @@ export function SlotsEditor({
                     <option value="">(use profile default)</option>
                     {modelGroups.map((g) => (
                       <optgroup key={g.provider} label={g.provider}>
-                        {g.models.map((m) => (
-                          <option key={m} value={`${g.provider}:${m}`}>
-                            {`${g.provider}:${m}`}
+                        {g.models.map((mm) => (
+                          <option key={mm} value={`${g.provider}:${mm}`}>
+                            {`${g.provider}:${mm}`}
                           </option>
                         ))}
                       </optgroup>
@@ -135,7 +135,7 @@ export function SlotsEditor({
                 </td>
                 <td>
                   <select
-                    value={s.reasoningLevel ?? ''}
+                    value={m.reasoningLevel ?? ''}
                     onChange={(e) =>
                       update(i, {
                         reasoningLevel:
@@ -165,7 +165,7 @@ export function SlotsEditor({
                     type="button"
                     className="ghost-btn"
                     onClick={() => move(i, 1)}
-                    disabled={i === slots.length - 1}
+                    disabled={i === members.length - 1}
                     title="move down"
                   >
                     ↓
@@ -173,8 +173,8 @@ export function SlotsEditor({
                   <button
                     type="button"
                     className="ghost-btn"
-                    onClick={() => removeSlot(i)}
-                    title="delete slot"
+                    onClick={() => removeMember(i)}
+                    title="remove member"
                   >
                     ✕
                   </button>
@@ -185,8 +185,8 @@ export function SlotsEditor({
         </table>
       )}
       <div className="mt-3">
-        <button type="button" className="ghost-btn" onClick={addSlot}>
-          + add slot
+        <button type="button" className="ghost-btn" onClick={addMember}>
+          + add member
         </button>
       </div>
     </>

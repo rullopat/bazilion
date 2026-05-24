@@ -7,7 +7,7 @@ import type {
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { useState } from 'react'
-import { type ModelGroup, type SlotDraft, SlotsEditor } from '../../components/SlotsEditor'
+import { type MemberDraft, MembersEditor, type ModelGroup } from '../../components/MembersEditor'
 import { TemplatesTabs } from '../../components/TemplatesTabs'
 import { daemonClient } from '../../lib/daemon-client'
 
@@ -57,7 +57,7 @@ function ProfileGroupsPage() {
       <TemplatesTabs />
       <h1>profile groups</h1>
       <p className="muted">
-        A profile group is a reusable team template. Each one holds an ordered list of slots —
+        A profile group is a reusable team template. Each one holds an ordered list of members —
         profile + agent-name + optional overrides — that get replayed as a single transactional
         spawn into a target group.
       </p>
@@ -73,7 +73,7 @@ function ProfileGroupsPage() {
           <tr>
             <th>id</th>
             <th>name</th>
-            <th>slots</th>
+            <th>members</th>
             <th />
           </tr>
         </thead>
@@ -93,12 +93,14 @@ function ProfileGroupsPage() {
                 </a>
               </td>
               <td>{g.name}</td>
-              <td>{g.slotCount}</td>
+              <td>{g.memberCount}</td>
               <td className="flex gap-2">
                 <button
                   type="button"
-                  disabled={g.slotCount === 0}
-                  title={g.slotCount === 0 ? 'add at least one slot before spawning' : undefined}
+                  disabled={g.memberCount === 0}
+                  title={
+                    g.memberCount === 0 ? 'add at least one member before spawning' : undefined
+                  }
                   onClick={() => setSpawningId(g.id)}
                 >
                   spawn team
@@ -139,7 +141,7 @@ function CreateProfileGroupForm({
   const [id, setId] = useState('')
   const [name, setName] = useState('')
   const [userMd, setUserMd] = useState('')
-  const [slots, setSlots] = useState<SlotDraft[]>([])
+  const [members, setMembers] = useState<MemberDraft[]>([])
   const [err, setErr] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
@@ -164,24 +166,26 @@ function CreateProfileGroupForm({
         const e2 = (await createRes.json().catch(() => null)) as { error?: string } | null
         throw new Error(e2?.error ?? createRes.statusText)
       }
-      // If slots were configured in the form, send them as a follow-up PUT.
+      // If members were configured in the form, send them as a follow-up PUT.
       // The two-call shape mirrors the API contract (POST creates basics, PUT
-      // /slots replaces the array) and keeps the route surface narrow.
-      if (slots.length > 0) {
-        const slotsRes = await fetch(`/api/profile-groups/${id.trim()}/slots`, {
+      // /members replaces the array) and keeps the route surface narrow.
+      if (members.length > 0) {
+        const membersRes = await fetch(`/api/profile-groups/${id.trim()}/members`, {
           method: 'PUT',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ slots }),
+          body: JSON.stringify({ members }),
         })
-        if (!slotsRes.ok) {
-          const e2 = (await slotsRes.json().catch(() => null)) as { error?: string } | null
-          throw new Error(`group created, slot save failed: ${e2?.error ?? slotsRes.statusText}`)
+        if (!membersRes.ok) {
+          const e2 = (await membersRes.json().catch(() => null)) as { error?: string } | null
+          throw new Error(
+            `group created, member save failed: ${e2?.error ?? membersRes.statusText}`,
+          )
         }
       }
       setId('')
       setName('')
       setUserMd('')
-      setSlots([])
+      setMembers([])
       onCreated()
     } catch (e2) {
       setErr((e2 as Error).message)
@@ -223,10 +227,10 @@ function CreateProfileGroupForm({
         />
       </label>
       <div className="mt-4">
-        <h4 className="mb-1 text-[0.95em] font-medium">slots</h4>
+        <h4 className="mb-1 text-[0.95em] font-medium">members</h4>
         <p className="muted mb-2 text-[0.88em]">
-          Each slot becomes one agent when the team is spawned. You can also configure slots later
-          from the detail page.{' '}
+          Each member becomes one agent when the team is spawned. You can also configure members
+          later from the detail page.{' '}
           {profiles.length > 0 && (
             <>
               Available profiles:{' '}
@@ -240,12 +244,12 @@ function CreateProfileGroupForm({
             </>
           )}
         </p>
-        <SlotsEditor
-          slots={slots}
-          onChange={setSlots}
+        <MembersEditor
+          members={members}
+          onChange={setMembers}
           profiles={profiles}
           modelGroups={modelGroups}
-          emptyHint="No slots configured yet — add one to pick a profile for each team member."
+          emptyHint="No members configured yet — add one to pick a profile for each team member."
         />
       </div>
       <div className="mt-4">
@@ -325,9 +329,9 @@ function SpawnTeamModal({
         <h3>spawn team — {profileGroup.name}</h3>
         {err && <div className="err">{err}</div>}
         <p className="muted">
-          Spawns {profileGroup.slotCount} agent{profileGroup.slotCount === 1 ? '' : 's'} into the
-          target group. If the group doesn't exist, it'll be created on the fly. Failures roll back
-          the whole spawn.
+          Spawns {profileGroup.memberCount} agent{profileGroup.memberCount === 1 ? '' : 's'} into
+          the target group. If the group doesn't exist, it'll be created on the fly. Failures roll
+          back the whole spawn.
         </p>
         <label>
           target group slug
@@ -339,7 +343,9 @@ function SpawnTeamModal({
           />
           <datalist id="existing-groups">
             {groups.map((g) => (
-              <option key={g.id} value={g.id}>{g.name}</option>
+              <option key={g.id} value={g.id}>
+                {g.name}
+              </option>
             ))}
           </datalist>
         </label>

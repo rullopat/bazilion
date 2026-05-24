@@ -260,10 +260,9 @@ async function dispatch(
         result = await requireMessagingHost(messagingHost, req.method).sendMessage(req.args)
         break
       case 'listInbox':
-        result = await requireMessagingHost(messagingHost, req.method).listInbox(
-          req.args.agentId,
-          { unreadOnly: req.args.unreadOnly },
-        )
+        result = await requireMessagingHost(messagingHost, req.method).listInbox(req.args.agentId, {
+          unreadOnly: req.args.unreadOnly,
+        })
         break
       case 'markRead':
         await requireMessagingHost(messagingHost, req.method).markRead(req.args.messageId)

@@ -4,7 +4,7 @@ import * as agentSpawnModule from '../../src/core/agent/spawn.ts'
 import { registerGroup } from '../../src/core/group/register.ts'
 import { createProfile } from '../../src/core/profile/create.ts'
 import {
-  resolveSlotNames,
+  resolveMemberNames,
   SpawnProfileGroupError,
   spawnProfileGroup,
 } from '../../src/core/profile-group/spawn.ts'
@@ -24,59 +24,63 @@ afterEach(() => {
   env.cleanup()
 })
 
-interface SlotSpec {
+interface MemberSpec {
   profileId: string
   agentName: string
   modelOverride?: string | null
   reasoningLevel?: 'medium' | 'high' | null
 }
 
-function makeTemplate(id: string, slots: SlotSpec[], opts: { userMd?: string | null } = {}): void {
+function makeTemplate(
+  id: string,
+  members: MemberSpec[],
+  opts: { userMd?: string | null } = {},
+): void {
   profileGroupRepo.insert(env.db, {
     id,
     name: id,
     userMd: opts.userMd ?? null,
   })
-  profileGroupRepo.replaceSlots(
+  profileGroupRepo.replaceMembers(
     env.db,
     id,
-    slots.map((s) => ({
-      profileId: s.profileId,
-      agentName: s.agentName,
-      modelOverride: s.modelOverride ?? null,
-      reasoningLevel: s.reasoningLevel ?? null,
+    members.map((m) => ({
+      profileId: m.profileId,
+      agentName: m.agentName,
+      modelOverride: m.modelOverride ?? null,
+      reasoningLevel: m.reasoningLevel ?? null,
     })),
   )
 }
 
-// --- resolveSlotNames unit ---
+// --- resolveMemberNames unit ---
 
-test('resolveSlotNames: empty existing set, no duplicates', () => {
-  const slots = [{ agentName: 'planner' }, { agentName: 'reviewer' }] as unknown as Parameters<
-    typeof resolveSlotNames
+test('resolveMemberNames: empty existing set, no duplicates', () => {
+  const members = [{ agentName: 'planner' }, { agentName: 'reviewer' }] as unknown as Parameters<
+    typeof resolveMemberNames
   >[1]
-  expect(resolveSlotNames(new Set(), slots)).toEqual(['planner', 'reviewer'])
+  expect(resolveMemberNames(new Set(), members)).toEqual(['planner', 'reviewer'])
 })
 
-test('resolveSlotNames: duplicate slot names get -2, -3 suffixes', () => {
-  const slots = [
+test('resolveMemberNames: duplicate member names get -2, -3 suffixes', () => {
+  const members = [
     { agentName: 'reviewer' },
     { agentName: 'reviewer' },
     { agentName: 'reviewer' },
-  ] as unknown as Parameters<typeof resolveSlotNames>[1]
-  expect(resolveSlotNames(new Set(), slots)).toEqual(['reviewer', 'reviewer-2', 'reviewer-3'])
+  ] as unknown as Parameters<typeof resolveMemberNames>[1]
+  expect(resolveMemberNames(new Set(), members)).toEqual(['reviewer', 'reviewer-2', 'reviewer-3'])
 })
 
-test('resolveSlotNames: existing names in target group push slot names forward', () => {
-  const slots = [{ agentName: 'reviewer' }, { agentName: 'reviewer' }] as unknown as Parameters<
-    typeof resolveSlotNames
+test('resolveMemberNames: existing names in target group push member names forward', () => {
+  const members = [{ agentName: 'reviewer' }, { agentName: 'reviewer' }] as unknown as Parameters<
+    typeof resolveMemberNames
   >[1]
-  expect(resolveSlotNames(new Set(['reviewer']), slots)).toEqual(['reviewer-2', 'reviewer-3'])
+  expect(resolveMemberNames(new Set(['reviewer']), members)).toEqual(['reviewer-2', 'reviewer-3'])
 })
 
-test('resolveSlotNames: skips already-taken suffix numbers', () => {
-  const slots = [{ agentName: 'r' }] as unknown as Parameters<typeof resolveSlotNames>[1]
-  expect(resolveSlotNames(new Set(['r', 'r-2']), slots)).toEqual(['r-3'])
+test('resolveMemberNames: skips already-taken suffix numbers', () => {
+  const members = [{ agentName: 'r' }] as unknown as Parameters<typeof resolveMemberNames>[1]
+  expect(resolveMemberNames(new Set(['r', 'r-2']), members)).toEqual(['r-3'])
 })
 
 // --- happy path ---
@@ -142,7 +146,7 @@ test('pre-flight: missing template throws before any side effect', async () => {
 
 test('pre-flight: missing referenced profile throws with the list of missing IDs', async () => {
   // Build a template, then drop the referenced profile with FKs off so the
-  // slot row is left orphaned. Pre-flight should catch this scenario as a
+  // member row is left orphaned. Pre-flight should catch this scenario as a
   // defense-in-depth check (the FK should normally prevent it).
   makeTemplate('team', [{ profileId: 'p1', agentName: 'a' }])
   env.db.raw.exec('PRAGMA foreign_keys = OFF')
@@ -157,7 +161,7 @@ test('pre-flight: missing referenced profile throws with the list of missing IDs
 
 // --- atomic rollback ---
 
-test('atomic rollback: spawnAgent failure on slot 3 leaves zero agents + zero new dirs', async () => {
+test('atomic rollback: spawnAgent failure on member 3 leaves zero agents + zero new dirs', async () => {
   makeTemplate('team', [
     { profileId: 'p1', agentName: 'a' },
     { profileId: 'p1', agentName: 'b' },
@@ -168,14 +172,14 @@ test('atomic rollback: spawnAgent failure on slot 3 leaves zero agents + zero ne
   let callCount = 0
   vi.spyOn(agentSpawnModule, 'spawnAgent').mockImplementation((db, paths, input) => {
     callCount++
-    if (callCount === 3) throw new Error('synthetic slot-3 failure')
+    if (callCount === 3) throw new Error('synthetic member-3 failure')
     return realSpawn(db, paths, input)
   })
 
   const beforeAgentDirs = new Set(readdirSync(env.paths.agentsDir))
   await expect(
     spawnProfileGroup(env.db, env.paths, { profileGroupId: 'team', groupSlug: env.groupId }),
-  ).rejects.toThrow(/synthetic slot-3 failure/)
+  ).rejects.toThrow(/synthetic member-3 failure/)
 
   expect(agentRepo.list(env.db)).toHaveLength(0)
   const afterAgentDirs = readdirSync(env.paths.agentsDir)
@@ -273,7 +277,7 @@ test('USER.md seeding: pre-existing group with empty user_md is also left untouc
 
 // --- name-suffix integration ---
 
-test('name suffixes: two reviewer slots into empty group → reviewer + reviewer-2', async () => {
+test('name suffixes: two reviewer members into empty group → reviewer + reviewer-2', async () => {
   makeTemplate('team', [
     { profileId: 'p1', agentName: 'reviewer' },
     { profileId: 'p1', agentName: 'reviewer' },

@@ -18,17 +18,17 @@ CREATE TABLE profile_groups (
   updated_at      INTEGER NOT NULL
 );
 
--- Slot ordering uses an explicit `position` column rather than insertion
+-- Member ordering uses an explicit `position` column rather than insertion
 -- order so the spawn loop is deterministic and rollback can identify which
--- slots succeeded. PK includes position so the same template can have
--- multiple slots pointing at the same profile (e.g. "two reviewers" —
+-- members succeeded. PK includes position so the same template can have
+-- multiple members pointing at the same profile (e.g. "two reviewers" —
 -- duplicate agent_name values are intentionally accepted; the spawn op
 -- auto-suffixes collisions with `-2`, `-3`, ... at spawn time).
 --
 -- `ON DELETE RESTRICT` on profile_id prevents deleting a profile that a
--- profile-group slot still references; the existing single-profile delete
+-- profile-group member still references; the existing single-profile delete
 -- keeps working unchanged because it never had a referrer before.
-CREATE TABLE profile_group_slots (
+CREATE TABLE profile_group_members (
   profile_group_id TEXT NOT NULL REFERENCES profile_groups(id) ON DELETE CASCADE,
   position         INTEGER NOT NULL,
   profile_id       TEXT NOT NULL REFERENCES profiles(id) ON DELETE RESTRICT,

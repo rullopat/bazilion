@@ -17,7 +17,7 @@ export type {
   Profile,
   ProfileGroup,
   ProfileGroupDetail,
-  ProfileGroupSlot,
+  ProfileGroupMember,
   ProfileGroupWithCount,
   ReasoningLevel,
   ResolvedAgent,
@@ -139,13 +139,13 @@ export interface UpdateProfileGroupRequest {
 }
 
 /**
- * PUT-replace semantics: the entire slot array is replaced atomically.
+ * PUT-replace semantics: the entire member array is replaced atomically.
  * `position` is implicit from array order (0-based).
- * Duplicate `agentName` values across slots are accepted at PUT time —
+ * Duplicate `agentName` values across members are accepted at PUT time —
  * the spawn op auto-suffixes collisions with `-2`, `-3`, ... at spawn time.
  */
-export interface PutProfileGroupSlotsRequest {
-  slots: Array<{
+export interface PutProfileGroupMembersRequest {
+  members: Array<{
     profileId: string
     agentName: string
     modelOverride?: string | null

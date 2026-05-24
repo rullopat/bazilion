@@ -7,9 +7,9 @@ import type {
   CreateProfileGroupRequest,
   ProfileGroup,
   ProfileGroupDetail,
-  ProfileGroupSlot,
+  ProfileGroupMember,
   ProfileGroupWithCount,
-  PutProfileGroupSlotsRequest,
+  PutProfileGroupMembersRequest,
   SpawnProfileGroupRequest,
   SpawnProfileGroupResponse,
   UpdateProfileGroupRequest,
@@ -47,16 +47,16 @@ const listCmd = defineCommand({
       console.log('(no profile groups)')
       return
     }
-    const rows = list.map((g) => [g.id, String(g.slotCount), g.name])
+    const rows = list.map((g) => [g.id, String(g.memberCount), g.name])
     for (const line of columnize(rows)) console.log(line)
   },
 })
 
 const showCmd = defineCommand({
-  meta: { name: 'show', description: 'Show profile group details + slots' },
+  meta: { name: 'show', description: 'Show profile group details + members' },
   args: {
     id: { type: 'positional', required: true },
-    json: { type: 'boolean', description: 'Emit full JSON (slots + basics)' },
+    json: { type: 'boolean', description: 'Emit full JSON (members + basics)' },
   },
   async run({ args }) {
     const client = createClient()
@@ -71,19 +71,19 @@ const showCmd = defineCommand({
       `user-md: ${detail.group.userMd ? `${detail.group.userMd.length} chars` : '(none)'}`,
     )
     console.log('')
-    if (detail.slots.length === 0) {
-      console.log('(no slots)')
+    if (detail.members.length === 0) {
+      console.log('(no members)')
       return
     }
-    console.log('slots:')
+    console.log('members:')
     const rows = [
       ['#', 'profile', 'agent-name', 'model-override', 'reasoning'],
-      ...detail.slots.map((s) => [
-        String(s.position),
-        s.profileId,
-        s.agentName,
-        s.modelOverride ?? '-',
-        s.reasoningLevel ?? '-',
+      ...detail.members.map((m) => [
+        String(m.position),
+        m.profileId,
+        m.agentName,
+        m.modelOverride ?? '-',
+        m.reasoningLevel ?? '-',
       ]),
     ]
     for (const line of columnize(rows)) console.log(`  ${line}`)
@@ -115,7 +115,7 @@ const updateCmd = defineCommand({
   },
 })
 
-interface EditableSlot {
+interface EditableMember {
   profileId: string
   agentName: string
   modelOverride: string | null
@@ -123,18 +123,18 @@ interface EditableSlot {
 }
 
 const editCmd = defineCommand({
-  meta: { name: 'edit', description: 'Edit the slot array in $EDITOR (JSON)' },
+  meta: { name: 'edit', description: 'Edit the member array in $EDITOR (JSON)' },
   args: {
     id: { type: 'positional', required: true },
   },
   async run({ args }) {
     const client = createClient()
     const detail = await client.get<ProfileGroupDetail>(`/api/profile-groups/${args.id}`)
-    const editable: EditableSlot[] = detail.slots.map((s) => ({
-      profileId: s.profileId,
-      agentName: s.agentName,
-      modelOverride: s.modelOverride,
-      reasoningLevel: s.reasoningLevel,
+    const editable: EditableMember[] = detail.members.map((m) => ({
+      profileId: m.profileId,
+      agentName: m.agentName,
+      modelOverride: m.modelOverride,
+      reasoningLevel: m.reasoningLevel,
     }))
     const before = `${JSON.stringify(editable, null, 2)}\n`
     const tmpPath = join(
@@ -162,13 +162,13 @@ const editCmd = defineCommand({
         throw new Error(`invalid JSON: ${(err as Error).message}`)
       }
       if (!Array.isArray(parsed)) {
-        throw new Error('expected a JSON array of slots')
+        throw new Error('expected a JSON array of members')
       }
-      const body: PutProfileGroupSlotsRequest = {
-        slots: parsed.map((s, i) => {
-          const row = s as Partial<EditableSlot>
+      const body: PutProfileGroupMembersRequest = {
+        members: parsed.map((s, i) => {
+          const row = s as Partial<EditableMember>
           if (!row || typeof row.profileId !== 'string' || typeof row.agentName !== 'string') {
-            throw new Error(`slot ${i}: profileId and agentName are required strings`)
+            throw new Error(`member ${i}: profileId and agentName are required strings`)
           }
           return {
             profileId: row.profileId,
@@ -177,12 +177,12 @@ const editCmd = defineCommand({
             reasoningLevel:
               row.reasoningLevel === null || row.reasoningLevel === undefined
                 ? null
-                : (row.reasoningLevel as PutProfileGroupSlotsRequest['slots'][number]['reasoningLevel']),
+                : (row.reasoningLevel as PutProfileGroupMembersRequest['members'][number]['reasoningLevel']),
           }
         }),
       }
-      await client.put(`/api/profile-groups/${args.id}/slots`, body)
-      console.log(`saved ${body.slots.length} slot(s)`)
+      await client.put(`/api/profile-groups/${args.id}/members`, body)
+      console.log(`saved ${body.members.length} member(s)`)
     } finally {
       try {
         rmSync(tmpPath, { force: true })
@@ -209,7 +209,7 @@ const spawnCmd = defineCommand({
     id: { type: 'positional', required: true },
     group: {
       type: 'string',
-      description: 'Target group slug (overrides the template hint)',
+      description: 'Target group slug (overrides the template default)',
     },
     'user-md-file': {
       type: 'string',
@@ -250,6 +250,6 @@ export const profileGroupCommand = defineCommand({
   },
 })
 
-// Re-export the slot type for any callers that want to introspect; not used
+// Re-export the member type for any callers that want to introspect; not used
 // by the CLI directly but keeps the dependency-graph honest.
-export type { ProfileGroupSlot }
+export type { ProfileGroupMember }

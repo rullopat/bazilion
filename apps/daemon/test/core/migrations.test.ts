@@ -22,7 +22,7 @@ test('migrations create all expected tables', () => {
     'groups',
     'messages',
     'profile_default_skills',
-    'profile_group_slots',
+    'profile_group_members',
     'profile_groups',
     'profiles',
     'schema_migrations',
@@ -74,10 +74,10 @@ test('migrations are idempotent', () => {
   expect(after[0]?.version).toBe('0001_init')
 })
 
-test('profile_group_slots FK on profile_id uses ON DELETE RESTRICT', () => {
+test('profile_group_members FK on profile_id uses ON DELETE RESTRICT', () => {
   const fks = env.db.raw
     .query<{ table: string; from: string; on_delete: string }, []>(
-      'SELECT "table", "from", on_delete FROM pragma_foreign_key_list(\'profile_group_slots\')',
+      'SELECT "table", "from", on_delete FROM pragma_foreign_key_list(\'profile_group_members\')',
     )
     .all()
   const profileFk = fks.find((f) => f.table === 'profiles' && f.from === 'profile_id')

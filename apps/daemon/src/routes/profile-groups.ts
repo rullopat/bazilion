@@ -1,11 +1,11 @@
 // /api/profile-groups/* — preconfigured team templates. Each profile group
-// holds an ordered list of slots that the spawn op replays as a single
+// holds an ordered list of members that the spawn op replays as a single
 // transactional call. See docs/backlog/todo/BAZ-002-profile-groups.md.
 
 import type {
   CreateProfileGroupRequest,
   ProfileGroupDetail,
-  PutProfileGroupSlotsRequest,
+  PutProfileGroupMembersRequest,
   ReasoningLevel,
   SpawnProfileGroupRequest,
   SpawnProfileGroupResponse,
@@ -20,7 +20,7 @@ import {
   spawnProfileGroup,
 } from '../core/index.ts'
 import { validateSlug } from '../core/profile/validate.ts'
-import type { SlotInput, UpdateProfileGroupPatch } from '../core/repos/profileGroups.ts'
+import type { MemberInput, UpdateProfileGroupPatch } from '../core/repos/profileGroups.ts'
 import { getCtx } from '../lib/ctx.ts'
 
 export const profileGroupsRouter = new Hono()
@@ -37,7 +37,7 @@ profileGroupsRouter.get('/:id', (c) => {
   if (!group) return c.json({ error: `profile group not found: ${id}` }, 404)
   const body: ProfileGroupDetail = {
     group,
-    slots: profileGroupRepo.slots(db, id),
+    members: profileGroupRepo.members(db, id),
   }
   return c.json(body)
 })
@@ -90,41 +90,41 @@ profileGroupsRouter.patch('/:id', async (c) => {
   return c.json(profileGroupRepo.get(db, id))
 })
 
-profileGroupsRouter.put('/:id/slots', async (c) => {
+profileGroupsRouter.put('/:id/members', async (c) => {
   const raw = (await c.req.json().catch(() => null)) as
-    | (PutProfileGroupSlotsRequest & Record<string, unknown>)
+    | (PutProfileGroupMembersRequest & Record<string, unknown>)
     | null
-  if (!raw || !Array.isArray(raw.slots)) {
-    return c.json({ error: 'slots array is required' }, 400)
+  if (!raw || !Array.isArray(raw.members)) {
+    return c.json({ error: 'members array is required' }, 400)
   }
   const { db } = getCtx()
   const id = c.req.param('id')
   if (!profileGroupRepo.get(db, id)) {
     return c.json({ error: `profile group not found: ${id}` }, 404)
   }
-  const cleaned: SlotInput[] = []
+  const cleaned: MemberInput[] = []
   const missingProfiles: string[] = []
-  for (let i = 0; i < raw.slots.length; i++) {
-    const s = raw.slots[i] as Record<string, unknown> | undefined
-    if (!s || typeof s.profileId !== 'string' || typeof s.agentName !== 'string') {
-      return c.json({ error: `slot ${i}: profileId and agentName are required strings` }, 400)
+  for (let i = 0; i < raw.members.length; i++) {
+    const m = raw.members[i] as Record<string, unknown> | undefined
+    if (!m || typeof m.profileId !== 'string' || typeof m.agentName !== 'string') {
+      return c.json({ error: `member ${i}: profileId and agentName are required strings` }, 400)
     }
-    if (!profileRepo.get(db, s.profileId)) {
-      missingProfiles.push(s.profileId)
+    if (!profileRepo.get(db, m.profileId)) {
+      missingProfiles.push(m.profileId)
       continue
     }
     const modelOverride =
-      s.modelOverride === null ? null : typeof s.modelOverride === 'string' ? s.modelOverride : null
+      m.modelOverride === null ? null : typeof m.modelOverride === 'string' ? m.modelOverride : null
     const reasoningLevel =
-      s.reasoningLevel === null
+      m.reasoningLevel === null
         ? null
-        : typeof s.reasoningLevel === 'string' &&
-            (REASONING_LEVELS as readonly string[]).includes(s.reasoningLevel)
-          ? (s.reasoningLevel as ReasoningLevel)
+        : typeof m.reasoningLevel === 'string' &&
+            (REASONING_LEVELS as readonly string[]).includes(m.reasoningLevel)
+          ? (m.reasoningLevel as ReasoningLevel)
           : null
     cleaned.push({
-      profileId: s.profileId,
-      agentName: s.agentName,
+      profileId: m.profileId,
+      agentName: m.agentName,
       modelOverride,
       reasoningLevel,
     })
@@ -132,8 +132,8 @@ profileGroupsRouter.put('/:id/slots', async (c) => {
   if (missingProfiles.length > 0) {
     return c.json({ error: `missing profiles: ${[...new Set(missingProfiles)].join(', ')}` }, 400)
   }
-  profileGroupRepo.replaceSlots(db, id, cleaned)
-  return c.json({ slots: profileGroupRepo.slots(db, id) })
+  profileGroupRepo.replaceMembers(db, id, cleaned)
+  return c.json({ members: profileGroupRepo.members(db, id) })
 })
 
 profileGroupsRouter.delete('/:id', (c) => {

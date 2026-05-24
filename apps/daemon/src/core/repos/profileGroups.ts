@@ -1,6 +1,6 @@
 import type {
   ProfileGroup,
-  ProfileGroupSlot,
+  ProfileGroupMember,
   ProfileGroupWithCount,
   ReasoningLevel,
 } from '@bazilion/api-types'
@@ -15,10 +15,10 @@ interface RawProfileGroup {
 }
 
 interface RawProfileGroupWithCount extends RawProfileGroup {
-  slot_count: number
+  member_count: number
 }
 
-interface RawProfileGroupSlot {
+interface RawProfileGroupMember {
   profile_group_id: string
   position: number
   profile_id: string
@@ -37,7 +37,7 @@ function toProfileGroup(r: RawProfileGroup): ProfileGroup {
   }
 }
 
-function toSlot(r: RawProfileGroupSlot): ProfileGroupSlot {
+function toMember(r: RawProfileGroupMember): ProfileGroupMember {
   return {
     profileGroupId: r.profile_group_id,
     position: r.position,
@@ -71,17 +71,17 @@ export function get(db: BazilionDb, id: string): ProfileGroup | null {
 export function list(db: BazilionDb): ProfileGroupWithCount[] {
   return db.raw
     .query<RawProfileGroupWithCount, []>(
-      `SELECT pg.*, COALESCE(s.cnt, 0) AS slot_count
+      `SELECT pg.*, COALESCE(m.cnt, 0) AS member_count
        FROM profile_groups pg
        LEFT JOIN (
          SELECT profile_group_id, COUNT(*) AS cnt
-         FROM profile_group_slots
+         FROM profile_group_members
          GROUP BY profile_group_id
-       ) s ON s.profile_group_id = pg.id
+       ) m ON m.profile_group_id = pg.id
        ORDER BY pg.created_at ASC`,
     )
     .all()
-    .map((r) => ({ ...toProfileGroup(r), slotCount: r.slot_count }))
+    .map((r) => ({ ...toProfileGroup(r), memberCount: r.member_count }))
 }
 
 export interface UpdateProfileGroupPatch {
@@ -114,45 +114,49 @@ export function remove(db: BazilionDb, id: string): void {
   db.raw.run('DELETE FROM profile_groups WHERE id = ?', [id])
 }
 
-export function slots(db: BazilionDb, profileGroupId: string): ProfileGroupSlot[] {
+export function members(db: BazilionDb, profileGroupId: string): ProfileGroupMember[] {
   return db.raw
-    .query<RawProfileGroupSlot, [string]>(
-      `SELECT * FROM profile_group_slots
+    .query<RawProfileGroupMember, [string]>(
+      `SELECT * FROM profile_group_members
        WHERE profile_group_id = ?
        ORDER BY position ASC`,
     )
     .all(profileGroupId)
-    .map(toSlot)
+    .map(toMember)
 }
 
-export type SlotInput = Omit<ProfileGroupSlot, 'profileGroupId' | 'position'>
+export type MemberInput = Omit<ProfileGroupMember, 'profileGroupId' | 'position'>
 
 /**
- * PUT-replace semantics: delete every existing slot for this profile group,
- * then re-insert each item in `newSlots` with `position` = array index.
+ * PUT-replace semantics: delete every existing member for this profile group,
+ * then re-insert each item in `newMembers` with `position` = array index.
  * Wrapped in a transaction so a partial failure rolls back.
  *
- * Duplicate `agentName` values across slots are accepted here — the spawn
+ * Duplicate `agentName` values across members are accepted here — the spawn
  * op resolves collisions with `-2`, `-3`, ... suffixes at spawn time.
  */
-export function replaceSlots(db: BazilionDb, profileGroupId: string, newSlots: SlotInput[]): void {
+export function replaceMembers(
+  db: BazilionDb,
+  profileGroupId: string,
+  newMembers: MemberInput[],
+): void {
   const tx = db.raw.transaction(() => {
-    db.raw.run('DELETE FROM profile_group_slots WHERE profile_group_id = ?', [profileGroupId])
+    db.raw.run('DELETE FROM profile_group_members WHERE profile_group_id = ?', [profileGroupId])
     const stmt = db.raw.query(
-      `INSERT INTO profile_group_slots
+      `INSERT INTO profile_group_members
        (profile_group_id, position, profile_id, agent_name, model_override, reasoning_level)
        VALUES (?, ?, ?, ?, ?, ?)`,
     )
-    for (let i = 0; i < newSlots.length; i++) {
-      const s = newSlots[i]
-      if (!s) continue
+    for (let i = 0; i < newMembers.length; i++) {
+      const m = newMembers[i]
+      if (!m) continue
       stmt.run(
         profileGroupId,
         i,
-        s.profileId,
-        s.agentName,
-        s.modelOverride ?? null,
-        s.reasoningLevel ?? null,
+        m.profileId,
+        m.agentName,
+        m.modelOverride ?? null,
+        m.reasoningLevel ?? null,
       )
     }
   })
