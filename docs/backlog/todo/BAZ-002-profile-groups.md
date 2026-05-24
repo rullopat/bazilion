@@ -1,9 +1,10 @@
 ---
 id: BAZ-002
 title: Profile Groups — preconfigured team templates
-status: draft
+status: todo
 size: M (≈1 week)
 created: 2026-05-23
+refined: 2026-05-24
 note: Additive feature — single-profile spawn is untouched. Profile groups bundle existing primitives (profiles, groups, spawn), they don't replace them.
 ---
 
@@ -78,7 +79,7 @@ CREATE TABLE profile_group_slots (
   4. Seed `groups.user_md` from the slot's `user_md` if the target group's column is currently null. Never overwrite a non-null existing `user_md`.
   5. For each slot in order, call the existing `spawnAgent(...)` with the slot's overrides. Collect the returned agent IDs in an array.
   6. Commit the transaction.
-  7. **On any failure mid-loop:** rollback the DB transaction AND delete every `~/.bazilion/agents/<id>/` directory created so far (these were created outside the DB transaction by `spawnAgent`'s file ops). Throw the original error.
+  7. **On any failure mid-loop:** rollback the DB transaction AND delete every `~/.bazilion/agents/<id>/` directory created so far (these were created outside the DB transaction by `spawnAgent`'s file ops). The directory cleanup retries with backoff (3 attempts, 100ms / 500ms / 2s) before giving up. If cleanup still fails after retries, log the orphan IDs and include them in the thrown error so the route surfaces them to the operator. Throw the original spawn error (cleanup failure is logged but doesn't replace the root cause).
 
 ### Routes (`apps/daemon/src/routes/profile-groups.ts`)
 
@@ -88,7 +89,16 @@ CREATE TABLE profile_group_slots (
 - `PATCH /api/profile-groups/:id` — update name / user_md / group_slug_hint.
 - `PUT /api/profile-groups/:id/slots` — replace the full slot array atomically (simpler than per-slot CRUD; the web UI builds the array client-side and PUTs it).
 - `DELETE /api/profile-groups/:id` — delete the template. Does NOT touch agents previously spawned from it.
-- `POST /api/profile-groups/:id/spawn` — body `{ group_slug?: string, user_md?: string }`. Returns `{ group_slug, agent_ids: [...] }`.
+- `POST /api/profile-groups/:id/spawn` — body `{ group_slug?: string, user_md?: string }`. Returns `{ group_slug, agents: [{ id, name }, ...] }`. The response includes the *final* agent names (post-suffixing — see "Name collisions" below) so the caller sees what was actually created.
+
+### Name collisions
+
+Slot `agent_name` values are templates, not guarantees. At spawn time, we resolve each slot's name to a unique final name within the target group by appending a numeric suffix when needed:
+
+1. Build the set of existing agent names already in the target group.
+2. For each slot in `position` order: if its `agent_name` is taken (either by an existing agent in the group, or by a name already assigned earlier in this spawn), append `-2`, `-3`, ... until unique; otherwise use the bare name.
+
+So a template with two `reviewer` slots, spawned into an empty group, produces `reviewer` + `reviewer-2`. Spawned into a group that already has a `reviewer`, the same template produces `reviewer-2` + `reviewer-3`. Duplicate slot names within the template are intentionally NOT rejected at PUT time — they're a valid way to say "give me two reviewers, auto-name them".
 
 ### CLI (`apps/cli/src/commands/profile-group.ts`)
 
@@ -112,7 +122,7 @@ Mirror the existing `bazilion profile` shape:
 
 ### First-run seeding
 
-Extend `ensureSetupSeeded` ([apps/daemon/src/lib/ctx.ts](../../../apps/daemon/src/lib/ctx.ts)) so that crossing the first-run threshold (≥1 enabled provider with curated models) also seeds a `default-team` profile group with a small sensible roster — exact composition is an open question (see below), but the goal is "new operator clicks Spawn team once and gets a real team into `default` instead of a single bare agent". This is the load-bearing UX win.
+**Not in scope.** Profile groups are an advanced, personal-to-the-operator feature; a one-size-fits-all default team would be misleading and would clutter the first-run welcome flow. First-run continues to seed only the `default` profile + `default` group (existing behavior). Once profile groups ship, the welcome page can link to `/profile-groups` as a "build your team" CTA, but no template is auto-created.
 
 ## Out of scope
 
@@ -123,13 +133,13 @@ Extend `ensureSetupSeeded` ([apps/daemon/src/lib/ctx.ts](../../../apps/daemon/sr
 - **Mobile UI.** The mobile app's agent list ([apps/mobile/app/agents/index.tsx](../../../apps/mobile/app/agents/index.tsx)) doesn't even create agents yet; profile-group spawn from mobile is deferred until single-agent spawn lands there.
 - **Cancelling a partial spawn mid-flight.** The spawn loop is short (seconds, not minutes); no `POST /api/profile-groups/:id/spawn/cancel`. If a single `spawnAgent` call hangs, that's the existing `agent cancel` surface's problem.
 
-## Open questions
+## Decisions (resolved 2026-05-24)
 
-1. **Default-team composition.** What's in the seeded `default-team` profile group? Probably `planner` + `implementer` + `reviewer`, all bound to the same default profile. But that's three identical agents distinguished only by name. Worth deciding whether the v1 setup ships with three distinct seeded profiles (planner-profile / implementer-profile / reviewer-profile, each with different SOUL.md), or whether the operator is expected to customize after spawn. **Lean: ship three identical-profile slots in v1, let the operator differentiate after; revisit if user feedback says the seed is too bland to demo with.**
-2. **Atomic rollback safety.** `spawnAgent` writes `~/.bazilion/agents/<id>/` directories outside the DB transaction. Rollback means "delete those dirs in the catch block" — straightforward in the happy path, but what if THE rollback itself partially fails (disk full, permission flip)? Acceptable answer is probably "log loudly, surface the orphan IDs in the error response, leave cleanup to `bazilion uninstall` or manual rm". Confirm before implementing.
-3. **Naming collisions.** If two slots specify `agent_name: 'reviewer'` (operator typo, or two reviewers intentionally), do we (a) auto-suffix to `reviewer-2`, (b) reject at validation time, or (c) accept duplicates (since `agents.name` isn't unique in the schema today)? **Lean: (b) reject at validation, since duplicates make the post-spawn UI confusing.**
-4. **`group_slug_hint` semantics.** Is the hint a *suggestion* (operator can override at spawn time, web UI prefills it) or a *binding* (spawn into exactly this group, no override)? **Lean: suggestion, since the same template should be spawnable into "project-acme" and "project-bravo" without editing the template.**
-5. **Empty USER.md vs. seeded USER.md.** If a profile group has a `user_md` value but the target group already has its own non-null `user_md`, we keep the target's. But what if the target's is the empty string `""` (operator cleared it deliberately)? Treat empty string the same as null and overwrite, or treat it as "operator already decided this is blank, don't touch"? **Lean: only overwrite when null, never when explicitly empty string.**
+1. **No default-team seeding.** Profile groups are an advanced, personal-to-the-operator feature; a generic seeded team would be misleading. First-run continues to seed only the `default` profile + `default` group as today.
+2. **Atomic-rollback cleanup retries with backoff** — 3 attempts at 100ms / 500ms / 2s before giving up. On exhaustion, log the orphan agent IDs and include them in the thrown error so the route response surfaces them to the operator; the original spawn error remains the root cause.
+3. **Name collisions auto-suffix with a numeric counter** at spawn time (`reviewer`, `reviewer-2`, `reviewer-3`, ...). Duplicates within a template are accepted at PUT time — they're a valid way to ask for N copies. Suffixing also resolves collisions with agents already in the target group. See "Name collisions" under Routes.
+4. **`group_slug_hint` is a suggestion.** Web prefills the spawn modal from it; CLI `--group <slug>` and the API body's `group_slug` override freely. The same template can be reused across projects without editing.
+5. **USER.md is only seeded when the target group's `user_md` is `NULL`.** Empty string `''` is treated as "operator explicitly cleared this" and left alone.
 
 ## Deliverable
 
@@ -137,7 +147,6 @@ A working profile-group lifecycle end-to-end, with both surfaces:
 
 - Operator can `bazilion profile-group create platform-team --name "Platform Team"` then `bazilion profile-group spawn platform-team --group acme-project` and end up with N agents inside `acme-project`'s group, named per the slot config.
 - Operator can do the same from the web UI: build the template on `/profile-groups/<id>`, click "Spawn team" from `/groups/<slug>`, see the roster fill.
-- First-run setup seeds a `default-team` profile group; the welcome page surfaces "Spawn your default team" as the headline CTA instead of "Create your first agent".
 
 ## Tests
 
@@ -149,11 +158,12 @@ A working profile-group lifecycle end-to-end, with both surfaces:
 - **Spawn integration test** (`apps/daemon/test/core/profile-group-spawn.test.ts`):
   - Happy path: spawn into a new group → N agents created, all in the right group, names match slots, model overrides applied where set.
   - Atomic rollback: inject a failure at slot 3 of 4 (mock `spawnAgent` to throw on the third call) → assert 0 agent rows exist after, 0 agent dirs exist on disk, target group either doesn't exist (if newly created) or exists but is empty (if pre-existing).
-  - Empty existing group seeding: `user_md` populates an empty target group; the same call against a target group with existing `user_md` leaves it untouched.
-  - Duplicate slot-name validation rejects pre-spawn (per open question 3 if (b) is chosen).
+  - USER.md seeding: `user_md` populates a target group whose `user_md` IS NULL; the same call against a target group with non-null `user_md` (including `''`) leaves the existing value untouched.
+  - Name-suffix resolution: a template with two `reviewer` slots spawned into an empty group yields `reviewer` + `reviewer-2`; spawned into a group that already contains `reviewer`, yields `reviewer-2` + `reviewer-3`. Response payload reflects the final names.
+  - Rollback retry: simulate a transient `rmdir EBUSY` on the first attempt, succeed on the second — assert cleanup completes and no orphan IDs appear in the error.
 - **Route tests** (`apps/daemon/test/routes/profile-groups.test.ts`):
   - Full CRUD + `/spawn` happy path against the in-memory test daemon.
   - `DELETE /api/profile-groups/:id` returns 404 for unknown id, succeeds for existing, leaves previously-spawned agents intact.
 - **CLI smoke test** — at minimum `bazilion profile-group list` + `show` against a seeded fixture, since the CLI is the support surface when the web UI breaks.
 - **Web e2e (optional, ship without if dev-only):** Playwright pass: create profile group → add 2 slots → spawn into new group → assert agent count on `/groups/<slug>` matches.
-- **First-run regression:** `apps/daemon/test/lib/ctx-bootstrap.test.ts` — after crossing the first-run threshold, `default-team` profile group exists and has ≥1 slot. The pre-existing `default` profile + `default` group seeding still works.
+- **First-run regression:** `apps/daemon/test/lib/ctx-bootstrap.test.ts` — confirm the pre-existing `default` profile + `default` group seeding still works and that NO `default-team` profile group is created (negative assertion, since we explicitly decided not to seed one).

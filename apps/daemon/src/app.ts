@@ -12,6 +12,7 @@ import { configRouter } from './routes/config.ts'
 import { groupsRouter } from './routes/groups.ts'
 import { messagesRouter } from './routes/messages.ts'
 import { miscRouter } from './routes/misc.ts'
+import { profileGroupsRouter } from './routes/profile-groups.ts'
 import { profilesRouter } from './routes/profiles.ts'
 import { skillsRouter } from './routes/skills.ts'
 import { triggersRouter } from './routes/triggers.ts'
@@ -26,6 +27,7 @@ export function createApp(): Hono {
 
   app.route('/api/agents', agentsRouter)
   app.route('/api/groups', groupsRouter)
+  app.route('/api/profile-groups', profileGroupsRouter)
   app.route('/api/profiles', profilesRouter)
   app.route('/api/skills', skillsRouter)
   app.route('/api/triggers', triggersRouter)
