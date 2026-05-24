@@ -1,27 +1,33 @@
 import type {
   Group,
+  Profile,
   ProfileGroupWithCount,
   SpawnProfileGroupResponse,
 } from '@bazilion/api-types'
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { useState } from 'react'
+import { type ModelGroup, type SlotDraft, SlotsEditor } from '../../components/SlotsEditor'
 import { TemplatesTabs } from '../../components/TemplatesTabs'
 import { daemonClient } from '../../lib/daemon-client'
 
 interface ProfileGroupsData {
   profileGroups: ProfileGroupWithCount[]
   groups: Group[]
+  profiles: Profile[]
+  modelGroups: ModelGroup[]
 }
 
 const fetchProfileGroupsData = createServerFn({ method: 'GET' }).handler(
   async (): Promise<ProfileGroupsData> => {
     const c = daemonClient()
-    const [profileGroups, groups] = await Promise.all([
+    const [profileGroups, groups, profiles, models] = await Promise.all([
       c.get<ProfileGroupWithCount[]>('/api/profile-groups'),
       c.get<Group[]>('/api/groups'),
+      c.get<Profile[]>('/api/profiles'),
+      c.get<{ groups: ModelGroup[] }>('/api/config/available-models'),
     ])
-    return { profileGroups, groups }
+    return { profileGroups, groups, profiles, modelGroups: models.groups }
   },
 )
 
@@ -31,7 +37,7 @@ export const Route = createFileRoute('/profile-groups/')({
 })
 
 function ProfileGroupsPage() {
-  const { profileGroups, groups } = Route.useLoaderData()
+  const { profileGroups, groups, profiles, modelGroups } = Route.useLoaderData()
   const router = useRouter()
   const [spawningId, setSpawningId] = useState<string | null>(null)
 
@@ -56,7 +62,11 @@ function ProfileGroupsPage() {
         spawn into a target group.
       </p>
 
-      <CreateProfileGroupForm onCreated={() => router.invalidate()} />
+      <CreateProfileGroupForm
+        profiles={profiles}
+        modelGroups={modelGroups}
+        onCreated={() => router.invalidate()}
+      />
 
       <table>
         <thead>
@@ -117,10 +127,19 @@ function ProfileGroupsPage() {
   )
 }
 
-function CreateProfileGroupForm({ onCreated }: { onCreated: () => void }) {
+function CreateProfileGroupForm({
+  profiles,
+  modelGroups,
+  onCreated,
+}: {
+  profiles: Profile[]
+  modelGroups: ModelGroup[]
+  onCreated: () => void
+}) {
   const [id, setId] = useState('')
   const [name, setName] = useState('')
   const [userMd, setUserMd] = useState('')
+  const [slots, setSlots] = useState<SlotDraft[]>([])
   const [err, setErr] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
@@ -133,21 +152,36 @@ function CreateProfileGroupForm({ onCreated }: { onCreated: () => void }) {
     }
     setSubmitting(true)
     try {
-      const body: Record<string, unknown> = { id: id.trim() }
-      if (name.trim()) body.name = name.trim()
-      if (userMd) body.userMd = userMd
-      const res = await fetch('/api/profile-groups', {
+      const createBody: Record<string, unknown> = { id: id.trim() }
+      if (name.trim()) createBody.name = name.trim()
+      if (userMd) createBody.userMd = userMd
+      const createRes = await fetch('/api/profile-groups', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify(createBody),
       })
-      if (!res.ok) {
-        const e2 = (await res.json().catch(() => null)) as { error?: string } | null
-        throw new Error(e2?.error ?? res.statusText)
+      if (!createRes.ok) {
+        const e2 = (await createRes.json().catch(() => null)) as { error?: string } | null
+        throw new Error(e2?.error ?? createRes.statusText)
+      }
+      // If slots were configured in the form, send them as a follow-up PUT.
+      // The two-call shape mirrors the API contract (POST creates basics, PUT
+      // /slots replaces the array) and keeps the route surface narrow.
+      if (slots.length > 0) {
+        const slotsRes = await fetch(`/api/profile-groups/${id.trim()}/slots`, {
+          method: 'PUT',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ slots }),
+        })
+        if (!slotsRes.ok) {
+          const e2 = (await slotsRes.json().catch(() => null)) as { error?: string } | null
+          throw new Error(`group created, slot save failed: ${e2?.error ?? slotsRes.statusText}`)
+        }
       }
       setId('')
       setName('')
       setUserMd('')
+      setSlots([])
       onCreated()
     } catch (e2) {
       setErr((e2 as Error).message)
@@ -160,7 +194,6 @@ function CreateProfileGroupForm({ onCreated }: { onCreated: () => void }) {
     <form className="card" onSubmit={submit}>
       <h3>create profile group</h3>
       {err && <div className="err">{err}</div>}
-      <p className="muted">Slots are configured on the detail page after creation.</p>
       <div className="flex gap-4">
         <label className="flex-1">
           id (slug)
@@ -173,21 +206,53 @@ function CreateProfileGroupForm({ onCreated }: { onCreated: () => void }) {
         </label>
         <label className="flex-1">
           name
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Platform Team" />
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Platform Team"
+          />
         </label>
       </div>
       <label>
         starter USER.md (optional — only seeded into freshly-created target groups)
         <textarea
-          rows={4}
+          rows={3}
           value={userMd}
           onChange={(e) => setUserMd(e.target.value)}
           className="font-mono text-[0.88em] leading-[1.55]"
         />
       </label>
-      <button type="submit" disabled={submitting}>
-        {submitting ? 'creating…' : 'create'}
-      </button>
+      <div className="mt-4">
+        <h4 className="mb-1 text-[0.95em] font-medium">slots</h4>
+        <p className="muted mb-2 text-[0.88em]">
+          Each slot becomes one agent when the team is spawned. You can also configure slots later
+          from the detail page.{' '}
+          {profiles.length > 0 && (
+            <>
+              Available profiles:{' '}
+              {profiles.map((p, i) => (
+                <span key={p.id}>
+                  {i > 0 && ', '}
+                  <code>{p.id}</code>
+                </span>
+              ))}
+              .
+            </>
+          )}
+        </p>
+        <SlotsEditor
+          slots={slots}
+          onChange={setSlots}
+          profiles={profiles}
+          modelGroups={modelGroups}
+          emptyHint="No slots configured yet — add one to pick a profile for each team member."
+        />
+      </div>
+      <div className="mt-4">
+        <button type="submit" disabled={submitting}>
+          {submitting ? 'creating…' : 'create'}
+        </button>
+      </div>
     </form>
   )
 }
