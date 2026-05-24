@@ -201,6 +201,14 @@
     overflow-y: scroll;
     scrollbar-gutter: stable;
     }
+  /* Home route locks both html and body to the viewport so the chat panel +
+   * sidebar own their own scroll. Set via `data-layout='home'` on <html>/<body>
+   * in __root.tsx (data-attribute, NOT className — see comment there). */
+  html[data-layout='home'],
+  body[data-layout='home'] {
+    height: 100dvh;
+    overflow: hidden;
+  }
   /* Subtle paper grain — the single most distinctive Baziu signal. */
   body::before {
     content: '';
