@@ -83,21 +83,20 @@ function RootComponent() {
     // On home, lock html + body to the viewport so only the chat panel + sidebar
     // scroll internally. Otherwise the global `html { overflow-y: scroll }` rule
     // (which keeps a stable scrollbar gutter on content pages) lets the whole
-    // page scroll when chat content overflows.
-    // suppressHydrationWarning: the THEME_INIT_SCRIPT below adds/removes the
-    // `dark` class on <html> before React hydrates, which would otherwise
-    // trip a hydration mismatch.
-    <html
-      lang="en"
-      className={isHome ? 'h-dvh overflow-hidden' : ''}
-      suppressHydrationWarning
-    >
+    // page scroll when chat content overflows. Per-route layout flag rides on
+    // `data-layout` (not className) so React's reconciliation never overwrites
+    // the `dark` class that THEME_INIT_SCRIPT sets on <html> pre-paint — see
+    // `html[data-layout='home']` in styles.css.
+    // suppressHydrationWarning: THEME_INIT_SCRIPT adds/removes the `dark` class
+    // on <html> before React hydrates, which would otherwise trip a hydration
+    // mismatch.
+    <html lang="en" data-layout={isHome ? 'home' : 'page'} suppressHydrationWarning>
       <head>
         {/* Runs before paint to apply the user's theme choice without FOUC. */}
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
         <HeadContent />
       </head>
-      <body className={isHome ? 'h-dvh overflow-hidden' : ''}>
+      <body data-layout={isHome ? 'home' : 'page'}>
         {isLogin ? (
           <Outlet />
         ) : isHome ? (
