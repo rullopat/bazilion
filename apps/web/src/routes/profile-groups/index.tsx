@@ -6,6 +6,7 @@ import type {
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { useState } from 'react'
+import { TemplatesTabs } from '../../components/TemplatesTabs'
 import { daemonClient } from '../../lib/daemon-client'
 
 interface ProfileGroupsData {
@@ -47,6 +48,7 @@ function ProfileGroupsPage() {
 
   return (
     <div>
+      <TemplatesTabs />
       <h1>profile groups</h1>
       <p className="muted">
         A profile group is a reusable team template. Each one holds an ordered list of slots —

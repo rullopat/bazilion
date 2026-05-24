@@ -2,6 +2,7 @@ import type { Profile, SkillInfo } from '@bazilion/api-types'
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { useState } from 'react'
+import { TemplatesTabs } from '../../components/TemplatesTabs'
 import { daemonClient } from '../../lib/daemon-client'
 
 interface ProfileWithCounts extends Profile {
@@ -56,6 +57,7 @@ function ProfilesPage() {
 
   return (
     <div>
+      <TemplatesTabs />
       <h1>profiles</h1>
       <p className="muted">
         A profile is a spawn template — SOUL/IDENTITY templates, a default model, a skills
