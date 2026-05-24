@@ -13,7 +13,7 @@ import { rmWithRetry } from './rm-with-retry.ts'
 
 export interface SpawnProfileGroupInput {
   profileGroupId: string
-  /** Target group slug. Falls back to `groupSlugHint`, then to the default group. */
+  /** Target group slug. Falls back to the default group when omitted. */
   groupSlug?: string
   /** Override the template's `userMd` for this spawn only. */
   userMd?: string
@@ -94,7 +94,7 @@ export async function spawnProfileGroup(
     throw new Error(`profile group spawn: missing profiles: ${missing.join(', ')}`)
   }
 
-  const targetSlug = input.groupSlug ?? template.groupSlugHint ?? DEFAULT_GROUP_ID
+  const targetSlug = input.groupSlug ?? DEFAULT_GROUP_ID
   const targetGroupExists = !!groupRepo.get(db, targetSlug, paths)
   const existingNames = new Set<string>(
     targetGroupExists

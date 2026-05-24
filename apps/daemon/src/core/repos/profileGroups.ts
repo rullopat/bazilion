@@ -9,7 +9,6 @@ import type { BazilionDb } from '../db/client.ts'
 interface RawProfileGroup {
   id: string
   name: string
-  group_slug_hint: string | null
   user_md: string | null
   created_at: number
   updated_at: number
@@ -32,7 +31,6 @@ function toProfileGroup(r: RawProfileGroup): ProfileGroup {
   return {
     id: r.id,
     name: r.name,
-    groupSlugHint: r.group_slug_hint,
     userMd: r.user_md,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
@@ -56,9 +54,9 @@ export function insert(
 ): ProfileGroup {
   const now = Date.now()
   db.raw.run(
-    `INSERT INTO profile_groups (id, name, group_slug_hint, user_md, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    [p.id, p.name, p.groupSlugHint, p.userMd, now, now],
+    `INSERT INTO profile_groups (id, name, user_md, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?)`,
+    [p.id, p.name, p.userMd, now, now],
   )
   return { ...p, createdAt: now, updatedAt: now }
 }
@@ -89,8 +87,6 @@ export function list(db: BazilionDb): ProfileGroupWithCount[] {
 export interface UpdateProfileGroupPatch {
   name?: string
   /** Pass `null` to clear; omit to leave unchanged. */
-  groupSlugHint?: string | null
-  /** Pass `null` to clear; omit to leave unchanged. */
   userMd?: string | null
 }
 
@@ -102,10 +98,6 @@ export function update(db: BazilionDb, id: string, patch: UpdateProfileGroupPatc
   if (Object.hasOwn(patch, 'name')) {
     sets.push('name = ?')
     args.push(patch.name as string)
-  }
-  if (Object.hasOwn(patch, 'groupSlugHint')) {
-    sets.push('group_slug_hint = ?')
-    args.push(patch.groupSlugHint ?? null)
   }
   if (Object.hasOwn(patch, 'userMd')) {
     sets.push('user_md = ?')

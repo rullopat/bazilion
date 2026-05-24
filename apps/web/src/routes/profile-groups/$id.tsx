@@ -90,7 +90,6 @@ function BasicsCard({
   onSaved: () => void
 }) {
   const [name, setName] = useState(group.name)
-  const [groupSlugHint, setGroupSlugHint] = useState(group.groupSlugHint ?? '')
   const [userMd, setUserMd] = useState(group.userMd ?? '')
   const [err, setErr] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -100,7 +99,6 @@ function BasicsCard({
     setSaving(true)
     try {
       const body: Record<string, unknown> = { name }
-      body.groupSlugHint = groupSlugHint.trim() === '' ? null : groupSlugHint.trim()
       body.userMd = userMd === '' ? null : userMd
       const res = await fetch(`/api/profile-groups/${group.id}`, {
         method: 'PATCH',
@@ -126,10 +124,6 @@ function BasicsCard({
       <label>
         name
         <input value={name} onChange={(e) => setName(e.target.value)} />
-      </label>
-      <label>
-        default target group slug (suggestion; overridable at spawn)
-        <input value={groupSlugHint} onChange={(e) => setGroupSlugHint(e.target.value)} />
       </label>
       <label>
         starter USER.md (seeded only into freshly-created target groups)

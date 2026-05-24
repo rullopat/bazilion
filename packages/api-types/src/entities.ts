@@ -139,9 +139,7 @@ export interface ResolvedAgent {
 export interface ProfileGroup {
   id: string
   name: string
-  /** Suggested target group slug; the spawn caller can override. Null = no suggestion. */
-  groupSlugHint: string | null
-  /** Optional starter USER.md content; only seeded when the target group's `userMd` is NULL. */
+  /** Optional starter USER.md content; only seeded into a freshly-created target group. */
   userMd: string | null
   createdAt: Timestamp
   updatedAt: Timestamp

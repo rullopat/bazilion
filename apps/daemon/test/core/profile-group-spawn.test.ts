@@ -31,15 +31,10 @@ interface SlotSpec {
   reasoningLevel?: 'medium' | 'high' | null
 }
 
-function makeTemplate(
-  id: string,
-  slots: SlotSpec[],
-  opts: { userMd?: string | null; groupSlugHint?: string | null } = {},
-): void {
+function makeTemplate(id: string, slots: SlotSpec[], opts: { userMd?: string | null } = {}): void {
   profileGroupRepo.insert(env.db, {
     id,
     name: id,
-    groupSlugHint: opts.groupSlugHint ?? null,
     userMd: opts.userMd ?? null,
   })
   profileGroupRepo.replaceSlots(
@@ -130,15 +125,11 @@ test('happy path: spawns into a freshly-created group', async () => {
   expect(existsSync(env.paths.groupDir('fresh-target'))).toBe(true)
 })
 
-test('happy path: groupSlug falls back to template.groupSlugHint, then DEFAULT_GROUP_ID', async () => {
+test('happy path: groupSlug falls back to DEFAULT_GROUP_ID when not provided', async () => {
   registerGroup(env.db, { id: 'default' }, env.paths)
-  makeTemplate('team', [{ profileId: 'p1', agentName: 'a' }], { groupSlugHint: env.groupId })
-  const r1 = await spawnProfileGroup(env.db, env.paths, { profileGroupId: 'team' })
-  expect(r1.groupSlug).toBe(env.groupId)
-
-  profileGroupRepo.update(env.db, 'team', { groupSlugHint: null })
-  const r2 = await spawnProfileGroup(env.db, env.paths, { profileGroupId: 'team' })
-  expect(r2.groupSlug).toBe('default')
+  makeTemplate('team', [{ profileId: 'p1', agentName: 'a' }])
+  const result = await spawnProfileGroup(env.db, env.paths, { profileGroupId: 'team' })
+  expect(result.groupSlug).toBe('default')
 })
 
 // --- pre-flight validation ---

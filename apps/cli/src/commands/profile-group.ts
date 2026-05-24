@@ -23,10 +23,6 @@ const createCmd = defineCommand({
   args: {
     id: { type: 'positional', required: true, description: 'Profile group slug' },
     name: { type: 'string', description: 'Display name (defaults to slug)' },
-    'group-slug': {
-      type: 'string',
-      description: 'Default target group slug (suggestion; overridable at spawn)',
-    },
     'user-md-file': {
       type: 'string',
       description: 'Path to a starter USER.md; seeded into a freshly-created target group',
@@ -35,7 +31,6 @@ const createCmd = defineCommand({
   async run({ args }) {
     const body: CreateProfileGroupRequest = { id: args.id }
     if (args.name) body.name = args.name
-    if (args['group-slug']) body.groupSlugHint = args['group-slug']
     if (args['user-md-file']) body.userMd = readFileSync(args['user-md-file'], 'utf8')
     const client = createClient()
     const created = await client.post<ProfileGroup>('/api/profile-groups', body)
@@ -71,10 +66,9 @@ const showCmd = defineCommand({
       return
     }
     console.log(`# ${detail.group.id}`)
-    console.log(`name:            ${detail.group.name}`)
-    console.log(`group-slug-hint: ${detail.group.groupSlugHint ?? '(none)'}`)
+    console.log(`name:    ${detail.group.name}`)
     console.log(
-      `user-md:         ${detail.group.userMd ? `${detail.group.userMd.length} chars` : '(none)'}`,
+      `user-md: ${detail.group.userMd ? `${detail.group.userMd.length} chars` : '(none)'}`,
     )
     console.log('')
     if (detail.slots.length === 0) {
@@ -97,14 +91,10 @@ const showCmd = defineCommand({
 })
 
 const updateCmd = defineCommand({
-  meta: { name: 'update', description: 'Update profile group basics (name, hint, user-md)' },
+  meta: { name: 'update', description: 'Update profile group basics (name, user-md)' },
   args: {
     id: { type: 'positional', required: true },
     name: { type: 'string', description: 'New display name' },
-    'group-slug': {
-      type: 'string',
-      description: 'New default target group slug (pass empty string to clear)',
-    },
     'user-md-file': {
       type: 'string',
       description: 'Path to new USER.md content (pass empty string to clear)',
@@ -113,14 +103,11 @@ const updateCmd = defineCommand({
   async run({ args }) {
     const body: UpdateProfileGroupRequest = {}
     if (args.name !== undefined) body.name = args.name
-    if (args['group-slug'] !== undefined) {
-      body.groupSlugHint = args['group-slug'] === '' ? null : args['group-slug']
-    }
     if (args['user-md-file'] !== undefined) {
       body.userMd = args['user-md-file'] === '' ? null : readFileSync(args['user-md-file'], 'utf8')
     }
     if (Object.keys(body).length === 0) {
-      throw new Error('nothing to update — pass at least one of --name/--group-slug/--user-md-file')
+      throw new Error('nothing to update — pass at least one of --name/--user-md-file')
     }
     const client = createClient()
     const updated = await client.patch<ProfileGroup>(`/api/profile-groups/${args.id}`, body)

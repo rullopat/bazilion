@@ -59,10 +59,9 @@ profileGroupsRouter.post('/', async (c) => {
     return c.json({ error: `profile group already exists: ${id}` }, 409)
   }
   const name = typeof raw.name === 'string' && raw.name.length > 0 ? raw.name : id
-  const groupSlugHint = typeof raw.groupSlugHint === 'string' ? raw.groupSlugHint : null
   const userMd = typeof raw.userMd === 'string' ? raw.userMd : null
   try {
-    const inserted = profileGroupRepo.insert(db, { id, name, groupSlugHint, userMd })
+    const inserted = profileGroupRepo.insert(db, { id, name, userMd })
     return c.json(inserted, 201)
   } catch (err) {
     return c.json({ error: (err as Error).message }, 400)
@@ -83,14 +82,6 @@ profileGroupsRouter.patch('/:id', async (c) => {
   const patch: UpdateProfileGroupPatch = {}
   if (Object.hasOwn(raw, 'name') && typeof raw.name === 'string') {
     patch.name = raw.name
-  }
-  if (Object.hasOwn(raw, 'groupSlugHint')) {
-    patch.groupSlugHint =
-      raw.groupSlugHint === null
-        ? null
-        : typeof raw.groupSlugHint === 'string'
-          ? raw.groupSlugHint
-          : null
   }
   if (Object.hasOwn(raw, 'userMd')) {
     patch.userMd = raw.userMd === null ? null : typeof raw.userMd === 'string' ? raw.userMd : null

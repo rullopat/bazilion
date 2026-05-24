@@ -18,7 +18,6 @@ test('insert + get round-trip', () => {
   const inserted = profileGroupRepo.insert(env.db, {
     id: 'platform-team',
     name: 'Platform Team',
-    groupSlugHint: 'acme-project',
     userMd: '# Project notes',
   })
   expect(inserted.id).toBe('platform-team')
@@ -33,22 +32,19 @@ test('get returns null for missing id', () => {
   expect(profileGroupRepo.get(env.db, 'ghost')).toBeNull()
 })
 
-test('insert accepts null hint/user_md', () => {
+test('insert accepts null user_md', () => {
   const g = profileGroupRepo.insert(env.db, {
     id: 't',
     name: 't',
-    groupSlugHint: null,
     userMd: null,
   })
-  expect(g.groupSlugHint).toBeNull()
   expect(g.userMd).toBeNull()
   const fetched = profileGroupRepo.get(env.db, 't')
-  expect(fetched?.groupSlugHint).toBeNull()
   expect(fetched?.userMd).toBeNull()
 })
 
 test('replaceSlots preserves position order', () => {
-  profileGroupRepo.insert(env.db, { id: 'team', name: 'team', groupSlugHint: null, userMd: null })
+  profileGroupRepo.insert(env.db, { id: 'team', name: 'team', userMd: null })
   profileGroupRepo.replaceSlots(env.db, 'team', [
     { profileId: 'p1', agentName: 'planner', modelOverride: null, reasoningLevel: null },
     {
@@ -67,7 +63,7 @@ test('replaceSlots preserves position order', () => {
 })
 
 test('replaceSlots PUT semantics: add, remove, reorder', () => {
-  profileGroupRepo.insert(env.db, { id: 'team', name: 'team', groupSlugHint: null, userMd: null })
+  profileGroupRepo.insert(env.db, { id: 'team', name: 'team', userMd: null })
   profileGroupRepo.replaceSlots(env.db, 'team', [
     { profileId: 'p1', agentName: 'a', modelOverride: null, reasoningLevel: null },
     { profileId: 'p1', agentName: 'b', modelOverride: null, reasoningLevel: null },
@@ -85,7 +81,7 @@ test('replaceSlots PUT semantics: add, remove, reorder', () => {
 })
 
 test('replaceSlots accepts duplicate agentName values (spawn handles via -2 suffix)', () => {
-  profileGroupRepo.insert(env.db, { id: 'team', name: 'team', groupSlugHint: null, userMd: null })
+  profileGroupRepo.insert(env.db, { id: 'team', name: 'team', userMd: null })
   profileGroupRepo.replaceSlots(env.db, 'team', [
     { profileId: 'p1', agentName: 'reviewer', modelOverride: null, reasoningLevel: null },
     { profileId: 'p1', agentName: 'reviewer', modelOverride: null, reasoningLevel: null },
@@ -97,7 +93,6 @@ test('update with partial patch only touches included keys', () => {
   const t0 = profileGroupRepo.insert(env.db, {
     id: 'team',
     name: 'Old name',
-    groupSlugHint: 'acme',
     userMd: 'original',
   })
   // Sleep 2ms so updated_at strictly increases (Date.now resolution).
@@ -108,21 +103,18 @@ test('update with partial patch only touches included keys', () => {
   profileGroupRepo.update(env.db, 'team', { name: 'New name' })
   const after = profileGroupRepo.get(env.db, 'team')
   expect(after?.name).toBe('New name')
-  expect(after?.groupSlugHint).toBe('acme') // untouched
   expect(after?.userMd).toBe('original') // untouched
   expect(after?.updatedAt).toBeGreaterThan(t0.updatedAt)
 })
 
-test('update with explicit null clears nullable columns', () => {
+test('update with explicit null clears userMd', () => {
   profileGroupRepo.insert(env.db, {
     id: 'team',
     name: 't',
-    groupSlugHint: 'acme',
     userMd: 'note',
   })
-  profileGroupRepo.update(env.db, 'team', { groupSlugHint: null, userMd: null })
+  profileGroupRepo.update(env.db, 'team', { userMd: null })
   const after = profileGroupRepo.get(env.db, 'team')
-  expect(after?.groupSlugHint).toBeNull()
   expect(after?.userMd).toBeNull()
 })
 
@@ -130,7 +122,6 @@ test('update with empty patch is a no-op (no SQL run)', () => {
   const t0 = profileGroupRepo.insert(env.db, {
     id: 'team',
     name: 't',
-    groupSlugHint: null,
     userMd: null,
   })
   profileGroupRepo.update(env.db, 'team', {})
@@ -140,7 +131,7 @@ test('update with empty patch is a no-op (no SQL run)', () => {
 })
 
 test('remove cascades to slots, leaves profiles intact', () => {
-  profileGroupRepo.insert(env.db, { id: 'team', name: 't', groupSlugHint: null, userMd: null })
+  profileGroupRepo.insert(env.db, { id: 'team', name: 't', userMd: null })
   profileGroupRepo.replaceSlots(env.db, 'team', [
     { profileId: 'p1', agentName: 'a', modelOverride: null, reasoningLevel: null },
     { profileId: 'p2', agentName: 'b', modelOverride: null, reasoningLevel: null },
@@ -156,7 +147,7 @@ test('remove cascades to slots, leaves profiles intact', () => {
 })
 
 test('ON DELETE RESTRICT blocks deleting a profile referenced by a slot', () => {
-  profileGroupRepo.insert(env.db, { id: 'team', name: 't', groupSlugHint: null, userMd: null })
+  profileGroupRepo.insert(env.db, { id: 'team', name: 't', userMd: null })
   profileGroupRepo.replaceSlots(env.db, 'team', [
     { profileId: 'p1', agentName: 'planner', modelOverride: null, reasoningLevel: null },
   ])
@@ -167,9 +158,9 @@ test('ON DELETE RESTRICT blocks deleting a profile referenced by a slot', () => 
 })
 
 test('list returns slotCount matching actual slot rows', () => {
-  profileGroupRepo.insert(env.db, { id: 'empty', name: 'e', groupSlugHint: null, userMd: null })
-  profileGroupRepo.insert(env.db, { id: 'one', name: 'o', groupSlugHint: null, userMd: null })
-  profileGroupRepo.insert(env.db, { id: 'three', name: 't', groupSlugHint: null, userMd: null })
+  profileGroupRepo.insert(env.db, { id: 'empty', name: 'e', userMd: null })
+  profileGroupRepo.insert(env.db, { id: 'one', name: 'o', userMd: null })
+  profileGroupRepo.insert(env.db, { id: 'three', name: 't', userMd: null })
   profileGroupRepo.replaceSlots(env.db, 'one', [
     { profileId: 'p1', agentName: 'a', modelOverride: null, reasoningLevel: null },
   ])
@@ -184,13 +175,13 @@ test('list returns slotCount matching actual slot rows', () => {
 })
 
 test('list orders by created_at ascending', () => {
-  profileGroupRepo.insert(env.db, { id: 'first', name: '1', groupSlugHint: null, userMd: null })
+  profileGroupRepo.insert(env.db, { id: 'first', name: '1', userMd: null })
   // Make sure created_at strictly differs.
   const start = Date.now()
   while (Date.now() === start) {
     // spin
   }
-  profileGroupRepo.insert(env.db, { id: 'second', name: '2', groupSlugHint: null, userMd: null })
+  profileGroupRepo.insert(env.db, { id: 'second', name: '2', userMd: null })
   const ids = profileGroupRepo.list(env.db).map((g) => g.id)
   expect(ids).toEqual(['first', 'second'])
 })

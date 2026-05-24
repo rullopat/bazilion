@@ -64,14 +64,13 @@ function ProfileGroupsPage() {
             <th>id</th>
             <th>name</th>
             <th>slots</th>
-            <th>group hint</th>
             <th />
           </tr>
         </thead>
         <tbody>
           {profileGroups.length === 0 && (
             <tr>
-              <td colSpan={5} className="muted">
+              <td colSpan={4} className="muted">
                 no profile groups yet
               </td>
             </tr>
@@ -85,9 +84,6 @@ function ProfileGroupsPage() {
               </td>
               <td>{g.name}</td>
               <td>{g.slotCount}</td>
-              <td>
-                {g.groupSlugHint ? <code>{g.groupSlugHint}</code> : <span className="muted">—</span>}
-              </td>
               <td className="flex gap-2">
                 <button
                   type="button"
@@ -124,7 +120,6 @@ function ProfileGroupsPage() {
 function CreateProfileGroupForm({ onCreated }: { onCreated: () => void }) {
   const [id, setId] = useState('')
   const [name, setName] = useState('')
-  const [groupSlugHint, setGroupSlugHint] = useState('')
   const [userMd, setUserMd] = useState('')
   const [err, setErr] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -140,7 +135,6 @@ function CreateProfileGroupForm({ onCreated }: { onCreated: () => void }) {
     try {
       const body: Record<string, unknown> = { id: id.trim() }
       if (name.trim()) body.name = name.trim()
-      if (groupSlugHint.trim()) body.groupSlugHint = groupSlugHint.trim()
       if (userMd) body.userMd = userMd
       const res = await fetch('/api/profile-groups', {
         method: 'POST',
@@ -153,7 +147,6 @@ function CreateProfileGroupForm({ onCreated }: { onCreated: () => void }) {
       }
       setId('')
       setName('')
-      setGroupSlugHint('')
       setUserMd('')
       onCreated()
     } catch (e2) {
@@ -167,10 +160,7 @@ function CreateProfileGroupForm({ onCreated }: { onCreated: () => void }) {
     <form className="card" onSubmit={submit}>
       <h3>create profile group</h3>
       {err && <div className="err">{err}</div>}
-      <p className="muted">
-        Slots are configured on the detail page after creation. The hint group is just a default —
-        the spawn modal lets you override per invocation.
-      </p>
+      <p className="muted">Slots are configured on the detail page after creation.</p>
       <div className="flex gap-4">
         <label className="flex-1">
           id (slug)
@@ -186,14 +176,6 @@ function CreateProfileGroupForm({ onCreated }: { onCreated: () => void }) {
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Platform Team" />
         </label>
       </div>
-      <label>
-        default target group slug (optional)
-        <input
-          value={groupSlugHint}
-          onChange={(e) => setGroupSlugHint(e.target.value)}
-          placeholder="acme-project"
-        />
-      </label>
       <label>
         starter USER.md (optional — only seeded into freshly-created target groups)
         <textarea
@@ -221,7 +203,7 @@ function SpawnTeamModal({
   onClose: () => void
   onSpawned: (groupSlug: string) => void
 }) {
-  const [groupSlug, setGroupSlug] = useState(profileGroup.groupSlugHint ?? '')
+  const [groupSlug, setGroupSlug] = useState('')
   const [userMd, setUserMd] = useState('')
   const [err, setErr] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)

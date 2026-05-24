@@ -13,8 +13,7 @@
 CREATE TABLE profile_groups (
   id              TEXT PRIMARY KEY,        -- slug, e.g. "platform-team"
   name            TEXT NOT NULL,           -- display name
-  group_slug_hint TEXT,                    -- optional default target group slug; treated as a suggestion at spawn time (operator can override via `--group <slug>` / web modal)
-  user_md         TEXT,                    -- optional starter USER.md; seeded into the target group only when the target's `user_md` IS NULL (empty string is operator-explicit, left alone)
+  user_md         TEXT,                    -- optional starter USER.md; seeded only into a freshly-created target group (pre-existing groups are left alone — see Decision #5)
   created_at      INTEGER NOT NULL,
   updated_at      INTEGER NOT NULL
 );

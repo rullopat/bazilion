@@ -128,16 +128,12 @@ export interface CreateProfileGroupRequest {
   id: string
   /** Optional display name. Defaults to `id`. */
   name?: string
-  /** Optional default target group slug (a suggestion; overridable at spawn). */
-  groupSlugHint?: string
   /** Optional starter USER.md content. */
   userMd?: string
 }
 
 export interface UpdateProfileGroupRequest {
   name?: string
-  /** Pass `null` to clear; omit to leave unchanged. */
-  groupSlugHint?: string | null
   /** Pass `null` to clear; omit to leave unchanged. */
   userMd?: string | null
 }
@@ -158,7 +154,7 @@ export interface PutProfileGroupSlotsRequest {
 }
 
 export interface SpawnProfileGroupRequest {
-  /** Target group slug. Falls back to `groupSlugHint`, then to the default group. */
+  /** Target group slug. Falls back to the default group when omitted. */
   groupSlug?: string
   /** Override the template's `userMd` for this spawn only. */
   userMd?: string

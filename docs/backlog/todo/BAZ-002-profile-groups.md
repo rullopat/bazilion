@@ -50,8 +50,7 @@ Two new tables in a new migration `apps/daemon/src/core/db/migrations/0002_profi
 CREATE TABLE profile_groups (
   id              TEXT PRIMARY KEY,        -- slug, e.g. "platform-team"
   name            TEXT NOT NULL,           -- display name
-  group_slug_hint TEXT,                    -- optional default target group slug (operator can override at spawn)
-  user_md         TEXT,                    -- optional starter USER.md seeded into the target group
+  user_md         TEXT,                    -- optional starter USER.md seeded only into a freshly-created target group
   created_at      INTEGER NOT NULL,
   updated_at      INTEGER NOT NULL
 );
@@ -86,7 +85,7 @@ CREATE TABLE profile_group_slots (
 - `GET /api/profile-groups` — list (id, name, slot count).
 - `GET /api/profile-groups/:id` — detail with slot array.
 - `POST /api/profile-groups` — create.
-- `PATCH /api/profile-groups/:id` — update name / user_md / group_slug_hint.
+- `PATCH /api/profile-groups/:id` — update name / user_md.
 - `PUT /api/profile-groups/:id/slots` — replace the full slot array atomically (simpler than per-slot CRUD; the web UI builds the array client-side and PUTs it).
 - `DELETE /api/profile-groups/:id` — delete the template. Does NOT touch agents previously spawned from it.
 - `POST /api/profile-groups/:id/spawn` — body `{ group_slug?: string, user_md?: string }`. Returns `{ group_slug, agents: [{ id, name }, ...] }`. The response includes the *final* agent names (post-suffixing — see "Name collisions" below) so the caller sees what was actually created.
@@ -104,7 +103,7 @@ So a template with two `reviewer` slots, spawned into an empty group, produces `
 
 Mirror the existing `bazilion profile` shape:
 
-- `bazilion profile-group create <id> --name <name> [--group-slug <slug>] [--user-md-file <path>]`
+- `bazilion profile-group create <id> --name <name> [--user-md-file <path>]`
 - `bazilion profile-group list`
 - `bazilion profile-group show <id>` (renders slots as a table)
 - `bazilion profile-group edit <id>` (opens slot array as JSON in `$EDITOR`; PUT on save)
@@ -115,9 +114,9 @@ Mirror the existing `bazilion profile` shape:
 
 - `index.tsx` — list with slot count + "Spawn team" button per row.
 - `$id.tsx` — detail page with two cards:
-  - **Basics:** name, group slug hint, USER.md textarea.
+  - **Basics:** name, USER.md textarea.
   - **Slots:** drag-to-reorder list (reuse the existing skill-list dnd-kit pattern if present, else `@dnd-kit/sortable`). Each slot row: profile picker (from existing `/profiles` data), agent name input, model override picker (optional), reasoning level picker (optional). "Add slot" appends to the bottom.
-- "Spawn team" CTA on both the index row and the detail page → modal prompting for target group slug (prefilled from `group_slug_hint` if set) → POST `/spawn` → redirect to `/groups/:slug` showing the newly populated roster.
+- "Spawn team" CTA on the index row → modal prompting for target group slug (picked from existing groups via datalist or typed for a new one) → POST `/spawn` → redirect to `/groups/:slug` showing the newly populated roster.
 - "Spawn team from template" CTA on `/groups/:slug` when the group is empty.
 
 ### First-run seeding
@@ -138,7 +137,7 @@ Mirror the existing `bazilion profile` shape:
 1. **No default-team seeding.** Profile groups are an advanced, personal-to-the-operator feature; a generic seeded team would be misleading. First-run continues to seed only the `default` profile + `default` group as today.
 2. **Atomic-rollback cleanup retries with backoff** — 3 attempts at 100ms / 500ms / 2s before giving up. On exhaustion, log the orphan agent IDs and include them in the thrown error so the route response surfaces them to the operator; the original spawn error remains the root cause.
 3. **Name collisions auto-suffix with a numeric counter** at spawn time (`reviewer`, `reviewer-2`, `reviewer-3`, ...). Duplicates within a template are accepted at PUT time — they're a valid way to ask for N copies. Suffixing also resolves collisions with agents already in the target group. See "Name collisions" under Routes.
-4. **`group_slug_hint` is a suggestion.** Web prefills the spawn modal from it; CLI `--group <slug>` and the API body's `group_slug` override freely. The same template can be reused across projects without editing.
+4. **No `group_slug_hint` column.** Originally specced as a "suggestion" prefill, but in practice every spawn flow either has a contextual target (the group-detail CTA) or none at all (the index-page modal) — a per-template default added clutter for marginal benefit. The spawn op's slug fallback chain is now `input.groupSlug ?? DEFAULT_GROUP_ID`.
 5. **USER.md is only seeded when the target group's `user_md` is `NULL`.** Empty string `''` is treated as "operator explicitly cleared this" and left alone.
 
 ## Deliverable
