@@ -414,13 +414,7 @@ export function webTools(opts?: WebToolsOpts): ToolHandler[] {
             !firecrawlDisabled &&
             extracted.text.length < FIRECRAWL_FALLBACK_THRESHOLD
           ) {
-            const rescued = await firecrawlScrape(
-              result.finalUrl,
-              mode,
-              env,
-              fetchFn,
-              timeoutMs,
-            )
+            const rescued = await firecrawlScrape(result.finalUrl, mode, env, fetchFn, timeoutMs)
             if (rescued) {
               extracted = {
                 ...rescued,

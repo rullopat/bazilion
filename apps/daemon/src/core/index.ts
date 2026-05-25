@@ -44,11 +44,18 @@ export {
 } from './profile/templates.ts'
 export type { UpdateProfileInput } from './profile/update.ts'
 export { updateProfile } from './profile/update.ts'
+export type { SpawnProfileGroupInput, SpawnProfileGroupResult } from './profile-group/spawn.ts'
+export {
+  resolveMemberNames,
+  SpawnProfileGroupError,
+  spawnProfileGroup,
+} from './profile-group/spawn.ts'
 export * as agentRepo from './repos/agents.ts'
 export type { ConfigStore } from './repos/config.ts'
 export { CONFIG_KEYS, isConfigKey, openConfig } from './repos/config.ts'
 export * as groupRepo from './repos/groups.ts'
 export * as messageRepo from './repos/messages.ts'
+export * as profileGroupRepo from './repos/profileGroups.ts'
 export * as profileRepo from './repos/profiles.ts'
 export * as providerModelRepo from './repos/providerModels.ts'
 export * as providerStateRepo from './repos/providerState.ts'

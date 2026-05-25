@@ -1,17 +1,19 @@
 // Left sidebar: collapsible groups + agent rows + spawn dropdown. Each agent
 // row reveals rename (✎) and archive (×) buttons on hover.
 
-import type { Agent, Group, Profile } from '@bazilion/api-types'
+import type { Agent, Group, Profile, ProfileGroupWithCount } from '@bazilion/api-types'
 import { Link, useRouter } from '@tanstack/react-router'
 import { useState } from 'react'
 import { DEFAULT_GROUP_ID, DEFAULT_PROFILE_ID } from '../lib/wire-constants'
 import { CreateGroupDialog } from './CreateGroupDialog'
 import { SpawnDialog } from './SpawnDialog'
+import { SpawnTeamModal } from './SpawnTeamModal'
 
 interface Props {
   agents: Agent[]
   groups: Group[]
   profiles: Profile[]
+  profileGroups: ProfileGroupWithCount[]
   selectedAgentId: string | null
   /** Per-group open/closed map seeded by SSR from the cookie. */
   initialOpenGroups?: Record<string, boolean>
@@ -35,11 +37,13 @@ export function Sidebar({
   agents,
   groups,
   profiles,
+  profileGroups,
   selectedAgentId,
   initialOpenGroups,
 }: Props) {
   const router = useRouter()
   const [spawnFor, setSpawnFor] = useState<{ profileId: string; groupHint?: string } | null>(null)
+  const [spawnTeamFor, setSpawnTeamFor] = useState<ProfileGroupWithCount | null>(null)
   const [createGroupOpen, setCreateGroupOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   // Seeded by SSR from the cookie so the first paint matches the user's
@@ -109,7 +113,7 @@ export function Sidebar({
           {menuOpen && (
             <div
               role="menu"
-              className="absolute right-0 top-[calc(100%+0.3rem)] z-20 min-w-[12rem] rounded-md border bg-popover p-1 shadow-md"
+              className="absolute right-0 top-[calc(100%+0.3rem)] z-20 min-w-[14rem] rounded-md border bg-popover p-1 shadow-md"
               onMouseLeave={() => setMenuOpen(false)}
             >
               {profiles.length === 0 ? (
@@ -124,7 +128,7 @@ export function Sidebar({
               ) : (
                 <>
                   <div className="px-3 pt-1 pb-0.5 text-[0.7em] uppercase tracking-wide text-muted-foreground">
-                    spawn from profile
+                    spawn agent from template
                   </div>
                   {sortedProfiles.map((p) => (
                     <button
@@ -148,6 +152,43 @@ export function Sidebar({
                 </>
               )}
               <div className="my-1 h-px bg-border" />
+              <div className="px-3 pt-1 pb-0.5 text-[0.7em] uppercase tracking-wide text-muted-foreground">
+                spawn group from template
+              </div>
+              {profileGroups.length === 0 ? (
+                <div className="px-3 py-1.5 text-xs text-muted-foreground">
+                  No team templates yet.{' '}
+                  <a href="/profile-groups" className="text-primary underline">
+                    Create one
+                  </a>
+                  .
+                </div>
+              ) : (
+                profileGroups.map((pg) => (
+                  <button
+                    key={pg.id}
+                    type="button"
+                    role="menuitem"
+                    disabled={pg.memberCount === 0}
+                    title={
+                      pg.memberCount === 0
+                        ? 'add at least one member before spawning'
+                        : undefined
+                    }
+                    onClick={() => {
+                      setMenuOpen(false)
+                      setSpawnTeamFor(pg)
+                    }}
+                    className="flex w-full items-center justify-between rounded-sm px-3 py-1.5 text-sm hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent"
+                  >
+                    <span>{pg.name || pg.id}</span>
+                    <span className="font-mono text-[0.7em] text-muted-foreground">
+                      {pg.memberCount}
+                    </span>
+                  </button>
+                ))
+              )}
+              <div className="my-1 h-px bg-border" />
               <button
                 type="button"
                 onClick={() => {
@@ -158,18 +199,6 @@ export function Sidebar({
               >
                 + create group
               </button>
-              <a
-                href="/agents"
-                className="block rounded-sm px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent"
-              >
-                manage agents →
-              </a>
-              <a
-                href="/groups"
-                className="block rounded-sm px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent"
-              >
-                manage groups →
-              </a>
             </div>
           )}
         </div>
@@ -279,6 +308,17 @@ export function Sidebar({
           groupHint={spawnFor.groupHint}
           groups={sortedGroups}
           onClose={() => setSpawnFor(null)}
+        />
+      )}
+      {spawnTeamFor && (
+        <SpawnTeamModal
+          profileGroup={spawnTeamFor}
+          groups={sortedGroups}
+          onClose={() => setSpawnTeamFor(null)}
+          onSpawned={(slug) => {
+            setSpawnTeamFor(null)
+            router.navigate({ to: '/groups/$id', params: { id: slug } })
+          }}
         />
       )}
       {createGroupOpen && <CreateGroupDialog onClose={() => setCreateGroupOpen(false)} />}

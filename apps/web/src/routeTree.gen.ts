@@ -14,10 +14,12 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SkillsIndexRouteImport } from './routes/skills/index'
 import { Route as ProfilesIndexRouteImport } from './routes/profiles/index'
+import { Route as ProfileGroupsIndexRouteImport } from './routes/profile-groups/index'
 import { Route as GroupsIndexRouteImport } from './routes/groups/index'
 import { Route as ConfigIndexRouteImport } from './routes/config/index'
 import { Route as AgentsIndexRouteImport } from './routes/agents/index'
 import { Route as ProfilesIdRouteImport } from './routes/profiles/$id'
+import { Route as ProfileGroupsIdRouteImport } from './routes/profile-groups/$id'
 import { Route as ConfigTokensRouteImport } from './routes/config/tokens'
 import { Route as ConfigServicesRouteImport } from './routes/config/services'
 import { Route as ApiSplatRouteImport } from './routes/api/$'
@@ -52,6 +54,11 @@ const ProfilesIndexRoute = ProfilesIndexRouteImport.update({
   path: '/profiles/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ProfileGroupsIndexRoute = ProfileGroupsIndexRouteImport.update({
+  id: '/profile-groups/',
+  path: '/profile-groups/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const GroupsIndexRoute = GroupsIndexRouteImport.update({
   id: '/groups/',
   path: '/groups/',
@@ -70,6 +77,11 @@ const AgentsIndexRoute = AgentsIndexRouteImport.update({
 const ProfilesIdRoute = ProfilesIdRouteImport.update({
   id: '/profiles/$id',
   path: '/profiles/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProfileGroupsIdRoute = ProfileGroupsIdRouteImport.update({
+  id: '/profile-groups/$id',
+  path: '/profile-groups/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ConfigTokensRoute = ConfigTokensRouteImport.update({
@@ -120,10 +132,12 @@ export interface FileRoutesByFullPath {
   '/api/$': typeof ApiSplatRoute
   '/config/services': typeof ConfigServicesRoute
   '/config/tokens': typeof ConfigTokensRoute
+  '/profile-groups/$id': typeof ProfileGroupsIdRoute
   '/profiles/$id': typeof ProfilesIdRoute
   '/agents/': typeof AgentsIndexRoute
   '/config/': typeof ConfigIndexRoute
   '/groups/': typeof GroupsIndexRoute
+  '/profile-groups/': typeof ProfileGroupsIndexRoute
   '/profiles/': typeof ProfilesIndexRoute
   '/skills/': typeof SkillsIndexRoute
   '/agents/$id/inbox': typeof AgentsIdInboxRoute
@@ -139,10 +153,12 @@ export interface FileRoutesByTo {
   '/api/$': typeof ApiSplatRoute
   '/config/services': typeof ConfigServicesRoute
   '/config/tokens': typeof ConfigTokensRoute
+  '/profile-groups/$id': typeof ProfileGroupsIdRoute
   '/profiles/$id': typeof ProfilesIdRoute
   '/agents': typeof AgentsIndexRoute
   '/config': typeof ConfigIndexRoute
   '/groups': typeof GroupsIndexRoute
+  '/profile-groups': typeof ProfileGroupsIndexRoute
   '/profiles': typeof ProfilesIndexRoute
   '/skills': typeof SkillsIndexRoute
   '/agents/$id/inbox': typeof AgentsIdInboxRoute
@@ -159,10 +175,12 @@ export interface FileRoutesById {
   '/api/$': typeof ApiSplatRoute
   '/config/services': typeof ConfigServicesRoute
   '/config/tokens': typeof ConfigTokensRoute
+  '/profile-groups/$id': typeof ProfileGroupsIdRoute
   '/profiles/$id': typeof ProfilesIdRoute
   '/agents/': typeof AgentsIndexRoute
   '/config/': typeof ConfigIndexRoute
   '/groups/': typeof GroupsIndexRoute
+  '/profile-groups/': typeof ProfileGroupsIndexRoute
   '/profiles/': typeof ProfilesIndexRoute
   '/skills/': typeof SkillsIndexRoute
   '/agents/$id/inbox': typeof AgentsIdInboxRoute
@@ -180,10 +198,12 @@ export interface FileRouteTypes {
     | '/api/$'
     | '/config/services'
     | '/config/tokens'
+    | '/profile-groups/$id'
     | '/profiles/$id'
     | '/agents/'
     | '/config/'
     | '/groups/'
+    | '/profile-groups/'
     | '/profiles/'
     | '/skills/'
     | '/agents/$id/inbox'
@@ -199,10 +219,12 @@ export interface FileRouteTypes {
     | '/api/$'
     | '/config/services'
     | '/config/tokens'
+    | '/profile-groups/$id'
     | '/profiles/$id'
     | '/agents'
     | '/config'
     | '/groups'
+    | '/profile-groups'
     | '/profiles'
     | '/skills'
     | '/agents/$id/inbox'
@@ -218,10 +240,12 @@ export interface FileRouteTypes {
     | '/api/$'
     | '/config/services'
     | '/config/tokens'
+    | '/profile-groups/$id'
     | '/profiles/$id'
     | '/agents/'
     | '/config/'
     | '/groups/'
+    | '/profile-groups/'
     | '/profiles/'
     | '/skills/'
     | '/agents/$id/inbox'
@@ -238,10 +262,12 @@ export interface RootRouteChildren {
   ApiSplatRoute: typeof ApiSplatRoute
   ConfigServicesRoute: typeof ConfigServicesRoute
   ConfigTokensRoute: typeof ConfigTokensRoute
+  ProfileGroupsIdRoute: typeof ProfileGroupsIdRoute
   ProfilesIdRoute: typeof ProfilesIdRoute
   AgentsIndexRoute: typeof AgentsIndexRoute
   ConfigIndexRoute: typeof ConfigIndexRoute
   GroupsIndexRoute: typeof GroupsIndexRoute
+  ProfileGroupsIndexRoute: typeof ProfileGroupsIndexRoute
   ProfilesIndexRoute: typeof ProfilesIndexRoute
   SkillsIndexRoute: typeof SkillsIndexRoute
   AgentsIdInboxRoute: typeof AgentsIdInboxRoute
@@ -288,6 +314,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProfilesIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/profile-groups/': {
+      id: '/profile-groups/'
+      path: '/profile-groups'
+      fullPath: '/profile-groups/'
+      preLoaderRoute: typeof ProfileGroupsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/groups/': {
       id: '/groups/'
       path: '/groups'
@@ -314,6 +347,13 @@ declare module '@tanstack/react-router' {
       path: '/profiles/$id'
       fullPath: '/profiles/$id'
       preLoaderRoute: typeof ProfilesIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/profile-groups/$id': {
+      id: '/profile-groups/$id'
+      path: '/profile-groups/$id'
+      fullPath: '/profile-groups/$id'
+      preLoaderRoute: typeof ProfileGroupsIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/config/tokens': {
@@ -382,10 +422,12 @@ const rootRouteChildren: RootRouteChildren = {
   ApiSplatRoute: ApiSplatRoute,
   ConfigServicesRoute: ConfigServicesRoute,
   ConfigTokensRoute: ConfigTokensRoute,
+  ProfileGroupsIdRoute: ProfileGroupsIdRoute,
   ProfilesIdRoute: ProfilesIdRoute,
   AgentsIndexRoute: AgentsIndexRoute,
   ConfigIndexRoute: ConfigIndexRoute,
   GroupsIndexRoute: GroupsIndexRoute,
+  ProfileGroupsIndexRoute: ProfileGroupsIndexRoute,
   ProfilesIndexRoute: ProfilesIndexRoute,
   SkillsIndexRoute: SkillsIndexRoute,
   AgentsIdInboxRoute: AgentsIdInboxRoute,

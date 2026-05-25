@@ -24,7 +24,7 @@ export function userMdTools(host: UserMdHost, groupId: string): ToolHandler[] {
       def: {
         name: 'user_md_get',
         description:
-          "Read the group-shared USER.md (facts every agent in the group knows about the human). Returns the current content followed by an `etag:` line — you MUST pass that etag back as `if_match` on the next `user_md_write` so the daemon can detect concurrent edits by other agents in the group. Always call this immediately before any `user_md_write`.",
+          'Read the group-shared USER.md (facts every agent in the group knows about the human). Returns the current content followed by an `etag:` line — you MUST pass that etag back as `if_match` on the next `user_md_write` so the daemon can detect concurrent edits by other agents in the group. Always call this immediately before any `user_md_write`.',
         parameters: {
           type: 'object',
           properties: {},
@@ -40,7 +40,7 @@ export function userMdTools(host: UserMdHost, groupId: string): ToolHandler[] {
       def: {
         name: 'user_md_write',
         description:
-          "Replace the group-shared USER.md with new content. Use this for STABLE user-specific facts (preferences, role, working hours, how the human likes to be addressed). MANDATORY workflow: (1) call `user_md_get` first, (2) integrate your change into the full content preserving everything unrelated, (3) call `user_md_write` with the merged content and the etag you got from `user_md_get`. If another agent in the group wrote to USER.md between your get and write, this returns an etag-mismatch error — just call `user_md_get` again and retry the merge. The full result must fit under 12 KB. For project knowledge use `memory_write`; for notes about yourself use `home_write` on IDENTITY.md.",
+          'Replace the group-shared USER.md with new content. Use this for STABLE user-specific facts (preferences, role, working hours, how the human likes to be addressed). MANDATORY workflow: (1) call `user_md_get` first, (2) integrate your change into the full content preserving everything unrelated, (3) call `user_md_write` with the merged content and the etag you got from `user_md_get`. If another agent in the group wrote to USER.md between your get and write, this returns an etag-mismatch error — just call `user_md_get` again and retry the merge. The full result must fit under 12 KB. For project knowledge use `memory_write`; for notes about yourself use `home_write` on IDENTITY.md.',
         parameters: {
           type: 'object',
           properties: {

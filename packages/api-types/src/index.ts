@@ -15,6 +15,10 @@ export type {
   Message,
   OpenAICodexStatus,
   Profile,
+  ProfileGroup,
+  ProfileGroupDetail,
+  ProfileGroupMember,
+  ProfileGroupWithCount,
   ReasoningLevel,
   ResolvedAgent,
   SkillMeta,
@@ -115,6 +119,53 @@ export interface CreateProfileRequest {
   tools?: string
   /** Initial HEARTBEAT.md content. Omit to skip; pass a string to seed the file. */
   heartbeat?: string
+}
+
+// --- profile groups ---
+
+export interface CreateProfileGroupRequest {
+  /** Slug (lowercase, digits, hyphens). Becomes the row id. */
+  id: string
+  /** Optional display name. Defaults to `id`. */
+  name?: string
+  /** Optional starter USER.md content. */
+  userMd?: string
+}
+
+export interface UpdateProfileGroupRequest {
+  name?: string
+  /** Pass `null` to clear; omit to leave unchanged. */
+  userMd?: string | null
+}
+
+/**
+ * PUT-replace semantics: the entire member array is replaced atomically.
+ * `position` is implicit from array order (0-based).
+ * Duplicate `agentName` values across members are accepted at PUT time —
+ * the spawn op auto-suffixes collisions with `-2`, `-3`, ... at spawn time.
+ */
+export interface PutProfileGroupMembersRequest {
+  members: Array<{
+    profileId: string
+    agentName: string
+    modelOverride?: string | null
+    reasoningLevel?: ReasoningLevel | null
+  }>
+}
+
+export interface SpawnProfileGroupRequest {
+  /** Target group slug. Falls back to the default group when omitted. */
+  groupSlug?: string
+  /** Override the template's `userMd` for this spawn only. */
+  userMd?: string
+}
+
+export interface SpawnProfileGroupResponse {
+  groupSlug: string
+  /** Created agents in spawn order, with their final (post-suffix) names. */
+  agents: { id: string; name: string }[]
+  /** Populated only when cleanup retries were exhausted during a rollback. */
+  orphanAgentIds?: string[]
 }
 
 // --- groups ---

@@ -15,6 +15,7 @@ import { inboxCommand } from './commands/inbox.ts'
 import { loginCommand } from './commands/login.ts'
 import { memoryCommand } from './commands/memory.ts'
 import { profileCommand } from './commands/profile.ts'
+import { profileGroupCommand } from './commands/profile-group.ts'
 import { providerCommand } from './commands/provider.ts'
 import { sendCommand } from './commands/send.ts'
 import { serveCommand } from './commands/serve.ts'
@@ -32,6 +33,7 @@ const main = defineCommand({
   subCommands: {
     login: loginCommand,
     profile: profileCommand,
+    'profile-group': profileGroupCommand,
     group: groupCommand,
     agent: agentCommand,
     skill: skillCommand,
@@ -126,6 +128,7 @@ function printTopLevelHelp(): void {
       title: 'catalog',
       items: [
         ['profile', 'Manage profiles (templates agents are spawned from)'],
+        ['profile-group', 'Manage profile groups (preconfigured team templates)'],
         ['group', 'Manage groups (collaboration context — filesystem root + USER.md + roster)'],
         ['skill', 'Manage the skill library'],
         ['provider', 'Manage and test LLM providers'],

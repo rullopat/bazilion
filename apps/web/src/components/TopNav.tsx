@@ -3,7 +3,7 @@ import { BaziuLogo } from './BaziuLogo'
 import { ThemeToggle } from './ThemeToggle'
 
 const NAV_LINKS = [
-  { to: '/profiles', label: 'profiles' },
+  { to: '/profiles', label: 'templates' },
   { to: '/agents', label: 'agents' },
   { to: '/groups', label: 'groups' },
   { to: '/skills', label: 'skills' },

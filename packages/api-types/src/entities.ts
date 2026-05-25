@@ -130,6 +130,39 @@ export interface ResolvedAgent {
   skills: string[]
 }
 
+/**
+ * A profile group is a reusable team template: an ordered list of slots,
+ * each pointing at an existing Profile with optional per-slot overrides.
+ * Spawning a profile group creates N agents in one transactional call.
+ * Strictly additive — the single-profile spawn path is untouched.
+ */
+export interface ProfileGroup {
+  id: string
+  name: string
+  /** Optional starter USER.md content; only seeded into a freshly-created target group. */
+  userMd: string | null
+  createdAt: Timestamp
+  updatedAt: Timestamp
+}
+
+export interface ProfileGroupMember {
+  profileGroupId: string
+  position: number
+  profileId: string
+  agentName: string
+  modelOverride: string | null
+  reasoningLevel: ReasoningLevel | null
+}
+
+export interface ProfileGroupDetail {
+  group: ProfileGroup
+  members: ProfileGroupMember[]
+}
+
+export interface ProfileGroupWithCount extends ProfileGroup {
+  memberCount: number
+}
+
 export interface LoadedProfile {
   profile: Profile
   defaultSkills: string[]

@@ -18,11 +18,7 @@
 import { createHash } from 'node:crypto'
 import { type BazilionDb, groupRepo } from '../core/index.ts'
 import type { Paths } from '../core/paths.ts'
-import type {
-  UserMdGetResult,
-  UserMdHost,
-  UserMdWriteResult,
-} from '../runtime/index.ts'
+import type { UserMdGetResult, UserMdHost, UserMdWriteResult } from '../runtime/index.ts'
 
 export const USER_MD_MAX_BYTES = 12_000
 

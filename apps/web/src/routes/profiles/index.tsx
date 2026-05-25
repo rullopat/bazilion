@@ -2,6 +2,8 @@ import type { Profile, SkillInfo } from '@bazilion/api-types'
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { useState } from 'react'
+import { Button } from '../../components/Button'
+import { TemplatesTabs } from '../../components/TemplatesTabs'
 import { daemonClient } from '../../lib/daemon-client'
 
 interface ProfileWithCounts extends Profile {
@@ -50,12 +52,18 @@ function ProfilesPage() {
 
   async function del(id: string) {
     if (!confirm('delete profile and all its files?')) return
-    await fetch(`/api/profiles/${id}`, { method: 'DELETE' })
+    const res = await fetch(`/api/profiles/${id}`, { method: 'DELETE' })
+    if (!res.ok && res.status !== 204) {
+      const body = (await res.json().catch(() => null)) as { error?: string } | null
+      alert(body?.error ?? res.statusText)
+      return
+    }
     await router.invalidate()
   }
 
   return (
     <div>
+      <TemplatesTabs />
       <h1>profiles</h1>
       <p className="muted">
         A profile is a spawn template — SOUL/IDENTITY templates, a default model, a skills
@@ -110,9 +118,9 @@ function ProfilesPage() {
                 <td className="text-xs text-mocha-light">{skillsLabel}</td>
                 <td>
                   {p.agentCount === 0 ? (
-                    <button type="button" className="ghost-btn" onClick={() => del(p.id)}>
+                    <Button variant="danger" onClick={() => del(p.id)}>
                       delete
-                    </button>
+                    </Button>
                   ) : (
                     <span className="muted" title={`${p.agentCount} agent(s) use this profile`}>
                       in use
@@ -418,9 +426,9 @@ function CreateProfileForm({
       )}
 
       <div className="mt-5 flex gap-2">
-        <button type="submit" disabled={submitting}>
+        <Button variant="primary" type="submit" disabled={submitting}>
           {submitting ? 'creating…' : 'create'}
-        </button>
+        </Button>
       </div>
     </form>
   )
