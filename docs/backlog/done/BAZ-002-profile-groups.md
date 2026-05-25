@@ -1,10 +1,13 @@
 ---
 id: BAZ-002
 title: Profile Groups — preconfigured team templates
-status: todo
+status: done
 size: M (≈1 week)
 created: 2026-05-23
 refined: 2026-05-24
+shipped: 2026-05-25
+release: v0.2.0
+pr: 1
 note: Additive feature — single-profile spawn is untouched. Profile groups bundle existing primitives (profiles, groups, spawn), they don't replace them.
 ---
 
@@ -166,3 +169,27 @@ A working profile-group lifecycle end-to-end, with both surfaces:
 - **CLI smoke test** — at minimum `bazilion profile-group list` + `show` against a seeded fixture, since the CLI is the support surface when the web UI breaks.
 - **Web e2e (optional, ship without if dev-only):** Playwright pass: create profile group → add 2 members → spawn into new group → assert agent count on `/groups/<slug>` matches.
 - **First-run regression:** `apps/daemon/test/lib/ctx-bootstrap.test.ts` — confirm the pre-existing `default` profile + `default` group seeding still works and that NO `default-team` profile group is created (negative assertion, since we explicitly decided not to seed one).
+
+## As-built (2026-05-25, shipped in v0.2.0 / PR #1)
+
+Landed pretty close to the plan. Notable deltas:
+
+- **`slots` → `members` rename mid-PR.** Originally specced as "slots" (since the column held an ordered list of template positions). Renamed everywhere — DB columns, repo functions, wire types, route bodies, UI labels — once it became clear that "members" reads better in product copy ("a profile group has 3 members" vs "3 slots"). Migration `0002_profile_groups.sql` was edited in place rather than chained, since the project is alpha and we wipe DBs on shape changes.
+- **`groupSlugHint` dropped entirely.** The plan retained it as an optional "suggested target group" per template. In practice every spawn surface either has a contextual target (the group-detail CTA passes the current slug) or none at all (the index-page modal asks the user); a per-template default added clutter for marginal benefit. The spawn op's slug fallback chain landed as `input.groupSlug ?? DEFAULT_GROUP_ID`.
+- **USER.md seeding semantics simplified.** Decision #5 was originally "overwrite only when target's `user_md` is `null`". The implementation lands as "seed only when `groupCreated === true` during this spawn call" — the `groups.user_md` column is `TEXT NOT NULL DEFAULT ''`, so we can't reliably distinguish "never set" from "cleared". The new constraint is simpler and matches the operator's mental model: "USER.md from the template fills in only when the group is created on the fly".
+- **`rmWithRetry` extracted to its own module.** Originally inlined into `spawnProfileGroup`'s catch path. Vitest's `vi.spyOn` doesn't work on ESM exports (`Cannot redefine property: rmSync`), so the retry helper was lifted into `apps/daemon/src/core/profile-group/rm-with-retry.ts` with dependency-injected `rm` + `sleep` and unit-tested with fakes. Side benefit: explicit `DEFAULT_RM_RETRY_DELAYS_MS = [100, 500, 2000]` constant lives next to the code that uses it.
+- **Web UI: "templates" tab merge.** Not in the original plan. Profiles and Profile Groups both ship under a single top-nav `templates` entry with a sub-tab strip (`apps/web/src/components/TemplatesTabs.tsx`), keeping the nav from sprawling.
+- **Sidebar `+ new ▾` rework.** Not in the original plan. Two labeled sections — "spawn agent from template" (profiles) and "spawn group from template" (profile groups) — replace the old single "spawn from profile" list. The earlier "manage agents →" / "manage groups →" footer links were dropped (top-nav already covers them).
+- **Friendly profile-delete error.** Discovered during end-to-end testing: deleting a profile still referenced by a profile-group member produced a raw `FOREIGN KEY constraint failed` and the web UI silently dropped it. Added a pre-check in `deleteProfile` (mirroring the existing agents pre-check) + `findReferencingProfile` helper on the repo, and `alert()` on `res.ok === false` in the web `del()` handler.
+- **Shared `<Button>` component.** Discovered during end-to-end testing: the "save members" button was a bare `<button type="button">` with no className, which falls through to Tailwind preflight and renders unstyled (`styles.css:282` only opt-styles `button[type='submit']` or `.btn-primary`). Fixed by extracting `apps/web/src/components/Button.tsx` with `variant="primary|ghost|danger"` and migrating the touched files. Remaining files convert opportunistically — every PR from here on should use the component.
+- **Theme flash bug fix.** Discovered mid-cycle, unrelated to BAZ-002 but blocking smooth testing. Shipped as its own PR (#2, `fix/theme-flash-on-nav`) and merged into main, then merged back into the BAZ-002 branch.
+
+What landed exactly as planned:
+
+- Schema (`profile_groups` + `profile_group_members` with RESTRICT on `profile_id`, CASCADE on `profile_group_id`).
+- Full HTTP surface: `GET|POST|PATCH|DELETE /api/profile-groups`, `PUT /api/profile-groups/:id/members`, `POST /api/profile-groups/:id/spawn`.
+- CLI parity: `bazilion profile-group create|list|show|update|edit|delete|spawn`.
+- Atomic spawn: pre-flight validates all `profileId`s, transactional insert, dir-diff orphan scan on failure with retry-with-backoff cleanup.
+- Auto-suffix algorithm: `webby` → `webby-2` → `webby-3` on re-spawn; verified end-to-end against the running daemon.
+- Group auto-create on spawn when target slug doesn't exist; verified with `auto-cta-fresh` smoke test.
+- Test coverage: 32 unit/integration tests across `profile-group.test.ts` + `profile-group-spawn.test.ts` + `rm-with-retry.test.ts` + `ctx-bootstrap.test.ts` (no default-team seeding).
