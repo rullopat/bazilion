@@ -1,6 +1,6 @@
 {
   "name": "@bazilion/api-types",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Hermetic wire-shape types for the Bazilion HTTP/IPC surface (zero deps).",
   "license": "MIT",
   "repository": {
