@@ -1,6 +1,6 @@
 # Telegram integration — user story
 
-Living design doc. Captures decisions made and the user story we've agreed on so far. Implementation has not started — this PR is the starting point for the work. Update this file as the story evolves.
+Living design doc. **The v1 user story is complete as of 2026-05-25** — six decisions, end-to-end walkthrough, command vocabulary, codebase sketch, polling-robustness invariants, risk register, OpenClaw prior art, and an ordered list of implementation PRs. Code starts next. Update this file as implementation surfaces new design questions.
 
 ## Problem
 
@@ -60,7 +60,7 @@ In both cases, the topic is created with `name = topicNameFor(agent, group)` (se
 - **General topic** (no `message_thread_id`, or `<= 1`): General is hidden by default but reachable if the user unhides it. Respond once with a polite redirect: "Run commands in the `⚙ bazilion` topic." Suppress further redirects from the same chat for 60s to avoid spam.
 - **Unknown topic** (`(chat_id, message_thread_id)` not in our map): orphan. Respond with "this topic isn't bound to an agent" and offer `/adopt <agent-name>` to re-bind.
 
-**Outbound (bazilion → Telegram).** Every assistant message and tool-emitted message that an agent produces gets mirrored to its bound topic, *if* a topic is bound. The mirror happens in the daemon's NDJSON stream consumer inside `runAgentTurn`, downstream of the existing messaging tools. Mirror policy is "everything by default, agent-level opt-out flag for later" — we are not building per-message visibility controls in v1.
+**Outbound (bazilion → Telegram).** Every assistant message and tool-emitted message that an agent produces gets mirrored to its bound topic, *if* a topic is bound. The mirror happens in the daemon's NDJSON stream consumer inside `runAgentTurn`, downstream of the existing messaging tools. Mirror policy is "everything by default, agent-level opt-out flag for later" — we are not building per-message visibility controls in v1. **This includes scheduler-triggered heartbeats and cron triggers** — every agent turn mirrors to Telegram regardless of who initiated it. There is no per-trigger silence toggle in v1; if heartbeats feel noisy, the answer is to tune the heartbeat interval, not to suppress its Telegram output. Telegram becomes "the place where I see what my agents are doing."
 
 **General-topic API asymmetry.** Telegram rejects `sendMessage` calls that include `message_thread_id: 1` (the General topic's implicit id). Outbound to General must *omit* `message_thread_id` entirely. Inbound from General sometimes carries a phantom `message_thread_id <= 1` on the `Message` object — normalize to "no thread" before reflecting it on outbound, or replies escape to the wrong place. The routing layer hides both quirks behind a single helper. Mostly moot once General is hidden, but the helper still has to exist for the rare case the user unhides it.
 
@@ -147,7 +147,9 @@ Not committing to these paths yet — this is a shape preview, not the implement
   - `agents.telegram_topic_name_locked INTEGER NOT NULL DEFAULT 0` (sticky bit set when a human renames the topic).
   - `groups.telegram_icon_color INTEGER NULL` (the 5-enum color allocated to this bazilion group, picked once at first-traffic; red is reserved for the service chat).
   - `profiles.telegram_icon_emoji TEXT NULL` (sticker ID from `getForumTopicIconStickers`; curated default per built-in profile, nullable for custom profiles).
+  - `agents.telegram_icon_emoji TEXT NULL` (per-agent override of the profile-derived emoji; falls back to `profiles.telegram_icon_emoji` if null, then to color-only if both are null). Survives topic deletion + recreation, unlike a customization that only lives in Telegram.
 - **Topic-naming helpers.** `apps/daemon/src/lib/telegram/naming.ts` exports `topicNameFor(agent, group): string` (default-group bypass + `{slug} › {name}` template) and `allocateGroupColor(db, groupId): number` (round-robin over the 5 non-red colors keyed by `groups.telegram_icon_color`, wraps past 5).
+- **Profile emoji mapping.** `apps/daemon/src/lib/telegram/profile-emojis.ts` exports `BUILTIN_PROFILE_EMOJI: Record<string, string>` — a curated map from built-in profile name to a sticker ID from `getForumTopicIconStickers` (shape: `researcher → 📚`, `coder → 💻`, `notes-archivist → 📝`, `analyst → 📊`, etc., chosen from the ~70-emoji set Telegram returns). Seeded into `profiles.telegram_icon_emoji` for built-in profiles at install time. Custom profiles default to null (color-only icon). The lookup order at topic-creation time is `agents.telegram_icon_emoji` → `profiles.telegram_icon_emoji` → null. The actual mapping is a one-time choice that lives in the seed data; the doc only locks in the *shape* of the table, not the specific emojis.
 - **Config & secrets keys.**
   - `TELEGRAM_BOT_TOKEN` (secrets) — bot credential from BotFather.
   - `TELEGRAM_CHAT_ID` (config) — the supergroup numeric ID.
@@ -165,7 +167,7 @@ Not committing to these paths yet — this is a shape preview, not the implement
   - `/config/integrations/telegram` — setup form + health card.
   - Per-agent: a small "Telegram: bound to topic #N" indicator on the agent card and detail page, with a "Rebind" / "Unbind" action.
 - **Messaging-host extension.** `MessagingHost` grows a `telegramMirror(agentId, text)` capability; the daemon's NDJSON consumer in `runAgentTurn` calls it when a bound agent emits an assistant message or a tool-driven user-facing message.
-- **Outbound queue.** Per-supergroup serialization (token-bucket) inside the messaging host. Telegram's broadcast rate limit (~20 msg/min per group) is shared across all topics in the supergroup, *not* per topic — so the queue is keyed on `chat_id`, not on `(chat_id, message_thread_id)`.
+- **Outbound queue.** Per-supergroup serialization (token-bucket) inside the messaging host. Telegram's broadcast rate limit (~20 msg/min per group) is shared across all topics in the supergroup, *not* per topic — so the queue is keyed on `chat_id`, not on `(chat_id, message_thread_id)`. **`createForumTopic` calls go through the same queue.** The thundering-herd case (20 agents heartbeating simultaneously on a fresh install, all needing first-traffic topic creation) is bounded by the same per-supergroup quota — no separate topic-creation throttle needed.
 
 ### Polling robustness (daemon-internal invariants)
 
