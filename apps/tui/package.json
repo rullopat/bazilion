@@ -1,0 +1,27 @@
+{
+  "name": "@bazilion/tui",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Terminal UI for the Bazilion daemon — Ink + React, packaged via `bun build --compile`. See docs/backlog/draft/BAZ-004-tui-client.md.",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx src/index.tsx",
+    "typecheck": "tsc --noEmit",
+    "compile:darwin-arm64": "bun build src/index.tsx --compile --target=bun-darwin-arm64 --outfile dist/bazi-darwin-arm64",
+    "compile:darwin-x64": "bun build src/index.tsx --compile --target=bun-darwin-x64 --outfile dist/bazi-darwin-x64",
+    "compile:linux-x64": "bun build src/index.tsx --compile --target=bun-linux-x64 --outfile dist/bazi-linux-x64",
+    "compile:linux-arm64": "bun build src/index.tsx --compile --target=bun-linux-arm64 --outfile dist/bazi-linux-arm64",
+    "compile:windows-x64": "bun build src/index.tsx --compile --target=bun-windows-x64 --outfile dist/bazi-windows-x64.exe"
+  },
+  "dependencies": {
+    "@bazilion/api-types": "workspace:*",
+    "@bazilion/client": "workspace:*",
+    "cli-highlight": "^2.1.11",
+    "ink": "^7.0.4",
+    "marked": "^14.1.4",
+    "react": "^19.2.6"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.15"
+  }
+}
