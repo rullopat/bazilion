@@ -57,6 +57,13 @@ jobs:
           publish: pnpm release
           commit: 'chore(release): version packages'
           title: 'chore(release): version packages'
+          # Suppress the auto per-package GitHub Releases
+          # (`bazilion@0.2.1`, `@bazilion/client@0.2.1`, …). The git
+          # tags are still pushed — `changeset publish` needs them —
+          # but the Releases page only shows the hand-crafted
+          # umbrella tags (`v0.2.1`, `v0.2.0`, …) we author with
+          # `gh release create` after each publish.
+          createGithubReleases: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
