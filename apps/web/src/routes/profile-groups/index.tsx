@@ -1,13 +1,10 @@
-import type {
-  Group,
-  Profile,
-  ProfileGroupWithCount,
-  SpawnProfileGroupResponse,
-} from '@bazilion/api-types'
+import type { Group, Profile, ProfileGroupWithCount } from '@bazilion/api-types'
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { useState } from 'react'
+import { Button } from '../../components/Button'
 import { type MemberDraft, MembersEditor, type ModelGroup } from '../../components/MembersEditor'
+import { SpawnTeamModal } from '../../components/SpawnTeamModal'
 import { TemplatesTabs } from '../../components/TemplatesTabs'
 import { daemonClient } from '../../lib/daemon-client'
 
@@ -95,8 +92,8 @@ function ProfileGroupsPage() {
               <td>{g.name}</td>
               <td>{g.memberCount}</td>
               <td className="flex gap-2">
-                <button
-                  type="button"
+                <Button
+                  variant="primary"
                   disabled={g.memberCount === 0}
                   title={
                     g.memberCount === 0 ? 'add at least one member before spawning' : undefined
@@ -104,10 +101,10 @@ function ProfileGroupsPage() {
                   onClick={() => setSpawningId(g.id)}
                 >
                   spawn team
-                </button>
-                <button type="button" className="ghost-btn" onClick={() => del(g.id)}>
+                </Button>
+                <Button variant="danger" onClick={() => del(g.id)}>
                   delete
-                </button>
+                </Button>
               </td>
             </tr>
           ))}
@@ -253,120 +250,11 @@ function CreateProfileGroupForm({
         />
       </div>
       <div className="mt-4">
-        <button type="submit" disabled={submitting}>
+        <Button variant="primary" type="submit" disabled={submitting}>
           {submitting ? 'creating…' : 'create'}
-        </button>
+        </Button>
       </div>
     </form>
   )
 }
 
-function SpawnTeamModal({
-  profileGroup,
-  groups,
-  onClose,
-  onSpawned,
-}: {
-  profileGroup: ProfileGroupWithCount
-  groups: Group[]
-  onClose: () => void
-  onSpawned: (groupSlug: string) => void
-}) {
-  const [groupSlug, setGroupSlug] = useState('')
-  const [userMd, setUserMd] = useState('')
-  const [err, setErr] = useState<string | null>(null)
-  const [submitting, setSubmitting] = useState(false)
-
-  async function spawn() {
-    setErr(null)
-    if (!groupSlug.trim()) {
-      setErr('target group slug is required')
-      return
-    }
-    setSubmitting(true)
-    try {
-      const body: Record<string, unknown> = { groupSlug: groupSlug.trim() }
-      if (userMd) body.userMd = userMd
-      const res = await fetch(`/api/profile-groups/${profileGroup.id}/spawn`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-      if (!res.ok) {
-        const e = (await res.json().catch(() => null)) as { error?: string } | null
-        throw new Error(e?.error ?? res.statusText)
-      }
-      const result = (await res.json()) as SpawnProfileGroupResponse
-      if (result.orphanAgentIds && result.orphanAgentIds.length > 0) {
-        alert(
-          `Spawn completed with warnings: ${result.orphanAgentIds.length} orphan agent dir(s) left on disk.`,
-        )
-      }
-      onSpawned(result.groupSlug)
-    } catch (e) {
-      setErr((e as Error).message)
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-      onClick={onClose}
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') onClose()
-      }}
-    >
-      <div
-        className="card w-full max-w-lg"
-        onClick={(e) => e.stopPropagation()}
-        onKeyDown={(e) => e.stopPropagation()}
-        role="document"
-      >
-        <h3>spawn team — {profileGroup.name}</h3>
-        {err && <div className="err">{err}</div>}
-        <p className="muted">
-          Spawns {profileGroup.memberCount} agent{profileGroup.memberCount === 1 ? '' : 's'} into
-          the target group. If the group doesn't exist, it'll be created on the fly. Failures roll
-          back the whole spawn.
-        </p>
-        <label>
-          target group slug
-          <input
-            value={groupSlug}
-            onChange={(e) => setGroupSlug(e.target.value)}
-            list="existing-groups"
-            required
-          />
-          <datalist id="existing-groups">
-            {groups.map((g) => (
-              <option key={g.id} value={g.id}>
-                {g.name}
-              </option>
-            ))}
-          </datalist>
-        </label>
-        <label>
-          override USER.md (optional — only takes effect on a freshly-created target group)
-          <textarea
-            rows={3}
-            value={userMd}
-            onChange={(e) => setUserMd(e.target.value)}
-            className="font-mono text-[0.88em] leading-[1.55]"
-          />
-        </label>
-        <div className="mt-4 flex gap-2 justify-end">
-          <button type="button" className="ghost-btn" onClick={onClose}>
-            cancel
-          </button>
-          <button type="button" onClick={spawn} disabled={submitting}>
-            {submitting ? 'spawning…' : 'spawn team'}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}

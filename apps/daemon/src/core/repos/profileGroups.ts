@@ -125,6 +125,21 @@ export function members(db: BazilionDb, profileGroupId: string): ProfileGroupMem
     .map(toMember)
 }
 
+/** Distinct profile groups that still reference the given profile id. */
+export function findReferencingProfile(
+  db: BazilionDb,
+  profileId: string,
+): Array<{ id: string; name: string }> {
+  return db.raw
+    .query<{ id: string; name: string }, [string]>(
+      `SELECT DISTINCT pg.id AS id, pg.name AS name
+       FROM profile_groups pg
+       JOIN profile_group_members m ON m.profile_group_id = pg.id
+       WHERE m.profile_id = ?`,
+    )
+    .all(profileId)
+}
+
 export type MemberInput = Omit<ProfileGroupMember, 'profileGroupId' | 'position'>
 
 /**

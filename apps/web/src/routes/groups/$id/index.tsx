@@ -8,6 +8,7 @@ import type {
 import { createFileRoute, redirect, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { useState } from 'react'
+import { Button } from '../../../components/Button'
 import { daemonClient } from '../../../lib/daemon-client'
 
 interface GroupDetail {
@@ -104,14 +105,13 @@ function GroupDetailPage() {
           placeholder="What the agent should know about you in this group context…"
         />
         <div className="flex items-center gap-3 mt-3">
-          <button
-            type="button"
+          <Button
+            variant="primary"
             onClick={save}
             disabled={busy || userMd === group.userMd}
-            className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
           >
             {busy ? 'saving…' : 'save'}
-          </button>
+          </Button>
           <span className="text-xs text-muted-foreground">
             {userMd.length} / 12000 chars
           </span>
@@ -239,14 +239,9 @@ function SpawnFromTemplateCard({
               </option>
             ))}
           </select>
-          <button
-            type="button"
-            onClick={spawn}
-            disabled={busy || !selected}
-            className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
-          >
+          <Button variant="primary" onClick={spawn} disabled={busy || !selected}>
             {busy ? 'spawning…' : 'spawn team'}
-          </button>
+          </Button>
           {err && <span className="text-xs text-rose-700">{err}</span>}
         </div>
       )}

@@ -2,6 +2,7 @@ import type { Profile, ProfileGroupDetail, ProfileGroupMember } from '@bazilion/
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { useState } from 'react'
+import { Button } from '../../components/Button'
 import { type MemberDraft, MembersEditor, type ModelGroup } from '../../components/MembersEditor'
 import { daemonClient } from '../../lib/daemon-client'
 
@@ -115,9 +116,9 @@ function BasicsCard({
           className="font-mono text-[0.88em] leading-[1.55]"
         />
       </label>
-      <button type="button" onClick={save} disabled={saving}>
+      <Button variant="primary" onClick={save} disabled={saving}>
         {saving ? 'saving…' : 'save basics'}
-      </button>
+      </Button>
     </div>
   )
 }
@@ -176,9 +177,9 @@ function MembersCard({
         modelGroups={modelGroups}
       />
       <div className="mt-3">
-        <button type="button" onClick={save} disabled={saving || !dirty}>
+        <Button variant="primary" onClick={save} disabled={saving || !dirty}>
           {saving ? 'saving…' : 'save members'}
-        </button>
+        </Button>
       </div>
     </div>
   )

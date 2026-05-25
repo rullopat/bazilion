@@ -1,5 +1,6 @@
 import type { Profile, ReasoningLevel } from '@bazilion/api-types'
 import { REASONING_LEVELS } from '../lib/wire-constants'
+import { Button } from './Button'
 
 export interface MemberDraft {
   profileId: string
@@ -152,32 +153,25 @@ export function MembersEditor({
                   </select>
                 </td>
                 <td className="flex gap-1">
-                  <button
-                    type="button"
-                    className="ghost-btn"
+                  <Button
+                    variant="ghost"
                     onClick={() => move(i, -1)}
                     disabled={i === 0}
                     title="move up"
                   >
                     ↑
-                  </button>
-                  <button
-                    type="button"
-                    className="ghost-btn"
+                  </Button>
+                  <Button
+                    variant="ghost"
                     onClick={() => move(i, 1)}
                     disabled={i === members.length - 1}
                     title="move down"
                   >
                     ↓
-                  </button>
-                  <button
-                    type="button"
-                    className="ghost-btn"
-                    onClick={() => removeMember(i)}
-                    title="remove member"
-                  >
+                  </Button>
+                  <Button variant="danger" onClick={() => removeMember(i)} title="remove member">
                     ✕
-                  </button>
+                  </Button>
                 </td>
               </tr>
             ))}
@@ -185,9 +179,9 @@ export function MembersEditor({
         </table>
       )}
       <div className="mt-3">
-        <button type="button" className="ghost-btn" onClick={addMember}>
+        <Button variant="ghost" onClick={addMember}>
           + add member
-        </button>
+        </Button>
       </div>
     </>
   )

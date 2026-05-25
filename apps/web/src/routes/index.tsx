@@ -3,6 +3,7 @@ import type {
   Agent,
   Group,
   Profile,
+  ProfileGroupWithCount,
   ProviderMessage,
   ResolvedAgent,
   SessionHeadResponse,
@@ -23,6 +24,7 @@ interface SelectedView {
 interface HomeData {
   agents: Agent[]
   profiles: Profile[]
+  profileGroups: ProfileGroupWithCount[]
   groups: Group[]
   selected: SelectedView | null
   initialOpenGroups: Record<string, boolean>
@@ -54,9 +56,10 @@ const fetchHomeData = createServerFn({ method: 'POST' })
   .inputValidator((d: { agentId?: string }) => d)
   .handler(async ({ data }): Promise<HomeData> => {
     const client = daemonClient()
-    const [agents, profiles, groups] = await Promise.all([
+    const [agents, profiles, profileGroups, groups] = await Promise.all([
       client.get<Agent[]>('/api/agents?includeArchived=false'),
       client.get<Profile[]>('/api/profiles'),
+      client.get<ProfileGroupWithCount[]>('/api/profile-groups'),
       client.get<Group[]>('/api/groups'),
     ])
 
@@ -94,7 +97,7 @@ const fetchHomeData = createServerFn({ method: 'POST' })
         if (!(err instanceof ApiClientError) || err.status !== 404) throw err
       }
     }
-    return { agents, profiles, groups, selected, initialOpenGroups }
+    return { agents, profiles, profileGroups, groups, selected, initialOpenGroups }
   })
 
 export const Route = createFileRoute('/')({
@@ -116,6 +119,7 @@ function HomePage() {
         agents={data.agents}
         groups={data.groups}
         profiles={data.profiles}
+        profileGroups={data.profileGroups}
         selectedAgentId={selectedAgentId}
         initialOpenGroups={data.initialOpenGroups}
       />
