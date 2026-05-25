@@ -1,6 +1,6 @@
 {
   "name": "@bazilion/client",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "HTTP client for the Bazilion daemon. Zero node-only deps — works in browsers, React Native, and Node.",
   "license": "MIT",
   "repository": {
