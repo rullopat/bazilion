@@ -20,6 +20,7 @@ import type { Update } from 'grammy/types'
 import type { BazilionDb } from '../../core/db/client.ts'
 import { openConfig, openSecrets, type Paths, resolvePaths } from '../../core/index.ts'
 import { type ActivationApi, runActivation } from './activation.ts'
+import { type DirectoryApi, installLiveDepsResolver } from './directory.ts'
 import { type ReplyApi, routeUpdate } from './routing.ts'
 
 const POLL_TIMEOUT_S = 25
@@ -176,10 +177,20 @@ async function startInternal(
     )
   }
 
+  // Wire the live-deps resolver so notifyDirectoryDirty() (called from
+  // command handlers and the daemon's agent CRUD routes) can find this
+  // bot's chatId / api / db / paths without a static import cycle.
+  installLiveDepsResolver(() => ({
+    db,
+    paths: handle.paths,
+    api: handle.bot.api as unknown as DirectoryApi,
+    chatId: handle.chatId,
+  }))
+
   // Activation runs in the background — polling does NOT block on it.
   // If activation fails (e.g. forum mode off after creds saved, transient
   // network), we still want incoming messages to be observed.
-  void runActivation({ db, api: bot.api as unknown as ActivationApi, chatId })
+  void runActivation({ db, paths: handle.paths, api: bot.api as unknown as ActivationApi, chatId })
     .then((result) => {
       handle.state.activated = true
       console.log(

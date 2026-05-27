@@ -50,6 +50,9 @@ function makeReplyApi(): {
       acks.push({ id, opts: opts ?? {} })
       return true
     },
+    async closeForumTopic() {
+      return true
+    },
   }
   return { api, sends, creates, edits, acks }
 }
@@ -310,5 +313,145 @@ describe('routeUpdate classification', () => {
     expect(acks.length).toBe(1)
     expect(edits.length).toBe(0)
     expect(sends.length).toBe(0)
+  })
+
+  // ─── Step 5: topic-context commands ────────────────────────────────
+
+  test('/close in an agent topic dispatches as a topic command', async () => {
+    const agent = spawnAgent(env.db, env.paths, {
+      profileId: 'base',
+      groupId: env.groupId,
+      name: 'r1',
+    })
+    agentRepo.setTelegramTopicId(env.db, agent.id, 42)
+    const { api, sends } = makeReplyApi()
+    const u = messageUpdate({ threadId: 42, text: '/close' })
+    const outcome = await routeUpdate(
+      { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID },
+      u,
+    )
+    expect(outcome.kind).toBe('agent_topic_command')
+    if (outcome.kind === 'agent_topic_command') {
+      expect(outcome.name).toBe('close')
+      expect(outcome.agentId).toBe(agent.id)
+    }
+    // Reply explains the topic was closed; sent into the topic.
+    expect(sends[0]?.text).toMatch(/Topic closed/)
+  })
+
+  test('/unbind clears the topic binding and updates the directory', async () => {
+    const agent = spawnAgent(env.db, env.paths, {
+      profileId: 'base',
+      groupId: env.groupId,
+      name: 'r1',
+    })
+    agentRepo.setTelegramTopicId(env.db, agent.id, 42)
+    const { api } = makeReplyApi()
+    const u = messageUpdate({ threadId: 42, text: '/unbind' })
+    const outcome = await routeUpdate(
+      { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID },
+      u,
+    )
+    expect(outcome.kind).toBe('agent_topic_command')
+    expect(agentRepo.getTelegramTopicId(env.db, agent.id)).toBeNull()
+  })
+
+  test('/rebind swaps the topic to a different agent when target is unbound', async () => {
+    const sourceAgent = spawnAgent(env.db, env.paths, {
+      profileId: 'base',
+      groupId: env.groupId,
+      name: 'source',
+    })
+    const targetAgent = spawnAgent(env.db, env.paths, {
+      profileId: 'base',
+      groupId: env.groupId,
+      name: 'target',
+    })
+    agentRepo.setTelegramTopicId(env.db, sourceAgent.id, 42)
+
+    const { api, sends } = makeReplyApi()
+    const u = messageUpdate({ threadId: 42, text: '/rebind target' })
+    const outcome = await routeUpdate(
+      { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID },
+      u,
+    )
+    expect(outcome.kind).toBe('agent_topic_command')
+    expect(agentRepo.getTelegramTopicId(env.db, sourceAgent.id)).toBeNull()
+    expect(agentRepo.getTelegramTopicId(env.db, targetAgent.id)).toBe(42)
+    expect(sends[0]?.text).toMatch(/rebound/)
+  })
+
+  test('/rebind refuses when the target agent already has a topic', async () => {
+    const sourceAgent = spawnAgent(env.db, env.paths, {
+      profileId: 'base',
+      groupId: env.groupId,
+      name: 'source',
+    })
+    const targetAgent = spawnAgent(env.db, env.paths, {
+      profileId: 'base',
+      groupId: env.groupId,
+      name: 'target',
+    })
+    agentRepo.setTelegramTopicId(env.db, sourceAgent.id, 42)
+    agentRepo.setTelegramTopicId(env.db, targetAgent.id, 99)
+
+    const { api, sends } = makeReplyApi()
+    const u = messageUpdate({ threadId: 42, text: '/rebind target' })
+    const outcome = await routeUpdate(
+      { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID },
+      u,
+    )
+    expect(outcome.kind).toBe('agent_topic_command')
+    // Source still bound to 42; target still bound to 99 — no swap happened.
+    expect(agentRepo.getTelegramTopicId(env.db, sourceAgent.id)).toBe(42)
+    expect(agentRepo.getTelegramTopicId(env.db, targetAgent.id)).toBe(99)
+    expect(sends[0]?.text).toMatch(/already bound/)
+  })
+
+  test('/spawn in an agent topic is rejected (wrong surface)', async () => {
+    const agent = spawnAgent(env.db, env.paths, {
+      profileId: 'base',
+      groupId: env.groupId,
+      name: 'r1',
+    })
+    agentRepo.setTelegramTopicId(env.db, agent.id, 42)
+    const { api, sends } = makeReplyApi()
+    const u = messageUpdate({ threadId: 42, text: '/spawn base' })
+    const outcome = await routeUpdate(
+      { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID },
+      u,
+    )
+    // Service-only command dispatched in topic context → routes as unknown.
+    expect(outcome.kind).toBe('agent_topic_unknown_command')
+    expect(sends[0]?.text).toMatch(/Unknown command/)
+  })
+
+  test('/help in an agent topic returns the topic-contextualized body', async () => {
+    const agent = spawnAgent(env.db, env.paths, {
+      profileId: 'base',
+      groupId: env.groupId,
+      name: 'r1',
+    })
+    agentRepo.setTelegramTopicId(env.db, agent.id, 42)
+    const { api, sends } = makeReplyApi()
+    const u = messageUpdate({ threadId: 42, text: '/help' })
+    const outcome = await routeUpdate(
+      { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID },
+      u,
+    )
+    expect(outcome.kind).toBe('agent_topic_command')
+    expect(sends[0]?.text).toContain("You're in")
+    expect(sends[0]?.text).toContain('<code>r1</code>')
+  })
+
+  test('/close in service chat is rejected (wrong surface)', async () => {
+    const { api, sends } = makeReplyApi()
+    const u = messageUpdate({ threadId: SERVICE_TOPIC, text: '/close' })
+    const outcome = await routeUpdate(
+      { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID },
+      u,
+    )
+    expect(outcome.kind).toBe('service_unknown_command')
+    expect(sends[0]?.text).toMatch(/Unknown command/)
   })
 })

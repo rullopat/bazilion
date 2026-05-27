@@ -22,6 +22,7 @@ import {
 import { validateSlug } from '../core/profile/validate.ts'
 import type { MemberInput, UpdateProfileGroupPatch } from '../core/repos/profileGroups.ts'
 import { getCtx } from '../lib/ctx.ts'
+import { notifyDirectoryDirty } from '../lib/telegram/directory.ts'
 
 export const profileGroupsRouter = new Hono()
 
@@ -161,6 +162,8 @@ profileGroupsRouter.post('/:id/spawn', async (c) => {
       groupSlug,
       userMd,
     })
+    // One refresh covers the whole batch of spawned agents.
+    notifyDirectoryDirty()
     const response: SpawnProfileGroupResponse = {
       groupSlug: result.groupSlug,
       agents: result.agents,

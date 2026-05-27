@@ -53,6 +53,7 @@ import { resolveAgentApiKey } from '../lib/api-key.ts'
 import { validateCron } from '../lib/cron.ts'
 import { getCtx } from '../lib/ctx.ts'
 import { createDbMessagingHost } from '../lib/messaging-host.ts'
+import { notifyDirectoryDirty } from '../lib/telegram/directory.ts'
 import {
   buildSystemPrompt,
   createBazilionSession,
@@ -114,6 +115,7 @@ agentsRouter.post('/', async (c) => {
       reasoningLevel,
       groupId,
     })
+    notifyDirectoryDirty()
     return c.json(agent, 201)
   } catch (err) {
     return c.json({ error: (err as Error).message }, 400)
@@ -137,11 +139,13 @@ agentsRouter.patch('/:id', async (c) => {
   const resolvedId = agentRepo.resolveId(db, c.req.param('id'))
   if (!resolvedId) return c.json({ error: `agent not found: ${c.req.param('id')}` }, 404)
 
+  let nameChanged = false
   if (body.name !== undefined) {
     if (typeof body.name !== 'string') return c.json({ error: 'name must be a string' }, 400)
     const trimmed = body.name.trim()
     if (!trimmed) return c.json({ error: 'name cannot be empty' }, 400)
     agentRepo.setName(db, resolvedId, trimmed)
+    nameChanged = true
   }
   if (body.reasoningLevel !== undefined) {
     if (
@@ -160,6 +164,9 @@ agentsRouter.patch('/:id', async (c) => {
     agentRepo.setModelOverride(db, resolvedId, value)
   }
 
+  // Telegram directory shows agent names; refresh if rename happened.
+  if (nameChanged) notifyDirectoryDirty()
+
   const agent = agentRepo.get(db, resolvedId)
   if (!agent) return c.json({ error: 'agent vanished after update' }, 404)
   return c.json(agent)
@@ -169,6 +176,7 @@ agentsRouter.delete('/:id', (c) => {
   const { db, paths, authToken } = getCtx()
   try {
     deleteAgent(db, c.req.param('id'))
+    notifyDirectoryDirty()
     return c.body(null, 204)
   } catch (err) {
     return c.json({ error: (err as Error).message }, 400)
@@ -179,6 +187,7 @@ agentsRouter.post('/:id/archive', (c) => {
   const { db, paths, authToken } = getCtx()
   try {
     archiveAgent(db, c.req.param('id'))
+    notifyDirectoryDirty()
     return c.body(null, 204)
   } catch (err) {
     return c.json({ error: (err as Error).message }, 400)
@@ -189,6 +198,7 @@ agentsRouter.post('/:id/unarchive', (c) => {
   const { db, paths, authToken } = getCtx()
   try {
     unarchiveAgent(db, c.req.param('id'))
+    notifyDirectoryDirty()
     return c.body(null, 204)
   } catch (err) {
     return c.json({ error: (err as Error).message }, 400)
@@ -213,6 +223,7 @@ agentsRouter.patch('/:id/group', async (c) => {
     return c.json({ error: `group not found: ${body.groupId}` }, 404)
   }
   agentRepo.setGroup(db, resolved.agent.id, body.groupId)
+  notifyDirectoryDirty()
   return c.json(resolveAgent(db, paths, resolved.agent.id))
 })
 

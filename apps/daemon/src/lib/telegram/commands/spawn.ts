@@ -17,6 +17,7 @@ import type { Profile } from '@bazilion/api-types'
 import type { InlineKeyboardMarkup } from 'grammy/types'
 import { spawnAgent } from '../../../core/agent/spawn.ts'
 import { agentRepo, profileRepo } from '../../../core/index.ts'
+import { notifyDirectoryDirty } from '../directory.ts'
 import { htmlEscape } from '../html.ts'
 import { setPendingSpawn } from '../spawn-state.ts'
 import { ensureAgentTopic } from '../topic-autocreate.ts'
@@ -128,6 +129,10 @@ export async function spawnAndBind(
       parseMode: 'HTML',
     }
   }
+  // Refresh the directory even if topic auto-create fails below — the new
+  // agent should still appear as `(unbound)`. coalescing makes the second
+  // notify (after ensureAgentTopic binds) a no-op.
+  notifyDirectoryDirty()
 
   const ensured = await ensureAgentTopic({
     db: ctx.db,

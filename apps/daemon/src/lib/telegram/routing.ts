@@ -19,9 +19,8 @@ import { agentRepo, openConfig, profileRepo } from '../../core/index.ts'
 import type { Paths } from '../../core/paths.ts'
 import { dispatchCommand, parseCommand } from './commands/index.ts'
 import { namePrompt, SPAWN_PROFILE_CALLBACK_PREFIX, spawnAndBind } from './commands/spawn.ts'
-import type { CommandResult } from './commands/types.ts'
+import type { CommandApi, CommandResult } from './commands/types.ts'
 import { setPendingSpawn, takePendingSpawn } from './spawn-state.ts'
-import type { TopicCreateApi } from './topic-autocreate.ts'
 
 const SERVICE_TOPIC_KEY = 'TELEGRAM_SERVICE_TOPIC_ID'
 
@@ -34,7 +33,7 @@ const _lastGeneralRedirectByChat = new Map<number, number>()
  * `bot.api.sendMessage`-style invocation; tests can substitute a recording
  * spy.
  */
-export interface ReplyApi extends TopicCreateApi {
+export interface ReplyApi extends CommandApi {
   sendMessage(
     chatId: number,
     text: string,
@@ -76,6 +75,14 @@ export type RouteOutcome =
   | { kind: 'service_plain_text' }
   | { kind: 'spawn_name_input'; profileId: string; spawned: boolean }
   | { kind: 'agent_topic'; agentId: string; topicId: number }
+  | {
+      kind: 'agent_topic_command'
+      agentId: string
+      topicId: number
+      name: string
+      handled: boolean
+    }
+  | { kind: 'agent_topic_unknown_command'; agentId: string; topicId: number; name: string }
   | { kind: 'general_redirect'; suppressed: boolean }
   | { kind: 'unknown_topic'; topicId: number }
   | { kind: 'callback_spawn_profile'; profileId: string }
@@ -118,8 +125,13 @@ export async function routeUpdate(deps: RouterDeps, update: Update): Promise<Rou
   // Agent topic — look up by thread id.
   const agent = agentRepo.findByTelegramTopicId(deps.db, threadId)
   if (agent) {
-    // Step-3 behavior: identify only. Real chat-back ships in Step 6.
-    // We don't reply; the bot lifecycle's caller logs the inbound separately.
+    // Step 5 adds topic-context command dispatch — /close, /rebind, /unbind
+    // (plus /help, which is also callable here). Plain messages still fall
+    // through to the "log + drop" behavior pending Step 6's outbound mirror.
+    const parsed = parseCommand(m.text ?? m.caption ?? undefined)
+    if (parsed) {
+      return await handleAgentTopicCommand(deps, m, agent, threadId, parsed.name, parsed.args)
+    }
     return { kind: 'agent_topic', agentId: agent.id, topicId: threadId }
   }
 
@@ -154,14 +166,18 @@ async function handleServiceChat(deps: RouterDeps, m: Message): Promise<RouteOut
     return { kind: 'service_plain_text' }
   }
 
-  const result = await dispatchCommand(parsed, {
-    db: deps.db,
-    paths: deps.paths,
-    authToken: deps.authToken,
-    api: deps.api,
-    chatId: deps.chatId,
-    from: m.from!,
-  })
+  const result = await dispatchCommand(
+    parsed,
+    {
+      db: deps.db,
+      paths: deps.paths,
+      authToken: deps.authToken,
+      api: deps.api,
+      chatId: deps.chatId,
+      from: m.from!,
+    },
+    'service',
+  )
 
   if ('unknown' in result) {
     await deps.api.sendMessage(
@@ -175,6 +191,43 @@ async function handleServiceChat(deps: RouterDeps, m: Message): Promise<RouteOut
   // result is narrowed to CommandResult — TS now knows .text exists.
   await sendCommandResult(deps, m.message_thread_id ?? undefined, result)
   return { kind: 'service_command', name: parsed.name, handled: true }
+}
+
+async function handleAgentTopicCommand(
+  deps: RouterDeps,
+  m: Message,
+  agent: import('@bazilion/api-types').Agent,
+  topicId: number,
+  name: string,
+  args: string,
+): Promise<RouteOutcome> {
+  const result = await dispatchCommand(
+    { name, args },
+    {
+      db: deps.db,
+      paths: deps.paths,
+      authToken: deps.authToken,
+      api: deps.api,
+      chatId: deps.chatId,
+      from: m.from!,
+      agent,
+      topicId,
+      messageId: m.message_id,
+    },
+    'topic',
+  )
+
+  if ('unknown' in result) {
+    await deps.api.sendMessage(
+      deps.chatId,
+      `Unknown command <code>/${escapeForHtml(name)}</code> for this topic. Run /help for the command list.`,
+      { message_thread_id: topicId, parse_mode: 'HTML' },
+    )
+    return { kind: 'agent_topic_unknown_command', agentId: agent.id, topicId, name }
+  }
+
+  await sendCommandResult(deps, topicId, result)
+  return { kind: 'agent_topic_command', agentId: agent.id, topicId, name, handled: true }
 }
 
 async function handleGeneral(deps: RouterDeps, m: Message): Promise<RouteOutcome> {

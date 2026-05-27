@@ -74,6 +74,10 @@ function mockApi(opts: MockOptions = {}): {
       calls.push({ method: 'sendMessage', args: [chatId, text, o] })
       return { message_id: opts.messageId ?? 7777 }
     },
+    async editMessageText(chatId, messageId, text, o) {
+      calls.push({ method: 'editMessageText', args: [chatId, messageId, text, o] })
+      return true
+    },
     async pinChatMessage(chatId, messageId, o) {
       calls.push({ method: 'pinChatMessage', args: [chatId, messageId, o] })
       if (opts.pinFails) throw new Error('pin boom')
@@ -109,7 +113,7 @@ describe('runActivation', () => {
 
   test('full first activation runs all side effects in order, ending with setMyCommands', async () => {
     const { api, calls } = mockApi({ topicId: 100, messageId: 200 })
-    const result = await runActivation({ db: env.db, api, chatId: CHAT_ID })
+    const result = await runActivation({ db: env.db, paths: env.paths, api, chatId: CHAT_ID })
 
     expect(result.serviceTopicId).toBe(100)
     expect(result.directoryMessageId).toBe(200)
@@ -134,8 +138,12 @@ describe('runActivation', () => {
       { icon_color: ICON_COLOR_RED, icon_custom_emoji_id: 'gear-1' },
     ])
 
-    // sendMessage is threaded into the new service topic with the welcome body.
-    expect(calls[2]?.args).toEqual([CHAT_ID, DIRECTORY_WELCOME_MESSAGE, { message_thread_id: 100 }])
+    // sendMessage is threaded into the new service topic; the body is the
+    // dynamic directory (tested separately in telegram-directory.test.ts).
+    const sendArgs = calls[2]?.args as [number, string, { message_thread_id: number }]
+    expect(sendArgs[0]).toBe(CHAT_ID)
+    expect(sendArgs[2].message_thread_id).toBe(100)
+    expect(typeof sendArgs[1]).toBe('string')
 
     // Persistence — the two derived ids land in the config table.
     const cfg = openConfig(env.db)
@@ -150,22 +158,27 @@ describe('runActivation', () => {
     cfg.set('TELEGRAM_DIRECTORY_MESSAGE_ID', '99')
 
     const { api, calls } = mockApi()
-    const result = await runActivation({ db: env.db, api, chatId: CHAT_ID })
+    const result = await runActivation({ db: env.db, paths: env.paths, api, chatId: CHAT_ID })
 
     expect(result.serviceTopicId).toBe(42)
     expect(result.directoryMessageId).toBe(99)
     expect(result.gearStickerEmojiId).toBeNull()
-    // No sticker probe, no topic create, no message send, no pin — but hide
-    // and setMyCommands still run every activation by design (the latter so
-    // command-list changes between releases get picked up on restart).
-    expect(calls.map((c) => c.method)).toEqual(['hideGeneralForumTopic', 'setMyCommands'])
+    // No sticker probe, no topic create, no message send, no pin. But hide
+    // and setMyCommands still run every activation, plus a post-activation
+    // directory refresh (editMessageText) syncs agent-state changes that
+    // happened while the daemon was down.
+    expect(calls.map((c) => c.method)).toEqual([
+      'hideGeneralForumTopic',
+      'setMyCommands',
+      'editMessageText',
+    ])
   })
 
   test('resumes from partial state: topic id persisted, message id missing', async () => {
     openConfig(env.db).set('TELEGRAM_SERVICE_TOPIC_ID', '42')
 
     const { api, calls } = mockApi({ messageId: 88 })
-    const result = await runActivation({ db: env.db, api, chatId: CHAT_ID })
+    const result = await runActivation({ db: env.db, paths: env.paths, api, chatId: CHAT_ID })
 
     expect(result.serviceTopicId).toBe(42)
     expect(result.directoryMessageId).toBe(88)
@@ -177,12 +190,14 @@ describe('runActivation', () => {
       'hideGeneralForumTopic',
       'setMyCommands',
     ])
-    expect(calls[0]?.args).toEqual([CHAT_ID, DIRECTORY_WELCOME_MESSAGE, { message_thread_id: 42 }])
+    const sendArgs = calls[0]?.args as [number, string, { message_thread_id: number }]
+    expect(sendArgs[0]).toBe(CHAT_ID)
+    expect(sendArgs[2].message_thread_id).toBe(42)
   })
 
   test('pin failure is swallowed but the directory message id still persists', async () => {
     const { api } = mockApi({ pinFails: true, messageId: 555 })
-    const result = await runActivation({ db: env.db, api, chatId: CHAT_ID })
+    const result = await runActivation({ db: env.db, paths: env.paths, api, chatId: CHAT_ID })
 
     expect(result.directoryMessageId).toBe(555)
     expect(openConfig(env.db).get('TELEGRAM_DIRECTORY_MESSAGE_ID')).toBe('555')
@@ -190,13 +205,13 @@ describe('runActivation', () => {
 
   test('hideGeneralForumTopic failure is swallowed; result reflects it', async () => {
     const { api } = mockApi({ hideFails: true })
-    const result = await runActivation({ db: env.db, api, chatId: CHAT_ID })
+    const result = await runActivation({ db: env.db, paths: env.paths, api, chatId: CHAT_ID })
     expect(result.generalHidden).toBe(false)
   })
 
   test('getForumTopicIconStickers failure falls back to color-only', async () => {
     const { api, calls } = mockApi({ stickersFails: true })
-    const result = await runActivation({ db: env.db, api, chatId: CHAT_ID })
+    const result = await runActivation({ db: env.db, paths: env.paths, api, chatId: CHAT_ID })
     expect(result.gearStickerEmojiId).toBeNull()
     // createForumTopic should be called WITHOUT icon_custom_emoji_id.
     const create = calls.find((c) => c.method === 'createForumTopic')
@@ -210,21 +225,21 @@ describe('runActivation', () => {
       nonGearSticker('🔧'),
     ]
     const { api } = mockApi({ stickers: set })
-    const result = await runActivation({ db: env.db, api, chatId: CHAT_ID })
+    const result = await runActivation({ db: env.db, paths: env.paths, api, chatId: CHAT_ID })
     expect(result.gearStickerEmojiId).toBe('the-gear')
   })
 
   test('gear sticker picker uses fallback emojis when ⚙ missing', async () => {
     const set = [nonGearSticker('🦄'), nonGearSticker('🛠'), nonGearSticker('🐱')]
     const { api } = mockApi({ stickers: set })
-    const result = await runActivation({ db: env.db, api, chatId: CHAT_ID })
+    const result = await runActivation({ db: env.db, paths: env.paths, api, chatId: CHAT_ID })
     expect(result.gearStickerEmojiId).toBe('emoji:🛠')
   })
 
   test('gear sticker picker returns null when no gear-shaped sticker exists', async () => {
     const set = [nonGearSticker('🦄'), nonGearSticker('🐱'), nonGearSticker('🚀')]
     const { api } = mockApi({ stickers: set })
-    const result = await runActivation({ db: env.db, api, chatId: CHAT_ID })
+    const result = await runActivation({ db: env.db, paths: env.paths, api, chatId: CHAT_ID })
     expect(result.gearStickerEmojiId).toBeNull()
   })
 
@@ -235,9 +250,9 @@ describe('runActivation', () => {
         throw new Error('forbidden')
       },
     }
-    await expect(runActivation({ db: env.db, api: failingApi, chatId: CHAT_ID })).rejects.toThrow(
-      'forbidden',
-    )
+    await expect(
+      runActivation({ db: env.db, paths: env.paths, api: failingApi, chatId: CHAT_ID }),
+    ).rejects.toThrow('forbidden')
     // Nothing persisted because the failure was before any successful step.
     expect(openConfig(env.db).get('TELEGRAM_SERVICE_TOPIC_ID')).toBeUndefined()
     expect(openConfig(env.db).get('TELEGRAM_DIRECTORY_MESSAGE_ID')).toBeUndefined()
@@ -245,7 +260,7 @@ describe('runActivation', () => {
 
   test('setMyCommands failure is swallowed; result.commandsRegistered=false', async () => {
     const { api } = mockApi({ commandsFails: true })
-    const result = await runActivation({ db: env.db, api, chatId: CHAT_ID })
+    const result = await runActivation({ db: env.db, paths: env.paths, api, chatId: CHAT_ID })
     // The earlier steps still complete normally.
     expect(result.serviceTopicId).toBeGreaterThan(0)
     expect(result.commandsRegistered).toBe(false)

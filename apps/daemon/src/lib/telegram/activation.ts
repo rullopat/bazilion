@@ -18,14 +18,19 @@
 import type { BotCommand, Sticker } from 'grammy/types'
 import type { BazilionDb } from '../../core/db/client.ts'
 import { openConfig } from '../../core/index.ts'
+import type { Paths } from '../../core/paths.ts'
 import { SERVICE_COMMANDS } from './commands/index.ts'
+import { buildDirectoryBody, refreshDirectoryNow } from './directory.ts'
 
 /** Telegram's 6-color icon enum. Red is reserved for the service chat. */
 export const ICON_COLOR_RED = 16478047
 
 /**
  * Minimal Bot API surface the activation flow calls into. Keeps the activation
- * logic testable without spinning up a real grammY Bot.
+ * logic testable without spinning up a real grammY Bot. Activation also
+ * delegates to `refreshDirectoryNow` for post-activation directory sync, so
+ * this surface includes `editMessageText` (used by the directory's
+ * recreate-on-delete path).
  */
 export interface ActivationApi {
   getForumTopicIconStickers(): Promise<Sticker[]>
@@ -39,6 +44,12 @@ export interface ActivationApi {
     text: string,
     opts: { message_thread_id?: number; parse_mode?: 'HTML' | 'MarkdownV2' },
   ): Promise<{ message_id: number }>
+  editMessageText(
+    chatId: number,
+    messageId: number,
+    text: string,
+    opts: { parse_mode?: 'HTML' | 'MarkdownV2'; disable_web_page_preview?: boolean },
+  ): Promise<unknown>
   pinChatMessage(
     chatId: number,
     messageId: number,
@@ -54,6 +65,7 @@ export interface ActivationApi {
 
 export interface ActivationArgs {
   db: BazilionDb
+  paths: Paths
   api: ActivationApi
   chatId: number
 }
@@ -66,7 +78,11 @@ export interface ActivationResult {
   commandsRegistered: boolean
 }
 
-/** The pinned welcome message inside the service topic. Plain text — Step 5 grows it into a live directory with deep-links. */
+/**
+ * @deprecated Kept for backward-compat with tests; live activation now uses
+ * `buildDirectoryBody` from directory.ts which produces a dynamic agent
+ * listing (with deep-links) rather than a static welcome banner.
+ */
 export const DIRECTORY_WELCOME_MESSAGE = [
   '👋 bazilion is online',
   '',
@@ -85,6 +101,10 @@ export async function runActivation(args: ActivationArgs): Promise<ActivationRes
 
   let serviceTopicId = readConfigNumber(args.db, 'TELEGRAM_SERVICE_TOPIC_ID')
   let directoryMessageId = readConfigNumber(args.db, 'TELEGRAM_DIRECTORY_MESSAGE_ID')
+  // Track whether the directory message already existed at activation entry.
+  // First-time creation already writes the dynamic body — re-running refresh
+  // after that would be a redundant editMessageText call.
+  const directoryAlreadyExisted = directoryMessageId !== null
 
   let gearStickerEmojiId: string | null = null
   if (serviceTopicId === null) {
@@ -98,8 +118,12 @@ export async function runActivation(args: ActivationArgs): Promise<ActivationRes
   }
 
   if (directoryMessageId === null) {
-    const msg = await args.api.sendMessage(args.chatId, DIRECTORY_WELCOME_MESSAGE, {
+    // Initial creation — render the dynamic directory body (agents grouped
+    // by group, deep-links for the bound ones, empty-state hint otherwise).
+    const body = buildDirectoryBody(args.db, args.paths, args.chatId)
+    const msg = await args.api.sendMessage(args.chatId, body, {
       message_thread_id: serviceTopicId,
+      parse_mode: 'HTML',
     })
     directoryMessageId = msg.message_id
     cfg.set('TELEGRAM_DIRECTORY_MESSAGE_ID', String(directoryMessageId))
@@ -136,6 +160,27 @@ export async function runActivation(args: ActivationArgs): Promise<ActivationRes
     )
   } catch (e) {
     console.warn('telegram activation: setMyCommands failed (continuing):', errMsg(e))
+  }
+
+  // Re-activation sync — if the directory message already existed but the
+  // agent table changed while the daemon was down, push the latest body.
+  // Skipped on first-time creation: the initial sendMessage above already
+  // wrote the dynamic body, so a redundant editMessageText would just hit
+  // "message is not modified".
+  if (directoryAlreadyExisted) {
+    try {
+      await refreshDirectoryNow({
+        db: args.db,
+        paths: args.paths,
+        // ActivationApi has the superset of editMessageText + pinChatMessage
+        // we need for DirectoryApi — cast is safe because grammY's Bot.api
+        // implements both interfaces.
+        api: args.api as unknown as Parameters<typeof refreshDirectoryNow>[0]['api'],
+        chatId: args.chatId,
+      })
+    } catch (e) {
+      console.warn('telegram activation: post-activation directory refresh failed:', errMsg(e))
+    }
   }
 
   return {
