@@ -9,7 +9,6 @@ import {
   GROUP_COLORS,
   SERVICE_TOPIC_COLOR,
   topicDeepLink,
-  topicDeepLinkTg,
   topicNameFor,
 } from '../../src/lib/telegram/naming.ts'
 import { makeTestEnv, type TestEnv } from '../core/helpers.ts'
@@ -83,7 +82,7 @@ describe('allocateGroupColor', () => {
   })
 })
 
-describe('topicDeepLink (HTTPS form)', () => {
+describe('topicDeepLink', () => {
   test('strips the -100 supergroup prefix from the chat id', () => {
     const url = topicDeepLink(-1003964430972, 11)
     expect(url).toBe('https://t.me/c/3964430972/11')
@@ -94,16 +93,5 @@ describe('topicDeepLink (HTTPS form)', () => {
     // but the helper should still produce a sane link for unprefixed ids).
     const url = topicDeepLink(-9999, 42)
     expect(url).toBe('https://t.me/c/9999/42')
-  })
-})
-
-describe('topicDeepLinkTg (native scheme)', () => {
-  test('builds the tg://privatepost URL with channel/post/thread', () => {
-    const url = topicDeepLinkTg(-1003964430972, 11)
-    expect(url).toBe('tg://privatepost?channel=3964430972&post=11&thread=11')
-  })
-
-  test('uses the same chat-id stripping rules as the HTTPS form', () => {
-    expect(topicDeepLinkTg(-9999, 42)).toBe('tg://privatepost?channel=9999&post=42&thread=42')
   })
 })

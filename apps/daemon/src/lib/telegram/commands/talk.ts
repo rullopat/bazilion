@@ -7,7 +7,6 @@
 // decisions. Spawning new agents is `/spawn` and ships in Step 4.
 
 import { htmlEscape } from '../html.ts'
-import { topicDeepLinkTg } from '../naming.ts'
 import { parseAndResolveAgent } from '../resolve-agent.ts'
 import { ensureAgentTopic } from '../topic-autocreate.ts'
 import type { CommandHandler } from './types.ts'
@@ -72,15 +71,11 @@ export const handle: CommandHandler = async (ctx) => {
           ` (group <code>${htmlEscape(ensured.agent.groupId)}</code>).`,
         parseMode: 'HTML',
         disableWebPagePreview: true,
-        // URL buttons carry the native `tg://` scheme so iOS routes through
-        // its internal handler rather than the OS link-opener. Inline
-        // t.me/c/... links and t.me URL buttons both bounce to the topic-
-        // list view on iOS; `tg://privatepost?channel=…&thread=…&post=…`
-        // is the only form that navigates into the topic itself.
+        // URL button reads cleaner than an inline anchor on desktop/Android.
+        // See naming.ts:topicDeepLink for the iOS topic-navigation limit
+        // (which neither URL form nor tg:// scheme can work around).
         replyMarkup: {
-          inline_keyboard: [
-            [{ text: 'Open topic →', url: topicDeepLinkTg(ctx.chatId, ensured.topicId) }],
-          ],
+          inline_keyboard: [[{ text: 'Open topic →', url: ensured.deepLink }]],
         },
       }
     }

@@ -61,39 +61,25 @@ export function allocateGroupColor(db: BazilionDb, groupId: string): number {
 }
 
 /**
- * HTTPS form: `https://t.me/c/<chat>/<topic>`. Used in inline `<a href>`
- * links (e.g. `/list`) where the message body needs to render as text
- * even outside Telegram. Works on Telegram desktop / Android / web; iOS
- * client routes it to the chat's topic-list view rather than into the
- * topic itself (a known iOS-only limitation we cannot work around for
- * inline links in private supergroups).
+ * Build a deep-link to a forum topic in the configured supergroup:
+ * `https://t.me/c/<chat>/<topic>`. Strips the `-100` supergroup prefix
+ * from the chat id (`-1003964430972` → `3964430972`); channel-style
+ * negative ids are the only form we ever store, so the strip is safe.
  *
- * The chat short id strips the `-100` supergroup prefix:
- * `-1003964430972` → `3964430972`.
+ * ⚠ **iOS Telegram has a known limitation for private-supergroup topic
+ * deep-links.** Tapping these URLs on iOS opens the chat's topic-list
+ * view rather than navigating INTO the topic — regardless of whether
+ * the link is rendered as inline HTML, an inline-keyboard URL button,
+ * or expressed in the native `tg://privatepost?...&thread=...` scheme.
+ * Telegram desktop, web, and Android all open the topic correctly.
+ *
+ * Until Telegram closes the iOS gap there's no workaround beyond
+ * navigating manually. The bot still emits the link/button so desktop +
+ * Android users have one-tap access; iOS users go through the topic
+ * picker.
  */
 export function topicDeepLink(chatId: number, topicId: number): string {
   const absStr = String(Math.abs(chatId))
   const shortId = absStr.startsWith('100') ? absStr.slice(3) : absStr
   return `https://t.me/c/${shortId}/${topicId}`
-}
-
-/**
- * Native scheme form: `tg://privatepost?channel=<short>&post=<topic>&thread=<topic>`.
- * URL-button-only — when an inline-keyboard URL button carries a `tg://`
- * URL, Telegram clients route it through their internal handler rather
- * than the OS link-opener. On iOS this hits a different code path than
- * `https://t.me/...` and reliably navigates INTO the topic.
- *
- * The `thread` parameter is the topic identifier; `post` is the anchor
- * message inside the topic (we point at the topic creation system
- * message, whose id equals the topic id). `channel` is the short chat id
- * without the `-100` prefix — same as the HTTPS form.
- *
- * Don't use this URL outside an inline-keyboard button — Telegram clients
- * are the only thing that knows what to do with `tg://`.
- */
-export function topicDeepLinkTg(chatId: number, topicId: number): string {
-  const absStr = String(Math.abs(chatId))
-  const shortId = absStr.startsWith('100') ? absStr.slice(3) : absStr
-  return `tg://privatepost?channel=${shortId}&post=${topicId}&thread=${topicId}`
 }
