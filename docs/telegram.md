@@ -253,8 +253,8 @@ OpenClaw (`docs/openclaw-reference.md`) ships a multi-channel gateway with Teleg
 
 - This PR establishes the user story. No code yet.
 - Follow-ups, likely in order:
-  1. Migration + secrets/config keys + setup form + preflight checks + service-chat creation + directory-message creation + General hide (no bot running yet).
-  2. grammY bot singleton + polling loop + watermark persistence + stall watchdog + webhook-conflict recovery.
+  1. **Schema + setup UI + health endpoint, no live bot.** Migration `0003_agent_telegram.sql` + `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` keys + `apps/web` setup form + `GET /api/config/telegram/health` (preflight via one-shot `getMe` / `getChat` / `getChatMember` — no polling, no `createForumTopic`). At the end of this step the user can paste creds and see a green/red health card; the daemon does not yet *do* anything with Telegram. State after save is "configured, awaiting activation (next release)" — explicitly surfaced in the UI so users know it's expected.
+  2. **Bot singleton + polling loop + first activation.** grammY bot on `ctx.telegramBot` + `bot.start()` + watermark persistence + stall watchdog + webhook-conflict recovery. On startup, if creds are present but `TELEGRAM_SERVICE_TOPIC_ID` is unset, run the one-time activation: `createForumTopic('⚙ bazilion', red, gear)` → persist topic id → post + pin directory message → persist its id → `hideGeneralForumTopic` → `setMyCommands`. Token rotation tears down + reactivates.
   3. Routing helper (service chat → command dispatch, agent topic → agent or topic-context command, General-topic asymmetry, orphan handling) + service-chat commands (`/talk`, `/list`, `/groups`, `/help`, `/health`, `/whoami`).
   4. `/spawn` keyboard flow (profile picker → name prompt → auto-create + deep-link) + shared auto-create primitive used by `/talk` too.
   5. Topic-context commands (`/close`, `/rebind`, `/unbind`) + directory-message lifecycle (create / edit-on-CRUD / recreate-on-delete).
