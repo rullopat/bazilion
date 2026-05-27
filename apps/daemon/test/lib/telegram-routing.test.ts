@@ -190,9 +190,10 @@ describe('routeUpdate classification', () => {
     expect(outcome.kind).toBe('service_command')
     // The createForumTopic API call landed.
     expect(creates.length).toBe(1)
-    // The reply links into the new topic and confirms creation.
+    // The reply confirms creation and includes the "Open topic" URL button.
     expect(sends[0]?.text).toMatch(/Created topic for/)
-    expect(sends[0]?.text).toMatch(/<a href="/)
+    const opts = sends[0]?.opts as { reply_markup?: { inline_keyboard?: unknown[][] } }
+    expect(opts.reply_markup?.inline_keyboard?.[0]).toBeDefined()
     // And the binding persisted.
     expect(agentRepo.getTelegramTopicId(env.db, agent.id)).not.toBeNull()
   })

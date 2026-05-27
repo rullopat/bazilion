@@ -68,10 +68,15 @@ export const handle: CommandHandler = async (ctx) => {
       return {
         text:
           `${verb} agent <code>${htmlEscape(ensured.agent.name)}</code>` +
-          ` (group <code>${htmlEscape(ensured.agent.groupId)}</code>).\n` +
-          `→ <a href="${ensured.deepLink}">open topic</a>`,
+          ` (group <code>${htmlEscape(ensured.agent.groupId)}</code>).`,
         parseMode: 'HTML',
         disableWebPagePreview: true,
+        // URL buttons route through Telegram's native handler — iOS opens
+        // private-supergroup topic deep-links reliably this way; inline
+        // <a href="t.me/c/..."> links do not on iOS.
+        replyMarkup: {
+          inline_keyboard: [[{ text: 'Open topic →', url: ensured.deepLink }]],
+        },
       }
     }
   }

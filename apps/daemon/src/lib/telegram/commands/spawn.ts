@@ -149,11 +149,13 @@ export async function spawnAndBind(
   }
 
   return {
-    text:
-      `Spawned <code>${htmlEscape(agent.name)}</code> from profile <code>${htmlEscape(profile.id)}</code>.\n` +
-      `→ <a href="${ensured.deepLink}">open topic</a>`,
+    text: `Spawned <code>${htmlEscape(agent.name)}</code> from profile <code>${htmlEscape(profile.id)}</code>.`,
     parseMode: 'HTML',
     disableWebPagePreview: true,
+    // URL button — works reliably on iOS where inline t.me/c/... links don't.
+    replyMarkup: {
+      inline_keyboard: [[{ text: 'Open topic →', url: ensured.deepLink }]],
+    },
   }
 }
 
