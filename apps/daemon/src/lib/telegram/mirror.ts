@@ -18,6 +18,7 @@ import type { ChatFrame, TelegramMirrorMode } from '@bazilion/api-types'
 import type { BazilionDb } from '../../core/db/client.ts'
 import { agentRepo } from '../../core/index.ts'
 import { enqueueOutbound } from './outbound-queue.ts'
+import { clearReactionsFor } from './reactions.ts'
 
 /** Bot API subset the mirror needs. Mirrors the pattern from directory.ts. */
 export interface MirrorApi {
@@ -72,6 +73,10 @@ export async function mirrorAgentTurnFrame(
 
   const text = renderFrame(frame, agent.telegramMirrorMode)
   if (!text) return
+
+  // The agent is replying — drop any pending 👀 reactions on the user's
+  // inbound messages. The reply itself is the canonical "I saw it".
+  if (shouldClearReactionsFor(frame)) clearReactionsFor(agent.id)
 
   try {
     await enqueueOutbound(deps.chatId, () =>
@@ -155,6 +160,19 @@ function clip(s: string, limit: number): string {
 function truncateForTelegram(text: string): string {
   if (text.length <= SAFE_CHAR_BUDGET) return text
   return `${text.slice(0, SAFE_CHAR_BUDGET - 1)}…`
+}
+
+/**
+ * True for frames that represent "the agent has responded" — used to clear
+ * pending 👀 reactions on the user's inbound messages. assistant_message
+ * is the obvious case; error and fatal also count (the user should know
+ * something happened, even if it's a failure).
+ */
+function shouldClearReactionsFor(frame: ChatFrame): boolean {
+  if (frame.kind === 'fatal') return true
+  if (frame.kind === 'done') return false
+  const t = frame.event.type
+  return t === 'assistant_message' || t === 'error'
 }
 
 function isThreadGoneError(e: unknown): boolean {

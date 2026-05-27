@@ -21,6 +21,7 @@ import { dispatchCommand, parseCommand } from './commands/index.ts'
 import { namePrompt, SPAWN_PROFILE_CALLBACK_PREFIX, spawnAndBind } from './commands/spawn.ts'
 import type { CommandApi, CommandResult } from './commands/types.ts'
 import { enqueueAgentMessage } from './inbound-queue.ts'
+import { reactSeen } from './reactions.ts'
 import { setPendingSpawn, takePendingSpawn } from './spawn-state.ts'
 
 const SERVICE_TOPIC_KEY = 'TELEGRAM_SERVICE_TOPIC_ID'
@@ -142,6 +143,9 @@ export async function routeUpdate(deps: RouterDeps, update: Update): Promise<Rou
       return { kind: 'agent_topic', agentId: agent.id, topicId: threadId, queued: false }
     }
     enqueueAgentMessage(agent.id, userText)
+    // 👀 "I see this" indicator on the user's message. Cleared by the
+    // mirror when the agent's reply lands.
+    reactSeen(agent.id, deps.chatId, m.message_id)
     return { kind: 'agent_topic', agentId: agent.id, topicId: threadId, queued: true }
   }
 

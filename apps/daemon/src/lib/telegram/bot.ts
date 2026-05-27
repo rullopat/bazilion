@@ -22,6 +22,7 @@ import { openConfig, openSecrets, type Paths, resolvePaths } from '../../core/in
 import { type ActivationApi, runActivation } from './activation.ts'
 import { type DirectoryApi, installLiveDepsResolver } from './directory.ts'
 import { installMirrorDepsResolver, type MirrorApi } from './mirror.ts'
+import { installReactionsDepsResolver, type ReactionsApi } from './reactions.ts'
 import { type ReplyApi, routeUpdate } from './routing.ts'
 
 const POLL_TIMEOUT_S = 25
@@ -193,6 +194,12 @@ async function startInternal(
   installMirrorDepsResolver(() => ({
     db,
     api: handle.bot.api as unknown as MirrorApi,
+    chatId: handle.chatId,
+  }))
+
+  // Reactions: 👀 "bot saw it" indicator on inbound user messages.
+  installReactionsDepsResolver(() => ({
+    api: handle.bot.api as unknown as ReactionsApi,
     chatId: handle.chatId,
   }))
 
