@@ -15,12 +15,18 @@ describe('inbound-queue', () => {
   beforeEach(async () => {
     runAgentTurnCalls = []
     vi.resetModules()
+    // Returns an async generator; declaring as a non-generator function
+    // that returns one avoids biome's `useYield` rule firing on the
+    // branch where frameOutput is null (which is the common case in these
+    // tests — the inbound-queue drain loop only cares about completion).
     vi.doMock('../../src/lib/agent-turn.ts', () => ({
-      runAgentTurn: async function* runAgentTurn(agentId: string, message: string) {
+      runAgentTurn: (agentId: string, message: string) => {
         runAgentTurnCalls.push({ agentId, message })
-        if (frameOutput) {
-          for await (const f of frameOutput) yield f
-        }
+        return (async function* () {
+          if (frameOutput) {
+            for await (const f of frameOutput) yield f
+          }
+        })()
       },
     }))
   })
@@ -43,13 +49,16 @@ describe('inbound-queue', () => {
 
   test('messages queued during a turn concatenate into the next turn input', async () => {
     // Give the turn a controllable lifetime so we can enqueue while it's running.
-    let releaseTurn: (() => void) = () => {}
+    let releaseTurn: () => void = () => {}
     const turnGate = new Promise<void>((r) => {
       releaseTurn = r
     })
+    // Generator deliberately yields nothing — the inbound-queue drain
+    // loop only cares about completion. The dead `if (false) yield`
+    // satisfies biome's useYield rule without changing semantics.
     frameOutput = (async function* () {
+      if (false as boolean) yield undefined
       await turnGate
-      // yield nothing; just terminate when the gate resolves
     })() as AsyncGenerator<unknown>
 
     const { enqueueAgentMessage, _resetInboundQueueForTest } = await import(
@@ -98,13 +107,16 @@ describe('inbound-queue', () => {
     let callCount = 0
     vi.resetModules()
     vi.doMock('../../src/lib/agent-turn.ts', () => ({
-      runAgentTurn: async function* runAgentTurn(agentId: string, message: string) {
+      runAgentTurn: (agentId: string, message: string) => {
         callCount += 1
         runAgentTurnCalls.push({ agentId, message })
-        if (callCount === 1) {
-          throw new Error('first turn boom')
-        }
-        // Second call succeeds quietly.
+        return (async function* () {
+          if (false as boolean) yield undefined
+          if (callCount === 1) {
+            throw new Error('first turn boom')
+          }
+          // Second call ends without yielding — simulates a quiet turn.
+        })()
       },
     }))
 

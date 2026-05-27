@@ -5,11 +5,7 @@ import { registerAgent, unregisterAgent } from './agent-cancel.ts'
 import { resolveAgentApiKey } from './api-key.ts'
 import { getCtx } from './ctx.ts'
 import { createDbMessagingHost } from './messaging-host.ts'
-import {
-  mirrorAgentTurnFrame,
-  mirrorTypingStart,
-  mirrorTypingStop,
-} from './telegram/mirror.ts'
+import { mirrorAgentTurnFrame, mirrorTypingStart, mirrorTypingStop } from './telegram/mirror.ts'
 import { createDbUserMdHost } from './user-md-host.ts'
 
 interface RunAgentTurnOpts {

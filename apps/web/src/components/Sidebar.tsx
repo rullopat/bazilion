@@ -266,7 +266,18 @@ export function Sidebar({
                               : 'border-transparent'
                           }`}
                         >
-                          <div className="truncate text-sm font-medium">{a.name}</div>
+                          <div className="flex items-center gap-1.5 truncate text-sm font-medium">
+                            <span className="truncate">{a.name}</span>
+                            {a.telegramTopicId !== null && (
+                              <span
+                                className="text-xs"
+                                title={`Telegram topic #${a.telegramTopicId}`}
+                                aria-label={`Bound to Telegram topic ${a.telegramTopicId}`}
+                              >
+                                ✈
+                              </span>
+                            )}
+                          </div>
                           <div className="flex gap-2 font-mono text-[0.7em] text-muted-foreground">
                             <span className="uppercase tracking-wide">{a.status}</span>
                             <code>{a.id.slice(0, 8)}</code>

@@ -40,6 +40,7 @@ export type {
 export type { MemoryEntry, MemoryHit } from './memory.ts'
 
 import type {
+  Agent,
   AgentTrigger,
   Message,
   ReasoningLevel,
@@ -636,4 +637,17 @@ export interface TelegramConfigState {
   chatId: string
   /** Masked preview of the bot token like `1234567:AAHi…`. Empty when unset. */
   botTokenPreview: string
+}
+
+/**
+ * Response from `POST /api/agents/:id/telegram/bind`. The full agent is
+ * returned with telegramTopicId populated, plus a deep-link the client can
+ * surface as a button. `created` distinguishes "we made a new topic" from
+ * "agent was already bound".
+ */
+export interface TelegramBindResponse {
+  agent: Agent
+  topicId: number
+  deepLink: string
+  created: boolean
 }

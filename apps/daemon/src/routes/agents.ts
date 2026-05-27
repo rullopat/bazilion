@@ -53,7 +53,9 @@ import { resolveAgentApiKey } from '../lib/api-key.ts'
 import { validateCron } from '../lib/cron.ts'
 import { getCtx } from '../lib/ctx.ts'
 import { createDbMessagingHost } from '../lib/messaging-host.ts'
+import { getTelegramBotApi } from '../lib/telegram/bot.ts'
 import { notifyDirectoryDirty } from '../lib/telegram/directory.ts'
+import { ensureAgentTopic } from '../lib/telegram/topic-autocreate.ts'
 import {
   buildSystemPrompt,
   createBazilionSession,
@@ -212,6 +214,57 @@ agentsRouter.post('/:id/unarchive', (c) => {
   } catch (err) {
     return c.json({ error: (err as Error).message }, 400)
   }
+})
+
+// ─── Telegram binding ────────────────────────────────────────────────────
+//
+// These endpoints mirror the topic-context `/talk` and `/unbind` commands
+// in HTTP form, so the web UI + CLI can manage bindings without going
+// through Telegram itself. POST /:id/telegram/bind invokes the same
+// `ensureAgentTopic` primitive `/talk` uses; DELETE /:id/telegram/binding
+// just clears the column.
+
+agentsRouter.post('/:id/telegram/bind', async (c) => {
+  const { db, paths } = getCtx()
+  const resolvedId = agentRepo.resolveId(db, c.req.param('id'))
+  if (!resolvedId) return c.json({ error: `agent not found: ${c.req.param('id')}` }, 404)
+  const live = getTelegramBotApi()
+  if (!live) {
+    return c.json(
+      {
+        error:
+          'Telegram bot is not running — configure credentials at /config/integrations/telegram',
+      },
+      503,
+    )
+  }
+  const result = await ensureAgentTopic({
+    db,
+    paths,
+    api: live.api as unknown as Parameters<typeof ensureAgentTopic>[0]['api'],
+    chatId: live.chatId,
+    agentId: resolvedId,
+  })
+  if (result.kind === 'agent-not-found')
+    return c.json({ error: `agent not found: ${resolvedId}` }, 404)
+  if (result.kind === 'group-not-found') return c.json({ error: `group not found for agent` }, 500)
+  // notifyDirectoryDirty is already called inside ensureAgentTopic.
+  const agent = agentRepo.get(db, resolvedId)
+  return c.json({
+    agent,
+    topicId: result.topicId,
+    deepLink: result.deepLink,
+    created: result.created,
+  })
+})
+
+agentsRouter.delete('/:id/telegram/binding', (c) => {
+  const { db } = getCtx()
+  const resolvedId = agentRepo.resolveId(db, c.req.param('id'))
+  if (!resolvedId) return c.json({ error: `agent not found: ${c.req.param('id')}` }, 404)
+  agentRepo.setTelegramTopicId(db, resolvedId, null)
+  notifyDirectoryDirty()
+  return c.body(null, 204)
 })
 
 // ─── Group move ──────────────────────────────────────────────────────────

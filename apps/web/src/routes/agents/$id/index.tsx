@@ -6,6 +6,9 @@ import type {
   ResolvedAgent,
   SessionHeadResponse,
   SkillInfo,
+  TelegramBindResponse,
+  TelegramConfigState,
+  TelegramMirrorMode,
 } from '@bazilion/api-types'
 import { createFileRoute, redirect, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
@@ -32,6 +35,7 @@ interface AgentView {
   groups: Group[]
   skills: SkillInfo[]
   modelGroups: ModelGroup[]
+  telegramConfigured: boolean
 }
 
 const fetchAgent = createServerFn({ method: 'POST' })
@@ -45,7 +49,7 @@ const fetchAgent = createServerFn({ method: 'POST' })
       if (err instanceof ApiClientError && err.status === 404) return null
       throw err
     }
-    const [msgs, head, groups, skills, models] = await Promise.all([
+    const [msgs, head, groups, skills, models, telegramConfig] = await Promise.all([
       c.get<{ messages: ProviderMessage[] }>(
         `/api/agents/${encodeURIComponent(resolved.agent.id)}/sessions/messages`,
       ),
@@ -55,6 +59,9 @@ const fetchAgent = createServerFn({ method: 'POST' })
       c.get<Group[]>('/api/groups'),
       c.get<SkillInfo[]>('/api/skills'),
       c.get<AvailableModelsResponse>('/api/config/available-models'),
+      c
+        .get<TelegramConfigState>('/api/config/telegram')
+        .catch(() => ({ configured: false }) as TelegramConfigState),
     ])
     return {
       resolved,
@@ -63,6 +70,7 @@ const fetchAgent = createServerFn({ method: 'POST' })
       groups,
       skills,
       modelGroups: models.groups,
+      telegramConfigured: telegramConfig.configured,
     }
   })
 
@@ -76,8 +84,15 @@ export const Route = createFileRoute('/agents/$id/')({
 })
 
 function AgentDetailPage() {
-  const { resolved, initialMessages, sessionHead, groups, skills, modelGroups } =
-    Route.useLoaderData()
+  const {
+    resolved,
+    initialMessages,
+    sessionHead,
+    groups,
+    skills,
+    modelGroups,
+    telegramConfigured,
+  } = Route.useLoaderData()
   const router = useRouter()
 
   async function archive() {
@@ -225,6 +240,13 @@ function AgentDetailPage() {
           all={skills}
         />
       </section>
+
+      {telegramConfigured && (
+        <section className="mt-10">
+          <SectionTitle>Telegram</SectionTitle>
+          <TelegramSection agent={resolved.agent} />
+        </section>
+      )}
     </div>
   )
 }
@@ -523,5 +545,151 @@ function SkillsTable({
         </tbody>
       </table>
     </>
+  )
+}
+
+// ─── Telegram section ───────────────────────────────────────────────────
+
+function TelegramSection({
+  agent,
+}: {
+  agent: import('@bazilion/api-types').Agent
+}) {
+  const router = useRouter()
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [mirrorMode, setMirrorMode] = useState<TelegramMirrorMode>(agent.telegramMirrorMode)
+
+  const isBound = agent.telegramTopicId !== null
+
+  async function bind() {
+    setBusy(true)
+    setError(null)
+    try {
+      const res = await fetch(
+        `/api/agents/${encodeURIComponent(agent.id)}/telegram/bind`,
+        { method: 'POST' },
+      )
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { error?: string } | null
+        throw new Error(body?.error ?? res.statusText)
+      }
+      const result = (await res.json()) as TelegramBindResponse
+      // Open the deep-link in a new tab — works for Telegram desktop/Android.
+      window.open(result.deepLink, '_blank', 'noopener')
+      await router.invalidate()
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function unbind() {
+    if (!confirm('Unbind this agent from its Telegram topic? The topic stays in Telegram as an orphan.'))
+      return
+    setBusy(true)
+    setError(null)
+    try {
+      const res = await fetch(
+        `/api/agents/${encodeURIComponent(agent.id)}/telegram/binding`,
+        { method: 'DELETE' },
+      )
+      if (!res.ok) throw new Error(res.statusText)
+      await router.invalidate()
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function saveMirrorMode(next: TelegramMirrorMode) {
+    setMirrorMode(next)
+    try {
+      const res = await fetch(`/api/agents/${encodeURIComponent(agent.id)}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ telegramMirrorMode: next }),
+      })
+      if (!res.ok) throw new Error(res.statusText)
+      await router.invalidate()
+    } catch (e) {
+      // Revert on failure.
+      setMirrorMode(agent.telegramMirrorMode)
+      setError((e as Error).message)
+    }
+  }
+
+  return (
+    <div className="text-[0.9em]">
+      <div className="mb-3 flex items-center gap-3">
+        {isBound ? (
+          <>
+            <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800">
+              bound
+            </span>
+            <span className="font-mono text-mocha">topic #{agent.telegramTopicId}</span>
+            <button
+              type="button"
+              onClick={bind}
+              disabled={busy}
+              className="ghost-btn"
+              title="Open the topic in Telegram (works on desktop/Android; iOS shows the topic list)"
+            >
+              open in Telegram
+            </button>
+            <button
+              type="button"
+              onClick={unbind}
+              disabled={busy}
+              className="ghost-btn border-[rgba(196,135,138,0.4)] text-[#9B3D3D] hover:bg-[rgba(196,135,138,0.08)]"
+            >
+              unbind
+            </button>
+          </>
+        ) : (
+          <>
+            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">
+              unbound
+            </span>
+            <button
+              type="button"
+              onClick={bind}
+              disabled={busy}
+              className="ghost-btn"
+              title="Create a Telegram topic for this agent"
+            >
+              {busy ? 'binding…' : 'bind a topic'}
+            </button>
+          </>
+        )}
+      </div>
+
+      <div className="flex items-center gap-2">
+        <label htmlFor="mirror-mode" className="text-mocha-light">
+          mirror mode:
+        </label>
+        <select
+          id="mirror-mode"
+          value={mirrorMode}
+          onChange={(e) => void saveMirrorMode(e.target.value as TelegramMirrorMode)}
+          className="rounded-md border bg-background px-2 py-1 font-mono text-sm"
+          disabled={busy}
+        >
+          <option value="minimal">minimal — assistant messages only</option>
+          <option value="verbose">verbose — also tool calls</option>
+        </select>
+      </div>
+
+      {error && <p className="mt-2 text-sm text-rose-700">{error}</p>}
+
+      <p className="mt-3 text-[0.85em] text-mocha-light">
+        When bound, every assistant turn for this agent gets mirrored to the topic. Typing in
+        the topic triggers a new turn. iOS Telegram clients have a known limitation that
+        prevents inline link deep-links from opening directly into a topic — bound state is
+        still functional; navigate via the topic list manually.
+      </p>
+    </div>
   )
 }

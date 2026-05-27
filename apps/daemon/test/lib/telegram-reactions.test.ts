@@ -2,15 +2,15 @@
 // clears once the agent's reply lands.
 
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
+import { _resetOutboundQueueForTest } from '../../src/lib/telegram/outbound-queue.ts'
 import {
   _pendingCountForTest,
   _resetReactionsForTest,
   clearReactionsFor,
   installReactionsDepsResolver,
-  reactSeen,
   type ReactionsApi,
+  reactSeen,
 } from '../../src/lib/telegram/reactions.ts'
-import { _resetOutboundQueueForTest } from '../../src/lib/telegram/outbound-queue.ts'
 
 const CHAT_ID = -1003964430972
 
