@@ -1,6 +1,10 @@
 # Telegram integration — user story
 
-Living design doc. **The v1 user story is complete as of 2026-05-25** — six decisions, end-to-end walkthrough, command vocabulary, codebase sketch, polling-robustness invariants, risk register, OpenClaw prior art, and an ordered list of implementation PRs. Code starts next. Update this file as implementation surfaces new design questions.
+Living design doc. **The v1 user story landed 2026-05-25; implementation shipped through PRs #11–#17 by 2026-05-27.** Seven of the eight planned PRs are merged; Step 8 (webhook ingress) is intentionally deferred — polling is the default and works for every install, webhook is a v2 efficiency upgrade for users who already have a public URL.
+
+**Current state:** Telegram is a fully-functional surface for bazilion. Bot polls a configured supergroup, owns a `⚙ bazilion` service chat with 7 slash commands (`/talk`, `/spawn`, `/list`, `/groups`, `/health`, `/whoami`, `/help`), creates one forum topic per agent, mirrors every assistant turn back into that topic with typing indicator and 👀 reactions, accepts user messages typed in a bound topic as agent input (queued + concatenated when an agent is mid-turn). Topic-context commands (`/close`, `/rebind`, `/unbind`) work inside agent topics. Per-agent verbose mirror mode surfaces tool-call summary lines. The pinned directory message updates on every CRUD event and self-recreates on deletion. CLI + web UI both expose binding/health/mirror-mode controls.
+
+The doc below is preserved as the design record. Update it if you tackle Step 8 or surface new design questions during maintenance.
 
 ## Problem
 
