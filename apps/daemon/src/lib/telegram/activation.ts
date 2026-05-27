@@ -15,9 +15,10 @@
 // menu fills in when Step 3 ships handlers — otherwise the user would see a
 // slash menu of broken commands.
 
-import type { Sticker } from 'grammy/types'
+import type { BotCommand, Sticker } from 'grammy/types'
 import type { BazilionDb } from '../../core/db/client.ts'
 import { openConfig } from '../../core/index.ts'
+import { SERVICE_COMMANDS } from './commands/index.ts'
 
 /** Telegram's 6-color icon enum. Red is reserved for the service chat. */
 export const ICON_COLOR_RED = 16478047
@@ -44,6 +45,11 @@ export interface ActivationApi {
     opts?: { disable_notification?: boolean },
   ): Promise<boolean>
   hideGeneralForumTopic(chatId: number): Promise<boolean>
+  /**
+   * Register the service-chat command list with Telegram. Failures are
+   * non-fatal — the slash menu just stays empty until the next activation.
+   */
+  setMyCommands(commands: BotCommand[]): Promise<boolean>
 }
 
 export interface ActivationArgs {
@@ -57,6 +63,7 @@ export interface ActivationResult {
   directoryMessageId: number
   gearStickerEmojiId: string | null
   generalHidden: boolean
+  commandsRegistered: boolean
 }
 
 /** The pinned welcome message inside the service topic. Plain text — Step 5 grows it into a live directory with deep-links. */
@@ -120,11 +127,23 @@ export async function runActivation(args: ActivationArgs): Promise<ActivationRes
     console.warn('telegram activation: hideGeneralForumTopic failed (continuing):', errMsg(e))
   }
 
+  // Register the slash-command menu. Re-running every activation keeps the
+  // menu in sync if SERVICE_COMMANDS evolves between releases.
+  let commandsRegistered = false
+  try {
+    commandsRegistered = await args.api.setMyCommands(
+      SERVICE_COMMANDS.map((c) => ({ command: c.name, description: c.description })),
+    )
+  } catch (e) {
+    console.warn('telegram activation: setMyCommands failed (continuing):', errMsg(e))
+  }
+
   return {
     serviceTopicId,
     directoryMessageId,
     gearStickerEmojiId,
     generalHidden,
+    commandsRegistered,
   }
 }
 

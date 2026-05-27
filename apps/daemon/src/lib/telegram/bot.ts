@@ -18,8 +18,9 @@ import type { TelegramPollingState } from '@bazilion/api-types'
 import { Bot, GrammyError } from 'grammy'
 import type { Update } from 'grammy/types'
 import type { BazilionDb } from '../../core/db/client.ts'
-import { openConfig, openSecrets } from '../../core/index.ts'
+import { openConfig, openSecrets, type Paths, resolvePaths } from '../../core/index.ts'
 import { type ActivationApi, runActivation } from './activation.ts'
+import { type ReplyApi, routeUpdate } from './routing.ts'
 
 const POLL_TIMEOUT_S = 25
 const STALL_MS_DEFAULT = 120_000
@@ -32,6 +33,10 @@ const LAST_UPDATE_KEY = 'TELEGRAM_LAST_UPDATE_ID'
 interface BotHandle {
   bot: Bot
   chatId: number
+  /** Cached resolvePaths() so each routed update doesn't re-walk env vars. */
+  paths: Paths
+  /** Same auth token the rest of the daemon uses — needed for secrets store access from inside commands. */
+  authToken: string
   state: TelegramPollingState
   stopRequested: boolean
   pollPromise: Promise<void> | null
@@ -65,7 +70,7 @@ export function maybeStartTelegramBot(db: BazilionDb, authToken: string): Promis
     if (_handle) return
     const creds = readCreds(db, authToken)
     if (!creds) return
-    await startInternal(db, creds.botToken, creds.chatId)
+    await startInternal(db, authToken, creds.botToken, creds.chatId)
   })
 }
 
@@ -79,7 +84,7 @@ export function restartTelegramBot(db: BazilionDb, authToken: string): Promise<v
     await stopInternal()
     const creds = readCreds(db, authToken)
     if (!creds) return
-    await startInternal(db, creds.botToken, creds.chatId)
+    await startInternal(db, authToken, creds.botToken, creds.chatId)
   })
 }
 
@@ -102,7 +107,12 @@ function readCreds(db: BazilionDb, authToken: string): { botToken: string; chatI
   return { botToken, chatId }
 }
 
-async function startInternal(db: BazilionDb, botToken: string, chatId: number): Promise<void> {
+async function startInternal(
+  db: BazilionDb,
+  authToken: string,
+  botToken: string,
+  chatId: number,
+): Promise<void> {
   const bot = new Bot(botToken)
   const state: TelegramPollingState = {
     running: false,
@@ -115,6 +125,8 @@ async function startInternal(db: BazilionDb, botToken: string, chatId: number): 
   const handle: BotHandle = {
     bot,
     chatId,
+    paths: resolvePaths(),
+    authToken,
     state,
     stopRequested: false,
     pollPromise: null,
@@ -218,7 +230,7 @@ async function pollLoop(handle: BotHandle, db: BazilionDb, initialOffset: number
 
     for (const u of updates) {
       try {
-        dispatchUpdate(u)
+        await dispatchUpdate(handle, db, u)
       } catch (e) {
         console.error('telegram: dispatch threw (advancing offset to avoid retry loop):', errMsg(e))
       }
@@ -239,10 +251,11 @@ async function pollLoop(handle: BotHandle, db: BazilionDb, initialOffset: number
 }
 
 /**
- * Step-2 dispatch. Logs the update and lets the caller advance the offset.
- * Step 3 replaces this with the real routing layer.
+ * Step-3 dispatch. Delegates to the routing helper which classifies the
+ * update + sends an appropriate Telegram reply where warranted. We still
+ * log every update so the daemon log stays useful for debugging.
  */
-function dispatchUpdate(u: Update): void {
+async function dispatchUpdate(handle: BotHandle, db: BazilionDb, u: Update): Promise<void> {
   const m = u.message ?? u.edited_message ?? u.channel_post ?? null
   if (m) {
     const preview = (m.text ?? m.caption ?? '').slice(0, 80)
@@ -250,9 +263,30 @@ function dispatchUpdate(u: Update): void {
     console.log(
       `telegram update ${u.update_id} · chat=${m.chat.id} thread=${thread} · "${preview}"`,
     )
-    return
+  } else {
+    console.log(`telegram update ${u.update_id} · non-message: ${Object.keys(u).join(',')}`)
   }
-  console.log(`telegram update ${u.update_id} · non-message: ${Object.keys(u).join(',')}`)
+
+  // Route only chat messages — service updates (chat_member, my_chat_member,
+  // poll, etc.) flow past the router untouched, which is correct for now.
+  if (!u.message && !u.edited_message) return
+  const outcome = await routeUpdate(
+    {
+      db,
+      paths: handle.paths,
+      authToken: handle.authToken,
+      api: handle.bot.api as unknown as ReplyApi,
+      chatId: handle.chatId,
+    },
+    u,
+  )
+  if (outcome.kind === 'service_command' || outcome.kind === 'service_unknown_command') {
+    console.log(`telegram: dispatched /${outcome.name} (kind=${outcome.kind})`)
+  } else if (outcome.kind === 'agent_topic') {
+    console.log(
+      `telegram: agent-topic inbound for agent=${outcome.agentId} (chat-back ships in step 6)`,
+    )
+  }
 }
 
 async function stopInternal(): Promise<void> {

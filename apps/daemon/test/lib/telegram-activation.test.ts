@@ -52,6 +52,7 @@ interface MockOptions {
   pinFails?: boolean
   hideFails?: boolean
   stickersFails?: boolean
+  commandsFails?: boolean
 }
 
 function mockApi(opts: MockOptions = {}): {
@@ -83,6 +84,11 @@ function mockApi(opts: MockOptions = {}): {
       if (opts.hideFails) throw new Error('hide boom')
       return true
     },
+    async setMyCommands(commands) {
+      calls.push({ method: 'setMyCommands', args: [commands] })
+      if (opts.commandsFails) throw new Error('commands boom')
+      return true
+    },
   }
   return { api, calls }
 }
@@ -101,7 +107,7 @@ describe('runActivation', () => {
     vi.restoreAllMocks()
   })
 
-  test('full first activation runs all four side effects in order', async () => {
+  test('full first activation runs all side effects in order, ending with setMyCommands', async () => {
     const { api, calls } = mockApi({ topicId: 100, messageId: 200 })
     const result = await runActivation({ db: env.db, api, chatId: CHAT_ID })
 
@@ -109,14 +115,16 @@ describe('runActivation', () => {
     expect(result.directoryMessageId).toBe(200)
     expect(result.gearStickerEmojiId).toBe('gear-1')
     expect(result.generalHidden).toBe(true)
+    expect(result.commandsRegistered).toBe(true)
 
-    // Calls in order: stickers → createForumTopic → sendMessage → pin → hide.
+    // Calls in order: stickers → createForumTopic → sendMessage → pin → hide → setMyCommands.
     expect(calls.map((c) => c.method)).toEqual([
       'getForumTopicIconStickers',
       'createForumTopic',
       'sendMessage',
       'pinChatMessage',
       'hideGeneralForumTopic',
+      'setMyCommands',
     ])
 
     // createForumTopic gets the red color, the gear id, and the canonical name.
@@ -148,8 +156,9 @@ describe('runActivation', () => {
     expect(result.directoryMessageId).toBe(99)
     expect(result.gearStickerEmojiId).toBeNull()
     // No sticker probe, no topic create, no message send, no pin — but hide
-    // still runs every activation by design.
-    expect(calls.map((c) => c.method)).toEqual(['hideGeneralForumTopic'])
+    // and setMyCommands still run every activation by design (the latter so
+    // command-list changes between releases get picked up on restart).
+    expect(calls.map((c) => c.method)).toEqual(['hideGeneralForumTopic', 'setMyCommands'])
   })
 
   test('resumes from partial state: topic id persisted, message id missing', async () => {
@@ -166,6 +175,7 @@ describe('runActivation', () => {
       'sendMessage',
       'pinChatMessage',
       'hideGeneralForumTopic',
+      'setMyCommands',
     ])
     expect(calls[0]?.args).toEqual([CHAT_ID, DIRECTORY_WELCOME_MESSAGE, { message_thread_id: 42 }])
   })
@@ -231,5 +241,13 @@ describe('runActivation', () => {
     // Nothing persisted because the failure was before any successful step.
     expect(openConfig(env.db).get('TELEGRAM_SERVICE_TOPIC_ID')).toBeUndefined()
     expect(openConfig(env.db).get('TELEGRAM_DIRECTORY_MESSAGE_ID')).toBeUndefined()
+  })
+
+  test('setMyCommands failure is swallowed; result.commandsRegistered=false', async () => {
+    const { api } = mockApi({ commandsFails: true })
+    const result = await runActivation({ db: env.db, api, chatId: CHAT_ID })
+    // The earlier steps still complete normally.
+    expect(result.serviceTopicId).toBeGreaterThan(0)
+    expect(result.commandsRegistered).toBe(false)
   })
 })
