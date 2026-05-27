@@ -18,6 +18,7 @@ import type { InlineKeyboardMarkup } from 'grammy/types'
 import { spawnAgent } from '../../../core/agent/spawn.ts'
 import { agentRepo, profileRepo } from '../../../core/index.ts'
 import { htmlEscape } from '../html.ts'
+import { topicDeepLinkTg } from '../naming.ts'
 import { setPendingSpawn } from '../spawn-state.ts'
 import { ensureAgentTopic } from '../topic-autocreate.ts'
 import type { CommandCtx, CommandHandler, CommandResult } from './types.ts'
@@ -152,9 +153,11 @@ export async function spawnAndBind(
     text: `Spawned <code>${htmlEscape(agent.name)}</code> from profile <code>${htmlEscape(profile.id)}</code>.`,
     parseMode: 'HTML',
     disableWebPagePreview: true,
-    // URL button — works reliably on iOS where inline t.me/c/... links don't.
+    // tg:// URL button — see talk.ts for why this is the iOS-compatible form.
     replyMarkup: {
-      inline_keyboard: [[{ text: 'Open topic →', url: ensured.deepLink }]],
+      inline_keyboard: [
+        [{ text: 'Open topic →', url: topicDeepLinkTg(ctx.chatId, ensured.topicId) }],
+      ],
     },
   }
 }
