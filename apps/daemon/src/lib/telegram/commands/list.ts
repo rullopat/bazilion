@@ -14,7 +14,7 @@ export const handle: CommandHandler = async (ctx) => {
   const allAgents = agentRepo.list(ctx.db)
   if (allAgents.length === 0) {
     return {
-      text: '<i>No agents yet. /spawn ships in the next release.</i>',
+      text: '<i>No agents yet. Run /spawn to create one.</i>',
       parseMode: 'HTML',
     }
   }

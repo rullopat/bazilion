@@ -14,6 +14,7 @@ import {
   type ReplyApi,
   routeUpdate,
 } from '../../src/lib/telegram/routing.ts'
+import { _resetSpawnStateForTest } from '../../src/lib/telegram/spawn-state.ts'
 import { makeTestEnv, type TestEnv } from '../core/helpers.ts'
 
 const CHAT_ID = -1003964430972
@@ -23,21 +24,34 @@ function makeReplyApi(): {
   api: ReplyApi
   sends: { chatId: number; text: string; opts: unknown }[]
   creates: { chatId: number; name: string; opts: unknown }[]
+  edits: { chatId: number; messageId: number; text: string; opts: unknown }[]
+  acks: { id: string; opts: unknown }[]
 } {
   const sends: { chatId: number; text: string; opts: unknown }[] = []
   const creates: { chatId: number; name: string; opts: unknown }[] = []
+  const edits: { chatId: number; messageId: number; text: string; opts: unknown }[] = []
+  const acks: { id: string; opts: unknown }[] = []
+  let nextMessageId = 100
   let nextTopicId = 200
   const api: ReplyApi = {
     async sendMessage(chatId, text, opts) {
       sends.push({ chatId, text, opts })
-      return { message_id: 1 }
+      return { message_id: nextMessageId++ }
     },
     async createForumTopic(chatId, name, opts) {
       creates.push({ chatId, name, opts })
       return { message_thread_id: nextTopicId++ }
     },
+    async editMessageText(chatId, messageId, text, opts) {
+      edits.push({ chatId, messageId, text, opts: opts ?? {} })
+      return true
+    },
+    async answerCallbackQuery(id, opts) {
+      acks.push({ id, opts: opts ?? {} })
+      return true
+    },
   }
-  return { api, sends, creates }
+  return { api, sends, creates, edits, acks }
 }
 
 function messageUpdate(opts: {
@@ -77,6 +91,7 @@ beforeEach(() => {
     defaultSkills: [],
   })
   _resetRouterStateForTest()
+  _resetSpawnStateForTest()
 })
 afterEach(() => env.cleanup())
 
@@ -175,9 +190,10 @@ describe('routeUpdate classification', () => {
     expect(outcome.kind).toBe('service_command')
     // The createForumTopic API call landed.
     expect(creates.length).toBe(1)
-    // The reply links into the new topic and confirms creation.
+    // The reply confirms creation and includes the "Open topic" URL button.
     expect(sends[0]?.text).toMatch(/Created topic for/)
-    expect(sends[0]?.text).toMatch(/<a href="/)
+    const opts = sends[0]?.opts as { reply_markup?: { inline_keyboard?: unknown[][] } }
+    expect(opts.reply_markup?.inline_keyboard?.[0]).toBeDefined()
     // And the binding persisted.
     expect(agentRepo.getTelegramTopicId(env.db, agent.id)).not.toBeNull()
   })
@@ -210,5 +226,89 @@ describe('routeUpdate classification', () => {
     expect(outcome.kind).toBe('unknown_topic')
     if (outcome.kind === 'unknown_topic') expect(outcome.topicId).toBe(9999)
     expect(sends[0]?.text).toMatch(/isn.+t bound/)
+  })
+
+  test('callback_query for spawn:profile:<id> stores pending state + edits the picker', async () => {
+    const { api, edits, acks } = makeReplyApi()
+    const u: Update = {
+      update_id: 9000,
+      callback_query: {
+        id: 'cb1',
+        from: { id: 11, is_bot: false, first_name: 'P' },
+        chat_instance: 'x',
+        message: {
+          message_id: 555,
+          date: 0,
+          chat: { id: CHAT_ID, type: 'supergroup', title: 'T' },
+          from: { id: 999, is_bot: true, first_name: 'Bot' },
+        } as never,
+        data: 'spawn:profile:base',
+      } as never,
+    }
+    const outcome = await routeUpdate(
+      { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID },
+      u,
+    )
+    expect(outcome.kind).toBe('callback_spawn_profile')
+    // The picker message gets edited in place with the name prompt.
+    expect(edits.length).toBe(1)
+    expect(edits[0]?.messageId).toBe(555)
+    expect(edits[0]?.text).toMatch(/Reply with a name/)
+    // Callback is acked so Telegram's spinner stops.
+    expect(acks.length).toBe(1)
+    expect(acks[0]?.id).toBe('cb1')
+  })
+
+  test('plain text from a user with pending-spawn state completes the spawn', async () => {
+    // /spawn always lands new agents in the 'default' group; register it so
+    // spawnAgent's fallback resolves.
+    const { registerGroup } = await import('../../src/core/group/register.ts')
+    registerGroup(env.db, { id: 'default', name: 'Default' }, env.paths)
+
+    // Stash pending state directly (simulating a prior callback_query tap).
+    const { setPendingSpawn } = await import('../../src/lib/telegram/spawn-state.ts')
+    setPendingSpawn(CHAT_ID, 11, 'base')
+
+    const { api, sends, creates } = makeReplyApi()
+    const u = messageUpdate({ threadId: SERVICE_TOPIC, text: 'orpheus', fromUserId: 11 })
+    const outcome = await routeUpdate(
+      { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID },
+      u,
+    )
+    expect(outcome.kind).toBe('spawn_name_input')
+    if (outcome.kind === 'spawn_name_input') {
+      expect(outcome.profileId).toBe('base')
+      expect(outcome.spawned).toBe(true)
+    }
+    // createForumTopic ran (auto-bind after spawn).
+    expect(creates.length).toBe(1)
+    // Reply is the spawn confirmation with deep-link.
+    expect(sends[0]?.text).toMatch(/Spawned/)
+    expect(sends[0]?.text).toMatch(/orpheus/)
+    // And the new agent is in the DB with the requested name.
+    const all = agentRepo.list(env.db)
+    const created = all.find((a) => a.name === 'orpheus')
+    expect(created).toBeDefined()
+  })
+
+  test('callback_query with unknown prefix is acked but ignored', async () => {
+    const { api, acks, edits, sends } = makeReplyApi()
+    const u: Update = {
+      update_id: 1,
+      callback_query: {
+        id: 'cb2',
+        from: { id: 11, is_bot: false, first_name: 'P' },
+        chat_instance: 'x',
+        data: 'something-else',
+      } as never,
+    }
+    const outcome = await routeUpdate(
+      { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID },
+      u,
+    )
+    expect(outcome.kind).toBe('callback_unknown')
+    expect(acks.length).toBe(1)
+    expect(edits.length).toBe(0)
+    expect(sends.length).toBe(0)
   })
 })

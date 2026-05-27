@@ -249,6 +249,17 @@ OpenClaw (`docs/openclaw-reference.md`) ships a multi-channel gateway with Teleg
 - **Cross-channel access groups.** Reusable allowlists across Telegram + Slack + Discord. Premature.
 - **Config writes from runtime events** (auto-update config on `migrate_to_chat_id`). We surface a "reconnect" banner instead — simpler, no DB mutations from external events.
 
+## Step 4 design decisions (locked in during implementation)
+
+- **iOS Telegram cannot deep-link into private-supergroup forum topics.** Confirmed during manual testing: tapping a topic URL on iOS opens the supergroup's topic-list view rather than navigating into the topic itself. Tried every format we could think of — inline `<a href="https://t.me/c/<chat>/<topic>">`, three-segment `t.me/c/<chat>/<topic>/<topic>`, inline-keyboard URL buttons, and the native `tg://privatepost?channel=…&post=…&thread=…` scheme as a URL button. All bounce to the topic list on iOS; all work on Telegram desktop / web / Android. The bot still emits URL buttons for `/talk` and `/spawn` replies (and inline links in `/list`) because the desktop/Android experience is good. iOS users navigate manually through the topic picker. This is a Telegram client limitation we cannot fix from the bot side — revisit if Telegram closes the gap.
+- **`/spawn` auto-name format is `<profile-id>-<count>`** where `count = countByProfile + 1`. Predictable + greppable. Adjective+noun random naming was considered and deferred — the dictionary maintenance cost outweighs the friendliness gain for v1.
+- **`/spawn` always lands new agents in the seeded `default` group.** Multi-group spawn from Telegram (`/spawn <profile> in <group>`) is in the "Explicitly deferred" section. The web UI / CLI already handle multi-group spawn — Telegram is the constrained surface by design.
+- **Pending-spawn state lives in-memory with a 60s TTL.** A daemon restart between the profile-pick and the name-input drops the pending spawn silently — the user gets a fresh `/spawn` and re-picks. Persisting to SQLite would survive restarts but at the cost of GC complexity for a flow that takes seconds.
+- **`/spawn` is service-chat-only.** Typing `/spawn` inside an agent topic does nothing (the router treats agent topics as agent-message inbound, not command parsing). The slash menu only appears in the ⚙ bazilion topic anyway.
+- **`CommandResult.replyMarkup` is now part of the shared command shape.** Any command can ship an inline keyboard. The router threads `reply_markup` through `sendMessage`. Keeps `/spawn`'s keyboard out of the command-specific code path.
+- **`callback_query` handling lives in `routing.ts`, not in command handlers.** Commands produce a one-shot reply; callbacks are a follow-up to a prior reply, so they're more naturally part of the routing layer than a handler.
+- **Unknown `callback_data` prefixes are acked but ignored.** Avoids leaving a Telegram spinner spinning when a future button type isn't yet wired (graceful degradation as new flows ship).
+
 ## Step 3 design decisions (locked in during implementation)
 
 - **Agent-topic inbound is log-and-drop.** When a user sends a message into a bound agent topic in Step 3, the router identifies which agent owns the thread but does NOT reply. The actual "kick off `runAgentTurn` → mirror the assistant reply back" wiring lands in Step 6 alongside the outbound mirror + per-supergroup outbound queue. Step 3 to Step 6 transition is clean — no in-flight messages are replayed.
@@ -275,11 +286,13 @@ Not in the original user story; surfaced when implementation made these choices 
 
 - Step 1 shipped in PR #11 (merged): schema, setup form, preflight endpoint. The bot was not yet running.
 - Step 2 shipped in PR #12 (merged): grammY singleton, polling loop, first-activation, stall watchdog, webhook-conflict recovery, live polling state on the health endpoint.
-- Step 3 is in flight: routing helper + 6 service-chat commands + topic auto-create primitive + `setMyCommands` at activation.
+- Step 3 shipped in PR #13 (merged): routing helper + 6 service-chat commands + topic auto-create primitive + `setMyCommands` at activation.
+- Step 4 is in flight: `/spawn` keyboard flow + typed-args shortcut + callback_query routing + auto-name primitive.
 - Follow-ups, in order:
   1. ✅ **Schema + setup UI + health endpoint, no live bot.** (PR #11)
-  2. ✅ **Bot singleton + polling loop + first activation.** grammY bot on a module-scoped handle + watermark persistence + stall watchdog + webhook-conflict recovery. (PR #12)
-  3. **Routing helper + service-chat commands.** `(chat_id, message_thread_id)` classifier dispatching to service-chat command handler / agent-topic identifier / General redirect / unknown-topic reply. Six commands: `/talk`, `/list` (+ `/agents` alias), `/groups`, `/help`, `/health`, `/whoami`. `setMyCommands` runs at activation. Topic auto-create primitive used by `/talk` (and future `/spawn`).
+  2. ✅ **Bot singleton + polling loop + first activation.** (PR #12)
+  3. ✅ **Routing helper + service-chat commands.** (PR #13)
+  4. **`/spawn` keyboard flow + typed-args shortcut.** Inline-keyboard profile picker on `/spawn` no-args; `/spawn <profile>` stores pending state and prompts for a name; `/spawn <profile> <name>` spawns immediately. `-` as the name triggers auto-naming (`<profile-id>-<count>`). Callback queries flow through the same routing layer; pending state is per-(chat,user) with a 60s TTL. New agents always join the `default` group.
   4. `/spawn` keyboard flow (profile picker → name prompt → auto-create + deep-link) + shared auto-create primitive used by `/talk` too.
   5. Topic-context commands (`/close`, `/rebind`, `/unbind`) + directory-message lifecycle (create / edit-on-CRUD / recreate-on-delete).
   6. Outbound mirror from `runAgentTurn` + per-supergroup outbound queue + bot-loop protection.

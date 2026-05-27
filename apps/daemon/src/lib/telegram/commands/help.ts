@@ -10,6 +10,8 @@ const BODY = [
   '',
   '<b>Available now:</b>',
   '/talk &lt;agent&gt; — Open or create the forum topic for an agent',
+  '/spawn — Create a new agent from a profile (interactive)',
+  '/spawn &lt;profile&gt; [&lt;name&gt;] — Create with typed args (<code>-</code> for auto-name)',
   '/list — Show all agents (alias: /agents)',
   '/groups — Show bazilion groups',
   '/health — Bot identity + polling state',
@@ -17,7 +19,6 @@ const BODY = [
   '/help — This message',
   '',
   '<b>Coming next:</b>',
-  '/spawn — Create a new agent from a profile (next release)',
   '/close /rebind /unbind — Topic-context commands (later release)',
 ].join('\n')
 

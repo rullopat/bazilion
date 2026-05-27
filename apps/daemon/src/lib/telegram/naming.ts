@@ -61,13 +61,22 @@ export function allocateGroupColor(db: BazilionDb, groupId: string): number {
 }
 
 /**
- * Build a deep-link to a specific topic in the configured supergroup.
+ * Build a deep-link to a forum topic in the configured supergroup:
+ * `https://t.me/c/<chat>/<topic>`. Strips the `-100` supergroup prefix
+ * from the chat id (`-1003964430972` → `3964430972`); channel-style
+ * negative ids are the only form we ever store, so the strip is safe.
  *
- * Telegram's `t.me/c/<chat>/<topic>` short-link format requires the
- * "supergroup" portion of the chat id without the `-100` prefix. A chat id of
- * `-1003964430972` becomes `3964430972` in the URL. Channel-style negative
- * ids (`-100…`) are the only form we ever store, so we can strip the prefix
- * with confidence.
+ * ⚠ **iOS Telegram has a known limitation for private-supergroup topic
+ * deep-links.** Tapping these URLs on iOS opens the chat's topic-list
+ * view rather than navigating INTO the topic — regardless of whether
+ * the link is rendered as inline HTML, an inline-keyboard URL button,
+ * or expressed in the native `tg://privatepost?...&thread=...` scheme.
+ * Telegram desktop, web, and Android all open the topic correctly.
+ *
+ * Until Telegram closes the iOS gap there's no workaround beyond
+ * navigating manually. The bot still emits the link/button so desktop +
+ * Android users have one-tap access; iOS users go through the topic
+ * picker.
  */
 export function topicDeepLink(chatId: number, topicId: number): string {
   const absStr = String(Math.abs(chatId))

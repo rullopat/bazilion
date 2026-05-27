@@ -267,9 +267,9 @@ async function dispatchUpdate(handle: BotHandle, db: BazilionDb, u: Update): Pro
     console.log(`telegram update ${u.update_id} · non-message: ${Object.keys(u).join(',')}`)
   }
 
-  // Route only chat messages — service updates (chat_member, my_chat_member,
-  // poll, etc.) flow past the router untouched, which is correct for now.
-  if (!u.message && !u.edited_message) return
+  // Route chat messages + callback_query taps. Member/poll/etc. flow past
+  // the router untouched.
+  if (!u.message && !u.edited_message && !u.callback_query) return
   const outcome = await routeUpdate(
     {
       db,
@@ -285,6 +285,12 @@ async function dispatchUpdate(handle: BotHandle, db: BazilionDb, u: Update): Pro
   } else if (outcome.kind === 'agent_topic') {
     console.log(
       `telegram: agent-topic inbound for agent=${outcome.agentId} (chat-back ships in step 6)`,
+    )
+  } else if (outcome.kind === 'callback_spawn_profile') {
+    console.log(`telegram: callback spawn:profile:${outcome.profileId}`)
+  } else if (outcome.kind === 'spawn_name_input') {
+    console.log(
+      `telegram: spawn-name input completed for profile=${outcome.profileId} spawned=${outcome.spawned}`,
     )
   }
 }

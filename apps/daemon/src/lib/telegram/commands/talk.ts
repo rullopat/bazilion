@@ -29,7 +29,7 @@ export const handle: CommandHandler = async (ctx) => {
       return {
         text:
           `No agent matches <code>${htmlEscape(ctx.args.trim())}</code>.\n` +
-          'Try /list to see available agents, or /spawn (next release) to create one.',
+          'Try /list to see available agents, or /spawn to create one.',
         parseMode: 'HTML',
       }
 
@@ -68,10 +68,15 @@ export const handle: CommandHandler = async (ctx) => {
       return {
         text:
           `${verb} agent <code>${htmlEscape(ensured.agent.name)}</code>` +
-          ` (group <code>${htmlEscape(ensured.agent.groupId)}</code>).\n` +
-          `→ <a href="${ensured.deepLink}">open topic</a>`,
+          ` (group <code>${htmlEscape(ensured.agent.groupId)}</code>).`,
         parseMode: 'HTML',
         disableWebPagePreview: true,
+        // URL button reads cleaner than an inline anchor on desktop/Android.
+        // See naming.ts:topicDeepLink for the iOS topic-navigation limit
+        // (which neither URL form nor tg:// scheme can work around).
+        replyMarkup: {
+          inline_keyboard: [[{ text: 'Open topic →', url: ensured.deepLink }]],
+        },
       }
     }
   }
