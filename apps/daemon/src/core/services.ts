@@ -21,7 +21,7 @@ export interface ServiceField {
   description?: string
 }
 
-export type ServiceCategory = 'provider' | 'service'
+export type ServiceCategory = 'provider' | 'service' | 'integration'
 
 export interface ServiceDef {
   /** Matches the provider-registry key for providers (e.g. 'anthropic'). */
@@ -376,6 +376,37 @@ export const SERVICES: ServiceDef[] = [
         kind: 'config',
         label: 'Instance URL',
         placeholder: 'https://searxng.example.com',
+      },
+    ],
+  },
+
+  // --- External integrations (chat bridges, etc) ---
+  // Each integration has its own dedicated /config/integrations/* page with
+  // workflow-specific UI (preflight health, setup wizard, …). The fields
+  // here exist so the keys are allowlisted in the config/secrets stores and
+  // surfaced through the generic `PUT /api/config/fields/:envVar` endpoint.
+  // Daemon-managed internal state keys (watermarks, derived topic ids) live
+  // in repos/config.ts:INTERNAL_CONFIG_KEYS instead, since the user never
+  // edits them.
+  {
+    id: 'telegram',
+    displayName: 'Telegram',
+    category: 'integration',
+    hint: 'Forum-supergroup bot for talking to your agents from a phone',
+    fields: [
+      {
+        envVar: 'TELEGRAM_BOT_TOKEN',
+        kind: 'secret',
+        label: 'Bot token',
+        placeholder: '1234567890:ABC...',
+        description: 'Get one from @BotFather → /newbot. Disable Privacy Mode in Bot Settings.',
+      },
+      {
+        envVar: 'TELEGRAM_CHAT_ID',
+        kind: 'config',
+        label: 'Supergroup chat ID',
+        placeholder: '-1001234567890',
+        description: 'Numeric id of the forum-enabled supergroup the bot is admin in.',
       },
     ],
   },

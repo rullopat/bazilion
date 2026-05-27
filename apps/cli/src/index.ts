@@ -20,6 +20,7 @@ import { providerCommand } from './commands/provider.ts'
 import { sendCommand } from './commands/send.ts'
 import { serveCommand } from './commands/serve.ts'
 import { skillCommand } from './commands/skill.ts'
+import { telegramCommand } from './commands/telegram.ts'
 import { tokenCommand } from './commands/token.ts'
 import { triggerCommand } from './commands/trigger.ts'
 import { uninstallCommand } from './commands/uninstall.ts'
@@ -48,6 +49,7 @@ const main = defineCommand({
     trigger: triggerCommand,
     token: tokenCommand,
     auth: authCommand,
+    telegram: telegramCommand,
     uninstall: uninstallCommand,
   },
 })
@@ -145,6 +147,10 @@ function printTopLevelHelp(): void {
         ['inbox', 'Inspect agent inboxes'],
         ['trigger', 'Manage agent heartbeats / cron triggers'],
       ],
+    },
+    {
+      title: 'integrations',
+      items: [['telegram', 'Telegram bot setup + health (live bot ships in step 2)']],
     },
     {
       title: 'ops',

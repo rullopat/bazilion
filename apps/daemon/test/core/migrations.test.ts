@@ -97,3 +97,35 @@ test('foreign keys are enforced', () => {
     ),
   ).toThrow()
 })
+
+test('0003 adds telegram columns to agents/groups/profiles', () => {
+  const agentCols = env.db.raw
+    .query<{ name: string }, []>("SELECT name FROM pragma_table_info('agents')")
+    .all()
+    .map((r) => r.name)
+  expect(agentCols).toContain('telegram_topic_id')
+  expect(agentCols).toContain('telegram_topic_name_locked')
+  expect(agentCols).toContain('telegram_icon_emoji')
+
+  const groupCols = env.db.raw
+    .query<{ name: string }, []>("SELECT name FROM pragma_table_info('groups')")
+    .all()
+    .map((r) => r.name)
+  expect(groupCols).toContain('telegram_icon_color')
+
+  const profileCols = env.db.raw
+    .query<{ name: string }, []>("SELECT name FROM pragma_table_info('profiles')")
+    .all()
+    .map((r) => r.name)
+  expect(profileCols).toContain('telegram_icon_emoji')
+
+  // The partial unique index on telegram_topic_id exists and enforces 1:1
+  // (NULLs are allowed by the WHERE clause).
+  const idxs = env.db.raw
+    .query<{ name: string }, []>(
+      "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'agents'",
+    )
+    .all()
+    .map((r) => r.name)
+  expect(idxs).toContain('idx_agents_telegram_topic_id')
+})
