@@ -17,11 +17,10 @@ import type { CallbackQuery, InlineKeyboardMarkup, Message, Update } from 'gramm
 import type { BazilionDb } from '../../core/db/client.ts'
 import { agentRepo, openConfig, profileRepo } from '../../core/index.ts'
 import type { Paths } from '../../core/paths.ts'
-import { isActiveAgent } from '../agent-cancel.ts'
-import { runAgentTurn } from '../agent-turn.ts'
 import { dispatchCommand, parseCommand } from './commands/index.ts'
 import { namePrompt, SPAWN_PROFILE_CALLBACK_PREFIX, spawnAndBind } from './commands/spawn.ts'
 import type { CommandApi, CommandResult } from './commands/types.ts'
+import { enqueueAgentMessage } from './inbound-queue.ts'
 import { setPendingSpawn, takePendingSpawn } from './spawn-state.ts'
 
 const SERVICE_TOPIC_KEY = 'TELEGRAM_SERVICE_TOPIC_ID'
@@ -76,7 +75,7 @@ export type RouteOutcome =
   | { kind: 'service_unknown_command'; name: string }
   | { kind: 'service_plain_text' }
   | { kind: 'spawn_name_input'; profileId: string; spawned: boolean }
-  | { kind: 'agent_topic'; agentId: string; topicId: number; triggered: boolean; busy: boolean }
+  | { kind: 'agent_topic'; agentId: string; topicId: number; queued: boolean }
   | {
       kind: 'agent_topic_command'
       agentId: string
@@ -131,43 +130,19 @@ export async function routeUpdate(deps: RouterDeps, update: Update): Promise<Rou
     if (parsed) {
       return await handleAgentTopicCommand(deps, m, agent, threadId, parsed.name, parsed.args)
     }
-    // Step 6: plain text in a bound agent topic kicks off a turn for that
-    // agent. Fire-and-forget — the outbound mirror handles the reply via
-    // the runAgentTurn frame stream. Concurrent turns on the same agent
-    // are unsafe (shared worker state + session journal), so when the
-    // agent is busy we silently drop the trigger and let the in-flight
-    // turn finish; the user can retype.
+    // Step 6: plain text in a bound agent topic queues into the agent's
+    // inbound queue. The queue's drain loop owns runAgentTurn calls — it
+    // serializes them so concurrent worker spawns don't corrupt agent
+    // state. Messages that arrive while a turn is in flight are
+    // concatenated and processed together when the current turn ends, so
+    // the agent gets one combined reply addressing everything.
     const userText = m.text ?? m.caption ?? ''
     if (!userText) {
       // Non-text message in agent topic (sticker, photo, etc.) — skip.
-      return {
-        kind: 'agent_topic',
-        agentId: agent.id,
-        topicId: threadId,
-        triggered: false,
-        busy: false,
-      }
+      return { kind: 'agent_topic', agentId: agent.id, topicId: threadId, queued: false }
     }
-    if (isActiveAgent(agent.id)) {
-      console.warn(
-        `telegram routing: agent ${agent.name} (${agent.id}) busy — dropping inbound from topic ${threadId}`,
-      )
-      return {
-        kind: 'agent_topic',
-        agentId: agent.id,
-        topicId: threadId,
-        triggered: false,
-        busy: true,
-      }
-    }
-    void drainAgentTurn(agent.id, userText)
-    return {
-      kind: 'agent_topic',
-      agentId: agent.id,
-      topicId: threadId,
-      triggered: true,
-      busy: false,
-    }
+    enqueueAgentMessage(agent.id, userText)
+    return { kind: 'agent_topic', agentId: agent.id, topicId: threadId, queued: true }
   }
 
   // Orphan / unknown topic.
@@ -385,31 +360,6 @@ async function sendCommandResult(
     ...(result.disableWebPagePreview ? { disable_web_page_preview: true } : {}),
     ...(result.replyMarkup ? { reply_markup: result.replyMarkup } : {}),
   })
-}
-
-/**
- * Drain a runAgentTurn for an inbound Telegram message. Fire-and-forget
- * from the router — the mirror handles the assistant's reply via the
- * frame stream. We iterate just to keep the generator running to
- * completion; per-frame side effects (mirror, agent-cancel cleanup) are
- * already wired inside runAgentTurn.
- *
- * Errors are logged but never thrown — the router doesn't await this.
- */
-async function drainAgentTurn(agentId: string, message: string): Promise<void> {
-  try {
-    for await (const _frame of runAgentTurn(agentId, message)) {
-      // No-op — the mirror inside runAgentTurn already handles outbound.
-      // We're only draining the iterator so the underlying worker doesn't
-      // back up. The frames themselves aren't streamed anywhere from here.
-      void _frame
-    }
-  } catch (e) {
-    console.warn(
-      `telegram routing: drainAgentTurn for agent=${agentId} failed —`,
-      e instanceof Error ? e.message : String(e),
-    )
-  }
 }
 
 function readServiceTopicId(db: BazilionDb): number | null {
