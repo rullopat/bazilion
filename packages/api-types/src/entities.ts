@@ -46,6 +46,13 @@ export const REASONING_LEVELS: ReasoningLevel[] = [
   'xhigh',
 ]
 
+/**
+ * Telegram outbound-mirror verbosity per agent.
+ *   'minimal' — final assistant message only (default).
+ *   'verbose' — also surfaces concise tool-call summary lines.
+ */
+export type TelegramMirrorMode = 'minimal' | 'verbose'
+
 export interface Agent {
   id: string
   profileId: string
@@ -56,6 +63,8 @@ export interface Agent {
   dir: string
   /** The group this agent belongs to. Every agent has exactly one. */
   groupId: string
+  /** Verbosity of the Telegram outbound mirror for this agent (Step 6). */
+  telegramMirrorMode: TelegramMirrorMode
   createdAt: Timestamp
   archivedAt: Timestamp | null
 }

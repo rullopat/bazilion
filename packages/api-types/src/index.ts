@@ -23,6 +23,7 @@ export type {
   ResolvedAgent,
   SkillMeta,
   SkillsMode,
+  TelegramMirrorMode,
   Timestamp,
   TriggerKind,
   WebToken,
@@ -38,7 +39,13 @@ export type {
 } from './events.ts'
 export type { MemoryEntry, MemoryHit } from './memory.ts'
 
-import type { AgentTrigger, Message, ReasoningLevel, WebToken } from './entities.ts'
+import type {
+  AgentTrigger,
+  Message,
+  ReasoningLevel,
+  TelegramMirrorMode,
+  WebToken,
+} from './entities.ts'
 
 export interface ApiError {
   error: string
@@ -63,6 +70,10 @@ export interface SpawnAgentRequest {
 export interface UpdateAgentRequest {
   modelOverride?: string | null
   reasoningLevel?: ReasoningLevel
+  /** Step 6: per-agent Telegram outbound-mirror verbosity. */
+  telegramMirrorMode?: TelegramMirrorMode
+  /** Step 6: rename (mirrors the `name` field the daemon accepts on PATCH). */
+  name?: string
 }
 
 export interface AttachSkillRequest {
