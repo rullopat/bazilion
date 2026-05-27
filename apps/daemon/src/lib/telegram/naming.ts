@@ -61,16 +61,24 @@ export function allocateGroupColor(db: BazilionDb, groupId: string): number {
 }
 
 /**
- * Build a deep-link to a specific topic in the configured supergroup.
+ * Build a deep-link that opens a specific forum topic in the configured
+ * supergroup.
  *
- * Telegram's `t.me/c/<chat>/<topic>` short-link format requires the
- * "supergroup" portion of the chat id without the `-100` prefix. A chat id of
- * `-1003964430972` becomes `3964430972` in the URL. Channel-style negative
- * ids (`-100…`) are the only form we ever store, so we can strip the prefix
- * with confidence.
+ * URL shape is `t.me/c/<chat>/<topic>/<topic>`, NOT `t.me/c/<chat>/<topic>`.
+ * The trailing path component is a message id — iOS Telegram interprets the
+ * two-segment form as "open chat to message id <topic>" and shows the topic
+ * list as a fallback when no such message exists. The three-segment form
+ * unambiguously means "open into topic <topic> at message <topic>"; the
+ * topic's creation system message always has the same id as the topic
+ * itself, so it's the reliable anchor for "just open the topic, no specific
+ * message".
+ *
+ * The chat short id strips the `-100` supergroup prefix:
+ * `-1003964430972` → `3964430972`. Channel-style negative ids are the only
+ * form we ever store, so the strip is safe.
  */
 export function topicDeepLink(chatId: number, topicId: number): string {
   const absStr = String(Math.abs(chatId))
   const shortId = absStr.startsWith('100') ? absStr.slice(3) : absStr
-  return `https://t.me/c/${shortId}/${topicId}`
+  return `https://t.me/c/${shortId}/${topicId}/${topicId}`
 }

@@ -83,15 +83,17 @@ describe('allocateGroupColor', () => {
 })
 
 describe('topicDeepLink', () => {
-  test('strips the -100 supergroup prefix from the chat id', () => {
+  test('builds the three-segment form so iOS opens INTO the topic', () => {
+    // Trailing /<topic> repeats the topic id deliberately — anchors to the
+    // topic's creation system message, which always exists.
     const url = topicDeepLink(-1003964430972, 11)
-    expect(url).toBe('https://t.me/c/3964430972/11')
+    expect(url).toBe('https://t.me/c/3964430972/11/11')
   })
 
   test('handles supergroups whose magnitude does not start with 100', () => {
     // Hypothetical (Telegram always prefixes -100 for supergroups in practice
     // but the helper should still produce a sane link for unprefixed ids).
     const url = topicDeepLink(-9999, 42)
-    expect(url).toBe('https://t.me/c/9999/42')
+    expect(url).toBe('https://t.me/c/9999/42/42')
   })
 })
