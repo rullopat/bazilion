@@ -21,16 +21,22 @@ const CHAT_ID = -1003964430972
 function makeApi(opts: { failWith?: string } = {}): {
   api: MirrorApi
   sends: { chatId: number; text: string; opts: unknown }[]
+  typings: { chatId: number; action: string; opts: unknown }[]
 } {
   const sends: { chatId: number; text: string; opts: unknown }[] = []
+  const typings: { chatId: number; action: string; opts: unknown }[] = []
   const api: MirrorApi = {
     async sendMessage(chatId, text, o) {
       sends.push({ chatId, text, opts: o })
       if (opts.failWith) throw new Error(opts.failWith)
       return { message_id: 1 }
     },
+    async sendChatAction(chatId, action, o) {
+      typings.push({ chatId, action, opts: o })
+      return true
+    },
   }
-  return { api, sends }
+  return { api, sends, typings }
 }
 
 let env: TestEnv
@@ -253,5 +259,86 @@ describe('mirrorAgentTurnFrame', () => {
     })
     expect(sends.length).toBe(1)
     expect((sends[0]?.text ?? '').length).toBeLessThanOrEqual(4096)
+  })
+})
+
+describe('mirrorTypingStart / mirrorTypingStop', () => {
+  test('start fires sendChatAction immediately + re-fires on interval; stop clears', async () => {
+    const { mirrorTypingStart, mirrorTypingStop } = await import(
+      '../../src/lib/telegram/mirror.ts'
+    )
+    const { api, typings } = makeApi()
+    installMirrorDepsResolver(() => ({ db: env.db, api, chatId: CHAT_ID }))
+    const a = spawnAgent(env.db, env.paths, {
+      profileId: 'base',
+      groupId: env.groupId,
+      name: 'r1',
+    })
+    agentRepo.setTelegramTopicId(env.db, a.id, 42)
+
+    // Use fake timers so we can advance through the 4s re-fire interval.
+    vi.useFakeTimers()
+    try {
+      mirrorTypingStart(a.id)
+      // Immediate first fire.
+      expect(typings.length).toBe(1)
+      expect(typings[0]?.action).toBe('typing')
+      expect((typings[0]?.opts as { message_thread_id?: number }).message_thread_id).toBe(42)
+
+      // Advance ~5s — second fire lands.
+      await vi.advanceTimersByTimeAsync(4_500)
+      expect(typings.length).toBe(2)
+
+      // Stop — no more fires even after another interval passes.
+      mirrorTypingStop(a.id)
+      await vi.advanceTimersByTimeAsync(5_000)
+      expect(typings.length).toBe(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  test('start is a no-op when agent has no bound topic', async () => {
+    const { mirrorTypingStart } = await import('../../src/lib/telegram/mirror.ts')
+    const { api, typings } = makeApi()
+    installMirrorDepsResolver(() => ({ db: env.db, api, chatId: CHAT_ID }))
+    const a = spawnAgent(env.db, env.paths, {
+      profileId: 'base',
+      groupId: env.groupId,
+      name: 'r1',
+    })
+    // No setTelegramTopicId — agent is unbound.
+
+    mirrorTypingStart(a.id)
+    expect(typings.length).toBe(0)
+  })
+
+  test('start twice for the same agent clears the prior interval (no timer leak)', async () => {
+    const { mirrorTypingStart, mirrorTypingStop } = await import(
+      '../../src/lib/telegram/mirror.ts'
+    )
+    const { api, typings } = makeApi()
+    installMirrorDepsResolver(() => ({ db: env.db, api, chatId: CHAT_ID }))
+    const a = spawnAgent(env.db, env.paths, {
+      profileId: 'base',
+      groupId: env.groupId,
+      name: 'r1',
+    })
+    agentRepo.setTelegramTopicId(env.db, a.id, 42)
+
+    vi.useFakeTimers()
+    try {
+      mirrorTypingStart(a.id)
+      // Second start replaces the interval, doesn't stack a second timer.
+      mirrorTypingStart(a.id)
+      // Two immediate fires from the two start calls.
+      expect(typings.length).toBe(2)
+      // After 4.5s only ONE more fire (one interval running, not two).
+      await vi.advanceTimersByTimeAsync(4_500)
+      expect(typings.length).toBe(3)
+      mirrorTypingStop(a.id)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

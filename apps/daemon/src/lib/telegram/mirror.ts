@@ -26,6 +26,15 @@ export interface MirrorApi {
     text: string,
     opts: { message_thread_id?: number; parse_mode?: 'HTML' | 'MarkdownV2' },
   ): Promise<{ message_id: number }>
+  /**
+   * Drives Telegram's "typing..." indicator. The indicator lives for ~5s
+   * server-side, so we re-fire every 4s while a turn is running.
+   */
+  sendChatAction(
+    chatId: number,
+    action: 'typing',
+    opts: { message_thread_id?: number },
+  ): Promise<boolean>
 }
 
 export interface MirrorDeps {
@@ -159,9 +168,60 @@ function isThreadGoneError(e: unknown): boolean {
   )
 }
 
+// ─── typing indicator ───────────────────────────────────────────────────
+//
+// Telegram's `sendChatAction(chat, 'typing', {message_thread_id})` shows a
+// "typing..." bubble at the top of the topic for ~5s. We fire it when a
+// turn begins and re-fire every 4s while it's still running so the bubble
+// stays alive. `mirrorTypingStop` clears the interval — runAgentTurn's
+// `finally` calls it on every exit path.
+
+const TYPING_REFIRE_MS = 4_000
+
+const _typingIntervals = new Map<string, ReturnType<typeof setInterval>>()
+
+/**
+ * Start the "typing..." indicator for an agent's bound topic. No-op when
+ * the bot isn't running or the agent has no bound topic. Idempotent: a
+ * second call for the same agent clears the prior interval first so we
+ * don't leak timers if the lifecycle ever races.
+ */
+export function mirrorTypingStart(agentId: string): void {
+  const deps = _liveDepsResolver?.()
+  if (!deps) return
+  const topicId = agentRepo.getTelegramTopicId(deps.db, agentId)
+  if (topicId === null) return
+
+  // Clear any prior interval for this agent before starting a new one.
+  mirrorTypingStop(agentId)
+
+  const fire = (): void => {
+    deps.api
+      .sendChatAction(deps.chatId, 'typing', { message_thread_id: topicId })
+      .catch(() => {
+        // Indicator failures are silent — losing the bubble is purely
+        // cosmetic; the actual reply still mirrors when ready.
+      })
+  }
+  fire()
+  const interval = setInterval(fire, TYPING_REFIRE_MS)
+  _typingIntervals.set(agentId, interval)
+}
+
+/** Stop the typing indicator. Safe to call even when none is running. */
+export function mirrorTypingStop(agentId: string): void {
+  const interval = _typingIntervals.get(agentId)
+  if (interval) {
+    clearInterval(interval)
+    _typingIntervals.delete(agentId)
+  }
+}
+
 /** Test-only — reset the resolver. */
 export function _resetMirrorDepsForTest(): void {
   _liveDepsResolver = null
+  for (const interval of _typingIntervals.values()) clearInterval(interval)
+  _typingIntervals.clear()
 }
 
 /** Test-only — invoke the resolver to peek at what bot.ts wired. */

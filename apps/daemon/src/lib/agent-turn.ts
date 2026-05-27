@@ -5,7 +5,11 @@ import { registerAgent, unregisterAgent } from './agent-cancel.ts'
 import { resolveAgentApiKey } from './api-key.ts'
 import { getCtx } from './ctx.ts'
 import { createDbMessagingHost } from './messaging-host.ts'
-import { mirrorAgentTurnFrame } from './telegram/mirror.ts'
+import {
+  mirrorAgentTurnFrame,
+  mirrorTypingStart,
+  mirrorTypingStop,
+} from './telegram/mirror.ts'
 import { createDbUserMdHost } from './user-md-host.ts'
 
 interface RunAgentTurnOpts {
@@ -46,6 +50,9 @@ export async function* runAgentTurn(
 
   const controller = opts.controller ?? new AbortController()
   registerAgent(agentId, controller)
+  // Telegram "typing..." indicator while the turn runs. Safe to call even
+  // when the agent has no bound topic — mirror.ts checks before firing.
+  mirrorTypingStart(agentId)
   try {
     for await (const frame of spawnWorkerTurn(
       { agent, message, enabledProviders, apiKey },
@@ -64,6 +71,7 @@ export async function* runAgentTurn(
       yield frame
     }
   } finally {
+    mirrorTypingStop(agentId)
     unregisterAgent(agentId)
   }
 }
