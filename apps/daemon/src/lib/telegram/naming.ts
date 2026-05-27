@@ -62,16 +62,15 @@ export function allocateGroupColor(db: BazilionDb, groupId: string): number {
 
 /**
  * Build a deep-link that opens a specific forum topic in the configured
- * supergroup.
+ * supergroup. URL shape: `t.me/c/<chat>/<topic>` — the two-segment form
+ * Telegram's own "share topic link" produces.
  *
- * URL shape is `t.me/c/<chat>/<topic>/<topic>`, NOT `t.me/c/<chat>/<topic>`.
- * The trailing path component is a message id — iOS Telegram interprets the
- * two-segment form as "open chat to message id <topic>" and shows the topic
- * list as a fallback when no such message exists. The three-segment form
- * unambiguously means "open into topic <topic> at message <topic>"; the
- * topic's creation system message always has the same id as the topic
- * itself, so it's the reliable anchor for "just open the topic, no specific
- * message".
+ * iOS Telegram has trouble with these as INLINE `<a href>` links (it falls
+ * back to the chat's topic list), but the URL itself is valid — we serve
+ * it through an inline-keyboard URL button in /talk and /spawn replies,
+ * which routes through iOS's native handler and opens into the topic
+ * correctly. /list still uses inline links (works on desktop; iOS users
+ * pivot through /talk).
  *
  * The chat short id strips the `-100` supergroup prefix:
  * `-1003964430972` → `3964430972`. Channel-style negative ids are the only
@@ -80,5 +79,5 @@ export function allocateGroupColor(db: BazilionDb, groupId: string): number {
 export function topicDeepLink(chatId: number, topicId: number): string {
   const absStr = String(Math.abs(chatId))
   const shortId = absStr.startsWith('100') ? absStr.slice(3) : absStr
-  return `https://t.me/c/${shortId}/${topicId}/${topicId}`
+  return `https://t.me/c/${shortId}/${topicId}`
 }

@@ -60,7 +60,7 @@ describe('ensureAgentTopic', () => {
     if (result.kind !== 'ok') return
     expect(result.created).toBe(true)
     expect(result.topicId).toBe(42)
-    expect(result.deepLink).toBe('https://t.me/c/3964430972/42/42')
+    expect(result.deepLink).toBe('https://t.me/c/3964430972/42')
     expect(result.agent.id).toBe(agent.id)
 
     // Persisted in agents.telegram_topic_id.
