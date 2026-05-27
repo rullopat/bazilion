@@ -1,10 +1,11 @@
 // Sub-nav for the /config pages tree.
 
-type Tab = 'providers' | 'services' | 'tokens'
+type Tab = 'providers' | 'services' | 'integrations' | 'tokens'
 
 const TABS: { key: Tab; href: string; label: string }[] = [
   { key: 'providers', href: '/config', label: 'providers' },
   { key: 'services', href: '/config/services', label: 'services' },
+  { key: 'integrations', href: '/config/integrations/telegram', label: 'integrations' },
   { key: 'tokens', href: '/config/tokens', label: 'tokens' },
 ]
 

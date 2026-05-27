@@ -26,6 +26,7 @@ import { Route as ApiSplatRouteImport } from './routes/api/$'
 import { Route as GroupsIdIndexRouteImport } from './routes/groups/$id/index'
 import { Route as AgentsIdIndexRouteImport } from './routes/agents/$id/index'
 import { Route as GroupsIdMemoryRouteImport } from './routes/groups/$id/memory'
+import { Route as ConfigIntegrationsTelegramRouteImport } from './routes/config/integrations/telegram'
 import { Route as AgentsIdTriggersRouteImport } from './routes/agents/$id/triggers'
 import { Route as AgentsIdInboxRouteImport } from './routes/agents/$id/inbox'
 
@@ -114,6 +115,12 @@ const GroupsIdMemoryRoute = GroupsIdMemoryRouteImport.update({
   path: '/groups/$id/memory',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ConfigIntegrationsTelegramRoute =
+  ConfigIntegrationsTelegramRouteImport.update({
+    id: '/config/integrations/telegram',
+    path: '/config/integrations/telegram',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const AgentsIdTriggersRoute = AgentsIdTriggersRouteImport.update({
   id: '/agents/$id/triggers',
   path: '/agents/$id/triggers',
@@ -142,6 +149,7 @@ export interface FileRoutesByFullPath {
   '/skills/': typeof SkillsIndexRoute
   '/agents/$id/inbox': typeof AgentsIdInboxRoute
   '/agents/$id/triggers': typeof AgentsIdTriggersRoute
+  '/config/integrations/telegram': typeof ConfigIntegrationsTelegramRoute
   '/groups/$id/memory': typeof GroupsIdMemoryRoute
   '/agents/$id/': typeof AgentsIdIndexRoute
   '/groups/$id/': typeof GroupsIdIndexRoute
@@ -163,6 +171,7 @@ export interface FileRoutesByTo {
   '/skills': typeof SkillsIndexRoute
   '/agents/$id/inbox': typeof AgentsIdInboxRoute
   '/agents/$id/triggers': typeof AgentsIdTriggersRoute
+  '/config/integrations/telegram': typeof ConfigIntegrationsTelegramRoute
   '/groups/$id/memory': typeof GroupsIdMemoryRoute
   '/agents/$id': typeof AgentsIdIndexRoute
   '/groups/$id': typeof GroupsIdIndexRoute
@@ -185,6 +194,7 @@ export interface FileRoutesById {
   '/skills/': typeof SkillsIndexRoute
   '/agents/$id/inbox': typeof AgentsIdInboxRoute
   '/agents/$id/triggers': typeof AgentsIdTriggersRoute
+  '/config/integrations/telegram': typeof ConfigIntegrationsTelegramRoute
   '/groups/$id/memory': typeof GroupsIdMemoryRoute
   '/agents/$id/': typeof AgentsIdIndexRoute
   '/groups/$id/': typeof GroupsIdIndexRoute
@@ -208,6 +218,7 @@ export interface FileRouteTypes {
     | '/skills/'
     | '/agents/$id/inbox'
     | '/agents/$id/triggers'
+    | '/config/integrations/telegram'
     | '/groups/$id/memory'
     | '/agents/$id/'
     | '/groups/$id/'
@@ -229,6 +240,7 @@ export interface FileRouteTypes {
     | '/skills'
     | '/agents/$id/inbox'
     | '/agents/$id/triggers'
+    | '/config/integrations/telegram'
     | '/groups/$id/memory'
     | '/agents/$id'
     | '/groups/$id'
@@ -250,6 +262,7 @@ export interface FileRouteTypes {
     | '/skills/'
     | '/agents/$id/inbox'
     | '/agents/$id/triggers'
+    | '/config/integrations/telegram'
     | '/groups/$id/memory'
     | '/agents/$id/'
     | '/groups/$id/'
@@ -272,6 +285,7 @@ export interface RootRouteChildren {
   SkillsIndexRoute: typeof SkillsIndexRoute
   AgentsIdInboxRoute: typeof AgentsIdInboxRoute
   AgentsIdTriggersRoute: typeof AgentsIdTriggersRoute
+  ConfigIntegrationsTelegramRoute: typeof ConfigIntegrationsTelegramRoute
   GroupsIdMemoryRoute: typeof GroupsIdMemoryRoute
   AgentsIdIndexRoute: typeof AgentsIdIndexRoute
   GroupsIdIndexRoute: typeof GroupsIdIndexRoute
@@ -398,6 +412,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof GroupsIdMemoryRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/config/integrations/telegram': {
+      id: '/config/integrations/telegram'
+      path: '/config/integrations/telegram'
+      fullPath: '/config/integrations/telegram'
+      preLoaderRoute: typeof ConfigIntegrationsTelegramRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/agents/$id/triggers': {
       id: '/agents/$id/triggers'
       path: '/agents/$id/triggers'
@@ -432,6 +453,7 @@ const rootRouteChildren: RootRouteChildren = {
   SkillsIndexRoute: SkillsIndexRoute,
   AgentsIdInboxRoute: AgentsIdInboxRoute,
   AgentsIdTriggersRoute: AgentsIdTriggersRoute,
+  ConfigIntegrationsTelegramRoute: ConfigIntegrationsTelegramRoute,
   GroupsIdMemoryRoute: GroupsIdMemoryRoute,
   AgentsIdIndexRoute: AgentsIdIndexRoute,
   GroupsIdIndexRoute: GroupsIdIndexRoute,

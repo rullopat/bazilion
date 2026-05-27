@@ -539,3 +539,64 @@ export interface HealthReport {
   tokens: { active: number }
   scheduler: { enabled: boolean; tickMs: number }
 }
+
+// --- telegram integration ---
+
+/** Body for `PUT /api/config/telegram` — both fields required; daemon stores each in its proper table. */
+export interface TelegramConfigInput {
+  /** Bot token from BotFather. Goes to the encrypted `secrets` table as TELEGRAM_BOT_TOKEN. */
+  botToken: string
+  /** Supergroup numeric chat id. Goes to the plaintext `config` table as TELEGRAM_CHAT_ID. */
+  chatId: string
+}
+
+/**
+ * The four preflight checks that must all pass before the integration is
+ * considered usable. Each call is one-shot — no polling, no bot running.
+ */
+export interface TelegramPreflight {
+  /** Bot identity from getMe. Username has no leading `@`. */
+  botUsername: string
+  /** Display name of the supergroup, from getChat. */
+  chatTitle: string
+  /** True iff the chat has forum topics enabled (the irreversible owner-only toggle). */
+  isForum: boolean
+  /** True iff the bot is admin in the supergroup with the can_manage_topics right. */
+  hasManageTopics: boolean
+  /** True iff Privacy Mode is OFF (getMe.can_read_all_group_messages). */
+  privacyModeOff: boolean
+}
+
+/**
+ * Response from `GET /api/config/telegram/health`. When credentials aren't
+ * configured, `configured: false` and `preflight` is `null`. When credentials
+ * are configured but a preflight call errored, `preflight` is `null` and
+ * `error` carries the failing step + message.
+ *
+ * `polling` is a Step-2 sentinel — it stays `null` in Step 1 (where the bot
+ * is not yet running) and grows a `{ running, lastUpdateId, lastSuccessfulPollAt }`
+ * shape when the polling layer ships.
+ */
+export interface TelegramHealth {
+  configured: boolean
+  preflight: TelegramPreflight | null
+  error: {
+    step: 'getMe' | 'getChat' | 'getChatMember'
+    message: string
+  } | null
+  polling: null
+}
+
+/**
+ * Response from `GET /api/config/telegram` — what's stored, without exposing
+ * the bot token plaintext. Used by the setup form to render "configured"
+ * state on first load.
+ */
+export interface TelegramConfigState {
+  /** True iff both botToken and chatId are present in storage. */
+  configured: boolean
+  /** Plaintext chat id (empty string when unset). */
+  chatId: string
+  /** Masked preview of the bot token like `1234567:AAHi…`. Empty when unset. */
+  botTokenPreview: string
+}

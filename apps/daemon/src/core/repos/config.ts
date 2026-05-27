@@ -13,12 +13,27 @@ import type { BazilionDb } from '../db/client.ts'
 import { SERVICES } from '../services.ts'
 
 /**
- * Env var names that live in the plaintext config store. Derived from the
- * services registry — any field marked `kind: 'config'` ends up here.
+ * Daemon-managed internal state keys. Not exposed in the services registry
+ * because the user never edits them — they're written by background machinery
+ * (polling watermarks, derived topic ids, …). Kept here so the allowlist
+ * still gates accidental misuse from the generic field write endpoint.
  */
-export const CONFIG_KEYS: readonly string[] = SERVICES.flatMap((s) =>
-  s.fields.filter((f) => f.kind === 'config').map((f) => f.envVar),
-)
+const INTERNAL_CONFIG_KEYS: readonly string[] = [
+  // Telegram (step 2+): polling watermark + derived topic/message ids.
+  'TELEGRAM_LAST_UPDATE_ID',
+  'TELEGRAM_SERVICE_TOPIC_ID',
+  'TELEGRAM_DIRECTORY_MESSAGE_ID',
+]
+
+/**
+ * Env var names that live in the plaintext config store. Derived from the
+ * services registry — any field marked `kind: 'config'` ends up here — and
+ * unioned with the internal keys list above.
+ */
+export const CONFIG_KEYS: readonly string[] = [
+  ...SERVICES.flatMap((s) => s.fields.filter((f) => f.kind === 'config').map((f) => f.envVar)),
+  ...INTERNAL_CONFIG_KEYS,
+]
 
 const CONFIG_KEY_SET = new Set<string>(CONFIG_KEYS)
 
