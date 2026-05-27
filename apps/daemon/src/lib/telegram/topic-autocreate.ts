@@ -17,6 +17,7 @@ import type { Agent } from '@bazilion/api-types'
 import type { BazilionDb } from '../../core/db/client.ts'
 import { agentRepo, groupRepo } from '../../core/index.ts'
 import type { Paths } from '../../core/paths.ts'
+import { notifyDirectoryDirty } from './directory.ts'
 import { allocateGroupColor, topicDeepLink, topicNameFor } from './naming.ts'
 
 /**
@@ -74,6 +75,7 @@ export async function ensureAgentTopic(args: EnsureTopicArgs): Promise<EnsureTop
   const name = topicNameFor(agent, group)
   const result = await args.api.createForumTopic(args.chatId, name, { icon_color: color })
   agentRepo.setTelegramTopicId(args.db, agent.id, result.message_thread_id)
+  notifyDirectoryDirty()
 
   return {
     kind: 'ok',

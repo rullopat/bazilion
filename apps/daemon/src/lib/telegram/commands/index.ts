@@ -1,60 +1,78 @@
-// Service-chat command registry + dispatcher.
+// Command registry + dispatcher.
 //
-// Commands listed in `SERVICE_COMMANDS` get registered in Telegram's slash
-// menu via `setMyCommands` at activation. Aliases route to the same handler
-// but stay hidden from the menu.
+// Two contexts:
+//   - SERVICE commands (`context: 'service'` or omitted) run inside the
+//     ⚙ bazilion topic and get registered in Telegram's slash menu via
+//     setMyCommands.
+//   - TOPIC commands (`context: 'topic'`) run inside bound agent topics
+//     and stay hidden from the autocomplete menu — they're documented in
+//     /help instead.
+//   - `context: 'any'` commands are callable from both surfaces. /help is
+//     the only one today; the topic-context branch enriches its output
+//     using ctx.agent.
 
+import { handle as handleClose } from './close.ts'
 import { handle as handleGroups } from './groups.ts'
 import { handle as handleHealth } from './health.ts'
 import { handle as handleHelp } from './help.ts'
 import { handle as handleList } from './list.ts'
+import { handle as handleRebind } from './rebind.ts'
 import { handle as handleSpawn } from './spawn.ts'
 import { handle as handleTalk } from './talk.ts'
-import type { CommandCtx, CommandDescriptor, CommandResult } from './types.ts'
+import type { CommandContext, CommandCtx, CommandDescriptor, CommandResult } from './types.ts'
+import { handle as handleUnbind } from './unbind.ts'
 import { handle as handleWhoami } from './whoami.ts'
 
-export const SERVICE_COMMANDS: readonly CommandDescriptor[] = [
-  {
-    name: 'talk',
-    description: 'Open or create the topic for an agent',
-    handle: handleTalk,
-  },
-  {
-    name: 'spawn',
-    description: 'Create a new agent from a profile',
-    handle: handleSpawn,
-  },
+/**
+ * Every command the bot knows about, regardless of context. SERVICE_COMMANDS
+ * is derived from this list for setMyCommands.
+ */
+export const ALL_COMMANDS: readonly CommandDescriptor[] = [
+  // Service-chat surface — registered in the slash menu.
+  { name: 'talk', description: 'Open or create the topic for an agent', handle: handleTalk },
+  { name: 'spawn', description: 'Create a new agent from a profile', handle: handleSpawn },
   {
     name: 'list',
     description: 'Show all agents grouped by bazilion group',
     handle: handleList,
     aliases: ['agents'],
   },
+  { name: 'groups', description: 'Show bazilion groups with agent counts', handle: handleGroups },
+  { name: 'health', description: 'Bot identity + polling state', handle: handleHealth },
+  { name: 'whoami', description: 'Show your Telegram user id', handle: handleWhoami },
+
+  // Cross-context — /help works in either surface; the handler reads
+  // ctx.agent to decide whether to render the topic-context section.
+  { name: 'help', description: 'Command reference', handle: handleHelp, context: 'any' },
+
+  // Topic-context surface — hidden from setMyCommands per doc decision.
+  { name: 'close', description: 'Close this agent topic', handle: handleClose, context: 'topic' },
   {
-    name: 'groups',
-    description: 'Show bazilion groups with agent counts',
-    handle: handleGroups,
+    name: 'rebind',
+    description: 'Bind this topic to a different agent',
+    handle: handleRebind,
+    context: 'topic',
   },
   {
-    name: 'health',
-    description: 'Bot identity + polling state',
-    handle: handleHealth,
-  },
-  {
-    name: 'whoami',
-    description: 'Show your Telegram user id',
-    handle: handleWhoami,
-  },
-  {
-    name: 'help',
-    description: 'Command reference',
-    handle: handleHelp,
+    name: 'unbind',
+    description: "Clear this topic's agent binding",
+    handle: handleUnbind,
+    context: 'topic',
   },
 ]
 
+/** The subset registered with Telegram's slash menu — service + any. */
+export const SERVICE_COMMANDS: readonly CommandDescriptor[] = ALL_COMMANDS.filter(
+  (c) => contextOf(c) === 'service' || contextOf(c) === 'any',
+)
+
+function contextOf(d: CommandDescriptor): CommandContext {
+  return d.context ?? 'service'
+}
+
 const HANDLER_BY_NAME: Map<string, CommandDescriptor> = (() => {
   const m = new Map<string, CommandDescriptor>()
-  for (const d of SERVICE_COMMANDS) {
+  for (const d of ALL_COMMANDS) {
     m.set(d.name, d)
     for (const alias of d.aliases ?? []) m.set(alias, d)
   }
@@ -85,12 +103,23 @@ export function parseCommand(text: string | undefined): ParsedCommand | null {
   return { name, args }
 }
 
+/**
+ * Dispatch a parsed command. The `surface` arg constrains which commands
+ * are accepted — a /close from the service chat returns `{unknown}`, and
+ * a /spawn from an agent topic also returns `{unknown}`. /help and other
+ * `context: 'any'` commands work in either.
+ */
 export async function dispatchCommand(
   parsed: ParsedCommand,
   ctx: Omit<CommandCtx, 'args'>,
+  surface: 'service' | 'topic',
 ): Promise<CommandResult | { unknown: true; name: string }> {
   const desc = HANDLER_BY_NAME.get(parsed.name)
   if (!desc) return { unknown: true, name: parsed.name }
+  const cmdContext = contextOf(desc)
+  if (cmdContext !== 'any' && cmdContext !== surface) {
+    return { unknown: true, name: parsed.name }
+  }
   return desc.handle({ ...ctx, args: parsed.args })
 }
 

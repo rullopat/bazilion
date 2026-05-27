@@ -249,6 +249,16 @@ OpenClaw (`docs/openclaw-reference.md`) ships a multi-channel gateway with Teleg
 - **Cross-channel access groups.** Reusable allowlists across Telegram + Slack + Discord. Premature.
 - **Config writes from runtime events** (auto-update config on `migrate_to_chat_id`). We surface a "reconnect" banner instead — simpler, no DB mutations from external events.
 
+## Step 5 design decisions (locked in during implementation)
+
+- **Topic-context commands stay hidden from `setMyCommands`.** `/close`, `/rebind`, `/unbind` work when typed but don't appear in the slash autocomplete menu — the doc decision codified at the start of the integration. The slash menu reflects "what can I do from the service chat?"; topic-context commands are discoverable via `/help` once you're already in an agent topic.
+- **`/help` is the one universal command.** Registered with `context: 'any'`, callable from either surface. When invoked inside a bound agent topic it adds a "You're in <agent>'s topic" header and surfaces the topic-context commands first; in the service chat it shows the regular service-chat reference. Same handler, two render paths gated on `ctx.agent`.
+- **`/rebind` refuses to clobber an existing binding.** If the target agent already has a topic, the command refuses with a hint to `/unbind` the target's old topic first or use `/talk` to switch surfaces. Keeps the 1:1 agent↔topic invariant intact without surprising the operator.
+- **Directory refresh is fired from every CRUD site, not just bot-initiated changes.** `notifyDirectoryDirty()` is called from the daemon's `/api/agents/*` route handlers (spawn, archive, delete, rename, move-group), from profile-group spawn, and from the bot's own paths (/spawn, /talk, /unbind, /rebind). The function coalesces consecutive notifies into a single `setImmediate` refresh; bursts during multi-step user actions collapse to one Telegram API call. No-op when the bot isn't running.
+- **Activation re-runs the directory refresh on every restart**, syncing agent-state changes that happened while the daemon was down. First-time creation skips the refresh (the initial `sendMessage` already wrote the dynamic body); subsequent activations always run it. The refresh handles Telegram's "message is not modified" error silently — benign when nothing changed.
+- **`refreshDirectoryMessage` self-recovers when the pinned message is deleted by a human.** `editMessageText` returns "message to edit not found"; the refresh falls through to `sendMessage` + `pinChatMessage` and persists the new id to `TELEGRAM_DIRECTORY_MESSAGE_ID`. The operator never sees a stale or broken directory.
+- **`installLiveDepsResolver` breaks the static cycle between `bot.ts` and `directory.ts`.** Bot's start path registers a resolver that gives the directory module access to the live chatId/api/db/paths at call time, not at module load. Avoids the otherwise-unavoidable circular import (bot calls activation → activation calls directory → directory wants bot's runtime state).
+
 ## Step 4 design decisions (locked in during implementation)
 
 - **iOS Telegram cannot deep-link into private-supergroup forum topics.** Confirmed during manual testing: tapping a topic URL on iOS opens the supergroup's topic-list view rather than navigating into the topic itself. Tried every format we could think of — inline `<a href="https://t.me/c/<chat>/<topic>">`, three-segment `t.me/c/<chat>/<topic>/<topic>`, inline-keyboard URL buttons, and the native `tg://privatepost?channel=…&post=…&thread=…` scheme as a URL button. All bounce to the topic list on iOS; all work on Telegram desktop / web / Android. The bot still emits URL buttons for `/talk` and `/spawn` replies (and inline links in `/list`) because the desktop/Android experience is good. iOS users navigate manually through the topic picker. This is a Telegram client limitation we cannot fix from the bot side — revisit if Telegram closes the gap.
@@ -287,12 +297,14 @@ Not in the original user story; surfaced when implementation made these choices 
 - Step 1 shipped in PR #11 (merged): schema, setup form, preflight endpoint. The bot was not yet running.
 - Step 2 shipped in PR #12 (merged): grammY singleton, polling loop, first-activation, stall watchdog, webhook-conflict recovery, live polling state on the health endpoint.
 - Step 3 shipped in PR #13 (merged): routing helper + 6 service-chat commands + topic auto-create primitive + `setMyCommands` at activation.
-- Step 4 is in flight: `/spawn` keyboard flow + typed-args shortcut + callback_query routing + auto-name primitive.
+- Step 4 shipped in PR #14 (merged): `/spawn` keyboard flow + typed-args shortcut + callback_query routing + auto-name primitive.
+- Step 5 is in flight: topic-context commands + dynamic directory message with edit-on-CRUD + recreate-on-delete.
 - Follow-ups, in order:
   1. ✅ **Schema + setup UI + health endpoint, no live bot.** (PR #11)
   2. ✅ **Bot singleton + polling loop + first activation.** (PR #12)
   3. ✅ **Routing helper + service-chat commands.** (PR #13)
-  4. **`/spawn` keyboard flow + typed-args shortcut.** Inline-keyboard profile picker on `/spawn` no-args; `/spawn <profile>` stores pending state and prompts for a name; `/spawn <profile> <name>` spawns immediately. `-` as the name triggers auto-naming (`<profile-id>-<count>`). Callback queries flow through the same routing layer; pending state is per-(chat,user) with a 60s TTL. New agents always join the `default` group.
+  4. ✅ **`/spawn` keyboard flow + typed-args shortcut.** (PR #14)
+  5. **Topic-context commands + directory-message lifecycle.** `/close`, `/rebind`, `/unbind` dispatched on slash-command messages inside bound agent topics; `/help` becomes context-aware. The pinned ⚙ bazilion welcome message is replaced with a dynamic agent directory (groups → agents → deep-links), refreshed whenever any CRUD site mutates an agent, and self-recreated when a human deletes it.
   4. `/spawn` keyboard flow (profile picker → name prompt → auto-create + deep-link) + shared auto-create primitive used by `/talk` too.
   5. Topic-context commands (`/close`, `/rebind`, `/unbind`) + directory-message lifecycle (create / edit-on-CRUD / recreate-on-delete).
   6. Outbound mirror from `runAgentTurn` + per-supergroup outbound queue + bot-loop protection.
