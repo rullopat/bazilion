@@ -244,7 +244,11 @@ async function handleAgentTopicCommand(
   return { kind: 'agent_topic_command', agentId: agent.id, topicId, name, handled: true }
 }
 
-async function handleGeneral(deps: RouterDeps, m: Message): Promise<RouteOutcome> {
+async function handleGeneral(
+  deps: RouterDeps,
+  // _m is unused — General-topic handling is chat-wide, not per-message.
+  _m: Message,
+): Promise<RouteOutcome> {
   const now = Date.now()
   const last = _lastGeneralRedirectByChat.get(deps.chatId) ?? 0
   if (now - last < GENERAL_REDIRECT_SUPPRESS_MS) {

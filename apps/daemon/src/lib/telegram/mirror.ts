@@ -101,8 +101,9 @@ export async function mirrorAgentTurnFrame(
 
 // ─── frame → text rendering ─────────────────────────────────────────────
 
-const TELEGRAM_MAX_CHARS = 4096
-const SAFE_CHAR_BUDGET = 3900 // leave room for emoji + ellipsis
+// Telegram caps message body at 4096 chars; we truncate with an ellipsis
+// to 3900 to leave headroom for emoji + decorations.
+const SAFE_CHAR_BUDGET = 3900
 
 function renderFrame(frame: ChatFrame, mode: TelegramMirrorMode): string | null {
   if (frame.kind === 'fatal') {
@@ -214,12 +215,10 @@ export function mirrorTypingStart(agentId: string): void {
   mirrorTypingStop(agentId)
 
   const fire = (): void => {
-    deps.api
-      .sendChatAction(deps.chatId, 'typing', { message_thread_id: topicId })
-      .catch(() => {
-        // Indicator failures are silent — losing the bubble is purely
-        // cosmetic; the actual reply still mirrors when ready.
-      })
+    deps.api.sendChatAction(deps.chatId, 'typing', { message_thread_id: topicId }).catch(() => {
+      // Indicator failures are silent — losing the bubble is purely
+      // cosmetic; the actual reply still mirrors when ready.
+    })
   }
   fire()
   const interval = setInterval(fire, TYPING_REFIRE_MS)

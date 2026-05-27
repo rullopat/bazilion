@@ -16,6 +16,7 @@ interface RawAgent {
   status: string
   dir: string
   group_id: string
+  telegram_topic_id: number | null
   telegram_mirror_mode: string
   created_at: number
   archived_at: number | null
@@ -31,6 +32,7 @@ function toAgent(r: RawAgent): Agent {
     status: r.status as AgentStatus,
     dir: r.dir,
     groupId: r.group_id,
+    telegramTopicId: r.telegram_topic_id,
     telegramMirrorMode: (r.telegram_mirror_mode ?? 'minimal') as TelegramMirrorMode,
     createdAt: r.created_at,
     archivedAt: r.archived_at,
@@ -38,15 +40,15 @@ function toAgent(r: RawAgent): Agent {
 }
 
 /**
- * Insert an agent row. `telegramMirrorMode` is optional in the input — when
- * omitted, the schema's DEFAULT 'minimal' takes effect and the returned
- * Agent carries that default. Lets existing call sites stay focused on
- * the fields they care about; only the new Telegram-aware paths need to
- * pass a mode explicitly.
+ * Insert an agent row. Telegram-specific fields (`telegramTopicId`,
+ * `telegramMirrorMode`) are excluded from the required input — the
+ * schema's defaults apply (NULL topic, 'minimal' mirror mode). Lets
+ * existing call sites stay focused on the fields they care about; only
+ * the bind/talk paths populate the topic id later.
  */
 export function insert(
   db: BazilionDb,
-  a: Omit<Agent, 'createdAt' | 'archivedAt' | 'telegramMirrorMode'> & {
+  a: Omit<Agent, 'createdAt' | 'archivedAt' | 'telegramTopicId' | 'telegramMirrorMode'> & {
     telegramMirrorMode?: Agent['telegramMirrorMode']
   },
 ): Agent {
@@ -68,7 +70,13 @@ export function insert(
       now,
     ],
   )
-  return { ...a, telegramMirrorMode: mirrorMode, createdAt: now, archivedAt: null }
+  return {
+    ...a,
+    telegramTopicId: null,
+    telegramMirrorMode: mirrorMode,
+    createdAt: now,
+    archivedAt: null,
+  }
 }
 
 export function setReasoningLevel(db: BazilionDb, id: string, level: ReasoningLevel): void {

@@ -2,7 +2,12 @@
 // web UI calls (config set/clear + health). Future steps grow this tree
 // with bind, adopt, setup, etc.
 
-import type { TelegramConfigState, TelegramHealth } from '@bazilion/api-types'
+import type {
+  Agent,
+  TelegramBindResponse,
+  TelegramConfigState,
+  TelegramHealth,
+} from '@bazilion/api-types'
 import { defineCommand } from 'citty'
 import { createClient } from '../client.ts'
 
@@ -158,14 +163,80 @@ const botCmd = defineCommand({
   },
 })
 
+const bindCmd = defineCommand({
+  meta: {
+    name: 'bind',
+    description: 'Create a Telegram topic for an agent (manual fallback for /talk)',
+  },
+  args: {
+    agent: { type: 'positional', required: true, description: 'Agent id or prefix' },
+  },
+  async run({ args }) {
+    const client = createClient()
+    const result = await client.post<TelegramBindResponse>(
+      `/api/agents/${args.agent}/telegram/bind`,
+    )
+    const verb = result.created ? 'created topic' : 'already bound to'
+    console.log(`${verb} #${result.topicId} for agent ${result.agent.name} (${result.agent.id})`)
+    console.log(`  ${result.deepLink}`)
+  },
+})
+
+const unbindCmd = defineCommand({
+  meta: {
+    name: 'unbind',
+    description: "Clear an agent's Telegram topic binding (topic stays in Telegram as orphan)",
+  },
+  args: {
+    agent: { type: 'positional', required: true, description: 'Agent id or prefix' },
+  },
+  async run({ args }) {
+    const client = createClient()
+    await client.del(`/api/agents/${args.agent}/telegram/binding`)
+    console.log(`unbound agent ${args.agent}`)
+  },
+})
+
+const listBindingsCmd = defineCommand({
+  meta: {
+    name: 'list',
+    description: 'List agents and their Telegram topic bindings',
+  },
+  async run() {
+    const client = createClient()
+    const agents = await client.get<Agent[]>('/api/agents')
+    const bound = agents.filter((a) => a.telegramTopicId !== null)
+    const unbound = agents.filter((a) => a.telegramTopicId === null)
+    if (bound.length === 0 && unbound.length === 0) {
+      console.log('(no agents)')
+      return
+    }
+    if (bound.length > 0) {
+      console.log('bound:')
+      for (const a of bound) {
+        console.log(`  #${a.telegramTopicId}\t${a.name}\t(group: ${a.groupId})`)
+      }
+    }
+    if (unbound.length > 0) {
+      console.log('unbound:')
+      for (const a of unbound) {
+        console.log(`  —\t${a.name}\t(group: ${a.groupId})`)
+      }
+    }
+  },
+})
+
 export const telegramCommand = defineCommand({
   meta: {
     name: 'telegram',
-    description: 'Telegram integration: credentials, health, bot lifecycle',
+    description: 'Telegram integration: credentials, health, bot lifecycle, bindings',
   },
   subCommands: {
     config: configCmd,
     health: healthCmd,
     bot: botCmd,
+    bind: bindCmd,
+    unbind: unbindCmd,
+    list: listBindingsCmd,
   },
 })

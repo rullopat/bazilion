@@ -264,9 +264,7 @@ describe('mirrorAgentTurnFrame', () => {
 
 describe('mirrorTypingStart / mirrorTypingStop', () => {
   test('start fires sendChatAction immediately + re-fires on interval; stop clears', async () => {
-    const { mirrorTypingStart, mirrorTypingStop } = await import(
-      '../../src/lib/telegram/mirror.ts'
-    )
+    const { mirrorTypingStart, mirrorTypingStop } = await import('../../src/lib/telegram/mirror.ts')
     const { api, typings } = makeApi()
     installMirrorDepsResolver(() => ({ db: env.db, api, chatId: CHAT_ID }))
     const a = spawnAgent(env.db, env.paths, {
@@ -314,9 +312,7 @@ describe('mirrorTypingStart / mirrorTypingStop', () => {
   })
 
   test('start twice for the same agent clears the prior interval (no timer leak)', async () => {
-    const { mirrorTypingStart, mirrorTypingStop } = await import(
-      '../../src/lib/telegram/mirror.ts'
-    )
+    const { mirrorTypingStart, mirrorTypingStop } = await import('../../src/lib/telegram/mirror.ts')
     const { api, typings } = makeApi()
     installMirrorDepsResolver(() => ({ db: env.db, api, chatId: CHAT_ID }))
     const a = spawnAgent(env.db, env.paths, {

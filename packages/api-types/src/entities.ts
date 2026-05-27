@@ -63,6 +63,12 @@ export interface Agent {
   dir: string
   /** The group this agent belongs to. Every agent has exactly one. */
   groupId: string
+  /**
+   * Forum-topic id this agent is bound to in the configured Telegram
+   * supergroup, or `null` when unbound. Web UI shows binding state +
+   * deep-link based on this.
+   */
+  telegramTopicId: number | null
   /** Verbosity of the Telegram outbound mirror for this agent (Step 6). */
   telegramMirrorMode: TelegramMirrorMode
   createdAt: Timestamp

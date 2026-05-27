@@ -64,6 +64,18 @@ export function isTelegramBotRunning(): boolean {
 }
 
 /**
+ * Live bot api + chat id for the consumers that need to make outbound
+ * Bot API calls outside the standard `runAgentTurn` / mirror path (HTTP
+ * endpoints for explicit bind/unbind, future admin tooling, etc).
+ * Returns `null` when the bot isn't running — callers should 503 in
+ * that case rather than queueing.
+ */
+export function getTelegramBotApi(): { api: Bot['api']; chatId: number } | null {
+  if (!_handle) return null
+  return { api: _handle.bot.api, chatId: _handle.chatId }
+}
+
+/**
  * Boot the bot if credentials are present. No-op if a bot is already running
  * or credentials are missing. Safe to call from daemon startup before the
  * user has configured Telegram.
