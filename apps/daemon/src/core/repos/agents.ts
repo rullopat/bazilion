@@ -141,6 +141,72 @@ export function remove(db: BazilionDb, id: string): void {
   db.raw.run('DELETE FROM agents WHERE id = ?', [id])
 }
 
+// --- telegram bindings (migration 0003) ---
+//
+// One topic per agent. `agents.telegram_topic_id` is null until the agent is
+// bound to a forum topic in the configured supergroup, then carries the
+// message_thread_id Telegram returned from createForumTopic. The partial
+// unique index on this column enforces 1:1 once an id is written.
+
+/** Read just the bound topic id for an agent. Null when unbound. */
+export function getTelegramTopicId(db: BazilionDb, agentId: string): number | null {
+  const row = db.raw
+    .query<{ telegram_topic_id: number | null }, [string]>(
+      'SELECT telegram_topic_id FROM agents WHERE id = ?',
+    )
+    .get(agentId)
+  return row?.telegram_topic_id ?? null
+}
+
+/**
+ * Reverse lookup used by the inbound routing layer: given a
+ * message_thread_id from an incoming Telegram update, find the agent it
+ * belongs to. Null if the thread isn't bound (orphan / service-chat /
+ * stale id).
+ */
+export function findByTelegramTopicId(db: BazilionDb, topicId: number): Agent | null {
+  const row = db.raw
+    .query<RawAgent, [number]>('SELECT * FROM agents WHERE telegram_topic_id = ?')
+    .get(topicId)
+  return row ? toAgent(row) : null
+}
+
+/**
+ * Set or clear the agent's bound topic id. Pass `null` to clear (used by
+ * `/unbind` and by the lazy-reconcile path when a topic is discovered to
+ * have been deleted in Telegram).
+ */
+export function setTelegramTopicId(db: BazilionDb, agentId: string, topicId: number | null): void {
+  db.raw.run('UPDATE agents SET telegram_topic_id = ? WHERE id = ?', [topicId, agentId])
+}
+
+/**
+ * All agents matching `name` (case-sensitive, exact). Returns the full set
+ * so the caller can disambiguate across groups. The `/talk <name>` resolver
+ * collapses to a single agent only when the result has length 1.
+ */
+export function findByName(db: BazilionDb, name: string): Agent[] {
+  return db.raw
+    .query<RawAgent, [string]>(
+      "SELECT * FROM agents WHERE name = ? AND status != 'archived' ORDER BY created_at ASC",
+    )
+    .all(name)
+    .map(toAgent)
+}
+
+/**
+ * Agent matching `name` within a specific group. Used to resolve the
+ * qualified `/talk <group>/<name>` syntax. Null when nothing matches.
+ */
+export function findByNameInGroup(db: BazilionDb, groupId: string, name: string): Agent | null {
+  const row = db.raw
+    .query<RawAgent, [string, string]>(
+      "SELECT * FROM agents WHERE group_id = ? AND name = ? AND status != 'archived' LIMIT 1",
+    )
+    .get(groupId, name)
+  return row ? toAgent(row) : null
+}
+
 // --- skill attachments ---
 
 interface RawSkill {

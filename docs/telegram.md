@@ -249,6 +249,16 @@ OpenClaw (`docs/openclaw-reference.md`) ships a multi-channel gateway with Teleg
 - **Cross-channel access groups.** Reusable allowlists across Telegram + Slack + Discord. Premature.
 - **Config writes from runtime events** (auto-update config on `migrate_to_chat_id`). We surface a "reconnect" banner instead — simpler, no DB mutations from external events.
 
+## Step 3 design decisions (locked in during implementation)
+
+- **Agent-topic inbound is log-and-drop.** When a user sends a message into a bound agent topic in Step 3, the router identifies which agent owns the thread but does NOT reply. The actual "kick off `runAgentTurn` → mirror the assistant reply back" wiring lands in Step 6 alongside the outbound mirror + per-supergroup outbound queue. Step 3 to Step 6 transition is clean — no in-flight messages are replayed.
+- **Profile-specific topic emojis are deferred.** Step 3 topics created by `/talk` use color-only icons (round-robin over the 5 non-red colors). The schema column `profiles.telegram_icon_emoji` exists from migration 0003; seeding curated defaults for the built-in profiles lands in a later step. Doc-listed shape (researcher→📚, coder→💻, …) is still the target, just not Step-3 scope.
+- **`/talk <name>` is resolve-only — does not create new agents.** Mirrors the doc's `/talk` vs `/spawn` split: `/talk` finds and binds, `/spawn` creates. Unknown names get a "No agent matches X. Try /list, or /spawn (next release)." reply.
+- **`/help` lists only Step 3 commands + a "coming next" section.** Avoids the menu lying about what's actually wired. When Step 4's `/spawn` ships, it moves into the "Available now" block.
+- **`setMyCommands` runs at activation (every restart), not just on first activation.** This way the slash menu picks up any changes to `SERVICE_COMMANDS` when the operator restarts after a release bump — no separate migration needed.
+- **General-topic redirect is 60-second-per-chat in-memory suppression.** Avoids the bot spamming "go to the ⚙ bazilion topic" replies if the operator types repeatedly in General. The Map clears on daemon restart, which is fine — restarts are rare and a single redirect reminder isn't harmful even if duplicated.
+- **Command parsing strips the `@botname` suffix.** `/talk@bazilion_pat_bot researcher` becomes `{name: 'talk', args: 'researcher'}` — necessary because Telegram appends the suffix when the same command is available to multiple bots in the same chat.
+
 ## Step 2 design decisions (locked in during implementation)
 
 Not in the original user story; surfaced when implementation made these choices unavoidable. Captured here so they're not just chat-history facts.
@@ -257,18 +267,19 @@ Not in the original user story; surfaced when implementation made these choices 
 - **Bot boots in the background, post-bind.** The Hono server binds the port first and prints "listening"; the bot starts asynchronously after that. Boot errors are logged loud but don't crash the daemon — the user can still reach `/config/integrations/telegram` to fix bad credentials even when the bot is misbehaving.
 - **Inbound updates in Step 2 are log-and-advance.** The polling loop pulls updates, logs `chat=… thread=… "text"`, advances `TELEGRAM_LAST_UPDATE_ID`, and otherwise drops them. Step 3 replaces the dispatcher with the real routing layer; updates received between Step 2 and Step 3 are intentionally not replayed (the watermark moves forward regardless).
 - **Service-chat icon picks a gear sticker from `getForumTopicIconStickers`.** Preference order at activation: `⚙` → `🛠` → `⚒` → `🔧` → `🧰`. If none of those are in Telegram's ~70-sticker set or the API call fails, the topic falls back to red-only.
-- **`setMyCommands` is NOT called in Step 2.** Registering a slash menu of commands that don't respond yet is worse UX than no menu at all. Step 3 calls it together with the real handlers.
+- **`setMyCommands` is NOT called in Step 2.** Registering a slash menu of commands that don't respond yet is worse UX than no menu at all. Step 3 wires it (and runs it on every activation so command-list changes survive release bumps).
 - **Polling loop is hand-rolled, not `bot.start()`.** We call `bot.api.getUpdates` directly so we own the offset arithmetic + can persist `TELEGRAM_LAST_UPDATE_ID` after every fully-dispatched update. grammY's `bot.start()` would manage offset internally but doesn't expose a clean persistence hook. Trade-off: shutdown can wait up to ~25s (long-poll timeout) before the loop exits; acceptable for v1.
 - **Stall watchdog auto-restarts the bot.** A `setInterval` ticking at `BAZILION_TELEGRAM_POLLING_STALL_MS / 2` (default 60s) compares `now − lastSuccessfulPollAt` against the threshold (default 120s). On stall, it triggers `restartTelegramBot` via the mutex queue — same path as a manual restart.
 
 ## Next moves
 
 - Step 1 shipped in PR #11 (merged): schema, setup form, preflight endpoint. The bot was not yet running.
-- Step 2 is in flight: grammY singleton, polling loop, first-activation, stall watchdog, webhook-conflict recovery, live polling state on the health endpoint.
+- Step 2 shipped in PR #12 (merged): grammY singleton, polling loop, first-activation, stall watchdog, webhook-conflict recovery, live polling state on the health endpoint.
+- Step 3 is in flight: routing helper + 6 service-chat commands + topic auto-create primitive + `setMyCommands` at activation.
 - Follow-ups, in order:
   1. ✅ **Schema + setup UI + health endpoint, no live bot.** (PR #11)
-  2. **Bot singleton + polling loop + first activation.** grammY bot on a module-scoped handle + watermark persistence + stall watchdog + webhook-conflict recovery. On startup, if creds are present but `TELEGRAM_SERVICE_TOPIC_ID` is unset, run the one-time activation: `createForumTopic('⚙ bazilion', red, gear)` → persist topic id → post + pin directory message → persist its id → `hideGeneralForumTopic`. `setMyCommands` deferred to Step 3 (see decision above). Token rotation tears down + reactivates.
-  3. Routing helper (service chat → command dispatch, agent topic → agent or topic-context command, General-topic asymmetry, orphan handling) + service-chat commands (`/talk`, `/list`, `/groups`, `/help`, `/health`, `/whoami`).
+  2. ✅ **Bot singleton + polling loop + first activation.** grammY bot on a module-scoped handle + watermark persistence + stall watchdog + webhook-conflict recovery. (PR #12)
+  3. **Routing helper + service-chat commands.** `(chat_id, message_thread_id)` classifier dispatching to service-chat command handler / agent-topic identifier / General redirect / unknown-topic reply. Six commands: `/talk`, `/list` (+ `/agents` alias), `/groups`, `/help`, `/health`, `/whoami`. `setMyCommands` runs at activation. Topic auto-create primitive used by `/talk` (and future `/spawn`).
   4. `/spawn` keyboard flow (profile picker → name prompt → auto-create + deep-link) + shared auto-create primitive used by `/talk` too.
   5. Topic-context commands (`/close`, `/rebind`, `/unbind`) + directory-message lifecycle (create / edit-on-CRUD / recreate-on-delete).
   6. Outbound mirror from `runAgentTurn` + per-supergroup outbound queue + bot-loop protection.
