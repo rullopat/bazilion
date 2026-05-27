@@ -52,7 +52,7 @@ const spawnCmd = defineCommand({
 const editCmd = defineCommand({
   meta: {
     name: 'edit',
-    description: 'Edit agent settings (name, model override, reasoning level)',
+    description: 'Edit agent settings (name, model override, reasoning level, telegram mirror)',
   },
   args: {
     id: { type: 'positional', required: true, description: 'Agent id or prefix' },
@@ -62,10 +62,19 @@ const editCmd = defineCommand({
       type: 'string',
       description: 'Reasoning level: off|minimal|low|medium|high|xhigh',
     },
+    mirror: {
+      type: 'string',
+      description: 'Telegram mirror verbosity: minimal|verbose',
+    },
   },
   async run({ args }) {
-    if (args.name === undefined && args.model === undefined && args.reasoning === undefined) {
-      console.error('agent edit: specify at least one of --name, --model, or --reasoning')
+    if (
+      args.name === undefined &&
+      args.model === undefined &&
+      args.reasoning === undefined &&
+      args.mirror === undefined
+    ) {
+      console.error('agent edit: specify at least one of --name, --model, --reasoning, --mirror')
       process.exit(2)
     }
     const client = createClient()
@@ -75,6 +84,13 @@ const editCmd = defineCommand({
       body.modelOverride = args.model === '' ? null : args.model
     }
     if (args.reasoning !== undefined) body.reasoningLevel = args.reasoning
+    if (args.mirror !== undefined) {
+      if (args.mirror !== 'minimal' && args.mirror !== 'verbose') {
+        console.error(`agent edit: --mirror must be 'minimal' or 'verbose'`)
+        process.exit(2)
+      }
+      body.telegramMirrorMode = args.mirror
+    }
     const agent = await client.patch<Agent>(`/api/agents/${args.id}`, body)
     console.log(`updated agent ${agent.id} (${agent.name})`)
   },

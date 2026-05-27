@@ -249,6 +249,21 @@ OpenClaw (`docs/openclaw-reference.md`) ships a multi-channel gateway with Teleg
 - **Cross-channel access groups.** Reusable allowlists across Telegram + Slack + Discord. Premature.
 - **Config writes from runtime events** (auto-update config on `migrate_to_chat_id`). We surface a "reconnect" banner instead — simpler, no DB mutations from external events.
 
+## Step 6 design decisions (locked in during implementation)
+
+- **Per-agent mirror verbosity** (`agents.telegram_mirror_mode`, default `'minimal'`). Minimal sends only `assistant_message` events plus terminal errors/fatal frames. `'verbose'` adds `tool_call` / `tool_result` / `tool_error` lines as concise summaries (parsed-args pretty-print, 200-char truncation on results). New schema column in migration `0004_agent_mirror_mode.sql`.
+- **`assistant_delta` and `user_message` events never mirror.** Deltas are streaming chunks; mirroring them would spam Telegram with partial text. `user_message` is the input itself (we'd just be echoing what the user just typed in the topic).
+- **`done` frames never mirror.** Internal control signal, not content.
+- **`error` events and `fatal` frames always mirror**, regardless of mode. Errors are important; the user should see them.
+- **Mirror is fire-and-forget from `runAgentTurn`.** Mirror failures (Telegram down, transient API errors, deserialization issues) are logged but never bubble. The turn's web-chat consumer / scheduler / etc. see every frame regardless of mirror status.
+- **Lazy reconcile on "thread not found".** When Telegram says the bound topic is gone (deleted by a human), the mirror clears `agents.telegram_topic_id` and stops trying. Operator can `/talk <agent>` later to recreate.
+- **Per-supergroup outbound queue (`enqueueOutbound(chatId, fn)`).** Serializes all outbound calls per chat — sends + `createForumTopic` go through the same queue. Min-interval pacing (200ms default, `BAZILION_TELEGRAM_SEND_INTERVAL_MS`) prevents per-chat rate-limit trips. One-shot retry on Telegram 429 with `retry_after` honored.
+- **Inbound trigger: plain text in a bound agent topic → `runAgentTurn`.** Fire-and-forget; the outbound mirror handles the reply via the frame stream.
+- **Concurrent turns on the same agent are unsafe** (shared worker state, session JSONL). When `isActiveAgent(id)` is true and an inbound arrives, we silently drop the trigger and log a warning — user can retype after the current turn finishes. Better than spawning a parallel worker and corrupting state.
+- **Telegram message length cap is 4096 chars.** Mirror truncates at 3900 with an ellipsis to leave headroom for the agent's reply prefix.
+- **Mirror module lives in lib/telegram/mirror.ts; lifecycle wires it via `installMirrorDepsResolver`** — same lazy-resolver pattern as the directory module to avoid the static cycle between `bot.ts` and `agent-turn.ts`.
+- **CLI surface in this PR is minimal: extend `agent edit` with `--mirror minimal|verbose`.** Full per-agent toggle in the web UI is deferred to Step 7's broader CLI/web surfaces work.
+
 ## Step 5 design decisions (locked in during implementation)
 
 - **Topic-context commands stay hidden from `setMyCommands`.** `/close`, `/rebind`, `/unbind` work when typed but don't appear in the slash autocomplete menu — the doc decision codified at the start of the integration. The slash menu reflects "what can I do from the service chat?"; topic-context commands are discoverable via `/help` once you're already in an agent topic.
@@ -298,13 +313,15 @@ Not in the original user story; surfaced when implementation made these choices 
 - Step 2 shipped in PR #12 (merged): grammY singleton, polling loop, first-activation, stall watchdog, webhook-conflict recovery, live polling state on the health endpoint.
 - Step 3 shipped in PR #13 (merged): routing helper + 6 service-chat commands + topic auto-create primitive + `setMyCommands` at activation.
 - Step 4 shipped in PR #14 (merged): `/spawn` keyboard flow + typed-args shortcut + callback_query routing + auto-name primitive.
-- Step 5 is in flight: topic-context commands + dynamic directory message with edit-on-CRUD + recreate-on-delete.
+- Step 5 shipped in PR #15 (merged): topic-context commands + dynamic directory message with edit-on-CRUD + recreate-on-delete.
+- Step 6 is in flight: outbound mirror from `runAgentTurn` + per-supergroup outbound queue + inbound trigger (plain text in a bound topic kicks off the agent).
 - Follow-ups, in order:
   1. ✅ **Schema + setup UI + health endpoint, no live bot.** (PR #11)
   2. ✅ **Bot singleton + polling loop + first activation.** (PR #12)
   3. ✅ **Routing helper + service-chat commands.** (PR #13)
   4. ✅ **`/spawn` keyboard flow + typed-args shortcut.** (PR #14)
-  5. **Topic-context commands + directory-message lifecycle.** `/close`, `/rebind`, `/unbind` dispatched on slash-command messages inside bound agent topics; `/help` becomes context-aware. The pinned ⚙ bazilion welcome message is replaced with a dynamic agent directory (groups → agents → deep-links), refreshed whenever any CRUD site mutates an agent, and self-recreated when a human deletes it.
+  5. ✅ **Topic-context commands + directory-message lifecycle.** (PR #15)
+  6. **Outbound mirror + per-supergroup queue + inbound trigger.** Every assistant turn produced by `runAgentTurn` (chat, heartbeat, cron) gets mirrored to the agent's bound topic. Plain text in a bound topic triggers a turn (fire-and-forget; mirror handles the reply). Per-agent `telegram_mirror_mode` switches between `minimal` (assistant messages only) and `verbose` (with tool-call summaries). Sends go through `enqueueOutbound` per chat to respect Telegram's rate limits.
   4. `/spawn` keyboard flow (profile picker → name prompt → auto-create + deep-link) + shared auto-create primitive used by `/talk` too.
   5. Topic-context commands (`/close`, `/rebind`, `/unbind`) + directory-message lifecycle (create / edit-on-CRUD / recreate-on-delete).
   6. Outbound mirror from `runAgentTurn` + per-supergroup outbound queue + bot-loop protection.

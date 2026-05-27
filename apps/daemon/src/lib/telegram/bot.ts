@@ -21,6 +21,8 @@ import type { BazilionDb } from '../../core/db/client.ts'
 import { openConfig, openSecrets, type Paths, resolvePaths } from '../../core/index.ts'
 import { type ActivationApi, runActivation } from './activation.ts'
 import { type DirectoryApi, installLiveDepsResolver } from './directory.ts'
+import { installMirrorDepsResolver, type MirrorApi } from './mirror.ts'
+import { installReactionsDepsResolver, type ReactionsApi } from './reactions.ts'
 import { type ReplyApi, routeUpdate } from './routing.ts'
 
 const POLL_TIMEOUT_S = 25
@@ -184,6 +186,20 @@ async function startInternal(
     db,
     paths: handle.paths,
     api: handle.bot.api as unknown as DirectoryApi,
+    chatId: handle.chatId,
+  }))
+
+  // Mirror lives in a separate module to avoid pulling agent-turn deps into
+  // the activation path. Same lazy-resolution pattern.
+  installMirrorDepsResolver(() => ({
+    db,
+    api: handle.bot.api as unknown as MirrorApi,
+    chatId: handle.chatId,
+  }))
+
+  // Reactions: 👀 "bot saw it" indicator on inbound user messages.
+  installReactionsDepsResolver(() => ({
+    api: handle.bot.api as unknown as ReactionsApi,
     chatId: handle.chatId,
   }))
 

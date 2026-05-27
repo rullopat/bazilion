@@ -1,4 +1,10 @@
-import type { Agent, AgentSkillAttachment, AgentStatus, ReasoningLevel } from '@bazilion/api-types'
+import type {
+  Agent,
+  AgentSkillAttachment,
+  AgentStatus,
+  ReasoningLevel,
+  TelegramMirrorMode,
+} from '@bazilion/api-types'
 import type { BazilionDb } from '../db/client.ts'
 
 interface RawAgent {
@@ -10,6 +16,7 @@ interface RawAgent {
   status: string
   dir: string
   group_id: string
+  telegram_mirror_mode: string
   created_at: number
   archived_at: number | null
 }
@@ -24,19 +31,44 @@ function toAgent(r: RawAgent): Agent {
     status: r.status as AgentStatus,
     dir: r.dir,
     groupId: r.group_id,
+    telegramMirrorMode: (r.telegram_mirror_mode ?? 'minimal') as TelegramMirrorMode,
     createdAt: r.created_at,
     archivedAt: r.archived_at,
   }
 }
 
-export function insert(db: BazilionDb, a: Omit<Agent, 'createdAt' | 'archivedAt'>): Agent {
+/**
+ * Insert an agent row. `telegramMirrorMode` is optional in the input — when
+ * omitted, the schema's DEFAULT 'minimal' takes effect and the returned
+ * Agent carries that default. Lets existing call sites stay focused on
+ * the fields they care about; only the new Telegram-aware paths need to
+ * pass a mode explicitly.
+ */
+export function insert(
+  db: BazilionDb,
+  a: Omit<Agent, 'createdAt' | 'archivedAt' | 'telegramMirrorMode'> & {
+    telegramMirrorMode?: Agent['telegramMirrorMode']
+  },
+): Agent {
   const now = Date.now()
+  const mirrorMode = a.telegramMirrorMode ?? 'minimal'
   db.raw.run(
-    `INSERT INTO agents (id, profile_id, name, model_override, reasoning_level, status, dir, group_id, created_at, archived_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
-    [a.id, a.profileId, a.name, a.modelOverride, a.reasoningLevel, a.status, a.dir, a.groupId, now],
+    `INSERT INTO agents (id, profile_id, name, model_override, reasoning_level, status, dir, group_id, telegram_mirror_mode, created_at, archived_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+    [
+      a.id,
+      a.profileId,
+      a.name,
+      a.modelOverride,
+      a.reasoningLevel,
+      a.status,
+      a.dir,
+      a.groupId,
+      mirrorMode,
+      now,
+    ],
   )
-  return { ...a, createdAt: now, archivedAt: null }
+  return { ...a, telegramMirrorMode: mirrorMode, createdAt: now, archivedAt: null }
 }
 
 export function setReasoningLevel(db: BazilionDb, id: string, level: ReasoningLevel): void {
@@ -178,6 +210,18 @@ export function findByTelegramTopicId(db: BazilionDb, topicId: number): Agent | 
  */
 export function setTelegramTopicId(db: BazilionDb, agentId: string, topicId: number | null): void {
   db.raw.run('UPDATE agents SET telegram_topic_id = ? WHERE id = ?', [topicId, agentId])
+}
+
+/**
+ * Update the agent's Telegram outbound-mirror verbosity. The CHECK constraint
+ * on the column rejects values outside {minimal, verbose}.
+ */
+export function setTelegramMirrorMode(
+  db: BazilionDb,
+  agentId: string,
+  mode: TelegramMirrorMode,
+): void {
+  db.raw.run('UPDATE agents SET telegram_mirror_mode = ? WHERE id = ?', [mode, agentId])
 }
 
 /**

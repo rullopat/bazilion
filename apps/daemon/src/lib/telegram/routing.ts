@@ -20,6 +20,8 @@ import type { Paths } from '../../core/paths.ts'
 import { dispatchCommand, parseCommand } from './commands/index.ts'
 import { namePrompt, SPAWN_PROFILE_CALLBACK_PREFIX, spawnAndBind } from './commands/spawn.ts'
 import type { CommandApi, CommandResult } from './commands/types.ts'
+import { enqueueAgentMessage } from './inbound-queue.ts'
+import { reactSeen } from './reactions.ts'
 import { setPendingSpawn, takePendingSpawn } from './spawn-state.ts'
 
 const SERVICE_TOPIC_KEY = 'TELEGRAM_SERVICE_TOPIC_ID'
@@ -74,7 +76,7 @@ export type RouteOutcome =
   | { kind: 'service_unknown_command'; name: string }
   | { kind: 'service_plain_text' }
   | { kind: 'spawn_name_input'; profileId: string; spawned: boolean }
-  | { kind: 'agent_topic'; agentId: string; topicId: number }
+  | { kind: 'agent_topic'; agentId: string; topicId: number; queued: boolean }
   | {
       kind: 'agent_topic_command'
       agentId: string
@@ -125,14 +127,26 @@ export async function routeUpdate(deps: RouterDeps, update: Update): Promise<Rou
   // Agent topic — look up by thread id.
   const agent = agentRepo.findByTelegramTopicId(deps.db, threadId)
   if (agent) {
-    // Step 5 adds topic-context command dispatch — /close, /rebind, /unbind
-    // (plus /help, which is also callable here). Plain messages still fall
-    // through to the "log + drop" behavior pending Step 6's outbound mirror.
     const parsed = parseCommand(m.text ?? m.caption ?? undefined)
     if (parsed) {
       return await handleAgentTopicCommand(deps, m, agent, threadId, parsed.name, parsed.args)
     }
-    return { kind: 'agent_topic', agentId: agent.id, topicId: threadId }
+    // Step 6: plain text in a bound agent topic queues into the agent's
+    // inbound queue. The queue's drain loop owns runAgentTurn calls — it
+    // serializes them so concurrent worker spawns don't corrupt agent
+    // state. Messages that arrive while a turn is in flight are
+    // concatenated and processed together when the current turn ends, so
+    // the agent gets one combined reply addressing everything.
+    const userText = m.text ?? m.caption ?? ''
+    if (!userText) {
+      // Non-text message in agent topic (sticker, photo, etc.) — skip.
+      return { kind: 'agent_topic', agentId: agent.id, topicId: threadId, queued: false }
+    }
+    enqueueAgentMessage(agent.id, userText)
+    // 👀 "I see this" indicator on the user's message. Cleared by the
+    // mirror when the agent's reply lands.
+    reactSeen(agent.id, deps.chatId, m.message_id)
+    return { kind: 'agent_topic', agentId: agent.id, topicId: threadId, queued: true }
   }
 
   // Orphan / unknown topic.

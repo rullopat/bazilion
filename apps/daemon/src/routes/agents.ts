@@ -147,6 +147,15 @@ agentsRouter.patch('/:id', async (c) => {
     agentRepo.setName(db, resolvedId, trimmed)
     nameChanged = true
   }
+  if (body.telegramMirrorMode !== undefined) {
+    if (body.telegramMirrorMode !== 'minimal' && body.telegramMirrorMode !== 'verbose') {
+      return c.json(
+        { error: `invalid telegramMirrorMode: ${String(body.telegramMirrorMode)}` },
+        400,
+      )
+    }
+    agentRepo.setTelegramMirrorMode(db, resolvedId, body.telegramMirrorMode)
+  }
   if (body.reasoningLevel !== undefined) {
     if (
       typeof body.reasoningLevel !== 'string' ||

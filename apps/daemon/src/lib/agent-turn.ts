@@ -5,6 +5,11 @@ import { registerAgent, unregisterAgent } from './agent-cancel.ts'
 import { resolveAgentApiKey } from './api-key.ts'
 import { getCtx } from './ctx.ts'
 import { createDbMessagingHost } from './messaging-host.ts'
+import {
+  mirrorAgentTurnFrame,
+  mirrorTypingStart,
+  mirrorTypingStop,
+} from './telegram/mirror.ts'
 import { createDbUserMdHost } from './user-md-host.ts'
 
 interface RunAgentTurnOpts {
@@ -45,14 +50,28 @@ export async function* runAgentTurn(
 
   const controller = opts.controller ?? new AbortController()
   registerAgent(agentId, controller)
+  // Telegram "typing..." indicator while the turn runs. Safe to call even
+  // when the agent has no bound topic — mirror.ts checks before firing.
+  mirrorTypingStart(agentId)
   try {
     for await (const frame of spawnWorkerTurn(
       { agent, message, enabledProviders, apiKey },
       { signal: controller.signal, env, messagingHost, userMdHost },
     )) {
+      // Fire-and-forget Telegram mirror. Mirror failures (bot down, topic
+      // deleted, transient API errors) are logged inside but never bubble
+      // here — the turn's own consumers (web chat stream, scheduler, etc.)
+      // see every frame regardless of mirror status.
+      void mirrorAgentTurnFrame(agentId, frame).catch((e) => {
+        console.warn(
+          `telegram mirror: unexpected error (agent=${agentId}) —`,
+          e instanceof Error ? e.message : String(e),
+        )
+      })
       yield frame
     }
   } finally {
+    mirrorTypingStop(agentId)
     unregisterAgent(agentId)
   }
 }
