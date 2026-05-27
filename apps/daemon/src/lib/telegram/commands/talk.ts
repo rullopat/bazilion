@@ -29,7 +29,7 @@ export const handle: CommandHandler = async (ctx) => {
       return {
         text:
           `No agent matches <code>${htmlEscape(ctx.args.trim())}</code>.\n` +
-          'Try /list to see available agents, or /spawn (next release) to create one.',
+          'Try /list to see available agents, or /spawn to create one.',
         parseMode: 'HTML',
       }
 

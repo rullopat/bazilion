@@ -8,6 +8,7 @@ import { handle as handleGroups } from './groups.ts'
 import { handle as handleHealth } from './health.ts'
 import { handle as handleHelp } from './help.ts'
 import { handle as handleList } from './list.ts'
+import { handle as handleSpawn } from './spawn.ts'
 import { handle as handleTalk } from './talk.ts'
 import type { CommandCtx, CommandDescriptor, CommandResult } from './types.ts'
 import { handle as handleWhoami } from './whoami.ts'
@@ -17,6 +18,11 @@ export const SERVICE_COMMANDS: readonly CommandDescriptor[] = [
     name: 'talk',
     description: 'Open or create the topic for an agent',
     handle: handleTalk,
+  },
+  {
+    name: 'spawn',
+    description: 'Create a new agent from a profile',
+    handle: handleSpawn,
   },
   {
     name: 'list',

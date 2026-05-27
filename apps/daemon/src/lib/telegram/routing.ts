@@ -13,12 +13,14 @@
 // only — actual chat-back routing ships in Step 6 alongside the outbound
 // mirror from runAgentTurn.
 
-import type { Message, Update } from 'grammy/types'
+import type { CallbackQuery, InlineKeyboardMarkup, Message, Update } from 'grammy/types'
 import type { BazilionDb } from '../../core/db/client.ts'
-import { agentRepo, openConfig } from '../../core/index.ts'
+import { agentRepo, openConfig, profileRepo } from '../../core/index.ts'
 import type { Paths } from '../../core/paths.ts'
 import { dispatchCommand, parseCommand } from './commands/index.ts'
+import { namePrompt, SPAWN_PROFILE_CALLBACK_PREFIX, spawnAndBind } from './commands/spawn.ts'
 import type { CommandResult } from './commands/types.ts'
+import { setPendingSpawn, takePendingSpawn } from './spawn-state.ts'
 import type { TopicCreateApi } from './topic-autocreate.ts'
 
 const SERVICE_TOPIC_KEY = 'TELEGRAM_SERVICE_TOPIC_ID'
@@ -40,7 +42,23 @@ export interface ReplyApi extends TopicCreateApi {
       message_thread_id?: number
       parse_mode?: 'HTML' | 'MarkdownV2'
       disable_web_page_preview?: boolean
+      reply_markup?: InlineKeyboardMarkup
     },
+  ): Promise<{ message_id: number }>
+  /**
+   * Used by the `/spawn` keyboard flow to update the picker message after
+   * the user taps a profile button.
+   */
+  editMessageText(
+    chatId: number,
+    messageId: number,
+    text: string,
+    opts: { parse_mode?: 'HTML' | 'MarkdownV2'; reply_markup?: InlineKeyboardMarkup },
+  ): Promise<unknown>
+  /** Acknowledge a callback_query so Telegram stops the loading spinner. */
+  answerCallbackQuery(
+    callbackQueryId: string,
+    opts?: { text?: string; show_alert?: boolean },
   ): Promise<unknown>
 }
 
@@ -56,9 +74,12 @@ export type RouteOutcome =
   | { kind: 'service_command'; name: string; handled: boolean }
   | { kind: 'service_unknown_command'; name: string }
   | { kind: 'service_plain_text' }
+  | { kind: 'spawn_name_input'; profileId: string; spawned: boolean }
   | { kind: 'agent_topic'; agentId: string; topicId: number }
   | { kind: 'general_redirect'; suppressed: boolean }
   | { kind: 'unknown_topic'; topicId: number }
+  | { kind: 'callback_spawn_profile'; profileId: string }
+  | { kind: 'callback_unknown' }
   | { kind: 'non_message' }
   | { kind: 'foreign_chat'; chatId: number }
 
@@ -67,6 +88,10 @@ export type RouteOutcome =
  * did so the bot lifecycle can log it (and tests can assert on it).
  */
 export async function routeUpdate(deps: RouterDeps, update: Update): Promise<RouteOutcome> {
+  // Callback queries (from inline-keyboard taps) arrive on their own
+  // dedicated field — handle them before the message-only fallthrough.
+  if (update.callback_query) return handleCallbackQuery(deps, update.callback_query)
+
   const m = update.message ?? update.edited_message ?? null
   if (!m) return { kind: 'non_message' }
 
@@ -109,6 +134,17 @@ export async function routeUpdate(deps: RouterDeps, update: Update): Promise<Rou
 
 async function handleServiceChat(deps: RouterDeps, m: Message): Promise<RouteOutcome> {
   const parsed = parseCommand(m.text ?? m.caption ?? undefined)
+
+  // Pending-spawn name-input has priority over the "unknown text" hint —
+  // a user who just tapped a profile button is expected to follow up with
+  // a name as plain text, not a command.
+  if (!parsed && m.from && m.text) {
+    const pending = takePendingSpawn(deps.chatId, m.from.id)
+    if (pending) {
+      return await resumePendingSpawn(deps, m, pending.profileId, m.text)
+    }
+  }
+
   if (!parsed) {
     // Plain text in the service chat — acknowledge once with a hint.
     await deps.api.sendMessage(deps.chatId, 'Run /help for the command list.', {
@@ -157,6 +193,99 @@ async function handleGeneral(deps: RouterDeps, m: Message): Promise<RouteOutcome
   return { kind: 'general_redirect', suppressed: false }
 }
 
+/**
+ * Complete the `/spawn` keyboard flow: the user has just typed the new
+ * agent's name (or `-` for auto-name) as a plain message in the service
+ * chat after picking a profile via the inline keyboard. We delegate the
+ * heavy lifting (spawnAgent + ensureAgentTopic + reply text) to the
+ * /spawn handler's exported `spawnAndBind` so the typed-args path and the
+ * keyboard path share one implementation.
+ */
+async function resumePendingSpawn(
+  deps: RouterDeps,
+  m: Message,
+  profileId: string,
+  rawName: string,
+): Promise<RouteOutcome> {
+  const profile = profileRepo.get(deps.db, profileId)
+  if (!profile) {
+    await deps.api.sendMessage(
+      deps.chatId,
+      `Profile <code>${escapeForHtml(profileId)}</code> was removed while waiting for the name — start over with /spawn.`,
+      { message_thread_id: m.message_thread_id ?? undefined, parse_mode: 'HTML' },
+    )
+    return { kind: 'spawn_name_input', profileId, spawned: false }
+  }
+  const result = await spawnAndBind(
+    {
+      db: deps.db,
+      paths: deps.paths,
+      api: deps.api,
+      chatId: deps.chatId,
+    },
+    profile,
+    rawName.trim(),
+  )
+  await sendCommandResult(deps, m.message_thread_id ?? undefined, result)
+  return { kind: 'spawn_name_input', profileId, spawned: true }
+}
+
+/**
+ * Handle an inline-keyboard tap. Step 4 only knows about the spawn-profile
+ * picker — other callback_data values are logged + acknowledged but
+ * otherwise ignored.
+ */
+async function handleCallbackQuery(deps: RouterDeps, q: CallbackQuery): Promise<RouteOutcome> {
+  // Always acknowledge so Telegram's loading spinner stops — even when we
+  // don't know what the callback is for.
+  const data = q.data ?? ''
+  if (!data.startsWith(SPAWN_PROFILE_CALLBACK_PREFIX)) {
+    await deps.api.answerCallbackQuery(q.id, {}).catch(() => undefined)
+    return { kind: 'callback_unknown' }
+  }
+
+  const profileId = data.slice(SPAWN_PROFILE_CALLBACK_PREFIX.length)
+  const profile = profileRepo.get(deps.db, profileId)
+  if (!profile) {
+    await deps.api
+      .answerCallbackQuery(q.id, {
+        text: `Profile ${profileId} no longer exists.`,
+        show_alert: true,
+      })
+      .catch(() => undefined)
+    return { kind: 'callback_unknown' }
+  }
+
+  // Stash the pending state on (chat, user) so the next plain-text message
+  // from this user gets routed as the name input.
+  setPendingSpawn(deps.chatId, q.from.id, profile.id)
+
+  // Update the picker message in place — buttons go away, prompt appears.
+  if (q.message) {
+    await deps.api
+      .editMessageText(deps.chatId, q.message.message_id, namePrompt(profile), {
+        parse_mode: 'HTML',
+      })
+      .catch((e) => {
+        // Editing can fail if the message was deleted or is too old; fall
+        // back to a fresh prompt message so the user still sees it.
+        console.warn(
+          'telegram: editMessageText for spawn picker failed, sending fresh prompt:',
+          e instanceof Error ? e.message : String(e),
+        )
+        return deps.api.sendMessage(deps.chatId, namePrompt(profile), {
+          ...(q.message?.message_thread_id !== undefined
+            ? { message_thread_id: q.message.message_thread_id }
+            : {}),
+          parse_mode: 'HTML',
+        })
+      })
+  }
+
+  await deps.api.answerCallbackQuery(q.id, {}).catch(() => undefined)
+  return { kind: 'callback_spawn_profile', profileId: profile.id }
+}
+
 async function sendCommandResult(
   deps: RouterDeps,
   threadId: number | undefined,
@@ -166,6 +295,7 @@ async function sendCommandResult(
     ...(threadId !== undefined ? { message_thread_id: threadId } : {}),
     ...(result.parseMode ? { parse_mode: result.parseMode } : {}),
     ...(result.disableWebPagePreview ? { disable_web_page_preview: true } : {}),
+    ...(result.replyMarkup ? { reply_markup: result.replyMarkup } : {}),
   })
 }
 

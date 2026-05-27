@@ -2,7 +2,7 @@
 // function takes a CommandCtx and returns a CommandResult — the router posts
 // the result back into the service topic.
 
-import type { User } from 'grammy/types'
+import type { InlineKeyboardMarkup, User } from 'grammy/types'
 import type { BazilionDb } from '../../../core/db/client.ts'
 import type { Paths } from '../../../core/paths.ts'
 import type { TopicCreateApi } from '../topic-autocreate.ts'
@@ -33,6 +33,12 @@ export interface CommandResult {
   text: string
   parseMode?: 'HTML' | 'MarkdownV2'
   disableWebPagePreview?: boolean
+  /**
+   * Inline-keyboard markup (`/spawn`'s profile picker). Plumbed through to
+   * Telegram's `sendMessage(reply_markup: ...)`. Most commands leave it
+   * undefined — only ones that need callback_query follow-ups set it.
+   */
+  replyMarkup?: InlineKeyboardMarkup
 }
 
 export type CommandHandler = (ctx: CommandCtx) => Promise<CommandResult>
