@@ -150,7 +150,7 @@ function printTopLevelHelp(): void {
     },
     {
       title: 'integrations',
-      items: [['telegram', 'Telegram bot setup + health (live bot ships in step 2)']],
+      items: [['telegram', 'Telegram bot setup, health, lifecycle']],
     },
     {
       title: 'ops',

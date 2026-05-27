@@ -568,14 +568,40 @@ export interface TelegramPreflight {
 }
 
 /**
+ * Live state of the polling singleton on the daemon side. `null` when no bot
+ * is running (creds absent, or daemon hasn't activated yet); populated once
+ * the bot has been started.
+ *
+ * `lastSuccessfulPollAt` is the epoch-ms timestamp of the most recent
+ * `getUpdates` call that completed without throwing — drives the stall
+ * watchdog (BAZILION_TELEGRAM_POLLING_STALL_MS, default 120000).
+ *
+ * `error` is the most recent failure surfaced by the bot or its runner — set
+ * when polling crashed, cleared when polling resumes.
+ *
+ * `activated` flips to true after the one-time first-activation completes
+ * (service chat created, directory message pinned, General hidden, commands
+ * registered).
+ */
+export interface TelegramPollingState {
+  running: boolean
+  activated: boolean
+  lastUpdateId: number | null
+  lastSuccessfulPollAt: number | null
+  startedAt: number | null
+  error: string | null
+}
+
+/**
  * Response from `GET /api/config/telegram/health`. When credentials aren't
  * configured, `configured: false` and `preflight` is `null`. When credentials
  * are configured but a preflight call errored, `preflight` is `null` and
  * `error` carries the failing step + message.
  *
- * `polling` is a Step-2 sentinel — it stays `null` in Step 1 (where the bot
- * is not yet running) and grows a `{ running, lastUpdateId, lastSuccessfulPollAt }`
- * shape when the polling layer ships.
+ * `polling` is `null` until Step 2 starts a bot; once activated, it carries
+ * the live state of the polling singleton (running, watermark, last-poll
+ * timestamp, any error). Drives the live "is the bot working?" indicator in
+ * the web setup card.
  */
 export interface TelegramHealth {
   configured: boolean
@@ -584,7 +610,7 @@ export interface TelegramHealth {
     step: 'getMe' | 'getChat' | 'getChatMember'
     message: string
   } | null
-  polling: null
+  polling: TelegramPollingState | null
 }
 
 /**

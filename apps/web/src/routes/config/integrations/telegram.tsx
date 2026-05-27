@@ -115,7 +115,7 @@ function TelegramIntegrationPage() {
         </p>
       </header>
 
-      <AwaitingActivationBanner />
+      <Step2Banner />
 
       <section className="rounded-lg border bg-card p-5 mb-6">
         <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-3">
@@ -206,21 +206,48 @@ function TelegramIntegrationPage() {
         )}
 
         {health && <PreflightResult health={health} />}
+        {health?.polling && <PollingState polling={health.polling} />}
       </section>
     </main>
   )
 }
 
-function AwaitingActivationBanner() {
+function Step2Banner() {
   return (
     <div className="rounded-md border-2 border-amber-400 bg-amber-50 px-4 py-3 mb-6 text-sm">
-      <div className="font-semibold text-amber-900 mb-1">Step 1 of the rollout</div>
+      <div className="font-semibold text-amber-900 mb-1">Step 2 of the rollout</div>
       <p className="text-amber-900">
-        Saving credentials here stores them in the daemon and lets you validate them against
-        Telegram. The bot is <strong>not running yet</strong> — no service chat is created,
-        no topics are created, no messages are sent. The live bot ships in the next release
-        and will pick up these stored credentials on first start.
+        The bot polls Telegram and creates the <code className="font-mono">⚙ bazilion</code>{' '}
+        service chat on first start. Inbound messages are logged but not yet routed to agents —{' '}
+        slash commands and per-agent topics ship in the next release. Outbound from agents ships
+        after that.
       </p>
+    </div>
+  )
+}
+
+function PollingState({ polling }: { polling: NonNullable<TelegramHealth['polling']> }) {
+  const startedAt = polling.startedAt ? new Date(polling.startedAt).toISOString() : null
+  const lastPoll = polling.lastSuccessfulPollAt
+    ? new Date(polling.lastSuccessfulPollAt).toISOString()
+    : null
+  return (
+    <div className="mt-4 rounded-md border bg-muted/30 px-3 py-2 text-xs space-y-1">
+      <p className="font-semibold uppercase tracking-wide text-muted-foreground">
+        Polling state
+      </p>
+      <div className="flex flex-wrap gap-x-4 gap-y-1 font-mono">
+        <span className={polling.running ? 'text-emerald-700' : 'text-rose-700'}>
+          {polling.running ? 'running' : 'stopped'}
+        </span>
+        <span className={polling.activated ? 'text-emerald-700' : 'text-amber-700'}>
+          {polling.activated ? 'activated' : 'awaiting activation'}
+        </span>
+        {polling.lastUpdateId !== null && <span>last update {polling.lastUpdateId}</span>}
+        {startedAt && <span>started {startedAt}</span>}
+        {lastPoll && <span>last poll {lastPoll}</span>}
+      </div>
+      {polling.error && <p className="text-rose-700">error: {polling.error}</p>}
     </div>
   )
 }

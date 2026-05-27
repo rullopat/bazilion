@@ -7,6 +7,12 @@
 import { serve } from '@hono/node-server'
 import { createApp } from './app.ts'
 import { getCtx } from './lib/ctx.ts'
+import {
+  isTelegramBotRunning,
+  maybeStartTelegramBot,
+  setTelegramAuthToken,
+  stopTelegramBot,
+} from './lib/telegram/bot.ts'
 
 const host = process.env.HOST ?? '127.0.0.1'
 const port = Number.parseInt(process.env.PORT ?? '4321', 10)
@@ -28,16 +34,37 @@ const server = serve({ fetch: app.fetch, hostname: host, port }, (info) => {
     console.error('  put a TLS proxy in front for untrusted networks.')
     console.error('')
   }
+  // Background bot boot. Errors are logged but never crash the daemon — the
+  // user can fix credentials via the web UI even if the bot can't start.
+  const { db, authToken } = getCtx()
+  setTelegramAuthToken(authToken)
+  maybeStartTelegramBot(db, authToken).catch((err) => {
+    console.error('telegram: background start failed:', err instanceof Error ? err.message : err)
+  })
 })
 
 const shutdown = (signal: NodeJS.Signals): void => {
   console.log(`\nbazilion daemon caught ${signal}, shutting down…`)
-  server.close((err) => {
-    if (err) {
-      console.error('shutdown error:', err)
-      process.exit(1)
-    }
-    process.exit(0)
+  // Stop the telegram bot before HTTP server close — the in-flight getUpdates
+  // long-poll can hold us for up to ~25s, so we run it in parallel with the
+  // server's connection drain. The DB stays open until process.exit so any
+  // late watermark writes from the poll loop don't crash on a closed handle.
+  const botStop = isTelegramBotRunning()
+    ? stopTelegramBot().catch((e) =>
+        console.error('telegram: stop on shutdown failed:', e instanceof Error ? e.message : e),
+      )
+    : Promise.resolve()
+  Promise.race([
+    botStop,
+    new Promise((r) => setTimeout(r, 30_000)), // hard cap: don't wait forever
+  ]).finally(() => {
+    server.close((err) => {
+      if (err) {
+        console.error('shutdown error:', err)
+        process.exit(1)
+      }
+      process.exit(0)
+    })
   })
 }
 
