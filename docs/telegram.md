@@ -249,12 +249,25 @@ OpenClaw (`docs/openclaw-reference.md`) ships a multi-channel gateway with Teleg
 - **Cross-channel access groups.** Reusable allowlists across Telegram + Slack + Discord. Premature.
 - **Config writes from runtime events** (auto-update config on `migrate_to_chat_id`). We surface a "reconnect" banner instead — simpler, no DB mutations from external events.
 
+## Step 2 design decisions (locked in during implementation)
+
+Not in the original user story; surfaced when implementation made these choices unavoidable. Captured here so they're not just chat-history facts.
+
+- **Re-save policy is "clear derived state only if creds changed".** A PUT with identical token+chatId is a no-op for `TELEGRAM_LAST_UPDATE_ID` / `TELEGRAM_SERVICE_TOPIC_ID` / `TELEGRAM_DIRECTORY_MESSAGE_ID` — repeated idempotent saves preserve the activated service chat. A real credential change wipes all three (the new bot has no relation to the old service chat).
+- **Bot boots in the background, post-bind.** The Hono server binds the port first and prints "listening"; the bot starts asynchronously after that. Boot errors are logged loud but don't crash the daemon — the user can still reach `/config/integrations/telegram` to fix bad credentials even when the bot is misbehaving.
+- **Inbound updates in Step 2 are log-and-advance.** The polling loop pulls updates, logs `chat=… thread=… "text"`, advances `TELEGRAM_LAST_UPDATE_ID`, and otherwise drops them. Step 3 replaces the dispatcher with the real routing layer; updates received between Step 2 and Step 3 are intentionally not replayed (the watermark moves forward regardless).
+- **Service-chat icon picks a gear sticker from `getForumTopicIconStickers`.** Preference order at activation: `⚙` → `🛠` → `⚒` → `🔧` → `🧰`. If none of those are in Telegram's ~70-sticker set or the API call fails, the topic falls back to red-only.
+- **`setMyCommands` is NOT called in Step 2.** Registering a slash menu of commands that don't respond yet is worse UX than no menu at all. Step 3 calls it together with the real handlers.
+- **Polling loop is hand-rolled, not `bot.start()`.** We call `bot.api.getUpdates` directly so we own the offset arithmetic + can persist `TELEGRAM_LAST_UPDATE_ID` after every fully-dispatched update. grammY's `bot.start()` would manage offset internally but doesn't expose a clean persistence hook. Trade-off: shutdown can wait up to ~25s (long-poll timeout) before the loop exits; acceptable for v1.
+- **Stall watchdog auto-restarts the bot.** A `setInterval` ticking at `BAZILION_TELEGRAM_POLLING_STALL_MS / 2` (default 60s) compares `now − lastSuccessfulPollAt` against the threshold (default 120s). On stall, it triggers `restartTelegramBot` via the mutex queue — same path as a manual restart.
+
 ## Next moves
 
-- This PR establishes the user story. No code yet.
-- Follow-ups, likely in order:
-  1. **Schema + setup UI + health endpoint, no live bot.** Migration `0003_agent_telegram.sql` + `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` keys + `apps/web` setup form + `GET /api/config/telegram/health` (preflight via one-shot `getMe` / `getChat` / `getChatMember` — no polling, no `createForumTopic`). At the end of this step the user can paste creds and see a green/red health card; the daemon does not yet *do* anything with Telegram. State after save is "configured, awaiting activation (next release)" — explicitly surfaced in the UI so users know it's expected.
-  2. **Bot singleton + polling loop + first activation.** grammY bot on `ctx.telegramBot` + `bot.start()` + watermark persistence + stall watchdog + webhook-conflict recovery. On startup, if creds are present but `TELEGRAM_SERVICE_TOPIC_ID` is unset, run the one-time activation: `createForumTopic('⚙ bazilion', red, gear)` → persist topic id → post + pin directory message → persist its id → `hideGeneralForumTopic` → `setMyCommands`. Token rotation tears down + reactivates.
+- Step 1 shipped in PR #11 (merged): schema, setup form, preflight endpoint. The bot was not yet running.
+- Step 2 is in flight: grammY singleton, polling loop, first-activation, stall watchdog, webhook-conflict recovery, live polling state on the health endpoint.
+- Follow-ups, in order:
+  1. ✅ **Schema + setup UI + health endpoint, no live bot.** (PR #11)
+  2. **Bot singleton + polling loop + first activation.** grammY bot on a module-scoped handle + watermark persistence + stall watchdog + webhook-conflict recovery. On startup, if creds are present but `TELEGRAM_SERVICE_TOPIC_ID` is unset, run the one-time activation: `createForumTopic('⚙ bazilion', red, gear)` → persist topic id → post + pin directory message → persist its id → `hideGeneralForumTopic`. `setMyCommands` deferred to Step 3 (see decision above). Token rotation tears down + reactivates.
   3. Routing helper (service chat → command dispatch, agent topic → agent or topic-context command, General-topic asymmetry, orphan handling) + service-chat commands (`/talk`, `/list`, `/groups`, `/help`, `/health`, `/whoami`).
   4. `/spawn` keyboard flow (profile picker → name prompt → auto-create + deep-link) + shared auto-create primitive used by `/talk` too.
   5. Topic-context commands (`/close`, `/rebind`, `/unbind`) + directory-message lifecycle (create / edit-on-CRUD / recreate-on-delete).

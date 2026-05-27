@@ -1,25 +1,34 @@
-// /api/config/telegram/* — Step 1 of the docs/telegram.md plan.
+// /api/config/telegram/* — credential CRUD + preflight health + live polling state.
 //
-// Three endpoints, all admin-authed:
+// Endpoints:
 //
-//   GET    /api/config/telegram          — read current config state (no preflight)
-//   PUT    /api/config/telegram          — write {botToken, chatId} in one call
-//   DELETE /api/config/telegram          — clear both
-//   GET    /api/config/telegram/health   — run the four-step preflight
+//   GET    /api/config/telegram           — read current config state (no preflight)
+//   PUT    /api/config/telegram           — write {botToken, chatId} in one call
+//                                            (restarts the bot if creds changed)
+//   DELETE /api/config/telegram           — clear creds + stop the bot + wipe derived state
+//   GET    /api/config/telegram/health    — run preflight + return live polling state
+//   POST   /api/config/telegram/restart   — force-restart the bot (debugging)
 //
-// No bot is started here — Step 2 owns the grammY singleton and the polling
-// loop. Step 1 ships purely "store credentials + show whether they look
-// valid" so the user can see a green/red panel without anything actually
-// happening in Telegram yet.
+// PUT/DELETE only wipe derived state (TELEGRAM_LAST_UPDATE_ID,
+// TELEGRAM_SERVICE_TOPIC_ID, TELEGRAM_DIRECTORY_MESSAGE_ID) when the
+// incoming credentials actually differ from what's already stored.
+// Repeated idempotent saves with identical creds preserve the activated
+// state so we don't orphan the existing service chat.
 
 import type { TelegramConfigInput, TelegramConfigState, TelegramHealth } from '@bazilion/api-types'
 import { Hono } from 'hono'
 import { openConfig, openSecrets } from '../core/index.ts'
 import { getCtx } from '../lib/ctx.ts'
+import { getTelegramBotState, restartTelegramBot, stopTelegramBot } from '../lib/telegram/bot.ts'
 import { runPreflight } from '../lib/telegram/preflight.ts'
 
 const BOT_TOKEN_KEY = 'TELEGRAM_BOT_TOKEN'
 const CHAT_ID_KEY = 'TELEGRAM_CHAT_ID'
+const DERIVED_STATE_KEYS = [
+  'TELEGRAM_LAST_UPDATE_ID',
+  'TELEGRAM_SERVICE_TOPIC_ID',
+  'TELEGRAM_DIRECTORY_MESSAGE_ID',
+] as const
 
 export const telegramRouter = new Hono()
 
@@ -39,8 +48,6 @@ telegramRouter.put('/', async (c) => {
   if (!botToken || !chatId) {
     return c.json({ error: 'botToken and chatId must be non-empty' }, 400)
   }
-  // Bot tokens look like `<id>:<random>`. Cheap shape check — keeps obvious
-  // typos out of the secrets table before the user hits the health endpoint.
   if (!/^\d+:[A-Za-z0-9_-]+$/.test(botToken)) {
     return c.json({ error: 'botToken must look like "1234567890:ABC..." (BotFather output)' }, 400)
   }
@@ -49,17 +56,59 @@ telegramRouter.put('/', async (c) => {
   }
 
   const { db, authToken } = getCtx()
-  openSecrets(db, authToken).set(BOT_TOKEN_KEY, botToken)
-  openConfig(db).set(CHAT_ID_KEY, chatId)
+  const secrets = openSecrets(db, authToken)
+  const config = openConfig(db)
+
+  const prevToken = secrets.get(BOT_TOKEN_KEY) ?? ''
+  const prevChatId = config.get(CHAT_ID_KEY) ?? ''
+  const credsChanged = prevToken !== botToken || prevChatId !== chatId
+
+  if (credsChanged) {
+    // Fresh credentials → wipe derived state so the next activation starts
+    // from scratch. Stale service-topic / directory-message ids from the
+    // previous bot would never resolve in the new chat anyway.
+    for (const key of DERIVED_STATE_KEYS) config.remove(key)
+  }
+
+  secrets.set(BOT_TOKEN_KEY, botToken)
+  config.set(CHAT_ID_KEY, chatId)
+
+  // Restart the bot to pick up the new credentials. Fire-and-forget: the
+  // restart can take ~25s (long-poll teardown) and we don't want the HTTP
+  // response to block on it. Errors surface on the next /health call via
+  // polling.error.
+  if (credsChanged) {
+    void restartTelegramBot(db, authToken).catch((e) =>
+      console.error('telegram: PUT-triggered restart failed:', e instanceof Error ? e.message : e),
+    )
+  }
 
   return c.json(readState(db, authToken))
 })
 
-telegramRouter.delete('/', (c) => {
+telegramRouter.delete('/', async (c) => {
   const { db, authToken } = getCtx()
-  openSecrets(db, authToken).remove(BOT_TOKEN_KEY)
-  openConfig(db).remove(CHAT_ID_KEY)
+  const secrets = openSecrets(db, authToken)
+  const config = openConfig(db)
+
+  secrets.remove(BOT_TOKEN_KEY)
+  config.remove(CHAT_ID_KEY)
+  for (const key of DERIVED_STATE_KEYS) config.remove(key)
+
+  // Tear down the bot synchronously so subsequent GETs reflect "not running".
+  await stopTelegramBot().catch((e) =>
+    console.error('telegram: stop on DELETE failed:', e instanceof Error ? e.message : e),
+  )
   return c.body(null, 204)
+})
+
+telegramRouter.post('/restart', async (c) => {
+  const { db, authToken } = getCtx()
+  // Fire-and-forget; same reasoning as PUT.
+  void restartTelegramBot(db, authToken).catch((e) =>
+    console.error('telegram: explicit restart failed:', e instanceof Error ? e.message : e),
+  )
+  return c.json({ restarted: true })
 })
 
 telegramRouter.get('/health', async (c) => {
@@ -77,8 +126,14 @@ telegramRouter.get('/health', async (c) => {
     return c.json(unconfigured)
   }
 
-  const health = await runPreflight({ botToken, chatId })
-  return c.json(health)
+  const preflightResult = await runPreflight({ botToken, chatId })
+  // Layer the live polling state on top of the preflight result. Preflight
+  // sets polling: null; we replace with the live state if a bot is running.
+  const merged: TelegramHealth = {
+    ...preflightResult,
+    polling: getTelegramBotState(),
+  }
+  return c.json(merged)
 })
 
 function readState(db: ReturnType<typeof getCtx>['db'], authToken: string): TelegramConfigState {

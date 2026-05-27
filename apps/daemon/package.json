@@ -22,6 +22,7 @@
     "@mozilla/readability": "^0.6.0",
     "@tobilu/qmd": "^2.5.2",
     "adm-zip": "^0.5.17",
+    "grammy": "^1.43.0",
     "hono": "^4.12.22",
     "linkedom": "^0.18.12",
     "typebox": "^1.1.38",

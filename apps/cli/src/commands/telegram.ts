@@ -107,13 +107,65 @@ const healthCmd = defineCommand({
   },
 })
 
+const botStatusCmd = defineCommand({
+  meta: {
+    name: 'status',
+    description: 'Show polling state of the live bot',
+  },
+  async run() {
+    const client = createClient()
+    const h = await client.get<TelegramHealth>('/api/config/telegram/health')
+    if (!h.polling) {
+      console.log('bot: not running')
+      process.exitCode = 1
+      return
+    }
+    const p = h.polling
+    const startedAt = p.startedAt ? new Date(p.startedAt).toISOString() : '(never)'
+    const lastPoll = p.lastSuccessfulPollAt
+      ? new Date(p.lastSuccessfulPollAt).toISOString()
+      : '(never)'
+    console.log(`running:            ${p.running}`)
+    console.log(`activated:          ${p.activated}`)
+    console.log(`started at:         ${startedAt}`)
+    console.log(`last update id:     ${p.lastUpdateId ?? '(none)'}`)
+    console.log(`last successful:    ${lastPoll}`)
+    if (p.error) console.log(`error:              ${p.error}`)
+    if (!p.running) process.exitCode = 1
+  },
+})
+
+const botRestartCmd = defineCommand({
+  meta: {
+    name: 'restart',
+    description: 'Force-restart the bot (tears down + brings up from current creds)',
+  },
+  async run() {
+    const client = createClient()
+    await client.post('/api/config/telegram/restart')
+    console.log('restart requested')
+  },
+})
+
+const botCmd = defineCommand({
+  meta: {
+    name: 'bot',
+    description: 'Inspect / control the live polling bot',
+  },
+  subCommands: {
+    status: botStatusCmd,
+    restart: botRestartCmd,
+  },
+})
+
 export const telegramCommand = defineCommand({
   meta: {
     name: 'telegram',
-    description: 'Telegram integration: credentials + health (live bot ships in step 2)',
+    description: 'Telegram integration: credentials, health, bot lifecycle',
   },
   subCommands: {
     config: configCmd,
     health: healthCmd,
+    bot: botCmd,
   },
 })
