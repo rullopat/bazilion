@@ -18,13 +18,13 @@ type ToolItem = {
   id: string
   name: string
   body: string
-  images?: { data: string; mimeType: string }[]
 }
 
 type RenderEntry =
   | { type: 'user'; content: string }
   | { type: 'assistant'; content: string }
   | { type: 'tool'; items: ToolItem[] }
+  | { type: 'images'; images: { data: string; mimeType: string }[] }
   | { type: 'system'; content: string }
   | { type: 'error'; content: string }
 
@@ -115,8 +115,13 @@ function projectMessages(msgs: ProviderMessage[]): RenderEntry[] {
         id: m.toolCallId ?? '',
         name: m.toolName ?? '',
         body: m.content,
-        images: m.images,
       })
+      // Images are deliverables — emit them as a standalone block OUTSIDE the
+      // tool box (and close the group so they don't get visually nested).
+      if (m.images && m.images.length > 0) {
+        entries.push({ type: 'images', images: m.images })
+        openTool = null
+      }
     }
   }
   return entries
@@ -600,8 +605,9 @@ export function ChatPane({
         ev.type === 'tool_call'
           ? { kind: 'call', id: ev.id, name: ev.name, body: ev.arguments }
           : ev.type === 'tool_result'
-            ? { kind: 'result', id: ev.id, name: ev.name, body: ev.result, images: ev.images }
+            ? { kind: 'result', id: ev.id, name: ev.name, body: ev.result }
             : { kind: 'error', id: ev.id, name: ev.name, body: ev.error }
+      const images = ev.type === 'tool_result' ? ev.images : undefined
       setLiveEntries((prev) => {
         const next = [...prev]
         const last = next[next.length - 1]
@@ -610,6 +616,9 @@ export function ChatPane({
         } else {
           next.push({ type: 'tool', items: [item] })
         }
+        // Images are deliverables — push them as a standalone block outside the
+        // tool box (this also "closes" the group, so the next tool starts fresh).
+        if (images && images.length > 0) next.push({ type: 'images', images })
         return next
       })
       return
@@ -926,6 +935,21 @@ function Bubble({ entry, isLastUser, isWillDrop, onEdit }: BubbleProps) {
   if (entry.type === 'tool') {
     return <ToolGroup items={entry.items} dropCls={dropCls} />
   }
+  if (entry.type === 'images') {
+    return (
+      <div className={`my-2 space-y-2 ${dropCls}`}>
+        {entry.images.map((img, i) => (
+          <img
+            // biome-ignore lint/suspicious/noArrayIndexKey: append-only within one result
+            key={i}
+            src={`data:${img.mimeType};base64,${img.data}`}
+            alt="screenshot"
+            className="block max-w-full rounded-lg border border-fawn"
+          />
+        ))}
+      </div>
+    )
+  }
   if (entry.type === 'system') {
     return (
       <div className={`my-3 rounded-r-sm border-l-[3px] border-sapphire bg-sapphire-glow px-3 py-1 font-mono text-[0.88em] text-sapphire-deep ${dropCls}`}>
@@ -953,11 +977,6 @@ function ToolGroup({ items, dropCls }: { items: ToolItem[]; dropCls: string }) {
     if (!el) return
     setOverflows(el.scrollHeight > TOOL_GROUP_MAX_HEIGHT_PX + 4)
   }, [items.length])
-
-  // Tool-produced images (browser screenshots, MCP image results) are
-  // deliverables — render them full-size below the collapsible text region so
-  // they're always visible without expanding "show more".
-  const images = items.flatMap((it) => it.images ?? [])
 
   return (
     <div
@@ -989,19 +1008,6 @@ function ToolGroup({ items, dropCls }: { items: ToolItem[]; dropCls: string }) {
         >
           {expanded ? 'show less ↑' : 'show more ↓'}
         </button>
-      )}
-      {images.length > 0 && (
-        <div className="mt-2 space-y-2">
-          {images.map((img, i) => (
-            <img
-              // biome-ignore lint/suspicious/noArrayIndexKey: append-only within one tool group
-              key={i}
-              src={`data:${img.mimeType};base64,${img.data}`}
-              alt="tool result"
-              className="block max-w-full rounded border border-fawn"
-            />
-          ))}
-        </div>
       )}
     </div>
   )
