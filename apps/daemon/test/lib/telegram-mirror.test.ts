@@ -188,6 +188,27 @@ describe('mirrorAgentTurnFrame', () => {
     )
   })
 
+  test('a delivered file (deliver_file) is sent as a Telegram document', async () => {
+    const { api, documents, sends } = makeApi()
+    installMirrorDepsResolver(() => ({ db: env.db, api, chatId: CHAT_ID }))
+    const a = spawnAgent(env.db, env.paths, { profileId: 'base', groupId: env.groupId, name: 'r1' })
+    agentRepo.setTelegramTopicId(env.db, a.id, 42)
+
+    await mirrorAgentTurnFrame(a.id, {
+      kind: 'event',
+      event: {
+        type: 'file',
+        name: 'report.pdf',
+        mimeType: 'application/pdf',
+        data: Buffer.from('%PDF-1.7').toString('base64'),
+      },
+    })
+    expect(documents.length).toBe(1)
+    expect((documents[0]?.opts as { caption?: string }).caption).toBe('report.pdf')
+    expect((documents[0]?.opts as { message_thread_id?: number }).message_thread_id).toBe(42)
+    expect(sends.length).toBe(0)
+  })
+
   test('image send falls back to a document when the photo is rejected', async () => {
     const { api, photos, documents } = makeApi({ photoFailWith: 'IMAGE_PROCESS_FAILED' })
     installMirrorDepsResolver(() => ({ db: env.db, api, chatId: CHAT_ID }))

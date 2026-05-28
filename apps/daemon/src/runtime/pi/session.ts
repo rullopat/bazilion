@@ -106,6 +106,8 @@ export interface CreateBazilionSessionOptions {
   mcpHost?: McpHost
   /** MCP tools discovered daemon-side, exposed as proxy tools alongside `mcpHost`. */
   mcpTools?: InjectedMcpTool[]
+  /** If provided, enables the `deliver_file` tool — the agent's outbound file channel. */
+  fileSink?: import('../tools/deliver-file.ts').FileSink
   /**
    * Optional explicit API key for the agent's provider. Wins over any value
    * derived from `env`. Required for OAuth-backed providers (`openai-codex`)
@@ -155,6 +157,7 @@ export async function createBazilionSession(
     browserHost,
     mcpHost,
     mcpTools,
+    fileSink,
     refreshApiKey,
   } = opts
 
@@ -266,6 +269,7 @@ export async function createBazilionSession(
     browserHost,
     mcpHost,
     mcpTools,
+    fileSink,
     env,
   })
   const allowedTools = [...BUILTIN_TOOL_NAMES, ...customTools.map((t) => t.name)]

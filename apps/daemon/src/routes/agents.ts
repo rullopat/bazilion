@@ -18,6 +18,7 @@ import {
   type ContextSkillEntry,
   type ContextToolEntry,
   type CreateTriggerRequest,
+  type FileAttachment,
   type ImageAttachment,
   type ListInboxResponse,
   type MoveAgentRequest,
@@ -86,6 +87,27 @@ function sanitizeImages(raw: unknown): ImageAttachment[] {
     ) {
       out.push({ data: (r as ImageAttachment).data, mimeType: (r as ImageAttachment).mimeType })
       if (out.length >= MAX_INPUT_IMAGES) break
+    }
+  }
+  return out
+}
+
+const MAX_INPUT_FILES = 8
+
+function sanitizeFiles(raw: unknown): FileAttachment[] {
+  if (!Array.isArray(raw)) return []
+  const out: FileAttachment[] = []
+  for (const r of raw) {
+    const f = r as FileAttachment
+    if (
+      f &&
+      typeof f === 'object' &&
+      typeof f.data === 'string' &&
+      typeof f.mimeType === 'string' &&
+      typeof f.name === 'string'
+    ) {
+      out.push({ name: f.name, mimeType: f.mimeType, data: f.data })
+      if (out.length >= MAX_INPUT_FILES) break
     }
   }
   return out
@@ -522,9 +544,13 @@ agentsRouter.post('/:id/chat', async (c) => {
   const { db, paths, authToken } = getCtx()
   const id = resolveAgentIdParam(db, c.req.param('id'))
 
-  let body: { message?: string; images?: ImageAttachment[] }
+  let body: { message?: string; images?: ImageAttachment[]; files?: FileAttachment[] }
   try {
-    body = (await c.req.json()) as { message?: string; images?: ImageAttachment[] }
+    body = (await c.req.json()) as {
+      message?: string
+      images?: ImageAttachment[]
+      files?: FileAttachment[]
+    }
   } catch {
     return c.json({ error: 'invalid JSON body' }, 400)
   }
@@ -533,16 +559,17 @@ agentsRouter.post('/:id/chat', async (c) => {
     return c.json({ error: 'message is required' }, 400)
   }
   const images = sanitizeImages(body.images)
-  // A turn needs *something* — text or at least one image.
-  if (!message && images.length === 0) {
-    return c.json({ error: 'message or an image is required' }, 400)
+  const files = sanitizeFiles(body.files)
+  // A turn needs *something* — text, an image, or a file.
+  if (!message && images.length === 0 && files.length === 0) {
+    return c.json({ error: 'message, an image, or a file is required' }, 400)
   }
 
   const stream = new ReadableStream({
     async start(controller) {
       const encoder = new TextEncoder()
       try {
-        for await (const frame of runAgentTurn(id, message, { images })) {
+        for await (const frame of runAgentTurn(id, message, { images, files })) {
           try {
             controller.enqueue(encoder.encode(`${JSON.stringify(frame)}\n`))
           } catch {

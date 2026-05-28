@@ -95,6 +95,12 @@ export async function mirrorAgentTurnFrame(
     // fall through — there may also be a text line to mirror (verbose mode)
   }
 
+  // Files the agent delivered (deliver_file) go out as Telegram documents,
+  // regardless of mirror mode — they're deliverables, not tool noise.
+  if (frame.kind === 'event' && frame.event.type === 'file') {
+    await mirrorFile(deps, topicId, agent.id, frame.event)
+  }
+
   const text = renderFrame(frame, agent.telegramMirrorMode)
   if (!text) return
 
@@ -192,6 +198,33 @@ async function mirrorImages(
   }
 }
 
+/** Send an agent-delivered file as a Telegram document. Never throws. */
+async function mirrorFile(
+  deps: MirrorDeps,
+  topicId: number,
+  agentId: string,
+  ev: { name: string; mimeType: string; data: string },
+): Promise<void> {
+  const buf = Buffer.from(ev.data, 'base64')
+  try {
+    await enqueueOutbound(deps.chatId, () =>
+      deps.api.sendDocument(deps.chatId, new InputFile(buf, ev.name), {
+        message_thread_id: topicId,
+        caption: ev.name,
+      }),
+    )
+  } catch (e) {
+    if (isThreadGoneError(e)) {
+      agentRepo.setTelegramTopicId(deps.db, agentId, null)
+      return
+    }
+    console.warn(
+      `telegram mirror: file send failed for agent ${agentId} —`,
+      e instanceof Error ? e.message : String(e),
+    )
+  }
+}
+
 // ─── frame → text rendering ─────────────────────────────────────────────
 
 // Telegram caps message body at 4096 chars; we truncate with an ellipsis
@@ -218,6 +251,10 @@ function renderFrame(frame: ChatFrame, mode: TelegramMirrorMode): string | null 
       return mode === 'verbose' ? `✓ ${ev.name} → ${truncateResult(ev.result)}` : null
     case 'tool_error':
       return mode === 'verbose' ? `✕ ${ev.name}: ${ev.error}` : null
+    case 'file':
+      // Files are delivered as documents (handled in mirrorAgentTurnFrame), not
+      // as a text line.
+      return null
     case 'user_message':
     case 'assistant_delta':
       return null

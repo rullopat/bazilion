@@ -219,6 +219,8 @@ async function main(): Promise<void> {
     browserHost,
     mcpHost,
     mcpTools,
+    // deliver_file emits a `file` event straight onto our stdout frame stream.
+    fileSink: (f) => emit({ kind: 'event', event: { type: 'file', ...f } }),
   })
 
   abortSession = (): void => {

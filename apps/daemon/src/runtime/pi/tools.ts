@@ -21,6 +21,7 @@ import { Type } from 'typebox'
 import type { MemoryBackend } from '../memory/types.ts'
 import { bootstrapTool } from '../tools/bootstrap.ts'
 import { browserTools } from '../tools/browser.ts'
+import { deliverFileTool, type FileSink } from '../tools/deliver-file.ts'
 import { homeTools } from '../tools/home.ts'
 import { mcpProxyTools } from '../tools/mcp.ts'
 import { memoryTools } from '../tools/memory.ts'
@@ -90,6 +91,8 @@ export interface BazilionCustomToolsOpts {
   mcpHost?: McpHost
   /** MCP tools discovered daemon-side, exposed as proxy tools. */
   mcpTools?: InjectedMcpTool[]
+  /** If provided, enables the `deliver_file` tool (emits a `file` event). */
+  fileSink?: FileSink
   /** Merged env (process.env + secrets). */
   env?: NodeJS.ProcessEnv
 }
@@ -122,6 +125,9 @@ export function createBazilionCustomTools(opts: BazilionCustomToolsOpts): ToolDe
   }
   if (opts.mcpHost && opts.mcpTools && opts.mcpTools.length > 0) {
     handlers.push(...mcpProxyTools(opts.mcpHost, opts.mcpTools))
+  }
+  if (opts.fileSink) {
+    handlers.push(deliverFileTool(opts.agent.group.path, opts.fileSink))
   }
   return handlers.map(ourToolToPiTool)
 }

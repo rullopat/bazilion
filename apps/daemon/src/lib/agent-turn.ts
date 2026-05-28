@@ -1,8 +1,9 @@
-import type { ChatFrame, ImageAttachment } from '@bazilion/api-types'
+import type { ChatFrame, FileAttachment, ImageAttachment } from '@bazilion/api-types'
 import { mergeSecretsIntoEnv, providerStateRepo, resolveAgent } from '../core/index.ts'
 import { spawnWorkerTurn } from '../runtime/index.ts'
 import { registerAgent, unregisterAgent } from './agent-cancel.ts'
 import { resolveAgentApiKey } from './api-key.ts'
+import { saveInputFiles } from './attachments.ts'
 import { isBrowserEnabled, resolveBrowserConfig } from './browser/config.ts'
 import { createBrowserHost } from './browser/host.ts'
 import { getCtx } from './ctx.ts'
@@ -16,6 +17,8 @@ interface RunAgentTurnOpts {
   controller?: AbortController
   /** Images attached to this turn's user message — the model sees them (vision). */
   images?: ImageAttachment[]
+  /** Non-image files — stored on disk; a path reference is appended to the message. */
+  files?: FileAttachment[]
 }
 
 /**
@@ -32,11 +35,17 @@ interface RunAgentTurnOpts {
  */
 export async function* runAgentTurn(
   agentId: string,
-  message: string,
+  rawMessage: string,
   opts: RunAgentTurnOpts = {},
 ): AsyncGenerator<ChatFrame> {
   const { db, paths, authToken } = getCtx()
   const agent = resolveAgent(db, paths, agentId)
+
+  // Non-image attachments: persist them under the agent's home and append a
+  // path reference to the message so the agent can open/process them.
+  const fileNote = saveInputFiles(agent.agent.dir, opts.files)
+  const message = fileNote ? (rawMessage ? `${rawMessage}\n\n${fileNote}` : fileNote) : rawMessage
+
   const enabledProviders = Array.from(providerStateRepo.listEnabled(db))
   const env = mergeSecretsIntoEnv(db, authToken)
   const messagingHost = createDbMessagingHost(db)

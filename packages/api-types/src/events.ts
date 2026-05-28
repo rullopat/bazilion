@@ -53,6 +53,14 @@ export type SessionEvent =
       images?: ToolResultImage[]
     }
   | { type: 'tool_error'; id: string; name: string; error: string }
+  | {
+      /** A file the agent delivered to the user via the `deliver_file` tool. */
+      type: 'file'
+      name: string
+      mimeType: string
+      /** base64-encoded file bytes. */
+      data: string
+    }
   | { type: 'error'; error: string }
 
 /**

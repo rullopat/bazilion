@@ -78,7 +78,7 @@ bazilion group add|list|rm                 # register groups (always under ~/.ba
 bazilion group user-md show|set|clear      # per-group USER.md (read-only to agents)
 bazilion agent spawn|list|show|archive|unarchive|delete  # agent lifecycle
 bazilion agent edit <id> [--model …] [--reasoning …]    # patch agent settings
-bazilion agent chat <id> [--message X] [--image path]  # REPL or one-shot; --image attaches an image (vision)
+bazilion agent chat <id> [--message X] [--image path] [--file path]  # REPL/one-shot; attach images (vision) or any file (reference)
 bazilion agent cancel <id>                 # abort an in-flight turn
 bazilion agent move <id> <group>           # move an agent to a different group
 bazilion agent skill add|rm <id> <name>    # attach/detach a skill on an agent
@@ -111,6 +111,7 @@ bazilion completion bash|zsh|fish          # print a shell completion script
 - **Browser automation** — agents get a `browser_*` tool suite backed by a persistent per-agent Playwright (Chromium) session that survives across turns. Perception is accessibility-tree-first (`browser_snapshot` → aria tree with `[ref=eN]` refs; no vision model needed); screenshots are a secondary tool rendered inline in chat. A network-layer SSRF guard blocks loopback/private targets by default. **One-time setup**: `pnpm exec playwright install chromium` (from `apps/daemon`, or wherever Playwright is installed). Toggle/tune on `/config` → Browser Automation.
 - **MCP** — connect the daemon to [Model Context Protocol](https://modelcontextprotocol.io) servers over stdio (local subprocess), Streamable-HTTP, or SSE. Each enabled server's tools are injected into every agent turn, namespaced `mcp__<server>__<tool>`. Manage from `bazilion mcp …` or `/config/mcp`. Example: `bazilion mcp add playwright --command npx --args "-y @playwright/mcp"`.
 - **Images** — bidirectional on every client. Tool-produced images (browser screenshots, MCP image results) show as standalone deliverables: an image block in the web chat, a photo on Telegram. You can also send images *in*: attach/paste/drag in the web composer, send a photo to a bound Telegram topic, or `bazilion agent chat <id> --image <path>` — the model sees them via vision. (Audio/video are deferred — the model can't perceive non-image media yet.)
+- **Documents** — bidirectional too, via store-and-reference (the model can't perceive raw files, so it gets a path and decides how to process). Attach any file in (web 📎/paste/**drag-and-drop**, `bazilion agent chat <id> --file <path>`, or a Telegram document) → saved under the agent's home, referenced by path for the agent to open with its tools. Agents send files back with the `deliver_file` tool → a download link on web, a document on Telegram, saved to disk on the CLI. 25 MB per file.
 
 ## Tree
 

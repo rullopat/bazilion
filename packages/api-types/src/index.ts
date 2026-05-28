@@ -269,10 +269,26 @@ export interface ImageAttachment {
   mimeType: string
 }
 
+/**
+ * A non-image file the user attaches to a chat message. Unlike images, the
+ * model can't perceive it directly — the daemon stores it and hands the agent
+ * a path reference to open/process with its tools ("decide how to process").
+ */
+export interface FileAttachment {
+  /** Original filename (used for the saved name + the reference note). */
+  name: string
+  /** e.g. "application/pdf", "text/csv". */
+  mimeType: string
+  /** base64-encoded file bytes. */
+  data: string
+}
+
 export interface ChatRequest {
   message: string
   /** Optional images attached to this message — the model sees them (vision). */
   images?: ImageAttachment[]
+  /** Optional non-image files — stored on disk + referenced by path to the agent. */
+  files?: FileAttachment[]
 }
 
 // --- profile files ---

@@ -4,6 +4,7 @@
 
 import type {
   ChatFrame,
+  FileAttachment,
   ImageAttachment,
   ProviderMessage,
   SessionHeadResponse,
@@ -26,10 +27,16 @@ type ToolItem = {
 }
 
 type RenderEntry =
-  | { type: 'user'; content: string; images?: { data: string; mimeType: string }[] }
+  | {
+      type: 'user'
+      content: string
+      images?: { data: string; mimeType: string }[]
+      files?: { name: string }[]
+    }
   | { type: 'assistant'; content: string }
   | { type: 'tool'; items: ToolItem[] }
   | { type: 'images'; images: { data: string; mimeType: string }[] }
+  | { type: 'file'; name: string; mimeType: string; data: string }
   | { type: 'system'; content: string }
   | { type: 'error'; content: string }
 
@@ -96,6 +103,24 @@ function fileToImage(file: File): Promise<ImageAttachment> {
       resolve({
         data: comma >= 0 ? result.slice(comma + 1) : result,
         mimeType: file.type || 'image/png',
+      })
+    }
+    reader.onerror = () => reject(reader.error)
+    reader.readAsDataURL(file)
+  })
+}
+
+/** Read a non-image File into a base64 FileAttachment. */
+function fileToFile(file: File): Promise<FileAttachment> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = String(reader.result)
+      const comma = result.indexOf(',')
+      resolve({
+        name: file.name,
+        data: comma >= 0 ? result.slice(comma + 1) : result,
+        mimeType: file.type || 'application/octet-stream',
       })
     }
     reader.onerror = () => reject(reader.error)
@@ -177,6 +202,7 @@ export function ChatPane({
   const [editIdx, setEditIdx] = useState<number | null>(null)
   const [input, setInput] = useState('')
   const [attachments, setAttachments] = useState<ImageAttachment[]>([])
+  const [fileAttachments, setFileAttachments] = useState<FileAttachment[]>([])
   const [dragging, setDragging] = useState(false)
   const [staleBanner, setStaleBanner] = useState(false)
 
@@ -473,13 +499,21 @@ export function ChatPane({
     setEditIdx(null)
   }
 
-  // --- image attachments ---
+  // --- attachments (images go to the model as vision; other files are stored
+  // and referenced by path for the agent to process) ---
   async function addFiles(files: FileList | File[] | null) {
     if (!files) return
-    const imgs = Array.from(files).filter((f) => f.type.startsWith('image/'))
-    if (imgs.length === 0) return
-    const encoded = await Promise.all(imgs.map(fileToImage))
-    setAttachments((prev) => [...prev, ...encoded].slice(0, 8))
+    const arr = Array.from(files)
+    const imgs = arr.filter((f) => f.type.startsWith('image/'))
+    const docs = arr.filter((f) => !f.type.startsWith('image/'))
+    if (imgs.length > 0) {
+      const encoded = await Promise.all(imgs.map(fileToImage))
+      setAttachments((prev) => [...prev, ...encoded].slice(0, 8))
+    }
+    if (docs.length > 0) {
+      const encoded = await Promise.all(docs.map(fileToFile))
+      setFileAttachments((prev) => [...prev, ...encoded].slice(0, 8))
+    }
   }
 
   function onPaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
@@ -513,12 +547,14 @@ export function ChatPane({
   const send = useCallback(
     async (text: string) => {
       const images = attachments
-      if ((!text.trim() && images.length === 0) || streaming) return
+      const files = fileAttachments
+      if ((!text.trim() && images.length === 0 && files.length === 0) || streaming) return
       setInput('')
 
       // Slash commands shortcut (text-only; leave any attachments pending).
       if (await maybeHandleSlashCommand(text)) return
       setAttachments([])
+      setFileAttachments([])
 
       // Edit-mode truncate.
       let truncatedServerMessages: ProviderMessage[] | null = null
@@ -553,7 +589,14 @@ export function ChatPane({
       }
 
       captureScroll()
-      setLiveEntries([{ type: 'user', content: text, ...(images.length > 0 ? { images } : {}) }])
+      setLiveEntries([
+        {
+          type: 'user',
+          content: text,
+          ...(images.length > 0 ? { images } : {}),
+          ...(files.length > 0 ? { files: files.map((f) => ({ name: f.name })) } : {}),
+        },
+      ])
       sessionStorage.setItem(`bz_pending_${agentId}`, '1')
       const abort = new AbortController()
       currentAbortRef.current = abort
@@ -564,7 +607,7 @@ export function ChatPane({
         const res = await fetch(`/api/agents/${encodeURIComponent(agentId)}/chat`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ message: text, images }),
+          body: JSON.stringify({ message: text, images, files }),
           signal: abort.signal,
         })
         if (!res.ok || !res.body) {
@@ -618,7 +661,7 @@ export function ChatPane({
       }
     },
     // biome-ignore lint/correctness/useExhaustiveDependencies: stable refs intentional
-    [agentId, editIdx, serverMessages, streaming, attachments],
+    [agentId, editIdx, serverMessages, streaming, attachments, fileAttachments],
   )
 
   function handleFrame(frame: ChatFrame) {
@@ -690,6 +733,13 @@ export function ChatPane({
       })
       return
     }
+    if (ev.type === 'file') {
+      setLiveEntries((prev) => [
+        ...prev,
+        { type: 'file', name: ev.name, mimeType: ev.mimeType, data: ev.data },
+      ])
+      return
+    }
     if (ev.type === 'error') {
       setLiveEntries((prev) => [...prev, { type: 'error', content: `[error] ${ev.error}` }])
     }
@@ -753,7 +803,7 @@ export function ChatPane({
     >
       {dragging && (
         <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-[16px] border-2 border-dashed border-sapphire bg-sapphire-glow/80 text-[0.95em] font-medium text-sapphire-deep">
-          drop image(s) to attach
+          drop images or files to attach
         </div>
       )}
       <div className="flex items-baseline justify-between border-b border-frost px-4 py-2.5">
@@ -903,6 +953,28 @@ export function ChatPane({
         </div>
       )}
 
+      {fileAttachments.length > 0 && (
+        <div className="flex flex-wrap gap-2 border-t border-frost bg-ivory px-5 pt-3">
+          {fileAttachments.map((f, i) => (
+            <div
+              key={`${f.name}-${i}`}
+              className="flex items-center gap-1.5 rounded-md border border-frost bg-snow px-2 py-1 text-[0.82em] text-mocha"
+            >
+              <span>📄</span>
+              <span className="max-w-[160px] truncate">{f.name}</span>
+              <button
+                type="button"
+                onClick={() => setFileAttachments((prev) => prev.filter((_, j) => j !== i))}
+                className="text-[0.85em] text-mocha hover:text-sapphire"
+                aria-label="remove file"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       <form
         className="flex items-end gap-2 border-t border-frost bg-ivory px-5 py-3"
         onSubmit={(e) => {
@@ -913,7 +985,6 @@ export function ChatPane({
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/*"
           multiple
           className="hidden"
           onChange={(e) => {
@@ -925,8 +996,8 @@ export function ChatPane({
           type="button"
           onClick={() => fileInputRef.current?.click()}
           disabled={streaming}
-          title="attach image(s)"
-          aria-label="attach image"
+          title="attach images or files"
+          aria-label="attach files"
           className="rounded-md border-[1.5px] border-frost bg-snow px-3 py-2 text-[1em] text-mocha transition-colors hover:border-sapphire hover:text-sapphire disabled:cursor-not-allowed disabled:opacity-50"
         >
           📎
@@ -939,13 +1010,16 @@ export function ChatPane({
           onKeyDown={onKeyDown}
           onPaste={onPaste}
           disabled={streaming}
-          placeholder="say something… (Shift+Enter for newline; paste or 📎 to attach images)"
+          placeholder="say something… (Shift+Enter for newline; paste or 📎 to attach images/files)"
           autoComplete="off"
           className="max-h-[200px] min-h-[2.4rem] flex-1 resize-none overflow-y-auto rounded-md border-[1.5px] border-frost bg-snow px-3 py-2 text-[0.93em] leading-[1.45] text-chocolate outline-none transition-colors focus:border-sapphire focus:shadow-[0_0_0_3px_var(--color-sapphire-glow)]"
         />
         <button
           type="submit"
-          disabled={streaming || (!input.trim() && attachments.length === 0)}
+          disabled={
+            streaming ||
+            (!input.trim() && attachments.length === 0 && fileAttachments.length === 0)
+          }
           className="rounded-md bg-sapphire px-4 py-2 text-[0.92em] font-semibold text-snow transition-colors hover:bg-sapphire-deep disabled:cursor-not-allowed disabled:opacity-50"
         >
           send
@@ -1000,6 +1074,19 @@ function Bubble({ entry, isLastUser, isWillDrop, onEdit }: BubbleProps) {
                 alt="attachment"
                 className="max-h-48 rounded-lg border border-sapphire-light"
               />
+            ))}
+          </div>
+        )}
+        {entry.files && entry.files.length > 0 && (
+          <div className="mb-1 flex max-w-[85%] flex-wrap justify-end gap-1">
+            {entry.files.map((f, i) => (
+              <span
+                // biome-ignore lint/suspicious/noArrayIndexKey: append-only within one message
+                key={i}
+                className="flex items-center gap-1 rounded-md border border-sapphire-light bg-sapphire-glow px-2 py-1 text-[0.8em] text-chocolate"
+              >
+                📄 <span className="max-w-[180px] truncate">{f.name}</span>
+              </span>
             ))}
           </div>
         )}
@@ -1083,6 +1170,26 @@ function Bubble({ entry, isLastUser, isWillDrop, onEdit }: BubbleProps) {
             className="block max-w-full rounded-lg border border-fawn"
           />
         ))}
+      </div>
+    )
+  }
+  if (entry.type === 'file') {
+    const isImage = entry.mimeType.startsWith('image/')
+    const href = `data:${entry.mimeType};base64,${entry.data}`
+    return (
+      <div className={`my-2 ${dropCls}`}>
+        {isImage && (
+          <img src={href} alt={entry.name} className="mb-1 block max-w-full rounded-lg border border-fawn" />
+        )}
+        <a
+          href={href}
+          download={entry.name}
+          className="inline-flex items-center gap-2 rounded-md border border-fawn bg-ivory px-3 py-2 text-[0.88em] text-mocha hover:border-sapphire hover:text-sapphire"
+        >
+          <span>📄</span>
+          <span className="max-w-[260px] truncate">{entry.name}</span>
+          <span className="text-[0.85em] opacity-70">download</span>
+        </a>
       </div>
     )
   }
