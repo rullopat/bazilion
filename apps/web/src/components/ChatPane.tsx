@@ -115,6 +115,7 @@ function projectMessages(msgs: ProviderMessage[]): RenderEntry[] {
         id: m.toolCallId ?? '',
         name: m.toolName ?? '',
         body: m.content,
+        images: m.images,
       })
     }
   }

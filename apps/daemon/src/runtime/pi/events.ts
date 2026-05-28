@@ -180,11 +180,13 @@ export function piMessagesToProviderView(messages: AgentMessage[]): ProviderMess
       }
       case 'toolResult': {
         const tr = m as { content: unknown; toolCallId?: string; toolName?: string }
+        const images = extractToolResultImages({ content: tr.content })
         out.push({
           role: 'tool',
           content: stringifyContent(tr.content),
           toolCallId: tr.toolCallId,
           toolName: tr.toolName,
+          ...(images.length > 0 ? { images } : {}),
         })
         break
       }

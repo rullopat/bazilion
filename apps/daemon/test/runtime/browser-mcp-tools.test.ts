@@ -1,5 +1,9 @@
 import { expect, test } from 'vitest'
-import { extractToolResultImages, extractToolResultText } from '../../src/runtime/pi/events.ts'
+import {
+  extractToolResultImages,
+  extractToolResultText,
+  piMessagesToProviderView,
+} from '../../src/runtime/pi/events.ts'
 import { browserTools } from '../../src/runtime/tools/browser.ts'
 import { mcpProxyTools } from '../../src/runtime/tools/mcp.ts'
 import { createToolRegistry } from '../../src/runtime/tools/registry.ts'
@@ -80,4 +84,38 @@ test('extractToolResultImages returns [] when there are no images', () => {
   expect(extractToolResultImages({ content: [{ type: 'text', text: 'x' }], details: {} })).toEqual(
     [],
   )
+})
+
+test('piMessagesToProviderView carries tool-result images into the persisted view', () => {
+  // biome-ignore lint/suspicious/noExplicitAny: minimal pi AgentMessage shape for the test
+  const messages: any[] = [
+    {
+      role: 'toolResult',
+      toolCallId: 't1',
+      toolName: 'browser_take_screenshot',
+      content: [
+        { type: 'text', text: 'Screenshot of https://example.com' },
+        { type: 'image', data: 'PNGDATA', mimeType: 'image/png' },
+      ],
+    },
+  ]
+  const out = piMessagesToProviderView(messages)
+  expect(out).toHaveLength(1)
+  expect(out[0]?.role).toBe('tool')
+  expect(out[0]?.content).toBe('Screenshot of https://example.com')
+  expect(out[0]?.images).toEqual([{ data: 'PNGDATA', mimeType: 'image/png' }])
+})
+
+test('piMessagesToProviderView omits images when a tool returns none', () => {
+  // biome-ignore lint/suspicious/noExplicitAny: minimal pi AgentMessage shape for the test
+  const messages: any[] = [
+    {
+      role: 'toolResult',
+      toolCallId: 't1',
+      toolName: 'web_fetch',
+      content: [{ type: 'text', text: 'hi' }],
+    },
+  ]
+  const out = piMessagesToProviderView(messages)
+  expect(out[0]?.images).toBeUndefined()
 })

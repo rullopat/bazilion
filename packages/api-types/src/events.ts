@@ -20,6 +20,8 @@ export interface ProviderMessage {
   toolCallId?: string
   /** for role='tool': name of the tool that produced this result. Pi requires it on ToolResultMessage. */
   toolName?: string
+  /** for role='tool': images the tool emitted (browser screenshots, MCP image results). */
+  images?: ToolResultImage[]
 }
 
 export interface ToolDef {
