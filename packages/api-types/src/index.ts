@@ -652,6 +652,13 @@ export interface TelegramConfigState {
   chatId: string
   /** Masked preview of the bot token like `1234567:AAHi…`. Empty when unset. */
   botTokenPreview: string
+  /**
+   * Set when Telegram reported a `migrate_to_chat_id` for the configured
+   * supergroup. The UI surfaces a "your chat id changed — reconnect" banner;
+   * `POST /api/config/telegram/reconnect` applies it. Null when no migration
+   * is pending.
+   */
+  migratedChatId: string | null
 }
 
 /**

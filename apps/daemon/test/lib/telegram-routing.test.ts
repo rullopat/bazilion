@@ -129,6 +129,27 @@ describe('routeUpdate classification', () => {
     expect(sends.length).toBe(0)
   })
 
+  test('migrate_to_chat_id stashes the new chat id and returns chat_migrated', async () => {
+    const { api } = makeReplyApi()
+    const u: Update = {
+      update_id: 1,
+      message: {
+        message_id: 1,
+        date: 0,
+        chat: { id: CHAT_ID, type: 'supergroup', title: 'T' },
+        from: { id: 11, is_bot: false, first_name: 'P' },
+        migrate_to_chat_id: -1009999999999,
+      },
+    } as Update
+    const outcome = await routeUpdate(
+      { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID },
+      u,
+    )
+    expect(outcome.kind).toBe('chat_migrated')
+    if (outcome.kind === 'chat_migrated') expect(outcome.toChatId).toBe(-1009999999999)
+    expect(openConfig(env.db).get('TELEGRAM_MIGRATED_CHAT_ID')).toBe('-1009999999999')
+  })
+
   test('foreign chat (private DM with the bot) is recognized but ignored', async () => {
     const { api, sends } = makeReplyApi()
     const u = messageUpdate({ chatId: 11, text: 'hi' })

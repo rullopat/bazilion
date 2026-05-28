@@ -342,6 +342,10 @@ async function dispatchUpdate(handle: BotHandle, db: BazilionDb, u: Update): Pro
     )
   } else if (outcome.kind === 'ignored_bot') {
     console.log('telegram: ignored inbound from a bot account')
+  } else if (outcome.kind === 'chat_migrated') {
+    console.warn(
+      `telegram: supergroup migrated to chat id ${outcome.toChatId} — reconnect via /api/config/telegram/reconnect`,
+    )
   }
 }
 

@@ -56,6 +56,23 @@ const showCmd = defineCommand({
     }
     console.log(`token: ${state.botTokenPreview}`)
     console.log(`chat:  ${state.chatId}`)
+    if (state.migratedChatId) {
+      console.log(
+        `⚠ supergroup migrated → ${state.migratedChatId}. Run \`bazilion telegram reconnect\` to apply.`,
+      )
+    }
+  },
+})
+
+const reconnectCmd = defineCommand({
+  meta: {
+    name: 'reconnect',
+    description: 'Apply a pending supergroup chat-id migration + re-activate the bot',
+  },
+  async run() {
+    const client = createClient()
+    const state = await client.post<TelegramConfigState>('/api/config/telegram/reconnect')
+    console.log(`reconnected · chat ${state.chatId}`)
   },
 })
 
@@ -235,6 +252,7 @@ export const telegramCommand = defineCommand({
     config: configCmd,
     health: healthCmd,
     bot: botCmd,
+    reconnect: reconnectCmd,
     bind: bindCmd,
     unbind: unbindCmd,
     list: listBindingsCmd,

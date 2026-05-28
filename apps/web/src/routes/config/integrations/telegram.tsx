@@ -117,6 +117,8 @@ function TelegramIntegrationPage() {
 
       <Step2Banner />
 
+      {initial.migratedChatId && <MigrationBanner toChatId={initial.migratedChatId} />}
+
       <section className="rounded-lg border bg-card p-5 mb-6">
         <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-3">
           Credentials
@@ -209,6 +211,41 @@ function TelegramIntegrationPage() {
         {health?.polling && <PollingState polling={health.polling} />}
       </section>
     </main>
+  )
+}
+
+function MigrationBanner({ toChatId }: { toChatId: string }) {
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  async function reconnect() {
+    setBusy(true)
+    setErr(null)
+    try {
+      const res = await fetch('/api/config/telegram/reconnect', { method: 'POST' })
+      if (!res.ok) {
+        const e = (await res.json().catch(() => ({}))) as { error?: string }
+        throw new Error(e.error ?? res.statusText)
+      }
+      window.location.reload()
+    } catch (e) {
+      setErr((e as Error).message)
+      setBusy(false)
+    }
+  }
+  return (
+    <div className="rounded-md border-2 border-rose-400 bg-rose-50 px-4 py-3 mb-6 text-sm">
+      <div className="font-semibold text-rose-900 mb-1">Supergroup chat id changed</div>
+      <p className="text-rose-900 mb-2">
+        Telegram migrated this supergroup to a new chat id (
+        <code className="font-mono">{toChatId}</code>). The bot is still pointed at the old id.
+        Reconnect to repoint it and re-create the <code className="font-mono">⚙ bazilion</code>{' '}
+        service chat in the new group. Agent topic bindings will reconcile on next use.
+      </p>
+      <Button variant="primary" onClick={reconnect} disabled={busy}>
+        {busy ? 'reconnecting…' : `Reconnect to ${toChatId}`}
+      </Button>
+      {err && <span className="ml-3 text-xs text-rose-700">{err}</span>}
+    </div>
   )
 }
 

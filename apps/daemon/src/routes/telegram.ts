@@ -24,10 +24,12 @@ import { runPreflight } from '../lib/telegram/preflight.ts'
 
 const BOT_TOKEN_KEY = 'TELEGRAM_BOT_TOKEN'
 const CHAT_ID_KEY = 'TELEGRAM_CHAT_ID'
+const MIGRATED_CHAT_ID_KEY = 'TELEGRAM_MIGRATED_CHAT_ID'
 const DERIVED_STATE_KEYS = [
   'TELEGRAM_LAST_UPDATE_ID',
   'TELEGRAM_SERVICE_TOPIC_ID',
   'TELEGRAM_DIRECTORY_MESSAGE_ID',
+  MIGRATED_CHAT_ID_KEY,
 ] as const
 
 export const telegramRouter = new Hono()
@@ -102,6 +104,24 @@ telegramRouter.delete('/', async (c) => {
   return c.body(null, 204)
 })
 
+// Apply a pending supergroup migration: promote TELEGRAM_MIGRATED_CHAT_ID to
+// the live chat id, wipe derived state (the service topic / directory live in
+// the OLD chat and must be recreated), and restart the bot so activation runs
+// against the new chat. Agent topic bindings reconcile lazily on the next
+// failed mirror send (thread-not-found → clear binding).
+telegramRouter.post('/reconnect', (c) => {
+  const { db, authToken } = getCtx()
+  const config = openConfig(db)
+  const migrated = (config.get(MIGRATED_CHAT_ID_KEY) ?? '').trim()
+  if (!migrated) return c.json({ error: 'no migrated chat id pending' }, 400)
+  config.set(CHAT_ID_KEY, migrated)
+  for (const key of DERIVED_STATE_KEYS) config.remove(key)
+  void restartTelegramBot(db, authToken).catch((e) =>
+    console.error('telegram: reconnect restart failed:', e instanceof Error ? e.message : e),
+  )
+  return c.json(readState(db, authToken))
+})
+
 telegramRouter.post('/restart', async (c) => {
   const { db, authToken } = getCtx()
   // Fire-and-forget; same reasoning as PUT.
@@ -137,12 +157,15 @@ telegramRouter.get('/health', async (c) => {
 })
 
 function readState(db: ReturnType<typeof getCtx>['db'], authToken: string): TelegramConfigState {
+  const config = openConfig(db)
   const botToken = openSecrets(db, authToken).get(BOT_TOKEN_KEY) ?? ''
-  const chatId = openConfig(db).get(CHAT_ID_KEY) ?? ''
+  const chatId = config.get(CHAT_ID_KEY) ?? ''
+  const migratedChatId = (config.get(MIGRATED_CHAT_ID_KEY) ?? '').trim()
   return {
     configured: botToken.length > 0 && chatId.length > 0,
     chatId,
     botTokenPreview: botToken.length > 0 ? maskBotToken(botToken) : '',
+    migratedChatId: migratedChatId || null,
   }
 }
 

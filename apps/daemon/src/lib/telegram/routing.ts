@@ -97,6 +97,7 @@ export type RouteOutcome =
   | { kind: 'callback_unknown' }
   | { kind: 'non_message' }
   | { kind: 'ignored_bot' }
+  | { kind: 'chat_migrated'; toChatId: number }
   | { kind: 'foreign_chat'; chatId: number }
 
 /**
@@ -118,9 +119,26 @@ export async function routeUpdate(deps: RouterDeps, update: Update): Promise<Rou
   // messages, which we don't process anyway.
   if (m.from?.is_bot) return { kind: 'ignored_bot' }
 
+  // Supergroup migration: Telegram fires `migrate_to_chat_id` in the OLD chat
+  // (the one we're configured for) when a basic group is upgraded. Stash the
+  // new id and surface a reconnect prompt — we don't auto-rewrite config from
+  // a runtime event (v1 principle); the operator confirms via /reconnect.
+  if (typeof m.migrate_to_chat_id === 'number') {
+    openConfig(deps.db).set('TELEGRAM_MIGRATED_CHAT_ID', String(m.migrate_to_chat_id))
+    return { kind: 'chat_migrated', toChatId: m.migrate_to_chat_id }
+  }
+
   // Foreign chat — any chat that isn't the configured supergroup. Telegram
-  // private chats (the bot's DM with the operator) land here.
-  if (m.chat.id !== deps.chatId) return { kind: 'foreign_chat', chatId: m.chat.id }
+  // private chats (the bot's DM with the operator) land here. The new chat
+  // after a migration also arrives here (its messages carry
+  // `migrate_from_chat_id === our old id`) — capture that too.
+  if (m.chat.id !== deps.chatId) {
+    if (m.migrate_from_chat_id === deps.chatId) {
+      openConfig(deps.db).set('TELEGRAM_MIGRATED_CHAT_ID', String(m.chat.id))
+      return { kind: 'chat_migrated', toChatId: m.chat.id }
+    }
+    return { kind: 'foreign_chat', chatId: m.chat.id }
+  }
 
   const serviceTopicId = readServiceTopicId(deps.db)
   const threadId = m.message_thread_id ?? null
