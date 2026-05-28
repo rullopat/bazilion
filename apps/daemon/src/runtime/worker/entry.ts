@@ -25,7 +25,7 @@
 
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
-import type { ChatFrame, ResolvedAgent } from '@bazilion/api-types'
+import type { ChatFrame, ImageAttachment, ResolvedAgent } from '@bazilion/api-types'
 import { resolvePaths } from '../../core/index.ts'
 import { qmdBackend } from '../memory/qmd.ts'
 import { piMessagesToProviderView, translatePiEvent } from '../pi/events.ts'
@@ -53,6 +53,8 @@ interface WorkerInput {
   browserEnabled?: boolean
   /** MCP tools discovered daemon-side, exposed as IPC-proxied proxy tools. */
   mcpTools?: InjectedMcpTool[]
+  /** Images attached to the user message — passed to pi's prompt (vision). */
+  images?: ImageAttachment[]
 }
 
 function emit(frame: ChatFrame): void {
@@ -188,7 +190,8 @@ async function main(): Promise<void> {
   process.on('SIGTERM', onSignal)
   process.on('SIGINT', onSignal)
 
-  const { agent, message, enabledProviders, apiKey, browserEnabled, mcpTools } = await readInput()
+  const { agent, message, enabledProviders, apiKey, browserEnabled, mcpTools, images } =
+    await readInput()
 
   // Path resolution still happens in the worker — `resolvePaths()` only reads
   // the `BAZILION_HOME` env var the daemon hands down. No DB, no filesystem
@@ -229,7 +232,14 @@ async function main(): Promise<void> {
   })
 
   try {
-    await session.prompt(message)
+    // Map Bazilion image attachments to pi's ImageContent and pass them as the
+    // prompt's `images` option — the model sees them via vision.
+    const promptImages = (images ?? []).map((img) => ({
+      type: 'image' as const,
+      data: img.data,
+      mimeType: img.mimeType,
+    }))
+    await session.prompt(message, promptImages.length > 0 ? { images: promptImages } : undefined)
     await session.agent.waitForIdle()
 
     emit({

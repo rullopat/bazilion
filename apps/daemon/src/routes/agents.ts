@@ -18,6 +18,7 @@ import {
   type ContextSkillEntry,
   type ContextToolEntry,
   type CreateTriggerRequest,
+  type ImageAttachment,
   type ListInboxResponse,
   type MoveAgentRequest,
   REASONING_LEVELS,
@@ -68,6 +69,27 @@ import {
 } from '../runtime/index.ts'
 
 export const agentsRouter = new Hono()
+
+// Cap attached images per message — keeps a runaway client from blowing up the
+// worker stdin payload and the model's context.
+const MAX_INPUT_IMAGES = 8
+
+function sanitizeImages(raw: unknown): ImageAttachment[] {
+  if (!Array.isArray(raw)) return []
+  const out: ImageAttachment[] = []
+  for (const r of raw) {
+    if (
+      r &&
+      typeof r === 'object' &&
+      typeof (r as ImageAttachment).data === 'string' &&
+      typeof (r as ImageAttachment).mimeType === 'string'
+    ) {
+      out.push({ data: (r as ImageAttachment).data, mimeType: (r as ImageAttachment).mimeType })
+      if (out.length >= MAX_INPUT_IMAGES) break
+    }
+  }
+  return out
+}
 
 // ─── CRUD + lifecycle ────────────────────────────────────────────────────
 
@@ -500,22 +522,27 @@ agentsRouter.post('/:id/chat', async (c) => {
   const { db, paths, authToken } = getCtx()
   const id = resolveAgentIdParam(db, c.req.param('id'))
 
-  let body: { message?: string }
+  let body: { message?: string; images?: ImageAttachment[] }
   try {
-    body = (await c.req.json()) as { message?: string }
+    body = (await c.req.json()) as { message?: string; images?: ImageAttachment[] }
   } catch {
     return c.json({ error: 'invalid JSON body' }, 400)
   }
   const message = body.message
-  if (!message || typeof message !== 'string') {
+  if (typeof message !== 'string') {
     return c.json({ error: 'message is required' }, 400)
+  }
+  const images = sanitizeImages(body.images)
+  // A turn needs *something* — text or at least one image.
+  if (!message && images.length === 0) {
+    return c.json({ error: 'message or an image is required' }, 400)
   }
 
   const stream = new ReadableStream({
     async start(controller) {
       const encoder = new TextEncoder()
       try {
-        for await (const frame of runAgentTurn(id, message)) {
+        for await (const frame of runAgentTurn(id, message, { images })) {
           try {
             controller.enqueue(encoder.encode(`${JSON.stringify(frame)}\n`))
           } catch {

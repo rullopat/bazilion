@@ -14,6 +14,7 @@
 // mirror from runAgentTurn.
 
 import { join } from 'node:path'
+import type { ImageAttachment } from '@bazilion/api-types'
 import type { CallbackQuery, InlineKeyboardMarkup, Message, Update, User } from 'grammy/types'
 import type { BazilionDb } from '../../core/db/client.ts'
 import { agentRepo, openConfig, profileRepo, telegramAclRepo } from '../../core/index.ts'
@@ -28,7 +29,7 @@ import {
   allowTelegramInbound,
   shouldNotifyInboundThrottle,
 } from './loop-guard.ts'
-import { attachmentNote, downloadMedia, extractMedia } from './media.ts'
+import { attachmentNote, downloadMedia, extractMedia, isImageMedia, readBase64 } from './media.ts'
 import { reactSeen } from './reactions.ts'
 import { setPendingSpawn, takePendingSpawn } from './spawn-state.ts'
 
@@ -243,6 +244,7 @@ export async function routeUpdate(deps: RouterDeps, update: Update): Promise<Rou
     const caption = m.text ?? m.caption ?? ''
     const media = extractMedia(m)
     let userText = caption
+    const images: ImageAttachment[] = []
     if (media) {
       if (deps.botToken) {
         const result = await downloadMedia(
@@ -251,14 +253,23 @@ export async function routeUpdate(deps: RouterDeps, update: Update): Promise<Rou
           media,
           join(agent.dir, 'telegram-inbox'),
         )
-        const note = attachmentNote(media, result)
-        userText = caption ? `${caption}\n\n${note}` : note
+        if (result.ok && isImageMedia(media)) {
+          // Images go to the model as real pixels (vision). The file also stays
+          // saved on disk; no path note needed since the model sees it directly.
+          images.push({ data: readBase64(result.path), mimeType: media.mimeType ?? 'image/jpeg' })
+        } else {
+          // Non-image media (voice/audio/video/document) can't be perceived by
+          // the model — reference it by saved path so a tool-capable agent can
+          // open it.
+          const note = attachmentNote(media, result)
+          userText = caption ? `${caption}\n\n${note}` : note
+        }
       } else {
         const note = `[Telegram ${media.kind} attachment received (download unavailable)]`
         userText = caption ? `${caption}\n\n${note}` : note
       }
     }
-    if (!userText) {
+    if (!userText && images.length === 0) {
       // Non-text, non-media message (sticker, etc.) — skip.
       return { kind: 'agent_topic', agentId: agent.id, topicId: threadId, queued: false }
     }
@@ -276,7 +287,7 @@ export async function routeUpdate(deps: RouterDeps, update: Update): Promise<Rou
       }
       return { kind: 'rate_limited', agentId: agent.id, topicId: threadId }
     }
-    enqueueAgentMessage(agent.id, userText)
+    enqueueAgentMessage(agent.id, userText, images)
     // 👀 "I see this" indicator on the user's message. Cleared by the
     // mirror when the agent's reply lands.
     reactSeen(agent.id, deps.chatId, m.message_id)

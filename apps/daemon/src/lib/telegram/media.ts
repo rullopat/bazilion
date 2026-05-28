@@ -10,7 +10,7 @@
 // the model). That needs worker-IPC + provider-adapter changes and is the
 // explicit follow-up. Here the model "sees" a reference, not raw pixels.
 
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import type { Message } from 'grammy/types'
 
@@ -129,6 +129,16 @@ export async function downloadMedia(
   } catch (e) {
     return { ok: false, reason: e instanceof Error ? e.message : String(e) }
   }
+}
+
+/** Is this attachment an image the model can see via vision? */
+export function isImageMedia(ref: MediaRef): boolean {
+  return ref.kind === 'photo' || (ref.mimeType?.startsWith('image/') ?? false)
+}
+
+/** Read a downloaded file back as base64 (for feeding an image to the model). */
+export function readBase64(path: string): string {
+  return readFileSync(path).toString('base64')
 }
 
 /** The text reference the agent receives for a downloaded attachment. */

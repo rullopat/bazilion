@@ -1,4 +1,4 @@
-import type { ChatFrame } from '@bazilion/api-types'
+import type { ChatFrame, ImageAttachment } from '@bazilion/api-types'
 import { mergeSecretsIntoEnv, providerStateRepo, resolveAgent } from '../core/index.ts'
 import { spawnWorkerTurn } from '../runtime/index.ts'
 import { registerAgent, unregisterAgent } from './agent-cancel.ts'
@@ -14,6 +14,8 @@ import { createDbUserMdHost } from './user-md-host.ts'
 interface RunAgentTurnOpts {
   /** If omitted, a fresh AbortController is created internally. */
   controller?: AbortController
+  /** Images attached to this turn's user message — the model sees them (vision). */
+  images?: ImageAttachment[]
 }
 
 /**
@@ -63,7 +65,15 @@ export async function* runAgentTurn(
   mirrorTypingStart(agentId)
   try {
     for await (const frame of spawnWorkerTurn(
-      { agent, message, enabledProviders, apiKey, browserEnabled, mcpTools: mcp?.tools },
+      {
+        agent,
+        message,
+        enabledProviders,
+        apiKey,
+        browserEnabled,
+        mcpTools: mcp?.tools,
+        images: opts.images,
+      },
       {
         signal: controller.signal,
         env,

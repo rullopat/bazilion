@@ -166,7 +166,13 @@ export function piMessagesToProviderView(messages: AgentMessage[]): ProviderMess
     // don't register any via CustomAgentMessages declaration merging yet.
     switch (m.role) {
       case 'user': {
-        out.push({ role: 'user', content: stringifyContent((m as { content: unknown }).content) })
+        const content = (m as { content: unknown }).content
+        const images = extractToolResultImages({ content })
+        out.push({
+          role: 'user',
+          content: stringifyContent(content),
+          ...(images.length > 0 ? { images } : {}),
+        })
         break
       }
       case 'assistant': {

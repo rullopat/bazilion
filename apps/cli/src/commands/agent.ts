@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { extname } from 'node:path'
 import { stdin, stdout } from 'node:process'
 import { createInterface } from 'node:readline/promises'
 import type {
@@ -7,6 +9,7 @@ import type {
   ChatCompactResponse,
   ChatContextResponse,
   ChatFrame,
+  ImageAttachment,
   MoveAgentRequest,
   ResolvedAgent,
   SessionEvent,
@@ -18,6 +21,23 @@ import type {
 import { defineCommand } from 'citty'
 import { createClient } from '../client.ts'
 import { columnize } from '../columnize.ts'
+
+const IMAGE_MIME: Record<string, string> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+}
+
+/** Read image file paths into base64 ImageAttachments. */
+function loadImages(paths: string[]): ImageAttachment[] {
+  return paths.map((p) => {
+    const mimeType = IMAGE_MIME[extname(p).toLowerCase()]
+    if (!mimeType) throw new Error(`unsupported image type: ${p} (png/jpg/gif/webp only)`)
+    return { data: readFileSync(p).toString('base64'), mimeType }
+  })
+}
 
 const spawnCmd = defineCommand({
   meta: { name: 'spawn', description: 'Spawn an agent from a profile into a group' },
@@ -238,10 +258,12 @@ async function streamTurn(
   client: ReturnType<typeof createClient>,
   agentId: string,
   message: string,
+  images?: ImageAttachment[],
 ): Promise<void> {
   const state: PrintState = { inDeltaStream: false }
   for await (const frame of client.stream<ChatFrame>('POST', `/api/agents/${agentId}/chat`, {
     message,
+    ...(images && images.length > 0 ? { images } : {}),
   })) {
     if (frame.kind === 'event') {
       if (frame.event.type !== 'user_message') printEvent(frame.event, state)
@@ -260,13 +282,25 @@ const chatCmd = defineCommand({
       type: 'string',
       description: 'Send a single message and exit (one-shot mode)',
     },
+    image: {
+      type: 'string',
+      description: 'Attach an image file (png/jpg/gif/webp; repeatable). One-shot mode.',
+    },
   },
   async run({ args }) {
     const client = createClient()
     const resolved = await client.get<ResolvedAgent>(`/api/agents/${args.id}`)
 
-    if (args.message) {
-      await streamTurn(client, resolved.agent.id, args.message)
+    // citty gives a string for one --image, an array for several.
+    const imagePaths = args.image
+      ? Array.isArray(args.image)
+        ? (args.image as string[])
+        : [args.image]
+      : []
+    const images = loadImages(imagePaths)
+
+    if (args.message || images.length > 0) {
+      await streamTurn(client, resolved.agent.id, args.message ?? '', images)
       return
     }
 

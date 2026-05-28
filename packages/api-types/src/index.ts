@@ -261,8 +261,18 @@ export interface ProviderTestResponse {
 
 // --- chat streaming ---
 
+/** An image the user attaches to a chat message (model input via vision). */
+export interface ImageAttachment {
+  /** base64-encoded image bytes (no data: prefix). */
+  data: string
+  /** e.g. "image/png", "image/jpeg". */
+  mimeType: string
+}
+
 export interface ChatRequest {
   message: string
+  /** Optional images attached to this message — the model sees them (vision). */
+  images?: ImageAttachment[]
 }
 
 // --- profile files ---

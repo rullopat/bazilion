@@ -2,7 +2,12 @@
 
 import type { Message } from 'grammy/types'
 import { describe, expect, test } from 'vitest'
-import { attachmentNote, extractMedia, type MediaRef } from '../../src/lib/telegram/media.ts'
+import {
+  attachmentNote,
+  extractMedia,
+  isImageMedia,
+  type MediaRef,
+} from '../../src/lib/telegram/media.ts'
 
 function msg(extra: Partial<Message>): Message {
   return {
@@ -53,6 +58,58 @@ describe('extractMedia', () => {
     })
     expect(extractMedia(m)?.kind).toBe('voice')
     expect(extractMedia(m)?.mimeType).toBe('audio/ogg')
+  })
+})
+
+describe('isImageMedia', () => {
+  test('photo and image documents are images (model can see them)', () => {
+    expect(
+      isImageMedia({
+        kind: 'photo',
+        fileId: 'x',
+        fileName: null,
+        mimeType: 'image/jpeg',
+        fileSize: null,
+      }),
+    ).toBe(true)
+    expect(
+      isImageMedia({
+        kind: 'document',
+        fileId: 'x',
+        fileName: 'a.png',
+        mimeType: 'image/png',
+        fileSize: null,
+      }),
+    ).toBe(true)
+  })
+  test('voice / video / non-image documents are NOT images', () => {
+    expect(
+      isImageMedia({
+        kind: 'voice',
+        fileId: 'x',
+        fileName: null,
+        mimeType: 'audio/ogg',
+        fileSize: null,
+      }),
+    ).toBe(false)
+    expect(
+      isImageMedia({
+        kind: 'video',
+        fileId: 'x',
+        fileName: null,
+        mimeType: 'video/mp4',
+        fileSize: null,
+      }),
+    ).toBe(false)
+    expect(
+      isImageMedia({
+        kind: 'document',
+        fileId: 'x',
+        fileName: 'a.pdf',
+        mimeType: 'application/pdf',
+        fileSize: null,
+      }),
+    ).toBe(false)
   })
 })
 

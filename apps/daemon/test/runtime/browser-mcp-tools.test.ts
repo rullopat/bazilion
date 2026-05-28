@@ -106,6 +106,23 @@ test('piMessagesToProviderView carries tool-result images into the persisted vie
   expect(out[0]?.images).toEqual([{ data: 'PNGDATA', mimeType: 'image/png' }])
 })
 
+test('piMessagesToProviderView carries USER-attached images into the persisted view', () => {
+  // biome-ignore lint/suspicious/noExplicitAny: minimal pi AgentMessage shape for the test
+  const messages: any[] = [
+    {
+      role: 'user',
+      content: [
+        { type: 'text', text: 'what is this?' },
+        { type: 'image', data: 'USERIMG', mimeType: 'image/png' },
+      ],
+    },
+  ]
+  const out = piMessagesToProviderView(messages)
+  expect(out[0]?.role).toBe('user')
+  expect(out[0]?.content).toBe('what is this?')
+  expect(out[0]?.images).toEqual([{ data: 'USERIMG', mimeType: 'image/png' }])
+})
+
 test('piMessagesToProviderView omits images when a tool returns none', () => {
   // biome-ignore lint/suspicious/noExplicitAny: minimal pi AgentMessage shape for the test
   const messages: any[] = [
