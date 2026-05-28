@@ -13,7 +13,7 @@ const SERVICE_BODY = [
   '/talk &lt;agent&gt; — Open or create the forum topic for an agent',
   '/spawn — Create a new agent from a profile (interactive)',
   '/spawn &lt;profile&gt; [&lt;name&gt;] [in &lt;group&gt;] — Create with typed args (<code>-</code> for auto-name)',
-  '/spawn-team &lt;profile-group&gt; [in &lt;group&gt;] — Spawn a whole team template',
+  '/spawn_team &lt;profile-group&gt; [in &lt;group&gt;] — Spawn a whole team template',
   '/list — Show all agents (alias: /agents)',
   '/groups — Show bazilion groups',
   '/health — Bot identity + polling state',

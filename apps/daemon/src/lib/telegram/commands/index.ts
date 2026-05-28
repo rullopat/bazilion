@@ -34,9 +34,12 @@ export const ALL_COMMANDS: readonly CommandDescriptor[] = [
   { name: 'talk', description: 'Open or create the topic for an agent', handle: handleTalk },
   { name: 'spawn', description: 'Create a new agent from a profile', handle: handleSpawn },
   {
-    name: 'spawn-team',
+    // Telegram command names allow only [a-z0-9_] — hence the underscore.
+    // `spawn-team` is accepted as a typed alias (our parser is lenient).
+    name: 'spawn_team',
     description: 'Spawn a whole profile group (team template) at once',
     handle: handleSpawnTeam,
+    aliases: ['spawn-team'],
   },
   {
     name: 'list',
