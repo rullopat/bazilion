@@ -559,6 +559,7 @@ function TelegramSection({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [mirrorMode, setMirrorMode] = useState<TelegramMirrorMode>(agent.telegramMirrorMode)
+  const [iconEmoji, setIconEmoji] = useState(agent.telegramIconEmoji ?? '')
 
   const isBound = agent.telegramTopicId !== null
 
@@ -617,6 +618,21 @@ function TelegramSection({
     } catch (e) {
       // Revert on failure.
       setMirrorMode(agent.telegramMirrorMode)
+      setError((e as Error).message)
+    }
+  }
+
+  async function saveIcon() {
+    setError(null)
+    try {
+      const res = await fetch(`/api/agents/${encodeURIComponent(agent.id)}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ telegramIconEmoji: iconEmoji.trim() || null }),
+      })
+      if (!res.ok) throw new Error(res.statusText)
+      await router.invalidate()
+    } catch (e) {
       setError((e as Error).message)
     }
   }
@@ -680,6 +696,29 @@ function TelegramSection({
           <option value="minimal">minimal — assistant messages only</option>
           <option value="verbose">verbose — also tool calls</option>
         </select>
+      </div>
+
+      <div className="mt-2 flex items-center gap-2">
+        <label htmlFor="topic-icon" className="text-mocha-light">
+          topic icon:
+        </label>
+        <input
+          id="topic-icon"
+          value={iconEmoji}
+          onChange={(e) => setIconEmoji(e.target.value)}
+          placeholder="(profile default)"
+          maxLength={8}
+          className="w-32 rounded-md border bg-background px-2 py-1 font-mono text-sm"
+          disabled={busy}
+        />
+        <button
+          type="button"
+          onClick={() => void saveIcon()}
+          disabled={busy || iconEmoji === (agent.telegramIconEmoji ?? '')}
+          className="ghost-btn"
+        >
+          save icon
+        </button>
       </div>
 
       {error && <p className="mt-2 text-sm text-rose-700">{error}</p>}

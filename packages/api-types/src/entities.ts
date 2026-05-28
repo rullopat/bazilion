@@ -78,6 +78,13 @@ export interface Agent {
   telegramTopicId: number | null
   /** Verbosity of the Telegram outbound mirror for this agent (Step 6). */
   telegramMirrorMode: TelegramMirrorMode
+  /**
+   * Per-agent override of the forum-topic emoji icon (a single emoji char,
+   * e.g. "📚"). `null` falls back to the profile-name default
+   * (`BUILTIN_PROFILE_EMOJI`), then to color-only. Resolved to a Telegram
+   * custom_emoji_id at topic-creation time.
+   */
+  telegramIconEmoji: string | null
   createdAt: Timestamp
   archivedAt: Timestamp | null
 }

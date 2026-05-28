@@ -22,6 +22,7 @@ import { openConfig, openSecrets, type Paths, resolvePaths } from '../../core/in
 import { type ActivationApi, runActivation } from './activation.ts'
 import { type DirectoryApi, installLiveDepsResolver } from './directory.ts'
 import { installMirrorDepsResolver, type MirrorApi } from './mirror.ts'
+import { installStickerApiResolver, type StickerApi } from './profile-emojis.ts'
 import { installReactionsDepsResolver, type ReactionsApi } from './reactions.ts'
 import { type ReplyApi, routeUpdate } from './routing.ts'
 
@@ -214,6 +215,10 @@ async function startInternal(
     api: handle.bot.api as unknown as ReactionsApi,
     chatId: handle.chatId,
   }))
+
+  // Profile-derived topic emojis: give the resolver the live api so it can
+  // fetch + cache Telegram's forum-icon sticker set on first use.
+  installStickerApiResolver(() => handle.bot.api as unknown as StickerApi)
 
   // Activation runs in the background — polling does NOT block on it.
   // If activation fails (e.g. forum mode off after creds saved, transient

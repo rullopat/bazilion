@@ -18,6 +18,7 @@ interface RawAgent {
   group_id: string
   telegram_topic_id: number | null
   telegram_mirror_mode: string
+  telegram_icon_emoji: string | null
   created_at: number
   archived_at: number | null
 }
@@ -34,6 +35,7 @@ function toAgent(r: RawAgent): Agent {
     groupId: r.group_id,
     telegramTopicId: r.telegram_topic_id,
     telegramMirrorMode: (r.telegram_mirror_mode ?? 'minimal') as TelegramMirrorMode,
+    telegramIconEmoji: r.telegram_icon_emoji ?? null,
     createdAt: r.created_at,
     archivedAt: r.archived_at,
   }
@@ -48,7 +50,10 @@ function toAgent(r: RawAgent): Agent {
  */
 export function insert(
   db: BazilionDb,
-  a: Omit<Agent, 'createdAt' | 'archivedAt' | 'telegramTopicId' | 'telegramMirrorMode'> & {
+  a: Omit<
+    Agent,
+    'createdAt' | 'archivedAt' | 'telegramTopicId' | 'telegramMirrorMode' | 'telegramIconEmoji'
+  > & {
     telegramMirrorMode?: Agent['telegramMirrorMode']
   },
 ): Agent {
@@ -74,6 +79,7 @@ export function insert(
     ...a,
     telegramTopicId: null,
     telegramMirrorMode: mirrorMode,
+    telegramIconEmoji: null,
     createdAt: now,
     archivedAt: null,
   }
@@ -230,6 +236,15 @@ export function setTelegramMirrorMode(
   mode: TelegramMirrorMode,
 ): void {
   db.raw.run('UPDATE agents SET telegram_mirror_mode = ? WHERE id = ?', [mode, agentId])
+}
+
+/**
+ * Per-agent forum-topic emoji override. `null` clears it (resolution falls
+ * back to the profile-name default, then color-only). Stores the emoji char,
+ * not a Telegram custom_emoji_id — the id is resolved at topic-creation time.
+ */
+export function setTelegramIconEmoji(db: BazilionDb, agentId: string, emoji: string | null): void {
+  db.raw.run('UPDATE agents SET telegram_icon_emoji = ? WHERE id = ?', [emoji, agentId])
 }
 
 /**

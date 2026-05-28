@@ -75,6 +75,11 @@ export interface UpdateAgentRequest {
   telegramMirrorMode?: TelegramMirrorMode
   /** Step 6: rename (mirrors the `name` field the daemon accepts on PATCH). */
   name?: string
+  /**
+   * Per-agent forum-topic emoji override (single emoji char). `null` or `''`
+   * clears it (falls back to the profile default, then color-only).
+   */
+  telegramIconEmoji?: string | null
 }
 
 export interface AttachSkillRequest {

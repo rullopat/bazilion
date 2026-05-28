@@ -12,12 +12,13 @@
 //     not abort the rest of the batch.
 
 import type { BazilionDb } from '../../core/db/client.ts'
-import { groupRepo } from '../../core/index.ts'
+import { groupRepo, profileRepo } from '../../core/index.ts'
 import type { Paths } from '../../core/paths.ts'
 import * as agentRepo from '../../core/repos/agents.ts'
 import { getTelegramBotApi } from './bot.ts'
 import { topicNameFor } from './naming.ts'
 import { enqueueOutbound } from './outbound-queue.ts'
+import { emojiForAgent, resolveStickerId } from './profile-emojis.ts'
 
 export async function syncGroupTopicNames(
   db: BazilionDb,
@@ -41,4 +42,28 @@ export async function syncGroupTopicNames(
       )
     })
   }
+}
+
+/**
+ * Push an agent's resolved emoji icon to its live forum topic. Called after a
+ * per-agent icon change. No-op when the bot isn't running or the agent has no
+ * bound topic. Passes `icon_custom_emoji_id: ''` to clear back to color-only.
+ */
+export async function syncAgentTopicIcon(db: BazilionDb, agentId: string): Promise<void> {
+  const live = getTelegramBotApi()
+  if (!live) return
+  const topicId = agentRepo.getTelegramTopicId(db, agentId)
+  if (topicId === null) return
+  const agent = agentRepo.get(db, agentId)
+  if (!agent) return
+  const profile = profileRepo.get(db, agent.profileId)
+  const stickerId = await resolveStickerId(emojiForAgent(agent, profile?.name ?? ''))
+  await enqueueOutbound(live.chatId, () =>
+    live.api.editForumTopic(live.chatId, topicId, { icon_custom_emoji_id: stickerId ?? '' }),
+  ).catch((e) => {
+    console.warn(
+      `telegram: editForumTopic icon update failed for agent ${agentId}:`,
+      e instanceof Error ? e.message : String(e),
+    )
+  })
 }

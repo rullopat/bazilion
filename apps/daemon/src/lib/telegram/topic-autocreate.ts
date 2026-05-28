@@ -8,17 +8,17 @@
 //   4. Call `bot.api.createForumTopic(chatId, name, { icon_color })`.
 //   5. Persist the returned `message_thread_id` to `agents.telegram_topic_id`.
 //
-// Profile/agent custom-emoji icons are intentionally NOT plumbed yet — that
-// landed on the deferred list during Step 3 design (the schema column
-// exists, but seeding profile emojis happens in a later step). Step 3
-// topics ship with color-only icons.
+// Topic icons: resolved per-agent at creation via emojiForAgent (per-agent
+// override → profile-name default → null) + resolveStickerId. Falls back to
+// color-only when no emoji applies or the char isn't in Telegram's set.
 
 import type { Agent } from '@bazilion/api-types'
 import type { BazilionDb } from '../../core/db/client.ts'
-import { agentRepo, groupRepo } from '../../core/index.ts'
+import { agentRepo, groupRepo, profileRepo } from '../../core/index.ts'
 import type { Paths } from '../../core/paths.ts'
 import { notifyDirectoryDirty } from './directory.ts'
 import { allocateGroupColor, topicDeepLink, topicNameFor } from './naming.ts'
+import { emojiForAgent, resolveStickerId } from './profile-emojis.ts'
 
 /**
  * Subset of grammY's Bot API surface used by topic auto-create. Mirrors the
@@ -73,7 +73,12 @@ export async function ensureAgentTopic(args: EnsureTopicArgs): Promise<EnsureTop
 
   const color = allocateGroupColor(args.db, group.id)
   const name = topicNameFor(agent, group)
-  const result = await args.api.createForumTopic(args.chatId, name, { icon_color: color })
+  const profile = profileRepo.get(args.db, agent.profileId)
+  const stickerId = await resolveStickerId(emojiForAgent(agent, profile?.name ?? ''))
+  const result = await args.api.createForumTopic(args.chatId, name, {
+    icon_color: color,
+    ...(stickerId ? { icon_custom_emoji_id: stickerId } : {}),
+  })
   agentRepo.setTelegramTopicId(args.db, agent.id, result.message_thread_id)
   notifyDirectoryDirty()
 

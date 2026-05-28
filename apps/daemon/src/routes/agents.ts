@@ -56,6 +56,7 @@ import { createDbMessagingHost } from '../lib/messaging-host.ts'
 import { getTelegramBotApi } from '../lib/telegram/bot.ts'
 import { notifyDirectoryDirty } from '../lib/telegram/directory.ts'
 import { ensureAgentTopic } from '../lib/telegram/topic-autocreate.ts'
+import { syncAgentTopicIcon } from '../lib/telegram/topic-rename.ts'
 import {
   buildSystemPrompt,
   createBazilionSession,
@@ -157,6 +158,16 @@ agentsRouter.patch('/:id', async (c) => {
       )
     }
     agentRepo.setTelegramMirrorMode(db, resolvedId, body.telegramMirrorMode)
+  }
+  if (body.telegramIconEmoji !== undefined) {
+    if (body.telegramIconEmoji !== null && typeof body.telegramIconEmoji !== 'string') {
+      return c.json({ error: 'telegramIconEmoji must be a string or null' }, 400)
+    }
+    const raw = body.telegramIconEmoji as string | null
+    const emoji = raw && raw.trim().length > 0 ? raw.trim() : null
+    agentRepo.setTelegramIconEmoji(db, resolvedId, emoji)
+    // Push the new icon to the live topic (best-effort; no-op when unbound).
+    void syncAgentTopicIcon(db, resolvedId).catch(() => undefined)
   }
   if (body.reasoningLevel !== undefined) {
     if (
