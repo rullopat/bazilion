@@ -14,7 +14,8 @@
 // "topic deleted by a human" case is reconciled lazily: clear
 // `agents.telegram_topic_id` and stop mirroring there.
 
-import type { ChatFrame, TelegramMirrorMode } from '@bazilion/api-types'
+import type { ChatFrame, TelegramMirrorMode, ToolResultImage } from '@bazilion/api-types'
+import { InputFile } from 'grammy'
 import type { BazilionDb } from '../../core/db/client.ts'
 import { agentRepo } from '../../core/index.ts'
 import { _resetLoopGuardForTest, allowTelegramOutboundNoise } from './loop-guard.ts'
@@ -37,6 +38,18 @@ export interface MirrorApi {
     action: 'typing',
     opts: { message_thread_id?: number },
   ): Promise<boolean>
+  /** Send an image (e.g. a browser screenshot) as a photo. */
+  sendPhoto(
+    chatId: number,
+    photo: InputFile,
+    opts: { message_thread_id?: number; caption?: string },
+  ): Promise<{ message_id: number }>
+  /** Fallback for images Telegram rejects as photos (too tall/large). */
+  sendDocument(
+    chatId: number,
+    document: InputFile,
+    opts: { message_thread_id?: number; caption?: string },
+  ): Promise<{ message_id: number }>
 }
 
 export interface MirrorDeps {
@@ -72,6 +85,16 @@ export async function mirrorAgentTurnFrame(
   const topicId = agentRepo.getTelegramTopicId(deps.db, agent.id)
   if (topicId === null) return
 
+  // Images (browser screenshots, MCP image results) are user-facing
+  // deliverables — NOT tool-call noise. Send them as photos regardless of
+  // mirror mode, otherwise a 'minimal'-mode Telegram user who asks for a
+  // screenshot would never receive it (the tool_result text is suppressed).
+  const imagePayload = frameToolResultImages(frame)
+  if (imagePayload) {
+    await mirrorImages(deps, topicId, agent.id, imagePayload)
+    // fall through — there may also be a text line to mirror (verbose mode)
+  }
+
   const text = renderFrame(frame, agent.telegramMirrorMode)
   if (!text) return
 
@@ -103,6 +126,62 @@ export async function mirrorAgentTurnFrame(
       `telegram mirror: send failed for agent ${agent.id} —`,
       e instanceof Error ? e.message : String(e),
     )
+  }
+}
+
+// ─── image mirroring ────────────────────────────────────────────────────
+
+// Telegram caption cap is 1024 chars.
+const CAPTION_BUDGET = 1000
+
+/** Extract tool-result images + a caption from a frame, or null. */
+function frameToolResultImages(
+  frame: ChatFrame,
+): { images: ToolResultImage[]; caption: string } | null {
+  if (frame.kind !== 'event') return null
+  const ev = frame.event
+  if (ev.type !== 'tool_result' || !ev.images || ev.images.length === 0) return null
+  return { images: ev.images, caption: ev.result || ev.name }
+}
+
+/**
+ * Send each image as a Telegram photo. Falls back to sendDocument when the
+ * photo is rejected (Telegram caps photo dimensions, so full-page screenshots
+ * can fail as photos but go through as files). Never throws.
+ */
+async function mirrorImages(
+  deps: MirrorDeps,
+  topicId: number,
+  agentId: string,
+  payload: { images: ToolResultImage[]; caption: string },
+): Promise<void> {
+  const caption = clip(payload.caption, CAPTION_BUDGET)
+  for (const img of payload.images) {
+    const buf = Buffer.from(img.data, 'base64')
+    const ext = img.mimeType.includes('jpeg') ? 'jpg' : 'png'
+    // InputFile wraps a Buffer as a single-use stream — build a fresh one per
+    // send attempt (the photo try + the document fallback).
+    const file = (): InputFile => new InputFile(buf, `screenshot.${ext}`)
+    try {
+      await enqueueOutbound(deps.chatId, () =>
+        deps.api.sendPhoto(deps.chatId, file(), { message_thread_id: topicId, caption }),
+      )
+    } catch (e) {
+      if (isThreadGoneError(e)) {
+        agentRepo.setTelegramTopicId(deps.db, agentId, null)
+        return
+      }
+      try {
+        await enqueueOutbound(deps.chatId, () =>
+          deps.api.sendDocument(deps.chatId, file(), { message_thread_id: topicId, caption }),
+        )
+      } catch (e2) {
+        console.warn(
+          `telegram mirror: image send failed for agent ${agentId} —`,
+          e2 instanceof Error ? e2.message : String(e2),
+        )
+      }
+    }
   }
 }
 

@@ -18,13 +18,17 @@ import { makeTestEnv, type TestEnv } from '../core/helpers.ts'
 
 const CHAT_ID = -1003964430972
 
-function makeApi(opts: { failWith?: string } = {}): {
+function makeApi(opts: { failWith?: string; photoFailWith?: string } = {}): {
   api: MirrorApi
   sends: { chatId: number; text: string; opts: unknown }[]
   typings: { chatId: number; action: string; opts: unknown }[]
+  photos: { chatId: number; opts: unknown }[]
+  documents: { chatId: number; opts: unknown }[]
 } {
   const sends: { chatId: number; text: string; opts: unknown }[] = []
   const typings: { chatId: number; action: string; opts: unknown }[] = []
+  const photos: { chatId: number; opts: unknown }[] = []
+  const documents: { chatId: number; opts: unknown }[] = []
   const api: MirrorApi = {
     async sendMessage(chatId, text, o) {
       sends.push({ chatId, text, opts: o })
@@ -35,8 +39,17 @@ function makeApi(opts: { failWith?: string } = {}): {
       typings.push({ chatId, action, opts: o })
       return true
     },
+    async sendPhoto(chatId, _photo, o) {
+      if (opts.photoFailWith) throw new Error(opts.photoFailWith)
+      photos.push({ chatId, opts: o })
+      return { message_id: 2 }
+    },
+    async sendDocument(chatId, _document, o) {
+      documents.push({ chatId, opts: o })
+      return { message_id: 3 }
+    },
   }
-  return { api, sends, typings }
+  return { api, sends, typings, photos, documents }
 }
 
 let env: TestEnv
@@ -127,6 +140,51 @@ describe('mirrorAgentTurnFrame', () => {
       event: { type: 'tool_result', id: '1', name: 'read_file', result: 'contents' },
     })
     expect(sends.length).toBe(0)
+  })
+
+  test('minimal mode: a tool_result image IS sent as a photo (deliverable, not noise)', async () => {
+    const { api, sends, photos } = makeApi()
+    installMirrorDepsResolver(() => ({ db: env.db, api, chatId: CHAT_ID }))
+    const a = spawnAgent(env.db, env.paths, { profileId: 'base', groupId: env.groupId, name: 'r1' })
+    agentRepo.setTelegramTopicId(env.db, a.id, 42)
+
+    await mirrorAgentTurnFrame(a.id, {
+      kind: 'event',
+      event: {
+        type: 'tool_result',
+        id: '1',
+        name: 'browser_take_screenshot',
+        result: 'Screenshot of https://example.com',
+        images: [{ data: Buffer.from('png').toString('base64'), mimeType: 'image/png' }],
+      },
+    })
+    // Photo sent into the topic with the result as caption; no text message.
+    expect(photos.length).toBe(1)
+    expect((photos[0]?.opts as { message_thread_id?: number }).message_thread_id).toBe(42)
+    expect((photos[0]?.opts as { caption?: string }).caption).toBe(
+      'Screenshot of https://example.com',
+    )
+    expect(sends.length).toBe(0)
+  })
+
+  test('image send falls back to a document when the photo is rejected', async () => {
+    const { api, photos, documents } = makeApi({ photoFailWith: 'IMAGE_PROCESS_FAILED' })
+    installMirrorDepsResolver(() => ({ db: env.db, api, chatId: CHAT_ID }))
+    const a = spawnAgent(env.db, env.paths, { profileId: 'base', groupId: env.groupId, name: 'r1' })
+    agentRepo.setTelegramTopicId(env.db, a.id, 42)
+
+    await mirrorAgentTurnFrame(a.id, {
+      kind: 'event',
+      event: {
+        type: 'tool_result',
+        id: '1',
+        name: 'browser_take_screenshot',
+        result: 'Screenshot',
+        images: [{ data: Buffer.from('png').toString('base64'), mimeType: 'image/png' }],
+      },
+    })
+    expect(photos.length).toBe(0)
+    expect(documents.length).toBe(1)
   })
 
   test('verbose mode: tool_call and tool_result are rendered as summary lines', async () => {
