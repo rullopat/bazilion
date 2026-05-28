@@ -4,6 +4,7 @@
 
 import type {
   Agent,
+  TelegramAllowedUser,
   TelegramBindResponse,
   TelegramConfigState,
   TelegramHealth,
@@ -56,6 +57,23 @@ const showCmd = defineCommand({
     }
     console.log(`token: ${state.botTokenPreview}`)
     console.log(`chat:  ${state.chatId}`)
+    if (state.migratedChatId) {
+      console.log(
+        `⚠ supergroup migrated → ${state.migratedChatId}. Run \`bazilion telegram reconnect\` to apply.`,
+      )
+    }
+  },
+})
+
+const reconnectCmd = defineCommand({
+  meta: {
+    name: 'reconnect',
+    description: 'Apply a pending supergroup chat-id migration + re-activate the bot',
+  },
+  async run() {
+    const client = createClient()
+    const state = await client.post<TelegramConfigState>('/api/config/telegram/reconnect')
+    console.log(`reconnected · chat ${state.chatId}`)
   },
 })
 
@@ -226,17 +244,65 @@ const listBindingsCmd = defineCommand({
   },
 })
 
+const allowCmd = defineCommand({
+  meta: { name: 'allow', description: 'Add a Telegram user id to the allowlist' },
+  args: {
+    userId: { type: 'positional', required: true, description: 'Numeric Telegram user id' },
+    label: { type: 'string', description: 'Optional human label' },
+    owner: { type: 'boolean', description: 'Grant owner role (can manage the allowlist)' },
+  },
+  async run({ args }) {
+    const client = createClient()
+    const u = await client.post<TelegramAllowedUser>('/api/config/telegram/acl', {
+      userId: Number(args.userId),
+      label: args.label ?? null,
+      role: args.owner ? 'owner' : 'member',
+    })
+    console.log(`allowed ${u.userId} (${u.role})`)
+  },
+})
+
+const denyCmd = defineCommand({
+  meta: { name: 'deny', description: 'Remove a Telegram user id from the allowlist' },
+  args: { userId: { type: 'positional', required: true } },
+  async run({ args }) {
+    const client = createClient()
+    await client.del(`/api/config/telegram/acl/${Number(args.userId)}`)
+    console.log(`removed ${args.userId}`)
+  },
+})
+
+const allowedCmd = defineCommand({
+  meta: { name: 'allowed', description: 'List allowlisted Telegram users' },
+  async run() {
+    const client = createClient()
+    const users = await client.get<TelegramAllowedUser[]>('/api/config/telegram/acl')
+    if (users.length === 0) {
+      console.log('(allowlist empty — open; first user to message becomes owner)')
+      return
+    }
+    for (const u of users) {
+      const who = u.label ?? (u.username ? `@${u.username}` : '—')
+      console.log(`${u.userId}\t${u.role}\t${who}`)
+    }
+  },
+})
+
 export const telegramCommand = defineCommand({
   meta: {
     name: 'telegram',
-    description: 'Telegram integration: credentials, health, bot lifecycle, bindings',
+    description: 'Telegram integration: credentials, health, bot lifecycle, bindings, access',
   },
   subCommands: {
     config: configCmd,
     health: healthCmd,
     bot: botCmd,
+    reconnect: reconnectCmd,
     bind: bindCmd,
     unbind: unbindCmd,
     list: listBindingsCmd,
+    allow: allowCmd,
+    deny: denyCmd,
+    allowed: allowedCmd,
   },
 })

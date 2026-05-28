@@ -18,6 +18,13 @@ export interface Group {
   /** Read-only context about the human for all agents in this group.
    * Injected into the system prompt; never exposed as a file on disk. */
   userMd: string
+  /**
+   * Optional Telegram forum-topic name template for this group's agents.
+   * `null` = built-in naming (bare name for `default`, `<slug> › <name>`
+   * otherwise). When set, rendered with {agent.name}, {group.name},
+   * {group.slug}. Must contain {agent.name} so topics stay distinct.
+   */
+  telegramTopicNameFormat: string | null
   createdAt: Timestamp
 }
 
@@ -71,6 +78,13 @@ export interface Agent {
   telegramTopicId: number | null
   /** Verbosity of the Telegram outbound mirror for this agent (Step 6). */
   telegramMirrorMode: TelegramMirrorMode
+  /**
+   * Per-agent override of the forum-topic emoji icon (a single emoji char,
+   * e.g. "📚"). `null` falls back to the profile-name default
+   * (`BUILTIN_PROFILE_EMOJI`), then to color-only. Resolved to a Telegram
+   * custom_emoji_id at topic-creation time.
+   */
+  telegramIconEmoji: string | null
   createdAt: Timestamp
   archivedAt: Timestamp | null
 }
@@ -79,6 +93,21 @@ export interface AgentSkillAttachment {
   agentId: string
   skillName: string
   attachedAt: Timestamp
+}
+
+export type TelegramAclRole = 'owner' | 'member'
+
+/**
+ * A Telegram user allowed to use the bot (Phase 7). Flat scope: presence in
+ * this list grants commands + chat. `owner` can manage the list and can't be
+ * removed; `member` can use the bot but not manage it.
+ */
+export interface TelegramAllowedUser {
+  userId: number
+  username: string | null
+  label: string | null
+  role: TelegramAclRole
+  addedAt: Timestamp
 }
 
 export interface SkillMeta {

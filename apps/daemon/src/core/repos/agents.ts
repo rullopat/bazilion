@@ -18,6 +18,7 @@ interface RawAgent {
   group_id: string
   telegram_topic_id: number | null
   telegram_mirror_mode: string
+  telegram_icon_emoji: string | null
   created_at: number
   archived_at: number | null
 }
@@ -34,6 +35,7 @@ function toAgent(r: RawAgent): Agent {
     groupId: r.group_id,
     telegramTopicId: r.telegram_topic_id,
     telegramMirrorMode: (r.telegram_mirror_mode ?? 'minimal') as TelegramMirrorMode,
+    telegramIconEmoji: r.telegram_icon_emoji ?? null,
     createdAt: r.created_at,
     archivedAt: r.archived_at,
   }
@@ -48,7 +50,10 @@ function toAgent(r: RawAgent): Agent {
  */
 export function insert(
   db: BazilionDb,
-  a: Omit<Agent, 'createdAt' | 'archivedAt' | 'telegramTopicId' | 'telegramMirrorMode'> & {
+  a: Omit<
+    Agent,
+    'createdAt' | 'archivedAt' | 'telegramTopicId' | 'telegramMirrorMode' | 'telegramIconEmoji'
+  > & {
     telegramMirrorMode?: Agent['telegramMirrorMode']
   },
 ): Agent {
@@ -74,6 +79,7 @@ export function insert(
     ...a,
     telegramTopicId: null,
     telegramMirrorMode: mirrorMode,
+    telegramIconEmoji: null,
     createdAt: now,
     archivedAt: null,
   }
@@ -233,6 +239,15 @@ export function setTelegramMirrorMode(
 }
 
 /**
+ * Per-agent forum-topic emoji override. `null` clears it (resolution falls
+ * back to the profile-name default, then color-only). Stores the emoji char,
+ * not a Telegram custom_emoji_id — the id is resolved at topic-creation time.
+ */
+export function setTelegramIconEmoji(db: BazilionDb, agentId: string, emoji: string | null): void {
+  db.raw.run('UPDATE agents SET telegram_icon_emoji = ? WHERE id = ?', [emoji, agentId])
+}
+
+/**
  * All agents matching `name` (case-sensitive, exact). Returns the full set
  * so the caller can disambiguate across groups. The `/talk <name>` resolver
  * collapses to a single agent only when the result has length 1.
@@ -257,6 +272,29 @@ export function findByNameInGroup(db: BazilionDb, groupId: string, name: string)
     )
     .get(groupId, name)
   return row ? toAgent(row) : null
+}
+
+/**
+ * Bound, non-locked agent topics in a group. Drives topic-name propagation
+ * when a group's `telegram_topic_name_format` changes
+ * (lib/telegram/topic-rename.ts): only agents with a live topic that a human
+ * hasn't manually renamed (`telegram_topic_name_locked = 0`) get re-rendered.
+ * Archived agents are excluded — their topics keep whatever name they have.
+ */
+export function listBoundUnlockedTopicsInGroup(
+  db: BazilionDb,
+  groupId: string,
+): { agentId: string; name: string; topicId: number }[] {
+  return db.raw
+    .query<{ id: string; name: string; telegram_topic_id: number }, [string]>(
+      `SELECT id, name, telegram_topic_id FROM agents
+       WHERE group_id = ?
+         AND telegram_topic_id IS NOT NULL
+         AND telegram_topic_name_locked = 0
+         AND status != 'archived'`,
+    )
+    .all(groupId)
+    .map((r) => ({ agentId: r.id, name: r.name, topicId: r.telegram_topic_id }))
 }
 
 // --- skill attachments ---

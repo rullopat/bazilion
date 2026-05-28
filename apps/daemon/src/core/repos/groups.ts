@@ -11,6 +11,7 @@ interface RawGroup {
   id: string
   name: string
   user_md: string
+  telegram_topic_name_format: string | null
   created_at: number
 }
 
@@ -20,6 +21,7 @@ function toGroup(r: RawGroup, paths: Paths): Group {
     name: r.name,
     path: paths.groupDir(r.id),
     userMd: r.user_md,
+    telegramTopicNameFormat: r.telegram_topic_name_format ?? null,
     createdAt: r.created_at,
   }
 }
@@ -31,7 +33,14 @@ export function insert(db: BazilionDb, g: { id: string; name: string }, paths: P
     g.name,
     now,
   ])
-  return { id: g.id, name: g.name, path: paths.groupDir(g.id), userMd: '', createdAt: now }
+  return {
+    id: g.id,
+    name: g.name,
+    path: paths.groupDir(g.id),
+    userMd: '',
+    telegramTopicNameFormat: null,
+    createdAt: now,
+  }
 }
 
 export function get(db: BazilionDb, id: string, paths: Paths): Group | null {
@@ -52,6 +61,19 @@ export function remove(db: BazilionDb, id: string): void {
 
 export function setUserMd(db: BazilionDb, id: string, userMd: string): void {
   db.raw.run('UPDATE groups SET user_md = ? WHERE id = ?', [userMd, id])
+}
+
+/**
+ * Set (or clear, with `null`) the Telegram forum-topic name template for a
+ * group. Callers validate the template first
+ * (lib/telegram/naming.ts:validateTopicNameFormat).
+ */
+export function setTelegramTopicNameFormat(
+  db: BazilionDb,
+  id: string,
+  format: string | null,
+): void {
+  db.raw.run('UPDATE groups SET telegram_topic_name_format = ? WHERE id = ?', [format, id])
 }
 
 // --- telegram bindings (migration 0003) ---

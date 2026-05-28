@@ -13,14 +13,22 @@
 // only — actual chat-back routing ships in Step 6 alongside the outbound
 // mirror from runAgentTurn.
 
-import type { CallbackQuery, InlineKeyboardMarkup, Message, Update } from 'grammy/types'
+import { join } from 'node:path'
+import type { CallbackQuery, InlineKeyboardMarkup, Message, Update, User } from 'grammy/types'
 import type { BazilionDb } from '../../core/db/client.ts'
-import { agentRepo, openConfig, profileRepo } from '../../core/index.ts'
+import { agentRepo, openConfig, profileRepo, telegramAclRepo } from '../../core/index.ts'
 import type { Paths } from '../../core/paths.ts'
 import { dispatchCommand, parseCommand } from './commands/index.ts'
 import { namePrompt, SPAWN_PROFILE_CALLBACK_PREFIX, spawnAndBind } from './commands/spawn.ts'
+import { SPAWN_TEAM_CALLBACK_PREFIX, spawnTeamAndBind } from './commands/spawn-team.ts'
 import type { CommandApi, CommandResult } from './commands/types.ts'
 import { enqueueAgentMessage } from './inbound-queue.ts'
+import {
+  _resetLoopGuardForTest,
+  allowTelegramInbound,
+  shouldNotifyInboundThrottle,
+} from './loop-guard.ts'
+import { attachmentNote, downloadMedia, extractMedia } from './media.ts'
 import { reactSeen } from './reactions.ts'
 import { setPendingSpawn, takePendingSpawn } from './spawn-state.ts'
 
@@ -29,6 +37,42 @@ const SERVICE_TOPIC_KEY = 'TELEGRAM_SERVICE_TOPIC_ID'
 /** Suppress duplicate General-topic redirects per chat. */
 const GENERAL_REDIRECT_SUPPRESS_MS = 60_000
 const _lastGeneralRedirectByChat = new Map<number, number>()
+
+/** Suppress repeated "not authorized" replies per user. */
+const UNAUTHORIZED_SUPPRESS_MS = 60_000
+const _lastUnauthorizedNoticeByUser = new Map<number, number>()
+
+/**
+ * Per-user ACL gate (Phase 7, TOFU + Flat). Returns:
+ *   'allowed'  — user is on the allowlist (or we can't identify them);
+ *   'claimed'  — allowlist was empty and this user just became owner (TOFU);
+ *   'denied'   — allowlist is populated and this user isn't on it.
+ * The 'claimed' write happens here as a deliberate side effect, mirroring the
+ * migration stash above.
+ */
+function authorizeUser(db: BazilionDb, from: User | undefined): 'allowed' | 'claimed' | 'denied' {
+  // Can't identify the sender (rare service messages) → don't block.
+  if (!from) return 'allowed'
+  if (telegramAclRepo.count(db) === 0) {
+    const label = [from.first_name, from.last_name].filter(Boolean).join(' ') || null
+    telegramAclRepo.add(db, {
+      userId: from.id,
+      username: from.username ?? null,
+      label,
+      role: 'owner',
+    })
+    return 'claimed'
+  }
+  return telegramAclRepo.isAllowed(db, from.id) ? 'allowed' : 'denied'
+}
+
+function shouldNotifyUnauthorized(userId: number): boolean {
+  const now = Date.now()
+  const last = _lastUnauthorizedNoticeByUser.get(userId) ?? 0
+  if (now - last < UNAUTHORIZED_SUPPRESS_MS) return false
+  _lastUnauthorizedNoticeByUser.set(userId, now)
+  return true
+}
 
 /**
  * Send surface the router uses to reply. Real wiring passes
@@ -61,6 +105,8 @@ export interface ReplyApi extends CommandApi {
     callbackQueryId: string,
     opts?: { text?: string; show_alert?: boolean },
   ): Promise<unknown>
+  /** Resolve a file_id to a downloadable file_path (Phase 11 media inbound). */
+  getFile(fileId: string): Promise<{ file_path?: string; file_size?: number }>
 }
 
 export interface RouterDeps {
@@ -69,6 +115,8 @@ export interface RouterDeps {
   authToken: string
   api: ReplyApi
   chatId: number
+  /** Bot token — needed to download inbound media (Phase 11). */
+  botToken?: string
 }
 
 export type RouteOutcome =
@@ -85,11 +133,17 @@ export type RouteOutcome =
       handled: boolean
     }
   | { kind: 'agent_topic_unknown_command'; agentId: string; topicId: number; name: string }
+  | { kind: 'rate_limited'; agentId: string; topicId: number }
   | { kind: 'general_redirect'; suppressed: boolean }
   | { kind: 'unknown_topic'; topicId: number }
   | { kind: 'callback_spawn_profile'; profileId: string }
+  | { kind: 'callback_spawn_team'; profileGroupId: string }
   | { kind: 'callback_unknown' }
   | { kind: 'non_message' }
+  | { kind: 'ignored_bot' }
+  | { kind: 'unauthorized'; userId: number }
+  | { kind: 'owner_claimed'; userId: number }
+  | { kind: 'chat_migrated'; toChatId: number }
   | { kind: 'foreign_chat'; chatId: number }
 
 /**
@@ -104,9 +158,54 @@ export async function routeUpdate(deps: RouterDeps, update: Update): Promise<Rou
   const m = update.message ?? update.edited_message ?? null
   if (!m) return { kind: 'non_message' }
 
+  // Drop anything authored by a bot. bazilion never sees its OWN messages
+  // (Telegram doesn't redeliver them), so this guards against *other* bots in
+  // the supergroup driving agent turns — the one Telegram-side loop vector for
+  // a single-bot install. Also covers the bot's own forum-topic service
+  // messages, which we don't process anyway.
+  if (m.from?.is_bot) return { kind: 'ignored_bot' }
+
+  // Supergroup migration: Telegram fires `migrate_to_chat_id` in the OLD chat
+  // (the one we're configured for) when a basic group is upgraded. Stash the
+  // new id and surface a reconnect prompt — we don't auto-rewrite config from
+  // a runtime event (v1 principle); the operator confirms via /reconnect.
+  if (typeof m.migrate_to_chat_id === 'number') {
+    openConfig(deps.db).set('TELEGRAM_MIGRATED_CHAT_ID', String(m.migrate_to_chat_id))
+    return { kind: 'chat_migrated', toChatId: m.migrate_to_chat_id }
+  }
+
   // Foreign chat — any chat that isn't the configured supergroup. Telegram
-  // private chats (the bot's DM with the operator) land here.
-  if (m.chat.id !== deps.chatId) return { kind: 'foreign_chat', chatId: m.chat.id }
+  // private chats (the bot's DM with the operator) land here. The new chat
+  // after a migration also arrives here (its messages carry
+  // `migrate_from_chat_id === our old id`) — capture that too.
+  if (m.chat.id !== deps.chatId) {
+    if (m.migrate_from_chat_id === deps.chatId) {
+      openConfig(deps.db).set('TELEGRAM_MIGRATED_CHAT_ID', String(m.chat.id))
+      return { kind: 'chat_migrated', toChatId: m.chat.id }
+    }
+    return { kind: 'foreign_chat', chatId: m.chat.id }
+  }
+
+  // Per-user ACL gate (Phase 7) — Flat scope: gates BOTH commands and chat.
+  const authz = authorizeUser(deps.db, m.from)
+  if (authz === 'denied') {
+    if (m.from && shouldNotifyUnauthorized(m.from.id)) {
+      await deps.api.sendMessage(
+        deps.chatId,
+        "You're not authorized to use this bot. Ask the owner to add you with /allow.",
+        { message_thread_id: m.message_thread_id ?? undefined },
+      )
+    }
+    return { kind: 'unauthorized', userId: m.from?.id ?? 0 }
+  }
+  if (authz === 'claimed') {
+    await deps.api.sendMessage(
+      deps.chatId,
+      "🔐 You're now the bazilion owner — only allowlisted users can use this bot from now on. Add others with <code>/allow &lt;user_id&gt;</code> (they get their id from /whoami). Send your command again to continue.",
+      { message_thread_id: m.message_thread_id ?? undefined, parse_mode: 'HTML' },
+    )
+    return { kind: 'owner_claimed', userId: m.from?.id ?? 0 }
+  }
 
   const serviceTopicId = readServiceTopicId(deps.db)
   const threadId = m.message_thread_id ?? null
@@ -137,10 +236,45 @@ export async function routeUpdate(deps: RouterDeps, update: Update): Promise<Rou
     // state. Messages that arrive while a turn is in flight are
     // concatenated and processed together when the current turn ends, so
     // the agent gets one combined reply addressing everything.
-    const userText = m.text ?? m.caption ?? ''
+    // Resolve text + any media attachment (Phase 11). Media is downloaded to
+    // the agent's private home and referenced by path in the turn message, so
+    // an agent with file/bash tools can open it. Native provider multimodal
+    // (image content blocks) is the deferred follow-up.
+    const caption = m.text ?? m.caption ?? ''
+    const media = extractMedia(m)
+    let userText = caption
+    if (media) {
+      if (deps.botToken) {
+        const result = await downloadMedia(
+          deps.api,
+          deps.botToken,
+          media,
+          join(agent.dir, 'telegram-inbox'),
+        )
+        const note = attachmentNote(media, result)
+        userText = caption ? `${caption}\n\n${note}` : note
+      } else {
+        const note = `[Telegram ${media.kind} attachment received (download unavailable)]`
+        userText = caption ? `${caption}\n\n${note}` : note
+      }
+    }
     if (!userText) {
-      // Non-text message in agent topic (sticker, photo, etc.) — skip.
+      // Non-text, non-media message (sticker, etc.) — skip.
       return { kind: 'agent_topic', agentId: agent.id, topicId: threadId, queued: false }
+    }
+    // Per-agent inbound rate budget — backstop against a human/script spamming
+    // a topic faster than the agent can answer. Over budget: drop the message
+    // and post a single cooldown notice (suppressed for the rest of the
+    // cooldown window).
+    if (!allowTelegramInbound(agent.id)) {
+      if (shouldNotifyInboundThrottle(agent.id)) {
+        await deps.api.sendMessage(
+          deps.chatId,
+          "Whoa — that's a lot of messages very fast. I'll pause new ones for a minute so I can catch up.",
+          { message_thread_id: threadId, parse_mode: 'HTML' },
+        )
+      }
+      return { kind: 'rate_limited', agentId: agent.id, topicId: threadId }
     }
     enqueueAgentMessage(agent.id, userText)
     // 👀 "I see this" indicator on the user's message. Cleared by the
@@ -307,9 +441,32 @@ async function resumePendingSpawn(
  * otherwise ignored.
  */
 async function handleCallbackQuery(deps: RouterDeps, q: CallbackQuery): Promise<RouteOutcome> {
+  // ACL gate for button taps (Phase 7). A denied user gets an alert, no action.
+  if (authorizeUser(deps.db, q.from) === 'denied') {
+    await deps.api
+      .answerCallbackQuery(q.id, { text: 'Not authorized.', show_alert: true })
+      .catch(() => undefined)
+    return { kind: 'unauthorized', userId: q.from.id }
+  }
+
   // Always acknowledge so Telegram's loading spinner stops — even when we
   // don't know what the callback is for.
   const data = q.data ?? ''
+
+  // Spawn-team picker: tapping a profile group spawns the whole team
+  // immediately (no name step — names come from the template).
+  if (data.startsWith(SPAWN_TEAM_CALLBACK_PREFIX)) {
+    await deps.api.answerCallbackQuery(q.id, {}).catch(() => undefined)
+    const profileGroupId = data.slice(SPAWN_TEAM_CALLBACK_PREFIX.length)
+    const result = await spawnTeamAndBind(
+      { db: deps.db, paths: deps.paths, api: deps.api, chatId: deps.chatId },
+      profileGroupId,
+      null,
+    )
+    await sendCommandResult(deps, q.message?.message_thread_id ?? undefined, result)
+    return { kind: 'callback_spawn_team', profileGroupId }
+  }
+
   if (!data.startsWith(SPAWN_PROFILE_CALLBACK_PREFIX)) {
     await deps.api.answerCallbackQuery(q.id, {}).catch(() => undefined)
     return { kind: 'callback_unknown' }
@@ -384,4 +541,6 @@ function escapeForHtml(s: string): string {
 /** Test-only — clear the in-memory General-redirect suppression map. */
 export function _resetRouterStateForTest(): void {
   _lastGeneralRedirectByChat.clear()
+  _lastUnauthorizedNoticeByUser.clear()
+  _resetLoopGuardForTest()
 }

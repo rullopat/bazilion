@@ -9,6 +9,7 @@ import { spawnAgent } from '../../src/core/agent/spawn.ts'
 import { createProfile } from '../../src/core/profile/create.ts'
 import * as agentRepo from '../../src/core/repos/agents.ts'
 import { openConfig } from '../../src/core/repos/config.ts'
+import * as telegramAclRepo from '../../src/core/repos/telegram-acl.ts'
 import {
   _resetRouterStateForTest,
   type ReplyApi,
@@ -53,6 +54,9 @@ function makeReplyApi(): {
     async closeForumTopic() {
       return true
     },
+    async getFile() {
+      return {}
+    },
   }
   return { api, sends, creates, edits, acks }
 }
@@ -64,6 +68,7 @@ function messageUpdate(opts: {
   threadId?: number
   fromUserId?: number
   fromUsername?: string
+  fromIsBot?: boolean
 }): Update {
   return {
     update_id: opts.updateId ?? 1,
@@ -73,7 +78,7 @@ function messageUpdate(opts: {
       chat: { id: opts.chatId ?? CHAT_ID, type: 'supergroup', title: 'Test' } as never,
       from: {
         id: opts.fromUserId ?? 11,
-        is_bot: false,
+        is_bot: opts.fromIsBot ?? false,
         first_name: 'P',
         username: opts.fromUsername ?? 'rullopat',
       },
@@ -95,6 +100,10 @@ beforeEach(() => {
   })
   _resetRouterStateForTest()
   _resetSpawnStateForTest()
+  // Seed the default sender (user 11) as an allowlisted owner so the Phase 7
+  // ACL gate doesn't claim/deny in tests that pre-date it. ACL-specific tests
+  // start from a fresh env (no seed) to exercise TOFU + deny.
+  telegramAclRepo.add(env.db, { userId: 11, role: 'owner', label: 'P' })
 })
 afterEach(() => env.cleanup())
 
@@ -108,6 +117,82 @@ describe('routeUpdate classification', () => {
     )
     expect(outcome.kind).toBe('non_message')
     expect(sends.length).toBe(0)
+  })
+
+  test('inbound from a bot account is dropped before any classification', async () => {
+    // Another bot posting in a bound agent topic must NOT drive an agent turn.
+    const agent = spawnAgent(env.db, env.paths, {
+      profileId: 'base',
+      groupId: env.groupId,
+      name: 'r1',
+    })
+    agentRepo.setTelegramTopicId(env.db, agent.id, 42)
+    const { api, sends } = makeReplyApi()
+    const u = messageUpdate({ threadId: 42, text: 'hi from another bot', fromIsBot: true })
+    const outcome = await routeUpdate(
+      { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID },
+      u,
+    )
+    expect(outcome.kind).toBe('ignored_bot')
+    expect(sends.length).toBe(0)
+  })
+
+  test('ACL: first message on an empty allowlist claims owner (TOFU)', async () => {
+    env.db.raw.run('DELETE FROM telegram_allowed_users')
+    const { api, sends } = makeReplyApi()
+    const u = messageUpdate({ threadId: SERVICE_TOPIC, text: '/help', fromUserId: 7 })
+    const outcome = await routeUpdate(
+      { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID },
+      u,
+    )
+    expect(outcome.kind).toBe('owner_claimed')
+    expect(telegramAclRepo.get(env.db, 7)?.role).toBe('owner')
+    expect(sends[0]?.text).toMatch(/owner/i)
+  })
+
+  test('ACL: a non-allowlisted user is denied once enforcement is active', async () => {
+    // user 11 is the seeded owner; user 99 is not on the list.
+    const { api, sends } = makeReplyApi()
+    const u = messageUpdate({ threadId: SERVICE_TOPIC, text: '/help', fromUserId: 99 })
+    const outcome = await routeUpdate(
+      { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID },
+      u,
+    )
+    expect(outcome.kind).toBe('unauthorized')
+    if (outcome.kind === 'unauthorized') expect(outcome.userId).toBe(99)
+    expect(sends[0]?.text).toMatch(/not authorized/i)
+  })
+
+  test('ACL: an allowlisted member passes the gate', async () => {
+    telegramAclRepo.add(env.db, { userId: 42, role: 'member' })
+    const { api } = makeReplyApi()
+    const u = messageUpdate({ threadId: SERVICE_TOPIC, text: '/help', fromUserId: 42 })
+    const outcome = await routeUpdate(
+      { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID },
+      u,
+    )
+    expect(outcome.kind).toBe('service_command')
+  })
+
+  test('migrate_to_chat_id stashes the new chat id and returns chat_migrated', async () => {
+    const { api } = makeReplyApi()
+    const u: Update = {
+      update_id: 1,
+      message: {
+        message_id: 1,
+        date: 0,
+        chat: { id: CHAT_ID, type: 'supergroup', title: 'T' },
+        from: { id: 11, is_bot: false, first_name: 'P' },
+        migrate_to_chat_id: -1009999999999,
+      },
+    } as Update
+    const outcome = await routeUpdate(
+      { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID },
+      u,
+    )
+    expect(outcome.kind).toBe('chat_migrated')
+    if (outcome.kind === 'chat_migrated') expect(outcome.toChatId).toBe(-1009999999999)
+    expect(openConfig(env.db).get('TELEGRAM_MIGRATED_CHAT_ID')).toBe('-1009999999999')
   })
 
   test('foreign chat (private DM with the bot) is recognized but ignored', async () => {
@@ -199,6 +284,33 @@ describe('routeUpdate classification', () => {
     expect(opts.reply_markup?.inline_keyboard?.[0]).toBeDefined()
     // And the binding persisted.
     expect(agentRepo.getTelegramTopicId(env.db, agent.id)).not.toBeNull()
+  })
+
+  test('/spawn <profile> <name> in <group> spawns into the named group', async () => {
+    const { registerGroup } = await import('../../src/core/group/register.ts')
+    registerGroup(env.db, { id: 'work', name: 'Work' }, env.paths)
+    const { api, creates } = makeReplyApi()
+    const u = messageUpdate({ threadId: SERVICE_TOPIC, text: '/spawn base teammate in work' })
+    const outcome = await routeUpdate(
+      { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID },
+      u,
+    )
+    expect(outcome.kind).toBe('service_command')
+    const created = agentRepo.list(env.db).find((a) => a.name === 'teammate')
+    expect(created?.groupId).toBe('work')
+    expect(creates.length).toBe(1)
+  })
+
+  test('/spawn into an unknown group is rejected with a hint', async () => {
+    const { api, creates } = makeReplyApi()
+    const u = messageUpdate({ threadId: SERVICE_TOPIC, text: '/spawn base x in nope' })
+    const outcome = await routeUpdate(
+      { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID },
+      u,
+    )
+    expect(outcome.kind).toBe('service_command')
+    expect(creates.length).toBe(0)
+    expect(agentRepo.list(env.db).find((a) => a.name === 'x')).toBeUndefined()
   })
 
   test('agent-topic inbound identifies the agent but sends no reply (step 3 behavior)', async () => {

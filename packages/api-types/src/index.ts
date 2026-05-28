@@ -23,6 +23,8 @@ export type {
   ResolvedAgent,
   SkillMeta,
   SkillsMode,
+  TelegramAclRole,
+  TelegramAllowedUser,
   TelegramMirrorMode,
   Timestamp,
   TriggerKind,
@@ -44,6 +46,7 @@ import type {
   AgentTrigger,
   Message,
   ReasoningLevel,
+  TelegramAclRole,
   TelegramMirrorMode,
   WebToken,
 } from './entities.ts'
@@ -75,6 +78,11 @@ export interface UpdateAgentRequest {
   telegramMirrorMode?: TelegramMirrorMode
   /** Step 6: rename (mirrors the `name` field the daemon accepts on PATCH). */
   name?: string
+  /**
+   * Per-agent forum-topic emoji override (single emoji char). `null` or `''`
+   * clears it (falls back to the profile default, then color-only).
+   */
+  telegramIconEmoji?: string | null
 }
 
 export interface AttachSkillRequest {
@@ -200,6 +208,23 @@ export interface RegisterGroupRequest {
 /** Body for `PUT /api/groups/:id/user-md`. */
 export interface SetGroupUserMdRequest {
   userMd: string
+}
+
+/**
+ * Body for `PUT /api/groups/:id/topic-format`. `null` (or an empty/whitespace
+ * string) clears the template and reverts to built-in topic naming.
+ */
+export interface SetGroupTopicFormatRequest {
+  format: string | null
+}
+
+/** Body for `POST /api/config/telegram/acl` — add a user to the allowlist. */
+export interface AddTelegramAllowedUserRequest {
+  userId: number
+  username?: string | null
+  label?: string | null
+  /** Defaults to 'member' when omitted. */
+  role?: TelegramAclRole
 }
 
 // --- skills (write) ---
@@ -637,6 +662,13 @@ export interface TelegramConfigState {
   chatId: string
   /** Masked preview of the bot token like `1234567:AAHi…`. Empty when unset. */
   botTokenPreview: string
+  /**
+   * Set when Telegram reported a `migrate_to_chat_id` for the configured
+   * supergroup. The UI surfaces a "your chat id changed — reconnect" banner;
+   * `POST /api/config/telegram/reconnect` applies it. Null when no migration
+   * is pending.
+   */
+  migratedChatId: string | null
 }
 
 /**

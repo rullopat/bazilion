@@ -105,6 +105,9 @@ export async function runActivation(args: ActivationArgs): Promise<ActivationRes
   // First-time creation already writes the dynamic body — re-running refresh
   // after that would be a redundant editMessageText call.
   const directoryAlreadyExisted = directoryMessageId !== null
+  // First activation = service topic doesn't exist yet. Used to gate the
+  // one-time-only General hide below.
+  const firstActivation = serviceTopicId === null
 
   let gearStickerEmojiId: string | null = null
   if (serviceTopicId === null) {
@@ -139,16 +142,21 @@ export async function runActivation(args: ActivationArgs): Promise<ActivationRes
     }
   }
 
-  // hideGeneralForumTopic is idempotent on Telegram's side — calling it on an
-  // already-hidden General returns ok=true. Run on every activation so a human
-  // who unhides General doesn't permanently change the layout.
+  // Hide General ONLY on first activation. Telegram's hideGeneralForumTopic
+  // auto-closes the General topic if it's open, which posts a "closed the
+  // topic" service message. Running it on every activation (bot start, stall
+  // restart, etc.) spams that message on each restart — so we hide once, at
+  // initial setup, and leave it alone afterward. A human who deliberately
+  // unhides General keeps it (we no longer fight them on every restart).
   let generalHidden = false
-  try {
-    generalHidden = await args.api.hideGeneralForumTopic(args.chatId)
-  } catch (e) {
-    // Some supergroups don't expose hideGeneralForumTopic (e.g. when forum
-    // mode was just turned on). Non-fatal.
-    console.warn('telegram activation: hideGeneralForumTopic failed (continuing):', errMsg(e))
+  if (firstActivation) {
+    try {
+      generalHidden = await args.api.hideGeneralForumTopic(args.chatId)
+    } catch (e) {
+      // Some supergroups don't expose hideGeneralForumTopic (e.g. when forum
+      // mode was just turned on). Non-fatal.
+      console.warn('telegram activation: hideGeneralForumTopic failed (continuing):', errMsg(e))
+    }
   }
 
   // Register the slash-command menu. Re-running every activation keeps the

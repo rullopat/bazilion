@@ -66,15 +66,22 @@ const editCmd = defineCommand({
       type: 'string',
       description: 'Telegram mirror verbosity: minimal|verbose',
     },
+    'topic-icon': {
+      type: 'string',
+      description: 'Telegram topic emoji (e.g. 📚). Use --topic-icon "" to clear.',
+    },
   },
   async run({ args }) {
     if (
       args.name === undefined &&
       args.model === undefined &&
       args.reasoning === undefined &&
-      args.mirror === undefined
+      args.mirror === undefined &&
+      args['topic-icon'] === undefined
     ) {
-      console.error('agent edit: specify at least one of --name, --model, --reasoning, --mirror')
+      console.error(
+        'agent edit: specify at least one of --name, --model, --reasoning, --mirror, --topic-icon',
+      )
       process.exit(2)
     }
     const client = createClient()
@@ -90,6 +97,9 @@ const editCmd = defineCommand({
         process.exit(2)
       }
       body.telegramMirrorMode = args.mirror
+    }
+    if (args['topic-icon'] !== undefined) {
+      body.telegramIconEmoji = args['topic-icon'] === '' ? null : args['topic-icon']
     }
     const agent = await client.patch<Agent>(`/api/agents/${args.id}`, body)
     console.log(`updated agent ${agent.id} (${agent.name})`)

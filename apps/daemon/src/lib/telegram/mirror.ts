@@ -17,6 +17,7 @@
 import type { ChatFrame, TelegramMirrorMode } from '@bazilion/api-types'
 import type { BazilionDb } from '../../core/db/client.ts'
 import { agentRepo } from '../../core/index.ts'
+import { _resetLoopGuardForTest, allowTelegramOutboundNoise } from './loop-guard.ts'
 import { enqueueOutbound } from './outbound-queue.ts'
 import { clearReactionsFor } from './reactions.ts'
 
@@ -73,6 +74,12 @@ export async function mirrorAgentTurnFrame(
 
   const text = renderFrame(frame, agent.telegramMirrorMode)
   if (!text) return
+
+  // Per-agent outbound-noise throttle: when a heartbeat-heavy agent floods its
+  // topic with verbose tool-line frames, drop the surplus. Essential frames
+  // (assistant_message / error / fatal) always pass — we never drop the
+  // agent's actual reply, only the verbose scaffolding around it.
+  if (!isEssentialFrame(frame) && !allowTelegramOutboundNoise(agent.id)) return
 
   // The agent is replying — drop any pending 👀 reactions on the user's
   // inbound messages. The reply itself is the canonical "I saw it".
@@ -176,6 +183,18 @@ function shouldClearReactionsFor(frame: ChatFrame): boolean {
   return t === 'assistant_message' || t === 'error'
 }
 
+/**
+ * Essential frames always mirror — they carry the agent's reply or a failure
+ * the user must see. Everything else (verbose tool_call / tool_result /
+ * tool_error lines) is "noise" subject to the per-agent outbound throttle.
+ */
+function isEssentialFrame(frame: ChatFrame): boolean {
+  if (frame.kind === 'fatal') return true
+  if (frame.kind === 'done') return false
+  const t = frame.event.type
+  return t === 'assistant_message' || t === 'error'
+}
+
 function isThreadGoneError(e: unknown): boolean {
   if (!(e instanceof Error)) return false
   const msg = e.message.toLowerCase()
@@ -239,6 +258,7 @@ export function _resetMirrorDepsForTest(): void {
   _liveDepsResolver = null
   for (const interval of _typingIntervals.values()) clearInterval(interval)
   _typingIntervals.clear()
+  _resetLoopGuardForTest()
 }
 
 /** Test-only — invoke the resolver to peek at what bot.ts wired. */

@@ -163,15 +163,12 @@ describe('runActivation', () => {
     expect(result.serviceTopicId).toBe(42)
     expect(result.directoryMessageId).toBe(99)
     expect(result.gearStickerEmojiId).toBeNull()
-    // No sticker probe, no topic create, no message send, no pin. But hide
-    // and setMyCommands still run every activation, plus a post-activation
-    // directory refresh (editMessageText) syncs agent-state changes that
-    // happened while the daemon was down.
-    expect(calls.map((c) => c.method)).toEqual([
-      'hideGeneralForumTopic',
-      'setMyCommands',
-      'editMessageText',
-    ])
+    // No sticker probe, no topic create, no message send, no pin. hideGeneral
+    // is NOT re-run (it auto-closes General and spams a "closed the topic"
+    // service message on every restart — it only runs on first activation).
+    // setMyCommands still runs each activation, plus a post-activation
+    // directory refresh (editMessageText) syncs agent-state changes.
+    expect(calls.map((c) => c.method)).toEqual(['setMyCommands', 'editMessageText'])
   })
 
   test('resumes from partial state: topic id persisted, message id missing', async () => {
@@ -183,13 +180,9 @@ describe('runActivation', () => {
     expect(result.serviceTopicId).toBe(42)
     expect(result.directoryMessageId).toBe(88)
     // No sticker / createForumTopic (already done). sendMessage runs against
-    // the persisted topic id; pin + hide follow.
-    expect(calls.map((c) => c.method)).toEqual([
-      'sendMessage',
-      'pinChatMessage',
-      'hideGeneralForumTopic',
-      'setMyCommands',
-    ])
+    // the persisted topic id; pin follows. hideGeneral is skipped — the
+    // service topic already existed, so this isn't a first activation.
+    expect(calls.map((c) => c.method)).toEqual(['sendMessage', 'pinChatMessage', 'setMyCommands'])
     const sendArgs = calls[0]?.args as [number, string, { message_thread_id: number }]
     expect(sendArgs[0]).toBe(CHAT_ID)
     expect(sendArgs[2].message_thread_id).toBe(42)

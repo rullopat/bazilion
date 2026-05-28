@@ -3,10 +3,16 @@
 // `<group.path>/memory/` and is shared by every agent in the group.
 
 import { join } from 'node:path'
-import type { RegisterGroupRequest, SetGroupUserMdRequest } from '@bazilion/api-types'
+import type {
+  RegisterGroupRequest,
+  SetGroupTopicFormatRequest,
+  SetGroupUserMdRequest,
+} from '@bazilion/api-types'
 import { Hono } from 'hono'
 import { deleteGroup, groupRepo, registerGroup } from '../core/index.ts'
 import { getCtx } from '../lib/ctx.ts'
+import { validateTopicNameFormat } from '../lib/telegram/naming.ts'
+import { syncGroupTopicNames } from '../lib/telegram/topic-rename.ts'
 import { qmdBackend } from '../runtime/index.ts'
 
 // 12 KB cap matches OpenClaw's bootstrapMaxChars default — enough for a rich
@@ -64,6 +70,30 @@ groupsRouter.put('/:id/user-md', async (c) => {
   if (!g) return c.json({ error: `group not found: ${c.req.param('id')}` }, 404)
   groupRepo.setUserMd(db, c.req.param('id'), body.userMd)
   return c.json(groupRepo.get(db, c.req.param('id'), paths))
+})
+
+groupsRouter.put('/:id/topic-format', async (c) => {
+  const body = (await c.req.json().catch(() => null)) as SetGroupTopicFormatRequest | null
+  if (!body || (body.format !== null && typeof body.format !== 'string')) {
+    return c.json({ error: 'format (string or null) is required' }, 400)
+  }
+  const { db, paths } = getCtx()
+  const id = c.req.param('id')
+  if (!groupRepo.get(db, id, paths)) {
+    return c.json({ error: `group not found: ${id}` }, 404)
+  }
+  // Empty / whitespace-only string clears the template.
+  const format = body.format && body.format.trim().length > 0 ? body.format : null
+  if (format !== null) {
+    const err = validateTopicNameFormat(format)
+    if (err) return c.json({ error: err }, 400)
+  }
+  groupRepo.setTelegramTopicNameFormat(db, id, format)
+  // Re-render existing topics in the background; no-op when the bot isn't running.
+  void syncGroupTopicNames(db, paths, id).catch((e) =>
+    console.warn('telegram: topic-name sync after format change failed:', e),
+  )
+  return c.json(groupRepo.get(db, id, paths))
 })
 
 // ─── Memory (per-group, shared across all member agents) ──────────────────

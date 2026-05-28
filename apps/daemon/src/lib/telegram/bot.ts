@@ -22,6 +22,7 @@ import { openConfig, openSecrets, type Paths, resolvePaths } from '../../core/in
 import { type ActivationApi, runActivation } from './activation.ts'
 import { type DirectoryApi, installLiveDepsResolver } from './directory.ts'
 import { installMirrorDepsResolver, type MirrorApi } from './mirror.ts'
+import { installStickerApiResolver, type StickerApi } from './profile-emojis.ts'
 import { installReactionsDepsResolver, type ReactionsApi } from './reactions.ts'
 import { type ReplyApi, routeUpdate } from './routing.ts'
 
@@ -215,6 +216,10 @@ async function startInternal(
     chatId: handle.chatId,
   }))
 
+  // Profile-derived topic emojis: give the resolver the live api so it can
+  // fetch + cache Telegram's forum-icon sticker set on first use.
+  installStickerApiResolver(() => handle.bot.api as unknown as StickerApi)
+
   // Activation runs in the background — polling does NOT block on it.
   // If activation fails (e.g. forum mode off after creds saved, transient
   // network), we still want incoming messages to be observed.
@@ -316,6 +321,7 @@ async function dispatchUpdate(handle: BotHandle, db: BazilionDb, u: Update): Pro
       authToken: handle.authToken,
       api: handle.bot.api as unknown as ReplyApi,
       chatId: handle.chatId,
+      botToken: handle.bot.token,
     },
     u,
   )
@@ -327,10 +333,26 @@ async function dispatchUpdate(handle: BotHandle, db: BazilionDb, u: Update): Pro
     )
   } else if (outcome.kind === 'callback_spawn_profile') {
     console.log(`telegram: callback spawn:profile:${outcome.profileId}`)
+  } else if (outcome.kind === 'callback_spawn_team') {
+    console.log(`telegram: callback spawn:team:${outcome.profileGroupId}`)
   } else if (outcome.kind === 'spawn_name_input') {
     console.log(
       `telegram: spawn-name input completed for profile=${outcome.profileId} spawned=${outcome.spawned}`,
     )
+  } else if (outcome.kind === 'rate_limited') {
+    console.warn(
+      `telegram: inbound rate budget tripped for agent=${outcome.agentId} — dropping message`,
+    )
+  } else if (outcome.kind === 'ignored_bot') {
+    console.log('telegram: ignored inbound from a bot account')
+  } else if (outcome.kind === 'chat_migrated') {
+    console.warn(
+      `telegram: supergroup migrated to chat id ${outcome.toChatId} — reconnect via /api/config/telegram/reconnect`,
+    )
+  } else if (outcome.kind === 'unauthorized') {
+    console.log(`telegram: ignored unauthorized user ${outcome.userId}`)
+  } else if (outcome.kind === 'owner_claimed') {
+    console.log(`telegram: user ${outcome.userId} claimed owner (TOFU bootstrap)`)
   }
 }
 

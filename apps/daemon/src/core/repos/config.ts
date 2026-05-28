@@ -23,6 +23,9 @@ const INTERNAL_CONFIG_KEYS: readonly string[] = [
   'TELEGRAM_LAST_UPDATE_ID',
   'TELEGRAM_SERVICE_TOPIC_ID',
   'TELEGRAM_DIRECTORY_MESSAGE_ID',
+  // Phase 5: proposed new chat id after a migrate_to_chat_id event, pending
+  // operator confirmation via POST /api/config/telegram/reconnect.
+  'TELEGRAM_MIGRATED_CHAT_ID',
 ]
 
 /**

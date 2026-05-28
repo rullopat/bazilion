@@ -11,6 +11,7 @@
 //     the only one today; the topic-context branch enriches its output
 //     using ctx.agent.
 
+import { handleAllow, handleAllowed, handleDeny } from './acl.ts'
 import { handle as handleClose } from './close.ts'
 import { handle as handleGroups } from './groups.ts'
 import { handle as handleHealth } from './health.ts'
@@ -18,6 +19,7 @@ import { handle as handleHelp } from './help.ts'
 import { handle as handleList } from './list.ts'
 import { handle as handleRebind } from './rebind.ts'
 import { handle as handleSpawn } from './spawn.ts'
+import { handle as handleSpawnTeam } from './spawn-team.ts'
 import { handle as handleTalk } from './talk.ts'
 import type { CommandContext, CommandCtx, CommandDescriptor, CommandResult } from './types.ts'
 import { handle as handleUnbind } from './unbind.ts'
@@ -32,6 +34,14 @@ export const ALL_COMMANDS: readonly CommandDescriptor[] = [
   { name: 'talk', description: 'Open or create the topic for an agent', handle: handleTalk },
   { name: 'spawn', description: 'Create a new agent from a profile', handle: handleSpawn },
   {
+    // Telegram command names allow only [a-z0-9_] — hence the underscore.
+    // `spawn-team` is accepted as a typed alias (our parser is lenient).
+    name: 'spawn_team',
+    description: 'Spawn a whole profile group (team template) at once',
+    handle: handleSpawnTeam,
+    aliases: ['spawn-team'],
+  },
+  {
     name: 'list',
     description: 'Show all agents grouped by bazilion group',
     handle: handleList,
@@ -40,6 +50,13 @@ export const ALL_COMMANDS: readonly CommandDescriptor[] = [
   { name: 'groups', description: 'Show bazilion groups with agent counts', handle: handleGroups },
   { name: 'health', description: 'Bot identity + polling state', handle: handleHealth },
   { name: 'whoami', description: 'Show your Telegram user id', handle: handleWhoami },
+  { name: 'allowed', description: 'List allowlisted users', handle: handleAllowed },
+  { name: 'allow', description: 'Allow a user by id (owner only)', handle: handleAllow },
+  {
+    name: 'deny',
+    description: 'Remove a user from the allowlist (owner only)',
+    handle: handleDeny,
+  },
 
   // Cross-context — /help works in either surface; the handler reads
   // ctx.agent to decide whether to render the topic-context section.
