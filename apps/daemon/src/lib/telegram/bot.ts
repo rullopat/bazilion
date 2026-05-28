@@ -331,6 +331,12 @@ async function dispatchUpdate(handle: BotHandle, db: BazilionDb, u: Update): Pro
     console.log(
       `telegram: spawn-name input completed for profile=${outcome.profileId} spawned=${outcome.spawned}`,
     )
+  } else if (outcome.kind === 'rate_limited') {
+    console.warn(
+      `telegram: inbound rate budget tripped for agent=${outcome.agentId} — dropping message`,
+    )
+  } else if (outcome.kind === 'ignored_bot') {
+    console.log('telegram: ignored inbound from a bot account')
   }
 }
 

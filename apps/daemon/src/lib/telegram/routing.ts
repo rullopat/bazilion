@@ -21,6 +21,11 @@ import { dispatchCommand, parseCommand } from './commands/index.ts'
 import { namePrompt, SPAWN_PROFILE_CALLBACK_PREFIX, spawnAndBind } from './commands/spawn.ts'
 import type { CommandApi, CommandResult } from './commands/types.ts'
 import { enqueueAgentMessage } from './inbound-queue.ts'
+import {
+  _resetLoopGuardForTest,
+  allowTelegramInbound,
+  shouldNotifyInboundThrottle,
+} from './loop-guard.ts'
 import { reactSeen } from './reactions.ts'
 import { setPendingSpawn, takePendingSpawn } from './spawn-state.ts'
 
@@ -85,11 +90,13 @@ export type RouteOutcome =
       handled: boolean
     }
   | { kind: 'agent_topic_unknown_command'; agentId: string; topicId: number; name: string }
+  | { kind: 'rate_limited'; agentId: string; topicId: number }
   | { kind: 'general_redirect'; suppressed: boolean }
   | { kind: 'unknown_topic'; topicId: number }
   | { kind: 'callback_spawn_profile'; profileId: string }
   | { kind: 'callback_unknown' }
   | { kind: 'non_message' }
+  | { kind: 'ignored_bot' }
   | { kind: 'foreign_chat'; chatId: number }
 
 /**
@@ -103,6 +110,13 @@ export async function routeUpdate(deps: RouterDeps, update: Update): Promise<Rou
 
   const m = update.message ?? update.edited_message ?? null
   if (!m) return { kind: 'non_message' }
+
+  // Drop anything authored by a bot. bazilion never sees its OWN messages
+  // (Telegram doesn't redeliver them), so this guards against *other* bots in
+  // the supergroup driving agent turns — the one Telegram-side loop vector for
+  // a single-bot install. Also covers the bot's own forum-topic service
+  // messages, which we don't process anyway.
+  if (m.from?.is_bot) return { kind: 'ignored_bot' }
 
   // Foreign chat — any chat that isn't the configured supergroup. Telegram
   // private chats (the bot's DM with the operator) land here.
@@ -141,6 +155,20 @@ export async function routeUpdate(deps: RouterDeps, update: Update): Promise<Rou
     if (!userText) {
       // Non-text message in agent topic (sticker, photo, etc.) — skip.
       return { kind: 'agent_topic', agentId: agent.id, topicId: threadId, queued: false }
+    }
+    // Per-agent inbound rate budget — backstop against a human/script spamming
+    // a topic faster than the agent can answer. Over budget: drop the message
+    // and post a single cooldown notice (suppressed for the rest of the
+    // cooldown window).
+    if (!allowTelegramInbound(agent.id)) {
+      if (shouldNotifyInboundThrottle(agent.id)) {
+        await deps.api.sendMessage(
+          deps.chatId,
+          "Whoa — that's a lot of messages very fast. I'll pause new ones for a minute so I can catch up.",
+          { message_thread_id: threadId, parse_mode: 'HTML' },
+        )
+      }
+      return { kind: 'rate_limited', agentId: agent.id, topicId: threadId }
     }
     enqueueAgentMessage(agent.id, userText)
     // 👀 "I see this" indicator on the user's message. Cleared by the
@@ -384,4 +412,5 @@ function escapeForHtml(s: string): string {
 /** Test-only — clear the in-memory General-redirect suppression map. */
 export function _resetRouterStateForTest(): void {
   _lastGeneralRedirectByChat.clear()
+  _resetLoopGuardForTest()
 }

@@ -64,6 +64,7 @@ function messageUpdate(opts: {
   threadId?: number
   fromUserId?: number
   fromUsername?: string
+  fromIsBot?: boolean
 }): Update {
   return {
     update_id: opts.updateId ?? 1,
@@ -73,7 +74,7 @@ function messageUpdate(opts: {
       chat: { id: opts.chatId ?? CHAT_ID, type: 'supergroup', title: 'Test' } as never,
       from: {
         id: opts.fromUserId ?? 11,
-        is_bot: false,
+        is_bot: opts.fromIsBot ?? false,
         first_name: 'P',
         username: opts.fromUsername ?? 'rullopat',
       },
@@ -107,6 +108,24 @@ describe('routeUpdate classification', () => {
       u,
     )
     expect(outcome.kind).toBe('non_message')
+    expect(sends.length).toBe(0)
+  })
+
+  test('inbound from a bot account is dropped before any classification', async () => {
+    // Another bot posting in a bound agent topic must NOT drive an agent turn.
+    const agent = spawnAgent(env.db, env.paths, {
+      profileId: 'base',
+      groupId: env.groupId,
+      name: 'r1',
+    })
+    agentRepo.setTelegramTopicId(env.db, agent.id, 42)
+    const { api, sends } = makeReplyApi()
+    const u = messageUpdate({ threadId: 42, text: 'hi from another bot', fromIsBot: true })
+    const outcome = await routeUpdate(
+      { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID },
+      u,
+    )
+    expect(outcome.kind).toBe('ignored_bot')
     expect(sends.length).toBe(0)
   })
 
