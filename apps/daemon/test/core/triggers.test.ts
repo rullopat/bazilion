@@ -30,6 +30,29 @@ beforeEach(() => {
 })
 afterEach(() => env.cleanup())
 
+test('silent_in_telegram defaults false and round-trips when set', () => {
+  const def = triggerRepo.insert(env.db, {
+    agentId,
+    kind: 'interval',
+    intervalSec: 60,
+    cronExpr: null,
+    message: 'tick',
+  })
+  expect(def.silentInTelegram).toBe(false)
+  expect(triggerRepo.get(env.db, def.id)?.silentInTelegram).toBe(false)
+
+  const silent = triggerRepo.insert(env.db, {
+    agentId,
+    kind: 'interval',
+    intervalSec: 60,
+    cronExpr: null,
+    message: 'tick',
+    silentInTelegram: true,
+  })
+  expect(silent.silentInTelegram).toBe(true)
+  expect(triggerRepo.get(env.db, silent.id)?.silentInTelegram).toBe(true)
+})
+
 test('insert + get + listForAgent round-trip for interval trigger', () => {
   const t = triggerRepo.insert(env.db, {
     agentId,

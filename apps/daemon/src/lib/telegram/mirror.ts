@@ -112,6 +112,12 @@ export async function mirrorAgentTurnFrame(
 // to 3900 to leave headroom for emoji + decorations.
 const SAFE_CHAR_BUDGET = 3900
 
+// Per-message visibility control: an agent that prefixes its reply with this
+// marker keeps that turn out of Telegram (still delivered to web/CLI). The
+// marker must lead the message so a casual mention of it in prose doesn't
+// accidentally suppress.
+const SUPPRESS_MARKER = '[[no-telegram]]'
+
 function renderFrame(frame: ChatFrame, mode: TelegramMirrorMode): string | null {
   if (frame.kind === 'fatal') {
     return `💥 Turn crashed: ${frame.error}`
@@ -123,6 +129,7 @@ function renderFrame(frame: ChatFrame, mode: TelegramMirrorMode): string | null 
   const ev = frame.event
   switch (ev.type) {
     case 'assistant_message':
+      if (ev.text.trimStart().startsWith(SUPPRESS_MARKER)) return null
       return ev.text || null
     case 'error':
       return `❌ Error: ${ev.error}`

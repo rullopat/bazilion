@@ -129,6 +129,8 @@ export interface AgentTrigger {
   cronExpr: string | null
   message: string
   enabled: boolean
+  /** When true, trigger-fired turns run but are not mirrored to Telegram. */
+  silentInTelegram: boolean
   lastFiredAt: Timestamp | null
   createdAt: Timestamp
 }

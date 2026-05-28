@@ -27,6 +27,10 @@ const addCmd = defineCommand({
       description: 'Message to inject when the trigger fires',
     },
     disabled: { type: 'boolean', description: 'Create in disabled state' },
+    silent: {
+      type: 'boolean',
+      description: "Don't mirror this trigger's turns to Telegram",
+    },
   },
   async run({ args }) {
     if (!args.every === !args.cron) {
@@ -39,12 +43,14 @@ const addCmd = defineCommand({
           intervalSec: Number(args.every),
           message: args.message,
           enabled: !args.disabled,
+          silentInTelegram: args.silent,
         }
       : {
           kind: 'cron',
           cronExpr: args.cron as string,
           message: args.message,
           enabled: !args.disabled,
+          silentInTelegram: args.silent,
         }
     const res = await client.post<CreateTriggerResponse>(`/api/agents/${args.agent}/triggers`, body)
     const t = res.trigger

@@ -138,6 +138,7 @@ function AddTriggerForm({
   const [intervalSec, setIntervalSec] = useState(300)
   const [cronExpr, setCronExpr] = useState('')
   const [message, setMessage] = useState('')
+  const [silent, setSilent] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
@@ -161,6 +162,7 @@ function AddTriggerForm({
       const body: Record<string, unknown> = { kind, message: message.trim() }
       if (kind === 'interval') body.intervalSec = intervalSec
       else body.cronExpr = cronExpr.trim()
+      if (silent) body.silentInTelegram = true
       const res = await fetch(`/api/agents/${encodeURIComponent(agentId)}/triggers`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -173,6 +175,7 @@ function AddTriggerForm({
       setMessage('')
       setCronExpr('')
       setIntervalSec(300)
+      setSilent(false)
       onAdded()
     } catch (e2) {
       setErr((e2 as Error).message)
@@ -227,6 +230,10 @@ function AddTriggerForm({
           onChange={(e) => setMessage(e.target.value)}
           className="font-mono text-[0.9em] min-h-[80px]"
         />
+      </label>
+      <label className="m-0 mt-2 inline-flex cursor-pointer items-center gap-2">
+        <input type="checkbox" checked={silent} onChange={(e) => setSilent(e.target.checked)} />
+        silent in Telegram (run the turn but don't mirror it)
       </label>
       <div className="mt-3 flex items-center gap-3">
         <button type="submit" disabled={submitting}>

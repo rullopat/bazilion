@@ -370,6 +370,7 @@ agentsRouter.post('/:id/triggers', async (c) => {
       cronExpr: null,
       message: body.message,
       enabled: body.enabled,
+      silentInTelegram: body.silentInTelegram,
     })
     return c.json({ trigger }, 201)
   }
@@ -390,6 +391,7 @@ agentsRouter.post('/:id/triggers', async (c) => {
       cronExpr: body.cronExpr.trim(),
       message: body.message,
       enabled: body.enabled,
+      silentInTelegram: body.silentInTelegram,
     })
     return c.json({ trigger }, 201)
   }

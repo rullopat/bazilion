@@ -431,6 +431,8 @@ export interface CreateTriggerRequest {
   /** injected as the user message when the trigger fires */
   message: string
   enabled?: boolean
+  /** when true, fired turns run but are not mirrored to Telegram */
+  silentInTelegram?: boolean
 }
 
 export interface UpdateTriggerRequest {
