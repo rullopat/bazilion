@@ -16,7 +16,7 @@
 
 import type { ChatFrame, TelegramMirrorMode } from '@bazilion/api-types'
 import type { BazilionDb } from '../../core/db/client.ts'
-import { agentRepo, telegramOverridesRepo } from '../../core/index.ts'
+import { agentRepo } from '../../core/index.ts'
 import { _resetLoopGuardForTest, allowTelegramOutboundNoise } from './loop-guard.ts'
 import { enqueueOutbound } from './outbound-queue.ts'
 import { clearReactionsFor } from './reactions.ts'
@@ -72,10 +72,6 @@ export async function mirrorAgentTurnFrame(
   const topicId = agentRepo.getTelegramTopicId(deps.db, agent.id)
   if (topicId === null) return
 
-  // Per-topic silence override (Phase 8) — suppress this topic's mirror
-  // entirely, except errors/fatals which always surface.
-  if (telegramOverridesRepo.get(deps.db, agent.id)?.silent && !isEssentialFrame(frame)) return
-
   const text = renderFrame(frame, agent.telegramMirrorMode)
   if (!text) return
 
@@ -116,12 +112,6 @@ export async function mirrorAgentTurnFrame(
 // to 3900 to leave headroom for emoji + decorations.
 const SAFE_CHAR_BUDGET = 3900
 
-// Per-message visibility control: an agent that prefixes its reply with this
-// marker keeps that turn out of Telegram (still delivered to web/CLI). The
-// marker must lead the message so a casual mention of it in prose doesn't
-// accidentally suppress.
-const SUPPRESS_MARKER = '[[no-telegram]]'
-
 function renderFrame(frame: ChatFrame, mode: TelegramMirrorMode): string | null {
   if (frame.kind === 'fatal') {
     return `💥 Turn crashed: ${frame.error}`
@@ -133,7 +123,6 @@ function renderFrame(frame: ChatFrame, mode: TelegramMirrorMode): string | null 
   const ev = frame.event
   switch (ev.type) {
     case 'assistant_message':
-      if (ev.text.trimStart().startsWith(SUPPRESS_MARKER)) return null
       return ev.text || null
     case 'error':
       return `❌ Error: ${ev.error}`

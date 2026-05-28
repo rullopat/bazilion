@@ -84,21 +84,22 @@ closes the gap.
 
 ## Build status (2026-05-28)
 
-**Shipped in this PR (one branch, per-phase commits): Phases 1–8 + 11.** Phases
-9, 10, 12 remain as ready-to-build user stories; Phases 13–14 are design spikes
-(open scoping questions to resolve before code). Status legend: ✅ built ·
-📋 ready user story · 🔬 spike.
+**Shipped in this PR (one branch, per-phase commits): Phases 1–3, 5–7, 11.**
+Phases 4 and 8 were built, then **removed at the operator's request** (judged
+not useful). Phases 9, 10, 12 remain as ready-to-build user stories; Phases
+13–14 are design spikes (open scoping questions to resolve before code). Status
+legend: ✅ built · ❌ dropped · 📋 ready user story · 🔬 spike.
 
 | # | Phase | Effort | Status |
 |---|---|---|---|
 | 1 | Per-group topic-name template | 1 | ✅ built |
 | 2 | Inbound safety guards (drop-bot + rate budgets) | 1.5 | ✅ built |
 | 3 | Profile-derived emojis + per-agent override | 2 | ✅ built |
-| 4 | Granular mirror / visibility controls | 2 | ✅ built |
+| 4 | Granular mirror / visibility controls | 2 | ❌ dropped |
 | 5 | Group-migration resilience | 2 | ✅ built |
 | 6 | `/spawn ... in <group>` + `/spawn-team` | 2.5 | ✅ built |
 | 7 | Per-user ACLs (TOFU + Flat) | 3.5 | ✅ built |
-| 8 | Per-topic config overrides | 3 | ✅ built |
+| 8 | Per-topic config overrides | 3 | ❌ dropped |
 | 9 | Streaming via `editMessage` | 4 | 📋 ready user story |
 | 10 | Webhook ingress | 4 | 📋 ready user story |
 | 11 | Multimodal inbound (bounded slice) | 4.5 | ✅ built |
@@ -107,6 +108,10 @@ closes the gap.
 | 14 | Telegram WebApp UI | 5 | 🔬 spike |
 
 Notes on what shipped vs. the original specs:
+- **Phases 4 & 8 removed.** Per-trigger silence / per-message `[[no-telegram]]`
+  (4) and per-topic `require_mention`/`allow_from`/`silent` overrides (8) were
+  implemented then reverted — the operator found them not worth the surface.
+  Their specs are kept below for the record, marked dropped.
 - **Phase 2** reframed from OpenClaw's multi-bot "bot-loop protection" to the
   single-bot-correct guards (drop bot inbound + per-agent rate/noise budgets) —
   see the premise correction in the Phase 2 section.
@@ -119,9 +124,8 @@ Notes on what shipped vs. the original specs:
 
 Each phase below is a self-contained PR. The format mirrors v1: **User story →
 Design decisions → Schema & code sketch → Depends on → Open questions.** Open
-questions are decisions to lock *during* the phase's PR review, not now. Migration
-numbers are indicative (`0005`–`0009` assigned in phase order); renumber per the
-alpha "wipe and consolidate" convention if shapes churn before a phase lands.
+questions are decisions to lock *during* the phase's PR review, not now.
+Migrations shipped: `0005_group_topic_name_format`, `0006_telegram_acl`.
 
 ---
 
@@ -259,6 +263,9 @@ Nothing. Quick, visible win.
 ---
 
 ## Phase 4 — Granular mirror / visibility controls
+
+> **Status: ❌ dropped** — built then removed at the operator's request (per-trigger
+> silence + per-message `[[no-telegram]]` judged not useful). Spec kept for the record.
 
 ### User story
 Heartbeat-driven turns flood a topic with routine status pings the user doesn't want
@@ -425,6 +432,10 @@ them before writing the enforcement hook.
 ---
 
 ## Phase 8 — Per-topic config overrides
+
+> **Status: ❌ dropped** — built then removed at the operator's request
+> (`require_mention` / `allow_from` / `silent` per-topic overrides judged not
+> useful). Spec kept for the record.
 
 ### User story
 The user wants one specific agent's topic to require an @-mention before it responds

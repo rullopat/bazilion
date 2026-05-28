@@ -4,7 +4,6 @@
 
 import type {
   Agent,
-  AgentTelegramOverride,
   TelegramAllowedUser,
   TelegramBindResponse,
   TelegramConfigState,
@@ -289,50 +288,6 @@ const allowedCmd = defineCommand({
   },
 })
 
-const topicConfigCmd = defineCommand({
-  meta: {
-    name: 'topic-config',
-    description: "View or set an agent topic's per-topic overrides (Phase 8)",
-  },
-  args: {
-    agent: { type: 'positional', required: true, description: 'Agent id or prefix' },
-    mention: { type: 'string', description: 'require_mention: true|false' },
-    silent: { type: 'string', description: 'silent mirror: true|false' },
-    allow: {
-      type: 'string',
-      description: 'Comma-separated user ids that narrow access ("" clears)',
-    },
-  },
-  async run({ args }) {
-    const client = createClient()
-    const path = `/api/agents/${args.agent}/telegram/override`
-    const noChange =
-      args.mention === undefined && args.silent === undefined && args.allow === undefined
-    if (noChange) {
-      const o = await client.get<AgentTelegramOverride>(path)
-      console.log(`require_mention: ${o.requireMention}`)
-      console.log(`silent:          ${o.silent}`)
-      console.log(
-        `allow_from:      ${o.allowFrom.length ? o.allowFrom.join(', ') : '(any allowlisted)'}`,
-      )
-      return
-    }
-    const body: Record<string, unknown> = {}
-    if (args.mention !== undefined) body.requireMention = args.mention === 'true'
-    if (args.silent !== undefined) body.silent = args.silent === 'true'
-    if (args.allow !== undefined) {
-      body.allowFrom = args.allow
-        .split(',')
-        .map((s) => Number(s.trim()))
-        .filter((n) => Number.isInteger(n))
-    }
-    const o = await client.put<AgentTelegramOverride>(path, body)
-    console.log(
-      `updated · mention=${o.requireMention} silent=${o.silent} allow_from=[${o.allowFrom.join(', ')}]`,
-    )
-  },
-})
-
 export const telegramCommand = defineCommand({
   meta: {
     name: 'telegram',
@@ -349,6 +304,5 @@ export const telegramCommand = defineCommand({
     allow: allowCmd,
     deny: denyCmd,
     allowed: allowedCmd,
-    'topic-config': topicConfigCmd,
   },
 })

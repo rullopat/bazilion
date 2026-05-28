@@ -10,7 +10,6 @@ interface RawTrigger {
   cron_expr: string | null
   message: string
   enabled: number
-  silent_in_telegram: number
   last_fired_at: number | null
   created_at: number
 }
@@ -24,7 +23,6 @@ function toTrigger(r: RawTrigger): AgentTrigger {
     cronExpr: r.cron_expr,
     message: r.message,
     enabled: r.enabled === 1,
-    silentInTelegram: r.silent_in_telegram === 1,
     lastFiredAt: r.last_fired_at,
     createdAt: r.created_at,
   }
@@ -37,29 +35,17 @@ export interface InsertTriggerInput {
   cronExpr: string | null
   message: string
   enabled?: boolean
-  silentInTelegram?: boolean
 }
 
 export function insert(db: BazilionDb, input: InsertTriggerInput): AgentTrigger {
   const id = randomUUID()
   const now = Date.now()
   const enabled = input.enabled === false ? 0 : 1
-  const silent = input.silentInTelegram ? 1 : 0
   db.raw.run(
     `INSERT INTO agent_triggers
-       (id, agent_id, kind, interval_sec, cron_expr, message, enabled, silent_in_telegram, last_fired_at, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
-    [
-      id,
-      input.agentId,
-      input.kind,
-      input.intervalSec,
-      input.cronExpr,
-      input.message,
-      enabled,
-      silent,
-      now,
-    ],
+       (id, agent_id, kind, interval_sec, cron_expr, message, enabled, last_fired_at, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
+    [id, input.agentId, input.kind, input.intervalSec, input.cronExpr, input.message, enabled, now],
   )
   return {
     id,
@@ -69,7 +55,6 @@ export function insert(db: BazilionDb, input: InsertTriggerInput): AgentTrigger 
     cronExpr: input.cronExpr,
     message: input.message,
     enabled: enabled === 1,
-    silentInTelegram: silent === 1,
     lastFiredAt: null,
     createdAt: now,
   }

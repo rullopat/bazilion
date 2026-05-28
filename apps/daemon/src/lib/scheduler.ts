@@ -102,9 +102,7 @@ async function fireTrigger(t: AgentTrigger): Promise<void> {
     // Drain the turn; we don't stream to anyone. Errors surface as `fatal`
     // frames which we log but don't throw — the run row in the DB carries
     // the real status.
-    for await (const frame of runAgentTurn(t.agentId, t.message, {
-      mirror: !t.silentInTelegram,
-    })) {
+    for await (const frame of runAgentTurn(t.agentId, t.message)) {
       if (frame.kind === 'fatal') {
         console.error(`[scheduler] trigger ${t.id} fatal:`, frame.error)
       }

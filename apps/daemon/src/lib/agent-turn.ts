@@ -11,12 +11,6 @@ import { createDbUserMdHost } from './user-md-host.ts'
 interface RunAgentTurnOpts {
   /** If omitted, a fresh AbortController is created internally. */
   controller?: AbortController
-  /**
-   * Whether to mirror this turn to the agent's Telegram topic (+ typing
-   * indicator). Defaults to true. The scheduler passes `false` for triggers
-   * flagged `silent_in_telegram`.
-   */
-  mirror?: boolean
 }
 
 /**
@@ -51,12 +45,10 @@ export async function* runAgentTurn(
   const { apiKey } = await resolveAgentApiKey(db, authToken, agent)
 
   const controller = opts.controller ?? new AbortController()
-  const mirror = opts.mirror !== false
   registerAgent(agentId, controller)
   // Telegram "typing..." indicator while the turn runs. Safe to call even
   // when the agent has no bound topic — mirror.ts checks before firing.
-  // Skipped entirely for silent triggers.
-  if (mirror) mirrorTypingStart(agentId)
+  mirrorTypingStart(agentId)
   try {
     for await (const frame of spawnWorkerTurn(
       { agent, message, enabledProviders, apiKey },
@@ -66,18 +58,16 @@ export async function* runAgentTurn(
       // deleted, transient API errors) are logged inside but never bubble
       // here — the turn's own consumers (web chat stream, scheduler, etc.)
       // see every frame regardless of mirror status.
-      if (mirror) {
-        void mirrorAgentTurnFrame(agentId, frame).catch((e) => {
-          console.warn(
-            `telegram mirror: unexpected error (agent=${agentId}) —`,
-            e instanceof Error ? e.message : String(e),
-          )
-        })
-      }
+      void mirrorAgentTurnFrame(agentId, frame).catch((e) => {
+        console.warn(
+          `telegram mirror: unexpected error (agent=${agentId}) —`,
+          e instanceof Error ? e.message : String(e),
+        )
+      })
       yield frame
     }
   } finally {
-    if (mirror) mirrorTypingStop(agentId)
+    mirrorTypingStop(agentId)
     unregisterAgent(agentId)
   }
 }

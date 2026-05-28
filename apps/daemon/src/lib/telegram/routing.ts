@@ -16,13 +16,7 @@
 import { join } from 'node:path'
 import type { CallbackQuery, InlineKeyboardMarkup, Message, Update, User } from 'grammy/types'
 import type { BazilionDb } from '../../core/db/client.ts'
-import {
-  agentRepo,
-  openConfig,
-  profileRepo,
-  telegramAclRepo,
-  telegramOverridesRepo,
-} from '../../core/index.ts'
+import { agentRepo, openConfig, profileRepo, telegramAclRepo } from '../../core/index.ts'
 import type { Paths } from '../../core/paths.ts'
 import { dispatchCommand, parseCommand } from './commands/index.ts'
 import { namePrompt, SPAWN_PROFILE_CALLBACK_PREFIX, spawnAndBind } from './commands/spawn.ts'
@@ -81,19 +75,6 @@ function shouldNotifyUnauthorized(userId: number): boolean {
 }
 
 /**
- * True when a message addresses the bot — used by the per-topic
- * `require_mention` override. Satisfied by a reply to one of the bot's
- * messages, an `@<botUsername>` mention, or a text_mention entity for a bot.
- */
-function isBotAddressed(m: Message, botUsername: string | undefined): boolean {
-  if (m.reply_to_message?.from?.is_bot) return true
-  const text = m.text ?? m.caption ?? ''
-  if (botUsername && text.toLowerCase().includes(`@${botUsername.toLowerCase()}`)) return true
-  const entities = m.entities ?? m.caption_entities ?? []
-  return entities.some((e) => e.type === 'text_mention' && e.user?.is_bot === true)
-}
-
-/**
  * Send surface the router uses to reply. Real wiring passes
  * `bot.api.sendMessage`-style invocation; tests can substitute a recording
  * spy.
@@ -134,8 +115,6 @@ export interface RouterDeps {
   authToken: string
   api: ReplyApi
   chatId: number
-  /** Bot @username (for the require_mention override). Undefined if unknown. */
-  botUsername?: string
   /** Bot token — needed to download inbound media (Phase 11). */
   botToken?: string
 }
@@ -155,8 +134,6 @@ export type RouteOutcome =
     }
   | { kind: 'agent_topic_unknown_command'; agentId: string; topicId: number; name: string }
   | { kind: 'rate_limited'; agentId: string; topicId: number }
-  | { kind: 'topic_not_allowed'; agentId: string; topicId: number }
-  | { kind: 'mention_required'; agentId: string; topicId: number }
   | { kind: 'general_redirect'; suppressed: boolean }
   | { kind: 'unknown_topic'; topicId: number }
   | { kind: 'callback_spawn_profile'; profileId: string }
@@ -285,19 +262,6 @@ export async function routeUpdate(deps: RouterDeps, update: Update): Promise<Rou
       // Non-text, non-media message (sticker, etc.) — skip.
       return { kind: 'agent_topic', agentId: agent.id, topicId: threadId, queued: false }
     }
-    // Per-topic overrides (Phase 8) — gate plain-text chat only.
-    const override = telegramOverridesRepo.get(deps.db, agent.id)
-    if (override) {
-      // allow_from intersects the global allowlist (narrow-only). Silent drop.
-      if (override.allowFrom.length > 0 && m.from && !override.allowFrom.includes(m.from.id)) {
-        return { kind: 'topic_not_allowed', agentId: agent.id, topicId: threadId }
-      }
-      // require_mention: ignore chat that doesn't address the bot. Silent.
-      if (override.requireMention && !isBotAddressed(m, deps.botUsername)) {
-        return { kind: 'mention_required', agentId: agent.id, topicId: threadId }
-      }
-    }
-
     // Per-agent inbound rate budget — backstop against a human/script spamming
     // a topic faster than the agent can answer. Over budget: drop the message
     // and post a single cooldown notice (suppressed for the rest of the
