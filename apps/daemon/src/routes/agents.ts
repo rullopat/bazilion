@@ -50,6 +50,7 @@ import { cancelAgent } from '../lib/agent-cancel.ts'
 import { resolveAgentIdParam } from '../lib/agent-id.ts'
 import { runAgentTurn } from '../lib/agent-turn.ts'
 import { resolveAgentApiKey } from '../lib/api-key.ts'
+import { closeBrowserSession } from '../lib/browser/pool.ts'
 import { validateCron } from '../lib/cron.ts'
 import { getCtx } from '../lib/ctx.ts'
 import { createDbMessagingHost } from '../lib/messaging-host.ts'
@@ -197,6 +198,10 @@ agentsRouter.patch('/:id', async (c) => {
 agentsRouter.delete('/:id', (c) => {
   const { db, paths, authToken } = getCtx()
   try {
+    // Best-effort teardown of any daemon-side browser session before the agent
+    // record (and its home dir) goes away. Fire-and-forget — the idle reaper is
+    // the backstop and the response shouldn't block on Chromium shutdown.
+    void closeBrowserSession(c.req.param('id')).catch(() => {})
     deleteAgent(db, c.req.param('id'))
     notifyDirectoryDirty()
     return c.body(null, 204)
@@ -208,6 +213,7 @@ agentsRouter.delete('/:id', (c) => {
 agentsRouter.post('/:id/archive', (c) => {
   const { db, paths, authToken } = getCtx()
   try {
+    void closeBrowserSession(c.req.param('id')).catch(() => {})
     archiveAgent(db, c.req.param('id'))
     notifyDirectoryDirty()
     return c.body(null, 204)

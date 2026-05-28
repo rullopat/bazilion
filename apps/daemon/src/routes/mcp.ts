@@ -18,8 +18,11 @@ export const mcpRouter = new Hono()
 const TRANSPORTS = new Set<McpTransport>(['stdio', 'http', 'sse'])
 
 function validate(input: McpServerInput): string | null {
-  if (!input.name || !/^[a-zA-Z0-9_-]+$/.test(input.name)) {
-    return 'name is required and must match [a-zA-Z0-9_-]+'
+  // Restrict to [a-zA-Z0-9_] so the name IS its tool namespace. Allowing `-`
+  // would let `foo-bar` and `foo_bar` both sanitize to `foo_bar`, colliding
+  // their `mcp__foo_bar__*` tool names.
+  if (!input.name || !/^[a-zA-Z0-9_]+$/.test(input.name)) {
+    return 'name is required and must match [a-zA-Z0-9_]+ (letters, digits, underscore)'
   }
   if (!TRANSPORTS.has(input.transport)) return 'transport must be stdio, http, or sse'
   if (input.transport === 'stdio') {

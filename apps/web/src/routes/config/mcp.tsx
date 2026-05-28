@@ -118,7 +118,7 @@ function McpPage() {
                 onChange={(e) => setName(e.target.value)}
                 required
                 placeholder="playwright"
-                pattern="[a-zA-Z0-9_-]+"
+                pattern="[a-zA-Z0-9_]+"
                 className="block mt-1 rounded-md border bg-background px-3 py-2 text-sm w-48"
               />
             </label>

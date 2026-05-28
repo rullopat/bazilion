@@ -18,6 +18,7 @@
 import type { Browser, BrowserContext, ConsoleMessage, Page, Request } from 'playwright'
 import type { ToolResultPart } from '../../runtime/tools/types.ts'
 import { ensureResourceReaper, resources } from '../resources.ts'
+import { getSsrfProxy } from './proxy.ts'
 import { browserBlockReason } from './ssrf.ts'
 
 const CONSOLE_CAP = 100
@@ -67,11 +68,25 @@ async function createSession(agentId: string, config: BrowserConfig): Promise<Br
   // Lazy dynamic import: the daemon shouldn't load Chromium's native bindings
   // unless an agent actually uses a browser tool this run.
   const { chromium } = await import('playwright')
-  const browser = await chromium.launch({ headless: config.headless })
+
+  // SSRF enforcement: route all egress through a validating forward proxy that
+  // resolves DNS itself and dials only the validated IP (closing the rebinding
+  // gap a re-resolving interceptor would leave, and covering service-worker
+  // traffic that `context.route` cannot see). The `allowPrivate` local-dev
+  // escape hatch launches with no proxy for full network access.
+  const proxy = config.allowPrivate ? undefined : { server: await getSsrfProxy() }
+  const browser = await chromium.launch({
+    headless: config.headless,
+    ...(proxy ? { proxy } : {}),
+  })
   const context = await browser.newContext({
     userAgent:
       'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15',
     viewport: { width: 1280, height: 800 },
+    // Block service workers — defense in depth (their requests already go
+    // through the proxy, but this removes a whole class of interception edge
+    // cases for an automation browser).
+    serviceWorkers: 'block',
   })
   context.setDefaultNavigationTimeout(DEFAULT_NAV_TIMEOUT_MS)
   context.setDefaultTimeout(DEFAULT_NAV_TIMEOUT_MS)
@@ -95,17 +110,6 @@ async function createSession(agentId: string, config: BrowserConfig): Promise<Br
     },
   }
 
-  // SSRF screen at the network layer — applies to navigations and every
-  // subresource. allowPrivate short-circuits the check inside browserBlockReason.
-  await context.route('**/*', async (route) => {
-    const reason = await browserBlockReason(route.request().url(), config.allowPrivate)
-    if (reason) {
-      await route.abort('blockedbyclient')
-      return
-    }
-    await route.continue()
-  })
-
   context.on('console', (msg: ConsoleMessage) => {
     session.console.push({ type: msg.type(), text: msg.text() })
     if (session.console.length > CONSOLE_CAP) session.console.shift()
@@ -127,6 +131,11 @@ async function createSession(agentId: string, config: BrowserConfig): Promise<Br
  * Get the agent's browser session, launching one on first use. The pool is
  * capped: when full, the least-recently-used session is evicted first.
  */
+// In-flight launches keyed by agentId — collapses concurrent first-use of the
+// same agent's session into one launch so we never create + orphan a duplicate
+// browser (the orphan would escape the pool, reaper, and shutdown).
+const inflightBrowsers = new Map<string, Promise<BrowserSession>>()
+
 export async function getOrCreateBrowserSession(
   agentId: string,
   config: BrowserConfig,
@@ -137,20 +146,31 @@ export async function getOrCreateBrowserSession(
     existing.lastUsedAt = Date.now()
     return existing
   }
-  if (pool.size >= config.maxSessions) {
-    let lru: BrowserSession | null = null
-    for (const s of pool.values()) {
-      if (!lru || s.lastUsedAt < lru.lastUsedAt) lru = s
+  const pending = inflightBrowsers.get(agentId)
+  if (pending) return pending
+
+  const launch = (async () => {
+    if (pool.size >= config.maxSessions) {
+      let lru: BrowserSession | null = null
+      for (const s of pool.values()) {
+        if (!lru || s.lastUsedAt < lru.lastUsedAt) lru = s
+      }
+      if (lru) {
+        pool.delete(lru.agentId)
+        await lru.close()
+      }
     }
-    if (lru) {
-      pool.delete(lru.agentId)
-      await lru.close()
-    }
+    const session = await createSession(agentId, config)
+    pool.set(agentId, session)
+    ensureResourceReaper()
+    return session
+  })()
+  inflightBrowsers.set(agentId, launch)
+  try {
+    return await launch
+  } finally {
+    inflightBrowsers.delete(agentId)
   }
-  const session = await createSession(agentId, config)
-  pool.set(agentId, session)
-  ensureResourceReaper()
-  return session
 }
 
 /** Close and remove an agent's browser session if present (agent delete / cancel). */
@@ -207,9 +227,20 @@ export async function invokeBrowserAction(
   session.lastUsedAt = Date.now()
   const page = (): Page => activePage(session)
 
+  // Guard top-level navigations explicitly: a navigation to file:// (or any
+  // non-http(s) scheme) never reaches the SSRF proxy, so block it here. For
+  // http(s) this also returns a clean error for private targets instead of a
+  // bare proxy connection failure.
+  async function guardNav(url: string): Promise<void> {
+    const reason = await browserBlockReason(url, config.allowPrivate)
+    if (reason) throw new Error(`browser navigation blocked: ${reason}`)
+  }
+
   switch (action) {
     case 'navigate': {
-      await page().goto(str(args, 'url'), { waitUntil: 'domcontentloaded' })
+      const url = str(args, 'url')
+      await guardNav(url)
+      await page().goto(url, { waitUntil: 'domcontentloaded' })
       return text(await snapshotText(session))
     }
     case 'snapshot':
@@ -268,6 +299,7 @@ export async function invokeBrowserAction(
         )
       }
       if (op === 'new') {
+        if (typeof args.url === 'string' && args.url) await guardNav(args.url)
         await session.context.newPage()
         session.activeIndex = session.context.pages().length - 1
         if (typeof args.url === 'string' && args.url) {

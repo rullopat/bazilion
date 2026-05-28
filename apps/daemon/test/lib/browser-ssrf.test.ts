@@ -21,9 +21,19 @@ test('allowPrivate short-circuits the guard', async () => {
   expect(await browserBlockReason('http://localhost/x', true)).toBeNull()
 })
 
-test('non-http schemes are always allowed', async () => {
+test('safe in-browser schemes are allowed', async () => {
   expect(await browserBlockReason('data:text/html,<p>hi', false)).toBeNull()
   expect(await browserBlockReason('about:blank', false)).toBeNull()
+})
+
+test('file: and other disk/privileged schemes are blocked', async () => {
+  expect(await browserBlockReason('file:///etc/passwd', false)).toMatch(/blocked URL scheme/)
+  expect(await browserBlockReason('chrome://settings', false)).toMatch(/blocked URL scheme/)
+  expect(await browserBlockReason('view-source:http://x', false)).toMatch(/blocked URL scheme/)
+})
+
+test('allowPrivate still bypasses scheme checks (local dev)', async () => {
+  expect(await browserBlockReason('file:///etc/passwd', true)).toBeNull()
 })
 
 test('malformed URLs are left for Playwright to reject', async () => {

@@ -13,6 +13,7 @@
 // is open) and runs until shutdown, which closes everything.
 
 import type { BrowserSession } from './browser/pool.ts'
+import { closeSsrfProxy } from './browser/proxy.ts'
 import type { McpConnection } from './mcp/pool.ts'
 
 const REGISTRY_KEY = Symbol.for('bazilion.resources')
@@ -81,5 +82,6 @@ export async function shutdownResources(): Promise<void> {
   for (const [, c] of r.mcp) closing.push(c.close().catch(() => {}))
   r.browsers.clear()
   r.mcp.clear()
+  closing.push(closeSsrfProxy().catch(() => {}))
   await Promise.all(closing)
 }

@@ -119,6 +119,11 @@ async function connect(server: McpServerConfig, opts: McpConnectOpts): Promise<M
   }
 }
 
+// In-flight connects keyed by serverId — collapses concurrent first-use (e.g.
+// two agents' turns hitting the same server at once) into one connection so we
+// never create + orphan a duplicate client/subprocess.
+const inflightMcp = new Map<string, Promise<McpConnection>>()
+
 /**
  * Get the live connection for a server, establishing it on first use. Reused
  * across turns/agents; the idle reaper closes it after `idleMs`.
@@ -133,10 +138,21 @@ export async function getOrCreateMcpConnection(
     existing.lastUsedAt = Date.now()
     return existing
   }
-  const conn = await connect(server, opts)
-  pool.set(server.id, conn)
-  ensureResourceReaper()
-  return conn
+  const pending = inflightMcp.get(server.id)
+  if (pending) return pending
+
+  const opening = (async () => {
+    const conn = await connect(server, opts)
+    pool.set(server.id, conn)
+    ensureResourceReaper()
+    return conn
+  })()
+  inflightMcp.set(server.id, opening)
+  try {
+    return await opening
+  } finally {
+    inflightMcp.delete(server.id)
+  }
 }
 
 /** Close and forget a server's connection if present (server disabled/deleted/updated). */

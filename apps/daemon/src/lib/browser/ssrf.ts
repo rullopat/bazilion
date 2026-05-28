@@ -15,9 +15,17 @@ import { lookup as dnsLookup } from 'node:dns/promises'
 import { isBlockedHostname, isPrivateIpAddress } from '../../runtime/tools/web-ssrf.ts'
 
 /**
+ * Schemes that stay inside the browser and never touch the disk or network.
+ * `file:` is deliberately NOT here — it reads local disk and must be blocked.
+ */
+const SAFE_NON_HTTP_SCHEMES = new Set(['about:', 'data:', 'blob:'])
+
+/**
  * Decide whether a URL must be blocked. Returns a reason string when blocked,
- * or `null` when the request may proceed. Non-http(s) schemes (data:, blob:,
- * about:, chrome:) are always allowed — they never leave the browser.
+ * or `null` when the request may proceed. Only http(s) reach the IP checks;
+ * other schemes are allowed only if they're known-safe in-browser ones —
+ * `file:`, `chrome:`, `view-source:`, etc. are blocked so the browser can't be
+ * pointed at local disk or privileged pages.
  */
 export async function browserBlockReason(
   rawUrl: string,
@@ -30,7 +38,9 @@ export async function browserBlockReason(
   } catch {
     return null // let Playwright reject malformed URLs itself
   }
-  if (url.protocol !== 'http:' && url.protocol !== 'https:') return null
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    return SAFE_NON_HTTP_SCHEMES.has(url.protocol) ? null : `blocked URL scheme: ${url.protocol}`
+  }
 
   const host = url.hostname
   if (isBlockedHostname(host)) return `blocked hostname: ${host}`

@@ -18,7 +18,7 @@ function serverRow(s: McpServer): string[] {
 const addCmd = defineCommand({
   meta: { name: 'add', description: 'Register an MCP server' },
   args: {
-    name: { type: 'positional', required: true, description: 'Unique name ([a-zA-Z0-9_-])' },
+    name: { type: 'positional', required: true, description: 'Unique name ([a-zA-Z0-9_])' },
     transport: { type: 'string', description: 'stdio | http | sse (default stdio)' },
     command: { type: 'string', description: 'stdio: executable to run (e.g. npx)' },
     args: { type: 'string', description: 'stdio: space-separated args (quote the whole string)' },
