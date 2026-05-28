@@ -31,8 +31,11 @@ import { qmdBackend } from '../memory/qmd.ts'
 import { piMessagesToProviderView, translatePiEvent } from '../pi/events.ts'
 import { createBazilionSession } from '../pi/session.ts'
 import type {
+  BrowserHost,
+  InjectedMcpTool,
   IpcReply,
   IpcRequest,
+  McpHost,
   MessagingHost,
   RpcMethod,
   UserMdGetResult,
@@ -46,6 +49,10 @@ interface WorkerInput {
   enabledProviders: string[]
   /** Pre-fetched API key for OAuth providers; undefined for env-key ones. */
   apiKey?: string
+  /** When true, expose the `browser_*` tools (proxied to the daemon pool). */
+  browserEnabled?: boolean
+  /** MCP tools discovered daemon-side, exposed as IPC-proxied proxy tools. */
+  mcpTools?: InjectedMcpTool[]
 }
 
 function emit(frame: ChatFrame): void {
@@ -141,6 +148,18 @@ function createIpcUserMdHost(call: IpcCall): UserMdHost {
   }
 }
 
+function createIpcBrowserHost(call: IpcCall): BrowserHost {
+  return {
+    invoke: (agentId, action, args) => call('browserInvoke', { agentId, action, args }),
+  }
+}
+
+function createIpcMcpHost(call: IpcCall): McpHost {
+  return {
+    invoke: (serverId, toolName, args) => call('mcpInvoke', { serverId, toolName, args }),
+  }
+}
+
 function isIpcReply(msg: unknown): msg is IpcReply {
   if (!msg || typeof msg !== 'object') return false
   const m = msg as Record<string, unknown>
@@ -169,7 +188,7 @@ async function main(): Promise<void> {
   process.on('SIGTERM', onSignal)
   process.on('SIGINT', onSignal)
 
-  const { agent, message, enabledProviders, apiKey } = await readInput()
+  const { agent, message, enabledProviders, apiKey, browserEnabled, mcpTools } = await readInput()
 
   // Path resolution still happens in the worker — `resolvePaths()` only reads
   // the `BAZILION_HOME` env var the daemon hands down. No DB, no filesystem
@@ -182,6 +201,8 @@ async function main(): Promise<void> {
   const ipcCall = createIpcClient()
   const messagingHost = createIpcMessagingHost(ipcCall)
   const userMdHost = createIpcUserMdHost(ipcCall)
+  const browserHost = browserEnabled ? createIpcBrowserHost(ipcCall) : undefined
+  const mcpHost = mcpTools && mcpTools.length > 0 ? createIpcMcpHost(ipcCall) : undefined
 
   const { session, dispose } = await createBazilionSession({
     agent,
@@ -192,6 +213,9 @@ async function main(): Promise<void> {
     messagingHost,
     userMdHost,
     apiKey,
+    browserHost,
+    mcpHost,
+    mcpTools,
   })
 
   abortSession = (): void => {

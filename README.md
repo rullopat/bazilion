@@ -88,6 +88,7 @@ bazilion memory write|read|search|list|rm <agent>  # group-shared memory accesse
 bazilion send <from> <to> <message>        # mailbox send
 bazilion inbox list|show|read              # inspect agent inboxes
 bazilion trigger add|list|rm|enable|disable  # heartbeats / cron triggers
+bazilion mcp add|list|show|rm|enable|disable|test    # MCP servers (stdio / http / sse)
 bazilion provider list|enable|disable|models|test    # provider config + smoke test
 bazilion config get|set                    # service config (URLs, IDs, secrets)
 bazilion login --server URL --token T      # save a remote daemon's coordinates
@@ -107,6 +108,8 @@ bazilion completion bash|zsh|fish          # print a shell completion script
 - **Memory** — **group-shared** BM25 index rooted at `<groupPath>/memory/`. Every agent in the group reads + writes the same store. The current backend is `qmdBackend` (BM25 over markdown via [@tobilu/qmd](https://github.com/tobi/qmd)). Use it for project knowledge — codebase notes, decisions, things the user told you about the work; for personal notes about an agent (preferences, persona quirks), use `home_write` on `IDENTITY.md` instead.
 - **Mailbox** — `messages` table. Agents talk to each other via `send_message` / `read_inbox` / `wait_for_reply` tools, via `bazilion send` from the CLI, or from outside the loop: `bazilion inbox list <agent> [--unread]`, `bazilion inbox show <id>`, `bazilion inbox read <id>`, or the web UI at `/agents/<id>/inbox`. The worker delegates these tool calls to the daemon over Node IPC — workers don't hold their own SQLite handle.
 - **Trigger** — a heartbeat (interval in seconds) or cron expression that periodically wakes an agent with a stored message. An in-process scheduler ticks every 5 s (overridable via `BAZILION_SCHEDULER_TICK_MS`; disable with `BAZILION_SCHEDULER=off`) and fires due triggers through the same code path as user chat. Example: `bazilion trigger add <agent> --every 300 --message "check your inbox"`.
+- **Browser automation** — agents get a `browser_*` tool suite backed by a persistent per-agent Playwright (Chromium) session that survives across turns. Perception is accessibility-tree-first (`browser_snapshot` → aria tree with `[ref=eN]` refs; no vision model needed); screenshots are a secondary tool rendered inline in chat. A network-layer SSRF guard blocks loopback/private targets by default. **One-time setup**: `pnpm exec playwright install chromium` (from `apps/daemon`, or wherever Playwright is installed). Toggle/tune on `/config` → Browser Automation.
+- **MCP** — connect the daemon to [Model Context Protocol](https://modelcontextprotocol.io) servers over stdio (local subprocess), Streamable-HTTP, or SSE. Each enabled server's tools are injected into every agent turn, namespaced `mcp__<server>__<tool>`. Manage from `bazilion mcp …` or `/config/mcp`. Example: `bazilion mcp add playwright --command npx --args "-y @playwright/mcp"`.
 
 ## Tree
 

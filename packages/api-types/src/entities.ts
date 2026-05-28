@@ -207,6 +207,44 @@ export interface ProfileGroupWithCount extends ProfileGroup {
   memberCount: number
 }
 
+export type McpTransport = 'stdio' | 'http' | 'sse'
+
+/** A configured MCP server. The bearer token (http/sse) is never returned. */
+export interface McpServer {
+  id: string
+  name: string
+  transport: McpTransport
+  /** stdio only — executable to spawn. */
+  command: string | null
+  /** stdio only — arguments. */
+  args: string[]
+  /** http/sse only — endpoint URL. */
+  url: string | null
+  /** Whether a bearer token is stored for this server (http/sse). */
+  hasAuthToken: boolean
+  enabled: boolean
+  createdAt: number
+  updatedAt: number
+}
+
+/** Create/update payload for an MCP server. `authToken` is write-only. */
+export interface McpServerInput {
+  name: string
+  transport: McpTransport
+  command?: string | null
+  args?: string[]
+  url?: string | null
+  /** Bearer token for http/sse; stored encrypted. Pass null to clear. */
+  authToken?: string | null
+  enabled?: boolean
+}
+
+/** One tool discovered on an MCP server (returned by the test/connect endpoint). */
+export interface McpToolInfo {
+  name: string
+  description: string
+}
+
 export interface LoadedProfile {
   profile: Profile
   defaultSkills: string[]

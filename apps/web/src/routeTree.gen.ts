@@ -22,6 +22,7 @@ import { Route as ProfilesIdRouteImport } from './routes/profiles/$id'
 import { Route as ProfileGroupsIdRouteImport } from './routes/profile-groups/$id'
 import { Route as ConfigTokensRouteImport } from './routes/config/tokens'
 import { Route as ConfigServicesRouteImport } from './routes/config/services'
+import { Route as ConfigMcpRouteImport } from './routes/config/mcp'
 import { Route as ApiSplatRouteImport } from './routes/api/$'
 import { Route as GroupsIdIndexRouteImport } from './routes/groups/$id/index'
 import { Route as AgentsIdIndexRouteImport } from './routes/agents/$id/index'
@@ -95,6 +96,11 @@ const ConfigServicesRoute = ConfigServicesRouteImport.update({
   path: '/config/services',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ConfigMcpRoute = ConfigMcpRouteImport.update({
+  id: '/config/mcp',
+  path: '/config/mcp',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiSplatRoute = ApiSplatRouteImport.update({
   id: '/api/$',
   path: '/api/$',
@@ -137,6 +143,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/welcome': typeof WelcomeRoute
   '/api/$': typeof ApiSplatRoute
+  '/config/mcp': typeof ConfigMcpRoute
   '/config/services': typeof ConfigServicesRoute
   '/config/tokens': typeof ConfigTokensRoute
   '/profile-groups/$id': typeof ProfileGroupsIdRoute
@@ -159,6 +166,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/welcome': typeof WelcomeRoute
   '/api/$': typeof ApiSplatRoute
+  '/config/mcp': typeof ConfigMcpRoute
   '/config/services': typeof ConfigServicesRoute
   '/config/tokens': typeof ConfigTokensRoute
   '/profile-groups/$id': typeof ProfileGroupsIdRoute
@@ -182,6 +190,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/welcome': typeof WelcomeRoute
   '/api/$': typeof ApiSplatRoute
+  '/config/mcp': typeof ConfigMcpRoute
   '/config/services': typeof ConfigServicesRoute
   '/config/tokens': typeof ConfigTokensRoute
   '/profile-groups/$id': typeof ProfileGroupsIdRoute
@@ -206,6 +215,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/welcome'
     | '/api/$'
+    | '/config/mcp'
     | '/config/services'
     | '/config/tokens'
     | '/profile-groups/$id'
@@ -228,6 +238,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/welcome'
     | '/api/$'
+    | '/config/mcp'
     | '/config/services'
     | '/config/tokens'
     | '/profile-groups/$id'
@@ -250,6 +261,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/welcome'
     | '/api/$'
+    | '/config/mcp'
     | '/config/services'
     | '/config/tokens'
     | '/profile-groups/$id'
@@ -273,6 +285,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   WelcomeRoute: typeof WelcomeRoute
   ApiSplatRoute: typeof ApiSplatRoute
+  ConfigMcpRoute: typeof ConfigMcpRoute
   ConfigServicesRoute: typeof ConfigServicesRoute
   ConfigTokensRoute: typeof ConfigTokensRoute
   ProfileGroupsIdRoute: typeof ProfileGroupsIdRoute
@@ -384,6 +397,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ConfigServicesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/config/mcp': {
+      id: '/config/mcp'
+      path: '/config/mcp'
+      fullPath: '/config/mcp'
+      preLoaderRoute: typeof ConfigMcpRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/$': {
       id: '/api/$'
       path: '/api/$'
@@ -441,6 +461,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   WelcomeRoute: WelcomeRoute,
   ApiSplatRoute: ApiSplatRoute,
+  ConfigMcpRoute: ConfigMcpRoute,
   ConfigServicesRoute: ConfigServicesRoute,
   ConfigTokensRoute: ConfigTokensRoute,
   ProfileGroupsIdRoute: ProfileGroupsIdRoute,

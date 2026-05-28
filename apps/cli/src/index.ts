@@ -13,6 +13,7 @@ import { doctorCommand } from './commands/doctor.ts'
 import { groupCommand } from './commands/group.ts'
 import { inboxCommand } from './commands/inbox.ts'
 import { loginCommand } from './commands/login.ts'
+import { mcpCommand } from './commands/mcp.ts'
 import { memoryCommand } from './commands/memory.ts'
 import { profileCommand } from './commands/profile.ts'
 import { profileGroupCommand } from './commands/profile-group.ts'
@@ -39,6 +40,7 @@ const main = defineCommand({
     agent: agentCommand,
     skill: skillCommand,
     memory: memoryCommand,
+    mcp: mcpCommand,
     provider: providerCommand,
     send: sendCommand,
     inbox: inboxCommand,

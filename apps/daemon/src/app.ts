@@ -10,6 +10,7 @@ import { agentsRouter } from './routes/agents.ts'
 import { authRouter } from './routes/auth-login.ts'
 import { configRouter } from './routes/config.ts'
 import { groupsRouter } from './routes/groups.ts'
+import { mcpRouter } from './routes/mcp.ts'
 import { messagesRouter } from './routes/messages.ts'
 import { miscRouter } from './routes/misc.ts'
 import { profileGroupsRouter } from './routes/profile-groups.ts'
@@ -33,6 +34,7 @@ export function createApp(): Hono {
   app.route('/api/skills', skillsRouter)
   app.route('/api/triggers', triggersRouter)
   app.route('/api/messages', messagesRouter)
+  app.route('/api/mcp-servers', mcpRouter)
   // Mount the Telegram sub-router BEFORE /api/config so it claims the
   // /api/config/telegram* prefix — otherwise the generic configRouter's
   // /fields/:envVar handler would shadow our routes on the same prefix.

@@ -24,7 +24,7 @@
 //   - auto_retry_*                 — silently retried, user sees only the
 //                                    eventual success or failure
 
-import type { ProviderMessage, SessionEvent, ToolCall } from '@bazilion/api-types'
+import type { ProviderMessage, SessionEvent, ToolCall, ToolResultImage } from '@bazilion/api-types'
 import type { AgentMessage, AgentToolResult } from '@earendil-works/pi-agent-core'
 import type { AssistantMessage } from '@earendil-works/pi-ai'
 import type { AgentSessionEvent } from '@earendil-works/pi-coding-agent'
@@ -75,7 +75,16 @@ export function translatePiEvent(e: AgentSessionEvent): SessionEvent[] {
       if (e.isError) {
         return [{ type: 'tool_error', id: e.toolCallId, name: e.toolName, error: text }]
       }
-      return [{ type: 'tool_result', id: e.toolCallId, name: e.toolName, result: text }]
+      const images = extractToolResultImages(e.result)
+      return [
+        {
+          type: 'tool_result',
+          id: e.toolCallId,
+          name: e.toolName,
+          result: text,
+          ...(images.length > 0 ? { images } : {}),
+        },
+      ]
     }
 
     default:
@@ -109,6 +118,22 @@ export function extractToolResultText(result: unknown): string {
   let out = ''
   for (const block of r.content) {
     if (block.type === 'text') out += block.text
+  }
+  return out
+}
+
+/** Pull image blocks out of a tool result (browser screenshots, MCP images). */
+export function extractToolResultImages(result: unknown): ToolResultImage[] {
+  const r = result as AgentToolResult<unknown> | undefined
+  if (!r?.content) return []
+  const out: ToolResultImage[] = []
+  for (const block of r.content) {
+    if (block.type === 'image') {
+      const b = block as { data?: string; mimeType?: string }
+      if (typeof b.data === 'string' && typeof b.mimeType === 'string') {
+        out.push({ data: b.data, mimeType: b.mimeType })
+      }
+    }
   }
   return out
 }

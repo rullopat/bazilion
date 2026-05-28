@@ -29,12 +29,27 @@ export interface ToolDef {
   parameters: object
 }
 
+/** An image produced by a tool result (e.g. a browser screenshot). */
+export interface ToolResultImage {
+  /** base64-encoded image bytes (no data: prefix). */
+  data: string
+  /** e.g. "image/png". */
+  mimeType: string
+}
+
 export type SessionEvent =
   | { type: 'user_message'; text: string }
   | { type: 'assistant_delta'; delta: string }
   | { type: 'assistant_message'; text: string }
   | { type: 'tool_call'; id: string; name: string; arguments: string }
-  | { type: 'tool_result'; id: string; name: string; result: string }
+  | {
+      type: 'tool_result'
+      id: string
+      name: string
+      result: string
+      /** Images emitted by the tool (browser screenshots, MCP image results). */
+      images?: ToolResultImage[]
+    }
   | { type: 'tool_error'; id: string; name: string; error: string }
   | { type: 'error'; error: string }
 

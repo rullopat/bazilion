@@ -20,13 +20,21 @@ import type { ToolDefinition } from '@earendil-works/pi-coding-agent'
 import { Type } from 'typebox'
 import type { MemoryBackend } from '../memory/types.ts'
 import { bootstrapTool } from '../tools/bootstrap.ts'
+import { browserTools } from '../tools/browser.ts'
 import { homeTools } from '../tools/home.ts'
+import { mcpProxyTools } from '../tools/mcp.ts'
 import { memoryTools } from '../tools/memory.ts'
 import { messagingTools } from '../tools/messaging.ts'
-import type { ToolHandler } from '../tools/types.ts'
+import type { ToolHandler, ToolOutput } from '../tools/types.ts'
 import { userMdTools } from '../tools/user-md.ts'
 import { webTools } from '../tools/web.ts'
-import type { MessagingHost, UserMdHost } from '../worker/ipc-protocol.ts'
+import type {
+  BrowserHost,
+  InjectedMcpTool,
+  McpHost,
+  MessagingHost,
+  UserMdHost,
+} from '../worker/ipc-protocol.ts'
 
 /**
  * Wrap a Bazilion `ToolHandler` as a pi `ToolDefinition` so it can be passed
@@ -44,13 +52,29 @@ export function ourToolToPiTool(h: ToolHandler): ToolDefinition {
     description: h.def.description,
     parameters: Type.Unsafe<Record<string, unknown>>(h.def.parameters as Record<string, unknown>),
     async execute(_toolCallId, params) {
-      const text = await h.invoke(params as Record<string, unknown>)
+      const out = await h.invoke(params as Record<string, unknown>)
       return {
-        content: [{ type: 'text', text }],
+        content: toPiContent(out),
         details: {},
       }
     },
   }
+}
+
+/**
+ * Map a Bazilion `ToolOutput` to pi's `(TextContent | ImageContent)[]`. A bare
+ * string becomes a single text block (the legacy shape); a part array maps
+ * 1:1 — pi's content blocks have the same field names.
+ */
+function toPiContent(
+  out: ToolOutput,
+): Array<{ type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string }> {
+  if (typeof out === 'string') return [{ type: 'text', text: out }]
+  return out.map((p) =>
+    p.type === 'text'
+      ? { type: 'text', text: p.text }
+      : { type: 'image', data: p.data, mimeType: p.mimeType },
+  )
 }
 
 export interface BazilionCustomToolsOpts {
@@ -60,6 +84,12 @@ export interface BazilionCustomToolsOpts {
   messagingHost?: MessagingHost
   /** If provided, enables the `user_md_append` tool. */
   userMdHost?: UserMdHost
+  /** If provided, enables the `browser_*` tools (proxied to the daemon pool). */
+  browserHost?: BrowserHost
+  /** If provided alongside `mcpTools`, enables the discovered MCP proxy tools. */
+  mcpHost?: McpHost
+  /** MCP tools discovered daemon-side, exposed as proxy tools. */
+  mcpTools?: InjectedMcpTool[]
   /** Merged env (process.env + secrets). */
   env?: NodeJS.ProcessEnv
 }
@@ -86,6 +116,12 @@ export function createBazilionCustomTools(opts: BazilionCustomToolsOpts): ToolDe
   }
   if (opts.userMdHost) {
     handlers.push(...userMdTools(opts.userMdHost, opts.agent.group.id))
+  }
+  if (opts.browserHost) {
+    handlers.push(...browserTools(opts.browserHost, opts.agent.agent.id))
+  }
+  if (opts.mcpHost && opts.mcpTools && opts.mcpTools.length > 0) {
+    handlers.push(...mcpProxyTools(opts.mcpHost, opts.mcpTools))
   }
   return handlers.map(ourToolToPiTool)
 }

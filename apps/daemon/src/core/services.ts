@@ -379,6 +379,51 @@ export const SERVICES: ServiceDef[] = [
       },
     ],
   },
+  {
+    id: 'browser',
+    displayName: 'Browser Automation',
+    category: 'service',
+    group: 'Browser',
+    hint: 'Playwright-driven browser tools (navigate, snapshot, click, screenshot). Run `pnpm exec playwright install chromium` once.',
+    fields: [
+      {
+        envVar: 'BROWSER_ENABLED',
+        kind: 'config',
+        label: 'Enable browser tools',
+        placeholder: 'true',
+        description: 'Expose the browser_* tools to agents (true/false). Default true.',
+      },
+      {
+        envVar: 'BROWSER_HEADLESS',
+        kind: 'config',
+        label: 'Headless',
+        placeholder: 'true',
+        description: 'Run Chromium headless (true/false). Default true.',
+      },
+      {
+        envVar: 'BROWSER_ALLOW_PRIVATE_NETWORK',
+        kind: 'config',
+        label: 'Allow private network',
+        placeholder: 'false',
+        description:
+          'Permit the browser to reach loopback/private IPs (SSRF guard off). Default false — only enable for local dev.',
+      },
+      {
+        envVar: 'BROWSER_IDLE_MS',
+        kind: 'config',
+        label: 'Idle timeout (ms)',
+        placeholder: '900000',
+        description: 'Close an idle browser session after this many ms. Default 900000 (15 min).',
+      },
+      {
+        envVar: 'BROWSER_MAX_SESSIONS',
+        kind: 'config',
+        label: 'Max concurrent sessions',
+        placeholder: '4',
+        description: 'Cap on simultaneously-open browser sessions (LRU-evicted). Default 4.',
+      },
+    ],
+  },
 
   // --- External integrations (chat bridges, etc) ---
   // Each integration has its own dedicated /config/integrations/* page with

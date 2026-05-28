@@ -18,6 +18,7 @@ type ToolItem = {
   id: string
   name: string
   body: string
+  images?: { data: string; mimeType: string }[]
 }
 
 type RenderEntry =
@@ -598,7 +599,7 @@ export function ChatPane({
         ev.type === 'tool_call'
           ? { kind: 'call', id: ev.id, name: ev.name, body: ev.arguments }
           : ev.type === 'tool_result'
-            ? { kind: 'result', id: ev.id, name: ev.name, body: ev.result }
+            ? { kind: 'result', id: ev.id, name: ev.name, body: ev.result, images: ev.images }
             : { kind: 'error', id: ev.id, name: ev.name, body: ev.error }
       setLiveEntries((prev) => {
         const next = [...prev]
@@ -1017,6 +1018,15 @@ function ToolLine({ item }: { item: ToolItem }) {
     <div className="whitespace-pre-wrap break-words py-0.5">
       <span className="mr-1 opacity-45">←</span>
       {item.body}
+      {item.images?.map((img, i) => (
+        <img
+          // biome-ignore lint/suspicious/noArrayIndexKey: images are append-only within one result
+          key={i}
+          src={`data:${img.mimeType};base64,${img.data}`}
+          alt="tool screenshot"
+          className="mt-2 max-w-full rounded border"
+        />
+      ))}
     </div>
   )
 }

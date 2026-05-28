@@ -12,6 +12,10 @@ export type {
   AgentTrigger,
   Group,
   LoadedProfile,
+  McpServer,
+  McpServerInput,
+  McpToolInfo,
+  McpTransport,
   Message,
   OpenAICodexStatus,
   Profile,
@@ -38,6 +42,7 @@ export type {
   SessionEvent,
   ToolCall,
   ToolDef,
+  ToolResultImage,
 } from './events.ts'
 export type { MemoryEntry, MemoryHit } from './memory.ts'
 
