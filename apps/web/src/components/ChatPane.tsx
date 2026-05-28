@@ -177,6 +177,7 @@ export function ChatPane({
   const [editIdx, setEditIdx] = useState<number | null>(null)
   const [input, setInput] = useState('')
   const [attachments, setAttachments] = useState<ImageAttachment[]>([])
+  const [dragging, setDragging] = useState(false)
   const [staleBanner, setStaleBanner] = useState(false)
 
   const messagesRef = useRef<HTMLDivElement | null>(null)
@@ -489,6 +490,25 @@ export function ChatPane({
     }
   }
 
+  function onDragOver(e: React.DragEvent) {
+    if (streaming) return
+    if (Array.from(e.dataTransfer.types).includes('Files')) {
+      e.preventDefault()
+      setDragging(true)
+    }
+  }
+  function onDragLeave(e: React.DragEvent) {
+    // Only clear when the pointer leaves the container itself (not a child).
+    if (e.currentTarget === e.target) setDragging(false)
+  }
+  function onDrop(e: React.DragEvent) {
+    if (e.dataTransfer.files.length > 0) {
+      e.preventDefault()
+      setDragging(false)
+      void addFiles(e.dataTransfer.files)
+    }
+  }
+
   // --- send ---
   const send = useCallback(
     async (text: string) => {
@@ -725,7 +745,17 @@ export function ChatPane({
   })()
 
   return (
-    <div className="flex h-full flex-col overflow-hidden rounded-[16px] border border-frost bg-snow shadow-baziu-sm">
+    <div
+      className="relative flex h-full flex-col overflow-hidden rounded-[16px] border border-frost bg-snow shadow-baziu-sm"
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+    >
+      {dragging && (
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-[16px] border-2 border-dashed border-sapphire bg-sapphire-glow/80 text-[0.95em] font-medium text-sapphire-deep">
+          drop image(s) to attach
+        </div>
+      )}
       <div className="flex items-baseline justify-between border-b border-frost px-4 py-2.5">
         <h1 className="font-display text-[1.2rem] text-charcoal">{agentName}</h1>
         <a
