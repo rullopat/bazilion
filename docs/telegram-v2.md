@@ -82,24 +82,40 @@ maps each item to where it lands below (numbered by the size order).
 private-supergroup forum topics (v1 step-4 decision). Revisit only if Telegram
 closes the gap.
 
-## Size ranking (the ordering at a glance)
+## Build status (2026-05-28)
 
-Smallest first. Rough effort score in brackets (1 = tiny, 5 = major reshape).
+**Shipped in this PR (one branch, per-phase commits): Phases 1–8 + 11.** Phases
+9, 10, 12 remain as ready-to-build user stories; Phases 13–14 are design spikes
+(open scoping questions to resolve before code). Status legend: ✅ built ·
+📋 ready user story · 🔬 spike.
 
-1. **Per-group topic-name template** [1] — one column, one render fn, one field.
-2. **Bot-loop protection + throttle** [1.5] — in-memory state, one module, no migration.
-3. **Profile-derived emojis + override** [2] — columns already exist; seed + wire.
-4. **Granular mirror / visibility controls** [2] — one ALTER + mirror seam tweaks.
-5. **Group-migration resilience** [2] — no migration; detect + reconnect surface.
-6. **`/spawn ... in <group>` + `/spawn-team`** [2.5] — command surface over existing primitives.
-7. **Per-user ACLs** [3.5] — new table, enforcement gate, commands, CLI, web *(pulled ahead of #8 for the dependency)*.
-8. **Per-topic config overrides** [3] — new table, router consults in 3 places.
-9. **Streaming via `editMessage`** [4] — migration + a genuinely tricky mirror path.
-10. **Webhook ingress** [4] — dual lifecycle, route, mode switch, conflict recovery.
-11. **Multimodal inbound** [4.5] — download + guards + inbound-queue reshape.
-12. **DM ingress + pairing** [4.5] — migrations, codes, bindings, QR, router branch.
-13. **Multi-account** [5] — data migration + routing gains an account dimension.
-14. **Telegram WebApp UI** [5] — new UI surface + `initData` auth + scoping spike.
+| # | Phase | Effort | Status |
+|---|---|---|---|
+| 1 | Per-group topic-name template | 1 | ✅ built |
+| 2 | Inbound safety guards (drop-bot + rate budgets) | 1.5 | ✅ built |
+| 3 | Profile-derived emojis + per-agent override | 2 | ✅ built |
+| 4 | Granular mirror / visibility controls | 2 | ✅ built |
+| 5 | Group-migration resilience | 2 | ✅ built |
+| 6 | `/spawn ... in <group>` + `/spawn-team` | 2.5 | ✅ built |
+| 7 | Per-user ACLs (TOFU + Flat) | 3.5 | ✅ built |
+| 8 | Per-topic config overrides | 3 | ✅ built |
+| 9 | Streaming via `editMessage` | 4 | 📋 ready user story |
+| 10 | Webhook ingress | 4 | 📋 ready user story |
+| 11 | Multimodal inbound (bounded slice) | 4.5 | ✅ built |
+| 12 | DM ingress + pairing | 4.5 | 📋 ready user story |
+| 13 | Multi-account | 5 | 🔬 spike |
+| 14 | Telegram WebApp UI | 5 | 🔬 spike |
+
+Notes on what shipped vs. the original specs:
+- **Phase 2** reframed from OpenClaw's multi-bot "bot-loop protection" to the
+  single-bot-correct guards (drop bot inbound + per-agent rate/noise budgets) —
+  see the premise correction in the Phase 2 section.
+- **Phase 11** shipped a *bounded slice*: inbound media is downloaded + referenced
+  by path in the turn (no longer silently dropped), but native provider image
+  content blocks are deferred (see Phase 11).
+- Within Phase 3, profile-level emoji *editing* (the `profiles.telegram_icon_emoji`
+  column) is deferred; the zero-config BUILTIN-by-profile-name map + per-agent
+  override shipped.
 
 Each phase below is a self-contained PR. The format mirrors v1: **User story →
 Design decisions → Schema & code sketch → Depends on → Open questions.** Open
@@ -451,6 +467,8 @@ Phase 7 (uses the allowlist primitive for `allow_from` intersection).
 
 ## Phase 9 — Streaming modes (partial via editMessage)
 
+> **Status: 📋 ready user story** — not built in this PR. Spec below is implementation-ready.
+
 ### User story
 On the web UI the user watches the agent type in real time. On Telegram they wait,
 then a finished block appears. They want the live feel.
@@ -492,6 +510,8 @@ Phase 2 (the throttle/queue interactions matter once edits are frequent).
 ---
 
 ## Phase 10 — Webhook ingress (the old "Step 8")
+
+> **Status: 📋 ready user story** — not built in this PR. Needs a public URL to test.
 
 ### User story
 The user runs the daemon behind a public URL (Tailscale Funnel, Cloudflare Tunnel,
@@ -568,6 +588,8 @@ polish phases.
 
 ## Phase 12 — DM ingress + pairing
 
+> **Status: 📋 ready user story** — not built in this PR. Depends on Phase 7 (shipped).
+
 ### User story
 The user wants to DM the bot directly (1:1, no supergroup) and have it reach a
 specific agent — useful on the go without opening the forum.
@@ -599,6 +621,12 @@ Phase 7 (pairing populates / references the ACL). Larger surface.
 
 ## Phase 13 — Multi-account
 
+> **Status: 🔬 spike** — not built. This is a cross-cutting reshape of the
+> single-account assumption (all `TELEGRAM_*` config/secret keys → per-account
+> rows, plus an `accountId` dimension on every router/mirror/scheduler lookup).
+> Resolve the open questions below and write a focused design before coding;
+> don't fold it into a feature PR.
+
 ### User story
 A power user wants two bot identities on one daemon (e.g. a personal bot and a
 work bot) routing to different groups.
@@ -628,6 +656,10 @@ Touches the ACL (Phase 7), overrides (Phase 8), and webhook (Phase 10) surfaces
 ---
 
 ## Phase 14 — Telegram WebApp UI (Mini App)
+
+> **Status: 🔬 spike** — not built. Genuine v3 territory: needs a public URL,
+> `initData` HMAC auth, and a scoping decision (reuse apps/web wholesale vs a
+> Telegram-specific thin UI). Run the design spike first.
 
 ### User story
 The user wants a richer config/dashboard experience inside Telegram than slash
