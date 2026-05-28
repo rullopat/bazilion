@@ -61,6 +61,19 @@ test('reuses one session per agent across calls', { timeout: 60_000 }, async () 
   expect(a.length).toBeGreaterThan(0)
 })
 
+test('a stale/unknown ref recovers with a fresh snapshot instead of dead-ending', {
+  timeout: 60_000,
+}, async () => {
+  if (!available) return
+  await invokeBrowserAction('browser-smoke', 'navigate', { url: PAGE }, CONFIG)
+  const res = await invokeBrowserAction('browser-smoke', 'click', { ref: 'e9999' }, CONFIG)
+  const txt = res.map((p) => (p.type === 'text' ? p.text : '')).join('')
+  expect(txt).toMatch(/Could not act on ref "e9999"/)
+  expect(txt).toMatch(/retry with a current ref/i)
+  // recovery includes a usable fresh snapshot
+  expect(txt).toMatch(/Accessibility snapshot/)
+})
+
 test('screenshot/snapshot on a fresh (un-navigated) session return a navigate hint', {
   timeout: 60_000,
 }, async () => {

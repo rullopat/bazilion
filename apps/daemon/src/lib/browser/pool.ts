@@ -24,6 +24,9 @@ import { browserBlockReason } from './ssrf.ts'
 const CONSOLE_CAP = 100
 const NETWORK_CAP = 100
 const DEFAULT_NAV_TIMEOUT_MS = 30_000
+// Interactions (click/type/hover/select) fail much faster than navigations:
+// a stale ref or non-actionable element shouldn't hang the agent for 30s.
+const ACTION_TIMEOUT_MS = 10_000
 
 export interface BrowserConfig {
   headless: boolean
@@ -127,7 +130,7 @@ async function createSession(agentId: string, config: BrowserConfig): Promise<Br
     serviceWorkers: 'block',
   })
   context.setDefaultNavigationTimeout(DEFAULT_NAV_TIMEOUT_MS)
-  context.setDefaultTimeout(DEFAULT_NAV_TIMEOUT_MS)
+  context.setDefaultTimeout(ACTION_TIMEOUT_MS)
 
   const session: BrowserSession = {
     agentId,
@@ -253,6 +256,32 @@ async function snapshotText(s: BrowserSession): Promise<string> {
     .join('\n')
 }
 
+/**
+ * Run a ref-targeted interaction and return a fresh snapshot. On failure
+ * (almost always a stale ref — refs are renumbered on every snapshot, so any
+ * navigation/DOM change since the model's last snapshot invalidates them, or
+ * the element isn't actionable) we DON'T dead-end: we return a clear note plus
+ * a fresh snapshot so the model can retry with a current ref instead of
+ * repeating a 30s timeout.
+ */
+async function actOnRef(
+  session: BrowserSession,
+  ref: string,
+  fn: () => Promise<unknown>,
+): Promise<ToolResultPart[]> {
+  try {
+    await fn()
+  } catch (err) {
+    const first = (err as Error).message.split('\n')[0] ?? 'action failed'
+    return text(
+      `Could not act on ref "${ref}": ${first}\n\n` +
+        'The ref is likely stale — refs are renumbered on every snapshot, so any navigation or page change since your last browser_snapshot invalidates old refs (or the element is not interactable). The page was NOT changed by this call. Here is a fresh snapshot — retry with a current ref:\n\n' +
+        (await snapshotText(session)),
+    )
+  }
+  return text(await snapshotText(session))
+}
+
 function str(args: Record<string, unknown>, key: string): string {
   const v = args[key]
   if (typeof v !== 'string' || !v)
@@ -294,39 +323,39 @@ export async function invokeBrowserAction(
       if (isBlank(page())) return text(NO_PAGE_HINT)
       return text(await snapshotText(session))
     case 'click': {
-      await page()
-        .locator(`aria-ref=${str(args, 'ref')}`)
-        .click()
-      return text(await snapshotText(session))
+      const ref = str(args, 'ref')
+      return actOnRef(session, ref, () => page().locator(`aria-ref=${ref}`).click())
     }
     case 'type': {
-      const loc = page().locator(`aria-ref=${str(args, 'ref')}`)
-      await loc.fill(typeof args.text === 'string' ? args.text : '')
-      if (args.submit === true) await loc.press('Enter')
-      return text(await snapshotText(session))
+      const ref = str(args, 'ref')
+      return actOnRef(session, ref, async () => {
+        const loc = page().locator(`aria-ref=${ref}`)
+        await loc.fill(typeof args.text === 'string' ? args.text : '')
+        if (args.submit === true) await loc.press('Enter')
+      })
     }
     case 'hover': {
-      await page()
-        .locator(`aria-ref=${str(args, 'ref')}`)
-        .hover()
-      return text(await snapshotText(session))
+      const ref = str(args, 'ref')
+      return actOnRef(session, ref, () => page().locator(`aria-ref=${ref}`).hover())
     }
     case 'select': {
+      const ref = str(args, 'ref')
       const values = Array.isArray(args.values) ? (args.values as string[]) : [str(args, 'value')]
-      await page()
-        .locator(`aria-ref=${str(args, 'ref')}`)
-        .selectOption(values)
-      return text(await snapshotText(session))
+      return actOnRef(session, ref, () => page().locator(`aria-ref=${ref}`).selectOption(values))
     }
     case 'fill_form': {
-      const fields = Array.isArray(args.fields) ? args.fields : []
-      for (const f of fields as Array<{ ref?: string; value?: string }>) {
-        if (!f.ref) continue
-        await page()
-          .locator(`aria-ref=${f.ref}`)
-          .fill(f.value ?? '')
-      }
-      return text(await snapshotText(session))
+      const fields = (Array.isArray(args.fields) ? args.fields : []) as Array<{
+        ref?: string
+        value?: string
+      }>
+      return actOnRef(session, fields.map((f) => f.ref).join(','), async () => {
+        for (const f of fields) {
+          if (!f.ref) continue
+          await page()
+            .locator(`aria-ref=${f.ref}`)
+            .fill(f.value ?? '')
+        }
+      })
     }
     case 'press_key': {
       await page().keyboard.press(str(args, 'key'))
