@@ -16,7 +16,7 @@
 
 import type { ChatFrame, TelegramMirrorMode } from '@bazilion/api-types'
 import type { BazilionDb } from '../../core/db/client.ts'
-import { agentRepo } from '../../core/index.ts'
+import { agentRepo, telegramOverridesRepo } from '../../core/index.ts'
 import { _resetLoopGuardForTest, allowTelegramOutboundNoise } from './loop-guard.ts'
 import { enqueueOutbound } from './outbound-queue.ts'
 import { clearReactionsFor } from './reactions.ts'
@@ -71,6 +71,10 @@ export async function mirrorAgentTurnFrame(
   if (!agent) return
   const topicId = agentRepo.getTelegramTopicId(deps.db, agent.id)
   if (topicId === null) return
+
+  // Per-topic silence override (Phase 8) — suppress this topic's mirror
+  // entirely, except errors/fatals which always surface.
+  if (telegramOverridesRepo.get(deps.db, agent.id)?.silent && !isEssentialFrame(frame)) return
 
   const text = renderFrame(frame, agent.telegramMirrorMode)
   if (!text) return

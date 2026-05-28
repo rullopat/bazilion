@@ -25,6 +25,7 @@ import {
   type ResolvedSkillsResponse,
   type SendMessageRequest,
   type SessionHeadResponse,
+  type SetTelegramOverrideRequest,
   type SpawnAgentRequest,
   type TruncateChatRequest,
   type TruncateChatResponse,
@@ -43,6 +44,7 @@ import {
   resolveAgentSkills,
   skillMetaRepo,
   spawnAgent,
+  telegramOverridesRepo,
   triggerRepo,
   unarchiveAgent,
 } from '../core/index.ts'
@@ -275,6 +277,51 @@ agentsRouter.delete('/:id/telegram/binding', (c) => {
   if (!resolvedId) return c.json({ error: `agent not found: ${c.req.param('id')}` }, 404)
   agentRepo.setTelegramTopicId(db, resolvedId, null)
   notifyDirectoryDirty()
+  return c.body(null, 204)
+})
+
+// Per-topic overrides (Phase 8). GET returns the effective override (defaults
+// when no row exists); PUT merges a patch; DELETE clears back to defaults.
+agentsRouter.get('/:id/telegram/override', (c) => {
+  const { db } = getCtx()
+  const resolvedId = agentRepo.resolveId(db, c.req.param('id'))
+  if (!resolvedId) return c.json({ error: `agent not found: ${c.req.param('id')}` }, 404)
+  const o = telegramOverridesRepo.get(db, resolvedId)
+  return c.json(
+    o ?? {
+      agentId: resolvedId,
+      requireMention: false,
+      allowFrom: [],
+      silent: false,
+      updatedAt: null,
+    },
+  )
+})
+
+agentsRouter.put('/:id/telegram/override', async (c) => {
+  const body = (await c.req.json().catch(() => null)) as SetTelegramOverrideRequest | null
+  if (!body) return c.json({ error: 'invalid JSON body' }, 400)
+  if (body.allowFrom !== undefined && !Array.isArray(body.allowFrom)) {
+    return c.json({ error: 'allowFrom must be an array of user ids' }, 400)
+  }
+  const { db } = getCtx()
+  const resolvedId = agentRepo.resolveId(db, c.req.param('id'))
+  if (!resolvedId) return c.json({ error: `agent not found: ${c.req.param('id')}` }, 404)
+  const o = telegramOverridesRepo.set(db, resolvedId, {
+    ...(body.requireMention !== undefined ? { requireMention: body.requireMention } : {}),
+    ...(body.allowFrom !== undefined
+      ? { allowFrom: body.allowFrom.filter((n) => Number.isInteger(n)) }
+      : {}),
+    ...(body.silent !== undefined ? { silent: body.silent } : {}),
+  })
+  return c.json(o)
+})
+
+agentsRouter.delete('/:id/telegram/override', (c) => {
+  const { db } = getCtx()
+  const resolvedId = agentRepo.resolveId(db, c.req.param('id'))
+  if (!resolvedId) return c.json({ error: `agent not found: ${c.req.param('id')}` }, 404)
+  telegramOverridesRepo.remove(db, resolvedId)
   return c.body(null, 204)
 })
 

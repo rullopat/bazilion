@@ -9,6 +9,7 @@ export type {
   AgentIdentityFile,
   AgentSkillAttachment,
   AgentStatus,
+  AgentTelegramOverride,
   AgentTrigger,
   Group,
   LoadedProfile,
@@ -225,6 +226,16 @@ export interface AddTelegramAllowedUserRequest {
   label?: string | null
   /** Defaults to 'member' when omitted. */
   role?: TelegramAclRole
+}
+
+/**
+ * Body for `PUT /api/agents/:id/telegram/override`. Omitted fields are left
+ * unchanged (merge semantics). `allowFrom: []` clears the per-topic narrowing.
+ */
+export interface SetTelegramOverrideRequest {
+  requireMention?: boolean
+  allowFrom?: number[]
+  silent?: boolean
 }
 
 // --- skills (write) ---

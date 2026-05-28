@@ -95,6 +95,19 @@ export interface AgentSkillAttachment {
   attachedAt: Timestamp
 }
 
+/**
+ * Per-agent-topic Telegram behavior override (Phase 8). All knobs gate
+ * plain-text chat in the bound topic; topic commands stay governed by the
+ * global ACL. `allowFrom` intersects the global allowlist (narrow-only).
+ */
+export interface AgentTelegramOverride {
+  agentId: string
+  requireMention: boolean
+  allowFrom: number[]
+  silent: boolean
+  updatedAt: Timestamp | null
+}
+
 export type TelegramAclRole = 'owner' | 'member'
 
 /**

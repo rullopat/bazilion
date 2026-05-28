@@ -12,7 +12,7 @@ import type {
 } from '@bazilion/api-types'
 import { createFileRoute, redirect, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { AgentTabs } from '../../../components/AgentTabs'
 import { ChatPane } from '../../../components/ChatPane'
 import { CopyButton } from '../../../components/CopyButton'
@@ -723,12 +723,99 @@ function TelegramSection({
 
       {error && <p className="mt-2 text-sm text-rose-700">{error}</p>}
 
+      {isBound && <TopicOverridesBlock agentId={agent.id} />}
+
       <p className="mt-3 text-[0.85em] text-mocha-light">
         When bound, every assistant turn for this agent gets mirrored to the topic. Typing in
         the topic triggers a new turn. iOS Telegram clients have a known limitation that
         prevents inline link deep-links from opening directly into a topic — bound state is
         still functional; navigate via the topic list manually.
       </p>
+    </div>
+  )
+}
+
+function TopicOverridesBlock({ agentId }: { agentId: string }) {
+  const [override, setOverride] = useState<import('@bazilion/api-types').AgentTelegramOverride | null>(
+    null,
+  )
+  const [allowText, setAllowText] = useState('')
+  const [err, setErr] = useState<string | null>(null)
+
+  async function load() {
+    try {
+      const res = await fetch(`/api/agents/${encodeURIComponent(agentId)}/telegram/override`)
+      if (!res.ok) throw new Error(res.statusText)
+      const o = (await res.json()) as import('@bazilion/api-types').AgentTelegramOverride
+      setOverride(o)
+      setAllowText(o.allowFrom.join(', '))
+    } catch (e) {
+      setErr((e as Error).message)
+    }
+  }
+  useEffect(() => {
+    void load()
+  }, [])
+
+  async function save(patch: Record<string, unknown>) {
+    setErr(null)
+    try {
+      const res = await fetch(`/api/agents/${encodeURIComponent(agentId)}/telegram/override`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(patch),
+      })
+      if (!res.ok) throw new Error(res.statusText)
+      setOverride((await res.json()) as import('@bazilion/api-types').AgentTelegramOverride)
+    } catch (e) {
+      setErr((e as Error).message)
+    }
+  }
+
+  if (!override) return null
+  return (
+    <div className="mt-3 rounded-md border border-mocha/20 p-3 text-[0.85em]">
+      <div className="mb-2 font-semibold text-mocha-light">topic overrides</div>
+      <label className="m-0 mb-1 flex cursor-pointer items-center gap-2">
+        <input
+          type="checkbox"
+          checked={override.requireMention}
+          onChange={(e) => void save({ requireMention: e.target.checked })}
+        />
+        require @-mention (or reply) to respond
+      </label>
+      <label className="m-0 mb-2 flex cursor-pointer items-center gap-2">
+        <input
+          type="checkbox"
+          checked={override.silent}
+          onChange={(e) => void save({ silent: e.target.checked })}
+        />
+        silent (don't mirror this topic)
+      </label>
+      <div className="flex items-center gap-2">
+        <span className="text-mocha-light">allow only ids:</span>
+        <input
+          value={allowText}
+          onChange={(e) => setAllowText(e.target.value)}
+          placeholder="(any allowlisted)"
+          className="w-44 rounded-md border bg-background px-2 py-1 font-mono text-xs"
+        />
+        <button
+          type="button"
+          className="ghost-btn"
+          onClick={() =>
+            void save({
+              allowFrom: allowText
+                .split(',')
+                .map((s) => Number(s.trim()))
+                .filter((n) => Number.isInteger(n)),
+            })
+          }
+        >
+          save ids
+        </button>
+      </div>
+      {err && <p className="mt-1 text-rose-700">{err}</p>}
     </div>
   )
 }

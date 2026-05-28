@@ -41,6 +41,8 @@ interface BotHandle {
   paths: Paths
   /** Same auth token the rest of the daemon uses — needed for secrets store access from inside commands. */
   authToken: string
+  /** Bot @username from getMe, captured at start. Used for require_mention. */
+  botUsername: string | null
   state: TelegramPollingState
   stopRequested: boolean
   pollPromise: Promise<void> | null
@@ -143,6 +145,7 @@ async function startInternal(
     chatId,
     paths: resolvePaths(),
     authToken,
+    botUsername: null,
     state,
     stopRequested: false,
     pollPromise: null,
@@ -157,6 +160,14 @@ async function startInternal(
     await bot.api.deleteWebhook({ drop_pending_updates: false })
   } catch (e) {
     console.warn('telegram: deleteWebhook failed (continuing):', errMsg(e))
+  }
+
+  // Capture the bot's @username for require_mention (Phase 8). Best-effort —
+  // require_mention falls back to reply-only detection if this fails.
+  try {
+    handle.botUsername = (await bot.api.getMe()).username ?? null
+  } catch (e) {
+    console.warn('telegram: getMe failed (require_mention falls back to reply-only):', errMsg(e))
   }
 
   // Read persisted watermark. offset = lastUpdateId + 1 (so we resume past
@@ -321,6 +332,7 @@ async function dispatchUpdate(handle: BotHandle, db: BazilionDb, u: Update): Pro
       authToken: handle.authToken,
       api: handle.bot.api as unknown as ReplyApi,
       chatId: handle.chatId,
+      botUsername: handle.botUsername ?? undefined,
     },
     u,
   )
@@ -352,6 +364,8 @@ async function dispatchUpdate(handle: BotHandle, db: BazilionDb, u: Update): Pro
     console.log(`telegram: ignored unauthorized user ${outcome.userId}`)
   } else if (outcome.kind === 'owner_claimed') {
     console.log(`telegram: user ${outcome.userId} claimed owner (TOFU bootstrap)`)
+  } else if (outcome.kind === 'topic_not_allowed' || outcome.kind === 'mention_required') {
+    console.log(`telegram: ${outcome.kind} for agent=${outcome.agentId} (override)`)
   }
 }
 
