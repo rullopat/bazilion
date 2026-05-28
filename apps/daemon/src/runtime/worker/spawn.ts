@@ -24,7 +24,7 @@ import { type ChildProcess, spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import type { ChatFrame, ImageAttachment, ResolvedAgent } from '@bazilion/api-types'
+import type { Attachment, ChatFrame, ResolvedAgent } from '@bazilion/api-types'
 import type {
   BrowserHost,
   InjectedMcpTool,
@@ -97,8 +97,8 @@ export interface WorkerTurnSpec {
   browserEnabled?: boolean
   /** MCP tools discovered daemon-side, exposed as IPC-proxied proxy tools. */
   mcpTools?: InjectedMcpTool[]
-  /** Images attached to the user message — passed to pi's prompt (vision). */
-  images?: ImageAttachment[]
+  /** Image attachments — passed to pi's prompt (vision). Pre-classified by the daemon. */
+  images?: Attachment[]
 }
 
 export interface SpawnWorkerOpts {

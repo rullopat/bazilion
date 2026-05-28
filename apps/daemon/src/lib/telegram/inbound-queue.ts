@@ -17,12 +17,12 @@
 // later queue items still get a chance. Unbounded growth isn't a real
 // concern in practice (a human can only type so fast), so we don't cap.
 
-import type { ImageAttachment } from '@bazilion/api-types'
+import type { Attachment } from '@bazilion/api-types'
 import { runAgentTurn } from '../agent-turn.ts'
 
 interface QueueItem {
   text: string
-  images: ImageAttachment[]
+  attachments: Attachment[]
 }
 
 const _queues = new Map<string, QueueItem[]>()
@@ -36,10 +36,10 @@ const _running = new Map<string, Promise<void>>()
 export function enqueueAgentMessage(
   agentId: string,
   text: string,
-  images: ImageAttachment[] = [],
+  attachments: Attachment[] = [],
 ): void {
   const q = _queues.get(agentId) ?? []
-  q.push({ text, images })
+  q.push({ text, attachments })
   _queues.set(agentId, q)
   ensureDrainStarted(agentId)
 }
@@ -74,10 +74,10 @@ async function drainLoop(agentId: string): Promise<void> {
       .map((i) => i.text)
       .filter(Boolean)
       .join('\n\n')
-    const images = q.flatMap((i) => i.images)
+    const attachments = q.flatMap((i) => i.attachments)
     _queues.set(agentId, [])
     try {
-      for await (const _frame of runAgentTurn(agentId, message, { images })) {
+      for await (const _frame of runAgentTurn(agentId, message, { attachments })) {
         // Mirror handles the assistant's reply via the runAgentTurn frame
         // hook; we just need to drain the iterator so the worker doesn't
         // back up.

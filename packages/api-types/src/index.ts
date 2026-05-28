@@ -261,34 +261,25 @@ export interface ProviderTestResponse {
 
 // --- chat streaming ---
 
-/** An image the user attaches to a chat message (model input via vision). */
-export interface ImageAttachment {
-  /** base64-encoded image bytes (no data: prefix). */
-  data: string
-  /** e.g. "image/png", "image/jpeg". */
-  mimeType: string
-}
-
 /**
- * A non-image file the user attaches to a chat message. Unlike images, the
- * model can't perceive it directly — the daemon stores it and hands the agent
- * a path reference to open/process with its tools ("decide how to process").
+ * A file the user attaches to a chat message. One generic shape for everything;
+ * the daemon classifies it at turn assembly: `image/*` goes to the model as
+ * vision, anything else is stored on disk and referenced by path so the agent
+ * decides how to process it.
  */
-export interface FileAttachment {
-  /** Original filename (used for the saved name + the reference note). */
-  name: string
-  /** e.g. "application/pdf", "text/csv". */
+export interface Attachment {
+  /** Original filename when known (used for stored non-image files). */
+  name?: string
+  /** e.g. "image/png", "application/pdf", "text/csv". */
   mimeType: string
-  /** base64-encoded file bytes. */
+  /** base64-encoded bytes (no data: prefix). */
   data: string
 }
 
 export interface ChatRequest {
   message: string
-  /** Optional images attached to this message — the model sees them (vision). */
-  images?: ImageAttachment[]
-  /** Optional non-image files — stored on disk + referenced by path to the agent. */
-  files?: FileAttachment[]
+  /** Files attached to this message (images → vision; others → stored + referenced). */
+  attachments?: Attachment[]
 }
 
 // --- profile files ---

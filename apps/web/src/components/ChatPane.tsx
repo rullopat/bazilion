@@ -3,9 +3,8 @@
 // loader; new ones land via fetch + ReadableStream consume.
 
 import type {
+  Attachment,
   ChatFrame,
-  FileAttachment,
-  ImageAttachment,
   ProviderMessage,
   SessionHeadResponse,
 } from '@bazilion/api-types'
@@ -93,25 +92,8 @@ function formatBytes(n: number): string {
   return `${(n / (1024 * 1024)).toFixed(2)} MiB`
 }
 
-/** Read a File into a base64 ImageAttachment (strips the data: URL prefix). */
-function fileToImage(file: File): Promise<ImageAttachment> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => {
-      const result = String(reader.result)
-      const comma = result.indexOf(',')
-      resolve({
-        data: comma >= 0 ? result.slice(comma + 1) : result,
-        mimeType: file.type || 'image/png',
-      })
-    }
-    reader.onerror = () => reject(reader.error)
-    reader.readAsDataURL(file)
-  })
-}
-
-/** Read a non-image File into a base64 FileAttachment. */
-function fileToFile(file: File): Promise<FileAttachment> {
+/** Read any File into a base64 Attachment (strips the data: URL prefix). */
+function fileToAttachment(file: File): Promise<Attachment> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => {
@@ -127,6 +109,8 @@ function fileToFile(file: File): Promise<FileAttachment> {
     reader.readAsDataURL(file)
   })
 }
+
+const isImageMime = (m: string) => m.startsWith('image/')
 
 // Project canonical ProviderMessage[] into render entries: assistant content +
 // any tool calls, then tool-role messages collapse into the same group.
@@ -201,8 +185,7 @@ export function ChatPane({
   const [streaming, setStreaming] = useState(false)
   const [editIdx, setEditIdx] = useState<number | null>(null)
   const [input, setInput] = useState('')
-  const [attachments, setAttachments] = useState<ImageAttachment[]>([])
-  const [fileAttachments, setFileAttachments] = useState<FileAttachment[]>([])
+  const [attachments, setAttachments] = useState<Attachment[]>([])
   const [dragging, setDragging] = useState(false)
   const [staleBanner, setStaleBanner] = useState(false)
 
@@ -499,21 +482,14 @@ export function ChatPane({
     setEditIdx(null)
   }
 
-  // --- attachments (images go to the model as vision; other files are stored
-  // and referenced by path for the agent to process) ---
+  // --- attachments (one generic list; the daemon classifies each: images →
+  // vision, others → stored and referenced by path for the agent) ---
   async function addFiles(files: FileList | File[] | null) {
     if (!files) return
     const arr = Array.from(files)
-    const imgs = arr.filter((f) => f.type.startsWith('image/'))
-    const docs = arr.filter((f) => !f.type.startsWith('image/'))
-    if (imgs.length > 0) {
-      const encoded = await Promise.all(imgs.map(fileToImage))
-      setAttachments((prev) => [...prev, ...encoded].slice(0, 8))
-    }
-    if (docs.length > 0) {
-      const encoded = await Promise.all(docs.map(fileToFile))
-      setFileAttachments((prev) => [...prev, ...encoded].slice(0, 8))
-    }
+    if (arr.length === 0) return
+    const encoded = await Promise.all(arr.map(fileToAttachment))
+    setAttachments((prev) => [...prev, ...encoded].slice(0, 16))
   }
 
   function onPaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
@@ -546,15 +522,13 @@ export function ChatPane({
   // --- send ---
   const send = useCallback(
     async (text: string) => {
-      const images = attachments
-      const files = fileAttachments
-      if ((!text.trim() && images.length === 0 && files.length === 0) || streaming) return
+      const atts = attachments
+      if ((!text.trim() && atts.length === 0) || streaming) return
       setInput('')
 
       // Slash commands shortcut (text-only; leave any attachments pending).
       if (await maybeHandleSlashCommand(text)) return
       setAttachments([])
-      setFileAttachments([])
 
       // Edit-mode truncate.
       let truncatedServerMessages: ProviderMessage[] | null = null
@@ -589,12 +563,16 @@ export function ChatPane({
       }
 
       captureScroll()
+      const previewImages = atts.filter((a) => isImageMime(a.mimeType))
+      const previewFiles = atts.filter((a) => !isImageMime(a.mimeType))
       setLiveEntries([
         {
           type: 'user',
           content: text,
-          ...(images.length > 0 ? { images } : {}),
-          ...(files.length > 0 ? { files: files.map((f) => ({ name: f.name })) } : {}),
+          ...(previewImages.length > 0 ? { images: previewImages } : {}),
+          ...(previewFiles.length > 0
+            ? { files: previewFiles.map((f) => ({ name: f.name ?? 'file' })) }
+            : {}),
         },
       ])
       sessionStorage.setItem(`bz_pending_${agentId}`, '1')
@@ -607,7 +585,7 @@ export function ChatPane({
         const res = await fetch(`/api/agents/${encodeURIComponent(agentId)}/chat`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ message: text, images, files }),
+          body: JSON.stringify({ message: text, attachments: atts }),
           signal: abort.signal,
         })
         if (!res.ok || !res.body) {
@@ -661,7 +639,7 @@ export function ChatPane({
       }
     },
     // biome-ignore lint/correctness/useExhaustiveDependencies: stable refs intentional
-    [agentId, editIdx, serverMessages, streaming, attachments, fileAttachments],
+    [agentId, editIdx, serverMessages, streaming, attachments],
   )
 
   function handleFrame(frame: ChatFrame) {
@@ -933,45 +911,42 @@ export function ChatPane({
 
       {attachments.length > 0 && (
         <div className="flex flex-wrap gap-2 border-t border-frost bg-ivory px-5 pt-3">
-          {attachments.map((img, i) => (
-            <div key={`${img.mimeType}-${i}`} className="relative">
-              <img
-                src={`data:${img.mimeType};base64,${img.data}`}
-                alt="pending attachment"
-                className="h-16 w-16 rounded-md border border-frost object-cover"
-              />
-              <button
-                type="button"
-                onClick={() => setAttachments((prev) => prev.filter((_, j) => j !== i))}
-                className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full border border-frost bg-snow text-[0.7em] text-mocha hover:border-sapphire hover:text-sapphire"
-                aria-label="remove attachment"
+          {attachments.map((a, i) => {
+            const remove = () => setAttachments((prev) => prev.filter((_, j) => j !== i))
+            return isImageMime(a.mimeType) ? (
+              <div key={`${a.mimeType}-${i}`} className="relative">
+                <img
+                  src={`data:${a.mimeType};base64,${a.data}`}
+                  alt="pending attachment"
+                  className="h-16 w-16 rounded-md border border-frost object-cover"
+                />
+                <button
+                  type="button"
+                  onClick={remove}
+                  className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full border border-frost bg-snow text-[0.7em] text-mocha hover:border-sapphire hover:text-sapphire"
+                  aria-label="remove attachment"
+                >
+                  ✕
+                </button>
+              </div>
+            ) : (
+              <div
+                key={`${a.name ?? 'file'}-${i}`}
+                className="flex items-center gap-1.5 rounded-md border border-frost bg-snow px-2 py-1 text-[0.82em] text-mocha"
               >
-                ✕
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {fileAttachments.length > 0 && (
-        <div className="flex flex-wrap gap-2 border-t border-frost bg-ivory px-5 pt-3">
-          {fileAttachments.map((f, i) => (
-            <div
-              key={`${f.name}-${i}`}
-              className="flex items-center gap-1.5 rounded-md border border-frost bg-snow px-2 py-1 text-[0.82em] text-mocha"
-            >
-              <span>📄</span>
-              <span className="max-w-[160px] truncate">{f.name}</span>
-              <button
-                type="button"
-                onClick={() => setFileAttachments((prev) => prev.filter((_, j) => j !== i))}
-                className="text-[0.85em] text-mocha hover:text-sapphire"
-                aria-label="remove file"
-              >
-                ✕
-              </button>
-            </div>
-          ))}
+                <span>📄</span>
+                <span className="max-w-[160px] truncate">{a.name ?? 'file'}</span>
+                <button
+                  type="button"
+                  onClick={remove}
+                  className="text-[0.85em] text-mocha hover:text-sapphire"
+                  aria-label="remove attachment"
+                >
+                  ✕
+                </button>
+              </div>
+            )
+          })}
         </div>
       )}
 
@@ -1016,10 +991,7 @@ export function ChatPane({
         />
         <button
           type="submit"
-          disabled={
-            streaming ||
-            (!input.trim() && attachments.length === 0 && fileAttachments.length === 0)
-          }
+          disabled={streaming || (!input.trim() && attachments.length === 0)}
           className="rounded-md bg-sapphire px-4 py-2 text-[0.92em] font-semibold text-snow transition-colors hover:bg-sapphire-deep disabled:cursor-not-allowed disabled:opacity-50"
         >
           send

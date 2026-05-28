@@ -9,6 +9,7 @@
 import { existsSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import {
+  type Attachment,
   type AttachSkillRequest,
   type ChatCompactRequest,
   type ChatCompactResponse,
@@ -18,8 +19,6 @@ import {
   type ContextSkillEntry,
   type ContextToolEntry,
   type CreateTriggerRequest,
-  type FileAttachment,
-  type ImageAttachment,
   type ListInboxResponse,
   type MoveAgentRequest,
   REASONING_LEVELS,
@@ -71,43 +70,27 @@ import {
 
 export const agentsRouter = new Hono()
 
-// Cap attached images per message — keeps a runaway client from blowing up the
+// Cap attachments per message — keeps a runaway client from blowing up the
 // worker stdin payload and the model's context.
-const MAX_INPUT_IMAGES = 8
+const MAX_INPUT_ATTACHMENTS = 16
 
-function sanitizeImages(raw: unknown): ImageAttachment[] {
+function sanitizeAttachments(raw: unknown): Attachment[] {
   if (!Array.isArray(raw)) return []
-  const out: ImageAttachment[] = []
+  const out: Attachment[] = []
   for (const r of raw) {
+    const a = r as Attachment
     if (
-      r &&
-      typeof r === 'object' &&
-      typeof (r as ImageAttachment).data === 'string' &&
-      typeof (r as ImageAttachment).mimeType === 'string'
+      a &&
+      typeof a === 'object' &&
+      typeof a.data === 'string' &&
+      typeof a.mimeType === 'string'
     ) {
-      out.push({ data: (r as ImageAttachment).data, mimeType: (r as ImageAttachment).mimeType })
-      if (out.length >= MAX_INPUT_IMAGES) break
-    }
-  }
-  return out
-}
-
-const MAX_INPUT_FILES = 8
-
-function sanitizeFiles(raw: unknown): FileAttachment[] {
-  if (!Array.isArray(raw)) return []
-  const out: FileAttachment[] = []
-  for (const r of raw) {
-    const f = r as FileAttachment
-    if (
-      f &&
-      typeof f === 'object' &&
-      typeof f.data === 'string' &&
-      typeof f.mimeType === 'string' &&
-      typeof f.name === 'string'
-    ) {
-      out.push({ name: f.name, mimeType: f.mimeType, data: f.data })
-      if (out.length >= MAX_INPUT_FILES) break
+      out.push({
+        mimeType: a.mimeType,
+        data: a.data,
+        ...(typeof a.name === 'string' ? { name: a.name } : {}),
+      })
+      if (out.length >= MAX_INPUT_ATTACHMENTS) break
     }
   }
   return out
@@ -544,13 +527,9 @@ agentsRouter.post('/:id/chat', async (c) => {
   const { db, paths, authToken } = getCtx()
   const id = resolveAgentIdParam(db, c.req.param('id'))
 
-  let body: { message?: string; images?: ImageAttachment[]; files?: FileAttachment[] }
+  let body: { message?: string; attachments?: Attachment[] }
   try {
-    body = (await c.req.json()) as {
-      message?: string
-      images?: ImageAttachment[]
-      files?: FileAttachment[]
-    }
+    body = (await c.req.json()) as { message?: string; attachments?: Attachment[] }
   } catch {
     return c.json({ error: 'invalid JSON body' }, 400)
   }
@@ -558,18 +537,17 @@ agentsRouter.post('/:id/chat', async (c) => {
   if (typeof message !== 'string') {
     return c.json({ error: 'message is required' }, 400)
   }
-  const images = sanitizeImages(body.images)
-  const files = sanitizeFiles(body.files)
-  // A turn needs *something* — text, an image, or a file.
-  if (!message && images.length === 0 && files.length === 0) {
-    return c.json({ error: 'message, an image, or a file is required' }, 400)
+  const attachments = sanitizeAttachments(body.attachments)
+  // A turn needs *something* — text or at least one attachment.
+  if (!message && attachments.length === 0) {
+    return c.json({ error: 'message or an attachment is required' }, 400)
   }
 
   const stream = new ReadableStream({
     async start(controller) {
       const encoder = new TextEncoder()
       try {
-        for await (const frame of runAgentTurn(id, message, { images, files })) {
+        for await (const frame of runAgentTurn(id, message, { attachments })) {
           try {
             controller.enqueue(encoder.encode(`${JSON.stringify(frame)}\n`))
           } catch {

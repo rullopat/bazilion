@@ -4,13 +4,12 @@ import { stdin, stdout } from 'node:process'
 import { createInterface } from 'node:readline/promises'
 import type {
   Agent,
+  Attachment,
   AttachSkillRequest,
   ChatCompactRequest,
   ChatCompactResponse,
   ChatContextResponse,
   ChatFrame,
-  FileAttachment,
-  ImageAttachment,
   MoveAgentRequest,
   ResolvedAgent,
   SessionEvent,
@@ -31,12 +30,12 @@ const IMAGE_MIME: Record<string, string> = {
   '.webp': 'image/webp',
 }
 
-/** Read image file paths into base64 ImageAttachments. */
-function loadImages(paths: string[]): ImageAttachment[] {
+/** Read image file paths into base64 attachments (image mime → routed to vision). */
+function loadImages(paths: string[]): Attachment[] {
   return paths.map((p) => {
     const mimeType = IMAGE_MIME[extname(p).toLowerCase()]
     if (!mimeType) throw new Error(`unsupported image type: ${p} (png/jpg/gif/webp only)`)
-    return { data: readFileSync(p).toString('base64'), mimeType }
+    return { name: basename(p), mimeType, data: readFileSync(p).toString('base64') }
   })
 }
 
@@ -50,8 +49,8 @@ const FILE_MIME: Record<string, string> = {
   '.zip': 'application/zip',
 }
 
-/** Read arbitrary file paths into base64 FileAttachments (any type). */
-function loadFiles(paths: string[]): FileAttachment[] {
+/** Read arbitrary file paths into base64 attachments (non-image → stored + referenced). */
+function loadFiles(paths: string[]): Attachment[] {
   return paths.map((p) => ({
     name: basename(p),
     mimeType: FILE_MIME[extname(p).toLowerCase()] ?? 'application/octet-stream',
@@ -293,14 +292,12 @@ async function streamTurn(
   client: ReturnType<typeof createClient>,
   agentId: string,
   message: string,
-  images?: ImageAttachment[],
-  files?: FileAttachment[],
+  attachments?: Attachment[],
 ): Promise<void> {
   const state: PrintState = { inDeltaStream: false }
   for await (const frame of client.stream<ChatFrame>('POST', `/api/agents/${agentId}/chat`, {
     message,
-    ...(images && images.length > 0 ? { images } : {}),
-    ...(files && files.length > 0 ? { files } : {}),
+    ...(attachments && attachments.length > 0 ? { attachments } : {}),
   })) {
     if (frame.kind === 'event') {
       if (frame.event.type !== 'user_message') printEvent(frame.event, state)
@@ -332,11 +329,13 @@ const chatCmd = defineCommand({
     const client = createClient()
     const resolved = await client.get<ResolvedAgent>(`/api/agents/${args.id}`)
 
-    const images = loadImages(asPaths(args.image as string | string[] | undefined))
-    const files = loadFiles(asPaths(args.file as string | string[] | undefined))
+    const attachments = [
+      ...loadImages(asPaths(args.image as string | string[] | undefined)),
+      ...loadFiles(asPaths(args.file as string | string[] | undefined)),
+    ]
 
-    if (args.message || images.length > 0 || files.length > 0) {
-      await streamTurn(client, resolved.agent.id, args.message ?? '', images, files)
+    if (args.message || attachments.length > 0) {
+      await streamTurn(client, resolved.agent.id, args.message ?? '', attachments)
       return
     }
 

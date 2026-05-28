@@ -25,7 +25,7 @@
 
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
-import type { ChatFrame, ImageAttachment, ResolvedAgent } from '@bazilion/api-types'
+import type { Attachment, ChatFrame, ResolvedAgent } from '@bazilion/api-types'
 import { resolvePaths } from '../../core/index.ts'
 import { qmdBackend } from '../memory/qmd.ts'
 import { piMessagesToProviderView, translatePiEvent } from '../pi/events.ts'
@@ -53,8 +53,8 @@ interface WorkerInput {
   browserEnabled?: boolean
   /** MCP tools discovered daemon-side, exposed as IPC-proxied proxy tools. */
   mcpTools?: InjectedMcpTool[]
-  /** Images attached to the user message — passed to pi's prompt (vision). */
-  images?: ImageAttachment[]
+  /** Image attachments — passed to pi's prompt (vision). Pre-classified by the daemon. */
+  images?: Attachment[]
 }
 
 function emit(frame: ChatFrame): void {
