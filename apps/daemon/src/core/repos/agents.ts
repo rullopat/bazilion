@@ -259,6 +259,29 @@ export function findByNameInGroup(db: BazilionDb, groupId: string, name: string)
   return row ? toAgent(row) : null
 }
 
+/**
+ * Bound, non-locked agent topics in a group. Drives topic-name propagation
+ * when a group's `telegram_topic_name_format` changes
+ * (lib/telegram/topic-rename.ts): only agents with a live topic that a human
+ * hasn't manually renamed (`telegram_topic_name_locked = 0`) get re-rendered.
+ * Archived agents are excluded — their topics keep whatever name they have.
+ */
+export function listBoundUnlockedTopicsInGroup(
+  db: BazilionDb,
+  groupId: string,
+): { agentId: string; name: string; topicId: number }[] {
+  return db.raw
+    .query<{ id: string; name: string; telegram_topic_id: number }, [string]>(
+      `SELECT id, name, telegram_topic_id FROM agents
+       WHERE group_id = ?
+         AND telegram_topic_id IS NOT NULL
+         AND telegram_topic_name_locked = 0
+         AND status != 'archived'`,
+    )
+    .all(groupId)
+    .map((r) => ({ agentId: r.id, name: r.name, topicId: r.telegram_topic_id }))
+}
+
 // --- skill attachments ---
 
 interface RawSkill {

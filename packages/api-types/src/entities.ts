@@ -18,6 +18,13 @@ export interface Group {
   /** Read-only context about the human for all agents in this group.
    * Injected into the system prompt; never exposed as a file on disk. */
   userMd: string
+  /**
+   * Optional Telegram forum-topic name template for this group's agents.
+   * `null` = built-in naming (bare name for `default`, `<slug> › <name>`
+   * otherwise). When set, rendered with {agent.name}, {group.name},
+   * {group.slug}. Must contain {agent.name} so topics stay distinct.
+   */
+  telegramTopicNameFormat: string | null
   createdAt: Timestamp
 }
 

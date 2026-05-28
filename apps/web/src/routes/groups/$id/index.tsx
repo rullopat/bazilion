@@ -120,6 +120,12 @@ function GroupDetailPage() {
         </div>
       </section>
 
+      <TopicNameFormatCard
+        group={group}
+        sampleAgent={members[0]?.name ?? 'researcher'}
+        onSaved={() => router.invalidate()}
+      />
+
       {members.length === 0 && (
         <SpawnFromTemplateCard
           groupId={group.id}
@@ -166,6 +172,95 @@ function GroupDetailPage() {
         )}
       </section>
     </main>
+  )
+}
+
+function TopicNameFormatCard({
+  group,
+  sampleAgent,
+  onSaved,
+}: {
+  group: Group
+  sampleAgent: string
+  onSaved: () => void
+}) {
+  const [format, setFormat] = useState(group.telegramTopicNameFormat ?? '')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const [savedAt, setSavedAt] = useState<number | null>(null)
+
+  const trimmed = format.trim()
+  const preview = trimmed
+    ? trimmed
+        .replaceAll('{agent.name}', sampleAgent)
+        .replaceAll('{group.name}', group.name)
+        .replaceAll('{group.slug}', group.id)
+    : group.id === 'default'
+      ? sampleAgent
+      : `${group.id} › ${sampleAgent}`
+
+  const dirty = (group.telegramTopicNameFormat ?? '') !== format
+
+  async function save(clear: boolean) {
+    setBusy(true)
+    setErr(null)
+    try {
+      const res = await fetch(`/api/groups/${encodeURIComponent(group.id)}/topic-format`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ format: clear ? null : format }),
+      })
+      if (!res.ok) {
+        const e = (await res.json().catch(() => ({}))) as { error?: string }
+        throw new Error(e.error ?? `${res.status} ${res.statusText}`)
+      }
+      if (clear) setFormat('')
+      setSavedAt(Date.now())
+      onSaved()
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <section className="rounded-lg border bg-card p-5 mb-6">
+      <h3 className="font-serif text-xl mb-1">Telegram topic names</h3>
+      <p className="text-muted-foreground text-sm mb-3">
+        Template for this group's Telegram forum-topic titles. Leave empty for built-in naming.
+        Tokens: <code className="font-mono">{'{agent.name}'}</code>{' '}
+        <code className="font-mono">{'{group.name}'}</code>{' '}
+        <code className="font-mono">{'{group.slug}'}</code> — must include{' '}
+        <code className="font-mono">{'{agent.name}'}</code>. Saving renames existing topics that you
+        haven't manually renamed in Telegram.
+      </p>
+      <input
+        value={format}
+        onChange={(e) => setFormat(e.target.value)}
+        placeholder="{group.name} / {agent.name}"
+        className="w-full rounded-md border bg-background px-3 py-2 font-mono text-sm outline-none focus:ring-2 focus:ring-ring/30"
+      />
+      <p className="text-xs text-muted-foreground mt-2">
+        preview: <span className="font-mono text-foreground">{preview}</span>
+      </p>
+      <div className="flex items-center gap-3 mt-3">
+        <Button
+          variant="primary"
+          onClick={() => save(false)}
+          disabled={busy || !dirty || trimmed.length === 0}
+        >
+          {busy ? 'saving…' : 'save'}
+        </Button>
+        {group.telegramTopicNameFormat && (
+          <Button variant="ghost" onClick={() => save(true)} disabled={busy}>
+            clear
+          </Button>
+        )}
+        {savedAt && <span className="text-xs text-emerald-700">✓ saved</span>}
+        {err && <span className="text-xs text-rose-700">{err}</span>}
+      </div>
+    </section>
   )
 }
 

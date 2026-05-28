@@ -1,6 +1,11 @@
 import { readFileSync } from 'node:fs'
 import { stdin } from 'node:process'
-import type { Group, RegisterGroupRequest, SetGroupUserMdRequest } from '@bazilion/api-types'
+import type {
+  Group,
+  RegisterGroupRequest,
+  SetGroupTopicFormatRequest,
+  SetGroupUserMdRequest,
+} from '@bazilion/api-types'
 import { defineCommand } from 'citty'
 import { createClient } from '../client.ts'
 import { columnize } from '../columnize.ts'
@@ -121,6 +126,61 @@ const userMdCmd = defineCommand({
   },
 })
 
+const topicFormatShowCmd = defineCommand({
+  meta: { name: 'show', description: "Print the group's Telegram topic-name template" },
+  args: { id: { type: 'positional', required: true } },
+  async run({ args }) {
+    const client = createClient()
+    const g = await client.get<Group>(`/api/groups/${args.id}`)
+    console.log(g.telegramTopicNameFormat ?? '(default naming)')
+  },
+})
+
+const topicFormatSetCmd = defineCommand({
+  meta: {
+    name: 'set',
+    description:
+      'Set the topic-name template. Tokens: {agent.name} {group.name} {group.slug} (must include {agent.name})',
+  },
+  args: {
+    id: { type: 'positional', required: true },
+    format: {
+      type: 'positional',
+      required: true,
+      description: 'e.g. "{group.name} / {agent.name}"',
+    },
+  },
+  async run({ args }) {
+    const client = createClient()
+    const body: SetGroupTopicFormatRequest = { format: args.format }
+    const g = await client.put<Group>(`/api/groups/${args.id}/topic-format`, body)
+    console.log(`set topic-name template for group ${args.id}: ${g.telegramTopicNameFormat}`)
+  },
+})
+
+const topicFormatClearCmd = defineCommand({
+  meta: { name: 'clear', description: 'Clear the template (revert to built-in naming)' },
+  args: { id: { type: 'positional', required: true } },
+  async run({ args }) {
+    const client = createClient()
+    const body: SetGroupTopicFormatRequest = { format: null }
+    await client.put(`/api/groups/${args.id}/topic-format`, body)
+    console.log(`cleared topic-name template for group ${args.id}`)
+  },
+})
+
+const topicFormatCmd = defineCommand({
+  meta: {
+    name: 'topic-format',
+    description: "View or edit a group's Telegram forum-topic name template",
+  },
+  subCommands: {
+    show: topicFormatShowCmd,
+    set: topicFormatSetCmd,
+    clear: topicFormatClearCmd,
+  },
+})
+
 export const groupCommand = defineCommand({
   meta: { name: 'group', description: 'Manage groups (collaboration contexts)' },
   subCommands: {
@@ -128,5 +188,6 @@ export const groupCommand = defineCommand({
     list: listCmd,
     rm: rmCmd,
     'user-md': userMdCmd,
+    'topic-format': topicFormatCmd,
   },
 })

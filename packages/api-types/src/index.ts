@@ -202,6 +202,14 @@ export interface SetGroupUserMdRequest {
   userMd: string
 }
 
+/**
+ * Body for `PUT /api/groups/:id/topic-format`. `null` (or an empty/whitespace
+ * string) clears the template and reverts to built-in topic naming.
+ */
+export interface SetGroupTopicFormatRequest {
+  format: string | null
+}
+
 // --- skills (write) ---
 
 export interface ImportSkillsRequest {
