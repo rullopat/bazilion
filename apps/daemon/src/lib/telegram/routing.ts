@@ -13,6 +13,7 @@
 // only — actual chat-back routing ships in Step 6 alongside the outbound
 // mirror from runAgentTurn.
 
+import { join } from 'node:path'
 import type { CallbackQuery, InlineKeyboardMarkup, Message, Update, User } from 'grammy/types'
 import type { BazilionDb } from '../../core/db/client.ts'
 import {
@@ -33,6 +34,7 @@ import {
   allowTelegramInbound,
   shouldNotifyInboundThrottle,
 } from './loop-guard.ts'
+import { attachmentNote, downloadMedia, extractMedia } from './media.ts'
 import { reactSeen } from './reactions.ts'
 import { setPendingSpawn, takePendingSpawn } from './spawn-state.ts'
 
@@ -122,6 +124,8 @@ export interface ReplyApi extends CommandApi {
     callbackQueryId: string,
     opts?: { text?: string; show_alert?: boolean },
   ): Promise<unknown>
+  /** Resolve a file_id to a downloadable file_path (Phase 11 media inbound). */
+  getFile(fileId: string): Promise<{ file_path?: string; file_size?: number }>
 }
 
 export interface RouterDeps {
@@ -132,6 +136,8 @@ export interface RouterDeps {
   chatId: number
   /** Bot @username (for the require_mention override). Undefined if unknown. */
   botUsername?: string
+  /** Bot token — needed to download inbound media (Phase 11). */
+  botToken?: string
 }
 
 export type RouteOutcome =
@@ -253,9 +259,30 @@ export async function routeUpdate(deps: RouterDeps, update: Update): Promise<Rou
     // state. Messages that arrive while a turn is in flight are
     // concatenated and processed together when the current turn ends, so
     // the agent gets one combined reply addressing everything.
-    const userText = m.text ?? m.caption ?? ''
+    // Resolve text + any media attachment (Phase 11). Media is downloaded to
+    // the agent's private home and referenced by path in the turn message, so
+    // an agent with file/bash tools can open it. Native provider multimodal
+    // (image content blocks) is the deferred follow-up.
+    const caption = m.text ?? m.caption ?? ''
+    const media = extractMedia(m)
+    let userText = caption
+    if (media) {
+      if (deps.botToken) {
+        const result = await downloadMedia(
+          deps.api,
+          deps.botToken,
+          media,
+          join(agent.dir, 'telegram-inbox'),
+        )
+        const note = attachmentNote(media, result)
+        userText = caption ? `${caption}\n\n${note}` : note
+      } else {
+        const note = `[Telegram ${media.kind} attachment received (download unavailable)]`
+        userText = caption ? `${caption}\n\n${note}` : note
+      }
+    }
     if (!userText) {
-      // Non-text message in agent topic (sticker, photo, etc.) — skip.
+      // Non-text, non-media message (sticker, etc.) — skip.
       return { kind: 'agent_topic', agentId: agent.id, topicId: threadId, queued: false }
     }
     // Per-topic overrides (Phase 8) — gate plain-text chat only.

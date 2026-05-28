@@ -333,6 +333,7 @@ async function dispatchUpdate(handle: BotHandle, db: BazilionDb, u: Update): Pro
       api: handle.bot.api as unknown as ReplyApi,
       chatId: handle.chatId,
       botUsername: handle.botUsername ?? undefined,
+      botToken: handle.bot.token,
     },
     u,
   )

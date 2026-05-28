@@ -54,6 +54,9 @@ function makeReplyApi(): {
     async closeForumTopic() {
       return true
     },
+    async getFile() {
+      return {}
+    },
   }
   return { api, sends, creates, edits, acks }
 }
