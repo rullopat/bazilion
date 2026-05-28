@@ -954,6 +954,11 @@ function ToolGroup({ items, dropCls }: { items: ToolItem[]; dropCls: string }) {
     setOverflows(el.scrollHeight > TOOL_GROUP_MAX_HEIGHT_PX + 4)
   }, [items.length])
 
+  // Tool-produced images (browser screenshots, MCP image results) are
+  // deliverables — render them full-size below the collapsible text region so
+  // they're always visible without expanding "show more".
+  const images = items.flatMap((it) => it.images ?? [])
+
   return (
     <div
       className={`my-1.5 rounded-r-sm border-l-[3px] border-fawn bg-ivory px-3 py-2 font-mono text-[0.82em] leading-[1.5] text-mocha-light ${dropCls}`}
@@ -985,6 +990,19 @@ function ToolGroup({ items, dropCls }: { items: ToolItem[]; dropCls: string }) {
           {expanded ? 'show less ↑' : 'show more ↓'}
         </button>
       )}
+      {images.length > 0 && (
+        <div className="mt-2 space-y-2">
+          {images.map((img, i) => (
+            <img
+              // biome-ignore lint/suspicious/noArrayIndexKey: append-only within one tool group
+              key={i}
+              src={`data:${img.mimeType};base64,${img.data}`}
+              alt="tool result"
+              className="block max-w-full rounded border border-fawn"
+            />
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -1015,19 +1033,12 @@ function ToolLine({ item }: { item: ToolItem }) {
       </div>
     )
   }
+  // Images are rendered by ToolGroup outside the height clip (they're
+  // deliverables, not collapsible scaffolding) — here we only show the text.
   return (
     <div className="whitespace-pre-wrap break-words py-0.5">
       <span className="mr-1 opacity-45">←</span>
       {item.body}
-      {item.images?.map((img, i) => (
-        <img
-          // biome-ignore lint/suspicious/noArrayIndexKey: images are append-only within one result
-          key={i}
-          src={`data:${img.mimeType};base64,${img.data}`}
-          alt="tool screenshot"
-          className="mt-2 max-w-full rounded border"
-        />
-      ))}
     </div>
   )
 }
