@@ -9,6 +9,7 @@ import { spawnAgent } from '../../src/core/agent/spawn.ts'
 import { createProfile } from '../../src/core/profile/create.ts'
 import * as agentRepo from '../../src/core/repos/agents.ts'
 import { openConfig } from '../../src/core/repos/config.ts'
+import * as telegramAclRepo from '../../src/core/repos/telegram-acl.ts'
 import {
   _resetRouterStateForTest,
   type ReplyApi,
@@ -96,6 +97,10 @@ beforeEach(() => {
   })
   _resetRouterStateForTest()
   _resetSpawnStateForTest()
+  // Seed the default sender (user 11) as an allowlisted owner so the Phase 7
+  // ACL gate doesn't claim/deny in tests that pre-date it. ACL-specific tests
+  // start from a fresh env (no seed) to exercise TOFU + deny.
+  telegramAclRepo.add(env.db, { userId: 11, role: 'owner', label: 'P' })
 })
 afterEach(() => env.cleanup())
 
@@ -127,6 +132,43 @@ describe('routeUpdate classification', () => {
     )
     expect(outcome.kind).toBe('ignored_bot')
     expect(sends.length).toBe(0)
+  })
+
+  test('ACL: first message on an empty allowlist claims owner (TOFU)', async () => {
+    env.db.raw.run('DELETE FROM telegram_allowed_users')
+    const { api, sends } = makeReplyApi()
+    const u = messageUpdate({ threadId: SERVICE_TOPIC, text: '/help', fromUserId: 7 })
+    const outcome = await routeUpdate(
+      { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID },
+      u,
+    )
+    expect(outcome.kind).toBe('owner_claimed')
+    expect(telegramAclRepo.get(env.db, 7)?.role).toBe('owner')
+    expect(sends[0]?.text).toMatch(/owner/i)
+  })
+
+  test('ACL: a non-allowlisted user is denied once enforcement is active', async () => {
+    // user 11 is the seeded owner; user 99 is not on the list.
+    const { api, sends } = makeReplyApi()
+    const u = messageUpdate({ threadId: SERVICE_TOPIC, text: '/help', fromUserId: 99 })
+    const outcome = await routeUpdate(
+      { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID },
+      u,
+    )
+    expect(outcome.kind).toBe('unauthorized')
+    if (outcome.kind === 'unauthorized') expect(outcome.userId).toBe(99)
+    expect(sends[0]?.text).toMatch(/not authorized/i)
+  })
+
+  test('ACL: an allowlisted member passes the gate', async () => {
+    telegramAclRepo.add(env.db, { userId: 42, role: 'member' })
+    const { api } = makeReplyApi()
+    const u = messageUpdate({ threadId: SERVICE_TOPIC, text: '/help', fromUserId: 42 })
+    const outcome = await routeUpdate(
+      { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID },
+      u,
+    )
+    expect(outcome.kind).toBe('service_command')
   })
 
   test('migrate_to_chat_id stashes the new chat id and returns chat_migrated', async () => {

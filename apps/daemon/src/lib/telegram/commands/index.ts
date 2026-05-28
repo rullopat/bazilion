@@ -11,6 +11,7 @@
 //     the only one today; the topic-context branch enriches its output
 //     using ctx.agent.
 
+import { handleAllow, handleAllowed, handleDeny } from './acl.ts'
 import { handle as handleClose } from './close.ts'
 import { handle as handleGroups } from './groups.ts'
 import { handle as handleHealth } from './health.ts'
@@ -46,6 +47,13 @@ export const ALL_COMMANDS: readonly CommandDescriptor[] = [
   { name: 'groups', description: 'Show bazilion groups with agent counts', handle: handleGroups },
   { name: 'health', description: 'Bot identity + polling state', handle: handleHealth },
   { name: 'whoami', description: 'Show your Telegram user id', handle: handleWhoami },
+  { name: 'allowed', description: 'List allowlisted users', handle: handleAllowed },
+  { name: 'allow', description: 'Allow a user by id (owner only)', handle: handleAllow },
+  {
+    name: 'deny',
+    description: 'Remove a user from the allowlist (owner only)',
+    handle: handleDeny,
+  },
 
   // Cross-context — /help works in either surface; the handler reads
   // ctx.agent to decide whether to render the topic-context section.

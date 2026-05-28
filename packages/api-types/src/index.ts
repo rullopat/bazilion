@@ -23,6 +23,8 @@ export type {
   ResolvedAgent,
   SkillMeta,
   SkillsMode,
+  TelegramAclRole,
+  TelegramAllowedUser,
   TelegramMirrorMode,
   Timestamp,
   TriggerKind,
@@ -44,6 +46,7 @@ import type {
   AgentTrigger,
   Message,
   ReasoningLevel,
+  TelegramAclRole,
   TelegramMirrorMode,
   WebToken,
 } from './entities.ts'
@@ -213,6 +216,15 @@ export interface SetGroupUserMdRequest {
  */
 export interface SetGroupTopicFormatRequest {
   format: string | null
+}
+
+/** Body for `POST /api/config/telegram/acl` — add a user to the allowlist. */
+export interface AddTelegramAllowedUserRequest {
+  userId: number
+  username?: string | null
+  label?: string | null
+  /** Defaults to 'member' when omitted. */
+  role?: TelegramAclRole
 }
 
 // --- skills (write) ---

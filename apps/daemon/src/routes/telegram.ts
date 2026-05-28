@@ -15,9 +15,14 @@
 // Repeated idempotent saves with identical creds preserve the activated
 // state so we don't orphan the existing service chat.
 
-import type { TelegramConfigInput, TelegramConfigState, TelegramHealth } from '@bazilion/api-types'
+import type {
+  AddTelegramAllowedUserRequest,
+  TelegramConfigInput,
+  TelegramConfigState,
+  TelegramHealth,
+} from '@bazilion/api-types'
 import { Hono } from 'hono'
-import { openConfig, openSecrets } from '../core/index.ts'
+import { openConfig, openSecrets, telegramAclRepo } from '../core/index.ts'
 import { getCtx } from '../lib/ctx.ts'
 import { getTelegramBotState, restartTelegramBot, stopTelegramBot } from '../lib/telegram/bot.ts'
 import { runPreflight } from '../lib/telegram/preflight.ts'
@@ -129,6 +134,42 @@ telegramRouter.post('/restart', async (c) => {
     console.error('telegram: explicit restart failed:', e instanceof Error ? e.message : e),
   )
   return c.json({ restarted: true })
+})
+
+// ─── Per-user allowlist (Phase 7) ─────────────────────────────────────────
+// HTTP callers are already bearer-authed (admin-level), so these don't apply
+// the owner-role check the Telegram /allow command does — operator access is
+// the auth boundary here.
+
+telegramRouter.get('/acl', (c) => {
+  const { db } = getCtx()
+  return c.json(telegramAclRepo.list(db))
+})
+
+telegramRouter.post('/acl', async (c) => {
+  const body = (await c.req.json().catch(() => null)) as AddTelegramAllowedUserRequest | null
+  if (!body || typeof body.userId !== 'number' || !Number.isInteger(body.userId)) {
+    return c.json({ error: 'userId (integer) is required' }, 400)
+  }
+  const { db } = getCtx()
+  const user = telegramAclRepo.add(db, {
+    userId: body.userId,
+    username: body.username ?? null,
+    label: body.label ?? null,
+    role: body.role ?? 'member',
+  })
+  return c.json(user, 201)
+})
+
+telegramRouter.delete('/acl/:userId', (c) => {
+  const userId = Number(c.req.param('userId'))
+  if (!Number.isInteger(userId)) return c.json({ error: 'userId must be an integer' }, 400)
+  const { db } = getCtx()
+  const removed = telegramAclRepo.remove(db, userId)
+  if (!removed) {
+    return c.json({ error: 'cannot remove: unknown user or last remaining owner' }, 409)
+  }
+  return c.body(null, 204)
 })
 
 telegramRouter.get('/health', async (c) => {

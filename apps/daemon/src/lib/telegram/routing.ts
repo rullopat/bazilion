@@ -13,9 +13,9 @@
 // only — actual chat-back routing ships in Step 6 alongside the outbound
 // mirror from runAgentTurn.
 
-import type { CallbackQuery, InlineKeyboardMarkup, Message, Update } from 'grammy/types'
+import type { CallbackQuery, InlineKeyboardMarkup, Message, Update, User } from 'grammy/types'
 import type { BazilionDb } from '../../core/db/client.ts'
-import { agentRepo, openConfig, profileRepo } from '../../core/index.ts'
+import { agentRepo, openConfig, profileRepo, telegramAclRepo } from '../../core/index.ts'
 import type { Paths } from '../../core/paths.ts'
 import { dispatchCommand, parseCommand } from './commands/index.ts'
 import { namePrompt, SPAWN_PROFILE_CALLBACK_PREFIX, spawnAndBind } from './commands/spawn.ts'
@@ -35,6 +35,42 @@ const SERVICE_TOPIC_KEY = 'TELEGRAM_SERVICE_TOPIC_ID'
 /** Suppress duplicate General-topic redirects per chat. */
 const GENERAL_REDIRECT_SUPPRESS_MS = 60_000
 const _lastGeneralRedirectByChat = new Map<number, number>()
+
+/** Suppress repeated "not authorized" replies per user. */
+const UNAUTHORIZED_SUPPRESS_MS = 60_000
+const _lastUnauthorizedNoticeByUser = new Map<number, number>()
+
+/**
+ * Per-user ACL gate (Phase 7, TOFU + Flat). Returns:
+ *   'allowed'  — user is on the allowlist (or we can't identify them);
+ *   'claimed'  — allowlist was empty and this user just became owner (TOFU);
+ *   'denied'   — allowlist is populated and this user isn't on it.
+ * The 'claimed' write happens here as a deliberate side effect, mirroring the
+ * migration stash above.
+ */
+function authorizeUser(db: BazilionDb, from: User | undefined): 'allowed' | 'claimed' | 'denied' {
+  // Can't identify the sender (rare service messages) → don't block.
+  if (!from) return 'allowed'
+  if (telegramAclRepo.count(db) === 0) {
+    const label = [from.first_name, from.last_name].filter(Boolean).join(' ') || null
+    telegramAclRepo.add(db, {
+      userId: from.id,
+      username: from.username ?? null,
+      label,
+      role: 'owner',
+    })
+    return 'claimed'
+  }
+  return telegramAclRepo.isAllowed(db, from.id) ? 'allowed' : 'denied'
+}
+
+function shouldNotifyUnauthorized(userId: number): boolean {
+  const now = Date.now()
+  const last = _lastUnauthorizedNoticeByUser.get(userId) ?? 0
+  if (now - last < UNAUTHORIZED_SUPPRESS_MS) return false
+  _lastUnauthorizedNoticeByUser.set(userId, now)
+  return true
+}
 
 /**
  * Send surface the router uses to reply. Real wiring passes
@@ -99,6 +135,8 @@ export type RouteOutcome =
   | { kind: 'callback_unknown' }
   | { kind: 'non_message' }
   | { kind: 'ignored_bot' }
+  | { kind: 'unauthorized'; userId: number }
+  | { kind: 'owner_claimed'; userId: number }
   | { kind: 'chat_migrated'; toChatId: number }
   | { kind: 'foreign_chat'; chatId: number }
 
@@ -140,6 +178,27 @@ export async function routeUpdate(deps: RouterDeps, update: Update): Promise<Rou
       return { kind: 'chat_migrated', toChatId: m.chat.id }
     }
     return { kind: 'foreign_chat', chatId: m.chat.id }
+  }
+
+  // Per-user ACL gate (Phase 7) — Flat scope: gates BOTH commands and chat.
+  const authz = authorizeUser(deps.db, m.from)
+  if (authz === 'denied') {
+    if (m.from && shouldNotifyUnauthorized(m.from.id)) {
+      await deps.api.sendMessage(
+        deps.chatId,
+        "You're not authorized to use this bot. Ask the owner to add you with /allow.",
+        { message_thread_id: m.message_thread_id ?? undefined },
+      )
+    }
+    return { kind: 'unauthorized', userId: m.from?.id ?? 0 }
+  }
+  if (authz === 'claimed') {
+    await deps.api.sendMessage(
+      deps.chatId,
+      "🔐 You're now the bazilion owner — only allowlisted users can use this bot from now on. Add others with <code>/allow &lt;user_id&gt;</code> (they get their id from /whoami). Send your command again to continue.",
+      { message_thread_id: m.message_thread_id ?? undefined, parse_mode: 'HTML' },
+    )
+    return { kind: 'owner_claimed', userId: m.from?.id ?? 0 }
   }
 
   const serviceTopicId = readServiceTopicId(deps.db)
@@ -355,6 +414,14 @@ async function resumePendingSpawn(
  * otherwise ignored.
  */
 async function handleCallbackQuery(deps: RouterDeps, q: CallbackQuery): Promise<RouteOutcome> {
+  // ACL gate for button taps (Phase 7). A denied user gets an alert, no action.
+  if (authorizeUser(deps.db, q.from) === 'denied') {
+    await deps.api
+      .answerCallbackQuery(q.id, { text: 'Not authorized.', show_alert: true })
+      .catch(() => undefined)
+    return { kind: 'unauthorized', userId: q.from.id }
+  }
+
   // Always acknowledge so Telegram's loading spinner stops — even when we
   // don't know what the callback is for.
   const data = q.data ?? ''
@@ -447,5 +514,6 @@ function escapeForHtml(s: string): string {
 /** Test-only — clear the in-memory General-redirect suppression map. */
 export function _resetRouterStateForTest(): void {
   _lastGeneralRedirectByChat.clear()
+  _lastUnauthorizedNoticeByUser.clear()
   _resetLoopGuardForTest()
 }

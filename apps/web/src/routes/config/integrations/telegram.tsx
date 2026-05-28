@@ -10,10 +10,14 @@
 // post any messages into Telegram. Saving credentials here only seeds
 // storage so Step 2 can activate on its next restart.
 
-import type { TelegramConfigState, TelegramHealth } from '@bazilion/api-types'
+import type {
+  TelegramAllowedUser,
+  TelegramConfigState,
+  TelegramHealth,
+} from '@bazilion/api-types'
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Button } from '../../../components/Button'
 import { ConfigTabs } from '../../../components/ConfigTabs'
 import { daemonClient } from '../../../lib/daemon-client'
@@ -210,7 +214,133 @@ function TelegramIntegrationPage() {
         {health && <PreflightResult health={health} />}
         {health?.polling && <PollingState polling={health.polling} />}
       </section>
+
+      {initial.configured && <AccessControlCard />}
     </main>
+  )
+}
+
+function AccessControlCard() {
+  const [users, setUsers] = useState<TelegramAllowedUser[] | null>(null)
+  const [userId, setUserId] = useState('')
+  const [label, setLabel] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  async function load() {
+    try {
+      const res = await fetch('/api/config/telegram/acl')
+      if (!res.ok) throw new Error(res.statusText)
+      setUsers((await res.json()) as TelegramAllowedUser[])
+    } catch (e) {
+      setErr((e as Error).message)
+    }
+  }
+  useEffect(() => {
+    void load()
+  }, [])
+
+  async function add(e: React.FormEvent) {
+    e.preventDefault()
+    const id = Number(userId)
+    if (!Number.isInteger(id)) {
+      setErr('user id must be an integer')
+      return
+    }
+    setBusy(true)
+    setErr(null)
+    try {
+      const res = await fetch('/api/config/telegram/acl', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ userId: id, label: label.trim() || null }),
+      })
+      if (!res.ok) {
+        const j = (await res.json().catch(() => ({}))) as { error?: string }
+        throw new Error(j.error ?? res.statusText)
+      }
+      setUserId('')
+      setLabel('')
+      await load()
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function remove(id: number) {
+    setErr(null)
+    try {
+      const res = await fetch(`/api/config/telegram/acl/${id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const j = (await res.json().catch(() => ({}))) as { error?: string }
+        throw new Error(j.error ?? res.statusText)
+      }
+      await load()
+    } catch (e) {
+      setErr((e as Error).message)
+    }
+  }
+
+  return (
+    <section className="rounded-lg border bg-card p-5 mt-6">
+      <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-1">
+        Access control
+      </h3>
+      <p className="text-xs text-muted-foreground mb-3">
+        Allowlisted Telegram users can use the bot (commands + chat). While the list is empty the
+        bot is open and the first person to message it becomes owner. Users find their id via{' '}
+        <code className="font-mono">/whoami</code>.
+      </p>
+
+      {users === null ? (
+        <p className="text-xs text-muted-foreground italic">loading…</p>
+      ) : users.length === 0 ? (
+        <p className="text-xs text-amber-700 mb-3">
+          Open — no allowlist yet. The first user to message the bot claims owner.
+        </p>
+      ) : (
+        <ul className="mb-3 space-y-1 text-sm">
+          {users.map((u) => (
+            <li key={u.userId} className="flex items-center gap-2">
+              <code className="font-mono">{u.userId}</code>
+              <span className="text-muted-foreground">
+                {u.label ?? (u.username ? `@${u.username}` : '—')} · {u.role}
+              </span>
+              {u.role !== 'owner' && (
+                <button
+                  type="button"
+                  onClick={() => void remove(u.userId)}
+                  className="ghost-btn text-xs text-[#9B3D3D]"
+                >
+                  remove
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <form onSubmit={add} className="flex items-center gap-2">
+        <input
+          value={userId}
+          onChange={(e) => setUserId(e.target.value)}
+          placeholder="user id"
+          className="w-28 rounded-md border bg-background px-2 py-1 font-mono text-sm"
+        />
+        <input
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+          placeholder="label (optional)"
+          className="w-40 rounded-md border bg-background px-2 py-1 text-sm"
+        />
+        <Button variant="ghost" type="submit" disabled={busy}>
+          add
+        </Button>
+        {err && <span className="text-xs text-rose-700">{err}</span>}
+      </form>
+    </section>
   )
 }
 

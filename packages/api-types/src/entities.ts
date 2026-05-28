@@ -95,6 +95,21 @@ export interface AgentSkillAttachment {
   attachedAt: Timestamp
 }
 
+export type TelegramAclRole = 'owner' | 'member'
+
+/**
+ * A Telegram user allowed to use the bot (Phase 7). Flat scope: presence in
+ * this list grants commands + chat. `owner` can manage the list and can't be
+ * removed; `member` can use the bot but not manage it.
+ */
+export interface TelegramAllowedUser {
+  userId: number
+  username: string | null
+  label: string | null
+  role: TelegramAclRole
+  addedAt: Timestamp
+}
+
 export interface SkillMeta {
   name: string
   source: string | null

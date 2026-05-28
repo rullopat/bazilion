@@ -348,6 +348,10 @@ async function dispatchUpdate(handle: BotHandle, db: BazilionDb, u: Update): Pro
     console.warn(
       `telegram: supergroup migrated to chat id ${outcome.toChatId} — reconnect via /api/config/telegram/reconnect`,
     )
+  } else if (outcome.kind === 'unauthorized') {
+    console.log(`telegram: ignored unauthorized user ${outcome.userId}`)
+  } else if (outcome.kind === 'owner_claimed') {
+    console.log(`telegram: user ${outcome.userId} claimed owner (TOFU bootstrap)`)
   }
 }
 
