@@ -18,6 +18,7 @@ import { handle as handleHelp } from './help.ts'
 import { handle as handleList } from './list.ts'
 import { handle as handleRebind } from './rebind.ts'
 import { handle as handleSpawn } from './spawn.ts'
+import { handle as handleSpawnTeam } from './spawn-team.ts'
 import { handle as handleTalk } from './talk.ts'
 import type { CommandContext, CommandCtx, CommandDescriptor, CommandResult } from './types.ts'
 import { handle as handleUnbind } from './unbind.ts'
@@ -31,6 +32,11 @@ export const ALL_COMMANDS: readonly CommandDescriptor[] = [
   // Service-chat surface — registered in the slash menu.
   { name: 'talk', description: 'Open or create the topic for an agent', handle: handleTalk },
   { name: 'spawn', description: 'Create a new agent from a profile', handle: handleSpawn },
+  {
+    name: 'spawn-team',
+    description: 'Spawn a whole profile group (team template) at once',
+    handle: handleSpawnTeam,
+  },
   {
     name: 'list',
     description: 'Show all agents grouped by bazilion group',

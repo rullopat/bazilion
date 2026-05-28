@@ -19,6 +19,7 @@ import { agentRepo, openConfig, profileRepo } from '../../core/index.ts'
 import type { Paths } from '../../core/paths.ts'
 import { dispatchCommand, parseCommand } from './commands/index.ts'
 import { namePrompt, SPAWN_PROFILE_CALLBACK_PREFIX, spawnAndBind } from './commands/spawn.ts'
+import { SPAWN_TEAM_CALLBACK_PREFIX, spawnTeamAndBind } from './commands/spawn-team.ts'
 import type { CommandApi, CommandResult } from './commands/types.ts'
 import { enqueueAgentMessage } from './inbound-queue.ts'
 import {
@@ -94,6 +95,7 @@ export type RouteOutcome =
   | { kind: 'general_redirect'; suppressed: boolean }
   | { kind: 'unknown_topic'; topicId: number }
   | { kind: 'callback_spawn_profile'; profileId: string }
+  | { kind: 'callback_spawn_team'; profileGroupId: string }
   | { kind: 'callback_unknown' }
   | { kind: 'non_message' }
   | { kind: 'ignored_bot' }
@@ -356,6 +358,21 @@ async function handleCallbackQuery(deps: RouterDeps, q: CallbackQuery): Promise<
   // Always acknowledge so Telegram's loading spinner stops — even when we
   // don't know what the callback is for.
   const data = q.data ?? ''
+
+  // Spawn-team picker: tapping a profile group spawns the whole team
+  // immediately (no name step — names come from the template).
+  if (data.startsWith(SPAWN_TEAM_CALLBACK_PREFIX)) {
+    await deps.api.answerCallbackQuery(q.id, {}).catch(() => undefined)
+    const profileGroupId = data.slice(SPAWN_TEAM_CALLBACK_PREFIX.length)
+    const result = await spawnTeamAndBind(
+      { db: deps.db, paths: deps.paths, api: deps.api, chatId: deps.chatId },
+      profileGroupId,
+      null,
+    )
+    await sendCommandResult(deps, q.message?.message_thread_id ?? undefined, result)
+    return { kind: 'callback_spawn_team', profileGroupId }
+  }
+
   if (!data.startsWith(SPAWN_PROFILE_CALLBACK_PREFIX)) {
     await deps.api.answerCallbackQuery(q.id, {}).catch(() => undefined)
     return { kind: 'callback_unknown' }

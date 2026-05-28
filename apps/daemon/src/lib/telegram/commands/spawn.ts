@@ -9,14 +9,13 @@
 //   /spawn <profile-id> <name>   — spawn immediately. `<name>` may be `-` to
 //                                  auto-name as `<profile-id>-<N>`.
 //
-// New agents always join the seeded `default` bazilion group. Multi-group
-// spawn from Telegram is the doc's "Explicitly deferred" item — out of
-// scope for Step 4.
+// Any typed form may end with ` in <group-slug>` to target a non-default
+// group (Phase 6). The keyboard flow stays default-only by design.
 
 import type { Profile } from '@bazilion/api-types'
 import type { InlineKeyboardMarkup } from 'grammy/types'
 import { spawnAgent } from '../../../core/agent/spawn.ts'
-import { agentRepo, profileRepo } from '../../../core/index.ts'
+import { agentRepo, groupRepo, profileRepo } from '../../../core/index.ts'
 import { notifyDirectoryDirty } from '../directory.ts'
 import { htmlEscape } from '../html.ts'
 import { setPendingSpawn } from '../spawn-state.ts'
@@ -30,10 +29,28 @@ export const SPAWN_PROFILE_CALLBACK_PREFIX = 'spawn:profile:'
 const PICKER_COLUMNS = 2
 
 export const handle: CommandHandler = async (ctx) => {
-  const args = ctx.args.trim()
+  let args = ctx.args.trim()
 
   // Form 1: no args → keyboard picker.
   if (!args) return renderProfilePicker(ctx)
+
+  // Pull an optional trailing ` in <group-slug>` (Phase 6 cross-group spawn).
+  let groupSlug: string | null = null
+  const inMatch = args.match(/\s+in\s+(\S+)$/i)
+  if (inMatch) {
+    groupSlug = inMatch[1] ?? null
+    args = args.slice(0, inMatch.index).trim()
+  }
+
+  // Validate the target group up-front so the error is clear.
+  if (groupSlug && !groupRepo.get(ctx.db, groupSlug, ctx.paths)) {
+    return {
+      text:
+        `No group named <code>${htmlEscape(groupSlug)}</code>.\n` +
+        'Run <code>/groups</code> to see the list.',
+      parseMode: 'HTML',
+    }
+  }
 
   // Tokenize: first token is the profile id, the rest (joined back with
   // single spaces) is the optional name. Greedy-after-first.
@@ -51,8 +68,10 @@ export const handle: CommandHandler = async (ctx) => {
     }
   }
 
-  // Form 2: profile only → store pending state, prompt for name.
-  if (!nameArg) {
+  // Form 2: profile only → store pending state, prompt for name. (Cross-group
+  // is only available on the immediate-spawn forms; the keyboard/name flow is
+  // default-only, so a bare `/spawn <profile> in <group>` still spawns now.)
+  if (!nameArg && !groupSlug) {
     setPendingSpawn(ctx.chatId, ctx.from.id, profile.id)
     return {
       text: namePrompt(profile),
@@ -60,8 +79,9 @@ export const handle: CommandHandler = async (ctx) => {
     }
   }
 
-  // Form 3: profile + name → spawn immediately.
-  return await spawnAndBind(ctx, profile, nameArg)
+  // Form 3: profile + name (and/or group) → spawn immediately. A `-` name (or
+  // a missing name with an explicit group) auto-names.
+  return await spawnAndBind(ctx, profile, nameArg ?? '-', groupSlug)
 }
 
 /**
@@ -113,6 +133,7 @@ export async function spawnAndBind(
   ctx: Pick<CommandCtx, 'db' | 'paths' | 'api' | 'chatId'>,
   profile: Profile,
   rawName: string,
+  groupSlug: string | null = null,
 ): Promise<CommandResult> {
   const requestedName = rawName === '-' ? autoName(ctx, profile) : rawName
 
@@ -122,6 +143,7 @@ export async function spawnAndBind(
       profileId: profile.id,
       name: requestedName,
       // groupId omitted → spawnAgent falls back to 'default'.
+      ...(groupSlug ? { groupId: groupSlug } : {}),
     })
   } catch (e) {
     return {

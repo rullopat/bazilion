@@ -241,6 +241,33 @@ describe('routeUpdate classification', () => {
     expect(agentRepo.getTelegramTopicId(env.db, agent.id)).not.toBeNull()
   })
 
+  test('/spawn <profile> <name> in <group> spawns into the named group', async () => {
+    const { registerGroup } = await import('../../src/core/group/register.ts')
+    registerGroup(env.db, { id: 'work', name: 'Work' }, env.paths)
+    const { api, creates } = makeReplyApi()
+    const u = messageUpdate({ threadId: SERVICE_TOPIC, text: '/spawn base teammate in work' })
+    const outcome = await routeUpdate(
+      { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID },
+      u,
+    )
+    expect(outcome.kind).toBe('service_command')
+    const created = agentRepo.list(env.db).find((a) => a.name === 'teammate')
+    expect(created?.groupId).toBe('work')
+    expect(creates.length).toBe(1)
+  })
+
+  test('/spawn into an unknown group is rejected with a hint', async () => {
+    const { api, creates } = makeReplyApi()
+    const u = messageUpdate({ threadId: SERVICE_TOPIC, text: '/spawn base x in nope' })
+    const outcome = await routeUpdate(
+      { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID },
+      u,
+    )
+    expect(outcome.kind).toBe('service_command')
+    expect(creates.length).toBe(0)
+    expect(agentRepo.list(env.db).find((a) => a.name === 'x')).toBeUndefined()
+  })
+
   test('agent-topic inbound identifies the agent but sends no reply (step 3 behavior)', async () => {
     const agent = spawnAgent(env.db, env.paths, {
       profileId: 'base',
