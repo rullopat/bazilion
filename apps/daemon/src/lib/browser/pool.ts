@@ -55,6 +55,18 @@ export interface BrowserSession {
   close(): Promise<void>
 }
 
+/** A realistic Chrome UA consistent with the running engine + host OS. */
+function chromeUserAgent(version: string): string {
+  const major = version.split('.')[0] || '148'
+  const platform =
+    process.platform === 'darwin'
+      ? 'Macintosh; Intel Mac OS X 10_15_7'
+      : process.platform === 'win32'
+        ? 'Windows NT 10.0; Win64; x64'
+        : 'X11; Linux x86_64'
+  return `Mozilla/5.0 (${platform}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${major}.0.0.0 Safari/537.36`
+}
+
 function activePage(s: BrowserSession): Page {
   const pages = s.context.pages()
   if (pages.length === 0) throw new Error('browser has no open pages')
@@ -80,8 +92,12 @@ async function createSession(agentId: string, config: BrowserConfig): Promise<Br
     ...(proxy ? { proxy } : {}),
   })
   const context = await browser.newContext({
-    userAgent:
-      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15',
+    // Present a Chrome UA matching the actual Chromium engine + host OS. A
+    // mismatched UA (e.g. Safari-on-Chromium, or Mac-on-Linux) contradicts the
+    // engine fingerprints a real browser exposes and *raises* bot-detection
+    // signal; deriving it from browser.version() also drops the "HeadlessChrome"
+    // token Playwright's default UA carries.
+    userAgent: chromeUserAgent(browser.version()),
     viewport: { width: 1280, height: 800 },
     // Block service workers — defense in depth (their requests already go
     // through the proxy, but this removes a whole class of interception edge
