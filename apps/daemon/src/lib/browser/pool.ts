@@ -224,6 +224,15 @@ function text(s: string): ToolResultPart[] {
   return [{ type: 'text', text: s }]
 }
 
+/** No page has been navigated yet (fresh session / after a daemon restart). */
+function isBlank(page: Page): boolean {
+  const u = page.url()
+  return !u || u === 'about:blank'
+}
+
+const NO_PAGE_HINT =
+  'No page is loaded yet — the browser is on about:blank (a fresh session). Call browser_navigate with a URL first, then retry.'
+
 async function snapshotText(s: BrowserSession): Promise<string> {
   const page = activePage(s)
   const pages = s.context.pages()
@@ -282,6 +291,7 @@ export async function invokeBrowserAction(
       return text(await snapshotText(session))
     }
     case 'snapshot':
+      if (isBlank(page())) return text(NO_PAGE_HINT)
       return text(await snapshotText(session))
     case 'click': {
       await page()
@@ -361,6 +371,9 @@ export async function invokeBrowserAction(
       throw new Error(`unknown tabs op: ${op} (expected list|new|select|close)`)
     }
     case 'take_screenshot': {
+      // Don't hand back a useless blank PNG (and tempt the model to narrate it
+      // as a real page) when nothing has been navigated to yet.
+      if (isBlank(page())) return text(NO_PAGE_HINT)
       const buf = await page().screenshot({
         type: 'png',
         fullPage: args.full_page === true,

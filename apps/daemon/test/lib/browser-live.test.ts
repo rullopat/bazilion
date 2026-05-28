@@ -24,6 +24,7 @@ let available = true
 
 afterAll(async () => {
   await closeBrowserSession('browser-smoke')
+  await closeBrowserSession('browser-blank')
 })
 
 test('navigate → snapshot → screenshot round-trips through the pool', {
@@ -58,4 +59,18 @@ test('reuses one session per agent across calls', { timeout: 60_000 }, async () 
   // Two snapshots in a row should hit the same cached session (no relaunch).
   const a = await invokeBrowserAction('browser-smoke', 'snapshot', {}, CONFIG)
   expect(a.length).toBeGreaterThan(0)
+})
+
+test('screenshot/snapshot on a fresh (un-navigated) session return a navigate hint', {
+  timeout: 60_000,
+}, async () => {
+  if (!available) return
+  // A brand-new session sits on about:blank — perception must steer the model
+  // to navigate first instead of returning a blank PNG it might misnarrate.
+  const shot = await invokeBrowserAction('browser-blank', 'take_screenshot', {}, CONFIG)
+  expect(shot.every((p) => p.type === 'text')).toBe(true)
+  expect(shot.map((p) => (p.type === 'text' ? p.text : '')).join('')).toMatch(/about:blank/i)
+
+  const snap = await invokeBrowserAction('browser-blank', 'snapshot', {}, CONFIG)
+  expect(snap.map((p) => (p.type === 'text' ? p.text : '')).join('')).toMatch(/navigate/i)
 })
