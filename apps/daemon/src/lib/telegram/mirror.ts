@@ -141,7 +141,14 @@ function frameToolResultImages(
   if (frame.kind !== 'event') return null
   const ev = frame.event
   if (ev.type !== 'tool_result' || !ev.images || ev.images.length === 0) return null
-  return { images: ev.images, caption: ev.result || ev.name }
+  // Caption = the first non-empty line of the result text. For a screenshot
+  // that's exactly "Screenshot of <url>" — the same line the web tool view
+  // shows — and it keeps captions tidy for verbose multi-line tool results.
+  const firstLine = ev.result
+    .split('\n')
+    .map((l) => l.trim())
+    .find(Boolean)
+  return { images: ev.images, caption: firstLine || ev.name }
 }
 
 /**

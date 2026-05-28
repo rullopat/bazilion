@@ -167,6 +167,27 @@ describe('mirrorAgentTurnFrame', () => {
     expect(sends.length).toBe(0)
   })
 
+  test('photo caption is the first non-empty line of the tool result', async () => {
+    const { api, photos } = makeApi()
+    installMirrorDepsResolver(() => ({ db: env.db, api, chatId: CHAT_ID }))
+    const a = spawnAgent(env.db, env.paths, { profileId: 'base', groupId: env.groupId, name: 'r1' })
+    agentRepo.setTelegramTopicId(env.db, a.id, 42)
+
+    await mirrorAgentTurnFrame(a.id, {
+      kind: 'event',
+      event: {
+        type: 'tool_result',
+        id: '1',
+        name: 'browser_take_screenshot',
+        result: 'Screenshot of https://example.com\nextra line\nmore detail',
+        images: [{ data: Buffer.from('png').toString('base64'), mimeType: 'image/png' }],
+      },
+    })
+    expect((photos[0]?.opts as { caption?: string }).caption).toBe(
+      'Screenshot of https://example.com',
+    )
+  })
+
   test('image send falls back to a document when the photo is rejected', async () => {
     const { api, photos, documents } = makeApi({ photoFailWith: 'IMAGE_PROCESS_FAILED' })
     installMirrorDepsResolver(() => ({ db: env.db, api, chatId: CHAT_ID }))
