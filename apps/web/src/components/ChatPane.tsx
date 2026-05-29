@@ -2,7 +2,12 @@
 // daemon's NDJSON ChatFrame stream. Initial messages come from the route
 // loader; new ones land via fetch + ReadableStream consume.
 
-import type { ChatFrame, ProviderMessage, SessionHeadResponse } from '@bazilion/api-types'
+import type {
+  Attachment,
+  ChatFrame,
+  ProviderMessage,
+  SessionHeadResponse,
+} from '@bazilion/api-types'
 import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { renderMd } from '../lib/md'
 
@@ -21,9 +26,16 @@ type ToolItem = {
 }
 
 type RenderEntry =
-  | { type: 'user'; content: string }
+  | {
+      type: 'user'
+      content: string
+      images?: { data: string; mimeType: string }[]
+      files?: { name: string }[]
+    }
   | { type: 'assistant'; content: string }
   | { type: 'tool'; items: ToolItem[] }
+  | { type: 'images'; images: { data: string; mimeType: string }[] }
+  | { type: 'file'; name: string; mimeType: string; data: string }
   | { type: 'system'; content: string }
   | { type: 'error'; content: string }
 
@@ -80,6 +92,26 @@ function formatBytes(n: number): string {
   return `${(n / (1024 * 1024)).toFixed(2)} MiB`
 }
 
+/** Read any File into a base64 Attachment (strips the data: URL prefix). */
+function fileToAttachment(file: File): Promise<Attachment> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = String(reader.result)
+      const comma = result.indexOf(',')
+      resolve({
+        name: file.name,
+        data: comma >= 0 ? result.slice(comma + 1) : result,
+        mimeType: file.type || 'application/octet-stream',
+      })
+    }
+    reader.onerror = () => reject(reader.error)
+    reader.readAsDataURL(file)
+  })
+}
+
+const isImageMime = (m: string) => m.startsWith('image/')
+
 // Project canonical ProviderMessage[] into render entries: assistant content +
 // any tool calls, then tool-role messages collapse into the same group.
 function projectMessages(msgs: ProviderMessage[]): RenderEntry[] {
@@ -88,7 +120,11 @@ function projectMessages(msgs: ProviderMessage[]): RenderEntry[] {
   for (const m of msgs) {
     if (m.role === 'user') {
       openTool = null
-      entries.push({ type: 'user', content: m.content })
+      entries.push({
+        type: 'user',
+        content: m.content,
+        ...(m.images && m.images.length > 0 ? { images: m.images } : {}),
+      })
     } else if (m.role === 'assistant') {
       if (m.content) {
         openTool = null
@@ -115,6 +151,12 @@ function projectMessages(msgs: ProviderMessage[]): RenderEntry[] {
         name: m.toolName ?? '',
         body: m.content,
       })
+      // Images are deliverables — emit them as a standalone block OUTSIDE the
+      // tool box (and close the group so they don't get visually nested).
+      if (m.images && m.images.length > 0) {
+        entries.push({ type: 'images', images: m.images })
+        openTool = null
+      }
     }
   }
   return entries
@@ -143,9 +185,12 @@ export function ChatPane({
   const [streaming, setStreaming] = useState(false)
   const [editIdx, setEditIdx] = useState<number | null>(null)
   const [input, setInput] = useState('')
+  const [attachments, setAttachments] = useState<Attachment[]>([])
+  const [dragging, setDragging] = useState(false)
   const [staleBanner, setStaleBanner] = useState(false)
 
   const messagesRef = useRef<HTMLDivElement | null>(null)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
   const currentAbortRef = useRef<AbortController | null>(null)
   // Slash-command output bubbles are anchored to the count of visible
@@ -437,14 +482,53 @@ export function ChatPane({
     setEditIdx(null)
   }
 
+  // --- attachments (one generic list; the daemon classifies each: images →
+  // vision, others → stored and referenced by path for the agent) ---
+  async function addFiles(files: FileList | File[] | null) {
+    if (!files) return
+    const arr = Array.from(files)
+    if (arr.length === 0) return
+    const encoded = await Promise.all(arr.map(fileToAttachment))
+    setAttachments((prev) => [...prev, ...encoded].slice(0, 16))
+  }
+
+  function onPaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const files = Array.from(e.clipboardData.files)
+    if (files.some((f) => f.type.startsWith('image/'))) {
+      e.preventDefault()
+      void addFiles(files)
+    }
+  }
+
+  function onDragOver(e: React.DragEvent) {
+    if (streaming) return
+    if (Array.from(e.dataTransfer.types).includes('Files')) {
+      e.preventDefault()
+      setDragging(true)
+    }
+  }
+  function onDragLeave(e: React.DragEvent) {
+    // Only clear when the pointer leaves the container itself (not a child).
+    if (e.currentTarget === e.target) setDragging(false)
+  }
+  function onDrop(e: React.DragEvent) {
+    if (e.dataTransfer.files.length > 0) {
+      e.preventDefault()
+      setDragging(false)
+      void addFiles(e.dataTransfer.files)
+    }
+  }
+
   // --- send ---
   const send = useCallback(
     async (text: string) => {
-      if (!text.trim() || streaming) return
+      const atts = attachments
+      if ((!text.trim() && atts.length === 0) || streaming) return
       setInput('')
 
-      // Slash commands shortcut.
+      // Slash commands shortcut (text-only; leave any attachments pending).
       if (await maybeHandleSlashCommand(text)) return
+      setAttachments([])
 
       // Edit-mode truncate.
       let truncatedServerMessages: ProviderMessage[] | null = null
@@ -479,7 +563,18 @@ export function ChatPane({
       }
 
       captureScroll()
-      setLiveEntries([{ type: 'user', content: text }])
+      const previewImages = atts.filter((a) => isImageMime(a.mimeType))
+      const previewFiles = atts.filter((a) => !isImageMime(a.mimeType))
+      setLiveEntries([
+        {
+          type: 'user',
+          content: text,
+          ...(previewImages.length > 0 ? { images: previewImages } : {}),
+          ...(previewFiles.length > 0
+            ? { files: previewFiles.map((f) => ({ name: f.name ?? 'file' })) }
+            : {}),
+        },
+      ])
       sessionStorage.setItem(`bz_pending_${agentId}`, '1')
       const abort = new AbortController()
       currentAbortRef.current = abort
@@ -490,7 +585,7 @@ export function ChatPane({
         const res = await fetch(`/api/agents/${encodeURIComponent(agentId)}/chat`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ message: text }),
+          body: JSON.stringify({ message: text, attachments: atts }),
           signal: abort.signal,
         })
         if (!res.ok || !res.body) {
@@ -544,7 +639,7 @@ export function ChatPane({
       }
     },
     // biome-ignore lint/correctness/useExhaustiveDependencies: stable refs intentional
-    [agentId, editIdx, serverMessages, streaming],
+    [agentId, editIdx, serverMessages, streaming, attachments],
   )
 
   function handleFrame(frame: ChatFrame) {
@@ -600,6 +695,7 @@ export function ChatPane({
           : ev.type === 'tool_result'
             ? { kind: 'result', id: ev.id, name: ev.name, body: ev.result }
             : { kind: 'error', id: ev.id, name: ev.name, body: ev.error }
+      const images = ev.type === 'tool_result' ? ev.images : undefined
       setLiveEntries((prev) => {
         const next = [...prev]
         const last = next[next.length - 1]
@@ -608,8 +704,18 @@ export function ChatPane({
         } else {
           next.push({ type: 'tool', items: [item] })
         }
+        // Images are deliverables — push them as a standalone block outside the
+        // tool box (this also "closes" the group, so the next tool starts fresh).
+        if (images && images.length > 0) next.push({ type: 'images', images })
         return next
       })
+      return
+    }
+    if (ev.type === 'file') {
+      setLiveEntries((prev) => [
+        ...prev,
+        { type: 'file', name: ev.name, mimeType: ev.mimeType, data: ev.data },
+      ])
       return
     }
     if (ev.type === 'error') {
@@ -667,7 +773,17 @@ export function ChatPane({
   })()
 
   return (
-    <div className="flex h-full flex-col overflow-hidden rounded-[16px] border border-frost bg-snow shadow-baziu-sm">
+    <div
+      className="relative flex h-full flex-col overflow-hidden rounded-[16px] border border-frost bg-snow shadow-baziu-sm"
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+    >
+      {dragging && (
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-[16px] border-2 border-dashed border-sapphire bg-sapphire-glow/80 text-[0.95em] font-medium text-sapphire-deep">
+          drop images or files to attach
+        </div>
+      )}
       <div className="flex items-baseline justify-between border-b border-frost px-4 py-2.5">
         <h1 className="font-display text-[1.2rem] text-charcoal">{agentName}</h1>
         <a
@@ -793,6 +909,47 @@ export function ChatPane({
         </div>
       )}
 
+      {attachments.length > 0 && (
+        <div className="flex flex-wrap gap-2 border-t border-frost bg-ivory px-5 pt-3">
+          {attachments.map((a, i) => {
+            const remove = () => setAttachments((prev) => prev.filter((_, j) => j !== i))
+            return isImageMime(a.mimeType) ? (
+              <div key={`${a.mimeType}-${i}`} className="relative">
+                <img
+                  src={`data:${a.mimeType};base64,${a.data}`}
+                  alt="pending attachment"
+                  className="h-16 w-16 rounded-md border border-frost object-cover"
+                />
+                <button
+                  type="button"
+                  onClick={remove}
+                  className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full border border-frost bg-snow text-[0.7em] text-mocha hover:border-sapphire hover:text-sapphire"
+                  aria-label="remove attachment"
+                >
+                  ✕
+                </button>
+              </div>
+            ) : (
+              <div
+                key={`${a.name ?? 'file'}-${i}`}
+                className="flex items-center gap-1.5 rounded-md border border-frost bg-snow px-2 py-1 text-[0.82em] text-mocha"
+              >
+                <span>📄</span>
+                <span className="max-w-[160px] truncate">{a.name ?? 'file'}</span>
+                <button
+                  type="button"
+                  onClick={remove}
+                  className="text-[0.85em] text-mocha hover:text-sapphire"
+                  aria-label="remove attachment"
+                >
+                  ✕
+                </button>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
       <form
         className="flex items-end gap-2 border-t border-frost bg-ivory px-5 py-3"
         onSubmit={(e) => {
@@ -800,20 +957,41 @@ export function ChatPane({
           void send(input)
         }}
       >
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          className="hidden"
+          onChange={(e) => {
+            void addFiles(e.target.files)
+            e.target.value = ''
+          }}
+        />
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={streaming}
+          title="attach images or files"
+          aria-label="attach files"
+          className="rounded-md border-[1.5px] border-frost bg-snow px-3 py-2 text-[1em] text-mocha transition-colors hover:border-sapphire hover:text-sapphire disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          📎
+        </button>
         <textarea
           ref={inputRef}
           rows={1}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={onKeyDown}
+          onPaste={onPaste}
           disabled={streaming}
-          placeholder="say something… (Shift+Enter for newline; try /context, /compact, /reset)"
+          placeholder="say something… (Shift+Enter for newline; paste or 📎 to attach images/files)"
           autoComplete="off"
           className="max-h-[200px] min-h-[2.4rem] flex-1 resize-none overflow-y-auto rounded-md border-[1.5px] border-frost bg-snow px-3 py-2 text-[0.93em] leading-[1.45] text-chocolate outline-none transition-colors focus:border-sapphire focus:shadow-[0_0_0_3px_var(--color-sapphire-glow)]"
         />
         <button
           type="submit"
-          disabled={streaming || !input.trim()}
+          disabled={streaming || (!input.trim() && attachments.length === 0)}
           className="rounded-md bg-sapphire px-4 py-2 text-[0.92em] font-semibold text-snow transition-colors hover:bg-sapphire-deep disabled:cursor-not-allowed disabled:opacity-50"
         >
           send
@@ -858,9 +1036,37 @@ function Bubble({ entry, isLastUser, isWillDrop, onEdit }: BubbleProps) {
     return (
       <div className={`group relative my-4 flex flex-col items-end ${dropCls}`}>
         <span className="sr-only">you</span>
-        <div className="bubble-content max-w-[85%] whitespace-pre-wrap break-words rounded-[14px_14px_4px_14px] border border-sapphire-light bg-sapphire-glow px-3 py-2 text-chocolate">
-          {entry.content}
-        </div>
+        {entry.images && entry.images.length > 0 && (
+          <div className="mb-1 flex max-w-[85%] flex-wrap justify-end gap-1">
+            {entry.images.map((img, i) => (
+              <img
+                // biome-ignore lint/suspicious/noArrayIndexKey: append-only within one message
+                key={i}
+                src={`data:${img.mimeType};base64,${img.data}`}
+                alt="attachment"
+                className="max-h-48 rounded-lg border border-sapphire-light"
+              />
+            ))}
+          </div>
+        )}
+        {entry.files && entry.files.length > 0 && (
+          <div className="mb-1 flex max-w-[85%] flex-wrap justify-end gap-1">
+            {entry.files.map((f, i) => (
+              <span
+                // biome-ignore lint/suspicious/noArrayIndexKey: append-only within one message
+                key={i}
+                className="flex items-center gap-1 rounded-md border border-sapphire-light bg-sapphire-glow px-2 py-1 text-[0.8em] text-chocolate"
+              >
+                📄 <span className="max-w-[180px] truncate">{f.name}</span>
+              </span>
+            ))}
+          </div>
+        )}
+        {entry.content && (
+          <div className="bubble-content max-w-[85%] whitespace-pre-wrap break-words rounded-[14px_14px_4px_14px] border border-sapphire-light bg-sapphire-glow px-3 py-2 text-chocolate">
+            {entry.content}
+          </div>
+        )}
         {isLastUser && onEdit && (
           <button
             type="button"
@@ -923,6 +1129,41 @@ function Bubble({ entry, isLastUser, isWillDrop, onEdit }: BubbleProps) {
   }
   if (entry.type === 'tool') {
     return <ToolGroup items={entry.items} dropCls={dropCls} />
+  }
+  if (entry.type === 'images') {
+    return (
+      <div className={`my-2 space-y-2 ${dropCls}`}>
+        {entry.images.map((img, i) => (
+          <img
+            // biome-ignore lint/suspicious/noArrayIndexKey: append-only within one result
+            key={i}
+            src={`data:${img.mimeType};base64,${img.data}`}
+            alt="screenshot"
+            className="block max-w-full rounded-lg border border-fawn"
+          />
+        ))}
+      </div>
+    )
+  }
+  if (entry.type === 'file') {
+    const isImage = entry.mimeType.startsWith('image/')
+    const href = `data:${entry.mimeType};base64,${entry.data}`
+    return (
+      <div className={`my-2 ${dropCls}`}>
+        {isImage && (
+          <img src={href} alt={entry.name} className="mb-1 block max-w-full rounded-lg border border-fawn" />
+        )}
+        <a
+          href={href}
+          download={entry.name}
+          className="inline-flex items-center gap-2 rounded-md border border-fawn bg-ivory px-3 py-2 text-[0.88em] text-mocha hover:border-sapphire hover:text-sapphire"
+        >
+          <span>📄</span>
+          <span className="max-w-[260px] truncate">{entry.name}</span>
+          <span className="text-[0.85em] opacity-70">download</span>
+        </a>
+      </div>
+    )
   }
   if (entry.type === 'system') {
     return (
@@ -1013,6 +1254,8 @@ function ToolLine({ item }: { item: ToolItem }) {
       </div>
     )
   }
+  // Images are rendered by ToolGroup outside the height clip (they're
+  // deliverables, not collapsible scaffolding) — here we only show the text.
   return (
     <div className="whitespace-pre-wrap break-words py-0.5">
       <span className="mr-1 opacity-45">←</span>

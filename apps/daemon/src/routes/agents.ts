@@ -9,6 +9,7 @@
 import { existsSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import {
+  type Attachment,
   type AttachSkillRequest,
   type ChatCompactRequest,
   type ChatCompactResponse,
@@ -50,6 +51,7 @@ import { cancelAgent } from '../lib/agent-cancel.ts'
 import { resolveAgentIdParam } from '../lib/agent-id.ts'
 import { runAgentTurn } from '../lib/agent-turn.ts'
 import { resolveAgentApiKey } from '../lib/api-key.ts'
+import { closeBrowserSession } from '../lib/browser/pool.ts'
 import { validateCron } from '../lib/cron.ts'
 import { getCtx } from '../lib/ctx.ts'
 import { createDbMessagingHost } from '../lib/messaging-host.ts'
@@ -67,6 +69,32 @@ import {
 } from '../runtime/index.ts'
 
 export const agentsRouter = new Hono()
+
+// Cap attachments per message — keeps a runaway client from blowing up the
+// worker stdin payload and the model's context.
+const MAX_INPUT_ATTACHMENTS = 16
+
+function sanitizeAttachments(raw: unknown): Attachment[] {
+  if (!Array.isArray(raw)) return []
+  const out: Attachment[] = []
+  for (const r of raw) {
+    const a = r as Attachment
+    if (
+      a &&
+      typeof a === 'object' &&
+      typeof a.data === 'string' &&
+      typeof a.mimeType === 'string'
+    ) {
+      out.push({
+        mimeType: a.mimeType,
+        data: a.data,
+        ...(typeof a.name === 'string' ? { name: a.name } : {}),
+      })
+      if (out.length >= MAX_INPUT_ATTACHMENTS) break
+    }
+  }
+  return out
+}
 
 // ─── CRUD + lifecycle ────────────────────────────────────────────────────
 
@@ -197,6 +225,10 @@ agentsRouter.patch('/:id', async (c) => {
 agentsRouter.delete('/:id', (c) => {
   const { db, paths, authToken } = getCtx()
   try {
+    // Best-effort teardown of any daemon-side browser session before the agent
+    // record (and its home dir) goes away. Fire-and-forget — the idle reaper is
+    // the backstop and the response shouldn't block on Chromium shutdown.
+    void closeBrowserSession(c.req.param('id')).catch(() => {})
     deleteAgent(db, c.req.param('id'))
     notifyDirectoryDirty()
     return c.body(null, 204)
@@ -208,6 +240,7 @@ agentsRouter.delete('/:id', (c) => {
 agentsRouter.post('/:id/archive', (c) => {
   const { db, paths, authToken } = getCtx()
   try {
+    void closeBrowserSession(c.req.param('id')).catch(() => {})
     archiveAgent(db, c.req.param('id'))
     notifyDirectoryDirty()
     return c.body(null, 204)
@@ -494,22 +527,27 @@ agentsRouter.post('/:id/chat', async (c) => {
   const { db, paths, authToken } = getCtx()
   const id = resolveAgentIdParam(db, c.req.param('id'))
 
-  let body: { message?: string }
+  let body: { message?: string; attachments?: Attachment[] }
   try {
-    body = (await c.req.json()) as { message?: string }
+    body = (await c.req.json()) as { message?: string; attachments?: Attachment[] }
   } catch {
     return c.json({ error: 'invalid JSON body' }, 400)
   }
   const message = body.message
-  if (!message || typeof message !== 'string') {
+  if (typeof message !== 'string') {
     return c.json({ error: 'message is required' }, 400)
+  }
+  const attachments = sanitizeAttachments(body.attachments)
+  // A turn needs *something* — text or at least one attachment.
+  if (!message && attachments.length === 0) {
+    return c.json({ error: 'message or an attachment is required' }, 400)
   }
 
   const stream = new ReadableStream({
     async start(controller) {
       const encoder = new TextEncoder()
       try {
-        for await (const frame of runAgentTurn(id, message)) {
+        for await (const frame of runAgentTurn(id, message, { attachments })) {
           try {
             controller.enqueue(encoder.encode(`${JSON.stringify(frame)}\n`))
           } catch {

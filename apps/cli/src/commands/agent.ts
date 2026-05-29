@@ -1,7 +1,10 @@
+import { readFileSync, writeFileSync } from 'node:fs'
+import { basename, extname } from 'node:path'
 import { stdin, stdout } from 'node:process'
 import { createInterface } from 'node:readline/promises'
 import type {
   Agent,
+  Attachment,
   AttachSkillRequest,
   ChatCompactRequest,
   ChatCompactResponse,
@@ -18,6 +21,47 @@ import type {
 import { defineCommand } from 'citty'
 import { createClient } from '../client.ts'
 import { columnize } from '../columnize.ts'
+
+const IMAGE_MIME: Record<string, string> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+}
+
+/** Read image file paths into base64 attachments (image mime → routed to vision). */
+function loadImages(paths: string[]): Attachment[] {
+  return paths.map((p) => {
+    const mimeType = IMAGE_MIME[extname(p).toLowerCase()]
+    if (!mimeType) throw new Error(`unsupported image type: ${p} (png/jpg/gif/webp only)`)
+    return { name: basename(p), mimeType, data: readFileSync(p).toString('base64') }
+  })
+}
+
+const FILE_MIME: Record<string, string> = {
+  '.pdf': 'application/pdf',
+  '.txt': 'text/plain',
+  '.md': 'text/markdown',
+  '.csv': 'text/csv',
+  '.json': 'application/json',
+  '.html': 'text/html',
+  '.zip': 'application/zip',
+}
+
+/** Read arbitrary file paths into base64 attachments (non-image → stored + referenced). */
+function loadFiles(paths: string[]): Attachment[] {
+  return paths.map((p) => ({
+    name: basename(p),
+    mimeType: FILE_MIME[extname(p).toLowerCase()] ?? 'application/octet-stream',
+    data: readFileSync(p).toString('base64'),
+  }))
+}
+
+/** citty gives a string for one flag, an array for several — normalize. */
+function asPaths(v: string | string[] | undefined): string[] {
+  return v ? (Array.isArray(v) ? v : [v]) : []
+}
 
 const spawnCmd = defineCommand({
   meta: { name: 'spawn', description: 'Spawn an agent from a profile into a group' },
@@ -224,6 +268,16 @@ function printEvent(e: SessionEvent, state: PrintState): void {
     case 'tool_error':
       console.log(`  [tool error: ${e.name} — ${e.error}]`)
       break
+    case 'file': {
+      if (state.inDeltaStream) {
+        process.stdout.write('\n')
+        state.inDeltaStream = false
+      }
+      const out = basename(e.name).replace(/[^\w.-]/g, '_') || 'file'
+      writeFileSync(out, Buffer.from(e.data, 'base64'))
+      console.log(`  [file received: saved to ./${out} (${e.mimeType})]`)
+      break
+    }
     case 'error':
       if (state.inDeltaStream) {
         process.stdout.write('\n')
@@ -238,10 +292,12 @@ async function streamTurn(
   client: ReturnType<typeof createClient>,
   agentId: string,
   message: string,
+  attachments?: Attachment[],
 ): Promise<void> {
   const state: PrintState = { inDeltaStream: false }
   for await (const frame of client.stream<ChatFrame>('POST', `/api/agents/${agentId}/chat`, {
     message,
+    ...(attachments && attachments.length > 0 ? { attachments } : {}),
   })) {
     if (frame.kind === 'event') {
       if (frame.event.type !== 'user_message') printEvent(frame.event, state)
@@ -260,13 +316,26 @@ const chatCmd = defineCommand({
       type: 'string',
       description: 'Send a single message and exit (one-shot mode)',
     },
+    image: {
+      type: 'string',
+      description: 'Attach an image file (png/jpg/gif/webp; repeatable). One-shot mode.',
+    },
+    file: {
+      type: 'string',
+      description: 'Attach any file — the agent gets a path reference (repeatable). One-shot mode.',
+    },
   },
   async run({ args }) {
     const client = createClient()
     const resolved = await client.get<ResolvedAgent>(`/api/agents/${args.id}`)
 
-    if (args.message) {
-      await streamTurn(client, resolved.agent.id, args.message)
+    const attachments = [
+      ...loadImages(asPaths(args.image as string | string[] | undefined)),
+      ...loadFiles(asPaths(args.file as string | string[] | undefined)),
+    ]
+
+    if (args.message || attachments.length > 0) {
+      await streamTurn(client, resolved.agent.id, args.message ?? '', attachments)
       return
     }
 

@@ -24,8 +24,16 @@ import { type ChildProcess, spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import type { ChatFrame, ResolvedAgent } from '@bazilion/api-types'
-import type { IpcReply, IpcRequest, MessagingHost, UserMdHost } from './ipc-protocol.ts'
+import type { Attachment, ChatFrame, ResolvedAgent } from '@bazilion/api-types'
+import type {
+  BrowserHost,
+  InjectedMcpTool,
+  IpcReply,
+  IpcRequest,
+  McpHost,
+  MessagingHost,
+  UserMdHost,
+} from './ipc-protocol.ts'
 
 const DEFAULT_KILL_GRACE_MS = 3_000
 
@@ -85,6 +93,12 @@ export interface WorkerTurnSpec {
    * derives the key from `process.env`.
    */
   apiKey?: string
+  /** When true, expose the `browser_*` tools (proxied to the daemon browser pool). */
+  browserEnabled?: boolean
+  /** MCP tools discovered daemon-side, exposed as IPC-proxied proxy tools. */
+  mcpTools?: InjectedMcpTool[]
+  /** Image attachments — passed to pi's prompt (vision). Pre-classified by the daemon. */
+  images?: Attachment[]
 }
 
 export interface SpawnWorkerOpts {
@@ -106,6 +120,16 @@ export interface SpawnWorkerOpts {
    * `user_md_append` tool will be unavailable on this turn.
    */
   userMdHost?: UserMdHost
+  /**
+   * Daemon-side browser pool surface for the `browser_*` tools. Omit when the
+   * agent's profile doesn't enable browser automation.
+   */
+  browserHost?: BrowserHost
+  /**
+   * Daemon-side MCP connection pool surface for proxied MCP tools. Omit when no
+   * MCP servers are configured/enabled.
+   */
+  mcpHost?: McpHost
 }
 
 export async function* spawnWorkerTurn(
@@ -117,8 +141,13 @@ export async function* spawnWorkerTurn(
     stdio: ['pipe', 'pipe', 'inherit', 'ipc'],
   })
 
-  if (opts.messagingHost || opts.userMdHost) {
-    attachIpcHandler(child, opts.messagingHost, opts.userMdHost)
+  if (opts.messagingHost || opts.userMdHost || opts.browserHost || opts.mcpHost) {
+    attachIpcHandler(child, {
+      messagingHost: opts.messagingHost,
+      userMdHost: opts.userMdHost,
+      browserHost: opts.browserHost,
+      mcpHost: opts.mcpHost,
+    })
   }
 
   child.stdin?.write(JSON.stringify(spec))
@@ -212,14 +241,17 @@ function parseFrame(line: string): ChatFrame {
   }
 }
 
-function attachIpcHandler(
-  child: ChildProcess,
-  messagingHost: MessagingHost | undefined,
-  userMdHost: UserMdHost | undefined,
-): void {
+interface IpcHosts {
+  messagingHost?: MessagingHost
+  userMdHost?: UserMdHost
+  browserHost?: BrowserHost
+  mcpHost?: McpHost
+}
+
+function attachIpcHandler(child: ChildProcess, hosts: IpcHosts): void {
   child.on('message', (msg: unknown) => {
     if (!isIpcRequest(msg)) return
-    void dispatch(msg, messagingHost, userMdHost).then((reply) => {
+    void dispatch(msg, hosts).then((reply) => {
       try {
         child.send?.(reply)
       } catch {
@@ -235,53 +267,61 @@ function isIpcRequest(msg: unknown): msg is IpcRequest {
   return m.type === 'rpc' && typeof m.id === 'string' && typeof m.method === 'string'
 }
 
-function requireMessagingHost(host: MessagingHost | undefined, method: string): MessagingHost {
-  if (!host) throw new Error(`worker called messaging method "${method}" without a messagingHost`)
+function require<T>(host: T | undefined, kind: string, method: string): T {
+  if (!host) throw new Error(`worker called ${kind} method "${method}" without a ${kind}Host`)
   return host
 }
 
-function requireUserMdHost(host: UserMdHost | undefined, method: string): UserMdHost {
-  if (!host) throw new Error(`worker called user_md method "${method}" without a userMdHost`)
-  return host
-}
-
-async function dispatch(
-  req: IpcRequest,
-  messagingHost: MessagingHost | undefined,
-  userMdHost: UserMdHost | undefined,
-): Promise<IpcReply> {
+async function dispatch(req: IpcRequest, hosts: IpcHosts): Promise<IpcReply> {
   try {
     let result: unknown
     switch (req.method) {
       case 'agentExists':
-        result = await requireMessagingHost(messagingHost, req.method).agentExists(req.args.agentId)
+        result = await require(hosts.messagingHost, 'messaging', req.method).agentExists(
+          req.args.agentId,
+        )
         break
       case 'sendMessage':
-        result = await requireMessagingHost(messagingHost, req.method).sendMessage(req.args)
+        result = await require(hosts.messagingHost, 'messaging', req.method).sendMessage(req.args)
         break
       case 'listInbox':
-        result = await requireMessagingHost(messagingHost, req.method).listInbox(req.args.agentId, {
-          unreadOnly: req.args.unreadOnly,
-        })
+        result = await require(hosts.messagingHost, 'messaging', req.method).listInbox(
+          req.args.agentId,
+          { unreadOnly: req.args.unreadOnly },
+        )
         break
       case 'markRead':
-        await requireMessagingHost(messagingHost, req.method).markRead(req.args.messageId)
+        await require(hosts.messagingHost, 'messaging', req.method).markRead(req.args.messageId)
         result = null
         break
       case 'findReplies':
-        result = await requireMessagingHost(messagingHost, req.method).findReplies(
+        result = await require(hosts.messagingHost, 'messaging', req.method).findReplies(
           req.args.agentId,
           req.args.replyTo,
         )
         break
       case 'userMdGet':
-        result = await requireUserMdHost(userMdHost, req.method).get(req.args.groupId)
+        result = await require(hosts.userMdHost, 'userMd', req.method).get(req.args.groupId)
         break
       case 'userMdWrite':
-        result = await requireUserMdHost(userMdHost, req.method).write(
+        result = await require(hosts.userMdHost, 'userMd', req.method).write(
           req.args.groupId,
           req.args.content,
           req.args.ifMatch,
+        )
+        break
+      case 'browserInvoke':
+        result = await require(hosts.browserHost, 'browser', req.method).invoke(
+          req.args.agentId,
+          req.args.action,
+          req.args.args,
+        )
+        break
+      case 'mcpInvoke':
+        result = await require(hosts.mcpHost, 'mcp', req.method).invoke(
+          req.args.serverId,
+          req.args.toolName,
+          req.args.args,
         )
         break
     }

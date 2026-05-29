@@ -1,8 +1,9 @@
-// Inbound media extraction + attachment-note rendering (pure functions).
+// Inbound media extraction (pure function). Download + classification are
+// covered by the unified attachment path (routing → central classifier).
 
 import type { Message } from 'grammy/types'
 import { describe, expect, test } from 'vitest'
-import { attachmentNote, extractMedia, type MediaRef } from '../../src/lib/telegram/media.ts'
+import { extractMedia } from '../../src/lib/telegram/media.ts'
 
 function msg(extra: Partial<Message>): Message {
   return {
@@ -53,32 +54,5 @@ describe('extractMedia', () => {
     })
     expect(extractMedia(m)?.kind).toBe('voice')
     expect(extractMedia(m)?.mimeType).toBe('audio/ogg')
-  })
-})
-
-describe('attachmentNote', () => {
-  const ref: MediaRef = {
-    kind: 'document',
-    fileId: 'doc1',
-    fileName: 'r.pdf',
-    mimeType: 'application/pdf',
-    fileSize: 2048,
-  }
-
-  test('success note includes path + meta', () => {
-    const note = attachmentNote(ref, {
-      ok: true,
-      path: '/home/agents/x/telegram-inbox/doc1-r.pdf',
-      mimeType: 'application/pdf',
-      size: 2048,
-    })
-    expect(note).toContain('/home/agents/x/telegram-inbox/doc1-r.pdf')
-    expect(note).toContain('application/pdf')
-  })
-
-  test('failure note explains the reason', () => {
-    const note = attachmentNote(ref, { ok: false, reason: 'too large (30 MB > 20 MB)' })
-    expect(note).toMatch(/could not be downloaded/i)
-    expect(note).toContain('too large')
   })
 })

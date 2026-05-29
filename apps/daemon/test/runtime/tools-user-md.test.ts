@@ -110,7 +110,7 @@ describe('user_md_get + user_md_write', () => {
     ).rejects.toThrow(/etag mismatch/i)
 
     // B re-reads and retries — succeeds.
-    const out2 = await toolsB.invoke('user_md_get', '{}')
+    const out2 = (await toolsB.invoke('user_md_get', '{}')) as string
     const newEtagMatch = out2.match(/etag: ([a-f0-9]{16})/)
     expect(newEtagMatch).toBeTruthy()
     const newEtag = newEtagMatch?.[1] ?? ''

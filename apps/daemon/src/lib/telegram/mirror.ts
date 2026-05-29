@@ -14,7 +14,8 @@
 // "topic deleted by a human" case is reconciled lazily: clear
 // `agents.telegram_topic_id` and stop mirroring there.
 
-import type { ChatFrame, TelegramMirrorMode } from '@bazilion/api-types'
+import type { ChatFrame, TelegramMirrorMode, ToolResultImage } from '@bazilion/api-types'
+import { InputFile } from 'grammy'
 import type { BazilionDb } from '../../core/db/client.ts'
 import { agentRepo } from '../../core/index.ts'
 import { _resetLoopGuardForTest, allowTelegramOutboundNoise } from './loop-guard.ts'
@@ -37,6 +38,18 @@ export interface MirrorApi {
     action: 'typing',
     opts: { message_thread_id?: number },
   ): Promise<boolean>
+  /** Send an image (e.g. a browser screenshot) as a photo. */
+  sendPhoto(
+    chatId: number,
+    photo: InputFile,
+    opts: { message_thread_id?: number; caption?: string },
+  ): Promise<{ message_id: number }>
+  /** Fallback for images Telegram rejects as photos (too tall/large). */
+  sendDocument(
+    chatId: number,
+    document: InputFile,
+    opts: { message_thread_id?: number; caption?: string },
+  ): Promise<{ message_id: number }>
 }
 
 export interface MirrorDeps {
@@ -72,6 +85,22 @@ export async function mirrorAgentTurnFrame(
   const topicId = agentRepo.getTelegramTopicId(deps.db, agent.id)
   if (topicId === null) return
 
+  // Images (browser screenshots, MCP image results) are user-facing
+  // deliverables — NOT tool-call noise. Send them as photos regardless of
+  // mirror mode, otherwise a 'minimal'-mode Telegram user who asks for a
+  // screenshot would never receive it (the tool_result text is suppressed).
+  const imagePayload = frameToolResultImages(frame)
+  if (imagePayload) {
+    await mirrorImages(deps, topicId, agent.id, imagePayload)
+    // fall through — there may also be a text line to mirror (verbose mode)
+  }
+
+  // Files the agent delivered (deliver_file) go out as Telegram documents,
+  // regardless of mirror mode — they're deliverables, not tool noise.
+  if (frame.kind === 'event' && frame.event.type === 'file') {
+    await mirrorFile(deps, topicId, agent.id, frame.event)
+  }
+
   const text = renderFrame(frame, agent.telegramMirrorMode)
   if (!text) return
 
@@ -106,6 +135,96 @@ export async function mirrorAgentTurnFrame(
   }
 }
 
+// ─── image mirroring ────────────────────────────────────────────────────
+
+// Telegram caption cap is 1024 chars.
+const CAPTION_BUDGET = 1000
+
+/** Extract tool-result images + a caption from a frame, or null. */
+function frameToolResultImages(
+  frame: ChatFrame,
+): { images: ToolResultImage[]; caption: string } | null {
+  if (frame.kind !== 'event') return null
+  const ev = frame.event
+  if (ev.type !== 'tool_result' || !ev.images || ev.images.length === 0) return null
+  // Caption = the first non-empty line of the result text. For a screenshot
+  // that's exactly "Screenshot of <url>" — the same line the web tool view
+  // shows — and it keeps captions tidy for verbose multi-line tool results.
+  const firstLine = ev.result
+    .split('\n')
+    .map((l) => l.trim())
+    .find(Boolean)
+  return { images: ev.images, caption: firstLine || ev.name }
+}
+
+/**
+ * Send each image as a Telegram photo. Falls back to sendDocument when the
+ * photo is rejected (Telegram caps photo dimensions, so full-page screenshots
+ * can fail as photos but go through as files). Never throws.
+ */
+async function mirrorImages(
+  deps: MirrorDeps,
+  topicId: number,
+  agentId: string,
+  payload: { images: ToolResultImage[]; caption: string },
+): Promise<void> {
+  const caption = clip(payload.caption, CAPTION_BUDGET)
+  for (const img of payload.images) {
+    const buf = Buffer.from(img.data, 'base64')
+    const ext = img.mimeType.includes('jpeg') ? 'jpg' : 'png'
+    // InputFile wraps a Buffer as a single-use stream — build a fresh one per
+    // send attempt (the photo try + the document fallback).
+    const file = (): InputFile => new InputFile(buf, `screenshot.${ext}`)
+    try {
+      await enqueueOutbound(deps.chatId, () =>
+        deps.api.sendPhoto(deps.chatId, file(), { message_thread_id: topicId, caption }),
+      )
+    } catch (e) {
+      if (isThreadGoneError(e)) {
+        agentRepo.setTelegramTopicId(deps.db, agentId, null)
+        return
+      }
+      try {
+        await enqueueOutbound(deps.chatId, () =>
+          deps.api.sendDocument(deps.chatId, file(), { message_thread_id: topicId, caption }),
+        )
+      } catch (e2) {
+        console.warn(
+          `telegram mirror: image send failed for agent ${agentId} —`,
+          e2 instanceof Error ? e2.message : String(e2),
+        )
+      }
+    }
+  }
+}
+
+/** Send an agent-delivered file as a Telegram document. Never throws. */
+async function mirrorFile(
+  deps: MirrorDeps,
+  topicId: number,
+  agentId: string,
+  ev: { name: string; mimeType: string; data: string },
+): Promise<void> {
+  const buf = Buffer.from(ev.data, 'base64')
+  try {
+    await enqueueOutbound(deps.chatId, () =>
+      deps.api.sendDocument(deps.chatId, new InputFile(buf, ev.name), {
+        message_thread_id: topicId,
+        caption: ev.name,
+      }),
+    )
+  } catch (e) {
+    if (isThreadGoneError(e)) {
+      agentRepo.setTelegramTopicId(deps.db, agentId, null)
+      return
+    }
+    console.warn(
+      `telegram mirror: file send failed for agent ${agentId} —`,
+      e instanceof Error ? e.message : String(e),
+    )
+  }
+}
+
 // ─── frame → text rendering ─────────────────────────────────────────────
 
 // Telegram caps message body at 4096 chars; we truncate with an ellipsis
@@ -132,6 +251,10 @@ function renderFrame(frame: ChatFrame, mode: TelegramMirrorMode): string | null 
       return mode === 'verbose' ? `✓ ${ev.name} → ${truncateResult(ev.result)}` : null
     case 'tool_error':
       return mode === 'verbose' ? `✕ ${ev.name}: ${ev.error}` : null
+    case 'file':
+      // Files are delivered as documents (handled in mirrorAgentTurnFrame), not
+      // as a text line.
+      return null
     case 'user_message':
     case 'assistant_delta':
       return null

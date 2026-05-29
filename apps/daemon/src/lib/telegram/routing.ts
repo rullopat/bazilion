@@ -13,7 +13,7 @@
 // only — actual chat-back routing ships in Step 6 alongside the outbound
 // mirror from runAgentTurn.
 
-import { join } from 'node:path'
+import type { Attachment } from '@bazilion/api-types'
 import type { CallbackQuery, InlineKeyboardMarkup, Message, Update, User } from 'grammy/types'
 import type { BazilionDb } from '../../core/db/client.ts'
 import { agentRepo, openConfig, profileRepo, telegramAclRepo } from '../../core/index.ts'
@@ -28,7 +28,7 @@ import {
   allowTelegramInbound,
   shouldNotifyInboundThrottle,
 } from './loop-guard.ts'
-import { attachmentNote, downloadMedia, extractMedia } from './media.ts'
+import { downloadMediaBytes, extractMedia } from './media.ts'
 import { reactSeen } from './reactions.ts'
 import { setPendingSpawn, takePendingSpawn } from './spawn-state.ts'
 
@@ -240,25 +240,32 @@ export async function routeUpdate(deps: RouterDeps, update: Update): Promise<Rou
     // the agent's private home and referenced by path in the turn message, so
     // an agent with file/bash tools can open it. Native provider multimodal
     // (image content blocks) is the deferred follow-up.
+    // Download any inbound media as a generic attachment; the daemon's central
+    // classifier then routes it (image/* → vision; everything else → stored +
+    // path-referenced for the agent to open with its tools).
     const caption = m.text ?? m.caption ?? ''
     const media = extractMedia(m)
     let userText = caption
+    const attachments: Attachment[] = []
     if (media) {
       if (deps.botToken) {
-        const result = await downloadMedia(
-          deps.api,
-          deps.botToken,
-          media,
-          join(agent.dir, 'telegram-inbox'),
-        )
-        const note = attachmentNote(media, result)
-        userText = caption ? `${caption}\n\n${note}` : note
+        const result = await downloadMediaBytes(deps.api, deps.botToken, media)
+        if (result.ok) {
+          attachments.push({
+            mimeType: result.mimeType,
+            data: result.data,
+            ...(result.name ? { name: result.name } : {}),
+          })
+        } else {
+          const note = `[Telegram ${media.kind} attachment could not be downloaded: ${result.reason}]`
+          userText = caption ? `${caption}\n\n${note}` : note
+        }
       } else {
         const note = `[Telegram ${media.kind} attachment received (download unavailable)]`
         userText = caption ? `${caption}\n\n${note}` : note
       }
     }
-    if (!userText) {
+    if (!userText && attachments.length === 0) {
       // Non-text, non-media message (sticker, etc.) — skip.
       return { kind: 'agent_topic', agentId: agent.id, topicId: threadId, queued: false }
     }
@@ -276,7 +283,7 @@ export async function routeUpdate(deps: RouterDeps, update: Update): Promise<Rou
       }
       return { kind: 'rate_limited', agentId: agent.id, topicId: threadId }
     }
-    enqueueAgentMessage(agent.id, userText)
+    enqueueAgentMessage(agent.id, userText, attachments)
     // 👀 "I see this" indicator on the user's message. Cleared by the
     // mirror when the agent's reply lands.
     reactSeen(agent.id, deps.chatId, m.message_id)

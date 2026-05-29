@@ -7,6 +7,7 @@
 import { serve } from '@hono/node-server'
 import { createApp } from './app.ts'
 import { getCtx } from './lib/ctx.ts'
+import { shutdownResources } from './lib/resources.ts'
 import {
   isTelegramBotRunning,
   maybeStartTelegramBot,
@@ -54,8 +55,13 @@ const shutdown = (signal: NodeJS.Signals): void => {
         console.error('telegram: stop on shutdown failed:', e instanceof Error ? e.message : e),
       )
     : Promise.resolve()
+  // Close long-lived resources (browser sessions, MCP connections) in parallel
+  // with the bot stop. Best-effort — never block shutdown on them.
+  const resourcesStop = shutdownResources().catch((e) =>
+    console.error('resources: shutdown failed:', e instanceof Error ? e.message : e),
+  )
   Promise.race([
-    botStop,
+    Promise.all([botStop, resourcesStop]),
     new Promise((r) => setTimeout(r, 30_000)), // hard cap: don't wait forever
   ]).finally(() => {
     server.close((err) => {

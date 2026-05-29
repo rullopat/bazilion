@@ -17,11 +17,11 @@
     "release": "pnpm build && changeset publish"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.15",
+    "@biomejs/biome": "^2.4.16",
     "@changesets/changelog-github": "^0.7.0",
     "@changesets/cli": "^2.31.0",
     "@types/node": "^25.9.1",
-    "tsup": "^8.3.0",
+    "tsup": "^8.5.1",
     "tsx": "^4.22.3",
     "typescript": "^6.0.3",
     "vitest": "^4.1.7"
@@ -30,6 +30,7 @@
     "onlyBuiltDependencies": [
       "esbuild",
       "sharp",
+      "playwright",
       "better-sqlite3",
       "tree-sitter-go",
       "tree-sitter-javascript",
@@ -39,6 +40,6 @@
     ]
   },
   "dependencies": {
-    "typebox": "^1.1.38"
+    "typebox": "^1.1.39"
   }
 }

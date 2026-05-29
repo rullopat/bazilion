@@ -55,7 +55,13 @@ import type { MemoryBackend } from '../memory/types.ts'
 import { resolveModel as resolvePiModel } from '../providers/pi-adapter.ts'
 import { createProviderRegistry, loadProviderConfigFromEnv } from '../providers/registry.ts'
 import { buildSystemPrompt } from '../session/prompt.ts'
-import type { MessagingHost, UserMdHost } from '../worker/ipc-protocol.ts'
+import type {
+  BrowserHost,
+  InjectedMcpTool,
+  McpHost,
+  MessagingHost,
+  UserMdHost,
+} from '../worker/ipc-protocol.ts'
 import { createBazilionCustomTools } from './tools.ts'
 
 const BUILTIN_TOOL_NAMES = ['read', 'bash', 'edit', 'write', 'grep', 'find', 'ls'] as const
@@ -86,6 +92,22 @@ export interface CreateBazilionSessionOptions {
    * disable the `user_md_append` tool.
    */
   userMdHost?: UserMdHost
+  /**
+   * Optional browser pool surface for the `browser_*` tools. Wired from the
+   * worker's IPC channel back to the daemon (the Playwright session lives in
+   * the daemon, persistent across turns). Omit to disable browser automation.
+   */
+  browserHost?: BrowserHost
+  /**
+   * Optional MCP connection-pool surface for proxied MCP tools, paired with
+   * `mcpTools`. Wired via the worker's IPC channel. Omit when no MCP servers
+   * are enabled.
+   */
+  mcpHost?: McpHost
+  /** MCP tools discovered daemon-side, exposed as proxy tools alongside `mcpHost`. */
+  mcpTools?: InjectedMcpTool[]
+  /** If provided, enables the `deliver_file` tool — the agent's outbound file channel. */
+  fileSink?: import('../tools/deliver-file.ts').FileSink
   /**
    * Optional explicit API key for the agent's provider. Wins over any value
    * derived from `env`. Required for OAuth-backed providers (`openai-codex`)
@@ -124,8 +146,20 @@ export interface BazilionSessionHandle {
 export async function createBazilionSession(
   opts: CreateBazilionSessionOptions,
 ): Promise<BazilionSessionHandle> {
-  const { agent, paths, env, memory, enabledProviders, messagingHost, userMdHost, refreshApiKey } =
-    opts
+  const {
+    agent,
+    paths,
+    env,
+    memory,
+    enabledProviders,
+    messagingHost,
+    userMdHost,
+    browserHost,
+    mcpHost,
+    mcpTools,
+    fileSink,
+    refreshApiKey,
+  } = opts
 
   const { providerName, modelId } = splitModelString(agent.model)
 
@@ -227,7 +261,17 @@ export async function createBazilionSession(
   // Bazilion custom tool we want the LLM to see. Missing the custom names
   // from the allowlist would silently drop memory/messaging/web/bootstrap
   // tools from the agent's surface.
-  const customTools = createBazilionCustomTools({ agent, memory, messagingHost, userMdHost, env })
+  const customTools = createBazilionCustomTools({
+    agent,
+    memory,
+    messagingHost,
+    userMdHost,
+    browserHost,
+    mcpHost,
+    mcpTools,
+    fileSink,
+    env,
+  })
   const allowedTools = [...BUILTIN_TOOL_NAMES, ...customTools.map((t) => t.name)]
 
   const { session } = await createAgentSession({

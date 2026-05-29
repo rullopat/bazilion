@@ -24,7 +24,7 @@
 //   - auto_retry_*                 — silently retried, user sees only the
 //                                    eventual success or failure
 
-import type { ProviderMessage, SessionEvent, ToolCall } from '@bazilion/api-types'
+import type { ProviderMessage, SessionEvent, ToolCall, ToolResultImage } from '@bazilion/api-types'
 import type { AgentMessage, AgentToolResult } from '@earendil-works/pi-agent-core'
 import type { AssistantMessage } from '@earendil-works/pi-ai'
 import type { AgentSessionEvent } from '@earendil-works/pi-coding-agent'
@@ -75,7 +75,16 @@ export function translatePiEvent(e: AgentSessionEvent): SessionEvent[] {
       if (e.isError) {
         return [{ type: 'tool_error', id: e.toolCallId, name: e.toolName, error: text }]
       }
-      return [{ type: 'tool_result', id: e.toolCallId, name: e.toolName, result: text }]
+      const images = extractToolResultImages(e.result)
+      return [
+        {
+          type: 'tool_result',
+          id: e.toolCallId,
+          name: e.toolName,
+          result: text,
+          ...(images.length > 0 ? { images } : {}),
+        },
+      ]
     }
 
     default:
@@ -113,6 +122,22 @@ export function extractToolResultText(result: unknown): string {
   return out
 }
 
+/** Pull image blocks out of a tool result (browser screenshots, MCP images). */
+export function extractToolResultImages(result: unknown): ToolResultImage[] {
+  const r = result as AgentToolResult<unknown> | undefined
+  if (!r?.content) return []
+  const out: ToolResultImage[] = []
+  for (const block of r.content) {
+    if (block.type === 'image') {
+      const b = block as { data?: string; mimeType?: string }
+      if (typeof b.data === 'string' && typeof b.mimeType === 'string') {
+        out.push({ data: b.data, mimeType: b.mimeType })
+      }
+    }
+  }
+  return out
+}
+
 /** Stringify a pi user-message content array. */
 function stringifyContent(content: unknown): string {
   if (typeof content === 'string') return content
@@ -141,7 +166,13 @@ export function piMessagesToProviderView(messages: AgentMessage[]): ProviderMess
     // don't register any via CustomAgentMessages declaration merging yet.
     switch (m.role) {
       case 'user': {
-        out.push({ role: 'user', content: stringifyContent((m as { content: unknown }).content) })
+        const content = (m as { content: unknown }).content
+        const images = extractToolResultImages({ content })
+        out.push({
+          role: 'user',
+          content: stringifyContent(content),
+          ...(images.length > 0 ? { images } : {}),
+        })
         break
       }
       case 'assistant': {
@@ -155,11 +186,13 @@ export function piMessagesToProviderView(messages: AgentMessage[]): ProviderMess
       }
       case 'toolResult': {
         const tr = m as { content: unknown; toolCallId?: string; toolName?: string }
+        const images = extractToolResultImages({ content: tr.content })
         out.push({
           role: 'tool',
           content: stringifyContent(tr.content),
           toolCallId: tr.toolCallId,
           toolName: tr.toolName,
+          ...(images.length > 0 ? { images } : {}),
         })
         break
       }

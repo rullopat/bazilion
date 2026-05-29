@@ -32,7 +32,7 @@ function WelcomePage() {
           </Step>
           <Step n={2}>
             <strong>Enable the provider + add a model.</strong> Flip the provider's toggle on
-            and list at least one concrete model name (e.g. <code>claude-opus-4-6</code> or{' '}
+            and list at least one concrete model name (e.g. <code>claude-opus-4-8</code> or{' '}
             <code>llama3.2</code>).
           </Step>
           <Step n={3}>

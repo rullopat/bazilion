@@ -12,6 +12,10 @@ export type {
   AgentTrigger,
   Group,
   LoadedProfile,
+  McpServer,
+  McpServerInput,
+  McpToolInfo,
+  McpTransport,
   Message,
   OpenAICodexStatus,
   Profile,
@@ -38,6 +42,7 @@ export type {
   SessionEvent,
   ToolCall,
   ToolDef,
+  ToolResultImage,
 } from './events.ts'
 export type { MemoryEntry, MemoryHit } from './memory.ts'
 
@@ -256,8 +261,25 @@ export interface ProviderTestResponse {
 
 // --- chat streaming ---
 
+/**
+ * A file the user attaches to a chat message. One generic shape for everything;
+ * the daemon classifies it at turn assembly: `image/*` goes to the model as
+ * vision, anything else is stored on disk and referenced by path so the agent
+ * decides how to process it.
+ */
+export interface Attachment {
+  /** Original filename when known (used for stored non-image files). */
+  name?: string
+  /** e.g. "image/png", "application/pdf", "text/csv". */
+  mimeType: string
+  /** base64-encoded bytes (no data: prefix). */
+  data: string
+}
+
 export interface ChatRequest {
   message: string
+  /** Files attached to this message (images → vision; others → stored + referenced). */
+  attachments?: Attachment[]
 }
 
 // --- profile files ---

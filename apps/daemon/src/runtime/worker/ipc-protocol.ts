@@ -13,6 +13,7 @@
 // the worker on stdin (see `WorkerInput` in `worker/entry.ts`).
 
 import type { Message } from '@bazilion/api-types'
+import type { ToolResultPart } from '../tools/types.ts'
 
 export type RpcMethod =
   | 'agentExists'
@@ -22,6 +23,8 @@ export type RpcMethod =
   | 'findReplies'
   | 'userMdGet'
   | 'userMdWrite'
+  | 'browserInvoke'
+  | 'mcpInvoke'
 
 export interface AgentExistsArgs {
   agentId: string
@@ -71,6 +74,33 @@ export interface UserMdWriteResult {
   totalBytes: number
 }
 
+export interface BrowserInvokeArgs {
+  agentId: string
+  action: string
+  args: Record<string, unknown>
+}
+
+export interface McpInvokeArgs {
+  serverId: string
+  toolName: string
+  args: Record<string, unknown>
+}
+
+/**
+ * An MCP tool discovered daemon-side and shipped to the worker on stdin so it
+ * can build a proxy tool for it. The worker never connects to MCP servers — it
+ * just exposes these as tools whose `execute` calls back via `mcpInvoke`.
+ */
+export interface InjectedMcpTool {
+  /** Namespaced name the LLM sees: `mcp__<server>__<tool>`. */
+  toolName: string
+  serverId: string
+  /** Original tool name on the server, used in `tools/call`. */
+  rawName: string
+  description: string
+  inputSchema: object
+}
+
 export type RpcArgs =
   | { method: 'agentExists'; args: AgentExistsArgs }
   | { method: 'sendMessage'; args: SendMessageArgs }
@@ -79,6 +109,8 @@ export type RpcArgs =
   | { method: 'findReplies'; args: FindRepliesArgs }
   | { method: 'userMdGet'; args: UserMdGetArgs }
   | { method: 'userMdWrite'; args: UserMdWriteArgs }
+  | { method: 'browserInvoke'; args: BrowserInvokeArgs }
+  | { method: 'mcpInvoke'; args: McpInvokeArgs }
 
 export type RpcResult =
   | { method: 'agentExists'; value: boolean }
@@ -88,6 +120,8 @@ export type RpcResult =
   | { method: 'findReplies'; value: Message[] }
   | { method: 'userMdGet'; value: UserMdGetResult }
   | { method: 'userMdWrite'; value: UserMdWriteResult }
+  | { method: 'browserInvoke'; value: ToolResultPart[] }
+  | { method: 'mcpInvoke'; value: ToolResultPart[] }
 
 export type IpcRequest = { type: 'rpc'; id: string } & RpcArgs
 
@@ -122,4 +156,28 @@ export interface UserMdHost {
     content: string,
     ifMatch: string,
   ): UserMdWriteResult | Promise<UserMdWriteResult>
+}
+
+/**
+ * Host-side surface for the per-agent browser session. Daemon implements it
+ * against the Playwright pool in `lib/browser/`; the worker proxies every
+ * `browser_*` tool call through IPC. The browser lives in the daemon (stateful,
+ * persistent across turns), the worker stays stateless. Returns multimodal tool
+ * output (text snapshots + base64 screenshots).
+ */
+export interface BrowserHost {
+  invoke(agentId: string, action: string, args: Record<string, unknown>): Promise<ToolResultPart[]>
+}
+
+/**
+ * Host-side surface for MCP `tools/call`. Daemon implements it against the
+ * connection pool in `lib/mcp/`; the worker proxies each injected MCP tool
+ * through IPC. `serverId` + `toolName` identify the upstream tool.
+ */
+export interface McpHost {
+  invoke(
+    serverId: string,
+    toolName: string,
+    args: Record<string, unknown>,
+  ): Promise<ToolResultPart[]>
 }
