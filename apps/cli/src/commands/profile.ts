@@ -41,7 +41,7 @@ const createCmd = defineCommand({
     model: {
       type: 'string',
       required: true,
-      description: 'Default model, e.g. anthropic:claude-opus-4-6',
+      description: 'Default model, e.g. anthropic:claude-opus-4-8',
     },
     'skills-mode': {
       type: 'string',

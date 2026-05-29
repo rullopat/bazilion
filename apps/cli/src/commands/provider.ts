@@ -141,7 +141,7 @@ const testCmd = defineCommand({
     model: {
       type: 'positional',
       required: true,
-      description: 'Model string, e.g. anthropic:claude-opus-4-6',
+      description: 'Model string, e.g. anthropic:claude-opus-4-8',
     },
     message: { type: 'string', description: 'Message text (default "say hi briefly")' },
   },

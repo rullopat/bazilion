@@ -263,41 +263,41 @@ function ProviderCard({
   )
 }
 
-// Examples mirror pi-ai 0.75's current catalog. Update when bumping pi-ai.
+// Examples mirror pi-ai 0.77's current catalog. Update when bumping pi-ai.
 function exampleModelFor(providerId: string): string {
   switch (providerId) {
     case 'openai-codex':
       return 'gpt-5.3-codex'
     case 'openai':
-      return 'gpt-5.4'
+      return 'gpt-5.5'
     case 'anthropic':
-      return 'claude-opus-4-7'
+      return 'claude-opus-4-8'
     case 'google':
-      return 'gemini-2.5-pro'
+      return 'gemini-3-pro-preview'
     case 'google-vertex':
-      return 'gemini-2.5-pro'
+      return 'gemini-3-pro-preview'
     case 'xai':
       return 'grok-4.3'
     case 'groq':
       return 'llama-3.3-70b-versatile'
     case 'cerebras':
-      return 'qwen-3-235b-a22b-instruct-2507'
+      return 'zai-glm-4.7'
     case 'mistral':
       return 'mistral-large-latest'
     case 'zai':
       return 'glm-5.1'
     case 'huggingface':
-      return 'Qwen/Qwen3-235B-A22B-Thinking-2507'
+      return 'Qwen/Qwen3.5-397B-A17B'
     case 'openrouter':
-      return 'anthropic/claude-opus-4.7'
+      return 'anthropic/claude-opus-4.8'
     case 'vercel-ai-gateway':
-      return 'anthropic/claude-opus-4.7'
+      return 'anthropic/claude-opus-4.8'
     case 'deepseek':
       return 'deepseek-v4-pro'
     case 'fireworks':
       return 'accounts/fireworks/models/deepseek-v4-pro'
     case 'together':
-      return 'Qwen/Qwen3.6-Plus'
+      return 'Qwen/Qwen3.7-Max'
     case 'moonshotai':
       return 'kimi-k2.6'
     case 'kimi-coding':
@@ -313,11 +313,11 @@ function exampleModelFor(providerId: string): string {
     case 'xiaomi':
       return 'mimo-v2.5'
     case 'opencode':
-      return 'claude-opus-4-5'
+      return 'claude-opus-4-8'
     case 'azure-openai':
-      return 'gpt-5.4'
+      return 'gpt-5.5'
     case 'bedrock':
-      return 'anthropic.claude-opus-4-7-20251101-v1:0'
+      return 'anthropic.claude-opus-4-8'
     case 'ollama':
       return 'llama3.3'
     case 'lmstudio':

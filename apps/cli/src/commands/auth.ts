@@ -53,7 +53,7 @@ const openaiLoginCmd = defineCommand({
     console.log(`access token expires: ${formatExpiry(status.expiresAt)}`)
     console.log('')
     console.log(`enable the 'openai-codex' provider on /config and add at least one model`)
-    console.log('(e.g. gpt-5.1-codex-max, gpt-5.2, gpt-5.3-codex) to start using it.')
+    console.log('(e.g. gpt-5.3-codex, gpt-5.4, gpt-5.5) to start using it.')
   },
 })
 
