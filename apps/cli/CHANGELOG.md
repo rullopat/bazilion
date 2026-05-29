@@ -1,5 +1,31 @@
 # bazilion
 
+## 0.4.0
+
+### Minor Changes
+
+- [#19](https://github.com/rullopat/bazilion/pull/19) [`a9715c2`](https://github.com/rullopat/bazilion/commit/a9715c2b90aba9933affc9e77b19495791f93694) Thanks [@rullopat](https://github.com/rullopat)! - Add Playwright browser automation and MCP client support.
+
+  **Browser automation** — agents get a `browser_*` tool suite (navigate, snapshot, click, type, hover, select, fill_form, press_key, go_back, tabs, take_screenshot, console, network) backed by a persistent per-agent Playwright session that survives across turns. Perception is accessibility-tree-first (`browser_snapshot` returns an aria tree with `[ref=eN]` element refs — no vision model needed); screenshots are a secondary, multimodal escape hatch rendered inline in chat. A network-layer SSRF guard blocks loopback/private targets (override with `BROWSER_ALLOW_PRIVATE_NETWORK` for local dev). Configure on `/config` (Browser Automation) or via env. Run `pnpm exec playwright install chromium` once.
+
+  **MCP client** — connect the daemon to Model Context Protocol servers over stdio (local subprocess), Streamable-HTTP, or SSE (with optional bearer auth). Each enabled server's tools are discovered and injected into every agent turn, namespaced `mcp__<server>__<tool>`. Manage with `bazilion mcp add|list|show|rm|enable|disable|test` or the `/config/mcp` page.
+
+  Both run as long-lived daemon-side resources (idle-reaped, closed on shutdown) reached from the stateless per-turn worker over IPC. Tool results are now multimodal (text + images).
+
+  **Bidirectional attachments across all clients** — send any file _in_ and receive any file _out_, on web, Telegram, and CLI. Inbound files travel as one generic `Attachment {name?, mimeType, data}`; the daemon classifies each at turn assembly: `image/*` goes to the model as **vision** (pi `prompt({images})`), everything else is **stored under the agent's home and referenced by path** so the agent opens/processes it with its tools. Attach via the web composer (📎 / paste / **drag-and-drop**), a Telegram photo/document/voice/etc., or `bazilion agent chat <id> --image <path>` / `--file <path>`.
+
+  Outbound: tool-produced images (browser screenshots, MCP image results) surface as first-class deliverables — a standalone image block in the web chat (not buried in the tool call) and a photo on Telegram (regardless of mirror mode). Agents send arbitrary files back with a new **`deliver_file`** tool — a download link in the web chat, a document on Telegram, saved to disk on the CLI.
+
+  Audio and video are intentionally deferred: pi and every wired provider are text+image only, so the model can't perceive non-image media as input yet (it gets a stored file + path) — revisit when a provider exposes those modalities. 25 MB per file.
+
+### Patch Changes
+
+- [#19](https://github.com/rullopat/bazilion/pull/19) [`a9715c2`](https://github.com/rullopat/bazilion/commit/a9715c2b90aba9933affc9e77b19495791f93694) Thanks [@rullopat](https://github.com/rullopat)! - Upgrade dependencies and refresh the model catalog examples.
+
+  **pi 0.75.4 → 0.77.0** — bump `@earendil-works/pi-agent-core`, `pi-ai`, and `pi-coding-agent`, which ships an expanded built-in LLM model catalog. The `/config` provider catalog is already data-driven off pi's `getModels()`, so the new models surface automatically; the hardcoded per-provider example hints (`exampleModelFor` on `/config`, plus the `welcome` page and the `profile`/`provider`/`auth` CLI help) were refreshed to mirror the 0.77 catalog (e.g. `claude-opus-4-8`, `gpt-5.5`, `gemini-3-pro-preview`) and drop entries pi no longer lists.
+
+  Also picked up in-range patch/minor updates across the tree (`@tobilu/qmd`, `hono`, `@hono/node-server`, `playwright`, `typebox`, `@biomejs/biome`, `tsup`, and the web/mobile toolchains). Mobile's Expo-pinned native modules (`react-native-reanimated`, `react-native-gesture-handler`, `react-native-worklets`) were intentionally held at the versions Expo SDK 56 blesses.
+
 ## 0.3.0
 
 ### Minor Changes
