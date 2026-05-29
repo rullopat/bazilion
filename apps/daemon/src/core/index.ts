@@ -31,6 +31,7 @@ export {
   DEFAULT_GROUP_ID,
   DEFAULT_PROFILE_ID,
   ensureSetupSeeded,
+  refreshDefaultProfileTemplates,
   type SeedResult,
   seedDefaults,
 } from './profile/seed.ts'
@@ -41,6 +42,7 @@ export {
   DEFAULT_IDENTITY,
   DEFAULT_SOUL,
   DEFAULT_TOOLS,
+  DEFAULT_USER_MD,
 } from './profile/templates.ts'
 export type { UpdateProfileInput } from './profile/update.ts'
 export { updateProfile } from './profile/update.ts'

@@ -13,6 +13,7 @@ import type {
 import { createFileRoute, redirect, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { useState } from 'react'
+import { AgentAvatar } from '../../../components/AgentAvatar'
 import { AgentTabs } from '../../../components/AgentTabs'
 import { ChatPane } from '../../../components/ChatPane'
 import { CopyButton } from '../../../components/CopyButton'
@@ -120,7 +121,19 @@ function AgentDetailPage() {
   return (
     <div>
       <header className="mb-8">
-        <h1>{resolved.agent.name}</h1>
+        <div className="flex items-center gap-3">
+          <AgentAvatar identity={resolved.agent.identity} size={44} />
+          <div>
+            <h1 className="mb-0">{resolved.agent.name}</h1>
+            {(resolved.agent.identity?.creature || resolved.agent.identity?.vibe) && (
+              <p className="muted mt-0.5 text-sm">
+                {[resolved.agent.identity?.creature, resolved.agent.identity?.vibe]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </p>
+            )}
+          </div>
+        </div>
         <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-2">
           <Tag>
             <span className="px-1.5 font-mono text-[0.95em] text-mocha select-all">

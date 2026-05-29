@@ -37,6 +37,7 @@ import {
   deleteAgent,
   discoverSkills,
   groupRepo,
+  loadIdentityFromFile,
   mergeSecretsIntoEnv,
   messageRepo,
   providerStateRepo,
@@ -101,7 +102,14 @@ function sanitizeAttachments(raw: unknown): Attachment[] {
 agentsRouter.get('/', (c) => {
   const includeArchived = c.req.query('includeArchived') === 'true'
   const { db, paths, authToken } = getCtx()
-  return c.json(agentRepo.list(db, { includeArchived }))
+  // Attach each agent's parsed IDENTITY.md so the list can render
+  // avatar/creature without an extra round-trip per row. `null` when the file
+  // is missing or still holds placeholder values.
+  const agents = agentRepo.list(db, { includeArchived }).map((agent) => ({
+    ...agent,
+    identity: loadIdentityFromFile(join(agent.dir, 'IDENTITY.md')),
+  }))
+  return c.json(agents)
 })
 
 agentsRouter.post('/', async (c) => {

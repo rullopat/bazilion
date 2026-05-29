@@ -122,7 +122,7 @@ export async function spawnProfileGroup(
         registerGroup(db, { id: targetSlug, name: targetSlug }, paths)
         groupCreated = true
       }
-      // Decision #5 (BAZ-002): the existing groups table stores user_md as
+      // The existing groups table stores user_md as
       // NOT NULL DEFAULT '', so a pre-existing group's empty user_md is
       // operator-mediated (initial value or explicit clear). Seed only into
       // a group we just created in this same spawn — never overwrite an

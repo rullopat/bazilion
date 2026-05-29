@@ -4,7 +4,13 @@ import type { Profile, SkillsMode } from '@bazilion/api-types'
 import type { BazilionDb } from '../db/client.ts'
 import type { Paths } from '../paths.ts'
 import * as profileRepo from '../repos/profiles.ts'
-import { DEFAULT_BOOTSTRAP, DEFAULT_IDENTITY, DEFAULT_SOUL } from './templates.ts'
+import {
+  DEFAULT_AGENTS,
+  DEFAULT_BOOTSTRAP,
+  DEFAULT_IDENTITY,
+  DEFAULT_SOUL,
+  DEFAULT_TOOLS,
+} from './templates.ts'
 import { validateSlug } from './validate.ts'
 
 export interface CreateProfileInput {
@@ -18,12 +24,12 @@ export interface CreateProfileInput {
     identity?: string
     /** undefined = default bootstrap, null = skip bootstrap, string = override */
     bootstrap?: string | null
-    /** undefined = skip, string = seed with this content */
-    agents?: string
-    /** undefined = skip, string = seed with this content */
-    tools?: string
-    /** undefined = skip, string = seed with this content */
-    heartbeat?: string
+    /** undefined = default template, null = skip, string = override */
+    agents?: string | null
+    /** undefined = default template, null = skip, string = override */
+    tools?: string | null
+    /** opt-in (off by default): null/undefined = skip, string = seed */
+    heartbeat?: string | null
   }
 }
 
@@ -35,22 +41,31 @@ export function createProfile(db: BazilionDb, paths: Paths, input: CreateProfile
 
   const soul = input.templates?.soul ?? DEFAULT_SOUL
   const identity = input.templates?.identity ?? DEFAULT_IDENTITY
+  // SOUL + IDENTITY are always written. BOOTSTRAP/AGENTS/TOOLS are default-on
+  // (undefined → default template, null → skip, string → override). HEARTBEAT
+  // is the exception: opt-in — only written when an explicit
+  // string is supplied (undefined/null → skip).
   const bootstrap =
     input.templates?.bootstrap === null ? null : (input.templates?.bootstrap ?? DEFAULT_BOOTSTRAP)
+  const agents =
+    input.templates?.agents === null ? null : (input.templates?.agents ?? DEFAULT_AGENTS)
+  const tools = input.templates?.tools === null ? null : (input.templates?.tools ?? DEFAULT_TOOLS)
+  const heartbeat =
+    typeof input.templates?.heartbeat === 'string' ? input.templates.heartbeat : null
 
   writeFileSync(join(dir, 'SOUL.md'), soul)
   writeFileSync(join(dir, 'IDENTITY.md'), identity)
   if (bootstrap !== null) {
     writeFileSync(join(dir, 'BOOTSTRAP.md'), bootstrap)
   }
-  if (typeof input.templates?.agents === 'string') {
-    writeFileSync(join(dir, 'AGENTS.md'), input.templates.agents)
+  if (agents !== null) {
+    writeFileSync(join(dir, 'AGENTS.md'), agents)
   }
-  if (typeof input.templates?.tools === 'string') {
-    writeFileSync(join(dir, 'TOOLS.md'), input.templates.tools)
+  if (tools !== null) {
+    writeFileSync(join(dir, 'TOOLS.md'), tools)
   }
-  if (typeof input.templates?.heartbeat === 'string') {
-    writeFileSync(join(dir, 'HEARTBEAT.md'), input.templates.heartbeat)
+  if (heartbeat !== null) {
+    writeFileSync(join(dir, 'HEARTBEAT.md'), heartbeat)
   }
 
   const skillsMode: SkillsMode = input.skillsMode ?? 'selected'

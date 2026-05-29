@@ -1,6 +1,8 @@
+import { join } from 'node:path'
 import type { ResolvedAgent } from '@bazilion/api-types'
 import type { BazilionDb } from '../db/client.ts'
 import type { Paths } from '../paths.ts'
+import { loadIdentityFromFile } from '../profile/identity.ts'
 import * as agentRepo from '../repos/agents.ts'
 import * as groupRepo from '../repos/groups.ts'
 import * as profileRepo from '../repos/profiles.ts'
@@ -9,6 +11,11 @@ export function resolveAgent(db: BazilionDb, paths: Paths, agentId: string): Res
   // `agentRepo.get` accepts either a full UUID or an unambiguous prefix.
   const agent = agentRepo.get(db, agentId)
   if (!agent) throw new Error(`agent not found: ${agentId}`)
+
+  // Parse the agent's OWN IDENTITY.md (not the profile's) so the detail page
+  // can show avatar/creature. `null` when the file is missing or still holds
+  // only placeholder values.
+  agent.identity = loadIdentityFromFile(join(agent.dir, 'IDENTITY.md'))
 
   const profile = profileRepo.get(db, agent.profileId)
   if (!profile) {

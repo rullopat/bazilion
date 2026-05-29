@@ -1,6 +1,6 @@
 // Telegram safety guards — per-agent sliding-window budgets.
 //
-// Context for whoever reads this expecting OpenClaw-style "bot-loop
+// Context for whoever reads this expecting classic "bot-loop
 // protection": bazilion runs ONE bot, and Telegram never redelivers a bot's
 // own messages to itself, so the classic two-bots-echoing loop (and even a
 // single-agent self-echo) cannot happen via Telegram. The real Telegram-side

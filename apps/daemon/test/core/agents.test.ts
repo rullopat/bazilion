@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs'
+import { existsSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test } from 'vitest'
 import { archiveAgent } from '../../src/core/agent/archive.ts'
@@ -55,6 +55,46 @@ test('spawnAgent creates dir, copies templates, inserts row, attaches default sk
   expect(agentRepo.listAttachedSkills(env.db, agent.id)).toEqual(['skill-a'])
 })
 
+test('a fresh spawn from a default-template profile has the default-on files (HEARTBEAT opt-in)', () => {
+  seedProfile() // no template overrides → default-on set
+  const agent = spawn({ name: 'five' })
+  for (const file of ['SOUL.md', 'IDENTITY.md', 'BOOTSTRAP.md', 'AGENTS.md', 'TOOLS.md']) {
+    expect(existsSync(join(agent.dir, file))).toBe(true)
+  }
+  // HEARTBEAT is opt-in — not seeded by the default profile.
+  expect(existsSync(join(agent.dir, 'HEARTBEAT.md'))).toBe(false)
+})
+
+test('resolveAgent surfaces parsed identity from the agent IDENTITY.md', () => {
+  seedProfile()
+  const agent = spawn({ name: 'idtest' })
+
+  // Freshly spawned: IDENTITY.md still holds placeholder template → null.
+  expect(resolveAgent(env.db, env.paths, agent.id).agent.identity).toBeNull()
+
+  // Agent fills it in (as it would via home_write during bootstrap).
+  writeFileSync(
+    join(agent.dir, 'IDENTITY.md'),
+    '- **Name:** Sable\n- **Creature:** house spirit\n- **Avatar:** https://example.com/s.png\n',
+  )
+  expect(resolveAgent(env.db, env.paths, agent.id).agent.identity).toEqual({
+    name: 'Sable',
+    creature: 'house spirit',
+    avatar: 'https://example.com/s.png',
+  })
+})
+
+test('backwards-compat: an old 3-field placeholder IDENTITY.md resolves to null identity', () => {
+  seedProfile()
+  const agent = spawn({ name: 'legacy' })
+  // The old 3-field template: Name/Vibe/Emoji with empty values.
+  writeFileSync(
+    join(agent.dir, 'IDENTITY.md'),
+    '# IDENTITY.md — Who Am I?\n\n- **Name:**\n- **Vibe:**\n- **Emoji:**\n',
+  )
+  expect(resolveAgent(env.db, env.paths, agent.id).agent.identity).toBeNull()
+})
+
 test('spawnAgent copies optional AGENTS/TOOLS/HEARTBEAT files when the profile seeded them', () => {
   createProfile(env.db, env.paths, {
     id: 'felix',
@@ -72,8 +112,14 @@ test('spawnAgent copies optional AGENTS/TOOLS/HEARTBEAT files when the profile s
 })
 
 test('spawnAgent does not create optional AGENTS/TOOLS/HEARTBEAT files when the profile lacks them', () => {
-  seedProfile()
-  const agent = spawn()
+  // These files default ON, so a profile that lacks them must opt out
+  // with null. spawn must not fabricate files the profile doesn't have.
+  createProfile(env.db, env.paths, {
+    id: 'no-optionals',
+    defaultModel: 'anthropic:claude-opus-4-6',
+    templates: { agents: null, tools: null, heartbeat: null },
+  })
+  const agent = spawn({ profileId: 'no-optionals' })
   expect(existsSync(join(agent.dir, 'AGENTS.md'))).toBe(false)
   expect(existsSync(join(agent.dir, 'TOOLS.md'))).toBe(false)
   expect(existsSync(join(agent.dir, 'HEARTBEAT.md'))).toBe(false)
@@ -307,7 +353,8 @@ test('resolveAgent assembles profile, skills, group, and model', () => {
   expect(resolved.model).toBe('openai:gpt-5')
   expect(resolved.profile.id).toBe('base')
   expect(resolved.group.id).toBe('rg')
-  expect(resolved.group.userMd).toBe('')
+  // New groups seed the starter USER.md instead of starting blank.
+  expect(resolved.group.userMd).toContain('About Your Human')
   expect(resolved.skills).toEqual(['skill-a'])
 })
 

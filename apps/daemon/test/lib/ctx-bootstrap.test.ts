@@ -1,14 +1,18 @@
 // First-run regression test.
 //
-// Decision #1 from BAZ-002 (resolved 2026-05-24): NO default profile group is
+// By design, NO default profile group is
 // seeded at first run. Profile groups are an advanced, personal-to-the-operator
 // feature; a generic seed would mislead and clutter the welcome flow. This test
 // locks that decision in — it'll fail loudly if a future change reintroduces
 // default-team seeding into the bootstrap path.
 
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test } from 'vitest'
 import { isSetupComplete } from '../../src/core/availableModels.ts'
 import { ensureSetupSeeded } from '../../src/core/profile/seed.ts'
+import { DEFAULT_USER_MD } from '../../src/core/profile/templates.ts'
+import * as groupRepo from '../../src/core/repos/groups.ts'
 import * as profileGroupRepo from '../../src/core/repos/profileGroups.ts'
 import * as profileRepo from '../../src/core/repos/profiles.ts'
 import * as providerModelRepo from '../../src/core/repos/providerModels.ts'
@@ -35,6 +39,26 @@ test('ensureSetupSeeded creates the default profile + group once a provider is c
   expect(result?.profile.id).toBe('default')
   expect(result?.group.id).toBe('default')
   expect(profileRepo.get(env.db, 'default')).not.toBeNull()
+})
+
+test('the seeded default profile ships the default-on template files (HEARTBEAT opt-in)', () => {
+  providerStateRepo.setEnabled(env.db, 'anthropic', true)
+  providerModelRepo.replace(env.db, 'anthropic', ['claude-opus-4-6'])
+  const result = ensureSetupSeeded(env.db, env.paths)
+  const dir = result?.profile.dir
+  expect(dir).toBeTruthy()
+  for (const file of ['SOUL.md', 'IDENTITY.md', 'BOOTSTRAP.md', 'AGENTS.md', 'TOOLS.md']) {
+    expect(existsSync(join(dir as string, file))).toBe(true)
+  }
+  // HEARTBEAT is opt-in — the default profile doesn't ship it.
+  expect(existsSync(join(dir as string, 'HEARTBEAT.md'))).toBe(false)
+})
+
+test("the seeded default group's user_md is DEFAULT_USER_MD", () => {
+  providerStateRepo.setEnabled(env.db, 'anthropic', true)
+  providerModelRepo.replace(env.db, 'anthropic', ['claude-opus-4-6'])
+  ensureSetupSeeded(env.db, env.paths)
+  expect(groupRepo.get(env.db, 'default', env.paths)?.userMd).toBe(DEFAULT_USER_MD)
 })
 
 test('NO default-team profile group is created at any point during first-run setup', () => {

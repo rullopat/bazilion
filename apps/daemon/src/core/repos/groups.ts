@@ -6,6 +6,7 @@
 import type { Group } from '@bazilion/api-types'
 import type { BazilionDb } from '../db/client.ts'
 import type { Paths } from '../paths.ts'
+import { DEFAULT_USER_MD } from '../profile/templates.ts'
 
 interface RawGroup {
   id: string
@@ -26,18 +27,27 @@ function toGroup(r: RawGroup, paths: Paths): Group {
   }
 }
 
-export function insert(db: BazilionDb, g: { id: string; name: string }, paths: Paths): Group {
+export function insert(
+  db: BazilionDb,
+  g: { id: string; name: string; userMd?: string },
+  paths: Paths,
+): Group {
   const now = Date.now()
-  db.raw.run("INSERT INTO groups (id, name, user_md, created_at) VALUES (?, ?, '', ?)", [
+  // A fresh group seeds the starter USER.md by default. Callers that pass
+  // their own non-empty content (e.g. profile-group spawn) win; an absent or
+  // empty userMd falls back to DEFAULT_USER_MD so no group is born blank.
+  const userMd = g.userMd && g.userMd.length > 0 ? g.userMd : DEFAULT_USER_MD
+  db.raw.run('INSERT INTO groups (id, name, user_md, created_at) VALUES (?, ?, ?, ?)', [
     g.id,
     g.name,
+    userMd,
     now,
   ])
   return {
     id: g.id,
     name: g.name,
     path: paths.groupDir(g.id),
-    userMd: '',
+    userMd,
     telegramTopicNameFormat: null,
     createdAt: now,
   }

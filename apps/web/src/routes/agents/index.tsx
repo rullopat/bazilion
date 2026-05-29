@@ -2,6 +2,7 @@ import type { Agent, Group, Profile } from '@bazilion/api-types'
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { useState } from 'react'
+import { AgentAvatar } from '../../components/AgentAvatar'
 import { daemonClient } from '../../lib/daemon-client'
 
 interface ModelGroup {
@@ -104,7 +105,19 @@ function AgentsPage() {
                   <code>{a.id.slice(0, 8)}…</code>
                 </a>
               </td>
-              <td>{a.name}</td>
+              <td>
+                <div className="flex items-center gap-2">
+                  <AgentAvatar identity={a.identity} size={26} />
+                  <div className="leading-tight">
+                    <div>{a.name}</div>
+                    {(a.identity?.creature || a.identity?.vibe) && (
+                      <div className="muted text-[0.8em]">
+                        {[a.identity?.creature, a.identity?.vibe].filter(Boolean).join(' · ')}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </td>
               <td>
                 <code>{a.profileId}</code>
               </td>

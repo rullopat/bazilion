@@ -13,18 +13,27 @@ interface ProfileGroupsData {
   groups: Group[]
   profiles: Profile[]
   modelGroups: ModelGroup[]
+  /** Built-in DEFAULT_USER_MD, used to prefill the create form's starter USER.md. */
+  userMdDefault: string
 }
 
 const fetchProfileGroupsData = createServerFn({ method: 'GET' }).handler(
   async (): Promise<ProfileGroupsData> => {
     const c = daemonClient()
-    const [profileGroups, groups, profiles, models] = await Promise.all([
+    const [profileGroups, groups, profiles, models, templates] = await Promise.all([
       c.get<ProfileGroupWithCount[]>('/api/profile-groups'),
       c.get<Group[]>('/api/groups'),
       c.get<Profile[]>('/api/profiles'),
       c.get<{ groups: ModelGroup[] }>('/api/config/available-models'),
+      c.get<{ userMd: string }>('/api/profiles/_/templates'),
     ])
-    return { profileGroups, groups, profiles, modelGroups: models.groups }
+    return {
+      profileGroups,
+      groups,
+      profiles,
+      modelGroups: models.groups,
+      userMdDefault: templates.userMd,
+    }
   },
 )
 
@@ -34,7 +43,7 @@ export const Route = createFileRoute('/profile-groups/')({
 })
 
 function ProfileGroupsPage() {
-  const { profileGroups, groups, profiles, modelGroups } = Route.useLoaderData()
+  const { profileGroups, groups, profiles, modelGroups, userMdDefault } = Route.useLoaderData()
   const router = useRouter()
   const [spawningId, setSpawningId] = useState<string | null>(null)
 
@@ -62,6 +71,7 @@ function ProfileGroupsPage() {
       <CreateProfileGroupForm
         profiles={profiles}
         modelGroups={modelGroups}
+        userMdDefault={userMdDefault}
         onCreated={() => router.invalidate()}
       />
 
@@ -129,15 +139,18 @@ function ProfileGroupsPage() {
 function CreateProfileGroupForm({
   profiles,
   modelGroups,
+  userMdDefault,
   onCreated,
 }: {
   profiles: Profile[]
   modelGroups: ModelGroup[]
+  userMdDefault: string
   onCreated: () => void
 }) {
   const [id, setId] = useState('')
   const [name, setName] = useState('')
-  const [userMd, setUserMd] = useState('')
+  // Prefill with the built-in starter USER.md (default-on for new groups).
+  const [userMd, setUserMd] = useState(userMdDefault)
   const [members, setMembers] = useState<MemberDraft[]>([])
   const [err, setErr] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -181,7 +194,7 @@ function CreateProfileGroupForm({
       }
       setId('')
       setName('')
-      setUserMd('')
+      setUserMd(userMdDefault)
       setMembers([])
       onCreated()
     } catch (e2) {
@@ -215,7 +228,8 @@ function CreateProfileGroupForm({
         </label>
       </div>
       <label>
-        starter USER.md (optional — only seeded into freshly-created target groups)
+        starter USER.md (seeded into freshly-created target groups; prefilled with the built-in
+        default — edit to customise)
         <textarea
           rows={3}
           value={userMd}

@@ -15,9 +15,13 @@ import { Hono } from 'hono'
 import {
   agentRepo,
   createProfile,
+  DEFAULT_AGENTS,
   DEFAULT_BOOTSTRAP,
+  DEFAULT_HEARTBEAT,
   DEFAULT_IDENTITY,
   DEFAULT_SOUL,
+  DEFAULT_TOOLS,
+  DEFAULT_USER_MD,
   deleteProfile,
   loadProfile,
   profileRepo,
@@ -40,13 +44,19 @@ profilesRouter.get('/', (c) => {
   return c.json(hydrated)
 })
 
-// /api/profiles/_/templates — built-in defaults for the SOUL/IDENTITY/BOOTSTRAP
-// markdown templates. Underscore prefix avoids clashing with the `:id` route.
+// /api/profiles/_/templates — built-in defaults for every seeded markdown file.
+// Underscore prefix avoids clashing with the `:id` route. Consumed by the
+// profile create form (SOUL/IDENTITY/BOOTSTRAP + the now-default-on
+// AGENTS/TOOLS/HEARTBEAT) and the profile-group create form (userMd).
 profilesRouter.get('/_/templates', (c) => {
   return c.json({
     soul: DEFAULT_SOUL,
     identity: DEFAULT_IDENTITY,
     bootstrap: DEFAULT_BOOTSTRAP,
+    agents: DEFAULT_AGENTS,
+    tools: DEFAULT_TOOLS,
+    heartbeat: DEFAULT_HEARTBEAT,
+    userMd: DEFAULT_USER_MD,
   })
 })
 
@@ -68,22 +78,29 @@ profilesRouter.post('/', async (c) => {
   const skillsMode = toSkillsMode(raw.skillsMode) ?? 'selected'
   const defaultSkills = csvToArray(raw.defaultSkills ?? raw.skills)
 
+  // Tri-state per optional file: a non-empty string overrides, `null` skips the
+  // file, and omitting it (undefined) lets createProfile write the default.
+  // AGENTS/TOOLS are default-on and HEARTBEAT is opt-in, so the UI prefills the
+  // editors and passes `null` only when the operator explicitly opts out.
   const templates: {
     soul?: string
     identity?: string
     bootstrap?: string | null
-    agents?: string
-    tools?: string
-    heartbeat?: string
+    agents?: string | null
+    tools?: string | null
+    heartbeat?: string | null
   } = {}
   if (typeof raw.soul === 'string' && raw.soul.length > 0) templates.soul = raw.soul
   if (typeof raw.identity === 'string' && raw.identity.length > 0) templates.identity = raw.identity
   if (raw.skipBootstrap === true || raw.bootstrap === null) templates.bootstrap = null
   else if (typeof raw.bootstrap === 'string' && raw.bootstrap.length > 0)
     templates.bootstrap = raw.bootstrap
-  if (typeof raw.agents === 'string' && raw.agents.length > 0) templates.agents = raw.agents
-  if (typeof raw.tools === 'string' && raw.tools.length > 0) templates.tools = raw.tools
-  if (typeof raw.heartbeat === 'string' && raw.heartbeat.length > 0)
+  if (raw.agents === null) templates.agents = null
+  else if (typeof raw.agents === 'string' && raw.agents.length > 0) templates.agents = raw.agents
+  if (raw.tools === null) templates.tools = null
+  else if (typeof raw.tools === 'string' && raw.tools.length > 0) templates.tools = raw.tools
+  if (raw.heartbeat === null) templates.heartbeat = null
+  else if (typeof raw.heartbeat === 'string' && raw.heartbeat.length > 0)
     templates.heartbeat = raw.heartbeat
 
   const { db, paths } = getCtx()

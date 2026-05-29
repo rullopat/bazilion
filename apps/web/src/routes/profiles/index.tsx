@@ -21,6 +21,10 @@ interface TemplatesResponse {
   soul: string
   identity: string
   bootstrap: string
+  agents: string
+  tools: string
+  heartbeat: string
+  userMd: string
 }
 
 interface ProfilesView {
@@ -136,6 +140,16 @@ function ProfilesPage() {
   )
 }
 
+type TabKey =
+  | 'basics'
+  | 'soul'
+  | 'identity'
+  | 'bootstrap'
+  | 'agents'
+  | 'tools'
+  | 'heartbeat'
+  | 'skills'
+
 function CreateProfileForm({
   modelGroups,
   skills,
@@ -147,17 +161,30 @@ function CreateProfileForm({
   templates: TemplatesResponse
   onCreated: () => void
 }) {
-  const [tab, setTab] = useState<'basics' | 'skills'>('basics')
+  const [tab, setTab] = useState<TabKey>('basics')
   const [id, setId] = useState('')
   const [name, setName] = useState('')
   const [model, setModel] = useState('')
   const [soul, setSoul] = useState(templates.soul)
   const [identity, setIdentity] = useState(templates.identity)
   const [bootstrap, setBootstrap] = useState(templates.bootstrap)
-  const [skipBootstrap, setSkipBootstrap] = useState(false)
-  const [agentsTpl, setAgentsTpl] = useState('')
-  const [toolsTpl, setToolsTpl] = useState('')
-  const [heartbeatTpl, setHeartbeatTpl] = useState('')
+  // SOUL + IDENTITY are always included (no toggle). BOOTSTRAP/AGENTS/TOOLS are
+  // on by default; HEARTBEAT is opt-in (off). Textareas are
+  // prefilled with the built-in defaults so an enabled file is ready to edit.
+  const [enableBootstrap, setEnableBootstrap] = useState(true)
+  const [agentsTpl, setAgentsTpl] = useState(templates.agents)
+  const [enableAgents, setEnableAgents] = useState(true)
+  const [toolsTpl, setToolsTpl] = useState(templates.tools)
+  const [enableTools, setEnableTools] = useState(true)
+  const [heartbeatTpl, setHeartbeatTpl] = useState(templates.heartbeat)
+  const [enableHeartbeat, setEnableHeartbeat] = useState(false)
+
+  // Toggle a template on/off. Disabling the currently-open tab drops the editor
+  // back to "basics" so we never show a disabled tab's panel.
+  function setTemplateEnabled(key: TabKey, setter: (on: boolean) => void, on: boolean) {
+    setter(on)
+    if (!on && tab === key) setTab('basics')
+  }
   const [skillsMode, setSkillsMode] = useState<'all' | 'selected'>('all')
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [error, setError] = useState<string | null>(null)
@@ -193,11 +220,11 @@ function CreateProfileForm({
         defaultSkills: skillsMode === 'selected' ? Array.from(picked) : [],
         soul,
         identity,
-        bootstrap,
-        skipBootstrap,
-        agents: agentsTpl,
-        tools: toolsTpl,
-        heartbeat: heartbeatTpl,
+        // null opts a template out; SOUL/IDENTITY are always sent.
+        bootstrap: enableBootstrap ? bootstrap : null,
+        agents: enableAgents ? agentsTpl : null,
+        tools: enableTools ? toolsTpl : null,
+        heartbeat: enableHeartbeat ? heartbeatTpl : null,
       }
       const res = await fetch('/api/profiles', {
         method: 'POST',
@@ -212,9 +239,13 @@ function CreateProfileForm({
       setId('')
       setName('')
       setModel('')
-      setAgentsTpl('')
-      setToolsTpl('')
-      setHeartbeatTpl('')
+      setEnableBootstrap(true)
+      setAgentsTpl(templates.agents)
+      setEnableAgents(true)
+      setToolsTpl(templates.tools)
+      setEnableTools(true)
+      setHeartbeatTpl(templates.heartbeat)
+      setEnableHeartbeat(false)
       setPicked(new Set())
       setSkillsMode('all')
       setTab('basics')
@@ -233,12 +264,68 @@ function CreateProfileForm({
 
       <Tabs
         items={[
-          { id: 'basics', label: '1. basics' },
-          { id: 'skills', label: '2. skills' },
+          { id: 'basics', label: 'basics' },
+          { id: 'soul', label: 'SOUL' },
+          { id: 'identity', label: 'IDENTITY' },
+          { id: 'bootstrap', label: 'BOOTSTRAP', disabled: !enableBootstrap },
+          { id: 'agents', label: 'AGENTS', disabled: !enableAgents },
+          { id: 'tools', label: 'TOOLS', disabled: !enableTools },
+          { id: 'heartbeat', label: 'HEARTBEAT', disabled: !enableHeartbeat },
+          { id: 'skills', label: 'skills' },
         ]}
         active={tab}
-        onChange={(t) => setTab(t as 'basics' | 'skills')}
+        onChange={(t) => setTab(t as TabKey)}
       />
+
+      {/* Enable checklist — outside the tab panels so it always governs which
+          template tabs are active. SOUL + IDENTITY are always included. */}
+      <fieldset className="mb-5 rounded-md border border-frost p-3">
+        <legend className="px-1 text-[0.85em] font-medium text-mocha">templates to include</legend>
+        <div className="flex flex-wrap gap-x-5 gap-y-2 text-[0.9em]">
+          <label className="inline-flex items-center gap-1.5 opacity-60" title="always included">
+            <input type="checkbox" defaultChecked disabled /> SOUL.md
+          </label>
+          <label className="inline-flex items-center gap-1.5 opacity-60" title="always included">
+            <input type="checkbox" defaultChecked disabled /> IDENTITY.md
+          </label>
+          <label className="inline-flex cursor-pointer items-center gap-1.5">
+            <input
+              type="checkbox"
+              checked={enableBootstrap}
+              onChange={(e) => setTemplateEnabled('bootstrap', setEnableBootstrap, e.target.checked)}
+            />
+            BOOTSTRAP.md
+          </label>
+          <label className="inline-flex cursor-pointer items-center gap-1.5">
+            <input
+              type="checkbox"
+              checked={enableAgents}
+              onChange={(e) => setTemplateEnabled('agents', setEnableAgents, e.target.checked)}
+            />
+            AGENTS.md
+          </label>
+          <label className="inline-flex cursor-pointer items-center gap-1.5">
+            <input
+              type="checkbox"
+              checked={enableTools}
+              onChange={(e) => setTemplateEnabled('tools', setEnableTools, e.target.checked)}
+            />
+            TOOLS.md
+          </label>
+          <label className="inline-flex cursor-pointer items-center gap-1.5">
+            <input
+              type="checkbox"
+              checked={enableHeartbeat}
+              onChange={(e) => setTemplateEnabled('heartbeat', setEnableHeartbeat, e.target.checked)}
+            />
+            HEARTBEAT.md
+          </label>
+        </div>
+        <p className="muted mt-2 text-[0.8em]">
+          Disabled files aren't created for this profile. Each spawned agent gets its own copy of
+          the enabled files at spawn time.
+        </p>
+      </fieldset>
 
       {tab === 'basics' && (
         <div>
@@ -278,88 +365,62 @@ function CreateProfileForm({
               </select>
             )}
           </label>
-
-          <details className="mt-4 [&>summary]:cursor-pointer [&>summary]:py-1.5 [&>summary]:font-medium [&>summary]:text-mocha [&[open]>summary]:text-sapphire">
-            <summary>templates (SOUL · IDENTITY · BOOTSTRAP)</summary>
-            <p className="muted my-2">
-              These seed each agent spawned from this profile. Every agent gets its own copy at
-              spawn time — editing the profile later doesn't affect existing agents.
-            </p>
-            <label>
-              SOUL.md
-              <textarea
-                rows={10}
-                value={soul}
-                onChange={(e) => setSoul(e.target.value)}
-                className="font-mono text-[0.88em] leading-[1.55]"
-              />
-            </label>
-            <label>
-              IDENTITY.md
-              <textarea
-                rows={6}
-                value={identity}
-                onChange={(e) => setIdentity(e.target.value)}
-                className="font-mono text-[0.88em] leading-[1.55]"
-              />
-            </label>
-            <label>
-              BOOTSTRAP.md
-              <textarea
-                rows={8}
-                value={bootstrap}
-                onChange={(e) => setBootstrap(e.target.value)}
-                className="font-mono text-[0.88em] leading-[1.55]"
-              />
-            </label>
-            <label className="inline-flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={skipBootstrap}
-                onChange={(e) => setSkipBootstrap(e.target.checked)}
-              />
-              skip bootstrap (no first-run intro)
-            </label>
-          </details>
-
-          <details className="mt-4 [&>summary]:cursor-pointer [&>summary]:py-1.5 [&>summary]:font-medium [&>summary]:text-mocha [&[open]>summary]:text-sapphire">
-            <summary>optional files (AGENTS · TOOLS · HEARTBEAT)</summary>
-            <p className="muted my-2">
-              Optional. Paste in content to seed these files. Left blank, the files are not
-              created — you can always add them later from the profile detail page.
-            </p>
-            <label>
-              AGENTS.md
-              <textarea
-                rows={6}
-                placeholder="Peers this agent can route to."
-                value={agentsTpl}
-                onChange={(e) => setAgentsTpl(e.target.value)}
-                className="font-mono text-[0.88em] leading-[1.55]"
-              />
-            </label>
-            <label>
-              TOOLS.md
-              <textarea
-                rows={6}
-                placeholder="Agent-specific tool usage notes."
-                value={toolsTpl}
-                onChange={(e) => setToolsTpl(e.target.value)}
-                className="font-mono text-[0.88em] leading-[1.55]"
-              />
-            </label>
-            <label>
-              HEARTBEAT.md
-              <textarea
-                rows={6}
-                placeholder="Tasks to check on scheduled wake-ups."
-                value={heartbeatTpl}
-                onChange={(e) => setHeartbeatTpl(e.target.value)}
-                className="font-mono text-[0.88em] leading-[1.55]"
-              />
-            </label>
-          </details>
         </div>
+      )}
+
+      {tab === 'soul' && (
+        <TemplateTab
+          label="SOUL.md"
+          hint="Persona, values, and operating principles. Injected into every session."
+          value={soul}
+          onChange={setSoul}
+          rows={16}
+        />
+      )}
+      {tab === 'identity' && (
+        <TemplateTab
+          label="IDENTITY.md"
+          hint="Name, creature, vibe, emoji, avatar — filled in during the bootstrap ritual."
+          value={identity}
+          onChange={setIdentity}
+          rows={12}
+        />
+      )}
+      {tab === 'bootstrap' && (
+        <TemplateTab
+          label="BOOTSTRAP.md"
+          hint="One-time first-run ritual. The agent retires it once introductions are done."
+          value={bootstrap}
+          onChange={setBootstrap}
+          rows={16}
+        />
+      )}
+      {tab === 'agents' && (
+        <TemplateTab
+          label="AGENTS.md"
+          hint="The workspace operating manual — memory discipline, red lines, channel etiquette."
+          value={agentsTpl}
+          onChange={setAgentsTpl}
+          rows={16}
+        />
+      )}
+      {tab === 'tools' && (
+        <TemplateTab
+          label="TOOLS.md"
+          hint="Agent-specific tool notes and environment facts beyond the generic tool descriptions."
+          value={toolsTpl}
+          onChange={setToolsTpl}
+          rows={14}
+        />
+      )}
+      {tab === 'heartbeat' && (
+        <TemplateTab
+          label="HEARTBEAT.md"
+          hint="Optional checklist run on scheduled wake-ups. Pair with an interval/cron trigger."
+          value={heartbeatTpl}
+          onChange={setHeartbeatTpl}
+          rows={12}
+        />
       )}
 
       {tab === 'skills' && (
@@ -435,32 +496,62 @@ function CreateProfileForm({
 }
 
 interface TabsProps<T extends string> {
-  items: { id: T; label: string }[]
+  items: { id: T; label: string; disabled?: boolean }[]
   active: T
   onChange: (id: T) => void
 }
 function Tabs<T extends string>({ items, active, onChange }: TabsProps<T>) {
   return (
-    <nav
-      role="tablist"
-      className="-mb-px mb-5 flex gap-1 border-b border-frost"
-    >
+    <nav role="tablist" className="-mb-px mb-5 flex flex-wrap gap-1 border-b border-frost">
       {items.map((it) => (
         <button
           key={it.id}
           type="button"
           role="tab"
           aria-selected={active === it.id}
+          disabled={it.disabled}
+          title={it.disabled ? 'disabled — enable it in “templates to include”' : undefined}
           onClick={() => onChange(it.id)}
-          className={`unstyled cursor-pointer border-b-2 bg-transparent px-4 py-2 text-[0.9em] font-medium transition-colors ${
-            active === it.id
-              ? 'border-sapphire text-sapphire'
-              : 'border-transparent text-mocha hover:text-sapphire'
+          className={`unstyled border-b-2 bg-transparent px-4 py-2 text-[0.9em] font-medium transition-colors ${
+            it.disabled
+              ? 'cursor-not-allowed border-transparent text-mocha-light/40'
+              : active === it.id
+                ? 'cursor-pointer border-sapphire text-sapphire'
+                : 'cursor-pointer border-transparent text-mocha hover:text-sapphire'
           }`}
         >
           {it.label}
         </button>
       ))}
     </nav>
+  )
+}
+
+function TemplateTab({
+  label,
+  hint,
+  value,
+  onChange,
+  rows,
+}: {
+  label: string
+  hint: string
+  value: string
+  onChange: (v: string) => void
+  rows: number
+}) {
+  return (
+    <div>
+      <p className="muted my-2 text-[0.85em]">{hint}</p>
+      <label>
+        {label}
+        <textarea
+          rows={rows}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="font-mono text-[0.88em] leading-[1.55]"
+        />
+      </label>
+    </div>
   )
 }

@@ -8,7 +8,6 @@
 -- agents), they don't replace them.
 --
 -- Spawn semantics live in apps/daemon/src/core/profile-group/spawn.ts.
--- See docs/backlog/todo/BAZ-002-profile-groups.md for the full spec.
 
 CREATE TABLE profile_groups (
   id              TEXT PRIMARY KEY,        -- slug, e.g. "platform-team"
