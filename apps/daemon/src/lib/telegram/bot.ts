@@ -250,17 +250,39 @@ async function pollLoop(handle: BotHandle, db: BazilionDb, initialOffset: number
   let offset = initialOffset
   while (!handle.stopRequested) {
     let updates: Update[] = []
+    // Per-request abort just above the long-poll window. A silently-dropped
+    // connection (flaky wifi/VPN, no TCP reset) leaves the fetch hanging well
+    // past POLL_TIMEOUT_S — grammY's default client timeout is ~500s — so
+    // without this the only recovery is the 120s stall watchdog tearing the
+    // whole bot down and re-activating. Aborting at +5s turns a dead poll into
+    // an ordinary retry on the next loop iteration.
+    const ac = new AbortController()
+    const abortTimer = setTimeout(() => ac.abort(), (POLL_TIMEOUT_S + 5) * 1000)
     try {
-      updates = await handle.bot.api.getUpdates({
-        offset,
-        timeout: POLL_TIMEOUT_S,
-      })
+      updates = await handle.bot.api.getUpdates(
+        {
+          offset,
+          timeout: POLL_TIMEOUT_S,
+        },
+        // grammY's Node shim types the signal param as the `abort-controller`
+        // package's AbortSignal, not the global one — runtime-compatible, so
+        // cast through the method's own parameter type.
+        ac.signal as unknown as Parameters<typeof handle.bot.api.getUpdates>[1],
+      )
       handle.state.lastSuccessfulPollAt = Date.now()
       handle.state.error = null
     } catch (e) {
       if (handle.stopRequested) break
       const msg = errMsg(e)
       handle.state.error = msg
+      if (ac.signal.aborted) {
+        // Our own abort timer fired — the long-poll hung past POLL_TIMEOUT_S+5.
+        // Expected recovery from a silently-dropped connection; retry promptly.
+        console.warn(
+          `telegram: getUpdates exceeded ${POLL_TIMEOUT_S + 5}s (connection likely dropped) — retrying`,
+        )
+        continue
+      }
       // 409 conflicts are usually a stale webhook or another instance — log
       // loud and back off.
       if (e instanceof GrammyError && e.error_code === 409) {
@@ -270,6 +292,8 @@ async function pollLoop(handle: BotHandle, db: BazilionDb, initialOffset: number
       }
       await sleep(GETUPDATES_RETRY_MS)
       continue
+    } finally {
+      clearTimeout(abortTimer)
     }
 
     for (const u of updates) {
