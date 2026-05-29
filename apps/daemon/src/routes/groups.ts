@@ -15,8 +15,8 @@ import { validateTopicNameFormat } from '../lib/telegram/naming.ts'
 import { syncGroupTopicNames } from '../lib/telegram/topic-rename.ts'
 import { qmdBackend } from '../runtime/index.ts'
 
-// 12 KB cap matches OpenClaw's bootstrapMaxChars default — enough for a rich
-// USER.md, small enough that it can't silently blow out the system prompt.
+// 12 KB cap — enough for a rich USER.md, small enough that it can't silently
+// blow out the system prompt.
 const USER_MD_MAX_BYTES = 12_000
 
 export const groupsRouter = new Hono()

@@ -58,7 +58,8 @@ test('group add --link fails when target does not exist', async () => {
 test('group user-md set + show + clear round-trip', async () => {
   let r = await server.cli(['group', 'user-md', 'show', 'default'])
   expect(r.exitCode).toBe(0)
-  expect(r.stdout.trim()).toBe('')
+  // The default group ships with the starter USER.md seeded.
+  expect(r.stdout).toContain('About Your Human')
 
   r = await server.cli(['group', 'user-md', 'set', 'default', '--text', 'call me Pat'])
   expect(r.exitCode).toBe(0)

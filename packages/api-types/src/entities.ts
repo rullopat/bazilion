@@ -87,6 +87,15 @@ export interface Agent {
   telegramIconEmoji: string | null
   createdAt: Timestamp
   archivedAt: Timestamp | null
+  /**
+   * Structured fields parsed from the agent's own IDENTITY.md (name, emoji,
+   * creature, vibe, avatar). File-derived, not a DB column — populated by the
+   * agent list + detail routes, omitted (undefined) by the bare repo reads.
+   * `null` once parsed means the file has no real values yet (still the
+   * placeholder template). Lets the UI show avatar/creature without an extra
+   * round-trip.
+   */
+  identity?: AgentIdentityFile | null
 }
 
 export interface AgentSkillAttachment {

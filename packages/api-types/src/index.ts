@@ -138,12 +138,12 @@ export interface CreateProfileRequest {
   identity?: string
   /** Initial BOOTSTRAP.md content. Omit for default; pass null to skip bootstrap entirely. */
   bootstrap?: string | null
-  /** Initial AGENTS.md content. Omit to skip; pass a string to seed the file. */
-  agents?: string
-  /** Initial TOOLS.md content. Omit to skip; pass a string to seed the file. */
-  tools?: string
-  /** Initial HEARTBEAT.md content. Omit to skip; pass a string to seed the file. */
-  heartbeat?: string
+  /** Initial AGENTS.md content. Omit for the default template; pass null to skip the file. */
+  agents?: string | null
+  /** Initial TOOLS.md content. Omit for the default template; pass null to skip the file. */
+  tools?: string | null
+  /** Initial HEARTBEAT.md content. Omit for the default template; pass null to skip the file. */
+  heartbeat?: string | null
 }
 
 // --- profile groups ---

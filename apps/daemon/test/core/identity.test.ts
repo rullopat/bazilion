@@ -7,6 +7,7 @@ import {
   loadIdentityFromFile,
   parseIdentityMarkdown,
 } from '../../src/core/profile/identity.ts'
+import { DEFAULT_IDENTITY } from '../../src/core/profile/templates.ts'
 
 let dir: string
 beforeEach(() => {
@@ -82,4 +83,31 @@ test('loadIdentityFromFile returns parsed identity when the file has values', ()
   const path = join(dir, 'IDENTITY.md')
   writeFileSync(path, '- Name: Ada\n- Emoji: ✨\n')
   expect(loadIdentityFromFile(path)).toEqual({ name: 'Ada', emoji: '✨' })
+})
+
+test('the unmodified DEFAULT_IDENTITY template parses to no values', () => {
+  // Every placeholder hint in the template must normalize to an entry in
+  // IDENTITY_PLACEHOLDER_VALUES, so a never-edited IDENTITY.md is "empty".
+  const parsed = parseIdentityMarkdown(DEFAULT_IDENTITY)
+  expect(identityHasValues(parsed)).toBe(false)
+  const path = join(dir, 'IDENTITY.md')
+  writeFileSync(path, DEFAULT_IDENTITY)
+  expect(loadIdentityFromFile(path)).toBeNull()
+})
+
+test('a filled-in DEFAULT_IDENTITY (incl. avatar + creature) parses all fields', () => {
+  const filled = DEFAULT_IDENTITY.replace('_(pick something you like)_', 'Sable')
+    .replace('_(AI? robot? familiar? ghost in the machine? something weirder?)_', 'house spirit')
+    .replace('_(how do you come across? sharp? warm? chaotic? calm?)_', 'dry and precise')
+    .replace('_(your signature — pick one that feels right)_', '🦊')
+    .replace('_(an http(s) URL or data URI — optional)_', 'https://example.com/sable.png')
+  const path = join(dir, 'IDENTITY.md')
+  writeFileSync(path, filled)
+  expect(loadIdentityFromFile(path)).toEqual({
+    name: 'Sable',
+    creature: 'house spirit',
+    vibe: 'dry and precise',
+    emoji: '🦊',
+    avatar: 'https://example.com/sable.png',
+  })
 })

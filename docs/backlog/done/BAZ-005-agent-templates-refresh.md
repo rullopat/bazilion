@@ -1,9 +1,12 @@
 ---
 id: BAZ-005
 title: Agent templates refresh — two-sided bootstrap, USER.md seed, workspace doc
-status: in_progress
+status: done
 size: M (≈1 week)
 created: 2026-05-25
+shipped: 2026-05-29
+release: v0.5.0
+pr: 9
 note: Closes the OpenClaw-parity gap on default agent templates. Strictly additive — no shape changes to existing endpoints, no breaking changes to existing agents. External-messaging guidance is *content only* (forward-looking text in AGENTS.md); the actual Telegram/WhatsApp integration is a follow-up BAZ.
 ---
 
@@ -154,3 +157,15 @@ No mobile changes. Mobile's agent list doesn't render avatars today; adding it i
 - **Spawn integration** (`apps/daemon/test/core/agent/spawn.test.ts`, if it exists; add it if not) — fresh spawn produces an agent dir with all six template files copied.
 - **Web e2e (optional, ship without if dev-only)** — spawn agent, complete bootstrap with Name/Creature/Vibe/Emoji set, navigate to `/agents` — assert creature renders under the name. If avatar is set to a `data:` URI, assert the `<img>` renders.
 - **Backwards-compat smoke** — existing agents (created before this BAZ) whose IDENTITY.md still has the old 3-field template continue to resolve cleanly; identity returns `null` (no values means no identity object).
+
+## As-built (2026-05-29, shipped in v0.5.0 / PR #9)
+
+Shipped as planned, with these deltas worth recording:
+
+- **Migration number is `0008_seed_user_md.sql`, not `0003`.** The branch was rebased onto a `main` that had already taken `0003`–`0007` (Telegram, mirror-mode, topic-format, ACL, MCP), so the USER.md backfill landed as `0008`. A test asserts the inlined SQL literal stays byte-identical to `DEFAULT_USER_MD` to guard the two-copies-drift risk.
+- **`identity` lives on `Agent`, not `ResolvedAgent`.** The plan put it on `ResolvedAgent`, but the agent *list* endpoint returns `Agent[]` and never resolves — so a single optional `identity?: AgentIdentityFile | null` on `Agent` (populated at the route/resolve layer, repo untouched) serves both the list and detail surfaces with one additive field.
+- **HEARTBEAT.md is opt-in, not default-on.** The plan flipped AGENTS/TOOLS/HEARTBEAT all to default-on; research into OpenClaw's actual defaults showed HEARTBEAT is optional there, so HEARTBEAT stays opt-in (off) while AGENTS/TOOLS default on. `null` opts any of them out.
+- **On-disk default-profile refresh added.** Beyond the DB backfill, the bazilion-managed `default` profile is brought in sync with the shipped templates on every boot (write-if-differs; custom profiles untouched) — so existing installs pick up the new templates without a manual reseed. This was originally listed under the plan's "out of scope."
+- **Create-form redesign went further than the plan.** The two collapsible template groups were replaced with a tab-per-template + an "enable" checklist that disables a template's tab when unticked (SOUL/IDENTITY always-on).
+- **External-channel guidance written for Telegram-as-shipped.** Since 0.3.0 shipped Telegram, AGENTS.md phrases the channel etiquette for the channel that now exists rather than as a purely forward-looking section.
+- **Follow-up captured:** real skill-execution security (sandbox / content-scan / approval) was drafted as BAZ-006; per-agent skill *selection* was deliberately left as-is (it's curation, not a security boundary).

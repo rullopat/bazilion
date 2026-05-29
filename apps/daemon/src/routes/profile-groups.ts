@@ -1,6 +1,6 @@
 // /api/profile-groups/* — preconfigured team templates. Each profile group
 // holds an ordered list of members that the spawn op replays as a single
-// transactional call. See docs/backlog/todo/BAZ-002-profile-groups.md.
+// transactional call.
 
 import type {
   CreateProfileGroupRequest,

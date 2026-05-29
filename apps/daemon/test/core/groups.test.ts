@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test } from 'vitest'
 import { registerGroup } from '../../src/core/group/register.ts'
+import { DEFAULT_USER_MD } from '../../src/core/profile/templates.ts'
 import * as groupRepo from '../../src/core/repos/groups.ts'
 import { makeTestEnv, type TestEnv } from './helpers.ts'
 
@@ -16,7 +17,10 @@ test('registerGroup creates a real directory under groups/<slug>/', () => {
   const g = registerGroup(env.db, { id: 'g1' }, env.paths)
   expect(g.id).toBe('g1')
   expect(g.path).toBe(env.paths.groupDir('g1'))
-  expect(g.userMd).toBe('')
+  // registerGroup seeds the starter USER.md (byte-identical to the
+  // constant) by default, and it round-trips through the DB.
+  expect(g.userMd).toBe(DEFAULT_USER_MD)
+  expect(groupRepo.get(env.db, 'g1', env.paths)?.userMd).toBe(DEFAULT_USER_MD)
   expect(existsSync(g.path)).toBe(true)
   expect(lstatSync(g.path).isSymbolicLink()).toBe(false)
   expect(existsSync(join(g.path, 'memory'))).toBe(true)

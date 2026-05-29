@@ -14,11 +14,12 @@ beforeEach(() => {
 })
 afterEach(() => env.cleanup())
 
-test('get returns empty content + a stable etag on a fresh group', async () => {
+test('get returns the seeded starter content + a stable etag on a fresh group', async () => {
+  // Fresh groups are seeded with DEFAULT_USER_MD, not ''.
   const host = createDbUserMdHost(env.db, env.paths)
   const r = await host.get(env.groupId)
-  expect(r.content).toBe('')
-  expect(r.etag).toBe(etag(''))
+  expect(r.content).toContain('About Your Human')
+  expect(r.etag).toBe(etag(r.content))
 })
 
 test('write persists through groupRepo and returns the new etag', async () => {
@@ -43,10 +44,11 @@ test('write fails (etag mismatch) when content moved on between get and write', 
 
 test('write enforces the byte cap (does not persist on overflow)', async () => {
   const host = createDbUserMdHost(env.db, env.paths)
-  const { etag: ifMatch } = await host.get(env.groupId)
+  const { content: before, etag: ifMatch } = await host.get(env.groupId)
   const big = 'x'.repeat(USER_MD_MAX_BYTES + 1)
   expect(() => host.write(env.groupId, big, ifMatch)).toThrow(/cap/i)
-  expect(groupRepo.get(env.db, env.groupId, env.paths)?.userMd).toBe('')
+  // The failed write must leave the prior (seeded) content intact.
+  expect(groupRepo.get(env.db, env.groupId, env.paths)?.userMd).toBe(before)
 })
 
 test('throws on unknown groupId', () => {

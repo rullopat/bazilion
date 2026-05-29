@@ -265,7 +265,10 @@ test('USER.md seeding: pre-existing group is left untouched (operator intent pre
 })
 
 test('USER.md seeding: pre-existing group with empty user_md is also left untouched', async () => {
-  // Default state from registerGroup is user_md = '' — Decision #5: don't seed.
+  // registerGroup now seeds DEFAULT_USER_MD, so an *empty* user_md is
+  // an explicit operator clear. Decision #5: spawn must still not seed into a
+  // pre-existing group, even an empty one.
+  groupRepo.setUserMd(env.db, env.groupId, '')
   expect(groupRepo.get(env.db, env.groupId, env.paths)?.userMd).toBe('')
   makeTemplate('team', [{ profileId: 'p1', agentName: 'a' }], { userMd: 'should not appear' })
   await spawnProfileGroup(env.db, env.paths, {

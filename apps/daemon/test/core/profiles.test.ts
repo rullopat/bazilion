@@ -58,9 +58,9 @@ test('loadProfile returns profile, default skills, and file contents', () => {
   expect(loaded.files.soul).toContain('SOUL.md')
   expect(loaded.files.identity).toContain('IDENTITY.md')
   expect(loaded.files.bootstrap).toContain('BOOTSTRAP.md')
-  // Optional files default to absent — profiles opt in via templates.
-  expect(loaded.files.agents).toBeNull()
-  expect(loaded.files.tools).toBeNull()
+  // AGENTS/TOOLS default ON (null opts out); HEARTBEAT is opt-in (off).
+  expect(loaded.files.agents).toContain('AGENTS.md')
+  expect(loaded.files.tools).toContain('TOOLS.md')
   expect(loaded.files.heartbeat).toBeNull()
   expect(loaded.identity).toBeNull()
 })
@@ -86,10 +86,35 @@ test('createProfile seeds AGENTS.md / TOOLS.md / HEARTBEAT.md when provided', ()
   expect(loaded.identity).toEqual({ name: 'Felix', emoji: '🐾' })
 })
 
-test('createProfile skips AGENTS/TOOLS/HEARTBEAT when omitted', () => {
+test('createProfile seeds AGENTS/TOOLS by default but NOT HEARTBEAT (opt-in) when omitted', () => {
   const profile = createProfile(env.db, env.paths, {
-    id: 'bare',
+    id: 'standard',
     defaultModel: 'm',
+  })
+  expect(existsSync(join(profile.dir, 'AGENTS.md'))).toBe(true)
+  expect(existsSync(join(profile.dir, 'TOOLS.md'))).toBe(true)
+  // HEARTBEAT is opt-in — absent unless explicitly provided.
+  expect(existsSync(join(profile.dir, 'HEARTBEAT.md'))).toBe(false)
+  const loaded = loadProfile(env.db, 'standard')
+  expect(loaded.files.agents).toContain('External channels')
+  expect(loaded.files.tools).toContain('Tool Playbook')
+})
+
+test('createProfile writes HEARTBEAT.md only when an explicit string is supplied', () => {
+  const profile = createProfile(env.db, env.paths, {
+    id: 'with-hb',
+    defaultModel: 'm',
+    templates: { heartbeat: '# HEARTBEAT\n- check inbox\n' },
+  })
+  expect(existsSync(join(profile.dir, 'HEARTBEAT.md'))).toBe(true)
+  expect(loadProfile(env.db, 'with-hb').files.heartbeat).toContain('check inbox')
+})
+
+test('createProfile with templates.agents/tools = null skips those files', () => {
+  const profile = createProfile(env.db, env.paths, {
+    id: 'minimal',
+    defaultModel: 'm',
+    templates: { agents: null, tools: null },
   })
   expect(existsSync(join(profile.dir, 'AGENTS.md'))).toBe(false)
   expect(existsSync(join(profile.dir, 'TOOLS.md'))).toBe(false)

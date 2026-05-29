@@ -4,6 +4,7 @@ import {
   openDb,
   type Paths,
   readAuthFile,
+  refreshDefaultProfileTemplates,
   resolvePaths,
   runMigrations,
   webTokenRepo,
@@ -46,6 +47,15 @@ function bootstrap(paths: Paths): { db: BazilionDb; authToken: string } {
 
   const db = openDb(paths.db)
   runMigrations(db)
+
+  // The `default` profile is bazilion-managed — keep its on-disk
+  // template files in sync with the shipped defaults on every boot. Custom
+  // profiles are never touched. No-op on fresh installs (seedDefaults writes
+  // the current templates when the profile is first created).
+  const refreshed = refreshDefaultProfileTemplates(paths)
+  if (refreshed.length) {
+    console.log(`bazilion: refreshed default profile templates — [${refreshed.join(', ')}]`)
+  }
 
   if (!existsSync(paths.authFile)) {
     const created = webTokenRepo.create(db, 'bootstrap')
