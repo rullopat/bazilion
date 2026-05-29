@@ -69,6 +69,9 @@ importers:
       linkedom:
         specifier: ^0.18.12
         version: 0.18.12
+      playwright:
+        specifier: ^1.60.0
+        version: 1.60.0
       qrcode-terminal:
         specifier: ^0.12.0
         version: 0.12.0
@@ -10076,9 +10079,7 @@ snapshots:
       metro-runtime: 0.84.4
     transitivePeerDependencies:
       - '@babel/core'
-      - bufferutil
       - supports-color
-      - utf-8-validate
 
   '@react-native/normalize-colors@0.74.89': {}
 

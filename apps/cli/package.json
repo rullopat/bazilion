@@ -53,6 +53,7 @@
     "citty": "^0.2.2",
     "hono": "^4.12.23",
     "linkedom": "^0.18.12",
+    "playwright": "^1.60.0",
     "qrcode-terminal": "^0.12.0",
     "typebox": "^1.1.39",
     "undici": "^8.3.0",
