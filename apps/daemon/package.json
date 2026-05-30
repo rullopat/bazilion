@@ -26,6 +26,7 @@
     "grammy": "^1.43.0",
     "hono": "^4.12.23",
     "linkedom": "^0.18.12",
+    "marked": "^18.0.4",
     "playwright": "^1.60.0",
     "typebox": "^1.1.39",
     "undici": "^8.3.0",
