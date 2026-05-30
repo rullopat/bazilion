@@ -120,6 +120,72 @@ describe('mirrorAgentTurnFrame', () => {
     expect((sends[0]?.opts as { message_thread_id?: number }).message_thread_id).toBe(42)
   })
 
+  test('assistant_message Markdown is converted to Telegram HTML with parse_mode', async () => {
+    const { api, sends } = makeApi()
+    installMirrorDepsResolver(() => ({ db: env.db, api, chatId: CHAT_ID }))
+    const a = spawnAgent(env.db, env.paths, { profileId: 'base', groupId: env.groupId, name: 'r1' })
+    agentRepo.setTelegramTopicId(env.db, a.id, 42)
+
+    await mirrorAgentTurnFrame(a.id, {
+      kind: 'event',
+      event: { type: 'assistant_message', text: '# Title\n\n**bold** and `code`' },
+    })
+    expect(sends.length).toBe(1)
+    expect(sends[0]?.text).toBe('▎ <b>Title</b>\n\n<b>bold</b> and <code>code</code>')
+    expect((sends[0]?.opts as { parse_mode?: string }).parse_mode).toBe('HTML')
+  })
+
+  test('errors/tool lines are NOT HTML — sent as plain text, no parse_mode', async () => {
+    const { api, sends } = makeApi()
+    installMirrorDepsResolver(() => ({ db: env.db, api, chatId: CHAT_ID }))
+    const a = spawnAgent(env.db, env.paths, { profileId: 'base', groupId: env.groupId, name: 'r1' })
+    agentRepo.setTelegramTopicId(env.db, a.id, 42)
+
+    await mirrorAgentTurnFrame(a.id, {
+      kind: 'event',
+      event: { type: 'error', error: 'boom <not a tag>' },
+    })
+    expect(sends.length).toBe(1)
+    expect(sends[0]?.text).toBe('❌ Error: boom <not a tag>')
+    expect((sends[0]?.opts as { parse_mode?: string }).parse_mode).toBeUndefined()
+  })
+
+  test('a parse-entities rejection falls back to plain text (reply never dropped)', async () => {
+    const sends: { text: string; opts: unknown }[] = []
+    let calls = 0
+    const api: MirrorApi = {
+      async sendMessage(_chatId, text, opts) {
+        calls++
+        // First attempt (HTML) is rejected the way Telegram rejects bad markup.
+        if (calls === 1) throw new Error("Bad Request: can't parse entities")
+        sends.push({ text, opts })
+        return { message_id: 1 }
+      },
+      async sendChatAction() {
+        return true
+      },
+      async sendPhoto() {
+        return { message_id: 2 }
+      },
+      async sendDocument() {
+        return { message_id: 3 }
+      },
+    }
+    installMirrorDepsResolver(() => ({ db: env.db, api, chatId: CHAT_ID }))
+    const a = spawnAgent(env.db, env.paths, { profileId: 'base', groupId: env.groupId, name: 'r1' })
+    agentRepo.setTelegramTopicId(env.db, a.id, 42)
+
+    await mirrorAgentTurnFrame(a.id, {
+      kind: 'event',
+      event: { type: 'assistant_message', text: '**hi** there' },
+    })
+    // Two calls: failed HTML attempt + plain-text retry (tags stripped, no parse_mode).
+    expect(calls).toBe(2)
+    expect(sends.length).toBe(1)
+    expect(sends[0]?.text).toBe('hi there')
+    expect((sends[0]?.opts as { parse_mode?: string }).parse_mode).toBeUndefined()
+  })
+
   test('minimal mode: tool_call / tool_result do NOT mirror', async () => {
     const { api, sends } = makeApi()
     installMirrorDepsResolver(() => ({ db: env.db, api, chatId: CHAT_ID }))
@@ -342,7 +408,7 @@ describe('mirrorAgentTurnFrame', () => {
     expect(agentRepo.getTelegramTopicId(env.db, a.id)).toBeNull()
   })
 
-  test("long messages are truncated under Telegram's 4096 char limit", async () => {
+  test("long replies are split into multiple messages under Telegram's 4096 limit", async () => {
     const { api, sends } = makeApi()
     installMirrorDepsResolver(() => ({ db: env.db, api, chatId: CHAT_ID }))
     const a = spawnAgent(env.db, env.paths, {
@@ -357,8 +423,11 @@ describe('mirrorAgentTurnFrame', () => {
       kind: 'event',
       event: { type: 'assistant_message', text: long },
     })
-    expect(sends.length).toBe(1)
-    expect((sends[0]?.text ?? '').length).toBeLessThanOrEqual(4096)
+    // Split across multiple sends rather than truncated; every chunk fits and
+    // no content is lost.
+    expect(sends.length).toBeGreaterThan(1)
+    for (const s of sends) expect(s.text.length).toBeLessThanOrEqual(4096)
+    expect(sends.map((s) => s.text).join('')).toBe(long)
   })
 })
 

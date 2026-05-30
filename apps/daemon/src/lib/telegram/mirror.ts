@@ -19,6 +19,7 @@ import { InputFile } from 'grammy'
 import type { BazilionDb } from '../../core/db/client.ts'
 import { agentRepo } from '../../core/index.ts'
 import { _resetLoopGuardForTest, allowTelegramOutboundNoise } from './loop-guard.ts'
+import { renderTelegramMessages, stripTelegramHtml, TELEGRAM_SAFE_BUDGET } from './markdown.ts'
 import { enqueueOutbound } from './outbound-queue.ts'
 import { clearReactionsFor } from './reactions.ts'
 
@@ -114,24 +115,55 @@ export async function mirrorAgentTurnFrame(
   // inbound messages. The reply itself is the canonical "I saw it".
   if (shouldClearReactionsFor(frame)) clearReactionsFor(agent.id)
 
-  try {
-    await enqueueOutbound(deps.chatId, () =>
-      deps.api.sendMessage(deps.chatId, truncateForTelegram(text), {
-        message_thread_id: topicId,
-      }),
-    )
-  } catch (e) {
-    if (isThreadGoneError(e)) {
-      console.warn(
-        `telegram mirror: topic ${topicId} for agent ${agent.id} is gone — clearing binding`,
+  // Only the agent's own reply is Markdown (rendered to Telegram HTML so it
+  // matches the Web UI). Scaffolding lines (errors, verbose tool traces) are
+  // not Markdown — they may contain bare `<`/`>` — so they go out as plain
+  // text, truncated as before.
+  const isReply = frame.kind === 'event' && frame.event.type === 'assistant_message'
+  const chunks = isReply
+    ? renderTelegramMessages(text, TELEGRAM_SAFE_BUDGET)
+    : [truncateForTelegram(text)]
+
+  for (const chunk of chunks) {
+    try {
+      await enqueueOutbound(deps.chatId, () =>
+        deps.api.sendMessage(deps.chatId, chunk, {
+          message_thread_id: topicId,
+          ...(isReply ? { parse_mode: 'HTML' as const } : {}),
+        }),
       )
-      agentRepo.setTelegramTopicId(deps.db, agent.id, null)
-      return
+    } catch (e) {
+      if (isThreadGoneError(e)) {
+        console.warn(
+          `telegram mirror: topic ${topicId} for agent ${agent.id} is gone — clearing binding`,
+        )
+        agentRepo.setTelegramTopicId(deps.db, agent.id, null)
+        return
+      }
+      // A malformed entity makes Telegram 400 the message ("can't parse
+      // entities"). Retry that chunk once as plain text so a converter glitch
+      // never costs the user their reply.
+      if (isReply && isParseEntitiesError(e)) {
+        try {
+          await enqueueOutbound(deps.chatId, () =>
+            deps.api.sendMessage(deps.chatId, stripTelegramHtml(chunk), {
+              message_thread_id: topicId,
+            }),
+          )
+          continue
+        } catch (e2) {
+          console.warn(
+            `telegram mirror: plain-text fallback failed for agent ${agent.id} —`,
+            e2 instanceof Error ? e2.message : String(e2),
+          )
+          continue
+        }
+      }
+      console.warn(
+        `telegram mirror: send failed for agent ${agent.id} —`,
+        e instanceof Error ? e.message : String(e),
+      )
     }
-    console.warn(
-      `telegram mirror: send failed for agent ${agent.id} —`,
-      e instanceof Error ? e.message : String(e),
-    )
   }
 }
 
@@ -326,6 +358,24 @@ function isThreadGoneError(e: unknown): boolean {
     msg.includes('topic_closed') ||
     msg.includes('topic_deleted') ||
     msg.includes('chat not found')
+  )
+}
+
+/**
+ * True when Telegram rejected the HTML body it couldn't parse (unbalanced or
+ * unsupported entity). grammY surfaces this as a 400 GrammyError whose
+ * description mentions entities — match the message defensively.
+ */
+function isParseEntitiesError(e: unknown): boolean {
+  if (!(e instanceof Error)) return false
+  const msg = e.message.toLowerCase()
+  return (
+    msg.includes("can't parse entities") ||
+    msg.includes('can not parse entities') ||
+    msg.includes('unsupported start tag') ||
+    msg.includes('unmatched end tag') ||
+    msg.includes('cant find end tag') ||
+    msg.includes("can't find end")
   )
 }
 
