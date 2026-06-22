@@ -54,7 +54,7 @@ Other provider env vars: `OPENAI_API_KEY`, `GEMINI_API_KEY`, `LMSTUDIO_URL`/`LMS
 
 ## Develop from source
 
-Contributors: clone the repo. Node 24+ and pnpm 10+.
+Contributors: clone the repo. Node 24+ and pnpm 10+ are required. If `corepack` is unavailable, install pnpm directly with `npm install -g pnpm`.
 
 ```sh
 git clone https://github.com/rullopat/bazilion

@@ -44,8 +44,8 @@ Ship a first-run install story that feels like OpenClaw's quickstart:
 - **npm path:**
   `npm install -g bazilion` followed by `bazilion dashboard`
 - **Hackable path:**
-  `git clone https://github.com/rullopat/bazilion.git`, `corepack enable`,
-  `pnpm install`, then a source equivalent of `bazilion dashboard`
+  `git clone https://github.com/rullopat/bazilion.git`, `npm install -g pnpm` if pnpm is missing,
+  `pnpm install`, then the source dev command (`pnpm tsx apps/cli/src/index.ts serve` plus `cd apps/web && pnpm dev`)
 
 The one-liners must install at least:
 

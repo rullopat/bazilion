@@ -53,7 +53,7 @@ The web UI is bundled into the published `bazilion` package and starts with:
 bazilion dashboard
 ```
 
-For source development, clone the repo and run the daemon plus Vite dev server:
+For source development, clone the repo and run the daemon plus Vite dev server. Node 24+ and pnpm 10+ are required; if `corepack` is unavailable, install pnpm directly with `npm install -g pnpm`.
 
 ```sh
 git clone https://github.com/rullopat/bazilion
