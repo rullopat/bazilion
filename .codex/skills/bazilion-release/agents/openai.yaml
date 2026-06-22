@@ -1,0 +1,4 @@
+interface:
+  display_name: "Bazilion Release"
+  short_description: "Run the Bazilion release process"
+  default_prompt: "Use $bazilion-release to prepare, validate, publish, and announce a Bazilion release."
