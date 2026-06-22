@@ -1,4 +1,12 @@
-import { copyFileSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  copyFileSync,
+  cpSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { join } from 'node:path'
 import { defineConfig } from 'tsup'
 
@@ -6,6 +14,7 @@ import { defineConfig } from 'tsup'
 //   - cli.js     → the `bazilion` bin (shebang via banner)
 //   - daemon.js  → spawned by `bazilion serve`
 //   - worker.js  → spawned per chat turn by the daemon
+//   - web-server.js → spawned by `bazilion dashboard`
 // tsup auto-externalizes everything in package.json `dependencies`
 // (so native modules like better-sqlite3 stay external); workspace
 // packages are in devDependencies and therefore bundled inline, which
@@ -15,6 +24,7 @@ export default defineConfig({
     cli: 'src/index.ts',
     daemon: '../daemon/src/index.ts',
     worker: '../daemon/src/runtime/worker/entry.ts',
+    'web-server': 'src/web-server.ts',
   },
   format: ['esm'],
   target: 'node24',
@@ -52,5 +62,14 @@ export default defineConfig({
       if (!file.endsWith('.sql')) continue
       copyFileSync(join(migrationsSrc, file), join(migrationsDst, file))
     }
+
+    // Copy the production TanStack Start build into the published CLI package.
+    // `bazilion dashboard` spawns dist/web-server.js with BAZILION_WEB_DIST
+    // pointing here, so normal npm installs can open the web UI without a
+    // source checkout.
+    const webSrc = join(process.cwd(), '../web/dist')
+    const webDst = join(distDir, 'web')
+    rmSync(webDst, { recursive: true, force: true })
+    cpSync(webSrc, webDst, { recursive: true })
   },
 })

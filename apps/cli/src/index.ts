@@ -9,6 +9,7 @@ import { authCommand } from './commands/auth.ts'
 import { backupCommand } from './commands/backup.ts'
 import { completionCommand } from './commands/completion.ts'
 import { configCommand } from './commands/config.ts'
+import { dashboardCommand } from './commands/dashboard.ts'
 import { doctorCommand } from './commands/doctor.ts'
 import { groupCommand } from './commands/group.ts'
 import { inboxCommand } from './commands/inbox.ts'
@@ -46,6 +47,7 @@ const main = defineCommand({
     inbox: inboxCommand,
     config: configCommand,
     serve: serveCommand,
+    dashboard: dashboardCommand,
     doctor: doctorCommand,
     backup: backupCommand,
     trigger: triggerCommand,
@@ -124,6 +126,7 @@ function printTopLevelHelp(): void {
       title: 'setup',
       items: [
         ['serve', 'Start the bazilion daemon (auto-bootstraps ~/.bazilion on first run)'],
+        ['dashboard', 'Start the daemon + bundled web UI, then open the dashboard'],
         ['doctor', 'Diagnose your bazilion install'],
         ['uninstall', 'Wipe bazilion state from ~/.bazilion (or BAZILION_HOME)'],
       ],

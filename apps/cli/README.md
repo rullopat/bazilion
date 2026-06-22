@@ -11,21 +11,21 @@ Multi-agent runtime CLI — spawn LLM agents, manage profiles/groups/skills, and
 Requires **Node 24 or newer**.
 
 ```sh
-npx bazilion serve         # one-shot
+npx bazilion dashboard     # one-shot
 # or install globally
 npm install -g bazilion
-bazilion serve
+bazilion dashboard
 ```
 
 ## Quickstart
 
 ```sh
-# Start the daemon — auto-bootstraps ~/.bazilion on first run
+# Start the daemon + bundled web UI — auto-bootstraps ~/.bazilion on first run
 # (creates dirs, runs migrations, mints the bootstrap token, writes auth.json).
-bazilion serve
+bazilion dashboard
 ```
 
-The daemon prints a bootstrap token before binding `127.0.0.1:4321`. CLI commands pick it up automatically from `~/.bazilion/auth.json`.
+The daemon writes a bootstrap token to `~/.bazilion/auth.json`, binds `127.0.0.1:4321`, and the bundled web UI binds `127.0.0.1:4322`. CLI commands pick the token up automatically from `auth.json`; paste it into the web login screen.
 
 From another terminal:
 
@@ -47,15 +47,20 @@ Run `bazilion --help` for the full command list, or `bazilion <command> --help` 
 
 ## Web UI
 
-The web UI lives in the [bazilion repo](https://github.com/rullopat/bazilion) under `apps/web` and is **not yet shipped in the npm package**. To run it alongside the daemon today:
+The web UI is bundled into the published `bazilion` package and starts with:
+
+```sh
+bazilion dashboard
+```
+
+For source development, clone the repo and run the daemon plus Vite dev server:
 
 ```sh
 git clone https://github.com/rullopat/bazilion
 cd bazilion && pnpm install
+pnpm tsx apps/cli/src/index.ts serve
 cd apps/web && pnpm dev    # http://127.0.0.1:4322
 ```
-
-Bundling the web UI into `bazilion` is on the roadmap.
 
 ## ChatGPT (Plus/Pro/Team) OAuth
 
@@ -70,7 +75,7 @@ After connecting, enable `openai-codex` and curate at least one model. Credentia
 
 ## What's in the box
 
-- **CLI + daemon**, both spawned via `bazilion serve`. The daemon binds `127.0.0.1:4321` and owns `~/.bazilion/` (SQLite DB, profiles, agents, groups, skills, logs).
+- **CLI + daemon + web UI**, spawned together via `bazilion dashboard`. The daemon binds `127.0.0.1:4321`, the web UI binds `127.0.0.1:4322`, and the daemon owns `~/.bazilion/` (SQLite DB, profiles, agents, groups, skills, logs).
 - **17 subcommand families**: `agent`, `profile`, `group`, `skill`, `provider`, `config`, `auth`, `memory`, `send`, `inbox`, `trigger`, `serve`, `doctor`, `backup`, `token`, `login`, `uninstall`.
 - **Provider support** via [pi-ai](https://www.npmjs.com/package/@earendil-works/pi-ai): Anthropic, OpenAI (key + ChatGPT OAuth), Google AI Studio + Vertex, Azure OpenAI, AWS Bedrock, Mistral, Groq, Cerebras, xAI, Z.AI, Hugging Face, OpenRouter, Vercel AI Gateway, LM Studio, Ollama.
 - **OpenClaw-compatible skills**: drop a `SKILL.md` into `~/.bazilion/skills/<name>/`, or import in bulk via `bazilion skill import --from openclaw`.

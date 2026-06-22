@@ -51,7 +51,7 @@ function LoginPage() {
         <p className="mt-5 text-[0.78em] leading-relaxed text-mocha-light">
           Your token is in <code>~/.bazilion/auth.json</code>
           <br />
-          created on first <code>bazilion serve</code>
+          created on first <code>bazilion dashboard</code> or <code>bazilion serve</code>
         </p>
       </div>
       <footer className="absolute bottom-4 left-0 right-0 text-center text-[0.78em] text-fawn">

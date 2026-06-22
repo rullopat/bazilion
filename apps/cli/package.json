@@ -1,6 +1,6 @@
 {
   "name": "bazilion",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "description": "Multi-agent runtime CLI — spawn LLM agents, manage profiles/groups/skills, and run the local daemon.",
   "license": "MIT",
   "repository": {
@@ -34,7 +34,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsup"
+    "build": "pnpm --filter @bazilion/web build && tsup"
   },
   "engines": {
     "node": ">=24.0.0"
@@ -46,15 +46,21 @@
     "@earendil-works/pi-agent-core": "^0.77.0",
     "@earendil-works/pi-ai": "^0.77.0",
     "@earendil-works/pi-coding-agent": "^0.77.0",
+    "@tanstack/react-router": "1.170.16",
     "@hono/node-server": "^2.0.4",
     "@mozilla/readability": "^0.6.0",
     "@tobilu/qmd": "^2.5.3",
     "adm-zip": "^0.5.17",
     "citty": "^0.2.2",
+    "dompurify": "^3.4.7",
+    "grammy": "^1.43.0",
     "hono": "^4.12.23",
     "linkedom": "^0.18.12",
+    "lucide-react": "^1.17.0",
     "playwright": "^1.60.0",
     "qrcode-terminal": "^0.12.0",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
     "typebox": "^1.1.39",
     "undici": "^8.3.0",
     "yaml": "^2.9.0"

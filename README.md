@@ -4,7 +4,7 @@
 
 Multi-agent runtime inspired by [OpenClaw](https://docs.openclaw.ai). Profiles are templates, agents are instances spawned from a profile into a single group (the collaboration context — one filesystem root, one USER.md, one roster, one shared memory), skills attach on the fly, and agents can talk to each other through a DB-backed mailbox.
 
-Local-only. TypeScript + Node monorepo (pnpm + tsx + vitest). The web UI lives at `apps/web` (TanStack Start + React 19 + Tailwind v4 + shadcn/ui) and pairs with the standalone Hono daemon at `apps/daemon`. The CLI talks over HTTP, so keep `bazilion serve` running while you work in another terminal.
+Local-only. TypeScript + Node monorepo (pnpm + tsx + vitest). The web UI lives at `apps/web` (TanStack Start + React 19 + Tailwind v4 + shadcn/ui) and is bundled into the published CLI package. It pairs with the standalone Hono daemon at `apps/daemon`. The CLI talks over HTTP, so keep `bazilion dashboard` or `bazilion serve` running while you work in another terminal.
 
 ## Status
 
@@ -15,17 +15,23 @@ Whole-run subprocess isolation with worker↔daemon Node-IPC for messaging, Chat
 Requires **Node 24 or newer**.
 
 ```sh
-# One-shot — npx downloads `bazilion` and runs the daemon.
-npx bazilion serve
+# One-shot — npx downloads `bazilion`, starts the daemon, and opens the web UI.
+npx bazilion dashboard
 
 # Or install globally and re-use the binary.
 npm install -g bazilion
+bazilion dashboard
+```
+
+`dashboard` starts the daemon on `127.0.0.1:4321`, starts the bundled web UI on `127.0.0.1:4322`, and opens the dashboard in your browser. The daemon auto-bootstraps `~/.bazilion` on first run (creates dirs, runs migrations, mints the bootstrap token, writes `auth.json`). Save the token somewhere — the local CLI picks it up automatically from `~/.bazilion/auth.json`, but you'll need it to log in to the web UI or pair remote clients.
+
+For a daemon-only CLI flow:
+
+```sh
 bazilion serve
 ```
 
-The daemon auto-bootstraps `~/.bazilion` on first run (creates dirs, runs migrations, mints the bootstrap token, writes `auth.json`) and prints the token before binding `127.0.0.1:4321`. Save it somewhere — the local CLI picks it up automatically from `~/.bazilion/auth.json`, but you'll need it to pair the web UI or remote clients.
-
-The web UI is **not bundled into the npm package yet** — to run it today, clone the repo and start the Vite dev server alongside the daemon (see [Develop from source](#develop-from-source) below). For the CLI-only flow:
+Then, in another terminal:
 
 ```sh
 # Configure a provider — env var works, or persist via `bazilion config set`.
@@ -42,13 +48,13 @@ bazilion agent chat <uuid>
 bazilion agent chat <uuid> --message "say hi"
 ```
 
-If you'd rather use the web UI: open `http://127.0.0.1:4322` after starting the dev server. On a fresh install every page redirects to `/welcome` until you finish first-run setup: enable a provider on `/config` and list at least one model for it. The moment both conditions hold, a `default` profile + `default` group (at `~/.bazilion/groups/default/`) are auto-created wired to that model. The default profile uses `skillsMode: 'all'` so spawned agents inherit every installed skill out of the box.
+In the web UI, open `http://127.0.0.1:4322` after running `bazilion dashboard`. On a fresh install every page redirects to `/welcome` until you finish first-run setup: enable a provider on `/config` and list at least one model for it. The moment both conditions hold, a `default` profile + `default` group (at `~/.bazilion/groups/default/`) are auto-created wired to that model. The default profile uses `skillsMode: 'all'` so spawned agents inherit every installed skill out of the box.
 
 Other provider env vars: `OPENAI_API_KEY`, `GEMINI_API_KEY`, `LMSTUDIO_URL`/`LMSTUDIO_API_KEY`, `OLLAMA_URL`, etc. You still need to enable the provider and list its models (via `bazilion provider enable|models` or the web UI) to clear the first-run gate.
 
 ## Develop from source
 
-Contributors and anyone wanting the web UI today: clone the repo. Node 24+ and pnpm 10+.
+Contributors: clone the repo. Node 24+ and pnpm 10+.
 
 ```sh
 git clone https://github.com/rullopat/bazilion
@@ -58,7 +64,7 @@ pnpm install
 # Start the daemon directly from source — no build step, tsx executes .ts.
 pnpm tsx apps/cli/src/index.ts serve
 
-# In another terminal, start the web UI (Vite dev server on 4322).
+# In another terminal, start the web UI dev server on 4322.
 cd apps/web && pnpm dev
 # → http://127.0.0.1:4322 — paste the bootstrap token to log in
 ```
@@ -68,7 +74,8 @@ From the source checkout, every CLI command is `pnpm tsx apps/cli/src/index.ts <
 ## CLI commands
 
 ```
-bazilion serve [--port N] [--host H]       # boot the daemon (auto-bootstraps on first run; HTTP API on 4321)
+bazilion dashboard [--port N] [--no-open]  # boot daemon + bundled web UI (4321 + 4322 by default)
+bazilion serve [--port N] [--host H]       # boot daemon only (auto-bootstraps on first run; HTTP API on 4321)
 bazilion uninstall [--yes] [--all]         # wipe state (two-tier: data vs full)
 bazilion doctor                            # diagnose your install
 bazilion auth openai login|logout|status   # ChatGPT OAuth (Plus/Pro/Team accounts)

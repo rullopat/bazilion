@@ -418,12 +418,12 @@ Routes (under `src/routes/`):
 
 Citty-based. Two "modes":
 
-- **Direct mode** (no HTTP): `uninstall`, `serve`, `login`, `backup`, `token show-local`. These operate on the filesystem directly so they work when the daemon isn't running. The CLI never opens `bazilion.db`.
+- **Direct mode** (no HTTP): `uninstall`, `serve`, `dashboard`, `login`, `backup`, `token show-local`. These operate on the filesystem directly so they work when the daemon isn't running. The CLI never opens `bazilion.db`.
 - **Client mode** (HTTP): everything else. Talks to the daemon via `src/client.ts` (which wraps `@bazilion/client`).
 
 ### 5.1 Entry — `src/index.ts`
 
-Registers the subcommand tree: `serve · login · profile · group · agent · skill · memory · provider · send · inbox · config · doctor · backup · trigger · token · auth · uninstall · completion`. Custom `printTopLevelHelp()` renders a grouped layout (setup / catalog / agents / ops / remote / shell) instead of citty's default flat help.
+Registers the subcommand tree: `serve · dashboard · login · profile · group · agent · skill · memory · provider · send · inbox · config · doctor · backup · trigger · token · auth · uninstall · completion`. Custom `printTopLevelHelp()` renders a grouped layout (setup / catalog / agents / ops / remote / shell) instead of citty's default flat help.
 
 Top-level error handler catches `ApiClientError` subclasses (401 token mismatch, 403 origin mismatch) and low-level network errors (`ECONNREFUSED`, `ENOTFOUND`) with friendly hints ("is the daemon running? `bazilion serve`").
 
@@ -443,6 +443,7 @@ The result is wrapped with `createClient({serverUrl, token})` from `@bazilion/cl
 | File | Subcommands | Endpoint(s) |
 |---|---|---|
 | `serve.ts` | `serve [--port N] [--host H]` | (direct) — spawns `apps/daemon/src/index.ts` under `node --import tsx/esm`. On first run the daemon auto-bootstraps `~/.bazilion` (mkdir, migrate, mint bootstrap token to `auth.json`) before binding the port. |
+| `dashboard.ts` | `dashboard [--port N] [--no-open]` | (direct) — reuses or starts the daemon, starts the bundled TanStack Start web server from `dist/web`, prints the dashboard URL + auth token path, and opens the browser by default. |
 | `uninstall.ts` | `uninstall` | (direct) — two-tier teardown (data vs full). `--all` removes `auth.json`, `logs/`, `skills/` in addition to the data tier. |
 | `login.ts` | `login` | (direct) — writes `auth.json:remote` (or `--clear` to remove it). |
 | `token.ts` | `create / list / revoke / show-local` | `/api/tokens/*`. `show-local` reads the bootstrap token from local `auth.json`. |
@@ -486,7 +487,7 @@ getCtx()
 
 Idempotent: existing installs short-circuit the mkdir + token-mint steps. The migration runner picks up new files on every boot.
 
-The web UI is **not** booted by `serve` — run it separately with `cd apps/web && pnpm dev`.
+The web UI is **not** booted by `serve`. Published installs use `bazilion dashboard`, which spawns `dist/web-server.js` against the copied production build in `dist/web`. Source development still usually runs the Vite dev server separately with `cd apps/web && pnpm dev`.
 
 ### 6.2 Login / auth
 

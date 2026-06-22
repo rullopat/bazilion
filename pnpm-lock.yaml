@@ -54,6 +54,9 @@ importers:
       '@mozilla/readability':
         specifier: ^0.6.0
         version: 0.6.0
+      '@tanstack/react-router':
+        specifier: 1.170.16
+        version: 1.170.16(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       '@tobilu/qmd':
         specifier: ^2.5.3
         version: 2.5.3(typescript@6.0.3)
@@ -63,18 +66,33 @@ importers:
       citty:
         specifier: ^0.2.2
         version: 0.2.2
+      dompurify:
+        specifier: ^3.4.7
+        version: 3.4.7
+      grammy:
+        specifier: ^1.43.0
+        version: 1.43.0
       hono:
         specifier: ^4.12.23
         version: 4.12.23
       linkedom:
         specifier: ^0.18.12
         version: 0.18.12
+      lucide-react:
+        specifier: ^1.17.0
+        version: 1.17.0(react@19.2.6)
       playwright:
         specifier: ^1.60.0
         version: 1.60.0
       qrcode-terminal:
         specifier: ^0.12.0
         version: 0.12.0
+      react:
+        specifier: ^19.2.6
+        version: 19.2.6
+      react-dom:
+        specifier: ^19.2.6
+        version: 19.2.6(react@19.2.6)
       typebox:
         specifier: ^1.1.39
         version: 1.1.39
@@ -3191,6 +3209,13 @@ packages:
     resolution: {integrity: sha512-79pf/RkhteYZTRgcR4F9kbk84P2N8rugQJswxfIqovlbRiT3yI7eBE+5QorIrZaOKktsgzRlXh1l/du/xpl4iA==}
     engines: {node: '>=20.19'}
 
+  '@tanstack/react-router@1.170.16':
+    resolution: {integrity: sha512-w6eq1IJklujs1tESazaK/FxH0+H2l8vm/QPuu1cD3oRW/ubgKneQpd7b64ti/8gUyEimzimJQZDmJr6YHfP5+g==}
+    engines: {node: '>=20.19'}
+    peerDependencies:
+      react: '>=18.0.0 || >=19.0.0'
+      react-dom: '>=18.0.0 || >=19.0.0'
+
   '@tanstack/react-router@1.170.9':
     resolution: {integrity: sha512-rXXztp6GyXFwResQR0jdvkf52wy/sAQqze3OR08+8uNM7nHir1P46qBrwg2TL5EEtX+0WUho4BZ/nMpAgQVB6A==}
     engines: {node: '>=20.19'}
@@ -3252,6 +3277,10 @@ packages:
     peerDependencies:
       react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
       react-dom: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
+
+  '@tanstack/router-core@1.171.13':
+    resolution: {integrity: sha512-+NOwEj1kO/6IGmpHRIZHasYxYWpyBQGNIZAST9aNrk9Q3YlU9SgqVnl1pbLa9qAKfeNdXQIRve0RQb/0kyDeDA==}
+    engines: {node: '>=20.19'}
 
   '@tanstack/router-core@1.171.7':
     resolution: {integrity: sha512-AboyQD0OPIu0adJi6HeCupTU9Wx7zr4q4ceJYQdBL3mLH18m4M57XXdzJdtzOg/twl8DtWej0RGJ12ma8CV1iQ==}
@@ -10437,6 +10466,15 @@ snapshots:
 
   '@tanstack/history@1.162.0': {}
 
+  '@tanstack/react-router@1.170.16(react-dom@19.2.6(react@19.2.6))(react@19.2.6)':
+    dependencies:
+      '@tanstack/history': 1.162.0
+      '@tanstack/react-store': 0.9.3(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      '@tanstack/router-core': 1.171.13
+      isbot: 5.1.40
+      react: 19.2.6
+      react-dom: 19.2.6(react@19.2.6)
+
   '@tanstack/react-router@1.170.9(react-dom@19.2.6(react@19.2.6))(react@19.2.6)':
     dependencies:
       '@tanstack/history': 1.162.0
@@ -10517,6 +10555,13 @@ snapshots:
       react: 19.2.6
       react-dom: 19.2.6(react@19.2.6)
       use-sync-external-store: 1.6.0(react@19.2.6)
+
+  '@tanstack/router-core@1.171.13':
+    dependencies:
+      '@tanstack/history': 1.162.0
+      cookie-es: 3.1.1
+      seroval: 1.5.4
+      seroval-plugins: 1.5.4(seroval@1.5.4)
 
   '@tanstack/router-core@1.171.7':
     dependencies:

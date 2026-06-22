@@ -1,5 +1,11 @@
 # bazilion
 
+## 0.6.0
+
+### Minor Changes
+
+- Bundle the production web UI into the published CLI package and add `bazilion dashboard` to start or reuse the local daemon, run the bundled web server, and open the dashboard.
+
 ## 0.5.1
 
 ### Patch Changes
