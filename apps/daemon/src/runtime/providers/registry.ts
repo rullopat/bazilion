@@ -29,10 +29,19 @@ export interface ProviderConfig {
   fireworks?: { apiKey: string; baseURL?: string }
   together?: { apiKey: string; baseURL?: string }
   moonshotai?: { apiKey: string; baseURL?: string }
+  moonshotaiCn?: { apiKey: string; baseURL?: string }
   kimiCoding?: { apiKey: string; baseURL?: string }
   minimax?: { apiKey: string; baseURL?: string }
+  minimaxCn?: { apiKey: string; baseURL?: string }
   xiaomi?: { apiKey: string; baseURL?: string }
+  xiaomiTokenPlanAms?: { apiKey: string; baseURL?: string }
+  xiaomiTokenPlanCn?: { apiKey: string; baseURL?: string }
+  xiaomiTokenPlanSgp?: { apiKey: string; baseURL?: string }
+  antLing?: { apiKey: string; baseURL?: string }
+  nvidia?: { apiKey: string; baseURL?: string }
   opencode?: { apiKey: string; baseURL?: string }
+  opencodeGo?: { apiKey: string; baseURL?: string }
+  zaiCodingCn?: { apiKey: string; baseURL?: string }
   githubCopilot?: { apiKey: string }
   cloudflareAiGateway?: { apiKey: string; accountId?: string; gatewayId?: string }
   cloudflareWorkersAi?: { apiKey: string; accountId?: string }
@@ -100,10 +109,25 @@ export function loadProviderConfigFromEnv(
   if (env.FIREWORKS_API_KEY) config.fireworks = { apiKey: env.FIREWORKS_API_KEY }
   if (env.TOGETHER_API_KEY) config.together = { apiKey: env.TOGETHER_API_KEY }
   if (env.MOONSHOT_API_KEY) config.moonshotai = { apiKey: env.MOONSHOT_API_KEY }
+  if (env.MOONSHOT_CN_API_KEY) config.moonshotaiCn = { apiKey: env.MOONSHOT_CN_API_KEY }
   if (env.KIMI_API_KEY) config.kimiCoding = { apiKey: env.KIMI_API_KEY }
   if (env.MINIMAX_API_KEY) config.minimax = { apiKey: env.MINIMAX_API_KEY }
+  if (env.MINIMAX_CN_API_KEY) config.minimaxCn = { apiKey: env.MINIMAX_CN_API_KEY }
   if (env.XIAOMI_API_KEY) config.xiaomi = { apiKey: env.XIAOMI_API_KEY }
+  if (env.XIAOMI_TOKEN_PLAN_AMS_API_KEY) {
+    config.xiaomiTokenPlanAms = { apiKey: env.XIAOMI_TOKEN_PLAN_AMS_API_KEY }
+  }
+  if (env.XIAOMI_TOKEN_PLAN_CN_API_KEY) {
+    config.xiaomiTokenPlanCn = { apiKey: env.XIAOMI_TOKEN_PLAN_CN_API_KEY }
+  }
+  if (env.XIAOMI_TOKEN_PLAN_SGP_API_KEY) {
+    config.xiaomiTokenPlanSgp = { apiKey: env.XIAOMI_TOKEN_PLAN_SGP_API_KEY }
+  }
+  if (env.ANT_LING_API_KEY) config.antLing = { apiKey: env.ANT_LING_API_KEY }
+  if (env.NVIDIA_API_KEY) config.nvidia = { apiKey: env.NVIDIA_API_KEY }
   if (env.OPENCODE_API_KEY) config.opencode = { apiKey: env.OPENCODE_API_KEY }
+  if (env.OPENCODE_GO_API_KEY) config.opencodeGo = { apiKey: env.OPENCODE_GO_API_KEY }
+  if (env.ZAI_CODING_CN_API_KEY) config.zaiCodingCn = { apiKey: env.ZAI_CODING_CN_API_KEY }
   if (env.COPILOT_GITHUB_TOKEN) config.githubCopilot = { apiKey: env.COPILOT_GITHUB_TOKEN }
   if (env.CLOUDFLARE_API_KEY && env.CLOUDFLARE_ACCOUNT_ID) {
     config.cloudflareWorkersAi = {
@@ -353,6 +377,17 @@ const PROVIDERS: Record<string, ProviderEntry> = {
       }),
     hint: 'MOONSHOT_API_KEY',
   },
+  'moonshotai-cn': {
+    configured: (c) => !!c.moonshotaiCn,
+    build: (c) =>
+      piProvider({
+        providerName: 'moonshotai-cn',
+        fallbackApi: 'openai-completions',
+        apiKey: c.moonshotaiCn?.apiKey,
+        baseUrl: c.moonshotaiCn?.baseURL,
+      }),
+    hint: 'MOONSHOT_CN_API_KEY',
+  },
   'kimi-coding': {
     configured: (c) => !!c.kimiCoding,
     build: (c) =>
@@ -375,6 +410,17 @@ const PROVIDERS: Record<string, ProviderEntry> = {
       }),
     hint: 'MINIMAX_API_KEY',
   },
+  'minimax-cn': {
+    configured: (c) => !!c.minimaxCn,
+    build: (c) =>
+      piProvider({
+        providerName: 'minimax-cn',
+        fallbackApi: 'anthropic-messages',
+        apiKey: c.minimaxCn?.apiKey,
+        baseUrl: c.minimaxCn?.baseURL,
+      }),
+    hint: 'MINIMAX_CN_API_KEY',
+  },
   xiaomi: {
     configured: (c) => !!c.xiaomi,
     build: (c) =>
@@ -386,6 +432,61 @@ const PROVIDERS: Record<string, ProviderEntry> = {
       }),
     hint: 'XIAOMI_API_KEY',
   },
+  'xiaomi-token-plan-ams': {
+    configured: (c) => !!c.xiaomiTokenPlanAms,
+    build: (c) =>
+      piProvider({
+        providerName: 'xiaomi-token-plan-ams',
+        fallbackApi: 'openai-completions',
+        apiKey: c.xiaomiTokenPlanAms?.apiKey,
+        baseUrl: c.xiaomiTokenPlanAms?.baseURL,
+      }),
+    hint: 'XIAOMI_TOKEN_PLAN_AMS_API_KEY',
+  },
+  'xiaomi-token-plan-cn': {
+    configured: (c) => !!c.xiaomiTokenPlanCn,
+    build: (c) =>
+      piProvider({
+        providerName: 'xiaomi-token-plan-cn',
+        fallbackApi: 'openai-completions',
+        apiKey: c.xiaomiTokenPlanCn?.apiKey,
+        baseUrl: c.xiaomiTokenPlanCn?.baseURL,
+      }),
+    hint: 'XIAOMI_TOKEN_PLAN_CN_API_KEY',
+  },
+  'xiaomi-token-plan-sgp': {
+    configured: (c) => !!c.xiaomiTokenPlanSgp,
+    build: (c) =>
+      piProvider({
+        providerName: 'xiaomi-token-plan-sgp',
+        fallbackApi: 'openai-completions',
+        apiKey: c.xiaomiTokenPlanSgp?.apiKey,
+        baseUrl: c.xiaomiTokenPlanSgp?.baseURL,
+      }),
+    hint: 'XIAOMI_TOKEN_PLAN_SGP_API_KEY',
+  },
+  'ant-ling': {
+    configured: (c) => !!c.antLing,
+    build: (c) =>
+      piProvider({
+        providerName: 'ant-ling',
+        fallbackApi: 'openai-completions',
+        apiKey: c.antLing?.apiKey,
+        baseUrl: c.antLing?.baseURL,
+      }),
+    hint: 'ANT_LING_API_KEY',
+  },
+  nvidia: {
+    configured: (c) => !!c.nvidia,
+    build: (c) =>
+      piProvider({
+        providerName: 'nvidia',
+        fallbackApi: 'openai-completions',
+        apiKey: c.nvidia?.apiKey,
+        baseUrl: c.nvidia?.baseURL,
+      }),
+    hint: 'NVIDIA_API_KEY',
+  },
   opencode: {
     configured: (c) => !!c.opencode,
     build: (c) =>
@@ -396,6 +497,28 @@ const PROVIDERS: Record<string, ProviderEntry> = {
         baseUrl: c.opencode?.baseURL,
       }),
     hint: 'OPENCODE_API_KEY',
+  },
+  'opencode-go': {
+    configured: (c) => !!c.opencodeGo,
+    build: (c) =>
+      piProvider({
+        providerName: 'opencode-go',
+        fallbackApi: 'openai-completions',
+        apiKey: c.opencodeGo?.apiKey,
+        baseUrl: c.opencodeGo?.baseURL,
+      }),
+    hint: 'OPENCODE_GO_API_KEY',
+  },
+  'zai-coding-cn': {
+    configured: (c) => !!c.zaiCodingCn,
+    build: (c) =>
+      piProvider({
+        providerName: 'zai-coding-cn',
+        fallbackApi: 'openai-completions',
+        apiKey: c.zaiCodingCn?.apiKey,
+        baseUrl: c.zaiCodingCn?.baseURL,
+      }),
+    hint: 'ZAI_CODING_CN_API_KEY',
   },
   'github-copilot': {
     configured: (c) => !!c.githubCopilot,

@@ -52,8 +52,11 @@ const openaiLoginCmd = defineCommand({
     if (status.accountId) console.log(`account: ${status.accountId}`)
     console.log(`access token expires: ${formatExpiry(status.expiresAt)}`)
     console.log('')
-    console.log(`enable the 'openai-codex' provider on /config and add at least one model`)
-    console.log('(e.g. gpt-5.3-codex, gpt-5.4, gpt-5.5) to start using it.')
+    console.log(`enable the 'openai-codex' provider on /config and save at least one model`)
+    console.log('(e.g. gpt-5.3-codex-spark, gpt-5.4, gpt-5.5) to start using it.')
+    console.log('CLI equivalent:')
+    console.log('  bazilion provider enable openai-codex')
+    console.log('  bazilion provider models-set openai-codex gpt-5.3-codex-spark')
   },
 })
 

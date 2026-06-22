@@ -206,7 +206,7 @@ test('piProvider surfaces errorMessage as a thrown Error', async () => {
 
 // --- registry ---
 
-test('registry resolves all 16 provider:model strings', () => {
+test('registry resolves every configured provider:model string', () => {
   const reg = createProviderRegistry({
     anthropic: { apiKey: 'k' },
     openai: { apiKey: 'k' },
@@ -222,6 +222,26 @@ test('registry resolves all 16 provider:model strings', () => {
     huggingface: { apiKey: 'k' },
     openrouter: { apiKey: 'k' },
     vercelAiGateway: { apiKey: 'k' },
+    deepseek: { apiKey: 'k' },
+    fireworks: { apiKey: 'k' },
+    together: { apiKey: 'k' },
+    moonshotai: { apiKey: 'k' },
+    moonshotaiCn: { apiKey: 'k' },
+    kimiCoding: { apiKey: 'k' },
+    minimax: { apiKey: 'k' },
+    minimaxCn: { apiKey: 'k' },
+    xiaomi: { apiKey: 'k' },
+    xiaomiTokenPlanAms: { apiKey: 'k' },
+    xiaomiTokenPlanCn: { apiKey: 'k' },
+    xiaomiTokenPlanSgp: { apiKey: 'k' },
+    antLing: { apiKey: 'k' },
+    nvidia: { apiKey: 'k' },
+    opencode: { apiKey: 'k' },
+    opencodeGo: { apiKey: 'k' },
+    zaiCodingCn: { apiKey: 'k' },
+    githubCopilot: { apiKey: 'k' },
+    cloudflareAiGateway: { apiKey: 'k' },
+    cloudflareWorkersAi: { apiKey: 'k' },
   })
   for (const p of [
     'anthropic',
@@ -238,8 +258,29 @@ test('registry resolves all 16 provider:model strings', () => {
     'huggingface',
     'openrouter',
     'vercel-ai-gateway',
+    'deepseek',
+    'fireworks',
+    'together',
+    'moonshotai',
+    'moonshotai-cn',
+    'kimi-coding',
+    'minimax',
+    'minimax-cn',
+    'xiaomi',
+    'xiaomi-token-plan-ams',
+    'xiaomi-token-plan-cn',
+    'xiaomi-token-plan-sgp',
+    'ant-ling',
+    'nvidia',
+    'opencode',
+    'opencode-go',
+    'zai-coding-cn',
+    'github-copilot',
+    'cloudflare-ai-gateway',
+    'cloudflare-workers-ai',
     'lmstudio',
     'ollama',
+    'llamacpp',
   ]) {
     const r = reg.resolve(`${p}:some-model`)
     expect(r.provider.name).toBe(p)
@@ -275,6 +316,25 @@ test('loadProviderConfigFromEnv picks up every standard env var', () => {
     HF_TOKEN: 'hf',
     OPENROUTER_API_KEY: 'or',
     AI_GATEWAY_API_KEY: 'vg',
+    DEEPSEEK_API_KEY: 'ds',
+    FIREWORKS_API_KEY: 'fw',
+    TOGETHER_API_KEY: 'to',
+    MOONSHOT_API_KEY: 'mo',
+    MOONSHOT_CN_API_KEY: 'mocn',
+    KIMI_API_KEY: 'ki',
+    MINIMAX_API_KEY: 'mm',
+    MINIMAX_CN_API_KEY: 'mmcn',
+    XIAOMI_API_KEY: 'xm',
+    XIAOMI_TOKEN_PLAN_AMS_API_KEY: 'xmams',
+    XIAOMI_TOKEN_PLAN_CN_API_KEY: 'xmcn',
+    XIAOMI_TOKEN_PLAN_SGP_API_KEY: 'xmsgp',
+    ANT_LING_API_KEY: 'al',
+    NVIDIA_API_KEY: 'nv',
+    OPENCODE_API_KEY: 'oc',
+    OPENCODE_GO_API_KEY: 'ocgo',
+    ZAI_API_KEY: 'z',
+    ZAI_CODING_CN_API_KEY: 'zcn',
+    COPILOT_GITHUB_TOKEN: 'gh',
   } as NodeJS.ProcessEnv)
   expect(config.anthropic?.apiKey).toBe('a')
   expect(config.openai?.apiKey).toBe('o')
@@ -286,6 +346,25 @@ test('loadProviderConfigFromEnv picks up every standard env var', () => {
   expect(config.huggingface?.apiKey).toBe('hf')
   expect(config.openrouter?.apiKey).toBe('or')
   expect(config.vercelAiGateway?.apiKey).toBe('vg')
+  expect(config.deepseek?.apiKey).toBe('ds')
+  expect(config.fireworks?.apiKey).toBe('fw')
+  expect(config.together?.apiKey).toBe('to')
+  expect(config.moonshotai?.apiKey).toBe('mo')
+  expect(config.moonshotaiCn?.apiKey).toBe('mocn')
+  expect(config.kimiCoding?.apiKey).toBe('ki')
+  expect(config.minimax?.apiKey).toBe('mm')
+  expect(config.minimaxCn?.apiKey).toBe('mmcn')
+  expect(config.xiaomi?.apiKey).toBe('xm')
+  expect(config.xiaomiTokenPlanAms?.apiKey).toBe('xmams')
+  expect(config.xiaomiTokenPlanCn?.apiKey).toBe('xmcn')
+  expect(config.xiaomiTokenPlanSgp?.apiKey).toBe('xmsgp')
+  expect(config.antLing?.apiKey).toBe('al')
+  expect(config.nvidia?.apiKey).toBe('nv')
+  expect(config.opencode?.apiKey).toBe('oc')
+  expect(config.opencodeGo?.apiKey).toBe('ocgo')
+  expect(config.zai?.apiKey).toBe('z')
+  expect(config.zaiCodingCn?.apiKey).toBe('zcn')
+  expect(config.githubCopilot?.apiKey).toBe('gh')
 })
 
 test('loadProviderConfigFromEnv recognizes Bedrock auth via AWS_PROFILE', () => {

@@ -37,7 +37,7 @@ Then, in another terminal:
 # Configure a provider — env var works, or persist via `bazilion config set`.
 export ANTHROPIC_API_KEY=sk-ant-...
 bazilion provider enable anthropic
-bazilion provider models anthropic claude-sonnet-4-6
+bazilion provider models-set anthropic claude-opus-4-8
 
 # Spawn an agent from the auto-created `default` profile.
 bazilion agent spawn --profile default --name first
@@ -48,9 +48,9 @@ bazilion agent chat <uuid>
 bazilion agent chat <uuid> --message "say hi"
 ```
 
-In the web UI, open `http://127.0.0.1:4322` after running `bazilion dashboard`. On a fresh install every page redirects to `/welcome` until you finish first-run setup: enable a provider on `/config` and list at least one model for it. The moment both conditions hold, a `default` profile + `default` group (at `~/.bazilion/groups/default/`) are auto-created wired to that model. The default profile uses `skillsMode: 'all'` so spawned agents inherit every installed skill out of the box.
+In the web UI, open `http://127.0.0.1:4322` after running `bazilion dashboard`. On a fresh install every page redirects to `/welcome` until you finish first-run setup: enable a provider on `/config` and save at least one curated model for it. The moment both conditions hold, a `default` profile + `default` group (at `~/.bazilion/groups/default/`) are auto-created wired to that model. The default profile uses `skillsMode: 'all'` so spawned agents inherit every installed skill out of the box.
 
-Other provider env vars: `OPENAI_API_KEY`, `GEMINI_API_KEY`, `LMSTUDIO_URL`/`LMSTUDIO_API_KEY`, `OLLAMA_URL`, etc. You still need to enable the provider and list its models (via `bazilion provider enable|models` or the web UI) to clear the first-run gate.
+Other provider env vars: `OPENAI_API_KEY`, `GEMINI_API_KEY`, `LMSTUDIO_URL`/`LMSTUDIO_API_KEY`, `OLLAMA_URL`, etc. You still need to enable the provider and save its curated models (via `bazilion provider enable` + `bazilion provider models-set`, or the web UI) to clear the first-run gate.
 
 ## Develop from source
 
@@ -164,7 +164,7 @@ bazilion auth openai logout        # wipe stored credentials
 # CLI from a remote client).
 ```
 
-After connecting, enable `openai-codex` on `/config` and curate at least one model (e.g. `gpt-5.1`, `gpt-5.1-codex-max`, `gpt-5.2-codex`, `gpt-5.3-codex`). Credentials are stored AES-256-GCM-encrypted in the daemon's `secrets` table (key derived from the bootstrap token in `auth.json`); the access token auto-refreshes via the stored refresh token.
+After connecting, enable `openai-codex` on `/config` and curate at least one model (e.g. `gpt-5.3-codex-spark`, `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.5`). Credentials are stored AES-256-GCM-encrypted in the daemon's `secrets` table (key derived from the bootstrap token in `auth.json`); the access token auto-refreshes via the stored refresh token.
 
 ## Uninstalling
 

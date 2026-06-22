@@ -20,20 +20,22 @@ function WelcomePage() {
       <div className="card">
         <h1>Welcome to bazilion</h1>
         <p className="muted my-3">
-          Before you can spawn agents, pick a provider and give it at least one model. Once you
-          do, a <code>default</code> profile (and a <code>default</code> group directory) are
-          created automatically and the rest of the app unlocks.
+          Before you can spawn agents, enable a provider and save at least one concrete model id.
+          Once you do, a <code>default</code> profile (and a <code>default</code> group
+          directory) are created automatically and the rest of the app unlocks.
         </p>
         <ol className="my-5 space-y-4">
           <Step n={1}>
-            <strong>Configure credentials.</strong> Head to the{' '}
-            <a href="/config">providers tab</a> and set the API key or local URL for the service
-            you want to use (Anthropic, OpenAI, Ollama, LMStudio, …).
+            <strong>Choose a provider.</strong> Head to the{' '}
+            <a href="/config">providers tab</a>, pick a provider, and set credentials or a local
+            endpoint if that provider needs one. Local providers like Ollama and LM Studio can use
+            their default loopback URLs.
           </Step>
           <Step n={2}>
-            <strong>Enable the provider + add a model.</strong> Flip the provider's toggle on
-            and list at least one concrete model name (e.g. <code>claude-opus-4-8</code> or{' '}
-            <code>llama3.2</code>).
+            <strong>Enable it and save a model.</strong> Flip the provider's toggle on, then click
+            a catalog chip or type one exact model id (for example{' '}
+            <code>claude-opus-4-8</code>, <code>gpt-5.5</code>, or <code>llama3.3</code>) and
+            press <em>save models</em>.
           </Step>
           <Step n={3}>
             <strong>Start chatting.</strong> You'll be redirected to the home page

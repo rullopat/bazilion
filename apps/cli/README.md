@@ -33,7 +33,7 @@ From another terminal:
 # Set up a provider (env var, or `bazilion config set` to persist it).
 export ANTHROPIC_API_KEY=sk-ant-...
 bazilion provider enable anthropic
-bazilion provider models anthropic claude-sonnet-4-6
+bazilion provider models-set anthropic claude-opus-4-8
 
 # Spawn an agent from the default profile and chat with it.
 bazilion agent spawn --profile default --name first
@@ -71,13 +71,13 @@ bazilion auth openai login     # browser flow on localhost:1455
 bazilion auth openai status    # check connection / token expiry
 ```
 
-After connecting, enable `openai-codex` and curate at least one model. Credentials are stored AES-256-GCM-encrypted in the daemon's `secrets` table.
+After connecting, enable `openai-codex` and curate at least one model, for example `gpt-5.3-codex-spark`. Credentials are stored AES-256-GCM-encrypted in the daemon's `secrets` table.
 
 ## What's in the box
 
 - **CLI + daemon + web UI**, spawned together via `bazilion dashboard`. The daemon binds `127.0.0.1:4321`, the web UI binds `127.0.0.1:4322`, and the daemon owns `~/.bazilion/` (SQLite DB, profiles, agents, groups, skills, logs).
 - **17 subcommand families**: `agent`, `profile`, `group`, `skill`, `provider`, `config`, `auth`, `memory`, `send`, `inbox`, `trigger`, `serve`, `doctor`, `backup`, `token`, `login`, `uninstall`.
-- **Provider support** via [pi-ai](https://www.npmjs.com/package/@earendil-works/pi-ai): Anthropic, OpenAI (key + ChatGPT OAuth), Google AI Studio + Vertex, Azure OpenAI, AWS Bedrock, Mistral, Groq, Cerebras, xAI, Z.AI, Hugging Face, OpenRouter, Vercel AI Gateway, LM Studio, Ollama.
+- **Provider support** via [pi-ai](https://www.npmjs.com/package/@earendil-works/pi-ai): Anthropic, OpenAI (key + ChatGPT OAuth), Google AI Studio + Vertex, Azure OpenAI, AWS Bedrock, Mistral, Groq, Cerebras, xAI, zAI, Hugging Face, OpenRouter, Vercel AI Gateway, Cloudflare, GitHub Copilot, DeepSeek, Fireworks, Together, Moonshot/Kimi, MiniMax, Xiaomi MiMo, Ant Ling, NVIDIA NIM, OpenCode, LM Studio, Ollama, and llama.cpp.
 - **OpenClaw-compatible skills**: drop a `SKILL.md` into `~/.bazilion/skills/<name>/`, or import in bulk via `bazilion skill import --from openclaw`.
 
 ## Uninstall

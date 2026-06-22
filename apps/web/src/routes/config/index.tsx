@@ -83,7 +83,9 @@ function SetupBlockerBanner({
       <div className="font-semibold text-amber-900 mb-1">First-run setup is not complete</div>
       <p className="text-amber-900 mb-2">
         The rest of the app stays on the Welcome screen until at least one provider is{' '}
-        <strong>enabled</strong> and has <strong>at least one curated model</strong>.
+        <strong>enabled</strong> and has <strong>at least one curated model</strong>. Use a
+        catalog chip when one is available, or paste the exact model id from your local/server
+        provider.
       </p>
       {issues.length > 0 ? (
         <ul className="list-disc pl-5 text-amber-900 space-y-0.5">
@@ -94,7 +96,7 @@ function SetupBlockerBanner({
       ) : enabledCount === 0 ? (
         <p className="text-amber-900">
           No providers are enabled yet — pick one below, flip the toggle on, set credentials,
-          and add a model name.
+          and save at least one model name.
         </p>
       ) : null}
     </div>
@@ -203,7 +205,7 @@ function ProviderCard({
             <p className="mb-2 text-xs font-medium text-amber-700">
               First-run setup needs at least one model name here — type one (e.g.{' '}
               <code className="font-mono">{exampleModelFor(p.id)}</code>) and click{' '}
-              <em>save models</em>.
+              <em>save models</em>. Catalog chips below are the safest source when available.
             </p>
           )}
           <form onSubmit={saveModels}>
@@ -263,11 +265,11 @@ function ProviderCard({
   )
 }
 
-// Examples mirror pi-ai 0.77's current catalog. Update when bumping pi-ai.
+// Examples mirror pi-ai 0.79's current catalog. Update when bumping pi-ai.
 function exampleModelFor(providerId: string): string {
   switch (providerId) {
     case 'openai-codex':
-      return 'gpt-5.3-codex'
+      return 'gpt-5.3-codex-spark'
     case 'openai':
       return 'gpt-5.5'
     case 'anthropic':
@@ -275,7 +277,7 @@ function exampleModelFor(providerId: string): string {
     case 'google':
       return 'gemini-3-pro-preview'
     case 'google-vertex':
-      return 'gemini-3-pro-preview'
+      return 'gemini-3.1-pro-preview'
     case 'xai':
       return 'grok-4.3'
     case 'groq':
@@ -285,7 +287,7 @@ function exampleModelFor(providerId: string): string {
     case 'mistral':
       return 'mistral-large-latest'
     case 'zai':
-      return 'glm-5.1'
+      return 'glm-5.2'
     case 'huggingface':
       return 'Qwen/Qwen3.5-397B-A17B'
     case 'openrouter':
@@ -295,15 +297,23 @@ function exampleModelFor(providerId: string): string {
     case 'deepseek':
       return 'deepseek-v4-pro'
     case 'fireworks':
-      return 'accounts/fireworks/models/deepseek-v4-pro'
+      return 'accounts/fireworks/models/kimi-k2p7-code'
     case 'together':
       return 'Qwen/Qwen3.7-Max'
     case 'moonshotai':
-      return 'kimi-k2.6'
+      return 'kimi-k2.7-code'
+    case 'moonshotai-cn':
+      return 'kimi-k2.7-code'
     case 'kimi-coding':
       return 'kimi-for-coding'
     case 'minimax':
       return 'MiniMax-M2.7'
+    case 'minimax-cn':
+      return 'MiniMax-M3'
+    case 'ant-ling':
+      return 'Ling-2.6-1T'
+    case 'nvidia':
+      return 'nvidia/nemotron-3-super-120b-a12b'
     case 'cloudflare-workers-ai':
       return '@cf/moonshotai/kimi-k2.6'
     case 'cloudflare-ai-gateway':
@@ -312,8 +322,16 @@ function exampleModelFor(providerId: string): string {
       return 'claude-opus-4.7'
     case 'xiaomi':
       return 'mimo-v2.5'
+    case 'xiaomi-token-plan-ams':
+    case 'xiaomi-token-plan-cn':
+    case 'xiaomi-token-plan-sgp':
+      return 'mimo-v2.5-pro'
     case 'opencode':
       return 'claude-opus-4-8'
+    case 'opencode-go':
+      return 'kimi-k2.7-code'
+    case 'zai-coding-cn':
+      return 'glm-5.2'
     case 'azure-openai':
       return 'gpt-5.5'
     case 'bedrock':

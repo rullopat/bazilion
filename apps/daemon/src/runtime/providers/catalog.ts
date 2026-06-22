@@ -50,6 +50,22 @@ function liveEndpointFor(providerName: string, env: NodeJS.ProcessEnv): string |
       return 'https://api.x.ai/v1'
     case 'mistral':
       return 'https://api.mistral.ai/v1'
+    case 'ant-ling':
+      return 'https://api.ant-ling.com/v1'
+    case 'moonshotai-cn':
+      return 'https://api.moonshot.cn/v1'
+    case 'nvidia':
+      return 'https://integrate.api.nvidia.com/v1'
+    case 'opencode-go':
+      return 'https://opencode.ai/zen/go/v1'
+    case 'xiaomi-token-plan-ams':
+      return 'https://token-plan-ams.xiaomimimo.com/v1'
+    case 'xiaomi-token-plan-cn':
+      return 'https://token-plan-cn.xiaomimimo.com/v1'
+    case 'xiaomi-token-plan-sgp':
+      return 'https://token-plan-sgp.xiaomimimo.com/v1'
+    case 'zai-coding-cn':
+      return 'https://open.bigmodel.cn/api/coding/paas/v4'
     default:
       return null
   }
@@ -108,6 +124,22 @@ function apiKeyFor(providerName: string, env: NodeJS.ProcessEnv): string | undef
       return env.XAI_API_KEY
     case 'mistral':
       return env.MISTRAL_API_KEY
+    case 'ant-ling':
+      return env.ANT_LING_API_KEY
+    case 'moonshotai-cn':
+      return env.MOONSHOT_CN_API_KEY
+    case 'nvidia':
+      return env.NVIDIA_API_KEY
+    case 'opencode-go':
+      return env.OPENCODE_GO_API_KEY
+    case 'xiaomi-token-plan-ams':
+      return env.XIAOMI_TOKEN_PLAN_AMS_API_KEY
+    case 'xiaomi-token-plan-cn':
+      return env.XIAOMI_TOKEN_PLAN_CN_API_KEY
+    case 'xiaomi-token-plan-sgp':
+      return env.XIAOMI_TOKEN_PLAN_SGP_API_KEY
+    case 'zai-coding-cn':
+      return env.ZAI_CODING_CN_API_KEY
     default:
       return undefined
   }

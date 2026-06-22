@@ -46,7 +46,7 @@ export const doctorCommand = defineCommand({
     }
 
     console.log()
-    console.log('providers (at least one needed for chat)')
+    console.log('providers (enable one and save at least one model for chat)')
     if (r.providers.configured.length === 0) {
       console.log('  - no cloud providers configured')
       console.log('    (set e.g. ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY)')
@@ -121,7 +121,10 @@ export const doctorCommand = defineCommand({
         todo.push('  - set a cloud api key (ANTHROPIC_API_KEY / OPENAI_API_KEY / GEMINI_API_KEY)')
         todo.push('    or make sure LMStudio / Ollama is running locally')
       }
-      if (!hasProfiles) todo.push('  - create a profile: bazilion profile create <id> --model …')
+      if (!hasProfiles) {
+        todo.push('  - enable a provider: bazilion provider enable <provider>')
+        todo.push('  - save a model: bazilion provider models-set <provider> <model-id>')
+      }
       if (!hasAgents) todo.push('  - spawn an agent: bazilion agent spawn --profile <id>')
       for (const line of todo) console.log(line)
     } else {

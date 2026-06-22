@@ -1,5 +1,13 @@
 # bazilion
 
+## 0.7.0
+
+### Minor Changes
+
+- Update pi agent packages to 0.79.10 and refresh provider/model setup.
+
+  Adds Bazilion config support for the new pi-ai providers, refreshes model catalog examples, and improves first-run setup guidance for enabling providers and saving curated models.
+
 ## 0.6.0
 
 ### Minor Changes
