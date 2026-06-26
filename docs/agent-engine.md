@@ -2,11 +2,12 @@
 
 Engineer-to-engineer walkthrough of how a chat turn actually runs, end to end.
 
-> **What Bazilion vs. pi-coding-agent owns**: the per-turn session loop,
-> transcript storage, compaction, tool execution, and provider retries are
+> **Core engine credit**: Bazilion is based on
 > [pi-coding-agent](https://www.npmjs.com/package/@earendil-works/pi-coding-agent).
-> Bazilion provides profiles, groups, skills, messaging, memory, the scheduler,
-> the HTTP API (`apps/daemon`), the web UI (`apps/web`), and a thin bridge
+> Pi owns the per-turn session loop, transcript storage, replay, compaction,
+> tool execution, provider retries, and the coding tools. Bazilion provides
+> profiles, groups, skills, messaging, memory, the scheduler, the HTTP API
+> (`apps/daemon`), the web UI (`apps/web`), and a thin bridge
 > (`apps/daemon/src/runtime/pi/*`) that glues them together. The on-disk JSONL
 > session file under `~/.bazilion/agents/<id>/sessions/` is the canonical
 > transcript and the only persistent record — there is no separate `runs` /
@@ -68,7 +69,7 @@ session = createBazilionSession({
 abortSession = () => void session.abort()
 ```
 
-`createBazilionSession` (in `apps/daemon/src/runtime/pi/session.ts`) is the integration seam. It instantiates pi-coding-agent's `AgentSession` with:
+`createBazilionSession` (in `apps/daemon/src/runtime/pi/session.ts`) is the integration seam where Bazilion hands control to Pi's agent engine. It instantiates pi-coding-agent's `AgentSession` with:
 - A `SessionManager` rooted at `~/.bazilion/agents/<id>/sessions/` — pi owns the JSONL transcript, compaction, and replay. Resume-or-create: the worker walks the session dir for the newest `.jsonl`, opens it if found, otherwise creates a fresh session.
 - Pi's own `createCodingTools(cwd)` where `cwd = group.path` — that's where `read`/`bash`/`edit`/`write`/`grep`/`find`/`ls` come from.
 - Bazilion's custom tool list via `createBazilionCustomTools` (memory_*, home_*, web_*, bootstrap_done, optional messaging via the `messagingHost`) — see `apps/daemon/src/runtime/pi/tools.ts`.
