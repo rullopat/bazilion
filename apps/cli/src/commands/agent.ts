@@ -14,12 +14,13 @@ import type {
   ResolvedAgent,
   SessionEvent,
   SessionHeadResponse,
+  SkillScanFinding,
   SpawnAgentRequest,
   TruncateChatRequest,
   TruncateChatResponse,
 } from '@bazilion/api-types'
 import { defineCommand } from 'citty'
-import { createClient } from '../client.ts'
+import { ApiClientError, createClient } from '../client.ts'
 import { columnize } from '../columnize.ts'
 
 const IMAGE_MIME: Record<string, string> = {
@@ -568,14 +569,38 @@ const skillAddCmd = defineCommand({
   args: {
     agent: { type: 'positional', required: true },
     skill: { type: 'positional', required: true },
+    'allow-warnings': {
+      type: 'boolean',
+      description: 'Attach even when the static skill scan reports findings',
+    },
   },
   async run({ args }) {
     const client = createClient()
-    const body: AttachSkillRequest = { skill: args.skill }
-    await client.post(`/api/agents/${args.agent}/skills`, body)
+    const body: AttachSkillRequest = { skill: args.skill, allowFindings: args['allow-warnings'] }
+    try {
+      await client.post(`/api/agents/${args.agent}/skills`, body)
+    } catch (err) {
+      if (err instanceof ApiClientError && err.body.code === 'skill_scan_blocked') {
+        console.error(`error: ${err.body.error}`)
+        printSkillFindings(err.body.findings ?? [])
+        console.error('  hint: inspect the skill, then rerun with --allow-warnings to confirm')
+        process.exitCode = 1
+        return
+      }
+      throw err
+    }
     console.log(`attached skill ${args.skill} to ${args.agent}`)
   },
 })
+
+function printSkillFindings(findings: SkillScanFinding[]): void {
+  if (findings.length === 0) return
+  console.error('scan findings:')
+  for (const f of findings) {
+    const line = f.line ? ` line ${f.line}` : ''
+    console.error(`  ${f.severity}: ${f.code}${line} - ${f.message}`)
+  }
+}
 
 const skillRmCmd = defineCommand({
   meta: { name: 'rm', description: 'Detach a skill from an agent' },

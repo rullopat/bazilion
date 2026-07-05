@@ -1,9 +1,11 @@
 import { cpSync, existsSync, mkdtempSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, join, resolve, sep } from 'node:path'
+import type { SkillScanFinding } from '@bazilion/api-types'
 import AdmZip from 'adm-zip'
 import type { Paths } from '../paths.ts'
 import { parseSkillFile } from './parse.ts'
+import { scanSkillContent } from './scan.ts'
 
 export interface ImportSkillsInput {
   /**
@@ -20,7 +22,21 @@ export interface ImportSkillsInput {
 
 export interface ImportResult {
   imported: string[]
-  skipped: { name: string; reason: string }[]
+  skipped: { name: string; reason: string; findings?: SkillScanFinding[] }[]
+  findings?: Record<string, SkillScanFinding[]>
+}
+
+export class SkillScanBlockedError extends Error {
+  findings: Record<string, SkillScanFinding[]>
+
+  constructor(findings: Record<string, SkillScanFinding[]>) {
+    const names = Object.keys(findings).sort()
+    super(
+      `skill scan blocked import: ${names.join(', ')} ${names.length === 1 ? 'has' : 'have'} findings (rerun with --force to confirm)`,
+    )
+    this.name = 'SkillScanBlockedError'
+    this.findings = findings
+  }
 }
 
 /**
@@ -111,13 +127,19 @@ function importSkillsFromDir(paths: Paths, source: string, input: ImportSkillsIn
     throw new Error(`no skills found in ${source}`)
   }
 
-  // Validate every SKILL.md before touching the target dir.
+  // Validate and scan every SKILL.md before touching the target dir.
+  const findingsBySkill: Record<string, SkillScanFinding[]> = {}
   for (const c of candidates) {
-    parseSkillFile(join(c.dir, 'SKILL.md'))
+    const parsed = parseSkillFile(join(c.dir, 'SKILL.md'))
+    const findings = scanSkillContent(parsed.raw)
+    if (findings.length > 0) findingsBySkill[c.name] = findings
+  }
+  if (Object.keys(findingsBySkill).length > 0 && !input.force) {
+    throw new SkillScanBlockedError(findingsBySkill)
   }
 
   const imported: string[] = []
-  const skipped: { name: string; reason: string }[] = []
+  const skipped: { name: string; reason: string; findings?: SkillScanFinding[] }[] = []
 
   for (const c of candidates) {
     const target = join(paths.skillsDir, c.name)
@@ -125,6 +147,7 @@ function importSkillsFromDir(paths: Paths, source: string, input: ImportSkillsIn
       skipped.push({
         name: c.name,
         reason: 'already exists (use --force to overwrite)',
+        findings: findingsBySkill[c.name],
       })
       continue
     }
@@ -132,5 +155,9 @@ function importSkillsFromDir(paths: Paths, source: string, input: ImportSkillsIn
     imported.push(c.name)
   }
 
-  return { imported, skipped }
+  return {
+    imported,
+    skipped,
+    findings: Object.keys(findingsBySkill).length > 0 ? findingsBySkill : undefined,
+  }
 }

@@ -3,9 +3,21 @@
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { ImportSkillsRequest, ImportSkillsResponse, SkillInfo } from '@bazilion/api-types'
+import type {
+  ImportSkillsRequest,
+  ImportSkillsResponse,
+  SkillInfo,
+  SkillScanFinding,
+} from '@bazilion/api-types'
 import { Hono } from 'hono'
-import { discoverSkills, importSkills, parseSkillFile, skillMetaRepo } from '../core/index.ts'
+import {
+  discoverSkills,
+  importSkills,
+  parseSkillFile,
+  SkillScanBlockedError,
+  scanSkillContent,
+  skillMetaRepo,
+} from '../core/index.ts'
 import { getCtx } from '../lib/ctx.ts'
 
 // 50 MiB cap — generous headroom for a bundle of skills, tight enough to
@@ -28,6 +40,7 @@ skillsRouter.get('/', (c) => {
     try {
       const parsed = parseSkillFile(s.skillFile)
       entry.description = parsed.frontmatter.description
+      entry.scanFindings = scanSkillContent(parsed.raw)
     } catch (err) {
       entry.parseError = (err as Error).message
     }
@@ -61,14 +74,37 @@ skillsRouter.post('/import', async (c) => {
     for (const name of result.imported) {
       skillMetaRepo.upsert(db, { name, source: input.sourceLabel, importedAt: now })
     }
-    const res: ImportSkillsResponse = { imported: result.imported, skipped: result.skipped }
+    const res: ImportSkillsResponse = {
+      imported: result.imported,
+      skipped: result.skipped,
+      findings: result.findings,
+    }
     return c.json(res)
   } catch (err) {
+    if (err instanceof SkillScanBlockedError) {
+      return c.json(
+        {
+          error: err.message,
+          code: 'skill_scan_blocked',
+          findings: flattenFindings(err.findings),
+        },
+        400,
+      )
+    }
     return c.json({ error: (err as Error).message }, 400)
   } finally {
     if (input.tempZipPath) rmSync(input.tempZipPath, { recursive: true, force: true })
   }
 })
+
+function flattenFindings(findings: Record<string, SkillScanFinding[]>): SkillScanFinding[] {
+  return Object.entries(findings).flatMap(([name, items]) =>
+    items.map((item) => ({
+      ...item,
+      message: `${name}: ${item.message}`,
+    })),
+  )
+}
 
 interface ParsedImportInput {
   source: string

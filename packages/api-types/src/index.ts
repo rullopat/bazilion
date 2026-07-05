@@ -59,6 +59,7 @@ import type {
 export interface ApiError {
   error: string
   code?: string
+  findings?: SkillScanFinding[]
 }
 
 // --- agents ---
@@ -92,6 +93,8 @@ export interface UpdateAgentRequest {
 
 export interface AttachSkillRequest {
   skill: string
+  /** Required when attaching a skill whose static scan has findings. */
+  allowFindings?: boolean
 }
 
 /** Body for `PATCH /api/agents/:id/group`: move the agent to a new group. */
@@ -236,12 +239,14 @@ export interface AddTelegramAllowedUserRequest {
 
 export interface ImportSkillsRequest {
   source: string
+  /** Overwrite existing skills and confirm static-scan warnings. */
   force?: boolean
 }
 
 export interface ImportSkillsResponse {
   imported: string[]
-  skipped: { name: string; reason: string }[]
+  skipped: { name: string; reason: string; findings?: SkillScanFinding[] }[]
+  findings?: Record<string, SkillScanFinding[]>
 }
 
 // --- providers (write) ---
@@ -313,12 +318,22 @@ export interface PutFileRequest {
 
 // --- skills ---
 
+export type SkillScanSeverity = 'warning' | 'danger'
+
+export interface SkillScanFinding {
+  code: string
+  severity: SkillScanSeverity
+  message: string
+  line?: number
+}
+
 export interface SkillInfo {
   name: string
   description: string
   source: string | null
   importedAt: number | null
   parseError?: string
+  scanFindings?: SkillScanFinding[]
 }
 
 export interface ResolvedSkillsResponse {

@@ -1,5 +1,11 @@
 # @bazilion/api-types
 
+## 0.8.0
+
+### Minor Changes
+
+- Add static skill content scanning for prompt-injection, credential access, exfiltration wording, and stealth Unicode. Risky skills now require explicit confirmation on import and per-agent attach, with findings surfaced in CLI, API, and web UI.
+
 ## 0.7.0
 
 ## 0.6.0

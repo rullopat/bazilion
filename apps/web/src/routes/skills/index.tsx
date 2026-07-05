@@ -1,4 +1,4 @@
-import type { SkillInfo } from '@bazilion/api-types'
+import type { ImportSkillsResponse, SkillInfo, SkillScanFinding } from '@bazilion/api-types'
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { type ChangeEvent, type DragEvent, useRef, useState } from 'react'
@@ -39,6 +39,7 @@ function SkillsPage() {
           <tr>
             <th>name</th>
             <th>description</th>
+            <th>scan</th>
             <th>source</th>
             <th />
           </tr>
@@ -46,7 +47,7 @@ function SkillsPage() {
         <tbody>
           {skills.length === 0 && (
             <tr>
-              <td colSpan={4} className="muted">
+              <td colSpan={5} className="muted">
                 no skills installed yet
               </td>
             </tr>
@@ -62,6 +63,9 @@ function SkillsPage() {
                 ) : (
                   s.description
                 )}
+              </td>
+              <td>
+                <FindingSummary findings={s.scanFindings ?? []} />
               </td>
               <td className="text-[0.78em] text-mocha-light">
                 <span className="font-mono">{s.source ?? '(unknown)'}</span>
@@ -91,12 +95,14 @@ function ImportCard({ onImported }: { onImported: () => void }) {
   const [zipFile, setZipFile] = useState<File | null>(null)
   const [dragOver, setDragOver] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  const [findings, setFindings] = useState<SkillScanFinding[]>([])
   const [submitting, setSubmitting] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
 
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setErr(null)
+    setFindings([])
     setSubmitting(true)
     try {
       let res: Response
@@ -129,9 +135,15 @@ function ImportCard({ onImported }: { onImported: () => void }) {
         })
       }
       if (!res.ok) {
-        const e2 = (await res.json().catch(() => null)) as { error?: string } | null
+        const e2 = (await res.json().catch(() => null)) as {
+          error?: string
+          findings?: SkillScanFinding[]
+        } | null
+        setFindings(e2?.findings ?? [])
         throw new Error(e2?.error ?? `${res.status} ${res.statusText}`)
       }
+      const imported = (await res.json().catch(() => null)) as ImportSkillsResponse | null
+      setFindings(flattenImportFindings(imported?.findings))
       setPath('')
       setZipFile(null)
       onImported()
@@ -204,6 +216,12 @@ function ImportCard({ onImported }: { onImported: () => void }) {
       </div>
 
       {err && <div className="err">{err}</div>}
+      {findings.length > 0 && (
+        <div className="mb-3 rounded-md border border-[#D7A3A3] bg-[#FFF7F5] p-3 text-[0.86em] text-[#7C2D2D]">
+          <div className="mb-1 font-semibold">scan findings</div>
+          <FindingList findings={findings} />
+        </div>
+      )}
 
       <form onSubmit={submit}>
         {tab === 'openclaw' && (
@@ -289,9 +307,45 @@ function ImportCard({ onImported }: { onImported: () => void }) {
               onChange={(e) => setForce(e.target.checked)}
             />
             overwrite existing
+            <span className="ml-1 text-mocha-light">/ confirm scan findings</span>
           </label>
         </div>
       </form>
     </section>
+  )
+}
+
+function FindingSummary({ findings }: { findings: SkillScanFinding[] }) {
+  if (findings.length === 0) return <span className="text-mocha-light">clean</span>
+  const danger = findings.some((f) => f.severity === 'danger')
+  return (
+    <details className="text-[0.82em]">
+      <summary className={danger ? 'cursor-pointer text-[#9B3D3D]' : 'cursor-pointer text-mocha'}>
+        {findings.length} finding{findings.length === 1 ? '' : 's'}
+      </summary>
+      <FindingList findings={findings} />
+    </details>
+  )
+}
+
+function FindingList({ findings }: { findings: SkillScanFinding[] }) {
+  return (
+    <ul className="m-0 list-disc pl-4">
+      {findings.map((f, i) => (
+        <li key={`${f.code}-${f.line ?? 0}-${i}`}>
+          <span className="font-mono">{f.severity}</span>: {f.code}
+          {f.line ? ` line ${f.line}` : ''} - {f.message}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+function flattenImportFindings(
+  findings: ImportSkillsResponse['findings'] | undefined,
+): SkillScanFinding[] {
+  if (!findings) return []
+  return Object.entries(findings).flatMap(([name, items]) =>
+    items.map((item) => ({ ...item, message: `${name}: ${item.message}` })),
   )
 }

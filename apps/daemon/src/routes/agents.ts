@@ -40,9 +40,11 @@ import {
   loadIdentityFromFile,
   mergeSecretsIntoEnv,
   messageRepo,
+  parseSkillFile,
   providerStateRepo,
   resolveAgent,
   resolveAgentSkills,
+  scanSkillContent,
   skillMetaRepo,
   spawnAgent,
   triggerRepo,
@@ -355,6 +357,7 @@ agentsRouter.get('/:id/skills', (c) => {
         description: s.parsed.frontmatter.description,
         source: meta?.source ?? null,
         importedAt: meta?.importedAt ?? null,
+        scanFindings: scanSkillContent(s.parsed.raw),
       }
     }),
     missing: set.missing,
@@ -370,6 +373,26 @@ agentsRouter.post('/:id/skills', async (c) => {
   const { db, paths, authToken } = getCtx()
   const agent = agentRepo.get(db, c.req.param('id'))
   if (!agent) return c.json({ error: `agent not found: ${c.req.param('id')}` }, 404)
+  const discovered = discoverSkills(paths).find((s) => s.name === body.skill)
+  if (discovered) {
+    try {
+      const parsed = parseSkillFile(discovered.skillFile)
+      const findings = scanSkillContent(parsed.raw)
+      if (findings.length > 0 && !body.allowFindings) {
+        return c.json(
+          {
+            error: `skill scan blocked attach: ${body.skill} has findings`,
+            code: 'skill_scan_blocked',
+            findings,
+          },
+          400,
+        )
+      }
+    } catch {
+      // Keep legacy behaviour for parse-broken skills: attachment is allowed,
+      // and resolveAgentSkills reports the parse error wherever the skill is used.
+    }
+  }
   agentRepo.attachSkill(db, agent.id, body.skill)
   return c.body(null, 204)
 })

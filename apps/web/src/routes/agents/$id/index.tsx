@@ -6,6 +6,7 @@ import type {
   ResolvedAgent,
   SessionHeadResponse,
   SkillInfo,
+  SkillScanFinding,
   TelegramBindResponse,
   TelegramConfigState,
   TelegramMirrorMode,
@@ -467,14 +468,23 @@ function SkillsTable({
   const [pending, setPending] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
 
-  async function attach(name: string) {
-    setPending(name)
+  async function attach(skill: SkillInfo) {
+    const findings = skill.scanFindings ?? []
+    const allowFindings =
+      findings.length === 0 ||
+      confirm(
+        `Skill "${skill.name}" has ${findings.length} scan finding${
+          findings.length === 1 ? '' : 's'
+        }. Attach it anyway?`,
+      )
+    if (!allowFindings) return
+    setPending(skill.name)
     setErr(null)
     try {
       const res = await fetch(`/api/agents/${encodeURIComponent(agentId)}/skills`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ skill: name }),
+        body: JSON.stringify({ skill: skill.name, allowFindings: findings.length > 0 }),
       })
       if (!res.ok) {
         const body = (await res.json().catch(() => null)) as { error?: string } | null
@@ -518,6 +528,7 @@ function SkillsTable({
           <tr>
             <th>name</th>
             <th>description</th>
+            <th>scan</th>
             <th />
           </tr>
         </thead>
@@ -531,6 +542,9 @@ function SkillsTable({
                   <code>{s.name}</code>
                 </td>
                 <td>{s.description || <span className="text-mocha-light">—</span>}</td>
+                <td>
+                  <SkillFindingSummary findings={s.scanFindings ?? []} />
+                </td>
                 <td>
                   {isAttached ? (
                     <button
@@ -546,7 +560,7 @@ function SkillsTable({
                       type="button"
                       className="ghost-btn"
                       disabled={busy}
-                      onClick={() => attach(s.name)}
+                      onClick={() => attach(s)}
                     >
                       {busy ? '…' : 'attach'}
                     </button>
@@ -558,6 +572,26 @@ function SkillsTable({
         </tbody>
       </table>
     </>
+  )
+}
+
+function SkillFindingSummary({ findings }: { findings: SkillScanFinding[] }) {
+  if (findings.length === 0) return <span className="text-mocha-light">clean</span>
+  const danger = findings.some((f) => f.severity === 'danger')
+  return (
+    <details className="text-[0.82em]">
+      <summary className={danger ? 'cursor-pointer text-[#9B3D3D]' : 'cursor-pointer text-mocha'}>
+        {findings.length} finding{findings.length === 1 ? '' : 's'}
+      </summary>
+      <ul className="m-0 list-disc pl-4">
+        {findings.map((f, i) => (
+          <li key={`${f.code}-${f.line ?? 0}-${i}`}>
+            <span className="font-mono">{f.severity}</span>: {f.code}
+            {f.line ? ` line ${f.line}` : ''} - {f.message}
+          </li>
+        ))}
+      </ul>
+    </details>
   )
 }
 
