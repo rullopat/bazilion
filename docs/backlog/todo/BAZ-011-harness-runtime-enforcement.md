@@ -1,90 +1,147 @@
 ---
 id: BAZ-011
-title: Harness runtime enforcement and blocked-attempt audit
+title: Harness authorizer, denial audit, and gated Agent messaging
 status: todo
 size: L (1-2 weeks)
 created: 2026-07-10
 refined: 2026-07-10
 priority: high
-note: Enforce BAZ-010 policies before side effects across agent messaging, user chat, Telegram, and scheduler delivery. This is the story that creates the production communication boundary.
+note: Build the single authorizer, immutable idempotent denial audit, diagnostics, and gated Agent-message/inbox integration. Full ingress, egress, scheduler, and release activation continue in BAZ-016.
 ---
 
-# BAZ-011 - Harness runtime enforcement and blocked-attempt audit
+# BAZ-011 - Harness authorizer, denial audit, and gated Agent messaging
 
-**Status:** Todo. Ready to pull after BAZ-010.
+**Status:** Refined and ready after BAZ-015. ADR 0001 is normative. This is the first half
+of the former XL enforcement story; BAZ-016 completes all remaining boundaries.
 
 ## User stories
 
-- **As an operator**, I want denied communication stopped by the daemon, so harness policy
-  is a real boundary rather than a UI preference.
-- **As an agent**, I want a structured denial from send_message, so I can react without
-  assuming a recipient failed.
-- **As an operator debugging a team**, I want durable block history with a reason and
-  origin, so policy failures are distinguishable from runtime failures.
+- **As an operator**, I want one daemon authorization decision for every actor pair, so
+  clients and transports cannot invent policy semantics.
+- **As an Agent**, I want a structured policy denial before message insertion, so a block
+  cannot look like recipient failure.
+- **As an operator debugging policy**, I want one immutable privacy-safe denial record for
+  each logical attempt and a side-effect-free evaluator.
 
 ## Goal
 
-Implement one daemon-owned authorizer and apply it before every relevant insertion, turn
-start, HTTP delivery, and Telegram send. Persist complete denied-attempt records and expose
-read-only diagnostics without changing edges into workflow steps.
+Implement the shared decision/audit foundation and Agent-to-Agent storage boundary from
+[ADR 0001](../../adr/0001-production-harness-domain.md), behind a release gate that defaults
+off from its first integration. No production release blocks communication until BAZ-016
+and BAZ-017 are complete.
 
-## Decisions
+## Decision contract
 
-1. One matching directed edge allows; absence denies.
-2. Every caller uses the same authorizer and stable reason codes.
-3. Denial occurs before message insertion, attachment persistence, worker start, or
-   transport send.
-4. Origin is audit metadata and does not alter the decision.
-5. Operator history/diagnostics remain readable even when direct delivery is denied.
-6. Existing Open Team compatibility policies preserve pre-migration behavior.
-7. Scheduler delivery rechecks queued communication as defense in depth.
+    authorizeCommunication({ source, target, origin, attemptKind, attemptId })
+      -> { decision, channel, reasonCode, reason, policyRefs[] }
+
+- The daemon resolves current status, `agents.group_id`, channel, and one or two Group
+  policies in one SQLite snapshot. Callers never supply an authoritative harness id.
+- Same-Group A -> B requires exact A -> B. Cross-Group A -> B requires source
+  A -> outside_group **and** target outside_group -> B in the same snapshot.
+- User -> Agent and Agent -> user use the target/source Group boundary edge respectively.
+- Archived/deleted/missing/nonmember/self/boundary-to-boundary paths deny before matching.
+- Origin is required audit metadata and never changes the decision.
+- Operator-authenticated history/policy/block/inbox inspection is exempt; Agent-visible
+  inbox read/wait is delivery and must reauthorize.
+- compatibility_open is not a hidden allow path; only stored explicit edges decide.
+
+Stable denial codes include `no_allow_edge`, `source_outside_output_denied`,
+`target_outside_input_denied`, `agent_archived`, `agent_not_found`,
+`member_not_in_group`, `group_policy_missing`, `group_policy_invalid`, and
+`invalid_communication_path`.
+
+## Linearization and side effects
+
+The policy snapshot is the authorization linearization point. For Agent message storage,
+authorization plus message insert—or denial event—occurs in one write transaction. Reply
+linkage never bypasses evaluation. A policy/membership writer therefore orders wholly
+before or after the attempt; it cannot race between check and insert.
+
+Agent-visible inbox read/wait re-evaluates the original sender/recipient using current
+membership. Denied rows receive terminal policy-blocked disposition and audit in the same
+transaction and are not returned. Operator history reads remain unchanged.
+
+BAZ-016 extends this rule to turn leases, scheduler claims, and external transport items.
+
+## Globally idempotent denial contract
+
+Block uniqueness is `(attempt_kind, attempt_id)`, not an unqualified caller id. Canonical
+examples are:
+
+- `http_chat:<requestUuid>`
+- `telegram_update:<botId>:<updateId>:<operation>`
+- `agent_tool:<sessionId>:<toolCallId>`
+- `scheduler_trigger:<triggerId>:<scheduledOccurrence>`
+- `inbox:<messageId>` for tool read/wait and scheduler delivery alike
+- `transport:<turnId>:<frameOrItemId>:<transport>:<destination>`
+
+The block row fingerprints operation/source/target. Origin is stored from the first
+terminal observation but excluded from identity, so Agent read/wait and scheduler delivery
+can share one inbox denial without conflict. Enforcement first looks up an existing denial.
+Matching returns the original decision permanently; mismatch returns
+`attempt_key_conflict`. On unique-insert race, reload and apply the same check.
+
+A new delivery invocation uses a new typed id. This contract guarantees denial-event
+idempotency only; allowed decisions are not block records, no general allowed-delivery
+retry ledger is introduced, and each operation retains its existing delivery semantics.
 
 ## Scope
 
-- Add the policy decision service described in docs/harness-policy-handoff.md.
-- Enforce agent -> agent in createDbMessagingHost before messageRepo.send.
-- Enforce the direct POST /api/agents/:id/messages route before insertion.
-- Require explicit actor and origin context for all runAgentTurn call sites.
-- Enforce user -> agent before web/CLI chat starts and before Telegram queues input.
-- Enforce agent -> user before direct ChatFrame delivery and Telegram mirroring.
-- Enforce outside-group directions by comparing sender and recipient group membership.
-- Recheck unread messages before scheduler drain/turn start when policy changed after
-  insertion.
-- Persist denied attempts with harness, policy revision, endpoints, channel, origin, stable
-  reason code/detail, and timestamp.
-- Expose paginated/filterable block history and a side-effect-free policy evaluation route.
-- Return structured tool/API/transport denial responses; do not silently drop.
-- Add metrics/logging that omit message payloads and secrets.
+- Add pure endpoint/channel/policy resolution and two-sided cross-Group evaluation over
+  BAZ-015 canonical state.
+- Add immutable `harness_block_events` with semantic endpoint snapshots, channel, origin,
+  stable reason, one/two policy revisions, component outcomes, matched/required edge ids,
+  fingerprint, first-observed origin, timestamp, and unique typed attempt identity. Store no payload, secret, or
+  attachment content.
+- Add the inbox terminal policy-blocked disposition and atomic disposition/audit helper.
+- Add an enforcing Agent-message service used before `messageRepo.send` by
+  `apps/daemon/src/lib/messaging-host.ts`, direct/reply Agent-message routes, and
+  Agent-visible read/wait paths. The repo remains a storage primitive.
+- Add authenticated cursor-paginated
+  `GET /api/groups/:groupId/harness/blocks` and side-effect-free
+  `POST /api/communication/evaluate`.
+- Return a common structured tool/API denial with decision, channel, reason, typed attempt
+  id, and policy references.
+- Add the global enforcement release gate in this story. It defaults off; with the gate off
+  integrations preserve current behavior and write no production block event. Tests cover
+  enabled behavior, but release activation belongs to BAZ-016/017.
+- Add privacy-safe decision metrics/logs without message bodies or credentials.
 
 ## Out of scope
 
-- Production web editor migration (BAZ-012).
-- CLI import/export and block-history commands (BAZ-013).
-- Human approvals (BAZ-014).
-- Workflow execution, routing, retries, payload transformation, or federation.
+- Web/CLI/API/Telegram user ingress, Agent-to-user transports, scheduler integration,
+  turn/lifecycle leases, and enforcement activation (BAZ-016).
+- Production editor/migration UX required for activation (BAZ-012/017).
+- CLI policy tools (BAZ-013), approvals (BAZ-014), workflows, routing, retries, payload
+  transformation, federation, command approval, or sandbox policy.
 
 ## Acceptance criteria
 
-- Denied agent messages never create a messages row and never wake the recipient.
-- Allowed agent messages preserve current insertion, inbox, reply, and scheduler behavior.
-- Denied web/CLI/Telegram input does not persist attachments or start an agent turn.
-- Denied user output is not sent through the request transport or Telegram and produces a
-  visible structured block result while operator history remains inspectable.
-- All origins produce the same decision for the same source/target/policy.
-- Every denial creates exactly one durable block record, including under retries.
-- Policy changes between insertion and scheduler drain cannot deliver a now-denied queued
-  message.
-- Legacy Open Team groups behave as before.
-- No edge causes automatic invocation, sequencing, or retry.
+- Unit/property tests prove exact same-Group, two-sided cross-Group, boundary, lifecycle,
+  origin-invariant, malformed-policy, and invalid-path decisions.
+- Cross-Group denial is one result/event containing both policy revisions and component
+  outcomes, never one event per Group.
+- With the gate enabled in tests, denied Agent messages insert no deliverable message and
+  return a structured denial; allowed/reply paths preserve current semantics.
+- Agent read/wait and any later scheduler consumer share `inbox:<messageId>`; terminal
+  disposition and denial audit are atomic. Operator reads remain inspectable.
+- Lookup-first/fingerprint/unique-conflict behavior creates exactly one immutable block for
+  sequential and concurrent retries and never reuses a key for different semantics.
+- The diagnostic evaluator is authenticated, current, cross-Group capable, side-effect
+  free, and never writes a block.
+- Missing or corrupt policy fails closed with distinct stable reason codes when enabled.
+- The gate defaults off in production configuration; off preserves current behavior and
+  emits no authoritative block history. Partial Agent-only enforcement cannot ship.
+- No decision edge invokes an Agent, executes a workflow, retries/routes a payload, or
+  creates an approval.
 
-## Tests
+## Tests and verification
 
-- Unit tests for endpoint resolution, channels, reason codes, legacy compatibility, and
-  deterministic decisions.
-- Integration tests around messaging host and direct message routes proving no denied row
-  is inserted.
-- Chat and Telegram ingress/egress tests proving denied work does not cross side-effect
-  boundaries.
-- Scheduler tests for allowed wake, denied wake, and policy changes after queueing.
-- Audit idempotency, pagination, filtering, auth, and concurrent policy-update tests.
-- Full repository tests plus focused transport smoke tests.
+- Decision unit/property tests and SQLite snapshot/concurrency tests.
+- Block schema, fingerprint collision, lookup-first, unique-race, privacy, pagination,
+  filtering, and evaluator tests.
+- Messaging host/direct/reply/tool inbox tests with gate off/on, proving atomic insert or
+  denial and no denied row exposure.
+- Full repository suite, root/web typechecks, lint, build, and a configuration test proving
+  the packaged default gate is off.

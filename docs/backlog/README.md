@@ -13,7 +13,7 @@ docs/backlog/
 ## Conventions
 
 - **Naming:** `BAZ-NNN-short-slug.md` (sequential at creation time so codes don't shift when priority changes).
-- **Frontmatter** (every file): `id`, `title`, `status`, `size`, `created`, optional `shipped` / `priority` / `deferred` / `deferred_reason` / `note`.
+- **Frontmatter** (every file): `id`, `title`, `status`, `size`, `created`, optional `refined` / `shipped` / `priority` / `deferred` / `deferred_reason` / `note`.
 - **Body shape:** User stories (As a / I want / So that) → Goal → Why → Scope → Out of scope → Tests. Open items add Open Questions; shipped items add an As-built block.
 - **Sizes** (solo-dev pace): XS ≈ afternoon, S ≈ 1–2 days, M ≈ ~1 week, L ≈ 1–2 weeks, XL > 2 weeks → split into multiple BAZs.
 - **State transitions:** to move an item, `git mv` it between dirs and update the `status:` field in frontmatter.
@@ -34,16 +34,19 @@ docs/backlog/
 | [BAZ-001](draft/BAZ-001-a2a-federation-spike.md) | Spike — federated multi-employee Bazilion via A2A | S | Investigation only; output is a follow-up implementation BAZ |
 | [BAZ-003](draft/BAZ-003-hermes-self-learning.md) | Hermes-style self-learning loop — background reviewer + skill self-editing | L | MVP = reviewer + human-approval gate; curator / FTS5 / runtime skill authoring deferred to v2 BAZs |
 
-## Todo (6)
+## Todo (9)
 
 | ID | Title | Size | Notes |
 |----|-------|------|-------|
 | [BAZ-006](todo/BAZ-006-skill-execution-security.md) | Skill execution security - sandbox and command approval | L | Runtime hardening after BAZ-008: opt-in Docker bash sandbox + dangerous-command approval; selection is *not* security |
-| [BAZ-010](todo/BAZ-010-harness-persistence-api.md) | Harness persistence, stable slots, and production APIs | M | Persist the validated model, add stable slot ids/revisions, and preserve Open Team compatibility |
-| [BAZ-011](todo/BAZ-011-harness-runtime-enforcement.md) | Harness runtime enforcement and blocked-attempt audit | L | Central allow/deny enforcement before messaging, turn, and transport side effects |
-| [BAZ-012](todo/BAZ-012-production-harness-web.md) | Production harness web experience and migration | L | Replace prototype local state with enforced APIs and migrate Profile Groups/Groups UX |
+| [BAZ-010](todo/BAZ-010-harness-persistence-api.md) | Canonical harness storage and compatibility migration | L | Canonical tables/revisions, atomic Profile Group migration, and exact-Open legacy adapters |
+| [BAZ-011](todo/BAZ-011-harness-runtime-enforcement.md) | Harness authorizer, denial audit, and gated Agent messaging | L | Shared decision/audit foundation and gated Agent-message/inbox integration |
+| [BAZ-012](todo/BAZ-012-production-harness-web.md) | Production Templates and Groups web information architecture | L | Canonical navigation/projections, redirects, lifecycle shells, and degraded recovery |
 | [BAZ-013](todo/BAZ-013-harness-cli-policy-tools.md) | Harness CLI policy show, import/export, and block history | M | Revision-aware typed CLI management and canonical JSON interchange |
 | [BAZ-014](todo/BAZ-014-harness-communication-approvals.md) | Human approval gates for harness communication | L | Optional approval-required edges after production allow/deny is validated |
+| [BAZ-015](todo/BAZ-015-harness-policy-lifecycle-api.md) | Revisioned Team-template, Group-policy, and Agent lifecycle APIs | L | Custom policy/source APIs, explicit placement, stable-slot operations, and atomic lifecycle |
+| [BAZ-016](todo/BAZ-016-harness-runtime-boundaries.md) | Harness ingress, egress, scheduler, and turn-boundary enforcement | L | Complete all runtime boundaries and activation-safe lifecycle linearization |
+| [BAZ-017](todo/BAZ-017-harness-web-editor-migration.md) | Production policy editors, local migration, activity, and web QA | L | Server-backed Flow/Matrix, conflicts/import/activity, accessibility, and viewport matrix |
 
 ## In Progress (0)
 
