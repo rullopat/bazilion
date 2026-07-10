@@ -34,17 +34,22 @@ docs/backlog/
 | [BAZ-001](draft/BAZ-001-a2a-federation-spike.md) | Spike — federated multi-employee Bazilion via A2A | S | Investigation only; output is a follow-up implementation BAZ |
 | [BAZ-003](draft/BAZ-003-hermes-self-learning.md) | Hermes-style self-learning loop — background reviewer + skill self-editing | L | MVP = reviewer + human-approval gate; curator / FTS5 / runtime skill authoring deferred to v2 BAZs |
 
-## Todo (1)
+## Todo (6)
 
 | ID | Title | Size | Notes |
 |----|-------|------|-------|
 | [BAZ-006](todo/BAZ-006-skill-execution-security.md) | Skill execution security - sandbox and command approval | L | Runtime hardening after BAZ-008: opt-in Docker bash sandbox + dangerous-command approval; selection is *not* security |
+| [BAZ-010](todo/BAZ-010-harness-persistence-api.md) | Harness persistence, stable slots, and production APIs | M | Persist the validated model, add stable slot ids/revisions, and preserve Open Team compatibility |
+| [BAZ-011](todo/BAZ-011-harness-runtime-enforcement.md) | Harness runtime enforcement and blocked-attempt audit | L | Central allow/deny enforcement before messaging, turn, and transport side effects |
+| [BAZ-012](todo/BAZ-012-production-harness-web.md) | Production harness web experience and migration | L | Replace prototype local state with enforced APIs and migrate Profile Groups/Groups UX |
+| [BAZ-013](todo/BAZ-013-harness-cli-policy-tools.md) | Harness CLI policy show, import/export, and block history | M | Revision-aware typed CLI management and canonical JSON interchange |
+| [BAZ-014](todo/BAZ-014-harness-communication-approvals.md) | Human approval gates for harness communication | L | Optional approval-required edges after production allow/deny is validated |
 
 ## In Progress (0)
 
 _None right now._
 
-## Done (4)
+## Done (5)
 
 | ID | Title | Size | Shipped | Release | Notes |
 |----|-------|------|---------|---------|-------|
@@ -52,3 +57,4 @@ _None right now._
 | [BAZ-005](done/BAZ-005-agent-templates-refresh.md) | Agent templates refresh — two-sided bootstrap, USER.md seed, workspace doc | M | 2026-05-29 | v0.5.0 | Two-phase bootstrap, USER.md seed + backfill, creature/avatar, default-on AGENTS/TOOLS (HEARTBEAT opt-in) — see As-built for deltas |
 | [BAZ-007](done/BAZ-007-simple-installer-and-dashboard.md) | Simple installer and dashboard launch for non-technical users | M | 2026-06-22 | v0.6.0 | Bundled web UI, `bazilion dashboard`, and one-line website installers |
 | [BAZ-008](done/BAZ-008-skill-content-scan.md) | Skill content scan — prompt-injection and exfiltration warnings | S | 2026-07-02 | unreleased | Static scan on import/list/attach; confirmation required for risky imports and attaches |
+| [BAZ-009](done/BAZ-009-configurable-agent-harness.md) | Configurable agent harness - functional communication-flow prototype | L | 2026-07-10 | unreleased | Local-only Flow/Matrix policy prototype, live-group snapshots, denial simulation, and verified responsive Browser matrix |

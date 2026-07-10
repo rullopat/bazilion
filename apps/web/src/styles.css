@@ -201,11 +201,12 @@
     overflow-y: scroll;
     scrollbar-gutter: stable;
     }
-  /* Home route locks both html and body to the viewport so the chat panel +
-   * sidebar own their own scroll. Set via `data-layout='home'` on <html>/<body>
-   * in __root.tsx (data-attribute, NOT className — see comment there). */
+  /* Workspaces lock html and body to the viewport so their panels own internal
+   * scrolling. Set via the data-layout attribute in __root.tsx. */
   html[data-layout='home'],
-  body[data-layout='home'] {
+  body[data-layout='home'],
+  html[data-layout='workspace'],
+  body[data-layout='workspace'] {
     height: 100dvh;
     overflow: hidden;
   }
@@ -244,6 +245,23 @@
     transition: color 0.2s;
     }
   a:hover { color: var(--color-sapphire-deep); }
+}
+
+/* React Flow inherits Bazilion's semantic palette instead of its default blue UI. */
+.harness-flow {
+  --xy-background-color: var(--color-ivory);
+  --xy-node-color: var(--color-chocolate);
+  --xy-node-border: 1px solid var(--color-frost);
+  --xy-edge-stroke: var(--color-sapphire);
+  --xy-edge-stroke-selected: var(--color-sapphire-deep);
+  --xy-connectionline-stroke: var(--color-rose-baziu);
+  --xy-selection-background-color: var(--color-sapphire-glow);
+  --xy-selection-border: 1px dotted var(--color-sapphire);
+  --xy-controls-button-background-color: var(--color-snow);
+  --xy-controls-button-background-color-hover: var(--color-ivory);
+  --xy-controls-button-color: var(--color-chocolate);
+  --xy-controls-button-border-color: var(--color-frost);
+  --xy-minimap-background-color: var(--color-snow);
 }
 
 @layer components {

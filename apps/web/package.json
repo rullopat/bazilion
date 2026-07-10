@@ -14,6 +14,7 @@
     "@bazilion/client": "workspace:*",
     "@tanstack/react-router": "latest",
     "@tanstack/react-start": "latest",
+    "@xyflow/react": "^12.11.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "dompurify": "^3.4.11",

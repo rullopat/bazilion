@@ -14,11 +14,20 @@ import type {
 import { createFileRoute, redirect, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { useState } from 'react'
+import { ArrowLeft } from 'lucide-react'
 import { AgentAvatar } from '../../../components/AgentAvatar'
 import { AgentTabs } from '../../../components/AgentTabs'
 import { ChatPane } from '../../../components/ChatPane'
 import { CopyButton } from '../../../components/CopyButton'
+import { PrototypeBadge } from '../../../components/harness/PrototypeBadge'
+import { useHarnessPrototype } from '../../../hooks/use-harness-prototype'
 import { daemonClient } from '../../../lib/daemon-client'
+import {
+  USER_ENDPOINT,
+  endpointForMember,
+  getHarnessById,
+  hasHarnessEdge,
+} from '../../../lib/harness-prototype'
 import { REASONING_LEVELS } from '../../../lib/wire-constants'
 
 interface ModelGroup {
@@ -77,6 +86,11 @@ const fetchAgent = createServerFn({ method: 'POST' })
   })
 
 export const Route = createFileRoute('/agents/$id/')({
+  validateSearch: (search: Record<string, unknown>): { harness?: string } => ({
+    ...(typeof search.harness === 'string' && search.harness
+      ? { harness: search.harness }
+      : {}),
+  }),
   loader: async ({ params }) => {
     const data = await fetchAgent({ data: { id: params.id } })
     if (!data) throw redirect({ to: '/agents' })
@@ -95,7 +109,33 @@ function AgentDetailPage() {
     modelGroups,
     telegramConfigured,
   } = Route.useLoaderData()
+  const { harness: harnessId } = Route.useSearch()
+  const { state: harnessState, hydrated: harnessHydrated } = useHarnessPrototype()
   const router = useRouter()
+  const prototypeHarness = harnessId ? getHarnessById(harnessState, harnessId) : undefined
+  const prototypeMember = prototypeHarness?.members.find(
+    (member) => member.agentId === resolved.agent.id,
+  )
+  const prototypeEndpoint =
+    prototypeHarness && prototypeMember
+      ? endpointForMember(prototypeHarness, prototypeMember)
+      : undefined
+  const prototypePolicy =
+    harnessHydrated && prototypeHarness && prototypeEndpoint
+      ? {
+          harnessName: prototypeHarness.name,
+          userInputAllowed: hasHarnessEdge(
+            prototypeHarness.policy,
+            USER_ENDPOINT,
+            prototypeEndpoint,
+          ),
+          userOutputAllowed: hasHarnessEdge(
+            prototypeHarness.policy,
+            prototypeEndpoint,
+            USER_ENDPOINT,
+          ),
+        }
+      : undefined
 
   async function archive() {
     if (!confirm(`archive "${resolved.agent.name}"? (reversible)`)) return
@@ -122,6 +162,20 @@ function AgentDetailPage() {
   return (
     <div>
       <header className="mb-8">
+        {prototypeHarness && (
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <a
+              href={`/harnesses/${encodeURIComponent(prototypeHarness.id)}`}
+              className="ghost-btn"
+            >
+              <ArrowLeft className="h-4 w-4" /> back to harness
+            </a>
+            <PrototypeBadge />
+            <span className="text-xs text-mocha-light">
+              Canvas view, pan, zoom, and selection are saved locally.
+            </span>
+          </div>
+        )}
         <div className="flex items-center gap-3">
           <AgentAvatar identity={resolved.agent.identity} size={44} />
           <div>
@@ -226,6 +280,7 @@ function AgentDetailPage() {
           agentName={resolved.agent.name}
           initialMessages={initialMessages}
           initialSessionHead={sessionHead}
+          prototypePolicy={prototypePolicy}
         />
       </div>
       <p className="mt-2 text-[0.82em] text-mocha-light">

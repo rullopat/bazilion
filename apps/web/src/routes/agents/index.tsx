@@ -3,7 +3,9 @@ import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { useState } from 'react'
 import { AgentAvatar } from '../../components/AgentAvatar'
+import { useHarnessPrototype } from '../../hooks/use-harness-prototype'
 import { daemonClient } from '../../lib/daemon-client'
+import { addDirectSpawnToPrototype } from '../../lib/harness-prototype'
 
 interface ModelGroup {
   provider: string
@@ -162,6 +164,7 @@ function SpawnForm({
   modelGroups: ModelGroup[]
   onSpawned: () => void
 }) {
+  const { update: updateHarnessPrototype } = useHarnessPrototype()
   const [profileId, setProfileId] = useState('')
   const [name, setName] = useState('')
   const [model, setModel] = useState('')
@@ -194,6 +197,14 @@ function SpawnForm({
         const b = (await res.json().catch(() => null)) as { error?: string } | null
         throw new Error(b?.error ?? res.statusText)
       }
+      const created = (await res.json()) as Agent
+      updateHarnessPrototype((current) =>
+        addDirectSpawnToPrototype({
+          state: current,
+          agent: created,
+          groupName: groups.find((group) => group.id === created.groupId)?.name,
+        }),
+      )
       // Reset on success.
       setName('')
       setModel('')

@@ -75,31 +75,33 @@ function NotFound() {
 function RootComponent() {
   const pathname = useRouterState({ select: (s) => s.location.pathname })
   const isLogin = pathname === '/login'
-  // Home is full-height (chat fills the viewport) and hides the footer.
-  // Everything else gets the standard 1100px-shell + footer.
+  // Interactive workspaces fill the viewport and hide the footer.
+  // Everything else gets the standard 1100px shell and footer.
   const isHome = pathname === '/'
+  const isHarnessBuilder = /^\/harnesses\/[^/]+$/.test(pathname)
+  const isWorkspace = isHome || isHarnessBuilder
 
   return (
-    // On home, lock html + body to the viewport so only the chat panel + sidebar
-    // scroll internally. Otherwise the global `html { overflow-y: scroll }` rule
+    // In workspaces, lock html + body to the viewport so only the inner panels
+    // scroll. Otherwise the global `html { overflow-y: scroll }` rule
     // (which keeps a stable scrollbar gutter on content pages) lets the whole
     // page scroll when chat content overflows. Per-route layout flag rides on
     // `data-layout` (not className) so React's reconciliation never overwrites
     // the `dark` class that THEME_INIT_SCRIPT sets on <html> pre-paint — see
-    // `html[data-layout='home']` in styles.css.
+    // `html[data-layout='workspace']` in styles.css.
     // suppressHydrationWarning: THEME_INIT_SCRIPT adds/removes the `dark` class
     // on <html> before React hydrates, which would otherwise trip a hydration
     // mismatch.
-    <html lang="en" data-layout={isHome ? 'home' : 'page'} suppressHydrationWarning>
+    <html lang="en" data-layout={isWorkspace ? 'workspace' : 'page'} suppressHydrationWarning>
       <head>
         {/* Runs before paint to apply the user's theme choice without FOUC. */}
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
         <HeadContent />
       </head>
-      <body data-layout={isHome ? 'home' : 'page'}>
+      <body data-layout={isWorkspace ? 'workspace' : 'page'}>
         {isLogin ? (
           <Outlet />
-        ) : isHome ? (
+        ) : isWorkspace ? (
           <div className="flex h-dvh flex-col px-6">
             <TopNav />
             <main className="min-h-0 flex-1 overflow-hidden">
