@@ -27,17 +27,18 @@ docs/backlog/
 
 ---
 
-## Draft (3)
+## Draft (2)
 
 | ID | Title | Size | Notes |
 |----|-------|------|-------|
 | [BAZ-001](draft/BAZ-001-a2a-federation-spike.md) | Spike — federated multi-employee Bazilion via A2A | S | Investigation only; output is a follow-up implementation BAZ |
 | [BAZ-003](draft/BAZ-003-hermes-self-learning.md) | Hermes-style self-learning loop — background reviewer + skill self-editing | L | MVP = reviewer + human-approval gate; curator / FTS5 / runtime skill authoring deferred to v2 BAZs |
-| [BAZ-006](draft/BAZ-006-skill-execution-security.md) | Skill execution security — sandbox, content scan, command approval | L | 3 independent layers; selection is *not* security (decided 2026-05-29). Default-off hardening |
 
-## Todo (0)
+## Todo (1)
 
-_None right now._
+| ID | Title | Size | Notes |
+|----|-------|------|-------|
+| [BAZ-006](todo/BAZ-006-skill-execution-security.md) | Skill execution security - sandbox and command approval | L | Runtime hardening after BAZ-008: opt-in Docker bash sandbox + dangerous-command approval; selection is *not* security |
 
 ## In Progress (0)
 
