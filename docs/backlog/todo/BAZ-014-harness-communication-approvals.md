@@ -6,12 +6,12 @@ size: L (1-2 weeks)
 created: 2026-07-10
 refined: 2026-07-10
 priority: medium
-note: Optional follow-up after BAZ-011 allow/deny enforcement and BAZ-012 production UI. Adds approval-required delivery without adding general workflow execution.
+note: Optional follow-up after BAZ-016 allow/deny enforcement and BAZ-017 production UI. Adds approval-required delivery without adding general workflow execution.
 ---
 
 # BAZ-014 - Human approval gates for harness communication
 
-**Status:** Todo. Ready to pull after BAZ-011 and BAZ-012 validate production allow/deny.
+**Status:** Todo. Ready to pull after BAZ-016 and BAZ-017 validate production allow/deny.
 
 ## User stories
 
@@ -44,7 +44,7 @@ then deliver at most once or expire visibly.
   approval-required edge posture.
 - Add durable pending attempts with payload reference, requester, policy revision, expiry,
   status, and idempotency key.
-- Pause before message insertion, turn start, or transport send at the BAZ-011 enforcement
+- Pause before message insertion, turn start, or transport send at the BAZ-016 enforcement
   boundary.
 - Add authenticated approve/deny endpoints with optimistic state transitions and at-most-once
   delivery.
@@ -72,7 +72,7 @@ then deliver at most once or expire visibly.
 - An approval after expiry or after a terminal decision cannot deliver.
 - Concurrent approvals result in one winner and one conflict response.
 - Policy/member changes are revalidated immediately before delivery.
-- Ordinary allow and deny paths retain BAZ-011 behavior and latency within test tolerance.
+- Ordinary allow and deny paths retain BAZ-011/016 behavior and latency within test tolerance.
 - Queue/history access is authenticated and payload content is not exposed in list views or
   logs.
 
