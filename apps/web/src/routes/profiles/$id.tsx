@@ -2,8 +2,15 @@ import { ApiClientError } from '@bazilion/client'
 import type { LoadedProfile, SkillInfo } from '@bazilion/api-types'
 import { createFileRoute, redirect, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { ProfileCommunicationEditor } from '../../components/harness/ProfileCommunicationEditor'
+import { PrototypeBadge } from '../../components/harness/PrototypeBadge'
+import { useHarnessPrototype } from '../../hooks/use-harness-prototype'
 import { daemonClient } from '../../lib/daemon-client'
+import {
+  DEFAULT_PROFILE_COMMUNICATION,
+  type ProfileCommunicationDefaults,
+} from '../../lib/harness-prototype'
 
 interface ModelGroup {
   provider: string
@@ -48,7 +55,7 @@ export const Route = createFileRoute('/profiles/$id')({
 
 function ProfileDetailPage() {
   const { loaded, modelGroups, skills } = Route.useLoaderData()
-  const [tab, setTab] = useState<'basics' | 'skills'>('basics')
+  const [tab, setTab] = useState<'basics' | 'skills' | 'communication'>('basics')
 
   return (
     <div>
@@ -79,9 +86,10 @@ function ProfileDetailPage() {
         items={[
           { id: 'basics', label: '1. basics' },
           { id: 'skills', label: '2. skills' },
+          { id: 'communication', label: '3. communication' },
         ]}
         active={tab}
-        onChange={(t) => setTab(t as 'basics' | 'skills')}
+        onChange={(t) => setTab(t as 'basics' | 'skills' | 'communication')}
       />
 
       {tab === 'basics' && (
@@ -146,7 +154,65 @@ function ProfileDetailPage() {
           skills={skills}
         />
       )}
+
+      {tab === 'communication' && (
+        <ProfileCommunicationCard profileId={loaded.profile.id} />
+      )}
     </div>
+  )
+}
+
+function ProfileCommunicationCard({ profileId }: { profileId: string }) {
+  const { state, hydrated, update } = useHarnessPrototype()
+  const persisted = state.profileDefaults[profileId]
+  const saved = persisted ?? DEFAULT_PROFILE_COMMUNICATION
+  const [value, setValue] = useState<ProfileCommunicationDefaults>(saved)
+  const [savedAt, setSavedAt] = useState<number | null>(null)
+
+  useEffect(() => {
+    if (hydrated) setValue(saved)
+  }, [hydrated, profileId, saved])
+
+  const dirty = !persisted || JSON.stringify(value) !== JSON.stringify(saved)
+  const save = () => {
+    update((current) => ({
+      ...current,
+      profileDefaults: { ...current.profileDefaults, [profileId]: value },
+    }))
+    setSavedAt(Date.now())
+  }
+
+  return (
+    <section className="rounded-md border border-frost bg-snow p-5 shadow-baziu-sm">
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <h3 className="m-0 font-body text-[0.95rem] font-semibold normal-case text-chocolate">
+          Communication defaults
+        </h3>
+        <PrototypeBadge />
+      </div>
+      <p className="muted mb-4">
+        Copied into new harness member slots after preset resolution. Existing templates and
+        live harnesses never inherit later changes. Stored only in this browser.
+      </p>
+      {!persisted && hydrated && (
+        <p className="mb-4 rounded-md border border-frost bg-ivory px-3 py-2 text-xs leading-5 text-mocha">
+          No prototype defaults are saved for this existing profile yet. Review the initial Open
+          Team-compatible values below and save them before applying them to a harness.
+        </p>
+      )}
+      <ProfileCommunicationEditor value={value} onChange={setValue} />
+      <div className="mt-4 flex items-center gap-3">
+        <button
+          type="button"
+          className="btn-primary"
+          disabled={!hydrated || !dirty}
+          onClick={save}
+        >
+          save prototype defaults
+        </button>
+        {savedAt && !dirty && <span className="text-xs text-sapphire">saved locally</span>}
+      </div>
+    </section>
   )
 }
 

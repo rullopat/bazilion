@@ -15,11 +15,13 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as SkillsIndexRouteImport } from './routes/skills/index'
 import { Route as ProfilesIndexRouteImport } from './routes/profiles/index'
 import { Route as ProfileGroupsIndexRouteImport } from './routes/profile-groups/index'
+import { Route as HarnessesIndexRouteImport } from './routes/harnesses/index'
 import { Route as GroupsIndexRouteImport } from './routes/groups/index'
 import { Route as ConfigIndexRouteImport } from './routes/config/index'
 import { Route as AgentsIndexRouteImport } from './routes/agents/index'
 import { Route as ProfilesIdRouteImport } from './routes/profiles/$id'
 import { Route as ProfileGroupsIdRouteImport } from './routes/profile-groups/$id'
+import { Route as HarnessesIdRouteImport } from './routes/harnesses/$id'
 import { Route as ConfigTokensRouteImport } from './routes/config/tokens'
 import { Route as ConfigServicesRouteImport } from './routes/config/services'
 import { Route as ConfigMcpRouteImport } from './routes/config/mcp'
@@ -61,6 +63,11 @@ const ProfileGroupsIndexRoute = ProfileGroupsIndexRouteImport.update({
   path: '/profile-groups/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const HarnessesIndexRoute = HarnessesIndexRouteImport.update({
+  id: '/harnesses/',
+  path: '/harnesses/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const GroupsIndexRoute = GroupsIndexRouteImport.update({
   id: '/groups/',
   path: '/groups/',
@@ -84,6 +91,11 @@ const ProfilesIdRoute = ProfilesIdRouteImport.update({
 const ProfileGroupsIdRoute = ProfileGroupsIdRouteImport.update({
   id: '/profile-groups/$id',
   path: '/profile-groups/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HarnessesIdRoute = HarnessesIdRouteImport.update({
+  id: '/harnesses/$id',
+  path: '/harnesses/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ConfigTokensRoute = ConfigTokensRouteImport.update({
@@ -146,11 +158,13 @@ export interface FileRoutesByFullPath {
   '/config/mcp': typeof ConfigMcpRoute
   '/config/services': typeof ConfigServicesRoute
   '/config/tokens': typeof ConfigTokensRoute
+  '/harnesses/$id': typeof HarnessesIdRoute
   '/profile-groups/$id': typeof ProfileGroupsIdRoute
   '/profiles/$id': typeof ProfilesIdRoute
   '/agents/': typeof AgentsIndexRoute
   '/config/': typeof ConfigIndexRoute
   '/groups/': typeof GroupsIndexRoute
+  '/harnesses/': typeof HarnessesIndexRoute
   '/profile-groups/': typeof ProfileGroupsIndexRoute
   '/profiles/': typeof ProfilesIndexRoute
   '/skills/': typeof SkillsIndexRoute
@@ -169,11 +183,13 @@ export interface FileRoutesByTo {
   '/config/mcp': typeof ConfigMcpRoute
   '/config/services': typeof ConfigServicesRoute
   '/config/tokens': typeof ConfigTokensRoute
+  '/harnesses/$id': typeof HarnessesIdRoute
   '/profile-groups/$id': typeof ProfileGroupsIdRoute
   '/profiles/$id': typeof ProfilesIdRoute
   '/agents': typeof AgentsIndexRoute
   '/config': typeof ConfigIndexRoute
   '/groups': typeof GroupsIndexRoute
+  '/harnesses': typeof HarnessesIndexRoute
   '/profile-groups': typeof ProfileGroupsIndexRoute
   '/profiles': typeof ProfilesIndexRoute
   '/skills': typeof SkillsIndexRoute
@@ -193,11 +209,13 @@ export interface FileRoutesById {
   '/config/mcp': typeof ConfigMcpRoute
   '/config/services': typeof ConfigServicesRoute
   '/config/tokens': typeof ConfigTokensRoute
+  '/harnesses/$id': typeof HarnessesIdRoute
   '/profile-groups/$id': typeof ProfileGroupsIdRoute
   '/profiles/$id': typeof ProfilesIdRoute
   '/agents/': typeof AgentsIndexRoute
   '/config/': typeof ConfigIndexRoute
   '/groups/': typeof GroupsIndexRoute
+  '/harnesses/': typeof HarnessesIndexRoute
   '/profile-groups/': typeof ProfileGroupsIndexRoute
   '/profiles/': typeof ProfilesIndexRoute
   '/skills/': typeof SkillsIndexRoute
@@ -218,11 +236,13 @@ export interface FileRouteTypes {
     | '/config/mcp'
     | '/config/services'
     | '/config/tokens'
+    | '/harnesses/$id'
     | '/profile-groups/$id'
     | '/profiles/$id'
     | '/agents/'
     | '/config/'
     | '/groups/'
+    | '/harnesses/'
     | '/profile-groups/'
     | '/profiles/'
     | '/skills/'
@@ -241,11 +261,13 @@ export interface FileRouteTypes {
     | '/config/mcp'
     | '/config/services'
     | '/config/tokens'
+    | '/harnesses/$id'
     | '/profile-groups/$id'
     | '/profiles/$id'
     | '/agents'
     | '/config'
     | '/groups'
+    | '/harnesses'
     | '/profile-groups'
     | '/profiles'
     | '/skills'
@@ -264,11 +286,13 @@ export interface FileRouteTypes {
     | '/config/mcp'
     | '/config/services'
     | '/config/tokens'
+    | '/harnesses/$id'
     | '/profile-groups/$id'
     | '/profiles/$id'
     | '/agents/'
     | '/config/'
     | '/groups/'
+    | '/harnesses/'
     | '/profile-groups/'
     | '/profiles/'
     | '/skills/'
@@ -288,11 +312,13 @@ export interface RootRouteChildren {
   ConfigMcpRoute: typeof ConfigMcpRoute
   ConfigServicesRoute: typeof ConfigServicesRoute
   ConfigTokensRoute: typeof ConfigTokensRoute
+  HarnessesIdRoute: typeof HarnessesIdRoute
   ProfileGroupsIdRoute: typeof ProfileGroupsIdRoute
   ProfilesIdRoute: typeof ProfilesIdRoute
   AgentsIndexRoute: typeof AgentsIndexRoute
   ConfigIndexRoute: typeof ConfigIndexRoute
   GroupsIndexRoute: typeof GroupsIndexRoute
+  HarnessesIndexRoute: typeof HarnessesIndexRoute
   ProfileGroupsIndexRoute: typeof ProfileGroupsIndexRoute
   ProfilesIndexRoute: typeof ProfilesIndexRoute
   SkillsIndexRoute: typeof SkillsIndexRoute
@@ -348,6 +374,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProfileGroupsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/harnesses/': {
+      id: '/harnesses/'
+      path: '/harnesses'
+      fullPath: '/harnesses/'
+      preLoaderRoute: typeof HarnessesIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/groups/': {
       id: '/groups/'
       path: '/groups'
@@ -381,6 +414,13 @@ declare module '@tanstack/react-router' {
       path: '/profile-groups/$id'
       fullPath: '/profile-groups/$id'
       preLoaderRoute: typeof ProfileGroupsIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/harnesses/$id': {
+      id: '/harnesses/$id'
+      path: '/harnesses/$id'
+      fullPath: '/harnesses/$id'
+      preLoaderRoute: typeof HarnessesIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/config/tokens': {
@@ -464,11 +504,13 @@ const rootRouteChildren: RootRouteChildren = {
   ConfigMcpRoute: ConfigMcpRoute,
   ConfigServicesRoute: ConfigServicesRoute,
   ConfigTokensRoute: ConfigTokensRoute,
+  HarnessesIdRoute: HarnessesIdRoute,
   ProfileGroupsIdRoute: ProfileGroupsIdRoute,
   ProfilesIdRoute: ProfilesIdRoute,
   AgentsIndexRoute: AgentsIndexRoute,
   ConfigIndexRoute: ConfigIndexRoute,
   GroupsIndexRoute: GroupsIndexRoute,
+  HarnessesIndexRoute: HarnessesIndexRoute,
   ProfileGroupsIndexRoute: ProfileGroupsIndexRoute,
   ProfilesIndexRoute: ProfilesIndexRoute,
   SkillsIndexRoute: SkillsIndexRoute,

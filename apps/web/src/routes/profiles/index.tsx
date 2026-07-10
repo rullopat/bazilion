@@ -3,8 +3,12 @@ import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { useState } from 'react'
 import { Button } from '../../components/Button'
+import { ProfileCommunicationEditor } from '../../components/harness/ProfileCommunicationEditor'
+import { PrototypeBadge } from '../../components/harness/PrototypeBadge'
+import { useHarnessPrototype } from '../../hooks/use-harness-prototype'
 import { TemplatesTabs } from '../../components/TemplatesTabs'
 import { daemonClient } from '../../lib/daemon-client'
+import { DEFAULT_PROFILE_COMMUNICATION } from '../../lib/harness-prototype'
 
 interface ProfileWithCounts extends Profile {
   agentCount: number
@@ -149,6 +153,7 @@ type TabKey =
   | 'tools'
   | 'heartbeat'
   | 'skills'
+  | 'communication'
 
 function CreateProfileForm({
   modelGroups,
@@ -161,6 +166,7 @@ function CreateProfileForm({
   templates: TemplatesResponse
   onCreated: () => void
 }) {
+  const { update: updateHarnessPrototype } = useHarnessPrototype()
   const [tab, setTab] = useState<TabKey>('basics')
   const [id, setId] = useState('')
   const [name, setName] = useState('')
@@ -186,6 +192,7 @@ function CreateProfileForm({
     if (!on && tab === key) setTab('basics')
   }
   const [skillsMode, setSkillsMode] = useState<'all' | 'selected'>('all')
+  const [communication, setCommunication] = useState(DEFAULT_PROFILE_COMMUNICATION)
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -235,6 +242,14 @@ function CreateProfileForm({
         const e2 = (await res.json().catch(() => null)) as { error?: string } | null
         throw new Error(e2?.error ?? res.statusText)
       }
+      const profileId = id.trim()
+      updateHarnessPrototype((current) => ({
+        ...current,
+        profileDefaults: {
+          ...current.profileDefaults,
+          [profileId]: communication,
+        },
+      }))
       // Reset
       setId('')
       setName('')
@@ -248,6 +263,7 @@ function CreateProfileForm({
       setEnableHeartbeat(false)
       setPicked(new Set())
       setSkillsMode('all')
+      setCommunication(DEFAULT_PROFILE_COMMUNICATION)
       setTab('basics')
       onCreated()
     } catch (err) {
@@ -272,6 +288,7 @@ function CreateProfileForm({
           { id: 'tools', label: 'TOOLS', disabled: !enableTools },
           { id: 'heartbeat', label: 'HEARTBEAT', disabled: !enableHeartbeat },
           { id: 'skills', label: 'skills' },
+          { id: 'communication', label: 'communication' },
         ]}
         active={tab}
         onChange={(t) => setTab(t as TabKey)}
@@ -483,6 +500,20 @@ function CreateProfileForm({
               ))
             )}
           </div>
+        </div>
+      )}
+
+      {tab === 'communication' && (
+        <div>
+          <div className="mb-3 flex items-center gap-2">
+            <h4 className="text-sm font-semibold text-chocolate">Communication defaults</h4>
+            <PrototypeBadge />
+          </div>
+          <p className="muted mb-4">
+            Copied into a harness preview when this profile is selected. These values stay in
+            this browser and are not sent to the daemon.
+          </p>
+          <ProfileCommunicationEditor value={communication} onChange={setCommunication} />
         </div>
       )}
 

@@ -4,6 +4,8 @@
 import type { Agent, Group } from '@bazilion/api-types'
 import { useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
+import { useHarnessPrototype } from '../hooks/use-harness-prototype'
+import { addDirectSpawnToPrototype } from '../lib/harness-prototype'
 import { DEFAULT_GROUP_ID } from '../lib/wire-constants'
 
 interface Props {
@@ -15,6 +17,7 @@ interface Props {
 
 export function SpawnDialog({ profileId, groupHint, groups, onClose }: Props) {
   const navigate = useNavigate()
+  const { update: updateHarnessPrototype } = useHarnessPrototype()
   const [name, setName] = useState('')
   const [groupId, setGroupId] = useState(groupHint ?? DEFAULT_GROUP_ID)
   const [busy, setBusy] = useState(false)
@@ -38,6 +41,13 @@ export function SpawnDialog({ profileId, groupHint, groups, onClose }: Props) {
         throw new Error(e.error ?? `${res.status} ${res.statusText}`)
       }
       const created = (await res.json()) as Agent
+      updateHarnessPrototype((current) =>
+        addDirectSpawnToPrototype({
+          state: current,
+          agent: created,
+          groupName: groups.find((group) => group.id === created.groupId)?.name,
+        }),
+      )
       onClose()
       await navigate({ to: '/', search: { agent: created.id } })
     } catch (e) {
