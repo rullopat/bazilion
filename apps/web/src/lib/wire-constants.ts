@@ -4,7 +4,7 @@
 // (`apps/daemon/src/core`) and re-exported through `@bazilion/api-types`. We
 // re-declare them here rather than reaching into daemon source so the web
 // app stays decoupled from Node-only deps (the architecture mandate is
-// "apps/web never reaches into daemon source" — see CLAUDE.md). Daemon-side
+// "apps/web never reaches into daemon source" — see AGENTS.md). Daemon-side
 // validation re-checks every wire string against the source of truth, so
 // a drift here surfaces as a 4xx, never as silent corruption.
 

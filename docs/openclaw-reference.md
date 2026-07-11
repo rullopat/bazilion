@@ -1,6 +1,6 @@
 # OpenClaw — reference for Bazilion contributors
 
-Bazilion's README and `CLAUDE.md` call the project "OpenClaw-inspired", and the daemon literally reads `~/.openclaw/skills/` when you run `bazilion skill import --from openclaw`. This doc captures what upstream OpenClaw actually is, so contributors know what we borrowed, what we deliberately didn't, and where the format we accept comes from.
+Bazilion's README and `AGENTS.md` call the project "OpenClaw-inspired", and the daemon literally reads `~/.openclaw/skills/` when you run `bazilion skill import --from openclaw`. This doc captures what upstream OpenClaw actually is, so contributors know what we borrowed, what we deliberately didn't, and where the format we accept comes from.
 
 Snapshot date: 2026-05-17. Source: `docs.openclaw.ai` + `github.com/openclaw/openclaw` `main`. Re-fetch before relying on exact counts.
 
@@ -179,7 +179,7 @@ Official registry: `github.com/openclaw/clawhub`. ~13,729 third-party skills as 
 
 **Borrowed:**
 
-- The **prompt-only skill model.** `apps/daemon/src/core/skills/` reads `SKILL.md` and injects the body into the system prompt of every attached agent. Helper scripts run via the agent's generic `bash` tool. See `CLAUDE.md` → "OpenClaw skill model: prompt-only".
+- The **prompt-only skill model.** `apps/daemon/src/core/skills/` reads `SKILL.md` and injects the body into the system prompt of every attached agent. Helper scripts run via the agent's generic `bash` tool. See `AGENTS.md` → "OpenClaw skill model: prompt-only".
 - The **`SKILL.md` + YAML frontmatter format.** Upstream skills "drop in unchanged" per the README — `bazilion skill import --from openclaw` resolves to `~/.openclaw/skills/` (see `apps/daemon/src/routes/skills.ts`).
 - The general idea of a per-user state root with a workspace concept. Bazilion's `~/.bazilion/groups/<slug>/` is roughly the analogue of OpenClaw's `<workspace>/`.
 
@@ -192,7 +192,7 @@ Official registry: `github.com/openclaw/clawhub`. ~13,729 third-party skills as 
 - The **plugin model** (28 hooks, TypeScript in-process modules, `openclaw.plugin.json`). Bazilion has no plugin SDK — all extensibility goes through skills + native daemon code.
 - **Channels.** Upstream's first-class WhatsApp/Telegram/iMessage/Signal transports have no Bazilion equivalent; we expose HTTP only.
 - **ClawHub.** No registry integration.
-- **JSON5 `openclaw.json`** config surface. Bazilion stores config in the daemon's SQLite (`config` table) + secrets in the encrypted `secrets` table (see `CLAUDE.md` → "Secrets and config").
+- **JSON5 `openclaw.json`** config surface. Bazilion stores config in the daemon's SQLite (`config` table) + secrets in the encrypted `secrets` table (see `AGENTS.md` → "Secrets and config").
 - The richer skill frontmatter (`user-invocable`, `command-dispatch`, `disable-model-invocation`, install recipes). Bazilion's skill loader only consumes `name` + `description` + body today.
 
 ## 7. Authoritative sources
