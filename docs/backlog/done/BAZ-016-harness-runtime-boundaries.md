@@ -1,7 +1,7 @@
 ---
 id: BAZ-016
 title: Harness ingress, egress, scheduler, and turn-boundary enforcement
-status: todo
+status: done
 size: L (1-2 weeks)
 created: 2026-07-10
 refined: 2026-07-10
@@ -131,3 +131,29 @@ and block insert cannot split across a crash or concurrent tick.
   mutation.
 - Full repository tests, root/web typechecks, lint, build, focused transport smoke tests,
   and release-gate default/readiness tests.
+
+## As-built (2026-07-11)
+
+- Added the shared compiled management contract gate at version 0. The daemon defaults
+  enforcement off, exposes requested/active/readiness/degraded state and decision counters
+  through health, and refuses startup when enforcement is requested before BAZ-017 raises
+  the contract to version 1.
+- User ingress is authorized before HTTP attachment persistence or Telegram media download,
+  then rechecked under the per-Agent lifecycle lease before active-turn registration and
+  worker start. Telegram rechecks after media fetch so revoked bytes are discarded without
+  persistence or queue insertion.
+- HTTP frames and Telegram typing, text, image, file, and fallback items independently
+  reauthorize Agent-to-user delivery immediately before their transport boundary. Later
+  frames observe policy revocation while already-sent bytes remain final.
+- Scheduler trigger occurrence claims combine current authorization, fired state, denial,
+  and allowed-turn registration in one transaction under the lifecycle lease. Inbox wakes
+  transactionally claim each unread row, terminally block denied rows, include only allowed
+  messages, and start no turn for an empty allowed set.
+- Migration `0011_harness_runtime_claims.sql` adds inbox claim/delivery state. Archived and
+  moved targets remain visible to the scheduler long enough for current-policy terminal
+  handling instead of accumulating retry loops.
+- Focused verification passed 75 tests across runtime boundaries, contract gating,
+  Telegram, HTTP communication, health, and triggers. Full verification passed 91 files /
+  714 tests, root and web typechecks, Biome lint (existing warnings only), root build, web
+  build, and `git diff --check`. No workflow, approval, production editor, or activation
+  behavior was added.

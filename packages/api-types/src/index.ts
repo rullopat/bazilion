@@ -746,7 +746,10 @@ export interface HealthReport {
   harnessManagement: {
     contractVersion: number
     enforcementRequested: boolean
+    enforcementActive: boolean
     releaseReady: boolean
+    degraded: boolean
+    decisions: { allowed: number; denied: number }
   }
 }
 

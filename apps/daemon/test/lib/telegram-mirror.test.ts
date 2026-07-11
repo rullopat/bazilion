@@ -77,6 +77,89 @@ function frameEvent(event: ChatFrame & { kind: 'event' }): ChatFrame {
 }
 
 describe('mirrorAgentTurnFrame', () => {
+  test('revoked Agent-to-user edge blocks text, image, and file before Telegram send', async () => {
+    const { api, sends, photos, documents } = makeApi()
+    installMirrorDepsResolver(() => ({ db: env.db, api, chatId: CHAT_ID }))
+    const agent = spawnAgent(env.db, env.paths, { profileId: 'base', groupId: env.groupId })
+    agentRepo.setTelegramTopicId(env.db, agent.id, 42)
+    env.db.raw.run(
+      "DELETE FROM live_harness_edges WHERE group_id = ? AND source_kind = 'agent' AND target_kind = 'user'",
+      [env.groupId],
+    )
+    const previous = process.env.BAZILION_HARNESS_ENFORCEMENT
+    process.env.BAZILION_HARNESS_ENFORCEMENT = 'on'
+    try {
+      await mirrorAgentTurnFrame(
+        agent.id,
+        { kind: 'event', event: { type: 'assistant_message', text: 'secret text' } },
+        'revoked:text',
+      )
+      await mirrorAgentTurnFrame(
+        agent.id,
+        {
+          kind: 'event',
+          event: {
+            type: 'tool_result',
+            id: 'shot',
+            name: 'shot',
+            result: 'secret image',
+            images: [{ mimeType: 'image/png', data: 'AQ==' }],
+          },
+        },
+        'revoked:image',
+      )
+      await mirrorAgentTurnFrame(
+        agent.id,
+        {
+          kind: 'event',
+          event: { type: 'file', name: 'secret.txt', mimeType: 'text/plain', data: 'c2VjcmV0' },
+        },
+        'revoked:file',
+      )
+      expect(sends).toHaveLength(0)
+      expect(photos).toHaveLength(0)
+      expect(documents).toHaveLength(0)
+      expect(
+        env.db.raw
+          .query<{ count: number }, []>('SELECT COUNT(*) count FROM harness_block_events')
+          .get()?.count,
+      ).toBe(3)
+    } finally {
+      if (previous === undefined) delete process.env.BAZILION_HARNESS_ENFORCEMENT
+      else process.env.BAZILION_HARNESS_ENFORCEMENT = previous
+    }
+  })
+
+  test('Telegram mirror observes revocation between independently sent frames', async () => {
+    const { api, sends } = makeApi()
+    installMirrorDepsResolver(() => ({ db: env.db, api, chatId: CHAT_ID }))
+    const agent = spawnAgent(env.db, env.paths, { profileId: 'base', groupId: env.groupId })
+    agentRepo.setTelegramTopicId(env.db, agent.id, 42)
+    const previous = process.env.BAZILION_HARNESS_ENFORCEMENT
+    process.env.BAZILION_HARNESS_ENFORCEMENT = 'on'
+    try {
+      await mirrorAgentTurnFrame(
+        agent.id,
+        { kind: 'event', event: { type: 'assistant_message', text: 'sent first' } },
+        'frame:one',
+      )
+      expect(sends.map((item) => item.text)).toEqual(['sent first'])
+      env.db.raw.run(
+        "DELETE FROM live_harness_edges WHERE group_id = ? AND source_kind = 'agent' AND target_kind = 'user'",
+        [env.groupId],
+      )
+      await mirrorAgentTurnFrame(
+        agent.id,
+        { kind: 'event', event: { type: 'assistant_message', text: 'blocked later' } },
+        'frame:two',
+      )
+      expect(sends.map((item) => item.text)).toEqual(['sent first'])
+    } finally {
+      if (previous === undefined) delete process.env.BAZILION_HARNESS_ENFORCEMENT
+      else process.env.BAZILION_HARNESS_ENFORCEMENT = previous
+    }
+  })
+
   test('no-op when bot/mirror deps not installed', async () => {
     // No installMirrorDepsResolver call — resolver returns null.
     await mirrorAgentTurnFrame('any-id', {

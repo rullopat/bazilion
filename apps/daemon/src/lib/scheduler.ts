@@ -27,8 +27,14 @@
 
 import type { AgentTrigger, Message } from '@bazilion/api-types'
 import { agentRepo, messageRepo, triggerRepo } from '../core/index.ts'
-import { isActiveAgent } from './agent-cancel.ts'
+import { isActiveAgent, registerAgent, unregisterAgent } from './agent-cancel.ts'
+import { acquireAgentLifecycleLease } from './agent-lifecycle-lease.ts'
 import { runAgentTurn } from './agent-turn.ts'
+import {
+  CommunicationDeniedError,
+  claimDeliverableInbox,
+  claimSchedulerTrigger,
+} from './communication.ts'
 import { matchesCron, type ParsedCron, parseCron } from './cron.ts'
 import { getCtx } from './ctx.ts'
 
@@ -83,17 +89,53 @@ function isDue(t: AgentTrigger, now: number, cronCache: Map<string, ParsedCron>)
   return false
 }
 
-async function fireTrigger(t: AgentTrigger): Promise<void> {
+function scheduledOccurrence(t: AgentTrigger, now: number): number {
+  if (t.kind === 'cron') return floorToMinute(now)
+  const baseline = t.lastFiredAt ?? t.createdAt
+  const every = (t.intervalSec ?? 0) * 1000
+  if (every <= 0) return now
+  return baseline + Math.floor((now - baseline) / every) * every
+}
+
+async function fireTrigger(t: AgentTrigger, occurrence: number): Promise<void> {
   const s = state()
   if (s.firing.has(t.id)) return
   s.firing.add(t.id)
   const ctx = getCtx()
+  const releaseLease = await acquireAgentLifecycleLease(t.agentId)
+  if (isActiveAgent(t.agentId)) {
+    releaseLease()
+    s.firing.delete(t.id)
+    return
+  }
+  const controller = new AbortController()
+  let registered = false
   // Mark fired first — if the agent turn fails, we still don't want to loop
   // on the same trigger every tick. The user will see it in `trigger list`
   // (last_fired_at updated) and the run will be marked failed.
   try {
-    triggerRepo.markFired(ctx.db, t.id)
+    const claimed = claimSchedulerTrigger(ctx.db, {
+      triggerId: t.id,
+      agentId: t.agentId,
+      occurrence,
+      onAllowed: () => {
+        registerAgent(t.agentId, controller)
+        registered = true
+      },
+    })
+    if (!claimed) {
+      releaseLease()
+      s.firing.delete(t.id)
+      return
+    }
   } catch (err) {
+    if (err instanceof CommunicationDeniedError) {
+      releaseLease()
+      s.firing.delete(t.id)
+      return
+    }
+    releaseLease()
+    if (registered) unregisterAgent(t.agentId)
     console.error(`[scheduler] markFired failed for ${t.id}:`, err)
     s.firing.delete(t.id)
     return
@@ -102,7 +144,16 @@ async function fireTrigger(t: AgentTrigger): Promise<void> {
     // Drain the turn; we don't stream to anyone. Errors surface as `fatal`
     // frames which we log but don't throw — the run row in the DB carries
     // the real status.
-    for await (const frame of runAgentTurn(t.agentId, t.message)) {
+    for await (const frame of runAgentTurn(t.agentId, t.message, {
+      authorization: {
+        origin: 'scheduler_trigger',
+        attemptKind: 'scheduler_trigger',
+        attemptId: `${t.id}:${occurrence}`,
+      },
+      acquiredLeaseRelease: releaseLease,
+      controller,
+      alreadyRegistered: true,
+    })) {
       if (frame.kind === 'fatal') {
         console.error(`[scheduler] trigger ${t.id} fatal:`, frame.error)
       }
@@ -195,15 +246,25 @@ async function fireInboxWake(agentId: string): Promise<void> {
   const key = `msg-wake:${agentId}`
   if (s.firing.has(key)) return
   const ctx = getCtx()
+  s.firing.add(key)
+  const releaseLease = await acquireAgentLifecycleLease(agentId)
   // Skip agents with an active turn — they'll pick up the messages on their
   // next natural turn or via the next tick after the current one ends.
-  if (isActiveAgent(agentId)) return
-
-  s.firing.add(key)
+  if (isActiveAgent(agentId)) {
+    releaseLease()
+    s.firing.delete(key)
+    return
+  }
+  const controller = new AbortController()
+  let registered = false
   try {
-    const msgs = messageRepo.drainUnreadForAgent(ctx.db, agentId)
+    const msgs = claimDeliverableInbox(ctx.db, agentId, () => {
+      registerAgent(agentId, controller)
+      registered = true
+    })
     if (msgs.length === 0) {
       // Raced with another consumer; nothing to do.
+      releaseLease()
       return
     }
     const fromIds = new Set(msgs.map((m) => m.fromAgentId))
@@ -215,7 +276,17 @@ async function fireInboxWake(agentId: string): Promise<void> {
     const prompt = buildInboxPrompt(agentId, msgs, fromNames)
 
     try {
-      for await (const frame of runAgentTurn(agentId, prompt)) {
+      for await (const frame of runAgentTurn(agentId, prompt, {
+        skipUserIngress: true,
+        authorization: {
+          origin: 'scheduler_inbox',
+          attemptKind: 'inbox_wake',
+          attemptId: `${agentId}:${msgs.map((message) => message.id).join(',')}`,
+        },
+        acquiredLeaseRelease: releaseLease,
+        controller,
+        alreadyRegistered: true,
+      })) {
         if (frame.kind === 'fatal') {
           console.error(`[scheduler] inbox wake ${agentId} fatal:`, frame.error)
         }
@@ -224,6 +295,8 @@ async function fireInboxWake(agentId: string): Promise<void> {
       console.error(`[scheduler] inbox wake ${agentId} unexpected throw:`, err)
     }
   } catch (err) {
+    releaseLease()
+    if (registered) unregisterAgent(agentId)
     console.error(`[scheduler] inbox drain failed for ${agentId}:`, err)
   } finally {
     s.firing.delete(key)
@@ -247,7 +320,7 @@ async function tick(): Promise<void> {
   for (const t of triggers) {
     if (isDue(t, now, s.cronCache)) {
       // Fire async, don't await — the tick itself must stay fast.
-      void fireTrigger(t)
+      void fireTrigger(t, scheduledOccurrence(t, now))
     }
   }
   for (const agentId of recipients) {

@@ -21,7 +21,12 @@ import {
   resolvePaths,
   webTokenRepo,
 } from '../core/index.ts'
+import { communicationDecisionMetrics } from '../lib/communication.ts'
 import { getCtx } from '../lib/ctx.ts'
+import {
+  HARNESS_MANAGEMENT_CONTRACT_VERSION,
+  harnessEnforcementRequested,
+} from '../lib/harness-contract.ts'
 import { loadProviderConfigFromEnv } from '../runtime/index.ts'
 
 export const miscRouter = new Hono()
@@ -148,9 +153,12 @@ miscRouter.get('/health', (c) => {
       tickMs: Number(process.env.BAZILION_SCHEDULER_TICK_MS ?? 5_000),
     },
     harnessManagement: {
-      contractVersion: 0,
-      enforcementRequested: process.env.BAZILION_HARNESS_ENFORCEMENT === 'on',
+      contractVersion: HARNESS_MANAGEMENT_CONTRACT_VERSION,
+      enforcementRequested: harnessEnforcementRequested(),
+      enforcementActive: harnessEnforcementRequested() && HARNESS_MANAGEMENT_CONTRACT_VERSION >= 1,
       releaseReady: false,
+      degraded: harnessEnforcementRequested() && HARNESS_MANAGEMENT_CONTRACT_VERSION < 1,
+      decisions: { ...communicationDecisionMetrics },
     },
   }
   return c.json(report)

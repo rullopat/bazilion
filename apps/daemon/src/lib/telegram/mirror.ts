@@ -18,6 +18,7 @@ import type { ChatFrame, TelegramMirrorMode, ToolResultImage } from '@bazilion/a
 import { InputFile } from 'grammy'
 import type { BazilionDb } from '../../core/db/client.ts'
 import { agentRepo } from '../../core/index.ts'
+import { authorizeAgentEgress, CommunicationDeniedError } from '../communication.ts'
 import { _resetLoopGuardForTest, allowTelegramOutboundNoise } from './loop-guard.ts'
 import { renderTelegramMessages, stripTelegramHtml, TELEGRAM_SAFE_BUDGET } from './markdown.ts'
 import { enqueueOutbound } from './outbound-queue.ts'
@@ -76,6 +77,7 @@ export function installMirrorDepsResolver(resolver: () => MirrorDeps | null): vo
 export async function mirrorAgentTurnFrame(
   agentIdOrAgent: string,
   frame: ChatFrame,
+  attemptBase: string = `telegram-mirror:${Date.now()}`,
 ): Promise<void> {
   const deps = _liveDepsResolver?.()
   if (!deps) return
@@ -92,14 +94,14 @@ export async function mirrorAgentTurnFrame(
   // screenshot would never receive it (the tool_result text is suppressed).
   const imagePayload = frameToolResultImages(frame)
   if (imagePayload) {
-    await mirrorImages(deps, topicId, agent.id, imagePayload)
+    await mirrorImages(deps, topicId, agent.id, imagePayload, `${attemptBase}:images`)
     // fall through — there may also be a text line to mirror (verbose mode)
   }
 
   // Files the agent delivered (deliver_file) go out as Telegram documents,
   // regardless of mirror mode — they're deliverables, not tool noise.
   if (frame.kind === 'event' && frame.event.type === 'file') {
-    await mirrorFile(deps, topicId, agent.id, frame.event)
+    await mirrorFile(deps, topicId, agent.id, frame.event, `${attemptBase}:file`)
   }
 
   const text = renderFrame(frame, agent.telegramMirrorMode)
@@ -124,7 +126,10 @@ export async function mirrorAgentTurnFrame(
     ? renderTelegramMessages(text, TELEGRAM_SAFE_BUDGET)
     : [truncateForTelegram(text)]
 
-  for (const chunk of chunks) {
+  for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+    const chunk = chunks[chunkIndex]
+    if (!chunk) continue
+    if (!telegramEgressAllowed(deps, agent.id, `${attemptBase}:text:${chunkIndex}`)) return
     try {
       await enqueueOutbound(deps.chatId, () =>
         deps.api.sendMessage(deps.chatId, chunk, {
@@ -145,6 +150,8 @@ export async function mirrorAgentTurnFrame(
       // never costs the user their reply.
       if (isReply && isParseEntitiesError(e)) {
         try {
+          if (!telegramEgressAllowed(deps, agent.id, `${attemptBase}:text:${chunkIndex}:fallback`))
+            return
           await enqueueOutbound(deps.chatId, () =>
             deps.api.sendMessage(deps.chatId, stripTelegramHtml(chunk), {
               message_thread_id: topicId,
@@ -199,9 +206,13 @@ async function mirrorImages(
   topicId: number,
   agentId: string,
   payload: { images: ToolResultImage[]; caption: string },
+  attemptBase: string,
 ): Promise<void> {
   const caption = clip(payload.caption, CAPTION_BUDGET)
-  for (const img of payload.images) {
+  for (let imageIndex = 0; imageIndex < payload.images.length; imageIndex++) {
+    const img = payload.images[imageIndex]
+    if (!img) continue
+    if (!telegramEgressAllowed(deps, agentId, `${attemptBase}:${imageIndex}`)) return
     const buf = Buffer.from(img.data, 'base64')
     const ext = img.mimeType.includes('jpeg') ? 'jpg' : 'png'
     // InputFile wraps a Buffer as a single-use stream — build a fresh one per
@@ -217,6 +228,9 @@ async function mirrorImages(
         return
       }
       try {
+        if (!telegramEgressAllowed(deps, agentId, `${attemptBase}:${imageIndex}:fallback`)) {
+          return
+        }
         await enqueueOutbound(deps.chatId, () =>
           deps.api.sendDocument(deps.chatId, file(), { message_thread_id: topicId, caption }),
         )
@@ -236,7 +250,9 @@ async function mirrorFile(
   topicId: number,
   agentId: string,
   ev: { name: string; mimeType: string; data: string },
+  attemptId: string,
 ): Promise<void> {
+  if (!telegramEgressAllowed(deps, agentId, attemptId)) return
   const buf = Buffer.from(ev.data, 'base64')
   try {
     await enqueueOutbound(deps.chatId, () =>
@@ -254,6 +270,20 @@ async function mirrorFile(
       `telegram mirror: file send failed for agent ${agentId} —`,
       e instanceof Error ? e.message : String(e),
     )
+  }
+}
+
+function telegramEgressAllowed(deps: MirrorDeps, agentId: string, attemptId: string): boolean {
+  try {
+    authorizeAgentEgress(deps.db, agentId, {
+      origin: 'telegram_mirror',
+      attemptKind: 'telegram_egress',
+      attemptId,
+    })
+    return true
+  } catch (error) {
+    if (error instanceof CommunicationDeniedError) return false
+    throw error
   }
 }
 
@@ -397,7 +427,10 @@ const _typingIntervals = new Map<string, ReturnType<typeof setInterval>>()
  * second call for the same agent clears the prior interval first so we
  * don't leak timers if the lifecycle ever races.
  */
-export function mirrorTypingStart(agentId: string): void {
+export function mirrorTypingStart(
+  agentId: string,
+  attemptId: string = `telegram-typing:${Date.now()}`,
+): void {
   const deps = _liveDepsResolver?.()
   if (!deps) return
   const topicId = agentRepo.getTelegramTopicId(deps.db, agentId)
@@ -406,14 +439,21 @@ export function mirrorTypingStart(agentId: string): void {
   // Clear any prior interval for this agent before starting a new one.
   mirrorTypingStop(agentId)
 
-  const fire = (): void => {
+  const fire = (): boolean => {
+    if (!telegramEgressAllowed(deps, agentId, attemptId)) {
+      mirrorTypingStop(agentId)
+      return false
+    }
     deps.api.sendChatAction(deps.chatId, 'typing', { message_thread_id: topicId }).catch(() => {
       // Indicator failures are silent — losing the bubble is purely
       // cosmetic; the actual reply still mirrors when ready.
     })
+    return true
   }
-  fire()
-  const interval = setInterval(fire, TYPING_REFIRE_MS)
+  if (!fire()) return
+  const interval = setInterval(() => {
+    fire()
+  }, TYPING_REFIRE_MS)
   _typingIntervals.set(agentId, interval)
 }
 

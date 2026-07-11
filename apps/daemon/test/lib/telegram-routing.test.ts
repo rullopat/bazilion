@@ -4,12 +4,13 @@
 // sent in reply.
 
 import type { Update } from 'grammy/types'
-import { afterEach, beforeEach, describe, expect, test } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { spawnAgent } from '../../src/core/agent/spawn.ts'
 import { createProfile } from '../../src/core/profile/create.ts'
 import * as agentRepo from '../../src/core/repos/agents.ts'
 import { openConfig } from '../../src/core/repos/config.ts'
 import * as telegramAclRepo from '../../src/core/repos/telegram-acl.ts'
+import { pendingMessageCount } from '../../src/lib/telegram/inbound-queue.ts'
 import {
   _resetRouterStateForTest,
   type ReplyApi,
@@ -108,6 +109,79 @@ beforeEach(() => {
 afterEach(() => env.cleanup())
 
 describe('routeUpdate classification', () => {
+  test('policy denial happens before Telegram media lookup or download', async () => {
+    const agent = spawnAgent(env.db, env.paths, { profileId: 'base', groupId: env.groupId })
+    agentRepo.setTelegramTopicId(env.db, agent.id, 42)
+    env.db.raw.run("DELETE FROM live_harness_edges WHERE group_id = ? AND source_kind = 'user'", [
+      env.groupId,
+    ])
+    const previous = process.env.BAZILION_HARNESS_ENFORCEMENT
+    process.env.BAZILION_HARNESS_ENFORCEMENT = 'on'
+    const { api, sends } = makeReplyApi()
+    let lookups = 0
+    api.getFile = async () => {
+      lookups++
+      return { file_path: 'secret.jpg' }
+    }
+    const update = messageUpdate({ threadId: 42 })
+    ;(
+      update.message as never as {
+        photo: Array<{ file_id: string; file_size: number; width: number; height: number }>
+      }
+    ).photo = [{ file_id: 'secret', file_size: 4, width: 1, height: 1 }]
+    try {
+      const outcome = await routeUpdate(
+        { db: env.db, paths: env.paths, authToken: 'token', botToken: 'bot', api, chatId: CHAT_ID },
+        update,
+      )
+      expect(outcome).toMatchObject({ kind: 'agent_topic', queued: false })
+      expect(lookups).toBe(0)
+      expect(pendingMessageCount(agent.id)).toBe(0)
+      expect(sends.at(-1)?.text).toMatch(/blocked by Group policy/)
+    } finally {
+      if (previous === undefined) delete process.env.BAZILION_HARNESS_ENFORCEMENT
+      else process.env.BAZILION_HARNESS_ENFORCEMENT = previous
+    }
+  })
+
+  test('policy revocation during Telegram media fetch discards bytes before enqueue', async () => {
+    const agent = spawnAgent(env.db, env.paths, { profileId: 'base', groupId: env.groupId })
+    agentRepo.setTelegramTopicId(env.db, agent.id, 42)
+    const previous = process.env.BAZILION_HARNESS_ENFORCEMENT
+    process.env.BAZILION_HARNESS_ENFORCEMENT = 'on'
+    const { api } = makeReplyApi()
+    api.getFile = async () => ({ file_path: 'secret.jpg' })
+    vi.stubGlobal('fetch', async () => {
+      env.db.raw.run("DELETE FROM live_harness_edges WHERE group_id = ? AND source_kind = 'user'", [
+        env.groupId,
+      ])
+      return new Response(new Uint8Array([1, 2, 3]), { headers: { 'content-type': 'image/jpeg' } })
+    })
+    const update = messageUpdate({ threadId: 42 })
+    ;(
+      update.message as never as {
+        photo: Array<{ file_id: string; file_size: number; width: number; height: number }>
+      }
+    ).photo = [{ file_id: 'secret', file_size: 3, width: 1, height: 1 }]
+    try {
+      const outcome = await routeUpdate(
+        { db: env.db, paths: env.paths, authToken: 'token', botToken: 'bot', api, chatId: CHAT_ID },
+        update,
+      )
+      expect(outcome).toMatchObject({ kind: 'agent_topic', queued: false })
+      expect(pendingMessageCount(agent.id)).toBe(0)
+      expect(
+        env.db.raw
+          .query<{ count: number }, []>('SELECT COUNT(*) count FROM harness_block_events')
+          .get()?.count,
+      ).toBe(1)
+    } finally {
+      vi.unstubAllGlobals()
+      if (previous === undefined) delete process.env.BAZILION_HARNESS_ENFORCEMENT
+      else process.env.BAZILION_HARNESS_ENFORCEMENT = previous
+    }
+  })
+
   test('non-message updates flow through with kind=non_message', async () => {
     const { api, sends } = makeReplyApi()
     const u: Update = { update_id: 1, my_chat_member: {} as never }

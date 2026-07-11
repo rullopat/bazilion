@@ -12,6 +12,8 @@ interface RawMessage {
   read_at: number | null
   policy_disposition: string
   policy_blocked_at: number | null
+  policy_claimed_at: number | null
+  policy_delivered_at: number | null
 }
 
 function toMessage(r: RawMessage): Message {
@@ -59,7 +61,7 @@ export function listInbox(
   opts?: { unreadOnly?: boolean },
 ): Message[] {
   const sql = opts?.unreadOnly
-    ? "SELECT * FROM messages WHERE to_agent_id = ? AND read_at IS NULL AND policy_disposition = 'deliverable' ORDER BY created_at ASC"
+    ? "SELECT * FROM messages WHERE to_agent_id = ? AND read_at IS NULL AND policy_claimed_at IS NULL AND policy_disposition = 'deliverable' ORDER BY created_at ASC"
     : "SELECT * FROM messages WHERE to_agent_id = ? AND policy_disposition = 'deliverable' ORDER BY created_at ASC"
   return db.raw.query<RawMessage, [string]>(sql).all(agentId).map(toMessage)
 }
@@ -86,6 +88,20 @@ export function markPolicyBlocked(db: BazilionDb, id: string): void {
   )
 }
 
+export function markPolicyClaimed(db: BazilionDb, id: string, when: number): void {
+  db.raw.run(
+    "UPDATE messages SET policy_claimed_at = ? WHERE id = ? AND policy_disposition = 'deliverable' AND read_at IS NULL AND policy_claimed_at IS NULL",
+    [when, id],
+  )
+}
+
+export function markPolicyDelivered(db: BazilionDb, id: string, when: number): void {
+  db.raw.run(
+    "UPDATE messages SET policy_delivered_at = ?, read_at = ? WHERE id = ? AND policy_disposition = 'deliverable' AND policy_claimed_at IS NOT NULL AND policy_delivered_at IS NULL",
+    [when, when, id],
+  )
+}
+
 /**
  * Find messages that are replies to a given message id, addressed to a specific agent.
  * Used by `wait_for_reply` to poll for incoming responses.
@@ -103,7 +119,9 @@ export function findReplies(db: BazilionDb, toAgentId: string, inReplyTo: string
 
 /**
  * Return the distinct `to_agent_id`s that currently have at least one unread
- * message, filtered to agents not in a terminal state (idle or starting).
+ * message. Archived recipients remain included so the scheduler can convert
+ * their unread rows into one terminal policy-blocked disposition instead of
+ * leaving an eternal retry candidate.
  * Used by the scheduler's message-wake loop so a tick can fan-out auto-
  * delivery turns without walking every agent in the DB.
  */
@@ -112,7 +130,7 @@ export function listRecipientsWithUnread(db: BazilionDb): string[] {
     .query<{ to_agent_id: string }, []>(
       `SELECT DISTINCT m.to_agent_id FROM messages m
        JOIN agents a ON a.id = m.to_agent_id
-       WHERE m.read_at IS NULL AND m.policy_disposition = 'deliverable' AND a.status = 'idle'
+       WHERE m.read_at IS NULL AND m.policy_claimed_at IS NULL AND m.policy_disposition = 'deliverable'
        ORDER BY m.to_agent_id`,
     )
     .all()

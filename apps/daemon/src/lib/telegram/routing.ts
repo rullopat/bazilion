@@ -18,6 +18,7 @@ import type { CallbackQuery, InlineKeyboardMarkup, Message, Update, User } from 
 import type { BazilionDb } from '../../core/db/client.ts'
 import { agentRepo, openConfig, profileRepo, telegramAclRepo } from '../../core/index.ts'
 import type { Paths } from '../../core/paths.ts'
+import { authorizeUserIngress, CommunicationDeniedError } from '../communication.ts'
 import { dispatchCommand, parseCommand } from './commands/index.ts'
 import { namePrompt, SPAWN_PROFILE_CALLBACK_PREFIX, spawnAndBind } from './commands/spawn.ts'
 import { SPAWN_TEAM_CALLBACK_PREFIX, spawnTeamAndBind } from './commands/spawn-team.ts'
@@ -245,6 +246,22 @@ export async function routeUpdate(deps: RouterDeps, update: Update): Promise<Rou
     // path-referenced for the agent to open with its tools).
     const caption = m.text ?? m.caption ?? ''
     const media = extractMedia(m)
+    const ingressAttempt = {
+      origin: 'telegram_agent_topic',
+      attemptKind: 'telegram_ingress',
+      attemptId: `${deps.chatId}:${m.message_id}`,
+    }
+    try {
+      authorizeUserIngress(deps.db, agent.id, ingressAttempt)
+    } catch (error) {
+      if (!(error instanceof CommunicationDeniedError)) throw error
+      await deps.api.sendMessage(
+        deps.chatId,
+        `Communication blocked by Group policy (${error.result.reasonCode}).`,
+        { message_thread_id: threadId },
+      )
+      return { kind: 'agent_topic', agentId: agent.id, topicId: threadId, queued: false }
+    }
     let userText = caption
     const attachments: Attachment[] = []
     if (media) {
@@ -283,7 +300,18 @@ export async function routeUpdate(deps: RouterDeps, update: Update): Promise<Rou
       }
       return { kind: 'rate_limited', agentId: agent.id, topicId: threadId }
     }
-    enqueueAgentMessage(agent.id, userText, attachments)
+    try {
+      authorizeUserIngress(deps.db, agent.id, ingressAttempt)
+    } catch (error) {
+      if (!(error instanceof CommunicationDeniedError)) throw error
+      await deps.api.sendMessage(
+        deps.chatId,
+        `Communication blocked by Group policy (${error.result.reasonCode}).`,
+        { message_thread_id: threadId },
+      )
+      return { kind: 'agent_topic', agentId: agent.id, topicId: threadId, queued: false }
+    }
+    enqueueAgentMessage(agent.id, userText, attachments, ingressAttempt)
     // 👀 "I see this" indicator on the user's message. Cleared by the
     // mirror when the agent's reply lands.
     reactSeen(agent.id, deps.chatId, m.message_id)
