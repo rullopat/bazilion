@@ -134,7 +134,7 @@ Uses Node 22's built-in `node:sqlite` (`DatabaseSync`). No `better-sqlite3`, no 
 | `agent_skills` | `(agent_id, skill_name)` — per-agent skill attachments. Cascade on agent delete. |
 | `agent_triggers` | Per-agent wake-ups (`kind='interval' \| 'cron'`, `interval_sec`, `cron_expr`, `message`, `last_fired_at`, `enabled`). |
 | `messages` | Inter-agent mailbox (`id`, `from_agent_id`, `to_agent_id`, `payload`, `reply_to`, `read_at`). FKs do **not** cascade; `agent/delete.ts` nulls inbound `reply_to` and purges rows manually before removing the agent. |
-| `skill_meta` | Import provenance — `(name PK, source, imported_at)`. No trust column — see "Skill model" in CLAUDE.md. |
+| `skill_meta` | Import provenance — `(name PK, source, imported_at)`. No trust column — see "Skill model" in AGENTS.md. |
 | `web_tokens` | Per-token access records (hashed). The `bootstrap` row's plaintext lives in `auth.json`; revoking it returns 409 (would lock the operator out). |
 | `provider_models` | Curated model list per provider (what shows up in dropdowns). |
 | `provider_state` | Per-provider enabled flag. |
@@ -389,7 +389,7 @@ Cancellation: `POST /api/agents/:id/cancel` → `cancelAgent(id)` → the stored
 
 ## 4b. `apps/web` — the browser UI (TanStack Start)
 
-React 19 + Vite 7 + Tailwind v4 + shadcn/ui. File-based routes via `@tanstack/react-router`; `src/router.tsx` exports `getRouter`. Server fns use `.inputValidator()`. Bound to `127.0.0.1:4322` by default (`WEB_HOST` / `WEB_PORT`).
+React 19 + Vite 8 + Tailwind v4 + shadcn/ui. File-based routes via `@tanstack/react-router`; `src/router.tsx` exports `getRouter`. Server fns use `.inputValidator()`. Bound to `127.0.0.1:4322` by default (`WEB_HOST` / `WEB_PORT`).
 
 **Daemon-only client** — `apps/web` never reaches into daemon source; the only daemon-facing types it imports are wire shapes from `@bazilion/api-types`. Every loader is a `createServerFn` handler that calls `apps/web/src/lib/daemon-client.ts`, which reads the request's `bz_token` cookie via `getCookie` from `@tanstack/react-start/server` and forwards it as `Authorization: Bearer …` to the daemon (`http://127.0.0.1:4321`, overridable via `BAZILION_DAEMON`).
 
