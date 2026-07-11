@@ -17,6 +17,8 @@ export type {
   CommunicationEndpoint,
   CommunicationPolicyRef,
   Group,
+  HarnessBlockEvent,
+  HarnessBlockPage,
   HarnessMembershipMode,
   HarnessPlacement,
   HarnessTemplate,

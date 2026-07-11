@@ -16,9 +16,12 @@ test('completion bash prints a sourceable function + complete directive', async 
   expect(res.stdout).toContain('"serve')
   expect(res.stdout).toContain('agent')
   expect(res.stdout).toContain('backup')
+  expect(res.stdout).toContain('team')
   // Nested subcommand case arm exists
   expect(res.stdout).toContain('"agent")')
   expect(res.stdout).toContain('"agent chat")')
+  expect(res.stdout).toContain('"team import")')
+  expect(res.stdout).toContain('"group policy blocks")')
   // Flag enumeration (at least one known flag)
   expect(res.stdout).toContain('--profile')
 })

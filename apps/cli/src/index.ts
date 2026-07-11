@@ -22,6 +22,7 @@ import { providerCommand } from './commands/provider.ts'
 import { sendCommand } from './commands/send.ts'
 import { serveCommand } from './commands/serve.ts'
 import { skillCommand } from './commands/skill.ts'
+import { teamCommand } from './commands/team.ts'
 import { telegramCommand } from './commands/telegram.ts'
 import { tokenCommand } from './commands/token.ts'
 import { triggerCommand } from './commands/trigger.ts'
@@ -54,6 +55,7 @@ const main = defineCommand({
     token: tokenCommand,
     auth: authCommand,
     telegram: telegramCommand,
+    team: teamCommand,
     uninstall: uninstallCommand,
   },
 })
@@ -111,6 +113,19 @@ function printError(err: unknown): void {
   }
 }
 
+function exitCodeForError(err: unknown): number {
+  if (err instanceof ApiClientError) {
+    if (err.status === 401 || err.status === 403) return 4
+    if (err.status === 409) return 3
+    if (err.status === 400 || err.status === 422) return 2
+    return 1
+  }
+  const message = err instanceof Error ? err.message : String(err)
+  return /invalid|unsupported|must be|require|refusing mutation|document belongs/.test(message)
+    ? 2
+    : 1
+}
+
 /**
  * Top-level `bazilion --help` renders a categorized layout instead of citty's
  * default `sub1|sub2|…` pipe-soup USAGE line. Subcommand `--help` still uses
@@ -136,6 +151,7 @@ function printTopLevelHelp(): void {
       items: [
         ['profile', 'Manage profiles (templates agents are spawned from)'],
         ['profile-group', 'Manage profile groups (preconfigured team templates)'],
+        ['team', 'Inspect and exchange canonical Team templates'],
         ['group', 'Manage groups (collaboration context — filesystem root + USER.md + roster)'],
         ['skill', 'Manage the skill library'],
         ['provider', 'Manage and test LLM providers'],
@@ -206,7 +222,7 @@ async function entry(): Promise<void> {
     await runCommand(main, { rawArgs })
   } catch (err) {
     printError(err)
-    process.exit(1)
+    process.exit(exitCodeForError(err))
   }
 }
 

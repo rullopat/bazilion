@@ -76,32 +76,60 @@ groupsRouter.get('/:id/harness/blocks', (c) => {
   if (cursor && (!Number.isSafeInteger(cursorTime) || !cursorId))
     return c.json({ error: 'invalid cursor' }, 400)
   const reasonCode = c.req.query('reasonCode')
+  const source = c.req.query('source')
+  const target = c.req.query('target')
+  const channel = c.req.query('channel')
+  const origin = c.req.query('origin')
+  const from = optionalTimestamp(c.req.query('from'))
+  const to = optionalTimestamp(c.req.query('to'))
+  if (from === 'invalid' || to === 'invalid') return c.json({ error: 'invalid time filter' }, 400)
+  const filters = [
+    '(source_group_id = ? OR target_group_id = ?)',
+    "(? = '' OR reason_code = ?)",
+    "(? = '' OR source_id = ? OR source_kind = ?)",
+    "(? = '' OR target_id = ? OR target_kind = ?)",
+    "(? = '' OR channel = ?)",
+    "(? = '' OR origin = ?)",
+    '(? = 0 OR created_at >= ?)',
+    '(? = 0 OR created_at <= ?)',
+    "(? = '' OR created_at < ? OR (created_at = ? AND id < ?))",
+  ]
+  const params: Array<string | number> = [
+    groupId,
+    groupId,
+    reasonCode ?? '',
+    reasonCode ?? '',
+    source ?? '',
+    source ?? '',
+    source ?? '',
+    target ?? '',
+    target ?? '',
+    target ?? '',
+    channel ?? '',
+    channel ?? '',
+    origin ?? '',
+    origin ?? '',
+    from ?? 0,
+    from ?? 0,
+    to ?? 0,
+    to ?? 0,
+    cursor ?? '',
+    cursorTime,
+    cursorTime,
+    cursorId,
+    limit + 1,
+  ]
   const rows = db.raw
-    .query<
-      Record<string, unknown>,
-      [string, string, string, string, string, number, number, string, number]
-    >(
+    .query<Record<string, unknown>, Array<string | number>>(
       `SELECT id, attempt_kind, attempt_id, operation, source_kind, source_id, target_kind,
             target_id, source_group_id, target_group_id, channel, origin, reason_code, reason,
             policy_refs_json, component_outcomes_json, matched_edge_ids_json,
             required_edge_ids_json, created_at
        FROM harness_block_events
-      WHERE (source_group_id = ? OR target_group_id = ?)
-        AND (? = '' OR reason_code = ?)
-        AND (? = '' OR created_at < ? OR (created_at = ? AND id < ?))
+      WHERE ${filters.join(' AND ')}
       ORDER BY created_at DESC, id DESC LIMIT ?`,
     )
-    .all(
-      groupId,
-      groupId,
-      reasonCode ?? '',
-      reasonCode ?? '',
-      cursor ?? '',
-      cursorTime,
-      cursorTime,
-      cursorId,
-      limit + 1,
-    )
+    .all(...params)
   const page = rows.slice(0, limit).map((row) => ({
     ...row,
     policyRefs: JSON.parse(String(row.policy_refs_json)),
@@ -119,6 +147,14 @@ groupsRouter.get('/:id/harness/blocks', (c) => {
     nextCursor: rows.length > limit && last ? `${last.created_at}:${last.id}` : null,
   })
 })
+
+function optionalTimestamp(value: string | undefined): number | null | 'invalid' {
+  if (value === undefined || value === '') return null
+  const numeric = Number(value)
+  if (Number.isSafeInteger(numeric) && numeric >= 0) return numeric
+  const parsed = Date.parse(value)
+  return Number.isFinite(parsed) ? parsed : 'invalid'
+}
 
 groupsRouter.put('/:id/harness/policy', async (c) => {
   const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null
