@@ -119,6 +119,61 @@ test('canonical template routes preserve stable slots, snapshots, and clone inde
   expect(cloneBody.edges).toHaveLength(1)
 })
 
+test('reviewed prototype import allocates server slot ids and translates edges atomically', async () => {
+  const { createProfile, harnessTemplateRepo } = await import('../../src/core/index.ts')
+  const { getCtx } = await import('../../src/lib/ctx.ts')
+  const { harnessTemplatesRouter } = await import('../../src/routes/harness-templates.ts')
+  const ctx = getCtx()
+  createProfile(ctx.db, ctx.paths, { id: 'p', defaultModel: 'm' })
+
+  const imported = await harnessTemplatesRouter.request('/import', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      id: 'imported',
+      name: 'Imported',
+      slots: [
+        { clientKey: 'prototype-a', profileId: 'p', agentName: 'one' },
+        { clientKey: 'prototype-b', profileId: 'p', agentName: 'two' },
+      ],
+      edges: [
+        {
+          sourceKind: 'slot',
+          sourceId: 'prototype-a',
+          targetKind: 'slot',
+          targetId: 'prototype-b',
+        },
+      ],
+    }),
+  })
+  expect(imported.status).toBe(201)
+  const body = (await imported.json()) as {
+    slots: Array<{ slotId: string }>
+    edges: Array<{ sourceId: string; targetId: string }>
+  }
+  expect(body.slots).toHaveLength(2)
+  expect(body.slots.map((slot) => slot.slotId)).not.toContain('prototype-a')
+  expect(body.edges).toEqual([
+    expect.objectContaining({
+      sourceId: body.slots[0]?.slotId,
+      targetId: body.slots[1]?.slotId,
+    }),
+  ])
+
+  const invalid = await harnessTemplatesRouter.request('/import', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      id: 'broken-import',
+      name: 'Broken',
+      slots: [{ clientKey: 'prototype-a', profileId: 'p', agentName: 'one' }],
+      edges: [{ sourceKind: 'slot', sourceId: 'missing', targetKind: 'user' }],
+    }),
+  })
+  expect(invalid.status).toBe(400)
+  expect(harnessTemplateRepo.get(ctx.db, 'broken-import')).toBeNull()
+})
+
 test('canonical routes are authenticated through the daemon app and return resolved aggregates', async () => {
   const { providerModelRepo, providerStateRepo } = await import('../../src/core/index.ts')
   const { getCtx } = await import('../../src/lib/ctx.ts')
@@ -178,6 +233,28 @@ test('Group policy replacement and canonical direct spawn are revisioned and per
   const ctx = getCtx()
   createProfile(ctx.db, ctx.paths, { id: 'p', defaultModel: 'm' })
   registerGroup(ctx.db, { id: 'g' }, ctx.paths)
+
+  const placementPreview = await agentsRouter.request('/placement-preview', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      profileId: 'p',
+      groupId: 'g',
+      groupExpectedRevision: 1,
+      placement: 'open',
+    }),
+  })
+  expect(placementPreview.status).toBe(200)
+  expect((await placementPreview.json()) as object).toMatchObject({
+    currentRevision: 1,
+    resultingRevision: 2,
+    symbolicAgentId: 'new-agent',
+    existingEdges: [],
+    addedEdges: expect.arrayContaining([
+      expect.objectContaining({ sourceKind: 'user', targetId: 'new-agent' }),
+      expect.objectContaining({ sourceId: 'new-agent', targetKind: 'user' }),
+    ]),
+  })
 
   const spawned = await agentsRouter.request('/', {
     method: 'POST',
@@ -259,6 +336,27 @@ test('reviewed Team spawn initializes revision one and append preserves baseline
     ],
   })
 
+  const initializePreview = await harnessTemplatesRouter.request('/team/spawn/preview', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      templateExpectedRevision: 2,
+      groupId: 'new-team',
+      mode: 'initialize',
+    }),
+  })
+  expect(initializePreview.status).toBe(200)
+  expect((await initializePreview.json()) as object).toMatchObject({
+    mode: 'initialize',
+    currentRevision: null,
+    resultingRevision: 1,
+    newMembers: [{ agentName: 'one' }, { agentName: 'two' }],
+    edges: [
+      expect.objectContaining({ sourceId: expect.stringMatching(/^new:/) }),
+      expect.objectContaining({ targetId: expect.stringMatching(/^new:/) }),
+    ],
+  })
+
   const initialized = await harnessTemplatesRouter.request('/team/spawn', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -279,6 +377,26 @@ test('reviewed Team spawn initializes revision one and append preserves baseline
   expect(first.group.harness.baselineInstantiationId).toEqual(expect.any(String))
   expect(liveHarnessRepo.bindings(ctx.db, 'new-team')).toHaveLength(2)
   expect(liveHarnessRepo.edges(ctx.db, 'new-team')).toHaveLength(2)
+
+  const appendPreview = await harnessTemplatesRouter.request('/team/spawn/preview', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      templateExpectedRevision: 2,
+      groupId: 'new-team',
+      groupExpectedRevision: 1,
+      mode: 'append',
+    }),
+  })
+  expect(appendPreview.status).toBe(200)
+  expect((await appendPreview.json()) as object).toMatchObject({
+    mode: 'append',
+    currentRevision: 1,
+    resultingRevision: 2,
+    edges: expect.arrayContaining([
+      expect.objectContaining({ sourceId: expect.stringMatching(/^new:/) }),
+    ]),
+  })
 
   const appended = await harnessTemplatesRouter.request('/team/spawn', {
     method: 'POST',
@@ -354,6 +472,21 @@ test('adoption requires reviewed total mapping and preview, then save-as-templat
     { sourceKind: 'agent', sourceId: remaining.id, targetKind: 'agent', targetId: mapped.id },
     { sourceKind: 'agent', sourceId: mapped.id, targetKind: 'agent', targetId: remaining.id },
   ]
+  const preview = await groupsRouter.request('/g/harness/adopt-template/preview', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      groupExpectedRevision: 3,
+      templateId: 'source',
+      templateExpectedRevision: 1,
+      slotMappings: [{ slotId: 'slot', agentId: mapped.id }],
+      remainingPlacements: [{ agentId: remaining.id, placement: 'open' }],
+    }),
+  })
+  expect(preview.status).toBe(200)
+  expect((await preview.json()) as object).toEqual({
+    edges: expect.arrayContaining(previewEdges),
+  })
   const adopted = await groupsRouter.request('/g/harness/adopt-template', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -486,6 +619,27 @@ test('canonical move and delete update both explicit Groups exactly once through
     groupId: 'source',
     groupExpectedRevision: 1,
     placement: 'open',
+  })
+
+  const movePreview = await agentsRouter.request(`/${agent.id}/group/preview`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      groupId: 'destination',
+      sourceExpectedRevision: 2,
+      destinationExpectedRevision: 1,
+      placement: 'isolated',
+    }),
+  })
+  expect(movePreview.status).toBe(200)
+  expect((await movePreview.json()) as object).toMatchObject({
+    source: { currentRevision: 2, resultingRevision: 3, removedEdges: expect.any(Array) },
+    destination: {
+      currentRevision: 1,
+      resultingRevision: 2,
+      existingEdges: [],
+      addedEdges: [],
+    },
   })
 
   const moved = await agentsRouter.request(`/${agent.id}/group`, {

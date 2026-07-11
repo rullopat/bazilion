@@ -14,6 +14,7 @@ import { daemonClient } from './daemon-client'
 export interface AuthState {
   authed: boolean
   setupComplete: boolean
+  degraded?: boolean
 }
 
 export const fetchAuthState = createServerFn({ method: 'GET' }).handler(
@@ -27,7 +28,7 @@ export const fetchAuthState = createServerFn({ method: 'GET' }).handler(
       if (err instanceof ApiClientError && err.status === 401) {
         return { authed: false, setupComplete: false }
       }
-      throw err
+      return { authed: true, setupComplete: true, degraded: true }
     }
   },
 )

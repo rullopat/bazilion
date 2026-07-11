@@ -87,10 +87,16 @@ const fetchAgent = createServerFn({ method: 'POST' })
   })
 
 export const Route = createFileRoute('/agents/$id/')({
-  validateSearch: (search: Record<string, unknown>): { harness?: string } => ({
+  validateSearch: (search: Record<string, unknown>): { harness?: string; groupPolicy?: string; view?: 'flow'|'matrix'; selected?: string; vx?: number; vy?: number; vz?: number } => ({
     ...(typeof search.harness === 'string' && search.harness
       ? { harness: search.harness }
       : {}),
+    ...(typeof search.groupPolicy === 'string' && search.groupPolicy ? { groupPolicy: search.groupPolicy } : {}),
+    ...(search.view === 'matrix' || search.view === 'flow' ? { view: search.view } : {}),
+    ...(typeof search.selected === 'string' ? { selected: search.selected } : {}),
+    ...(Number.isFinite(Number(search.vx)) ? { vx: Number(search.vx) } : {}),
+    ...(Number.isFinite(Number(search.vy)) ? { vy: Number(search.vy) } : {}),
+    ...(Number.isFinite(Number(search.vz)) ? { vz: Number(search.vz) } : {}),
   }),
   loader: async ({ params }) => {
     const data = await fetchAgent({ data: { id: params.id } })
@@ -110,7 +116,8 @@ function AgentDetailPage() {
     modelGroups,
     telegramConfigured,
   } = Route.useLoaderData()
-  const { harness: harnessId } = Route.useSearch()
+  const search = Route.useSearch()
+  const { harness: harnessId } = search
   const { state: harnessState, hydrated: harnessHydrated } = useHarnessPrototype()
   const router = useRouter()
   const prototypeHarness = harnessId ? getHarnessById(harnessState, harnessId) : undefined
@@ -169,6 +176,12 @@ function AgentDetailPage() {
   return (
     <div>
       <header className="mb-8">
+        {search.groupPolicy && (
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <a href={`/groups/${encodeURIComponent(search.groupPolicy)}/policy?view=${search.view ?? 'flow'}&selected=${encodeURIComponent(search.selected ?? '')}&vx=${search.vx ?? 0}&vy=${search.vy ?? 0}&vz=${search.vz ?? 0.9}`} className="ghost-btn"><ArrowLeft className="h-4 w-4" /> back to Group policy</a>
+            <span className="text-xs text-mocha-light">Returns to the same projection, viewport, and selection.</span>
+          </div>
+        )}
         {prototypeHarness && (
           <div className="mb-4 flex flex-wrap items-center gap-2">
             <a
@@ -470,6 +483,11 @@ function MoveGroupForm({
   const [moving, setMoving] = useState(false)
   const [placement, setPlacement] = useState<'isolated' | 'open' | 'profile_defaults'>('profile_defaults')
   const [err, setErr] = useState<string | null>(null)
+  const [preview, setPreview] = useState<{
+    source: { currentRevision: number; resultingRevision: number; removedEdges: unknown[] }
+    destination: { currentRevision: number; resultingRevision: number; existingEdges: unknown[]; addedEdges: unknown[] }
+    lineage: string
+  } | null>(null)
 
   async function move(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -484,14 +502,32 @@ function MoveGroupForm({
       if (!sourceResponse.ok || !destinationResponse.ok) throw new Error('A Group policy is unavailable. Nothing was moved.')
       const source = (await sourceResponse.json()) as ResolvedGroupHarness
       const destination = (await destinationResponse.json()) as ResolvedGroupHarness
+      const request = {
+        groupId,
+        sourceExpectedRevision: source.harness.revision,
+        destinationExpectedRevision: destination.harness.revision,
+        placement,
+      }
+      if (!preview) {
+        const response = await fetch(`/api/agents/${encodeURIComponent(agentId)}/group/preview`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(request),
+        })
+        if (!response.ok) {
+          const body = (await response.json().catch(() => null)) as { error?: string } | null
+          throw new Error(body?.error ?? response.statusText)
+        }
+        setPreview(await response.json())
+        return
+      }
       const res = await fetch(`/api/agents/${encodeURIComponent(agentId)}/group`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          groupId,
-          sourceExpectedRevision: source.harness.revision,
-          destinationExpectedRevision: destination.harness.revision,
-          placement,
+          ...request,
+          sourceExpectedRevision: preview.source.currentRevision,
+          destinationExpectedRevision: preview.destination.currentRevision,
         }),
       })
       if (!res.ok) {
@@ -512,7 +548,7 @@ function MoveGroupForm({
         move to:
         <select
           value={groupId}
-          onChange={(e) => setGroupId(e.target.value)}
+          onChange={(e) => {setGroupId(e.target.value);setPreview(null)}}
           className="min-w-[18rem] rounded-sm border border-frost bg-snow px-2 py-1.5"
         >
           {groups.map((g) => (
@@ -524,16 +560,17 @@ function MoveGroupForm({
       </label>
       <label className="flex flex-col gap-1 text-[0.85em] text-mocha-light">
         destination placement:
-        <select value={placement} onChange={(e) => setPlacement(e.target.value as typeof placement)} className="rounded-sm border border-frost bg-snow px-2 py-1.5">
+        <select value={placement} onChange={(e) => {setPlacement(e.target.value as typeof placement);setPreview(null)}} className="rounded-sm border border-frost bg-snow px-2 py-1.5">
           <option value="profile_defaults">agent-template defaults</option>
           <option value="isolated">isolated</option>
           <option value="open">open</option>
         </select>
       </label>
       <button type="submit" disabled={moving || groupId === currentGroupId}>
-        {moving ? 'moving…' : 'move'}
+        {moving ? 'working…' : preview ? 'commit reviewed move' : 'review move'}
       </button>
       {err && <span className="text-[0.85em] text-[#9B3D3D]">{err}</span>}
+      {preview && <div className="basis-full rounded-md border border-sapphire-light bg-sapphire-glow p-3 text-sm"><p>Source revision {preview.source.currentRevision} → <strong>{preview.source.resultingRevision}</strong>, removing {preview.source.removedEdges.length} incident edges. Destination revision {preview.destination.currentRevision} → <strong>{preview.destination.resultingRevision}</strong>, adding {preview.destination.addedEdges.length} edges to {preview.destination.existingEdges.length} existing edges.</p><p className="mt-1 muted">{preview.lineage}</p></div>}
     </form>
   )
 }

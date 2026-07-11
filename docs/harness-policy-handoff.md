@@ -57,13 +57,18 @@ Lifecycle entry points submit BAZ-015 revisions/placements, degraded projections
 visibly without local fallback, and health reports management contract version 0 with
 release readiness false until BAZ-017.
 
-BAZ-016 is complete and merged-ready with enforcement deliberately disabled. HTTP and
+BAZ-016 is complete. HTTP and
 Telegram ingress authorize before protected persistence/queue/start effects; every Agent
 output frame or transport item reauthorizes at final egress; scheduler occurrences and
 inbox rows use atomic current-policy claims under the shared lifecycle lease. Health exposes
-contract/readiness/degraded state and decision counters. The compiled management contract
-remains version 0, startup refuses an enforcement-on configuration, and BAZ-017 alone may
-raise it to version 1 after recovery/editor migration and release acceptance pass.
+contract/readiness/degraded state and decision counters.
+
+BAZ-017 is complete. Canonical Team and Group Flow/Matrix editors, exact lifecycle previews,
+conflict and source-divergence recovery, reviewed local migration, durable denial activity,
+chat return state, accessibility, and the full responsive theme matrix passed acceptance.
+The compiled management contract is version 1, health reports release readiness, and an
+operator may now enable BAZ-016 enforcement with `BAZILION_HARNESS_ENFORCEMENT=on`.
+The packaged default remains off.
 
 ## Cardinality and retained source model
 
@@ -325,14 +330,12 @@ Prototype state is never silently uploaded/deleted and simulated blocks never im
    exact-Open adapters, and the shared lifecycle/turn lease.
 2. **BAZ-015 (L, complete):** custom revisioned Team/Group policy APIs and atomic Agent
    lifecycle.
-3. **BAZ-011 (L):** authorizer/audit/diagnostics and gated Agent messaging; gate defaults
-   off from first merge.
-4. **BAZ-012 (L):** canonical web IA/projections/redirects/lifecycle and recovery shell.
-5. **BAZ-016 (L):** all ingress/egress/scheduler/turn-boundary enforcement; introduce
-   compiled management capability 0 and remain disabled for release.
-6. **BAZ-017 (L):** production editors, conflicts/local migration/activity, accessibility,
-   and viewport/theme completion.
-7. BAZ-017 flips the compiled management capability to 1 only after both stories pass; the
+3. **BAZ-011 (L, complete):** authorizer/audit/diagnostics and gated Agent messaging.
+4. **BAZ-012 (L, complete):** canonical web IA/projections/redirects/lifecycle and recovery shell.
+5. **BAZ-016 (L, complete):** all ingress/egress/scheduler/turn-boundary enforcement.
+6. **BAZ-017 (L, complete):** production editors, conflicts/local migration/activity,
+   accessibility, viewport/theme completion, and management capability 1.
+7. BAZ-017 flipped the compiled management capability to 1 only after both stories passed; the
    daemon refuses enforcement-on below version 1. No cross-process runtime handshake is
    used because daemon/web ship from the same release.
 8. BAZ-013 adds CLI policy tools; BAZ-014 adds approvals afterward.

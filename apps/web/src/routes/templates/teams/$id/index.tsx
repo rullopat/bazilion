@@ -1,43 +1,46 @@
-import type { HarnessTemplate, HarnessTemplateRevision } from '@bazilion/api-types'
+import type { HarnessTemplateDetail, HarnessTemplateRevision, HarnessTemplateSlot, Profile } from '@bazilion/api-types'
 import { createFileRoute } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
-import { TemplatesTabs } from '../../../../components/TemplatesTabs'
+import { ProductionHarnessEditor } from '../../../../components/harness/ProductionHarnessEditor'
 import { RecoveryState } from '../../../../components/RecoveryState'
+import { TemplatesTabs } from '../../../../components/TemplatesTabs'
 import { daemonClient } from '../../../../lib/daemon-client'
 
-interface TeamSlotProjection {
-  slotId: string
-  position: number
-  profileId: string
-  agentName: string
+type SafeSlot = Omit<HarnessTemplateSlot, 'display'> & { display: null }
+type SafeRevision = Omit<HarnessTemplateRevision, 'slots'> & { slots: SafeSlot[] }
+type SafeDetail = Omit<HarnessTemplateDetail, 'slots' | 'currentSnapshot'> & {
+  slots: SafeSlot[]
+  currentSnapshot: SafeRevision
 }
-
-interface TeamProjection {
-  template: HarnessTemplate
-  slots: TeamSlotProjection[]
-  edgeCount: number
-  snapshotRevision: number
-}
+type TeamLoaderResult =
+  | { ok: true; value: { detail: SafeDetail; profiles: Profile[] } }
+  | { ok: false; error: string }
 
 const fetchTeam = createServerFn({ method: 'POST' })
-  .inputValidator((data: { id: string }) => data)
-  .handler(async ({ data }): Promise<TeamProjection> => {
-    const detail = await daemonClient().get<{
-      template: HarnessTemplate
-      slots: TeamSlotProjection[]
-      edges: unknown[]
-      currentSnapshot: HarnessTemplateRevision
-    }>(`/api/harness-templates/${encodeURIComponent(data.id)}`)
-    return {
-      template: detail.template,
-      slots: detail.slots.map(({ slotId, position, profileId, agentName }) => ({
-        slotId,
-        position,
-        profileId,
-        agentName,
-      })),
-      edgeCount: detail.edges.length,
-      snapshotRevision: detail.currentSnapshot.revision,
+  .validator((data: { id: string }) => data)
+  .handler(async ({ data }): Promise<TeamLoaderResult> => {
+    try {
+      const client = daemonClient()
+      const [detail, profiles] = await Promise.all([
+        client.get<HarnessTemplateDetail>(`/api/harness-templates/${encodeURIComponent(data.id)}`),
+        client.get<Profile[]>('/api/profiles'),
+      ])
+      return {
+        ok: true,
+        value: {
+          detail: {
+            ...detail,
+            slots: detail.slots.map((slot) => ({ ...slot, display: null })),
+            currentSnapshot: {
+              ...detail.currentSnapshot,
+              slots: detail.currentSnapshot.slots.map((slot) => ({ ...slot, display: null })),
+            },
+          },
+          profiles,
+        },
+      }
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) }
     }
   })
 
@@ -48,37 +51,14 @@ export const Route = createFileRoute('/templates/teams/$id/')({
 })
 
 function TeamDetailPage() {
-  const detail = Route.useLoaderData()
-  const { template } = detail
-  return (
-    <div>
-      <TemplatesTabs />
-      <p><a href="/templates/teams">← team templates</a></p>
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1>{template.name}</h1>
-          <p className="muted"><code>{template.id}</code> · revision {template.currentRevision} · {detail.slots.length} stable slots</p>
-        </div>
-        {template.deletedAt && <span className="err">Source deleted — lineage is read-only</span>}
-      </div>
-      <section className="card">
-        <h2 className="text-xl">canonical roster</h2>
-        <p className="muted">This is the only reusable Team roster. The production Flow/Matrix editor mounts here in BAZ-017.</p>
-        <div className="overflow-x-auto">
-          <table>
-            <thead><tr><th>position</th><th>agent name</th><th>agent template</th><th>stable slot</th></tr></thead>
-            <tbody>
-              {detail.slots.map((slot) => <tr key={slot.slotId}><td>{slot.position + 1}</td><td>{slot.agentName}</td><td><a href={`/templates/agents/${encodeURIComponent(slot.profileId)}`}>{slot.profileId}</a></td><td><code>{slot.slotId}</code></td></tr>)}
-              {detail.slots.length === 0 && <tr><td colSpan={4} className="muted">No slots yet. Add slots in the BAZ-017 editor.</td></tr>}
-            </tbody>
-          </table>
-        </div>
-      </section>
-      <section className="card">
-        <h2 className="text-xl">policy snapshot</h2>
-        <p>{detail.edgeCount} directed allow edges in immutable revision {detail.snapshotRevision}.</p>
-        <p className="muted">Spawn and adoption actions must submit template revision {template.currentRevision}; stale source revisions are never silently accepted.</p>
-      </section>
-    </div>
-  )
+  const result = Route.useLoaderData()
+  if (!result.ok) {
+    return <RecoveryState title="Team template unavailable" error={new Error(result.error)} reset={() => window.location.reload()} fallbackHref="/templates/teams" />
+  }
+  const { detail, profiles } = result.value
+  return <div className="space-y-5"><TemplatesTabs /><p><a href="/templates/teams">← team templates</a></p>
+    {detail.template.deletedAt && <div role="alert" className="err rounded-md border p-3">Source deleted — lineage is read-only and cannot be edited or spawned.</div>}
+    <ProductionHarnessEditor source={{ kind: 'template', detail }} profiles={profiles} />
+    <p className="muted text-xs">Stable slot IDs remain distinct from live Agent IDs. Every successful save creates a new immutable revision; the reconciled editor badge is authoritative.</p>
+  </div>
 }

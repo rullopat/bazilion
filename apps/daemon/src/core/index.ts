@@ -20,6 +20,7 @@ export { registerGroup } from './group/register.ts'
 export {
   type AdoptHarnessTemplateInput,
   adoptHarnessTemplate,
+  previewHarnessAdoption,
 } from './harness/adopt.ts'
 export * from './harness/authorization.ts'
 export {
@@ -29,6 +30,7 @@ export {
   updateHarnessSource,
 } from './harness/source.ts'
 export {
+  previewHarnessTemplateSpawn,
   SpawnHarnessTemplateError,
   type SpawnHarnessTemplateInput,
   type SpawnHarnessTemplateResult,

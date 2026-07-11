@@ -3,7 +3,7 @@
 
 import type { Agent, Group, HarnessTemplateWithCount, Profile } from '@bazilion/api-types'
 import { Link, useRouter } from '@tanstack/react-router'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { DEFAULT_GROUP_ID, DEFAULT_PROFILE_ID } from '../lib/wire-constants'
 import { CreateGroupDialog } from './CreateGroupDialog'
 import { SpawnDialog } from './SpawnDialog'
@@ -46,6 +46,8 @@ export function Sidebar({
   const [spawnTeamFor, setSpawnTeamFor] = useState<HarnessTemplateWithCount | null>(null)
   const [createGroupOpen, setCreateGroupOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
+  const newButtonRef = useRef<HTMLButtonElement | null>(null)
+  const restoreNewButton = () => window.requestAnimationFrame(() => newButtonRef.current?.focus())
   // Seeded by SSR from the cookie so the first paint matches the user's
   // saved preferences — no flash of default state.
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(
@@ -104,6 +106,7 @@ export function Sidebar({
         <span className="font-serif text-base text-foreground">agents</span>
         <div className="relative">
           <button
+            ref={newButtonRef}
             type="button"
             onClick={() => setMenuOpen((v) => !v)}
             className="rounded-md border px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:border-foreground/30"
@@ -318,21 +321,21 @@ export function Sidebar({
           profileId={spawnFor.profileId}
           groupHint={spawnFor.groupHint}
           groups={sortedGroups}
-          onClose={() => setSpawnFor(null)}
+          onClose={() => { setSpawnFor(null); restoreNewButton() }}
         />
       )}
       {spawnTeamFor && (
         <SpawnTeamModal
           profileGroup={spawnTeamFor}
           groups={sortedGroups}
-          onClose={() => setSpawnTeamFor(null)}
+          onClose={() => { setSpawnTeamFor(null); restoreNewButton() }}
           onSpawned={(slug) => {
             setSpawnTeamFor(null)
             router.navigate({ to: '/groups/$id', params: { id: slug } })
           }}
         />
       )}
-      {createGroupOpen && <CreateGroupDialog onClose={() => setCreateGroupOpen(false)} />}
+      {createGroupOpen && <CreateGroupDialog onClose={() => { setCreateGroupOpen(false); restoreNewButton() }} />}
     </aside>
   )
 }

@@ -45,6 +45,7 @@ import {
   moveAgentCanonical,
   moveAgentCompatibility,
   parseSkillFile,
+  profileRepo,
   providerStateRepo,
   resolveAgent,
   resolveAgentSkills,
@@ -83,6 +84,56 @@ import {
 } from '../runtime/index.ts'
 
 export const agentsRouter = new Hono()
+
+agentsRouter.post('/placement-preview', async (c) => {
+  const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null
+  const profileId = typeof body?.profileId === 'string' ? body.profileId : ''
+  const groupId = typeof body?.groupId === 'string' ? body.groupId : ''
+  const expectedRevision = body?.groupExpectedRevision
+  const placement = body?.placement
+  if (
+    !profileId ||
+    !groupId ||
+    typeof expectedRevision !== 'number' ||
+    !Number.isInteger(expectedRevision) ||
+    (placement !== 'isolated' && placement !== 'open' && placement !== 'profile_defaults')
+  ) {
+    return c.json(
+      { error: 'profileId, groupId, groupExpectedRevision, and placement are required' },
+      400,
+    )
+  }
+  const { db, paths } = getCtx()
+  const profile = profileRepo.get(db, profileId)
+  if (!profile) return c.json({ error: `profile not found: ${profileId}` }, 404)
+  const group = groupRepo.get(db, groupId, paths)
+  const harness = liveHarnessRepo.get(db, groupId)
+  if (!group || !harness) return c.json({ error: `group not found: ${groupId}` }, 404)
+  if (harness.revision !== expectedRevision) {
+    return c.json(
+      {
+        error: `group_revision_conflict: expected ${expectedRevision}, current ${harness.revision}`,
+        code: 'group_revision_conflict',
+      },
+      409,
+    )
+  }
+  const symbolicId = 'new-agent'
+  return c.json({
+    groupId,
+    currentRevision: harness.revision,
+    resultingRevision: harness.revision + 1,
+    symbolicAgentId: symbolicId,
+    existingEdges: liveHarnessRepo.edges(db, groupId),
+    addedEdges: liveHarnessRepo.placementEdgesPreview(
+      db,
+      groupId,
+      symbolicId,
+      placement,
+      profile.id,
+    ),
+  })
+})
 
 // Cap attachments per message — keeps a runaway client from blowing up the
 // worker stdin payload and the model's context.
@@ -421,6 +472,90 @@ agentsRouter.delete('/:id/telegram/binding', (c) => {
 })
 
 // ─── Group move ──────────────────────────────────────────────────────────
+
+agentsRouter.post('/:id/group/preview', async (c) => {
+  const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null
+  const destinationGroupId = typeof body?.groupId === 'string' ? body.groupId : ''
+  const sourceExpectedRevision = body?.sourceExpectedRevision
+  const destinationExpectedRevision = body?.destinationExpectedRevision
+  const placement = body?.placement
+  if (
+    !destinationGroupId ||
+    typeof sourceExpectedRevision !== 'number' ||
+    !Number.isInteger(sourceExpectedRevision) ||
+    typeof destinationExpectedRevision !== 'number' ||
+    !Number.isInteger(destinationExpectedRevision) ||
+    (placement !== 'isolated' && placement !== 'open' && placement !== 'profile_defaults')
+  ) {
+    return c.json(
+      {
+        error:
+          'groupId, sourceExpectedRevision, destinationExpectedRevision, and placement are required',
+      },
+      400,
+    )
+  }
+  const { db, paths } = getCtx()
+  let resolved: ReturnType<typeof resolveAgent>
+  try {
+    resolved = resolveAgent(db, paths, c.req.param('id'))
+  } catch {
+    return c.json({ error: `agent not found: ${c.req.param('id')}` }, 404)
+  }
+  const source = liveHarnessRepo.get(db, resolved.group.id)
+  const destination = liveHarnessRepo.get(db, destinationGroupId)
+  if (!destination || !groupRepo.get(db, destinationGroupId, paths)) {
+    return c.json({ error: `group not found: ${destinationGroupId}` }, 404)
+  }
+  if (!source || source.revision !== sourceExpectedRevision) {
+    return c.json(
+      {
+        error: `source_group_revision_conflict: expected ${sourceExpectedRevision}, current ${source?.revision ?? 'missing'}`,
+        code: 'source_group_revision_conflict',
+      },
+      409,
+    )
+  }
+  if (destination.revision !== destinationExpectedRevision) {
+    return c.json(
+      {
+        error: `destination_group_revision_conflict: expected ${destinationExpectedRevision}, current ${destination.revision}`,
+        code: 'destination_group_revision_conflict',
+      },
+      409,
+    )
+  }
+  const sourceEdges = liveHarnessRepo.edges(db, resolved.group.id)
+  const removedEdges = sourceEdges.filter(
+    (edge) => edge.sourceId === resolved.agent.id || edge.targetId === resolved.agent.id,
+  )
+  const destinationEdges = liveHarnessRepo.edges(db, destinationGroupId)
+  const addedEdges = liveHarnessRepo.placementEdgesPreview(
+    db,
+    destinationGroupId,
+    resolved.agent.id,
+    placement,
+    resolved.agent.profileId,
+  )
+  return c.json({
+    agentId: resolved.agent.id,
+    source: {
+      groupId: resolved.group.id,
+      currentRevision: source.revision,
+      resultingRevision: source.revision + 1,
+      retainedEdges: sourceEdges.filter((edge) => !removedEdges.includes(edge)),
+      removedEdges,
+    },
+    destination: {
+      groupId: destinationGroupId,
+      currentRevision: destination.revision,
+      resultingRevision: destination.revision + 1,
+      existingEdges: destinationEdges,
+      addedEdges,
+    },
+    lineage: 'The source binding is removed; the destination receives no source binding.',
+  })
+})
 
 agentsRouter.patch('/:id/group', async (c) => {
   const body = (await c.req.json().catch(() => null)) as

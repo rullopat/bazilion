@@ -15,6 +15,7 @@ import {
   diffHarness,
   groupRepo,
   liveHarnessRepo,
+  previewHarnessAdoption,
   registerGroup,
   saveHarnessAsTemplate,
   updateHarnessSource,
@@ -188,6 +189,36 @@ groupsRouter.post('/:id/harness/adopt-template', async (c) => {
         }>,
       }),
     )
+  } catch (error) {
+    return groupHarnessError(c, error)
+  }
+})
+
+groupsRouter.post('/:id/harness/adopt-template/preview', async (c) => {
+  const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null
+  if (
+    !body ||
+    !Number.isInteger(body.groupExpectedRevision) ||
+    typeof body.templateId !== 'string' ||
+    !Number.isInteger(body.templateExpectedRevision) ||
+    !Array.isArray(body.slotMappings) ||
+    !Array.isArray(body.remainingPlacements)
+  ) {
+    return c.json({ error: 'invalid adoption preview request' }, 400)
+  }
+  try {
+    return c.json({
+      edges: previewHarnessAdoption(getCtx().db, c.req.param('id'), {
+        groupExpectedRevision: body.groupExpectedRevision as number,
+        templateId: body.templateId,
+        templateExpectedRevision: body.templateExpectedRevision as number,
+        slotMappings: body.slotMappings as Array<{ slotId: string; agentId: string }>,
+        remainingPlacements: body.remainingPlacements as Array<{
+          agentId: string
+          placement: 'isolated' | 'open' | 'profile_defaults'
+        }>,
+      }),
+    })
   } catch (error) {
     return groupHarnessError(c, error)
   }
