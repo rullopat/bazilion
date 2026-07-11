@@ -59,6 +59,7 @@ import { runAgentLifecycleMutation } from '../lib/agent-lifecycle-lease.ts'
 import { runAgentTurn } from '../lib/agent-turn.ts'
 import { resolveAgentApiKey } from '../lib/api-key.ts'
 import { closeBrowserSession } from '../lib/browser/pool.ts'
+import { CommunicationDeniedError, sendAgentMessage } from '../lib/communication.ts'
 import { validateCron } from '../lib/cron.ts'
 import { getCtx } from '../lib/ctx.ts'
 import { createDbMessagingHost } from '../lib/messaging-host.ts'
@@ -630,7 +631,7 @@ agentsRouter.get('/:id/messages', (c) => {
   if (!agent) return c.json({ error: `agent not found: ${c.req.param('id')}` }, 404)
   const unreadOnly = c.req.query('unread') === '1'
   const body: ListInboxResponse = {
-    messages: messageRepo.listInbox(db, agent.id, { unreadOnly }),
+    messages: messageRepo.listInboxForOperator(db, agent.id, { unreadOnly }),
   }
   return c.json(body)
 })
@@ -654,13 +655,26 @@ agentsRouter.post('/:id/messages', async (c) => {
   if (body.replyTo && !messageRepo.get(db, body.replyTo)) {
     return c.json({ error: `reply target not found: ${body.replyTo}` }, 404)
   }
-  const msg = messageRepo.send(db, {
-    from: fromAgent.id,
-    to: toAgent.id,
-    payload: JSON.stringify({ text: body.payload.text }),
-    replyTo: body.replyTo ?? null,
-  })
-  return c.json(msg, 201)
+  try {
+    const msg = sendAgentMessage(db, {
+      from: fromAgent.id,
+      to: toAgent.id,
+      payload: JSON.stringify({ text: body.payload.text }),
+      replyTo: body.replyTo ?? null,
+      origin: 'http_agent_message',
+      attemptKind: 'http_agent_message',
+      attemptId: c.req.header('Idempotency-Key') ?? crypto.randomUUID(),
+    })
+    return c.json(msg, 201)
+  } catch (error) {
+    if (error instanceof CommunicationDeniedError) {
+      return c.json(
+        { ...error.result, attemptKind: error.attemptKind, attemptId: error.attemptId },
+        403,
+      )
+    }
+    throw error
+  }
 })
 
 // ─── Cancel ──────────────────────────────────────────────────────────────

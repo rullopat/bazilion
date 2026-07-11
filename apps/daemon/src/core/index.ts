@@ -21,6 +21,7 @@ export {
   type AdoptHarnessTemplateInput,
   adoptHarnessTemplate,
 } from './harness/adopt.ts'
+export * from './harness/authorization.ts'
 export {
   diffHarness,
   type HarnessDiff,

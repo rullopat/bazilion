@@ -10,6 +10,8 @@ interface RawMessage {
   payload: string
   created_at: number
   read_at: number | null
+  policy_disposition: string
+  policy_blocked_at: number | null
 }
 
 function toMessage(r: RawMessage): Message {
@@ -57,6 +59,17 @@ export function listInbox(
   opts?: { unreadOnly?: boolean },
 ): Message[] {
   const sql = opts?.unreadOnly
+    ? "SELECT * FROM messages WHERE to_agent_id = ? AND read_at IS NULL AND policy_disposition = 'deliverable' ORDER BY created_at ASC"
+    : "SELECT * FROM messages WHERE to_agent_id = ? AND policy_disposition = 'deliverable' ORDER BY created_at ASC"
+  return db.raw.query<RawMessage, [string]>(sql).all(agentId).map(toMessage)
+}
+
+export function listInboxForOperator(
+  db: BazilionDb,
+  agentId: string,
+  opts?: { unreadOnly?: boolean },
+): Message[] {
+  const sql = opts?.unreadOnly
     ? 'SELECT * FROM messages WHERE to_agent_id = ? AND read_at IS NULL ORDER BY created_at ASC'
     : 'SELECT * FROM messages WHERE to_agent_id = ? ORDER BY created_at ASC'
   return db.raw.query<RawMessage, [string]>(sql).all(agentId).map(toMessage)
@@ -64,6 +77,13 @@ export function listInbox(
 
 export function markRead(db: BazilionDb, id: string): void {
   db.raw.run('UPDATE messages SET read_at = ? WHERE id = ? AND read_at IS NULL', [Date.now(), id])
+}
+
+export function markPolicyBlocked(db: BazilionDb, id: string): void {
+  db.raw.run(
+    "UPDATE messages SET policy_disposition = 'policy_blocked', policy_blocked_at = ? WHERE id = ? AND policy_disposition = 'deliverable'",
+    [Date.now(), id],
+  )
 }
 
 /**
@@ -92,7 +112,7 @@ export function listRecipientsWithUnread(db: BazilionDb): string[] {
     .query<{ to_agent_id: string }, []>(
       `SELECT DISTINCT m.to_agent_id FROM messages m
        JOIN agents a ON a.id = m.to_agent_id
-       WHERE m.read_at IS NULL AND a.status = 'idle'
+       WHERE m.read_at IS NULL AND m.policy_disposition = 'deliverable' AND a.status = 'idle'
        ORDER BY m.to_agent_id`,
     )
     .all()
@@ -111,7 +131,7 @@ export function drainUnreadForAgent(db: BazilionDb, agentId: string): Message[] 
     const rows = db.raw
       .query<RawMessage, [string]>(
         `SELECT * FROM messages
-         WHERE to_agent_id = ? AND read_at IS NULL
+         WHERE to_agent_id = ? AND read_at IS NULL AND policy_disposition = 'deliverable'
          ORDER BY created_at ASC`,
       )
       .all(agentId)
@@ -119,7 +139,7 @@ export function drainUnreadForAgent(db: BazilionDb, agentId: string): Message[] 
     const now = Date.now()
     db.raw.run(
       `UPDATE messages SET read_at = ?
-       WHERE to_agent_id = ? AND read_at IS NULL`,
+       WHERE to_agent_id = ? AND read_at IS NULL AND policy_disposition = 'deliverable'`,
       [now, agentId],
     )
     return rows.map((r) => toMessage({ ...r, read_at: now }))

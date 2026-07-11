@@ -87,7 +87,10 @@ cannot be pruned, so baseline/cohort display and diff remain reproducible after 
 
 BAZ-010 owns Team current rows/immutable revisions, Profile defaults, LiveHarness keyed by
 Group, live edges, current instantiations/bindings, optional layout state, compatibility
-flags, and exact-Open lifecycle adapters. BAZ-011 adds immutable block events.
+flags, and exact-Open lifecycle adapters. BAZ-011 is complete: migration 0010 adds immutable
+typed-attempt block events and terminal inbox dispositions; the shared authorizer,
+diagnostic evaluator, history endpoint, and gated Agent messaging are available with
+`BAZILION_HARNESS_ENFORCEMENT=on`. The packaged default remains off until BAZ-016/017.
 
 The one-transaction migration:
 
