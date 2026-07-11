@@ -2,6 +2,7 @@ import type { Attachment, ChatFrame } from '@bazilion/api-types'
 import { mergeSecretsIntoEnv, providerStateRepo, resolveAgent } from '../core/index.ts'
 import { spawnWorkerTurn } from '../runtime/index.ts'
 import { registerAgent, unregisterAgent } from './agent-cancel.ts'
+import { acquireAgentLifecycleLease } from './agent-lifecycle-lease.ts'
 import { resolveAgentApiKey } from './api-key.ts'
 import { saveInputFiles } from './attachments.ts'
 import { isBrowserEnabled, resolveBrowserConfig } from './browser/config.ts'
@@ -41,43 +42,49 @@ export async function* runAgentTurn(
   opts: RunAgentTurnOpts = {},
 ): AsyncGenerator<ChatFrame> {
   const { db, paths, authToken } = getCtx()
-  const agent = resolveAgent(db, paths, agentId)
-
-  // Central attachment classifier: images → vision (passed to pi's prompt),
-  // everything else → stored on disk + a path reference appended to the message.
-  const attachments = opts.attachments ?? []
-  const images = attachments.filter((a) => a.mimeType.startsWith('image/'))
-  const docs = attachments.filter((a) => !a.mimeType.startsWith('image/'))
-  const fileNote = saveInputFiles(agent.agent.dir, docs)
-  const message = fileNote ? (rawMessage ? `${rawMessage}\n\n${fileNote}` : fileNote) : rawMessage
-
-  const enabledProviders = Array.from(providerStateRepo.listEnabled(db))
-  const env = mergeSecretsIntoEnv(db, authToken)
-  const messagingHost = createDbMessagingHost(db)
-  const userMdHost = createDbUserMdHost(db, paths)
-  // Pre-fetch the API key for OAuth providers (`openai-codex`) before the
-  // worker spawns — the worker has no DB handle, so it can't reach the
-  // secrets table itself. For env-key providers this is a no-op (`{}`).
-  // Refresher is intentionally skipped: the worker has no IPC channel for
-  // OAuth refresh today, and the initial token comfortably outlives a
-  // single turn for ChatGPT-backed sessions.
-  const { apiKey } = await resolveAgentApiKey(db, authToken, agent)
-
-  // Browser automation: expose the browser_* tools (gated by config). The
-  // Playwright session is lazy — Chromium only launches on first browser call.
-  const browserEnabled = isBrowserEnabled(env)
-  const browserHost = browserEnabled ? createBrowserHost(resolveBrowserConfig(env)) : undefined
-
-  // MCP: discover enabled servers' tools (connections pooled in the daemon) and
-  // build the proxy host. Null when no servers are enabled.
-  const mcp = await resolveMcpForTurn(db, env, authToken)
-
   const controller = opts.controller ?? new AbortController()
-  registerAgent(agentId, controller)
-  // Telegram "typing..." indicator while the turn runs. Safe to call even
-  // when the agent has no bound topic — mirror.ts checks before firing.
-  mirrorTypingStart(agentId)
+  const releaseLease = await acquireAgentLifecycleLease(agentId)
+  let agent: ReturnType<typeof resolveAgent>
   try {
+    agent = resolveAgent(db, paths, agentId)
+    registerAgent(agentId, controller)
+  } finally {
+    releaseLease()
+  }
+
+  try {
+    // Central attachment classifier: images → vision (passed to pi's prompt),
+    // everything else → stored on disk + a path reference appended to the message.
+    const attachments = opts.attachments ?? []
+    const images = attachments.filter((a) => a.mimeType.startsWith('image/'))
+    const docs = attachments.filter((a) => !a.mimeType.startsWith('image/'))
+    const fileNote = saveInputFiles(agent.agent.dir, docs)
+    const message = fileNote ? (rawMessage ? `${rawMessage}\n\n${fileNote}` : fileNote) : rawMessage
+
+    const enabledProviders = Array.from(providerStateRepo.listEnabled(db))
+    const env = mergeSecretsIntoEnv(db, authToken)
+    const messagingHost = createDbMessagingHost(db)
+    const userMdHost = createDbUserMdHost(db, paths)
+    // Pre-fetch the API key for OAuth providers (`openai-codex`) before the
+    // worker spawns — the worker has no DB handle, so it can't reach the
+    // secrets table itself. For env-key providers this is a no-op (`{}`).
+    // Refresher is intentionally skipped: the worker has no IPC channel for
+    // OAuth refresh today, and the initial token comfortably outlives a
+    // single turn for ChatGPT-backed sessions.
+    const { apiKey } = await resolveAgentApiKey(db, authToken, agent)
+
+    // Browser automation: expose the browser_* tools (gated by config). The
+    // Playwright session is lazy — Chromium only launches on first browser call.
+    const browserEnabled = isBrowserEnabled(env)
+    const browserHost = browserEnabled ? createBrowserHost(resolveBrowserConfig(env)) : undefined
+
+    // MCP: discover enabled servers' tools (connections pooled in the daemon) and
+    // build the proxy host. Null when no servers are enabled.
+    const mcp = await resolveMcpForTurn(db, env, authToken)
+
+    // Telegram "typing..." indicator while the turn runs. Safe to call even
+    // when the agent has no bound topic — mirror.ts checks before firing.
+    mirrorTypingStart(agentId)
     for await (const frame of spawnWorkerTurn(
       {
         agent,

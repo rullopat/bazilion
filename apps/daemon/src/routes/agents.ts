@@ -40,6 +40,7 @@ import {
   loadIdentityFromFile,
   mergeSecretsIntoEnv,
   messageRepo,
+  moveAgentCompatibility,
   parseSkillFile,
   providerStateRepo,
   resolveAgent,
@@ -52,6 +53,7 @@ import {
 } from '../core/index.ts'
 import { cancelAgent } from '../lib/agent-cancel.ts'
 import { resolveAgentIdParam } from '../lib/agent-id.ts'
+import { runAgentLifecycleMutation } from '../lib/agent-lifecycle-lease.ts'
 import { runAgentTurn } from '../lib/agent-turn.ts'
 import { resolveAgentApiKey } from '../lib/api-key.ts'
 import { closeBrowserSession } from '../lib/browser/pool.ts'
@@ -159,7 +161,20 @@ agentsRouter.post('/', async (c) => {
     notifyDirectoryDirty()
     return c.json(agent, 201)
   } catch (err) {
-    return c.json({ error: (err as Error).message }, 400)
+    const message = (err as Error).message
+    const conflict =
+      message.startsWith('placement_required') || message.startsWith('group_policy_invalid')
+    return c.json(
+      {
+        error: message,
+        ...(message.startsWith('placement_required')
+          ? { code: 'placement_required' }
+          : message.startsWith('group_policy_invalid')
+            ? { code: 'group_policy_invalid' }
+            : {}),
+      },
+      conflict ? 409 : 400,
+    )
   }
 })
 
@@ -232,41 +247,79 @@ agentsRouter.patch('/:id', async (c) => {
   return c.json(agent)
 })
 
-agentsRouter.delete('/:id', (c) => {
-  const { db, paths, authToken } = getCtx()
+agentsRouter.delete('/:id', async (c) => {
+  const { db } = getCtx()
+  const id = agentRepo.resolveId(db, c.req.param('id'))
+  if (!id) return c.json({ error: `agent not found: ${c.req.param('id')}` }, 404)
   try {
-    // Best-effort teardown of any daemon-side browser session before the agent
-    // record (and its home dir) goes away. Fire-and-forget — the idle reaper is
-    // the backstop and the response shouldn't block on Chromium shutdown.
-    void closeBrowserSession(c.req.param('id')).catch(() => {})
-    deleteAgent(db, c.req.param('id'))
+    await runAgentLifecycleMutation(id, () => deleteAgent(db, id))
+    // Best-effort teardown after the mutation wins the lifecycle lease. An
+    // active-turn rejection must not close resources owned by that turn.
+    void closeBrowserSession(id).catch(() => {})
     notifyDirectoryDirty()
     return c.body(null, 204)
   } catch (err) {
-    return c.json({ error: (err as Error).message }, 400)
+    const message = (err as Error).message
+    return c.json(
+      {
+        error: message,
+        ...(message.startsWith('agent_turn_active')
+          ? { code: 'agent_turn_active' }
+          : message.startsWith('placement_required')
+            ? { code: 'revision_required' }
+            : message.startsWith('group_policy_invalid')
+              ? { code: 'group_policy_invalid' }
+              : {}),
+      },
+      message.startsWith('agent_turn_active') ||
+        message.startsWith('placement_required') ||
+        message.startsWith('group_policy_invalid')
+        ? 409
+        : 400,
+    )
   }
 })
 
-agentsRouter.post('/:id/archive', (c) => {
-  const { db, paths, authToken } = getCtx()
+agentsRouter.post('/:id/archive', async (c) => {
+  const { db } = getCtx()
+  const id = agentRepo.resolveId(db, c.req.param('id'))
+  if (!id) return c.json({ error: `agent not found: ${c.req.param('id')}` }, 404)
   try {
-    void closeBrowserSession(c.req.param('id')).catch(() => {})
-    archiveAgent(db, c.req.param('id'))
+    await runAgentLifecycleMutation(id, async () => {
+      archiveAgent(db, id)
+      await closeBrowserSession(id).catch(() => {})
+    })
     notifyDirectoryDirty()
     return c.body(null, 204)
   } catch (err) {
-    return c.json({ error: (err as Error).message }, 400)
+    const message = (err as Error).message
+    return c.json(
+      {
+        error: message,
+        ...(message.startsWith('agent_turn_active') ? { code: 'agent_turn_active' } : {}),
+      },
+      message.startsWith('agent_turn_active') ? 409 : 400,
+    )
   }
 })
 
-agentsRouter.post('/:id/unarchive', (c) => {
-  const { db, paths, authToken } = getCtx()
+agentsRouter.post('/:id/unarchive', async (c) => {
+  const { db } = getCtx()
+  const id = agentRepo.resolveId(db, c.req.param('id'))
+  if (!id) return c.json({ error: `agent not found: ${c.req.param('id')}` }, 404)
   try {
-    unarchiveAgent(db, c.req.param('id'))
+    await runAgentLifecycleMutation(id, () => unarchiveAgent(db, id))
     notifyDirectoryDirty()
     return c.body(null, 204)
   } catch (err) {
-    return c.json({ error: (err as Error).message }, 400)
+    const message = (err as Error).message
+    return c.json(
+      {
+        error: message,
+        ...(message.startsWith('agent_turn_active') ? { code: 'agent_turn_active' } : {}),
+      },
+      message.startsWith('agent_turn_active') ? 409 : 400,
+    )
   }
 })
 
@@ -338,9 +391,32 @@ agentsRouter.patch('/:id/group', async (c) => {
   if (!groupRepo.get(db, body.groupId, paths)) {
     return c.json({ error: `group not found: ${body.groupId}` }, 404)
   }
-  agentRepo.setGroup(db, resolved.agent.id, body.groupId)
-  notifyDirectoryDirty()
-  return c.json(resolveAgent(db, paths, resolved.agent.id))
+  try {
+    await runAgentLifecycleMutation(resolved.agent.id, () =>
+      moveAgentCompatibility(db, paths, resolved.agent.id, body.groupId),
+    )
+    notifyDirectoryDirty()
+    return c.json(resolveAgent(db, paths, resolved.agent.id))
+  } catch (err) {
+    const message = (err as Error).message
+    const conflict =
+      message.startsWith('agent_turn_active') ||
+      message.startsWith('placement_required') ||
+      message.startsWith('group_policy_invalid')
+    return c.json(
+      {
+        error: message,
+        ...(message.startsWith('agent_turn_active')
+          ? { code: 'agent_turn_active' }
+          : message.startsWith('placement_required')
+            ? { code: 'placement_required' }
+            : message.startsWith('group_policy_invalid')
+              ? { code: 'group_policy_invalid' }
+              : {}),
+      },
+      conflict ? 409 : 400,
+    )
+  }
 })
 
 // ─── Skills ──────────────────────────────────────────────────────────────

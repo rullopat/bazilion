@@ -22,6 +22,28 @@ ProfileGroup is a one-release API/CLI/URL projection only. A LiveHarness cannot 
 addressed, or deleted independently of its Group. Slot bindings and presentation records
 are lineage/layout, never membership.
 
+## BAZ-010 implementation status (2026-07-11)
+
+BAZ-010 is complete. Migration `0009_canonical_harness.sql` now owns the canonical current
+and immutable Team rows, optional Profile defaults, exactly one `live_harnesses` row per
+Group, explicit live edges, retained instantiations/bindings, and optional presentation
+state. It atomically converts and removes the legacy Profile Group tables after validating
+counts, stable UUIDs, snapshots, cardinality, exact Open topology, membership projection,
+and absence of fabricated lineage.
+
+The one-release `/api/profile-groups` and `bazilion profile-group` surfaces are deprecated
+adapters over those canonical tables; they are not a second roster. Existing
+compatibility-open Agent/Group lifecycle operations maintain stored exact Open edges, and
+the shared per-Agent lifecycle/turn lease now orders turn registration against move,
+archive, unarchive, and delete through cancellation settlement. BAZ-015 still owns the
+canonical Team and Group-policy API endpoints; BAZ-010 exposes no new unpaired management
+surface.
+
+BAZ-015 starts from these shipped repositories and wire types. It still owns every custom
+or explicit mutation: Team definition writes, live policy replacement, placement,
+adoption/re-baselining, clone, diff, update-source, save-as-template, and canonical
+lifecycle revision payloads. BAZ-010 adds no authorizer bypass or runtime enforcement.
+
 ## Cardinality and retained source model
 
 - Profile `1 -> 0..*` Team slots and `1 -> 0..*` Agents; optional defaults are `1 -> 0..1`.
@@ -275,8 +297,8 @@ Prototype state is never silently uploaded/deleted and simulated blocks never im
 
 ## Pull-sized delivery order
 
-1. **BAZ-010 (L):** canonical storage, immutable revisions, atomic migration, exact-Open
-   adapters.
+1. **BAZ-010 (L, complete):** canonical storage, immutable revisions, atomic migration,
+   exact-Open adapters, and the shared lifecycle/turn lease.
 2. **BAZ-015 (L):** custom revisioned Team/Group policy APIs and atomic Agent lifecycle.
 3. **BAZ-011 (L):** authorizer/audit/diagnostics and gated Agent messaging; gate defaults
    off from first merge.

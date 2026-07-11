@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { readdirSync, rmSync } from 'node:fs'
 import type { ProfileGroupMember } from '@bazilion/api-types'
 import { spawnAgent } from '../agent/spawn.ts'
@@ -7,6 +8,8 @@ import { registerGroup } from '../group/register.ts'
 import type { Paths } from '../paths.ts'
 import { DEFAULT_GROUP_ID } from '../profile/seed.ts'
 import * as groupRepo from '../repos/groups.ts'
+import * as harnessTemplateRepo from '../repos/harnessTemplates.ts'
+import * as liveHarnessRepo from '../repos/liveHarnesses.ts'
 import * as profileGroupRepo from '../repos/profileGroups.ts'
 import * as profileRepo from '../repos/profiles.ts'
 import { rmWithRetry } from './rm-with-retry.ts'
@@ -82,6 +85,14 @@ export async function spawnProfileGroup(
   if (!template) {
     throw new Error(`profile group not found: ${input.profileGroupId}`)
   }
+  const canonicalTemplate = harnessTemplateRepo.get(db, input.profileGroupId)
+  if (!canonicalTemplate) throw new Error(`profile group not found: ${input.profileGroupId}`)
+  if (canonicalTemplate.deletedAt !== null) {
+    throw new Error(`template_deleted: ${input.profileGroupId}`)
+  }
+  if (!canonicalTemplate.compatibilityManaged) {
+    throw new Error(`migration_required: ${input.profileGroupId}`)
+  }
   const members = profileGroupRepo.members(db, input.profileGroupId)
 
   // Pre-flight: every referenced profile must still exist. Bail before any
@@ -105,6 +116,19 @@ export async function spawnProfileGroup(
       : [],
   )
   const resolvedNames = resolveMemberNames(existingNames, members)
+  if (targetGroupExists) {
+    try {
+      liveHarnessRepo.requireCompatibilityOpen(db, targetSlug)
+    } catch (error) {
+      if (
+        (error as Error).message.startsWith('placement_required') ||
+        (error as Error).message.startsWith('group_policy_invalid')
+      ) {
+        throw new Error(`policy_merge_required: group ${targetSlug} has explicit policy`)
+      }
+      throw error
+    }
+  }
 
   // Snapshot dir contents so the rollback path can identify fs orphans by
   // diff regardless of whether spawnAgent crashed before or after its DB
@@ -118,6 +142,33 @@ export async function spawnProfileGroup(
   const created: { id: string; name: string }[] = []
   try {
     inTx(db, () => {
+      // Re-read and pin the immutable source inside the same transaction as
+      // Agent creation and lineage. The preflight copy is only for names and
+      // filesystem planning; it is never accepted as transactional authority.
+      const source = harnessTemplateRepo.get(db, input.profileGroupId)
+      if (!source || source.deletedAt !== null) {
+        throw new Error(`template_deleted: ${input.profileGroupId}`)
+      }
+      if (
+        !source.compatibilityManaged ||
+        !harnessTemplateRepo.hasExactOpenTopology(db, source.id)
+      ) {
+        throw new Error(`migration_required: ${input.profileGroupId}`)
+      }
+      if (source.currentRevision !== canonicalTemplate.currentRevision) {
+        throw new Error(
+          `template_revision_conflict: expected ${canonicalTemplate.currentRevision}, current ${source.currentRevision}`,
+        )
+      }
+      const sourceSnapshot = harnessTemplateRepo.revision(db, source.id, source.currentRevision)
+      if (
+        !sourceSnapshot ||
+        sourceSnapshot.slots.length !== members.length ||
+        sourceSnapshot.slots.some((slot, index) => slot.slotId !== members[index]?.slotId)
+      ) {
+        throw new Error(`template_revision_invalid: ${source.id}@${source.currentRevision}`)
+      }
+
       if (!targetGroupExists) {
         registerGroup(db, { id: targetSlug, name: targetSlug }, paths)
         groupCreated = true
@@ -141,9 +192,44 @@ export async function spawnProfileGroup(
           modelOverride: member.modelOverride,
           reasoningLevel: member.reasoningLevel ?? 'medium',
           groupId: targetSlug,
+          deferHarnessUpdate: true,
         })
         created.push({ id: agent.id, name: agent.name })
       }
+
+      const instantiationId = randomUUID()
+      db.raw.run(
+        `INSERT INTO template_instantiations
+           (id, group_id, template_id, template_revision, created_at)
+         VALUES (?, ?, ?, ?, ?)`,
+        [instantiationId, targetSlug, source.id, source.currentRevision, Date.now()],
+      )
+      for (let i = 0; i < members.length; i++) {
+        const member = members[i]
+        const agent = created[i]
+        if (!member?.slotId || !agent) {
+          throw new Error(`profile group spawn: canonical slot mapping missing at ordinal ${i}`)
+        }
+        db.raw.run(
+          `INSERT INTO source_slot_bindings (agent_id, instantiation_id, source_slot_id)
+           VALUES (?, ?, ?)`,
+          [agent.id, instantiationId, member.slotId],
+        )
+      }
+      const currentHarness = liveHarnessRepo.get(db, targetSlug)
+      if (currentHarness?.membershipMode !== 'compatibility_open') {
+        throw new Error(`policy_merge_required: group ${targetSlug} has no compatible policy`)
+      }
+      const establishesBaseline =
+        groupCreated ||
+        (existingNames.size === 0 && currentHarness.baselineInstantiationId === null)
+      if (establishesBaseline) {
+        db.raw.run('UPDATE live_harnesses SET baseline_instantiation_id = ? WHERE group_id = ?', [
+          instantiationId,
+          targetSlug,
+        ])
+      }
+      liveHarnessRepo.regenerateExactOpen(db, targetSlug, { bump: !groupCreated })
     })
     return { groupSlug: targetSlug, agents: created, orphanAgentIds: [] }
   } catch (err) {

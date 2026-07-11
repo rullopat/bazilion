@@ -12,7 +12,7 @@ import type {
   UpdateProfileGroupRequest,
 } from '@bazilion/api-types'
 import { REASONING_LEVELS } from '@bazilion/api-types'
-import { Hono } from 'hono'
+import { type Context, Hono } from 'hono'
 import {
   profileGroupRepo,
   profileRepo,
@@ -26,6 +26,13 @@ import { notifyDirectoryDirty } from '../lib/telegram/directory.ts'
 
 export const profileGroupsRouter = new Hono()
 
+profileGroupsRouter.use('*', async (c, next) => {
+  c.header('Deprecation', 'true')
+  c.header('Sunset', 'Sun, 10 Jan 2027 00:00:00 GMT')
+  c.header('Link', '</api/harness-templates>; rel="successor-version"')
+  await next()
+})
+
 profileGroupsRouter.get('/', (c) => {
   const { db } = getCtx()
   return c.json(profileGroupRepo.list(db))
@@ -36,6 +43,7 @@ profileGroupsRouter.get('/:id', (c) => {
   const id = c.req.param('id')
   const group = profileGroupRepo.get(db, id)
   if (!group) return c.json({ error: `profile group not found: ${id}` }, 404)
+  if (group.revision) c.header('ETag', `"${group.revision}"`)
   const body: ProfileGroupDetail = {
     group,
     members: profileGroupRepo.members(db, id),
@@ -79,6 +87,8 @@ profileGroupsRouter.patch('/:id', async (c) => {
   if (!profileGroupRepo.get(db, id)) {
     return c.json({ error: `profile group not found: ${id}` }, 404)
   }
+  const conflict = expectedRevisionConflict(c, profileGroupRepo.get(db, id)?.revision)
+  if (conflict) return conflict
   // Distinguish undefined (don't touch) from null (clear) per repo semantics.
   const patch: UpdateProfileGroupPatch = {}
   if (Object.hasOwn(raw, 'name') && typeof raw.name === 'string') {
@@ -87,8 +97,12 @@ profileGroupsRouter.patch('/:id', async (c) => {
   if (Object.hasOwn(raw, 'userMd')) {
     patch.userMd = raw.userMd === null ? null : typeof raw.userMd === 'string' ? raw.userMd : null
   }
-  profileGroupRepo.update(db, id, patch)
-  return c.json(profileGroupRepo.get(db, id))
+  try {
+    profileGroupRepo.update(db, id, patch)
+    return c.json(profileGroupRepo.get(db, id))
+  } catch (error) {
+    return compatibilityError(c, error)
+  }
 })
 
 profileGroupsRouter.put('/:id/members', async (c) => {
@@ -103,6 +117,8 @@ profileGroupsRouter.put('/:id/members', async (c) => {
   if (!profileGroupRepo.get(db, id)) {
     return c.json({ error: `profile group not found: ${id}` }, 404)
   }
+  const conflict = expectedRevisionConflict(c, profileGroupRepo.get(db, id)?.revision)
+  if (conflict) return conflict
   const cleaned: MemberInput[] = []
   const missingProfiles: string[] = []
   for (let i = 0; i < raw.members.length; i++) {
@@ -133,8 +149,12 @@ profileGroupsRouter.put('/:id/members', async (c) => {
   if (missingProfiles.length > 0) {
     return c.json({ error: `missing profiles: ${[...new Set(missingProfiles)].join(', ')}` }, 400)
   }
-  profileGroupRepo.replaceMembers(db, id, cleaned)
-  return c.json({ members: profileGroupRepo.members(db, id) })
+  try {
+    profileGroupRepo.replaceMembers(db, id, cleaned)
+    return c.json({ members: profileGroupRepo.members(db, id) })
+  } catch (error) {
+    return compatibilityError(c, error)
+  }
 })
 
 profileGroupsRouter.delete('/:id', (c) => {
@@ -143,7 +163,13 @@ profileGroupsRouter.delete('/:id', (c) => {
   if (!profileGroupRepo.get(db, id)) {
     return c.json({ error: `profile group not found: ${id}` }, 404)
   }
-  profileGroupRepo.remove(db, id)
+  const conflict = expectedRevisionConflict(c, profileGroupRepo.get(db, id)?.revision)
+  if (conflict) return conflict
+  try {
+    profileGroupRepo.remove(db, id)
+  } catch (error) {
+    return compatibilityError(c, error)
+  }
   return c.body(null, 204)
 })
 
@@ -156,6 +182,8 @@ profileGroupsRouter.post('/:id/spawn', async (c) => {
   const userMd = typeof body.userMd === 'string' ? body.userMd : undefined
   const { db, paths } = getCtx()
   const id = c.req.param('id')
+  const conflict = expectedRevisionConflict(c, profileGroupRepo.get(db, id)?.revision)
+  if (conflict) return conflict
   try {
     const result = await spawnProfileGroup(db, paths, {
       profileGroupId: id,
@@ -180,6 +208,40 @@ profileGroupsRouter.post('/:id/spawn', async (c) => {
     if (msg.startsWith('profile group spawn: missing profiles')) {
       return c.json({ error: msg }, 400)
     }
-    return c.json({ error: msg }, 500)
+    return compatibilityError(c, err)
   }
 })
+
+function expectedRevisionConflict(
+  c: Context,
+  currentRevision: number | undefined,
+): Response | null {
+  const raw = c.req.header('If-Match')
+  if (!raw || currentRevision === undefined) return null
+  if (raw.trim() === '*') return null
+  const match = raw.trim().match(/^(?:W\/)?"?(\d+)"?$/)
+  const expected = match?.[1] ? Number.parseInt(match[1], 10) : Number.NaN
+  if (Number.isInteger(expected) && expected === currentRevision) return null
+  return c.json(
+    {
+      error: `template_revision_conflict: expected ${raw}, current ${currentRevision}`,
+      code: 'template_revision_conflict',
+      currentRevision,
+    },
+    409,
+  )
+}
+
+function compatibilityError(c: Context, error: unknown): Response {
+  const message = (error as Error).message
+  if (message.startsWith('template_deleted')) {
+    return c.json({ error: message, code: 'template_deleted' }, 410)
+  }
+  if (message.startsWith('migration_required')) {
+    return c.json({ error: message, code: 'migration_required' }, 409)
+  }
+  if (message.startsWith('policy_merge_required')) {
+    return c.json({ error: message, code: 'policy_merge_required' }, 409)
+  }
+  return c.json({ error: message }, 500)
+}

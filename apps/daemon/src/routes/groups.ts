@@ -53,7 +53,20 @@ groupsRouter.delete('/:id', (c) => {
     deleteGroup(db, paths, c.req.param('id'))
     return c.body(null, 204)
   } catch (err) {
-    return c.json({ error: (err as Error).message }, 400)
+    const message = (err as Error).message
+    return c.json(
+      {
+        error: message,
+        ...(message.startsWith('placement_required')
+          ? { code: 'revision_required' }
+          : message.startsWith('group_policy_invalid')
+            ? { code: 'group_policy_invalid' }
+            : {}),
+      },
+      message.startsWith('placement_required') || message.startsWith('group_policy_invalid')
+        ? 409
+        : 400,
+    )
   }
 })
 

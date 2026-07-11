@@ -10,7 +10,7 @@
 // Slug = the row's id. Names are humanized labels separate from the slug;
 // callers may pass `name` explicitly or let it default to the slug.
 
-import { existsSync, mkdirSync, statSync, symlinkSync } from 'node:fs'
+import { existsSync, mkdirSync, rmSync, statSync, symlinkSync } from 'node:fs'
 import { resolve } from 'node:path'
 import type { Group } from '@bazilion/api-types'
 import type { BazilionDb } from '../db/client.ts'
@@ -64,5 +64,14 @@ export function registerGroup(db: BazilionDb, input: RegisterGroupInput, paths: 
   // the first tool call doesn't have to ensure it.
   mkdirSync(resolve(slot, 'memory'), { recursive: true })
 
-  return groupRepo.insert(db, { id: input.id, name: input.name ?? input.id }, paths)
+  try {
+    return db.raw.transaction(() => {
+      return groupRepo.insert(db, { id: input.id, name: input.name ?? input.id }, paths)
+    })()
+  } catch (error) {
+    // Remove only the canonical slot. For linked Groups rmSync removes the
+    // symlink itself and never touches its target.
+    rmSync(slot, { recursive: true, force: true })
+    throw error
+  }
 }

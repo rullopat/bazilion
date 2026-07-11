@@ -1,11 +1,12 @@
 ---
 id: BAZ-010
 title: Canonical harness storage and compatibility migration
-status: todo
+status: done
 size: L (1-2 weeks)
 created: 2026-07-10
 refined: 2026-07-10
 priority: high
+shipped: 2026-07-11
 note: Establish canonical Team-template and one-per-Group policy storage, migrate and remove legacy Profile Group tables, and preserve exact Open Team behavior through bounded adapters. Explicit policy/lifecycle APIs continue in BAZ-015.
 ---
 
@@ -190,3 +191,67 @@ The URLs remain permanent; BAZ-015 adds canonical revision/placement fields to t
   serialized concurrency, explicit-state 409s, deprecation headers/warnings, and no legacy
   table access.
 - API type/client compilation, full repository suite, root/web typechecks, lint, and build.
+
+## As-built (2026-07-11, unreleased)
+
+The canonical persistence and one-release compatibility foundation landed as specified:
+
+- Added migration `0009_canonical_harness.sql`. It creates optional Profile communication
+  defaults; the sole normalized Team-template roster; stable current slots and edges;
+  complete immutable revision slot/edge snapshots; one `live_harnesses` row keyed by every
+  Group; explicit live edges; retained template instantiations; unique Agent source-slot
+  bindings; and optional Agent-keyed presentation state.
+- The migration converts every legacy Profile Group to a same-id revision-1
+  compatibility-managed Team template, assigns an opaque UUID to every repeated or unique
+  member row, creates exact Open Team template and live edges, preserves live and archived
+  `agents.group_id`, invents no Profile defaults or source lineage, validates all counts,
+  cardinality, snapshots, UUIDs, topology, and membership projections, and only then drops
+  `profile_groups` and `profile_group_members`. Re-running migrations is idempotent and no
+  filesystem state is read or changed.
+- Replaced the Profile Group repository with a canonical projection. Legacy GET/CRUD/spawn
+  routes and CLI commands use only Team-template and Group-policy tables, expose stable slot
+  and revision fields, honor additive `If-Match`, and return Deprecation, Sunset, and
+  successor Link metadata. The CLI emits a deprecation warning.
+- Legacy positional member PUT retains the prior slot id at each existing ordinal, appends
+  new UUID slots, suffix-tombstones removals, regenerates exact Open Team, and appends one
+  immutable full snapshot. Customized/tombstoned templates return the specified structured
+  migration/410 errors.
+- Standalone Group creation atomically creates its empty revision-1
+  `compatibility_open` policy. Direct spawn, move, hard delete, Group delete, and legacy
+  Team spawn serialize against compatible policy state, maintain exact Open Team over all
+  Agents including archived members, update lineage and `agent.json`, prune only empty
+  nonbaseline cohorts, retain empty baselines, and bump each affected policy exactly once.
+  Explicit Groups reject omitted revision/placement with structured 409 responses.
+- Added the shared per-Agent lifecycle/turn lease. Turn registration and compatibility
+  move/archive/unarchive/delete now have a single ordering point; cancellation keeps an
+  Agent registered as active until worker settlement, closing the former cancel-to-mutation
+  gap. Filesystem failure paths restore or clean Agent/Group slots alongside SQL rollback.
+- Added hermetic wire types and normalized canonical repositories. The one-release legacy
+  GETs project them with additive stable-slot/revision fields; canonical Team/Group-policy
+  endpoints remain owned by BAZ-015 so this story does not create API surfaces without the
+  required later CLI/web parity.
+- Profile create/detail/list/PATCH now support the exact optional defaults tri-state:
+  create omission writes no row, PATCH omission preserves, and explicit null clears.
+  Profile deletion returns `409 profile_in_use` while any live/archived Agent or current/
+  retained immutable Team slot still references it.
+
+Verification completed:
+
+- Focused migration, repository, lifecycle-lease, rollback, and HTTP compatibility suites
+  pass, including successful/idempotent migration, invalid-fixture SQL rollback, unchanged
+  filesystem sentinel, repeated Profiles, archived Agents, stable-slot retention,
+  tombstones, immutable revision retention, exact Open formulas, baseline/binding identity,
+  explicit-state conflicts, deprecation headers, and cancellation settlement.
+- `pnpm test`: 85 test files and 679 tests passed.
+- `pnpm typecheck` and `pnpm --filter @bazilion/web typecheck` passed.
+- `pnpm build` and `pnpm --filter @bazilion/web build` passed. Existing TanStack
+  `inputValidator()` deprecation notices remain unrelated.
+- `pnpm lint` passed with zero errors after formatting (41 warnings and two Biome
+  configuration infos remain outside this story); `git diff --check` passed.
+
+Deliberately not built here:
+
+- Custom/revisioned Team-definition or Group-policy writes, explicit placement,
+  adoption/re-baselining, diff/update-source/save-as-template workflows (BAZ-015).
+- Communication authorization, denial audit, runtime enforcement, workflow execution,
+  approvals, production web migration, or canonical policy CLI tools.

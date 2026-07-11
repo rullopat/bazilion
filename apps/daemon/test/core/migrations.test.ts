@@ -20,12 +20,22 @@ test('migrations create all expected tables', () => {
     'agent_skills',
     'agents',
     'groups',
+    'harness_template_edges',
+    'harness_template_revision_edges',
+    'harness_template_revision_slots',
+    'harness_template_revisions',
+    'harness_template_slots',
+    'harness_templates',
+    'live_agent_state',
+    'live_harness_edges',
+    'live_harnesses',
     'messages',
     'profile_default_skills',
-    'profile_group_members',
-    'profile_groups',
+    'profile_communication_defaults',
     'profiles',
     'schema_migrations',
+    'source_slot_bindings',
+    'template_instantiations',
   ]) {
     expect(tables).toContain(t)
   }
@@ -35,6 +45,8 @@ test('migrations create all expected tables', () => {
   expect(tables).not.toContain('workspaces')
   expect(tables).not.toContain('runs')
   expect(tables).not.toContain('events')
+  expect(tables).not.toContain('profile_groups')
+  expect(tables).not.toContain('profile_group_members')
 })
 
 test('profiles table has skills_mode and no default_workspace_id', () => {
@@ -74,18 +86,55 @@ test('migrations are idempotent', () => {
   expect(after[0]?.version).toBe('0001_init')
 })
 
-test('profile_group_members FK on profile_id uses ON DELETE RESTRICT', () => {
+test('nested transactions use savepoints without weakening outer rollback', () => {
+  env.db.raw.transaction(() => {
+    env.db.raw.run("INSERT INTO config (key, value, updated_at) VALUES ('outer', '1', 1)")
+    expect(() =>
+      env.db.raw.transaction(() => {
+        env.db.raw.run("INSERT INTO config (key, value, updated_at) VALUES ('outer', '2', 2)")
+      })(),
+    ).toThrow()
+    env.db.raw.run("INSERT INTO config (key, value, updated_at) VALUES ('after', '3', 3)")
+  })()
+  expect(
+    env.db.raw.query<{ value: string }, []>("SELECT value FROM config WHERE key = 'after'").get()
+      ?.value,
+  ).toBe('3')
+
+  expect(() =>
+    env.db.raw.transaction(() => {
+      env.db.raw.transaction(() => {
+        env.db.raw.run("INSERT INTO config (key, value, updated_at) VALUES ('nested', '4', 4)")
+      })()
+      throw new Error('rollback outer')
+    })(),
+  ).toThrow(/rollback outer/)
+  expect(
+    env.db.raw.query<{ value: string }, []>("SELECT value FROM config WHERE key = 'nested'").get(),
+  ).toBeNull()
+})
+
+test('canonical current and immutable Team slots restrict Profile deletion', () => {
   const fks = env.db.raw
     .query<{ table: string; from: string; on_delete: string }, []>(
-      'SELECT "table", "from", on_delete FROM pragma_foreign_key_list(\'profile_group_members\')',
+      'SELECT "table", "from", on_delete FROM pragma_foreign_key_list(\'harness_template_slots\')',
     )
     .all()
   const profileFk = fks.find((f) => f.table === 'profiles' && f.from === 'profile_id')
   expect(profileFk).toBeDefined()
   expect(profileFk?.on_delete).toBe('RESTRICT')
 
-  const parentFk = fks.find((f) => f.table === 'profile_groups')
+  const parentFk = fks.find((f) => f.table === 'harness_templates')
   expect(parentFk?.on_delete).toBe('CASCADE')
+
+  const revisionFks = env.db.raw
+    .query<{ table: string; from: string; on_delete: string }, []>(
+      'SELECT "table", "from", on_delete FROM pragma_foreign_key_list(\'harness_template_revision_slots\')',
+    )
+    .all()
+  expect(
+    revisionFks.find((f) => f.table === 'profiles' && f.from === 'profile_id')?.on_delete,
+  ).toBe('RESTRICT')
 })
 
 test('foreign keys are enforced', () => {

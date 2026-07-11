@@ -1,8 +1,9 @@
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { Profile, SkillsMode } from '@bazilion/api-types'
+import type { Profile, ProfileCommunicationDefaults, SkillsMode } from '@bazilion/api-types'
 import type { BazilionDb } from '../db/client.ts'
 import type { Paths } from '../paths.ts'
+import * as profileCommunicationDefaultsRepo from '../repos/profileCommunicationDefaults.ts'
 import * as profileRepo from '../repos/profiles.ts'
 
 export interface UpdateProfileInput {
@@ -10,6 +11,7 @@ export interface UpdateProfileInput {
   defaultModel?: string
   skillsMode?: SkillsMode
   defaultSkills?: string[]
+  communicationDefaults?: ProfileCommunicationDefaults | null
 }
 
 /**
@@ -38,6 +40,9 @@ export function updateProfile(
   if (input.defaultSkills !== undefined) {
     profileRepo.setDefaultSkills(db, id, input.defaultSkills)
   }
+  if (Object.hasOwn(input, 'communicationDefaults')) {
+    profileCommunicationDefaultsRepo.set(db, id, input.communicationDefaults ?? null)
+  }
 
   const skills = profileRepo.getDefaultSkills(db, id)
   const profileJson = {
@@ -53,5 +58,8 @@ export function updateProfile(
 
   const updated = profileRepo.get(db, id)
   if (!updated) throw new Error(`profile vanished after update: ${id}`)
-  return updated
+  return {
+    ...updated,
+    communicationDefaults: profileCommunicationDefaultsRepo.get(db, id),
+  }
 }

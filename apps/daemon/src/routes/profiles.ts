@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import type {
   CreateProfileRequest,
   FileContentResponse,
+  ProfileCommunicationDefaults,
   ProfileFileName,
   PutFileRequest,
   SkillsMode,
@@ -24,6 +25,7 @@ import {
   DEFAULT_USER_MD,
   deleteProfile,
   loadProfile,
+  profileCommunicationDefaultsRepo,
   profileRepo,
   updateProfile,
 } from '../core/index.ts'
@@ -40,6 +42,7 @@ profilesRouter.get('/', (c) => {
     ...p,
     agentCount: agentRepo.countByProfile(db, p.id),
     defaultSkills: profileRepo.getDefaultSkills(db, p.id),
+    communicationDefaults: profileCommunicationDefaultsRepo.get(db, p.id),
   }))
   return c.json(hydrated)
 })
@@ -77,6 +80,10 @@ profilesRouter.post('/', async (c) => {
 
   const skillsMode = toSkillsMode(raw.skillsMode) ?? 'selected'
   const defaultSkills = csvToArray(raw.defaultSkills ?? raw.skills)
+  const communicationDefaults = parseCommunicationDefaults(raw.communicationDefaults)
+  if (communicationDefaults === 'invalid') {
+    return c.json({ error: 'invalid communicationDefaults' }, 400)
+  }
 
   // Tri-state per optional file: a non-empty string overrides, `null` skips the
   // file, and omitting it (undefined) lets createProfile write the default.
@@ -111,6 +118,7 @@ profilesRouter.post('/', async (c) => {
       defaultModel,
       skillsMode,
       defaultSkills,
+      ...(communicationDefaults ? { communicationDefaults } : {}),
       ...(Object.keys(templates).length > 0 ? { templates } : {}),
     })
     return c.json(profile, 201)
@@ -150,6 +158,16 @@ profilesRouter.patch('/:id', async (c) => {
       .map((s) => s.trim())
       .filter(Boolean)
   }
+  if (Object.hasOwn(raw, 'communicationDefaults')) {
+    if (raw.communicationDefaults === null) input.communicationDefaults = null
+    else {
+      const defaults = parseCommunicationDefaults(raw.communicationDefaults)
+      if (!defaults || defaults === 'invalid') {
+        return c.json({ error: 'invalid communicationDefaults' }, 400)
+      }
+      input.communicationDefaults = defaults
+    }
+  }
   const { db, paths } = getCtx()
   try {
     return c.json(updateProfile(db, paths, c.req.param('id'), input))
@@ -165,7 +183,14 @@ profilesRouter.delete('/:id', (c) => {
     deleteProfile(db, c.req.param('id'))
     return c.body(null, 204)
   } catch (err) {
-    return c.json({ error: (err as Error).message }, 400)
+    const message = (err as Error).message
+    return c.json(
+      {
+        error: message,
+        ...(message.startsWith('profile_in_use:') ? { code: 'profile_in_use' } : {}),
+      },
+      message.startsWith('profile_in_use:') ? 409 : 400,
+    )
   }
 })
 
@@ -211,4 +236,30 @@ function csvToArray(v: unknown): string[] | undefined {
 
 function toSkillsMode(v: unknown): SkillsMode | undefined {
   return v === 'all' || v === 'selected' ? v : undefined
+}
+
+function parseCommunicationDefaults(
+  value: unknown,
+): ProfileCommunicationDefaults | 'invalid' | undefined {
+  if (value === undefined) return undefined
+  if (!value || typeof value !== 'object') return 'invalid'
+  const raw = value as Record<string, unknown>
+  if (
+    typeof raw.userInput !== 'boolean' ||
+    typeof raw.userOutput !== 'boolean' ||
+    typeof raw.outsideGroupInput !== 'boolean' ||
+    typeof raw.outsideGroupOutput !== 'boolean' ||
+    (raw.peerDefault !== 'inherit_harness' &&
+      raw.peerDefault !== 'allow_all' &&
+      raw.peerDefault !== 'deny_all')
+  ) {
+    return 'invalid'
+  }
+  return {
+    userInput: raw.userInput,
+    userOutput: raw.userOutput,
+    outsideGroupInput: raw.outsideGroupInput,
+    outsideGroupOutput: raw.outsideGroupOutput,
+    peerDefault: raw.peerDefault,
+  }
 }
