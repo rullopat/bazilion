@@ -1,4 +1,4 @@
-import type { Message, SendMessageRequest } from '@bazilion/api-types'
+import type { CommunicationPendingResponse, Message, SendMessageRequest } from '@bazilion/api-types'
 import { defineCommand } from 'citty'
 import { createClient } from '../client.ts'
 
@@ -18,7 +18,16 @@ export const sendCommand = defineCommand({
       from: args.from,
       payload: { text: args.message },
     }
-    const msg = await client.post<Message>(`/api/agents/${args.to}/messages`, body)
-    console.log(`sent message ${msg.id}`)
+    const result = await client.post<Message | CommunicationPendingResponse>(
+      `/api/agents/${args.to}/messages`,
+      body,
+    )
+    if ('approvalId' in result) {
+      console.log(
+        `pending approval ${result.approvalId} (expires ${new Date(result.expiresAt).toISOString()})`,
+      )
+      return
+    }
+    console.log(`sent message ${result.id}`)
   },
 })

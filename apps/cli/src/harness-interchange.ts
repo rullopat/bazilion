@@ -1,4 +1,5 @@
 import type {
+  CommunicationEdgePosture,
   HarnessTemplateDetail,
   HarnessTemplateEdgeInput,
   HarnessTemplateSlotInput,
@@ -30,6 +31,7 @@ export interface TeamTemplateDocument {
     sourceKey: string | null
     targetKind: TemplateEndpointKind
     targetKey: string | null
+    posture: CommunicationEdgePosture
   }>
 }
 
@@ -90,6 +92,7 @@ export function exportTeamDocument(detail: HarnessTemplateDetail): TeamTemplateD
       sourceKey: edge.sourceKind === 'slot' ? (keyById.get(edge.sourceId ?? '') ?? null) : null,
       targetKind: edge.targetKind,
       targetKey: edge.targetKind === 'slot' ? (keyById.get(edge.targetId ?? '') ?? null) : null,
+      posture: edge.posture,
     })),
   }
 }
@@ -150,6 +153,13 @@ export function parseTeamDocument(value: unknown): TeamTemplateDocument {
     const targetKind = edge.targetKind as TemplateEndpointKind
     const sourceKey = nullableText(edge.sourceKey, `edge ${index} sourceKey`)
     const targetKey = nullableText(edge.targetKey, `edge ${index} targetKey`)
+    const posture: CommunicationEdgePosture | null =
+      edge.posture === undefined || edge.posture === 'allow'
+        ? 'allow'
+        : edge.posture === 'approval_required'
+          ? 'approval_required'
+          : null
+    if (!posture) throw new Error(`edge ${index} has invalid posture`)
     if ((sourceKind === 'slot') !== Boolean(sourceKey))
       throw new Error(`edge ${index} source slot key is missing or invalid`)
     if ((targetKind === 'slot') !== Boolean(targetKey))
@@ -163,7 +173,7 @@ export function parseTeamDocument(value: unknown): TeamTemplateDocument {
       throw new Error(`edge ${index} is a self edge`)
     if (seen.has(signature)) throw new Error(`duplicate edge: ${signature}`)
     seen.add(signature)
-    return { sourceKind, sourceKey, targetKind, targetKey }
+    return { sourceKind, sourceKey, targetKind, targetKey, posture }
   })
   return {
     version: 1,
@@ -204,6 +214,7 @@ export function teamImportBody(document: TeamTemplateDocument, existing?: Harnes
     sourceId: edge.sourceKind === 'slot' ? idByKey.get(edge.sourceKey ?? '') : null,
     targetKind: edge.targetKind,
     targetId: edge.targetKind === 'slot' ? idByKey.get(edge.targetKey ?? '') : null,
+    posture: edge.posture,
   }))
   return { slots, edges }
 }
@@ -257,11 +268,12 @@ export function exportGroupPolicy(
     kind: GROUP_POLICY_DOCUMENT_KIND,
     groupId,
     expectedRevision: revision,
-    edges: edges.map(({ sourceKind, sourceId, targetKind, targetId }) => ({
+    edges: edges.map(({ sourceKind, sourceId, targetKind, targetId, posture }) => ({
       sourceKind,
       sourceId,
       targetKind,
       targetId,
+      posture,
     })),
   }
 }
@@ -272,16 +284,18 @@ export function edgeDiff(
     sourceId?: string | null
     targetKind: string
     targetId?: string | null
+    posture?: CommunicationEdgePosture
   }>,
   after: Array<{
     sourceKind: string
     sourceId?: string | null
     targetKind: string
     targetId?: string | null
+    posture?: CommunicationEdgePosture
   }>,
 ) {
   const signature = (edge: (typeof before)[number]) =>
-    `${endpointKey(edge.sourceKind, edge.sourceId ?? null)} -> ${endpointKey(edge.targetKind, edge.targetId ?? null)}`
+    `${endpointKey(edge.sourceKind, edge.sourceId ?? null)} -> ${endpointKey(edge.targetKind, edge.targetId ?? null)} [${edge.posture ?? 'allow'}]`
   const left = new Set(before.map(signature))
   const right = new Set(after.map(signature))
   return {

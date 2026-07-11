@@ -18,7 +18,11 @@ import type { CallbackQuery, InlineKeyboardMarkup, Message, Update, User } from 
 import type { BazilionDb } from '../../core/db/client.ts'
 import { agentRepo, openConfig, profileRepo, telegramAclRepo } from '../../core/index.ts'
 import type { Paths } from '../../core/paths.ts'
-import { authorizeUserIngress, CommunicationDeniedError } from '../communication.ts'
+import {
+  authorizeUserIngress,
+  CommunicationDeniedError,
+  CommunicationPendingError,
+} from '../communication.ts'
 import { dispatchCommand, parseCommand } from './commands/index.ts'
 import { namePrompt, SPAWN_PROFILE_CALLBACK_PREFIX, spawnAndBind } from './commands/spawn.ts'
 import { SPAWN_TEAM_CALLBACK_PREFIX, spawnTeamAndBind } from './commands/spawn-team.ts'
@@ -250,10 +254,28 @@ export async function routeUpdate(deps: RouterDeps, update: Update): Promise<Rou
       origin: 'telegram_agent_topic',
       attemptKind: 'telegram_ingress',
       attemptId: `${deps.chatId}:${m.message_id}`,
+      approvalPayloadKind: 'telegram_ingress',
+      approvalPayload: {
+        agentId: agent.id,
+        text: caption,
+        media,
+        chatId: deps.chatId,
+        threadId,
+        messageId: m.message_id,
+      },
+      requester: `telegram:${m.from?.id ?? 'unknown'}`,
     }
     try {
       authorizeUserIngress(deps.db, agent.id, ingressAttempt)
     } catch (error) {
+      if (error instanceof CommunicationPendingError) {
+        await deps.api.sendMessage(
+          deps.chatId,
+          `Communication is pending approval (${error.approval.id}).`,
+          { message_thread_id: threadId },
+        )
+        return { kind: 'agent_topic', agentId: agent.id, topicId: threadId, queued: false }
+      }
       if (!(error instanceof CommunicationDeniedError)) throw error
       await deps.api.sendMessage(
         deps.chatId,
@@ -303,6 +325,14 @@ export async function routeUpdate(deps: RouterDeps, update: Update): Promise<Rou
     try {
       authorizeUserIngress(deps.db, agent.id, ingressAttempt)
     } catch (error) {
+      if (error instanceof CommunicationPendingError) {
+        await deps.api.sendMessage(
+          deps.chatId,
+          `Communication is pending approval (${error.approval.id}).`,
+          { message_thread_id: threadId },
+        )
+        return { kind: 'agent_topic', agentId: agent.id, topicId: threadId, queued: false }
+      }
       if (!(error instanceof CommunicationDeniedError)) throw error
       await deps.api.sendMessage(
         deps.chatId,

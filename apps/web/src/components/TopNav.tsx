@@ -6,6 +6,7 @@ const NAV_LINKS = [
   { to: '/templates', label: 'templates' },
   { to: '/agents', label: 'agents' },
   { to: '/groups', label: 'groups' },
+  { to: '/approvals', label: 'approvals' },
   { to: '/skills', label: 'skills' },
   { to: '/config', label: 'config' },
 ] as const

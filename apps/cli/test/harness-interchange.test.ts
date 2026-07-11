@@ -51,6 +51,7 @@ const detail: HarnessTemplateDetail = {
       sourceId: 'server-a',
       targetKind: 'slot',
       targetId: 'server-b',
+      posture: 'allow',
     },
   ],
   currentSnapshot: {
@@ -77,6 +78,7 @@ test('Team export is portable and dry-run import is semantically lossless with r
       sourceId: 'server-a',
       targetKind: 'slot',
       targetId: 'server-b',
+      posture: 'allow',
     },
   ])
 })

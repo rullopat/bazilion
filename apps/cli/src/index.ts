@@ -5,6 +5,7 @@ import { ApiClientError } from './client.ts'
 const VERSION = pkg.version
 
 import { agentCommand } from './commands/agent.ts'
+import { approvalCommand } from './commands/approval.ts'
 import { authCommand } from './commands/auth.ts'
 import { backupCommand } from './commands/backup.ts'
 import { completionCommand } from './commands/completion.ts'
@@ -40,6 +41,7 @@ const main = defineCommand({
     'profile-group': profileGroupCommand,
     group: groupCommand,
     agent: agentCommand,
+    approval: approvalCommand,
     skill: skillCommand,
     memory: memoryCommand,
     mcp: mcpCommand,
@@ -162,6 +164,7 @@ function printTopLevelHelp(): void {
     {
       title: 'agents',
       items: [
+        ['approval', 'Review and decide communication approval attempts'],
         ['agent', 'Spawn, list, chat, archive agents'],
         ['memory', "Read/write a group's shared memory"],
         ['send', 'Send a message from one agent to another'],

@@ -62,7 +62,8 @@ export type CommunicationEndpoint =
   | { kind: 'user'; groupId: string }
   | { kind: 'outside_group'; groupId: string }
 export type CommunicationChannel = 'same_group' | 'cross_group' | 'user' | 'outside_group'
-export type CommunicationDecision = 'allow' | 'deny'
+export type CommunicationEdgePosture = 'allow' | 'approval_required'
+export type CommunicationDecision = 'allow' | 'deny' | 'approval_required'
 export interface CommunicationPolicyRef {
   groupId: string
   revision: number
@@ -71,6 +72,7 @@ export interface CommunicationComponentOutcome {
   groupId: string
   edge: string
   matched: boolean
+  posture: CommunicationEdgePosture | null
 }
 export interface CommunicationAuthorizationResult {
   decision: CommunicationDecision
@@ -140,6 +142,7 @@ export interface HarnessTemplateEdge {
   sourceId: string | null
   targetKind: TemplateEndpointKind
   targetId: string | null
+  posture: CommunicationEdgePosture
 }
 
 export interface HarnessTemplateRevision {
@@ -177,6 +180,64 @@ export interface LiveHarnessEdge {
   sourceId: string | null
   targetKind: LiveEndpointKind
   targetId: string | null
+  posture: CommunicationEdgePosture
+}
+
+export type CommunicationApprovalStatus =
+  | 'pending'
+  | 'approved'
+  | 'denied'
+  | 'expired'
+  | 'cancelled'
+  | 'delivering'
+  | 'delivered'
+  | 'delivery_failed'
+
+export interface CommunicationApproval {
+  id: string
+  attemptKind: string
+  attemptId: string
+  operation: string
+  source: CommunicationEndpoint
+  target: CommunicationEndpoint
+  sourceGroupId: string | null
+  targetGroupId: string | null
+  channel: CommunicationChannel
+  origin: string
+  requester: string
+  policyRefs: CommunicationPolicyRef[]
+  requiredEdgeIds: string[]
+  payloadKind: string
+  status: CommunicationApprovalStatus
+  expiresAt: Timestamp
+  decidedAt: Timestamp | null
+  decidedBy: string | null
+  decisionReason: string | null
+  deliveryError: string | null
+  createdAt: Timestamp
+  updatedAt: Timestamp
+}
+
+export interface CommunicationApprovalDetail extends CommunicationApproval {
+  payload: unknown
+  events: CommunicationApprovalEvent[]
+}
+
+export interface CommunicationApprovalEvent {
+  id: string
+  approvalId: string
+  event:
+    | 'requested'
+    | 'approved'
+    | 'denied'
+    | 'expired'
+    | 'cancelled'
+    | 'delivery_started'
+    | 'delivered'
+    | 'delivery_failed'
+  actor: string
+  detail: string | null
+  createdAt: Timestamp
 }
 
 export interface TemplateInstantiation {

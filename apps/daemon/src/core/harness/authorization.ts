@@ -17,6 +17,10 @@ export interface AuthorizationInput {
   origin: string
   attemptKind: string
   attemptId: string
+  // Boundary-only metadata ignored by policy evaluation.
+  approvalPayloadKind?: string
+  approvalPayload?: unknown
+  requester?: string
 }
 
 export type PolicyRef = CommunicationPolicyRef
@@ -38,6 +42,7 @@ interface EdgeRow {
   source_id: string
   target_kind: string
   target_id: string
+  posture: 'allow' | 'approval_required'
 }
 
 function denied(channel: CommunicationChannel, code: string, reason: string): AuthorizationResult {
@@ -181,18 +186,11 @@ export function authorizeInSnapshot(
   }
 
   const outcomes = requirements.map((requirement) => {
-    const matched =
-      db.raw
-        .query<EdgeRow, [string, string, string, string, string]>(
-          'SELECT source_kind, source_id, target_kind, target_id FROM live_harness_edges WHERE group_id = ? AND source_kind = ? AND source_id = ? AND target_kind = ? AND target_id = ?',
-        )
-        .get(
-          requirement.groupId,
-          requirement.sk,
-          requirement.sid,
-          requirement.tk,
-          requirement.tid,
-        ) !== null
+    const edge = db.raw
+      .query<EdgeRow, [string, string, string, string, string]>(
+        'SELECT source_kind, source_id, target_kind, target_id, posture FROM live_harness_edges WHERE group_id = ? AND source_kind = ? AND source_id = ? AND target_kind = ? AND target_id = ?',
+      )
+      .get(requirement.groupId, requirement.sk, requirement.sid, requirement.tk, requirement.tid)
     return {
       groupId: requirement.groupId,
       edge: edgeId(
@@ -202,7 +200,8 @@ export function authorizeInSnapshot(
         requirement.tk,
         requirement.tid,
       ),
-      matched,
+      matched: edge !== null,
+      posture: edge?.posture ?? null,
     }
   })
   const policyRefs = groups.map((groupId) => ({
@@ -214,12 +213,25 @@ export function authorizeInSnapshot(
     .filter((outcome) => outcome.matched)
     .map((outcome) => outcome.edge)
   const failed = requirements.find((_, index) => !outcomes[index]?.matched)
-  return failed
+  if (failed) {
+    return {
+      decision: 'deny',
+      channel: actualChannel,
+      reasonCode: failed.failure,
+      reason: `required allow edge is absent: ${outcomes[requirements.indexOf(failed)]?.edge}`,
+      policyRefs,
+      componentOutcomes: outcomes,
+      matchedEdgeIds,
+      requiredEdgeIds,
+    }
+  }
+  const approvalEdges = outcomes.filter((outcome) => outcome.posture === 'approval_required')
+  return approvalEdges.length
     ? {
-        decision: 'deny',
+        decision: 'approval_required',
         channel: actualChannel,
-        reasonCode: failed.failure,
-        reason: `required allow edge is absent: ${outcomes[requirements.indexOf(failed)]?.edge}`,
+        reasonCode: 'approval_required',
+        reason: `approval is required by ${approvalEdges.length} policy edge${approvalEdges.length === 1 ? '' : 's'}`,
         policyRefs,
         componentOutcomes: outcomes,
         matchedEdgeIds,

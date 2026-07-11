@@ -63,6 +63,12 @@ bazilion group policy import default default-policy.json --dry-run
 bazilion group policy diff default
 bazilion group policy evaluate default --source user --target agent:<uuid>
 bazilion group policy blocks default --reason no_allow_edge --limit 25 --json
+
+# Review policy-protected communication attempts.
+bazilion approval list --status pending
+bazilion approval show <approval-id>
+bazilion approval approve <approval-id> --yes
+bazilion approval deny <approval-id> --reason "Not ready" --yes
 ```
 
 Imports always print a resolved diff. Existing state requires an expected revision; stale
@@ -74,6 +80,10 @@ Stable automation exit codes are: `0` success, `1` connection/server failure, `2
 validation or missing explicit confirmation, `3` revision conflict, and `4`
 authentication/authorization failure. JSON output never includes bearer credentials,
 filesystem paths, message bodies, or local database-only identities.
+
+Approval list output is payload-free; `approval show` is the explicit sensitive-payload
+detail surface. Approve, deny, and cancel require `--yes`. Approval authorizes one captured
+attempt only and never changes the Group policy.
 
 ## Web UI
 

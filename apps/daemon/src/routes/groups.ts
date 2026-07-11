@@ -172,6 +172,9 @@ groupsRouter.put('/:id/harness/policy', async (c) => {
         sourceId: typeof edge.sourceId === 'string' && edge.sourceId ? edge.sourceId : null,
         targetKind: edge.targetKind as 'user' | 'outside_group' | 'agent',
         targetId: typeof edge.targetId === 'string' && edge.targetId ? edge.targetId : null,
+        posture: (edge.posture === 'approval_required' ? 'approval_required' : 'allow') as
+          | 'allow'
+          | 'approval_required',
       }
     })
     return c.json(
@@ -222,6 +225,7 @@ groupsRouter.post('/:id/harness/adopt-template', async (c) => {
           sourceId: string | null
           targetKind: 'user' | 'outside_group' | 'agent'
           targetId: string | null
+          posture: 'allow' | 'approval_required'
         }>,
       }),
     )

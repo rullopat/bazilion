@@ -128,9 +128,16 @@ export function adoptHarnessTemplate(
     for (const edge of resolved) {
       db.raw.run(
         `INSERT INTO live_harness_edges
-           (group_id, source_kind, source_id, target_kind, target_id)
-         VALUES (?, ?, ?, ?, ?)`,
-        [groupId, edge.sourceKind, edge.sourceId ?? '', edge.targetKind, edge.targetId ?? ''],
+           (group_id, source_kind, source_id, target_kind, target_id, posture)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [
+          groupId,
+          edge.sourceKind,
+          edge.sourceId ?? '',
+          edge.targetKind,
+          edge.targetId ?? '',
+          edge.posture,
+        ],
       )
     }
     db.raw.run('UPDATE live_harnesses SET baseline_instantiation_id = ? WHERE group_id = ?', [
@@ -151,6 +158,7 @@ function resolveAdoptionEdges(
     sourceId: string | null
     targetKind: 'user' | 'outside_group' | 'slot'
     targetId: string | null
+    posture: 'allow' | 'approval_required'
   }>,
   mapping: ReadonlyMap<string, string>,
   placements: ReadonlyMap<string, RemainingPlacement>,
@@ -162,8 +170,9 @@ function resolveAdoptionEdges(
     sourceId: string | null,
     targetKind: LiveHarnessEdge['targetKind'],
     targetId: string | null,
+    posture: LiveHarnessEdge['posture'] = 'allow',
   ) => {
-    const edge = { sourceKind, sourceId, targetKind, targetId }
+    const edge = { sourceKind, sourceId, targetKind, targetId, posture }
     edgeMap.set(edgeKey(edge), edge)
   }
   for (const edge of templateEdges) {
@@ -172,6 +181,7 @@ function resolveAdoptionEdges(
       edge.sourceKind === 'slot' ? (mapping.get(edge.sourceId ?? '') ?? null) : null,
       edge.targetKind === 'slot' ? 'agent' : edge.targetKind,
       edge.targetKind === 'slot' ? (mapping.get(edge.targetId ?? '') ?? null) : null,
+      edge.posture,
     )
   }
   const mappedIds = new Set(mapping.values())
@@ -236,5 +246,5 @@ function sameEdges(
 }
 
 function edgeKey(edge: Omit<LiveHarnessEdge, 'groupId'>): string {
-  return `${edge.sourceKind}:${edge.sourceId ?? ''}>${edge.targetKind}:${edge.targetId ?? ''}`
+  return `${edge.sourceKind}:${edge.sourceId ?? ''}>${edge.targetKind}:${edge.targetId ?? ''}[${edge.posture ?? 'allow'}]`
 }

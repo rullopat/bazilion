@@ -24,6 +24,7 @@ interface RawEdge {
   source_id: string
   target_kind: LiveHarnessEdge['targetKind']
   target_id: string
+  posture: LiveHarnessEdge['posture']
 }
 
 export function get(db: BazilionDb, groupId: string): LiveHarness | null {
@@ -54,6 +55,7 @@ export function edges(db: BazilionDb, groupId: string): LiveHarnessEdge[] {
       sourceId: row.source_id || null,
       targetKind: row.target_kind,
       targetId: row.target_id || null,
+      posture: row.posture,
     }))
 }
 
@@ -87,9 +89,16 @@ export function replacePolicy(
     for (const edge of input.edges) {
       db.raw.run(
         `INSERT INTO live_harness_edges
-           (group_id, source_kind, source_id, target_kind, target_id)
-         VALUES (?, ?, ?, ?, ?)`,
-        [groupId, edge.sourceKind, edge.sourceId ?? '', edge.targetKind, edge.targetId ?? ''],
+           (group_id, source_kind, source_id, target_kind, target_id, posture)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [
+          groupId,
+          edge.sourceKind,
+          edge.sourceId ?? '',
+          edge.targetKind,
+          edge.targetId ?? '',
+          edge.posture ?? 'allow',
+        ],
       )
     }
     bumpExplicit(db, groupId)
@@ -140,8 +149,9 @@ export function placementEdgesPreview(
     sourceId: string | null,
     targetKind: LiveEndpointKind,
     targetId: string | null,
+    posture: LiveHarnessEdge['posture'] = 'allow',
   ) => {
-    const edge = { sourceKind, sourceId, targetKind, targetId }
+    const edge = { sourceKind, sourceId, targetKind, targetId, posture }
     edges.set(`${sourceKind}:${sourceId ?? ''}>${targetKind}:${targetId ?? ''}`, edge)
   }
   const peers = db.raw
@@ -215,17 +225,17 @@ export function hasExactOpenTopology(db: BazilionDb, groupId: string): boolean {
   const expected = new Set<string>()
   for (const source of agentIds) {
     for (const target of agentIds) {
-      if (source !== target) expected.add(`agent:${source}>agent:${target}`)
+      if (source !== target) expected.add(`agent:${source}>agent:${target}[allow]`)
     }
-    expected.add(`user:>agent:${source}`)
-    expected.add(`agent:${source}>user:`)
-    expected.add(`outside_group:>agent:${source}`)
-    expected.add(`agent:${source}>outside_group:`)
+    expected.add(`user:>agent:${source}[allow]`)
+    expected.add(`agent:${source}>user:[allow]`)
+    expected.add(`outside_group:>agent:${source}[allow]`)
+    expected.add(`agent:${source}>outside_group:[allow]`)
   }
   const actual = new Set(
     edges(db, groupId).map(
       (edge) =>
-        `${edge.sourceKind}:${edge.sourceId ?? ''}>${edge.targetKind}:${edge.targetId ?? ''}`,
+        `${edge.sourceKind}:${edge.sourceId ?? ''}>${edge.targetKind}:${edge.targetId ?? ''}[${edge.posture}]`,
     ),
   )
   return expected.size === actual.size && [...expected].every((key) => actual.has(key))
@@ -258,6 +268,7 @@ export function regenerateExactOpen(
   )
   db.raw.run(
     `INSERT INTO live_harness_edges
+       (group_id, source_kind, source_id, target_kind, target_id)
      SELECT a.group_id, 'agent', a.id, 'agent', b.id
      FROM agents a JOIN agents b ON b.group_id = a.group_id AND b.id <> a.id
      WHERE a.group_id = ?`,
@@ -273,6 +284,7 @@ export function regenerateExactOpen(
     const targetId = targetKind === 'agent' ? 'id' : "''"
     db.raw.run(
       `INSERT INTO live_harness_edges
+         (group_id, source_kind, source_id, target_kind, target_id)
        SELECT group_id, '${sourceKind}', ${sourceId}, '${targetKind}', ${targetId}
        FROM agents WHERE group_id = ?`,
       [groupId],
@@ -392,6 +404,9 @@ function validateEdges(
   )
   const keys = new Set<string>()
   for (const edge of policyEdges) {
+    if (edge.posture !== 'allow' && edge.posture !== 'approval_required') {
+      throw new Error(`group_policy_invalid: invalid edge posture ${edge.posture}`)
+    }
     for (const [kind, id] of [
       [edge.sourceKind, edge.sourceId],
       [edge.targetKind, edge.targetId],

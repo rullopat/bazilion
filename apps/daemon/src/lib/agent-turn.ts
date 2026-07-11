@@ -64,7 +64,17 @@ export async function* runAgentTurn(
     agent = resolveAgent(db, paths, agentId)
     if (!opts.alreadyRegistered) {
       if (!opts.skipUserIngress) {
-        authorizeUserIngress(db, agentId, authorization, () => registerAgent(agentId, controller))
+        authorizeUserIngress(
+          db,
+          agentId,
+          {
+            ...authorization,
+            approvalPayloadKind: 'agent_turn',
+            approvalPayload: { agentId, message: rawMessage, attachments: [] },
+            requester: authorization.origin,
+          },
+          () => registerAgent(agentId, controller),
+        )
       } else {
         registerAgent(agentId, controller)
       }

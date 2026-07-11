@@ -10,10 +10,15 @@ export type {
   AgentSkillAttachment,
   AgentStatus,
   AgentTrigger,
+  CommunicationApproval,
+  CommunicationApprovalDetail,
+  CommunicationApprovalEvent,
+  CommunicationApprovalStatus,
   CommunicationAuthorizationResult,
   CommunicationChannel,
   CommunicationComponentOutcome,
   CommunicationDecision,
+  CommunicationEdgePosture,
   CommunicationEndpoint,
   CommunicationPolicyRef,
   Group,
@@ -76,6 +81,7 @@ export type { MemoryEntry, MemoryHit } from './memory.ts'
 import type {
   Agent,
   AgentTrigger,
+  CommunicationEdgePosture,
   HarnessPlacement,
   LiveEndpointKind,
   Message,
@@ -160,6 +166,7 @@ export interface HarnessTemplateEdgeInput {
   sourceId?: string | null
   targetKind: TemplateEndpointKind
   targetId?: string | null
+  posture?: CommunicationEdgePosture
 }
 
 export interface CreateHarnessTemplateRequest {
@@ -199,6 +206,7 @@ export interface LiveHarnessEdgeInput {
   sourceId?: string | null
   targetKind: LiveEndpointKind
   targetId?: string | null
+  posture?: CommunicationEdgePosture
 }
 
 export interface PutGroupHarnessPolicyRequest {
@@ -235,6 +243,16 @@ export interface SendMessageRequest {
   from: string
   payload: { text: string }
   replyTo?: string
+}
+
+export interface CommunicationPendingResponse {
+  code?: 'communication_pending'
+  decision: 'approval_required'
+  approvalId: string
+  status: 'pending'
+  expiresAt: number
+  attemptKind: string
+  attemptId: string
 }
 
 export interface ListInboxQuery {

@@ -598,6 +598,21 @@ export function ChatPane({
           body: JSON.stringify({ message: text, attachments: atts }),
           signal: abort.signal,
         })
+        if (res.status === 202) {
+          const pending = (await res.json()) as {
+            approvalId: string
+            expiresAt: number
+          }
+          setLiveEntries((prev) => [
+            ...prev,
+            {
+              type: 'error',
+              content: `[approval pending] ${pending.approvalId} · expires ${new Date(pending.expiresAt).toLocaleString()} · review in /approvals`,
+            },
+          ])
+          sessionStorage.removeItem(`bz_pending_${agentId}`)
+          return
+        }
         if (!res.ok || !res.body) {
           let err = res.statusText
           try {

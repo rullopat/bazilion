@@ -77,6 +77,40 @@ function frameEvent(event: ChatFrame & { kind: 'event' }): ChatFrame {
 }
 
 describe('mirrorAgentTurnFrame', () => {
+  test('approval-required Telegram egress captures text without transport or list leakage', async () => {
+    const { api, sends } = makeApi()
+    installMirrorDepsResolver(() => ({ db: env.db, api, chatId: CHAT_ID }))
+    const agent = spawnAgent(env.db, env.paths, { profileId: 'base', groupId: env.groupId })
+    agentRepo.setTelegramTopicId(env.db, agent.id, 42)
+    env.db.raw.run(
+      `UPDATE live_harness_edges SET posture = 'approval_required'
+       WHERE group_id = ? AND source_kind = 'agent' AND source_id = ?
+         AND target_kind = 'user'`,
+      [env.groupId, agent.id],
+    )
+    const previous = process.env.BAZILION_HARNESS_ENFORCEMENT
+    process.env.BAZILION_HARNESS_ENFORCEMENT = 'on'
+    try {
+      await mirrorAgentTurnFrame(
+        agent.id,
+        { kind: 'event', event: { type: 'assistant_message', text: 'held Telegram text' } },
+        'approval:text',
+      )
+      expect(sends).toEqual([])
+      const rows = env.db.raw
+        .query<{ payload_kind: string; payload_json: string }, []>(
+          'SELECT payload_kind, payload_json FROM communication_approvals',
+        )
+        .all()
+      expect(rows).toHaveLength(1)
+      expect(rows[0]).toMatchObject({ payload_kind: 'telegram_text' })
+      expect(rows[0]?.payload_json).toContain('held Telegram text')
+    } finally {
+      if (previous === undefined) delete process.env.BAZILION_HARNESS_ENFORCEMENT
+      else process.env.BAZILION_HARNESS_ENFORCEMENT = previous
+    }
+  })
+
   test('revoked Agent-to-user edge blocks text, image, and file before Telegram send', async () => {
     const { api, sends, photos, documents } = makeApi()
     installMirrorDepsResolver(() => ({ db: env.db, api, chatId: CHAT_ID }))

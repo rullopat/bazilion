@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
@@ -150,4 +150,121 @@ test('authenticated evaluator is side-effect free and block history is filtered 
       })
     ).status,
   ).toBe(400)
+})
+
+test('approval API is authenticated, list-private, idempotent, and delivers one Agent message', async () => {
+  const { createApp } = await import('../../src/app.ts')
+  const { createProfile, providerModelRepo, providerStateRepo, registerGroup, spawnAgent } =
+    await import('../../src/core/index.ts')
+  const { getCtx } = await import('../../src/lib/ctx.ts')
+  const ctx = getCtx()
+  process.env.BAZILION_HARNESS_ENFORCEMENT = 'on'
+  providerStateRepo.setEnabled(ctx.db, 'lmstudio', true)
+  providerModelRepo.replace(ctx.db, 'lmstudio', ['model'])
+  createProfile(ctx.db, ctx.paths, { id: 'p', defaultModel: 'm' })
+  registerGroup(ctx.db, { id: 'default' }, ctx.paths)
+  const source = spawnAgent(ctx.db, ctx.paths, { profileId: 'p', groupId: 'default' })
+  const target = spawnAgent(ctx.db, ctx.paths, { profileId: 'p', groupId: 'default' })
+  ctx.db.raw.run('DELETE FROM live_harness_edges WHERE group_id = ?', ['default'])
+  ctx.db.raw.run(
+    `INSERT INTO live_harness_edges
+       (group_id, source_kind, source_id, target_kind, target_id, posture)
+     VALUES ('default', 'agent', ?, 'agent', ?, 'approval_required')`,
+    [source.id, target.id],
+  )
+  const app = createApp()
+  const auth = { authorization: `Bearer ${ctx.authToken}`, 'content-type': 'application/json' }
+  expect((await app.request('/api/approvals')).status).toBe(401)
+
+  const request = () =>
+    app.request(`/api/agents/${target.id}/messages`, {
+      method: 'POST',
+      headers: { ...auth, 'Idempotency-Key': 'approval-message' },
+      body: JSON.stringify({ from: source.id, payload: { text: 'sensitive approval text' } }),
+    })
+  const pending = await request()
+  expect(pending.status).toBe(202)
+  const pendingBody = (await pending.json()) as { approvalId: string }
+  expect((await request()).status).toBe(202)
+  expect(
+    ctx.db.raw.query<{ count: number }, []>('SELECT COUNT(*) count FROM messages').get()?.count,
+  ).toBe(0)
+
+  const list = await app.request('/api/approvals', { headers: auth })
+  const listText = await list.text()
+  expect(listText).not.toContain('sensitive approval text')
+  expect(JSON.parse(listText)).toMatchObject({
+    approvals: [{ id: pendingBody.approvalId, status: 'pending' }],
+  })
+  const detail = await app.request(`/api/approvals/${pendingBody.approvalId}`, { headers: auth })
+  expect(await detail.json()).toMatchObject({
+    payload: { from: source.id, to: target.id },
+    events: [{ event: 'requested' }],
+  })
+  const approve = () =>
+    app.request(`/api/approvals/${pendingBody.approvalId}/approve`, {
+      method: 'POST',
+      headers: auth,
+      body: '{}',
+    })
+  const decisions = await Promise.all([approve(), approve()])
+  expect(decisions.map((item) => item.status).sort()).toEqual([200, 409])
+  const approved = decisions.find((item) => item.status === 200)
+  expect(await approved?.json()).toMatchObject({ status: 'delivered' })
+  expect(
+    ctx.db.raw.query<{ count: number }, []>('SELECT COUNT(*) count FROM messages').get()?.count,
+  ).toBe(1)
+  const duplicate = await approve()
+  expect(duplicate.status).toBe(409)
+  expect(
+    ctx.db.raw.query<{ count: number }, []>('SELECT COUNT(*) count FROM messages').get()?.count,
+  ).toBe(1)
+})
+
+test('approval-required chat holds text and attachment before persistence or turn start', async () => {
+  const { createApp } = await import('../../src/app.ts')
+  const { createProfile, providerModelRepo, providerStateRepo, registerGroup, spawnAgent } =
+    await import('../../src/core/index.ts')
+  const { getCtx } = await import('../../src/lib/ctx.ts')
+  const ctx = getCtx()
+  process.env.BAZILION_HARNESS_ENFORCEMENT = 'on'
+  providerStateRepo.setEnabled(ctx.db, 'lmstudio', true)
+  providerModelRepo.replace(ctx.db, 'lmstudio', ['model'])
+  createProfile(ctx.db, ctx.paths, { id: 'p', defaultModel: 'lmstudio:model' })
+  registerGroup(ctx.db, { id: 'default' }, ctx.paths)
+  const agent = spawnAgent(ctx.db, ctx.paths, { profileId: 'p', groupId: 'default' })
+  ctx.db.raw.run('DELETE FROM live_harness_edges WHERE group_id = ?', ['default'])
+  ctx.db.raw.run(
+    `INSERT INTO live_harness_edges
+       (group_id, source_kind, source_id, target_kind, target_id, posture)
+     VALUES ('default', 'user', '', 'agent', ?, 'approval_required')`,
+    [agent.id],
+  )
+  const app = createApp()
+  const response = await app.request(`/api/agents/${agent.id}/chat`, {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${ctx.authToken}`,
+      'content-type': 'application/json',
+      'x-request-id': 'held-chat',
+    },
+    body: JSON.stringify({
+      message: 'held prompt',
+      attachments: [{ name: 'secret.txt', mimeType: 'text/plain', data: 'c2VjcmV0' }],
+    }),
+  })
+  expect(response.status).toBe(202)
+  expect(await response.json()).toMatchObject({
+    code: 'communication_pending',
+    decision: 'approval_required',
+    status: 'pending',
+  })
+  expect(existsSync(join(agent.dir, 'uploads'))).toBe(false)
+  expect(existsSync(join(agent.dir, 'sessions'))).toBe(true)
+  expect(readdirSync(join(agent.dir, 'sessions'))).toEqual([])
+  expect(
+    ctx.db.raw
+      .query<{ count: number }, []>('SELECT COUNT(*) count FROM communication_approvals')
+      .get()?.count,
+  ).toBe(1)
 })

@@ -1,17 +1,18 @@
 ---
 id: BAZ-014
 title: Human approval gates for harness communication
-status: todo
+status: done
 size: L (1-2 weeks)
 created: 2026-07-10
 refined: 2026-07-10
 priority: medium
+shipped: 2026-07-11
 note: Optional follow-up after BAZ-016 allow/deny enforcement and BAZ-017 production UI. Adds approval-required delivery without adding general workflow execution.
 ---
 
 # BAZ-014 - Human approval gates for harness communication
 
-**Status:** Todo. Ready to pull after BAZ-016 and BAZ-017 validate production allow/deny.
+**Status:** Done.
 
 ## User stories
 
@@ -84,3 +85,29 @@ then deliver at most once or expire visibly.
   delivery across agent, chat, and Telegram paths.
 - Policy-change and member-removal race tests.
 - Web queue Playwright tests plus API auth/audit tests and the full repository suite.
+
+## As-built (2026-07-11)
+
+- Added `allow` / `approval_required` posture to canonical Team-template revisions and the
+  one effective live Group policy. Snapshots, spawn/adopt, portable CLI documents, diffs,
+  and production editors preserve the posture; missing edges remain deny-by-absence.
+- Added durable, payload-holding communication approvals keyed by typed attempt identity
+  and semantic fingerprint. The state machine records payload-free audit events and uses
+  optimistic pending-to-delivering claims, expiry, policy/member revalidation, and terminal
+  delivered, denied, cancelled, expired, or delivery-failed outcomes.
+- Integrated the hold before Agent message insertion, inbox exposure, HTTP/worker turn
+  start, scheduler execution, and Telegram ingress/egress transport. Telegram media is not
+  downloaded before approval. Approval dispatch delivers the captured attempt at most once;
+  no workflow, transformation, retry engine, or shell-command approval coupling was added.
+- Added authenticated `/api/approvals` queue/detail/approve/deny/cancel endpoints. List
+  responses exclude payloads; detail disclosure is explicit. HTTP/chat, CLI send, Agent
+  tools, scheduler, and Telegram receive structured pending/final state. Agents may query
+  only approval attempts they requested through `approval_status`.
+- Added `bazilion approval list|show|approve|deny|cancel`; mutating decisions require
+  explicit `--yes`. Added the production web queue with status/history filters, expiry,
+  payload disclosure, audit history, and approve/deny actions.
+- Verification passed 95 files / 743 tests, root and web typechecks, lint with existing
+  warnings only, root and web production builds, and `git diff --check`. In-app Playwright
+  verified queue/detail/filter, payload disclosure, approve-once, deny, and final audit at
+  1440x900, 1024x768, and 390x844 in light and dark with zero document overflow. The
+  isolated fixture used held Agent messages only and sent no real Agent/model messages.

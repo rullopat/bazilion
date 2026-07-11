@@ -56,6 +56,34 @@ export function messagingTools(host: MessagingHost, fromAgentId: string): ToolHa
     },
     {
       def: {
+        name: 'approval_status',
+        description:
+          'Check the current status of a communication approval request that you created.',
+        parameters: {
+          type: 'object',
+          properties: {
+            approval_id: {
+              type: 'string',
+              description: 'Approval request id returned by a protected communication attempt',
+            },
+          },
+          required: ['approval_id'],
+        },
+      },
+      async invoke(args) {
+        const approvalId = String(args.approval_id ?? '')
+        if (!approvalId) throw new Error('approval_status: "approval_id" is required')
+        const approval = await host.approvalStatus(fromAgentId, approvalId)
+        if (!approval) throw new Error(`approval_status: approval not found: ${approvalId}`)
+        const decision = approval.decidedBy
+          ? `; decided by ${approval.decidedBy}${approval.decisionReason ? ` (${approval.decisionReason})` : ''}`
+          : ''
+        const failure = approval.deliveryError ? `; delivery error: ${approval.deliveryError}` : ''
+        return `approval ${approval.id}: ${approval.status}; expires ${approval.expiresAt}${decision}${failure}`
+      },
+    },
+    {
+      def: {
         name: 'read_inbox',
         description: 'Read messages addressed to you. Marks unread messages as read by default.',
         parameters: {

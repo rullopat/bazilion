@@ -26,7 +26,7 @@
 // run, so a server restart won't immediately re-fire.
 
 import type { AgentTrigger, Message } from '@bazilion/api-types'
-import { agentRepo, messageRepo, triggerRepo } from '../core/index.ts'
+import { agentRepo, communicationApprovalRepo, messageRepo, triggerRepo } from '../core/index.ts'
 import { isActiveAgent, registerAgent, unregisterAgent } from './agent-cancel.ts'
 import { acquireAgentLifecycleLease } from './agent-lifecycle-lease.ts'
 import { runAgentTurn } from './agent-turn.ts'
@@ -311,6 +311,7 @@ async function tick(): Promise<void> {
   let recipients: string[] = []
   try {
     const ctx = getCtx()
+    communicationApprovalRepo.expirePending(ctx.db, now)
     triggers = triggerRepo.listEnabled(ctx.db)
     recipients = messageRepo.listRecipientsWithUnread(ctx.db)
   } catch (err) {
