@@ -64,6 +64,61 @@ groupsRouter.get('/:id/harness', (c) => {
   return c.json(detail)
 })
 
+groupsRouter.get('/:id/harness/blocks', (c) => {
+  const { db } = getCtx()
+  const groupId = c.req.param('id')
+  const limit = Math.min(Math.max(Number.parseInt(c.req.query('limit') ?? '50', 10) || 50, 1), 100)
+  const cursor = c.req.query('cursor')
+  const separator = cursor?.indexOf(':') ?? -1
+  const cursorTime = separator > 0 ? Number(cursor?.slice(0, separator)) : Number.MAX_SAFE_INTEGER
+  const cursorId = separator > 0 ? (cursor?.slice(separator + 1) ?? '') : '\uffff'
+  if (cursor && (!Number.isSafeInteger(cursorTime) || !cursorId))
+    return c.json({ error: 'invalid cursor' }, 400)
+  const reasonCode = c.req.query('reasonCode')
+  const rows = db.raw
+    .query<
+      Record<string, unknown>,
+      [string, string, string, string, string, number, number, string, number]
+    >(
+      `SELECT id, attempt_kind, attempt_id, operation, source_kind, source_id, target_kind,
+            target_id, source_group_id, target_group_id, channel, origin, reason_code, reason,
+            policy_refs_json, component_outcomes_json, matched_edge_ids_json,
+            required_edge_ids_json, created_at
+       FROM harness_block_events
+      WHERE (source_group_id = ? OR target_group_id = ?)
+        AND (? = '' OR reason_code = ?)
+        AND (? = '' OR created_at < ? OR (created_at = ? AND id < ?))
+      ORDER BY created_at DESC, id DESC LIMIT ?`,
+    )
+    .all(
+      groupId,
+      groupId,
+      reasonCode ?? '',
+      reasonCode ?? '',
+      cursor ?? '',
+      cursorTime,
+      cursorTime,
+      cursorId,
+      limit + 1,
+    )
+  const page = rows.slice(0, limit).map((row) => ({
+    ...row,
+    policyRefs: JSON.parse(String(row.policy_refs_json)),
+    componentOutcomes: JSON.parse(String(row.component_outcomes_json)),
+    matchedEdgeIds: JSON.parse(String(row.matched_edge_ids_json)),
+    requiredEdgeIds: JSON.parse(String(row.required_edge_ids_json)),
+    policy_refs_json: undefined,
+    component_outcomes_json: undefined,
+    matched_edge_ids_json: undefined,
+    required_edge_ids_json: undefined,
+  }))
+  const last = page.at(-1) as { created_at?: number; id?: string } | undefined
+  return c.json({
+    blocks: page,
+    nextCursor: rows.length > limit && last ? `${last.created_at}:${last.id}` : null,
+  })
+})
+
 groupsRouter.put('/:id/harness/policy', async (c) => {
   const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null
   if (!body || !Number.isInteger(body.expectedRevision) || !Array.isArray(body.edges)) {

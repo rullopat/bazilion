@@ -1,7 +1,7 @@
 ---
 id: BAZ-011
 title: Harness authorizer, denial audit, and gated Agent messaging
-status: todo
+status: done
 size: L (1-2 weeks)
 created: 2026-07-10
 refined: 2026-07-10
@@ -145,3 +145,27 @@ retry ledger is introduced, and each operation retains its existing delivery sem
   denial and no denied row exposure.
 - Full repository suite, root/web typechecks, lint, build, and a configuration test proving
   the packaged default gate is off.
+
+## As-built
+
+Completed on 2026-07-11.
+
+- Added the snapshot-linearized authorizer for same-Group, two-sided cross-Group, user,
+  outside-Group, lifecycle, malformed-policy, and invalid-path decisions. Origins remain
+  audit-only and callers never provide authoritative policy identity.
+- Migration `0010_harness_blocks.sql` adds the immutable typed-attempt denial ledger and
+  terminal message policy disposition. Block rows contain semantic endpoint and policy
+  evidence but no message body, attachment, or credential content.
+- `sendAgentMessage` is the sole enforcing Agent-message service used by IPC tools and the
+  direct/reply HTTP route. Authorization plus message insert or denial record commits in
+  one transaction. Agent inbox read/wait reauthorizes with `inbox:<messageId>` while
+  operator history remains inspectable.
+- Added authenticated, side-effect-free `POST /api/communication/evaluate` and filtered,
+  cursor-paginated `GET /api/groups/:groupId/harness/blocks`.
+- Enforcement is enabled only by the exact value `BAZILION_HARNESS_ENFORCEMENT=on`; absent
+  or any other value is compatibility behavior and writes no authoritative block history.
+  BAZ-016/017 still own complete-boundary activation.
+- Verification: 695 repository tests, root and web typechecks, Biome lint, root build, and
+  web production build. Focused authorization and HTTP tests cover policy decisions,
+  atomic denial, idempotency/collision, privacy, pagination/filtering, evaluator auth and
+  side-effect freedom, default-off behavior, reply linkage, and inbox terminal blocking.

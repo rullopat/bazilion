@@ -11,6 +11,7 @@
 
 import { agentRepo, type BazilionDb, messageRepo } from '../core/index.ts'
 import type { MessagingHost } from '../runtime/index.ts'
+import { deliverableInbox, deliverableReplies, sendAgentMessage } from './communication.ts'
 
 export function createDbMessagingHost(db: BazilionDb): MessagingHost {
   return {
@@ -18,17 +19,17 @@ export function createDbMessagingHost(db: BazilionDb): MessagingHost {
       return agentRepo.get(db, agentId) !== null
     },
     sendMessage(input) {
-      const m = messageRepo.send(db, input)
+      const m = sendAgentMessage(db, { ...input, origin: 'agent_tool' })
       return { messageId: m.id }
     },
     listInbox(agentId, opts) {
-      return messageRepo.listInbox(db, agentId, opts)
+      return deliverableInbox(db, agentId, opts?.unreadOnly === true)
     },
     markRead(messageId) {
       messageRepo.markRead(db, messageId)
     },
     findReplies(agentId, replyTo) {
-      return messageRepo.findReplies(db, agentId, replyTo)
+      return deliverableReplies(db, agentId, replyTo)
     },
   }
 }

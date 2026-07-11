@@ -57,6 +57,32 @@ export type HarnessPlacement = 'isolated' | 'open' | 'profile_defaults' | 'templ
 export type TemplateEndpointKind = 'user' | 'outside_group' | 'slot'
 export type LiveEndpointKind = 'user' | 'outside_group' | 'agent'
 
+export type CommunicationEndpoint =
+  | { kind: 'agent'; id: string }
+  | { kind: 'user'; groupId: string }
+  | { kind: 'outside_group'; groupId: string }
+export type CommunicationChannel = 'same_group' | 'cross_group' | 'user' | 'outside_group'
+export type CommunicationDecision = 'allow' | 'deny'
+export interface CommunicationPolicyRef {
+  groupId: string
+  revision: number
+}
+export interface CommunicationComponentOutcome {
+  groupId: string
+  edge: string
+  matched: boolean
+}
+export interface CommunicationAuthorizationResult {
+  decision: CommunicationDecision
+  channel: CommunicationChannel
+  reasonCode: string
+  reason: string
+  policyRefs: CommunicationPolicyRef[]
+  componentOutcomes: CommunicationComponentOutcome[]
+  matchedEdgeIds: string[]
+  requiredEdgeIds: string[]
+}
+
 export interface HarnessTemplate {
   id: string
   name: string

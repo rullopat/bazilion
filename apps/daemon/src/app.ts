@@ -8,6 +8,7 @@ import { Hono } from 'hono'
 import { authMiddleware } from './lib/middleware-auth.ts'
 import { agentsRouter } from './routes/agents.ts'
 import { authRouter } from './routes/auth-login.ts'
+import { communicationRouter } from './routes/communication.ts'
 import { configRouter } from './routes/config.ts'
 import { groupsRouter } from './routes/groups.ts'
 import { harnessTemplatesRouter } from './routes/harness-templates.ts'
@@ -42,6 +43,7 @@ export function createApp(): Hono {
   // /fields/:envVar handler would shadow our routes on the same prefix.
   app.route('/api/config/telegram', telegramRouter)
   app.route('/api/config', configRouter)
+  app.route('/api/communication', communicationRouter)
   // miscRouter exposes /backup, /tokens, /tokens/:id directly under /api —
   // mounted at the API root so each handler can use its full path.
   // authRouter likewise: /auth/openai*, /providers/test, /login.
