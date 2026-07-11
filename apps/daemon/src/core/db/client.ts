@@ -20,6 +20,8 @@ export interface BazilionDb {
 
 function wrap(rawDb: DatabaseSync): QueryableDatabase {
   const cache = new Map<string, ReturnType<DatabaseSync['prepare']>>()
+  let transactionDepth = 0
+  let savepointSequence = 0
   function getStmt(sql: string) {
     let s = cache.get(sql)
     if (!s) {
@@ -61,14 +63,25 @@ function wrap(rawDb: DatabaseSync): QueryableDatabase {
     // node:sqlite has no callable `transaction` wrapper; use manual BEGIN/COMMIT/ROLLBACK.
     transaction<T>(fn: () => T): () => T {
       return () => {
-        rawDb.exec('BEGIN')
+        const outermost = transactionDepth === 0
+        const savepoint = outermost ? null : `bazilion_nested_${++savepointSequence}`
+        if (outermost) rawDb.exec('BEGIN')
+        else rawDb.exec(`SAVEPOINT ${savepoint}`)
+        transactionDepth++
         try {
           const result = fn()
-          rawDb.exec('COMMIT')
+          if (outermost) rawDb.exec('COMMIT')
+          else rawDb.exec(`RELEASE SAVEPOINT ${savepoint}`)
           return result
         } catch (err) {
-          rawDb.exec('ROLLBACK')
+          if (outermost) rawDb.exec('ROLLBACK')
+          else {
+            rawDb.exec(`ROLLBACK TO SAVEPOINT ${savepoint}`)
+            rawDb.exec(`RELEASE SAVEPOINT ${savepoint}`)
+          }
           throw err
+        } finally {
+          transactionDepth--
         }
       }
     },

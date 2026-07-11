@@ -26,6 +26,9 @@ function registry(): Registry {
 }
 
 export function registerAgent(agentId: string, controller: AbortController): void {
+  if (registry().active.has(agentId)) {
+    throw new Error(`agent_turn_active: ${agentId}`)
+  }
   registry().active.set(agentId, controller)
 }
 
@@ -39,7 +42,8 @@ export function cancelAgent(agentId: string): boolean {
   const c = active.get(agentId)
   if (!c) return false
   c.abort()
-  active.delete(agentId)
+  // Keep the registration until runAgentTurn's finally block settles. A
+  // lifecycle mutation after cancel must not race the still-unwinding worker.
   return true
 }
 

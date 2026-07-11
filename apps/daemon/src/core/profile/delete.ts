@@ -13,18 +13,18 @@ export function deleteProfile(db: BazilionDb, id: string): void {
   if (agents.length > 0) {
     const names = agents.map((a) => `${a.name} (${a.id.slice(0, 8)})`).join(', ')
     throw new Error(
-      `cannot delete profile "${id}": ${agents.length} agent(s) still reference it: ${names}. Delete or re-profile them first.`,
+      `profile_in_use: cannot delete profile "${id}": ${agents.length} agent(s) still reference it: ${names}. Delete or re-profile them first.`,
     )
   }
 
-  // Check for profile groups (team templates) still referencing this profile —
-  // the FK on profile_group_members.profile_id is RESTRICT, so a raw delete
-  // would surface as an opaque SQLite constraint error.
+  // Check the canonical Team roster and every retained immutable snapshot.
+  // Their Profile foreign keys are RESTRICT, so surface a stable domain error
+  // instead of an opaque SQLite constraint failure.
   const refGroups = profileGroupRepo.findReferencingProfile(db, id)
   if (refGroups.length > 0) {
     const names = refGroups.map((g) => `${g.name} (${g.id})`).join(', ')
     throw new Error(
-      `cannot delete profile "${id}": ${refGroups.length} profile group(s) still reference it: ${names}. Remove the member(s) first.`,
+      `profile_in_use: cannot delete profile "${id}": ${refGroups.length} team template(s) still reference it: ${names}. Remove the slot(s) first.`,
     )
   }
 

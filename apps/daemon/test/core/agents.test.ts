@@ -9,6 +9,7 @@ import { unarchiveAgent } from '../../src/core/agent/unarchive.ts'
 import { registerGroup } from '../../src/core/group/register.ts'
 import { createProfile } from '../../src/core/profile/create.ts'
 import * as agentRepo from '../../src/core/repos/agents.ts'
+import * as liveHarnessRepo from '../../src/core/repos/liveHarnesses.ts'
 import * as messageRepo from '../../src/core/repos/messages.ts'
 import { makeTestEnv, type TestEnv } from './helpers.ts'
 
@@ -299,6 +300,7 @@ test('agentRepo.get prefers exact name over prefix collision', () => {
     dir: '/tmp/none-hex',
     groupId: env.groupId,
   })
+  liveHarnessRepo.regenerateExactOpen(env.db, env.groupId)
   const b = spawn({ name: 'deadbeef' })
 
   // Lookup "deadbeef": exact name on agent b wins, even though it matches a

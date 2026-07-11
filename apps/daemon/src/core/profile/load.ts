@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { LoadedProfile } from '@bazilion/api-types'
 import type { BazilionDb } from '../db/client.ts'
+import * as profileCommunicationDefaultsRepo from '../repos/profileCommunicationDefaults.ts'
 import * as profileRepo from '../repos/profiles.ts'
 import { parseIdentityMarkdown } from './identity.ts'
 
@@ -41,5 +42,6 @@ export function loadProfile(db: BazilionDb, id: string): LoadedProfile {
       heartbeat,
     },
     identity: anyIdentity ? parsedIdentity : null,
+    communicationDefaults: profileCommunicationDefaultsRepo.get(db, id),
   }
 }

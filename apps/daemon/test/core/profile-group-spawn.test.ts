@@ -293,23 +293,13 @@ test('name suffixes: two reviewer members into empty group → reviewer + review
 })
 
 test('name suffixes: target already has reviewer → reviewer-2 + reviewer-3', async () => {
-  // Pre-seed an existing agent named 'reviewer' in the target group via raw
-  // SQL — we just need its name to occupy the namespace, no dir required.
-  env.db.raw.run(
-    `INSERT INTO agents (id, profile_id, name, model_override, reasoning_level, status, dir, group_id, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      'agent-pre',
-      'p1',
-      'reviewer',
-      null,
-      'medium',
-      'idle',
-      env.paths.agentDir('agent-pre'),
-      env.groupId,
-      Date.now(),
-    ],
-  )
+  // Seed through the compatibility wrapper so agents.group_id and the stored
+  // exact Open projection remain one atomic aggregate.
+  agentSpawnModule.spawnAgent(env.db, env.paths, {
+    profileId: 'p1',
+    name: 'reviewer',
+    groupId: env.groupId,
+  })
   makeTemplate('team', [
     { profileId: 'p1', agentName: 'reviewer' },
     { profileId: 'p1', agentName: 'reviewer' },

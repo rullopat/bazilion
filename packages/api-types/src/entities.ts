@@ -38,6 +38,120 @@ export interface Profile {
   skillsMode: SkillsMode
   createdAt: Timestamp
   updatedAt: Timestamp
+  /** Creation-time policy defaults. Missing/null is neutral; runtime never inherits it. */
+  communicationDefaults?: ProfileCommunicationDefaults | null
+}
+
+export type ProfilePeerDefault = 'inherit_harness' | 'allow_all' | 'deny_all'
+
+export interface ProfileCommunicationDefaults {
+  userInput: boolean
+  userOutput: boolean
+  outsideGroupInput: boolean
+  outsideGroupOutput: boolean
+  peerDefault: ProfilePeerDefault
+}
+
+export type HarnessMembershipMode = 'compatibility_open' | 'explicit'
+export type TemplateEndpointKind = 'user' | 'outside_group' | 'slot'
+export type LiveEndpointKind = 'user' | 'outside_group' | 'agent'
+
+export interface HarnessTemplate {
+  id: string
+  name: string
+  userMd: string | null
+  currentRevision: number
+  compatibilityManaged: boolean
+  deletedAt: Timestamp | null
+  createdAt: Timestamp
+  updatedAt: Timestamp
+}
+
+export interface HarnessTemplateSlot {
+  templateId: string
+  slotId: string
+  position: number
+  profileId: string
+  agentName: string
+  modelOverride: string | null
+  reasoningLevel: ReasoningLevel | null
+  layoutPosition: { x: number; y: number } | null
+  display: Record<string, unknown> | null
+  tombstonedAt: Timestamp | null
+}
+
+export interface HarnessTemplateEdge {
+  templateId: string
+  sourceKind: TemplateEndpointKind
+  sourceId: string | null
+  targetKind: TemplateEndpointKind
+  targetId: string | null
+}
+
+export interface HarnessTemplateRevision {
+  templateId: string
+  revision: number
+  name: string
+  userMd: string | null
+  slots: HarnessTemplateSlot[]
+  edges: HarnessTemplateEdge[]
+  createdAt: Timestamp
+}
+
+export interface HarnessTemplateDetail {
+  template: HarnessTemplate
+  slots: HarnessTemplateSlot[]
+  edges: HarnessTemplateEdge[]
+  currentSnapshot: HarnessTemplateRevision
+}
+
+export interface HarnessTemplateWithCount extends HarnessTemplate {
+  slotCount: number
+}
+
+export interface LiveHarness {
+  groupId: string
+  revision: number
+  membershipMode: HarnessMembershipMode
+  baselineInstantiationId: string | null
+  updatedAt: Timestamp
+}
+
+export interface LiveHarnessEdge {
+  groupId: string
+  sourceKind: LiveEndpointKind
+  sourceId: string | null
+  targetKind: LiveEndpointKind
+  targetId: string | null
+}
+
+export interface TemplateInstantiation {
+  id: string
+  groupId: string
+  templateId: string
+  templateRevision: number
+  createdAt: Timestamp
+}
+
+export interface SourceSlotBinding {
+  agentId: string
+  instantiationId: string
+  sourceSlotId: string
+}
+
+export interface LiveAgentState {
+  agentId: string
+  groupId: string
+  position: { x: number; y: number } | null
+  display: Record<string, unknown> | null
+}
+
+export interface LiveHarnessDetail {
+  harness: LiveHarness
+  edges: LiveHarnessEdge[]
+  instantiations: TemplateInstantiation[]
+  bindings: SourceSlotBinding[]
+  agentState: LiveAgentState[]
 }
 
 export type AgentStatus = 'idle' | 'running' | 'archived'
@@ -196,6 +310,9 @@ export interface ProfileGroup {
   userMd: string | null
   createdAt: Timestamp
   updatedAt: Timestamp
+  /** Additive canonical fields exposed by the one-release compatibility projection. */
+  revision?: number
+  compatibilityManaged?: boolean
 }
 
 export interface ProfileGroupMember {
@@ -205,6 +322,8 @@ export interface ProfileGroupMember {
   agentName: string
   modelOverride: string | null
   reasoningLevel: ReasoningLevel | null
+  /** Stable canonical slot identity; legacy clients may ignore it. */
+  slotId?: string
 }
 
 export interface ProfileGroupDetail {
@@ -267,4 +386,5 @@ export interface LoadedProfile {
   }
   /** Structured fields parsed from IDENTITY.md — null when no values are set. */
   identity: AgentIdentityFile | null
+  communicationDefaults?: ProfileCommunicationDefaults | null
 }

@@ -18,6 +18,12 @@ import { defineCommand } from 'citty'
 import { createClient } from '../client.ts'
 import { columnize } from '../columnize.ts'
 
+function warnDeprecated(): void {
+  console.error(
+    'warning: profile-group is deprecated; use the Team template commands when they become available',
+  )
+}
+
 const createCmd = defineCommand({
   meta: { name: 'create', description: 'Create a new profile group (team template)' },
   args: {
@@ -29,6 +35,7 @@ const createCmd = defineCommand({
     },
   },
   async run({ args }) {
+    warnDeprecated()
     const body: CreateProfileGroupRequest = { id: args.id }
     if (args.name) body.name = args.name
     if (args['user-md-file']) body.userMd = readFileSync(args['user-md-file'], 'utf8')
@@ -41,6 +48,7 @@ const createCmd = defineCommand({
 const listCmd = defineCommand({
   meta: { name: 'list', description: 'List profile groups' },
   async run() {
+    warnDeprecated()
     const client = createClient()
     const list = await client.get<ProfileGroupWithCount[]>('/api/profile-groups')
     if (list.length === 0) {
@@ -59,6 +67,7 @@ const showCmd = defineCommand({
     json: { type: 'boolean', description: 'Emit full JSON (members + basics)' },
   },
   async run({ args }) {
+    warnDeprecated()
     const client = createClient()
     const detail = await client.get<ProfileGroupDetail>(`/api/profile-groups/${args.id}`)
     if (args.json) {
@@ -101,6 +110,7 @@ const updateCmd = defineCommand({
     },
   },
   async run({ args }) {
+    warnDeprecated()
     const body: UpdateProfileGroupRequest = {}
     if (args.name !== undefined) body.name = args.name
     if (args['user-md-file'] !== undefined) {
@@ -128,6 +138,7 @@ const editCmd = defineCommand({
     id: { type: 'positional', required: true },
   },
   async run({ args }) {
+    warnDeprecated()
     const client = createClient()
     const detail = await client.get<ProfileGroupDetail>(`/api/profile-groups/${args.id}`)
     const editable: EditableMember[] = detail.members.map((m) => ({
@@ -197,6 +208,7 @@ const deleteCmd = defineCommand({
     id: { type: 'positional', required: true },
   },
   async run({ args }) {
+    warnDeprecated()
     const client = createClient()
     await client.del(`/api/profile-groups/${args.id}`)
     console.log(`deleted profile group ${args.id}`)
@@ -217,6 +229,7 @@ const spawnCmd = defineCommand({
     },
   },
   async run({ args }) {
+    warnDeprecated()
     const body: SpawnProfileGroupRequest = {}
     if (args.group) body.groupSlug = args.group
     if (args['user-md-file']) body.userMd = readFileSync(args['user-md-file'], 'utf8')

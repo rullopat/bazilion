@@ -1,8 +1,9 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { Profile, SkillsMode } from '@bazilion/api-types'
+import type { Profile, ProfileCommunicationDefaults, SkillsMode } from '@bazilion/api-types'
 import type { BazilionDb } from '../db/client.ts'
 import type { Paths } from '../paths.ts'
+import * as profileCommunicationDefaultsRepo from '../repos/profileCommunicationDefaults.ts'
 import * as profileRepo from '../repos/profiles.ts'
 import {
   DEFAULT_AGENTS,
@@ -19,6 +20,7 @@ export interface CreateProfileInput {
   defaultModel: string
   skillsMode?: SkillsMode
   defaultSkills?: string[]
+  communicationDefaults?: ProfileCommunicationDefaults
   templates?: {
     soul?: string
     identity?: string
@@ -88,6 +90,11 @@ export function createProfile(db: BazilionDb, paths: Paths, input: CreateProfile
   if (skillsMode === 'selected' && input.defaultSkills && input.defaultSkills.length > 0) {
     profileRepo.setDefaultSkills(db, input.id, input.defaultSkills)
   }
+  if (input.communicationDefaults) {
+    profileCommunicationDefaultsRepo.set(db, input.id, input.communicationDefaults)
+  }
 
-  return profile
+  return input.communicationDefaults
+    ? { ...profile, communicationDefaults: input.communicationDefaults }
+    : profile
 }

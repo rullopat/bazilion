@@ -11,6 +11,18 @@ export type {
   AgentStatus,
   AgentTrigger,
   Group,
+  HarnessMembershipMode,
+  HarnessTemplate,
+  HarnessTemplateDetail,
+  HarnessTemplateEdge,
+  HarnessTemplateRevision,
+  HarnessTemplateSlot,
+  HarnessTemplateWithCount,
+  LiveAgentState,
+  LiveEndpointKind,
+  LiveHarness,
+  LiveHarnessDetail,
+  LiveHarnessEdge,
   LoadedProfile,
   McpServer,
   McpServerInput,
@@ -19,17 +31,22 @@ export type {
   Message,
   OpenAICodexStatus,
   Profile,
+  ProfileCommunicationDefaults,
   ProfileGroup,
   ProfileGroupDetail,
   ProfileGroupMember,
   ProfileGroupWithCount,
+  ProfilePeerDefault,
   ReasoningLevel,
   ResolvedAgent,
   SkillMeta,
   SkillsMode,
+  SourceSlotBinding,
   TelegramAclRole,
   TelegramAllowedUser,
   TelegramMirrorMode,
+  TemplateEndpointKind,
+  TemplateInstantiation,
   Timestamp,
   TriggerKind,
   WebToken,
@@ -50,6 +67,7 @@ import type {
   Agent,
   AgentTrigger,
   Message,
+  ProfileCommunicationDefaults,
   ReasoningLevel,
   TelegramAclRole,
   TelegramMirrorMode,
@@ -127,6 +145,8 @@ export interface UpdateProfileRequest {
   defaultModel?: string
   skillsMode?: 'all' | 'selected'
   defaultSkills?: string[]
+  /** Omit to leave unchanged; null clears the row. */
+  communicationDefaults?: ProfileCommunicationDefaults | null
 }
 
 export interface CreateProfileRequest {
@@ -135,6 +155,8 @@ export interface CreateProfileRequest {
   defaultModel: string
   skillsMode?: 'all' | 'selected'
   defaultSkills?: string[]
+  /** Omit to create no defaults row. */
+  communicationDefaults?: ProfileCommunicationDefaults
   /** Initial SOUL.md content. Falls back to the built-in template when omitted. */
   soul?: string
   /** Initial IDENTITY.md content. Falls back to the built-in template when omitted. */
