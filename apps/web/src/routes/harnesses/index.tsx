@@ -2,7 +2,6 @@ import type { Agent, Group, Profile } from '@bazilion/api-types'
 import { createFileRoute } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { ArrowRight, Bot, Boxes, Network, ShieldAlert } from 'lucide-react'
-import { BindLiveHarnessDialog, CreateHarnessDialog, ResetHarnessPrototypeButton } from '../../components/harness/HarnessDialogs'
 import { PrototypeBadge } from '../../components/harness/PrototypeBadge'
 import { useHarnessPrototype } from '../../hooks/use-harness-prototype'
 import { diffLiveHarness } from '../../lib/harness-prototype'
@@ -45,14 +44,13 @@ function HarnessesPage() {
             <PrototypeBadge />
           </div>
           <p className="max-w-2xl text-sm leading-6 text-mocha">
-            Shape who may talk to whom, inspect live teams, and test denied paths. Policy changes
-            stay in this browser and are not enforced by the daemon.
+            Compatibility view for BAZ-009 browser-local data. Nothing here is uploaded,
+            enforced, or treated as durable activity. BAZ-017 will provide reviewed import.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <CreateHarnessDialog profiles={profiles} />
-          <BindLiveHarnessDialog groups={groups} agents={agents} />
-          <ResetHarnessPrototypeButton />
+          <a className="btn-primary" href="/groups">open production groups</a>
+          <a className="ghost-btn" href="/templates/teams">open team templates</a>
         </div>
       </header>
 
@@ -107,7 +105,7 @@ function HarnessesPage() {
             <div className="mb-3 flex items-center gap-2">
               <Network className="h-4 w-4 text-sapphire" aria-hidden="true" />
               <h2 className="m-0 font-body text-sm font-semibold uppercase text-mocha-light">
-                Live harnesses
+                Local group drafts
               </h2>
               <span className="text-xs text-mocha-light">{state.liveHarnesses.length}</span>
             </div>
@@ -115,9 +113,9 @@ function HarnessesPage() {
               <div className="flex min-h-36 items-center justify-center rounded-md border border-dashed border-fawn bg-ivory px-5 text-center">
                 <div>
                   <Bot className="mx-auto mb-2 h-5 w-5 text-mocha-light" aria-hidden="true" />
-                  <p className="text-sm font-medium text-chocolate">No live groups bound yet</p>
+                  <p className="text-sm font-medium text-chocolate">No local group drafts</p>
                   <p className="mt-1 text-xs text-mocha-light">
-                    Bind an existing group to use real agent ids and chat navigation.
+                    BAZ-017 will offer a reviewed comparison against a canonical Group policy.
                   </p>
                 </div>
               </div>

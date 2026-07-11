@@ -7,11 +7,15 @@ import { Link, useRouterState } from '@tanstack/react-router'
 export function TemplatesTabs() {
   const pathname = useRouterState({ select: (s) => s.location.pathname })
   const tabs = [
-    { to: '/profiles', label: 'profiles', match: (p: string) => p.startsWith('/profiles') },
     {
-      to: '/profile-groups',
-      label: 'profile groups',
-      match: (p: string) => p.startsWith('/profile-groups'),
+      to: '/templates/agents',
+      label: 'agent templates',
+      match: (p: string) => p.startsWith('/templates/agents'),
+    },
+    {
+      to: '/templates/teams',
+      label: 'team templates',
+      match: (p: string) => p.startsWith('/templates/teams'),
     },
   ] as const
   return (

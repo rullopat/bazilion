@@ -1,7 +1,7 @@
 // Spawn an agent from a profile, with name + group fields. POSTs to
 // /api/agents (proxied to daemon) and navigates to ?agent=<newId>.
 
-import type { Agent, Group } from '@bazilion/api-types'
+import type { Agent, Group, ResolvedGroupHarness } from '@bazilion/api-types'
 import { useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 import { useHarnessPrototype } from '../hooks/use-harness-prototype'
@@ -20,6 +20,7 @@ export function SpawnDialog({ profileId, groupHint, groups, onClose }: Props) {
   const { update: updateHarnessPrototype } = useHarnessPrototype()
   const [name, setName] = useState('')
   const [groupId, setGroupId] = useState(groupHint ?? DEFAULT_GROUP_ID)
+  const [placement, setPlacement] = useState<'isolated' | 'open' | 'profile_defaults'>('profile_defaults')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
@@ -28,7 +29,14 @@ export function SpawnDialog({ profileId, groupHint, groups, onClose }: Props) {
     setErr(null)
     setBusy(true)
     try {
-      const body: Record<string, string> = { profile: profileId }
+      const policy = await fetch(`/api/groups/${encodeURIComponent(groupId)}/harness`)
+      if (!policy.ok) throw new Error('The selected Group policy is unavailable. Reload and try again.')
+      const current = (await policy.json()) as ResolvedGroupHarness
+      const body: Record<string, string | number> = {
+        profile: profileId,
+        groupExpectedRevision: current.harness.revision,
+        placement,
+      }
       if (name.trim()) body.name = name.trim()
       if (groupId) body.groupId = groupId
       const res = await fetch('/api/agents', {
@@ -40,7 +48,8 @@ export function SpawnDialog({ profileId, groupHint, groups, onClose }: Props) {
         const e = (await res.json().catch(() => ({}))) as { error?: string }
         throw new Error(e.error ?? `${res.status} ${res.statusText}`)
       }
-      const created = (await res.json()) as Agent
+      const result = (await res.json()) as { agent: Agent }
+      const created = result.agent
       updateHarnessPrototype((current) =>
         addDirectSpawnToPrototype({
           state: current,
@@ -81,6 +90,15 @@ export function SpawnDialog({ profileId, groupHint, groups, onClose }: Props) {
             autoComplete="off"
             className="mt-1 block w-full rounded-md border bg-background px-3 py-2 outline-none focus:ring-2 focus:ring-ring/30"
           />
+        </label>
+        <label className="block text-sm text-foreground mb-3">
+          Initial policy placement
+          <select value={placement} onChange={(e) => setPlacement(e.target.value as typeof placement)} className="mt-1 block w-full rounded-md border bg-background px-3 py-2">
+            <option value="profile_defaults">agent-template defaults</option>
+            <option value="isolated">isolated</option>
+            <option value="open">open to current members and boundaries</option>
+          </select>
+          <span className="mt-1 block text-xs text-muted-foreground">The current Group revision is checked again when you submit.</span>
         </label>
         <label className="block text-sm text-foreground mb-3">
           Group

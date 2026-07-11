@@ -1,12 +1,10 @@
 import { Link } from '@tanstack/react-router'
 import { BaziuLogo } from './BaziuLogo'
-import { PrototypeBadge } from './harness/PrototypeBadge'
 import { ThemeToggle } from './ThemeToggle'
 
 const NAV_LINKS = [
-  { to: '/profiles', label: 'templates' },
+  { to: '/templates', label: 'templates' },
   { to: '/agents', label: 'agents' },
-  { to: '/harnesses', label: 'harnesses', prototype: true },
   { to: '/groups', label: 'groups' },
   { to: '/skills', label: 'skills' },
   { to: '/config', label: 'config' },
@@ -25,12 +23,7 @@ export function TopNav() {
           to={link.to}
           className="rounded-sm px-3 py-1.5 text-[0.92em] font-medium text-mocha transition-colors hover:bg-sapphire-glow hover:text-sapphire"
         >
-          <span className="inline-flex items-center gap-1.5">
-            {link.label}
-            {'prototype' in link && link.prototype && (
-              <PrototypeBadge label="Local prototype" />
-            )}
-          </span>
+          <span className="inline-flex items-center gap-1.5">{link.label}</span>
         </Link>
       ))}
       <div className="ml-auto">

@@ -28,5 +28,14 @@ export const Route = createFileRoute('/harnesses/$id')({
 function HarnessBuilderPage() {
   const { id } = Route.useParams()
   const { profiles, agents } = Route.useLoaderData()
-  return <HarnessBuilder harnessId={id} profiles={profiles} agents={agents} />
+  const destination = id.startsWith('template-') ? 'Team template import' : 'Group policy comparison'
+  return (
+    <div>
+      <aside className="mb-4 rounded-md border border-frost bg-ivory p-4 text-sm text-mocha">
+        <strong>Local-only compatibility state.</strong> Expected BAZ-017 path: {destination}.
+        Nothing on this page uploads, deletes, or replaces canonical daemon policy or Team data.
+      </aside>
+      <HarnessBuilder harnessId={id} profiles={profiles} agents={agents} />
+    </div>
+  )
 }

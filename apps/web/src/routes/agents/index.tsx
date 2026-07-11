@@ -1,4 +1,4 @@
-import type { Agent, Group, Profile } from '@bazilion/api-types'
+import type { Agent, Group, Profile, ResolvedGroupHarness } from '@bazilion/api-types'
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { useState } from 'react'
@@ -172,6 +172,7 @@ function SpawnForm({
   // server-side fallback. Empty string means "let the daemon pick" — same end
   // result as picking 'default' explicitly.
   const [groupId, setGroupId] = useState(groups.find((g) => g.id === 'default')?.id ?? '')
+  const [placement, setPlacement] = useState<'isolated' | 'open' | 'profile_defaults'>('profile_defaults')
   const [submitting, setSubmitting] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
@@ -187,7 +188,14 @@ function SpawnForm({
       const body: Record<string, unknown> = { profile: profileId }
       if (name) body.name = name
       if (model) body.model = model
-      if (groupId) body.groupId = groupId
+      if (groupId) {
+        const policyResponse = await fetch(`/api/groups/${encodeURIComponent(groupId)}/harness`)
+        if (!policyResponse.ok) throw new Error('The selected Group policy is unavailable.')
+        const current = (await policyResponse.json()) as ResolvedGroupHarness
+        body.groupId = groupId
+        body.groupExpectedRevision = current.harness.revision
+        body.placement = placement
+      }
       const res = await fetch('/api/agents', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -197,7 +205,8 @@ function SpawnForm({
         const b = (await res.json().catch(() => null)) as { error?: string } | null
         throw new Error(b?.error ?? res.statusText)
       }
-      const created = (await res.json()) as Agent
+      const payload = (await res.json()) as Agent | { agent: Agent }
+      const created = 'agent' in payload ? payload.agent : payload
       updateHarnessPrototype((current) =>
         addDirectSpawnToPrototype({
           state: current,
@@ -279,6 +288,15 @@ function SpawnForm({
             ))}
           </select>
         )}
+      </label>
+      <label>
+        initial policy placement
+        <select value={placement} onChange={(e) => setPlacement(e.target.value as typeof placement)}>
+          <option value="profile_defaults">agent-template defaults</option>
+          <option value="isolated">isolated</option>
+          <option value="open">open to current members and boundaries</option>
+        </select>
+        <span className="muted mt-1 block text-xs">Submit uses the latest displayed Group revision; a concurrent policy change is shown as a conflict and never overwritten.</span>
       </label>
 
       <button type="submit" disabled={submitting}>

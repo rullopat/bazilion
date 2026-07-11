@@ -1,7 +1,7 @@
 ---
 id: BAZ-012
 title: Production Templates and Groups web information architecture
-status: todo
+status: done
 size: L (1-2 weeks)
 created: 2026-07-10
 refined: 2026-07-10
@@ -11,7 +11,7 @@ note: Converge Profiles/Profile Groups into Agent/Team templates, establish Grou
 
 # BAZ-012 - Production Templates and Groups web information architecture
 
-**Status:** Refined and ready after BAZ-015 and BAZ-011. ADR 0001 is normative. This is the
+**Status:** Done. ADR 0001 is normative. This is the
 first half of the former XL web story; BAZ-017 owns production editors, local import,
 activity detail, and the full interaction/visual matrix.
 
@@ -144,3 +144,33 @@ not retain separate API state.
 - Playwright shell coverage for navigation, old URLs, Group tabs, degraded recovery, and
   lifecycle confirmations at desktop/tablet/mobile in both themes.
 - Full web/root typechecks, build, lint, and repository suite.
+
+## As-built
+
+Completed 2026-07-11 on `codex/baz-012-production-harness-web`.
+
+- Top navigation is now Templates · Agents · Groups · Skills · Config. Canonical Agent and
+  Team template routes live below `/templates`; the former Profile and Profile Group URLs
+  preserve ids and search state while redirecting to their canonical successors.
+- Team screens read and create through `/api/harness-templates`, expose stable slots,
+  immutable/current revisions, compatibility/tombstone source state, and no second roster.
+  Profile communication defaults are now daemon-backed creation defaults rather than local
+  prototype authority.
+- Groups expose Overview, Members, Policy, Memory, Context, and Activity. Membership reads
+  `agents.group_id`; policy reads the sole Group harness; Activity reads durable BAZ-011
+  denials without claiming policy-change history.
+- Spawn, move, hard-delete, and Team-spawn entry points read current Group/Team revisions,
+  submit explicit BAZ-015 placements, and surface conflicts without silent overwrite.
+- Missing daemon/policy/template projections fail visibly with retry and safe navigation;
+  no fixture, localStorage, or stale policy substitutes for effective state. Health exposes
+  management contract version 0 and `releaseReady: false` for the BAZ-016/017 release gate.
+- `/harnesses` remains an unlinked BAZ-009 compatibility landing. Local state is preserved,
+  clearly non-authoritative, and framed for reviewed Team import or Group-policy comparison
+  in BAZ-017; nothing uploads or deletes canonical state.
+- In-app Browser verification covered 1440×900, 1024×768, and 390×844 in light and dark.
+  Canonical navigation, compatibility redirects/query preservation, Group tabs, Team and
+  policy projections, local migration framing, nested-landmark/overflow checks, and mobile
+  tab wrapping passed. No real or test agent message was sent.
+- Automated evidence: 89 test files / 698 tests, root and web typechecks, root lint (existing
+  warnings only), root and web builds, focused canonical route/health checks, and
+  `git diff --check` pass.

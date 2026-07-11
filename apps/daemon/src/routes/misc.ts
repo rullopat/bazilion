@@ -147,6 +147,11 @@ miscRouter.get('/health', (c) => {
       enabled: process.env.BAZILION_SCHEDULER !== 'off',
       tickMs: Number(process.env.BAZILION_SCHEDULER_TICK_MS ?? 5_000),
     },
+    harnessManagement: {
+      contractVersion: 0,
+      enforcementRequested: process.env.BAZILION_HARNESS_ENFORCEMENT === 'on',
+      releaseReady: false,
+    },
   }
   return c.json(report)
 })

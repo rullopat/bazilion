@@ -3,7 +3,7 @@ import type {
   Agent,
   Group,
   Profile,
-  ProfileGroupWithCount,
+  HarnessTemplateWithCount,
   ProviderMessage,
   ResolvedAgent,
   SessionHeadResponse,
@@ -24,7 +24,7 @@ interface SelectedView {
 interface HomeData {
   agents: Agent[]
   profiles: Profile[]
-  profileGroups: ProfileGroupWithCount[]
+  profileGroups: HarnessTemplateWithCount[]
   groups: Group[]
   selected: SelectedView | null
   initialOpenGroups: Record<string, boolean>
@@ -59,7 +59,7 @@ const fetchHomeData = createServerFn({ method: 'POST' })
     const [agents, profiles, profileGroups, groups] = await Promise.all([
       client.get<Agent[]>('/api/agents?includeArchived=false'),
       client.get<Profile[]>('/api/profiles'),
-      client.get<ProfileGroupWithCount[]>('/api/profile-groups'),
+      client.get<HarnessTemplateWithCount[]>('/api/harness-templates'),
       client.get<Group[]>('/api/groups'),
     ])
 
