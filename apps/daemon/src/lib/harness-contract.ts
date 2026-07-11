@@ -1,4 +1,4 @@
-export const HARNESS_MANAGEMENT_CONTRACT_VERSION = 0 as const
+export const HARNESS_MANAGEMENT_CONTRACT_VERSION = 1 as const
 
 export function harnessEnforcementRequested(env: NodeJS.ProcessEnv = process.env): boolean {
   return env.BAZILION_HARNESS_ENFORCEMENT === 'on'

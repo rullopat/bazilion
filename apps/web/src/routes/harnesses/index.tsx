@@ -45,7 +45,8 @@ function HarnessesPage() {
           </div>
           <p className="max-w-2xl text-sm leading-6 text-mocha">
             Compatibility view for BAZ-009 browser-local data. Nothing here is uploaded,
-            enforced, or treated as durable activity. BAZ-017 will provide reviewed import.
+            enforced, or treated as durable activity. Open a document to export it or begin a
+            reviewed import into a new canonical Team or an explicitly selected Group.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -115,7 +116,8 @@ function HarnessesPage() {
                   <Bot className="mx-auto mb-2 h-5 w-5 text-mocha-light" aria-hidden="true" />
                   <p className="text-sm font-medium text-chocolate">No local group drafts</p>
                   <p className="mt-1 text-xs text-mocha-light">
-                    BAZ-017 will offer a reviewed comparison against a canonical Group policy.
+                    Local live drafts appear here when created; each detail page offers reviewed
+                    comparison against a canonical Group policy.
                   </p>
                 </div>
               </div>

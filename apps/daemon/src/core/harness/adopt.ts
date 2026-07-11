@@ -16,70 +16,87 @@ export interface AdoptHarnessTemplateInput {
   previewEdges: Omit<LiveHarnessEdge, 'groupId'>[]
 }
 
+export function previewHarnessAdoption(
+  db: BazilionDb,
+  groupId: string,
+  input: Omit<AdoptHarnessTemplateInput, 'previewEdges'>,
+): Omit<LiveHarnessEdge, 'groupId'>[] {
+  return resolveAdoptionPlan(db, groupId, { ...input, previewEdges: [] }).resolved
+}
+
+function resolveAdoptionPlan(db: BazilionDb, groupId: string, input: AdoptHarnessTemplateInput) {
+  const harness = liveHarnessRepo.get(db, groupId)
+  if (!harness) throw new Error(`group_policy_missing: ${groupId}`)
+  if (harness.revision !== input.groupExpectedRevision) {
+    throw new Error(
+      `group_revision_conflict: expected ${input.groupExpectedRevision}, current ${harness.revision}`,
+    )
+  }
+  const template = harnessTemplateRepo.get(db, input.templateId)
+  if (!template) throw new Error(`team template not found: ${input.templateId}`)
+  if (template.deletedAt !== null) throw new Error(`template_deleted: ${input.templateId}`)
+  if (template.currentRevision !== input.templateExpectedRevision) {
+    throw new Error(
+      `template_revision_conflict: expected ${input.templateExpectedRevision}, current ${template.currentRevision}`,
+    )
+  }
+  const snapshot = harnessTemplateRepo.revision(db, template.id, input.templateExpectedRevision)
+  if (!snapshot) throw new Error('template_snapshot_missing')
+  const members = agentRepo
+    .list(db, { includeArchived: true })
+    .filter((agent) => agent.groupId === groupId)
+  const memberIds = new Set(members.map((agent) => agent.id))
+  const mapping = new Map(input.slotMappings.map((item) => [item.slotId, item.agentId]))
+  if (mapping.size !== input.slotMappings.length || mapping.size !== snapshot.slots.length) {
+    throw new Error('adoption_mapping_invalid: every active source slot must be mapped once')
+  }
+  const mappedAgents = new Set(mapping.values())
+  if (mappedAgents.size !== mapping.size) {
+    throw new Error('adoption_mapping_invalid: mappings must be injective')
+  }
+  for (const slot of snapshot.slots) {
+    const agentId = mapping.get(slot.slotId)
+    if (!agentId || !memberIds.has(agentId)) {
+      throw new Error(`adoption_mapping_invalid: slot ${slot.slotId} is not mapped to a member`)
+    }
+  }
+  const remainingIds = new Set([...memberIds].filter((id) => !mappedAgents.has(id)))
+  if (
+    input.remainingPlacements.some(
+      (item) =>
+        item.placement !== 'isolated' &&
+        item.placement !== 'open' &&
+        item.placement !== 'profile_defaults',
+    )
+  ) {
+    throw new Error('adoption_mapping_invalid: unknown placement')
+  }
+  const placements = new Map(
+    input.remainingPlacements.map((item) => [item.agentId, item.placement]),
+  )
+  if (
+    placements.size !== input.remainingPlacements.length ||
+    placements.size !== remainingIds.size ||
+    [...remainingIds].some((id) => !placements.has(id)) ||
+    [...placements].some(([id]) => !remainingIds.has(id))
+  ) {
+    throw new Error('adoption_mapping_invalid: every remaining Agent needs one placement')
+  }
+  return {
+    template,
+    snapshot,
+    mapping,
+    resolved: resolveAdoptionEdges(db, snapshot.edges, mapping, placements, members),
+  }
+}
+
 export function adoptHarnessTemplate(
   db: BazilionDb,
   groupId: string,
   input: AdoptHarnessTemplateInput,
 ): ResolvedGroupHarness {
   return db.raw.transaction(() => {
-    const harness = liveHarnessRepo.get(db, groupId)
-    if (!harness) throw new Error(`group_policy_missing: ${groupId}`)
-    if (harness.revision !== input.groupExpectedRevision) {
-      throw new Error(
-        `group_revision_conflict: expected ${input.groupExpectedRevision}, current ${harness.revision}`,
-      )
-    }
-    const template = harnessTemplateRepo.get(db, input.templateId)
-    if (!template) throw new Error(`team template not found: ${input.templateId}`)
-    if (template.deletedAt !== null) throw new Error(`template_deleted: ${input.templateId}`)
-    if (template.currentRevision !== input.templateExpectedRevision) {
-      throw new Error(
-        `template_revision_conflict: expected ${input.templateExpectedRevision}, current ${template.currentRevision}`,
-      )
-    }
-    const snapshot = harnessTemplateRepo.revision(db, template.id, input.templateExpectedRevision)
-    if (!snapshot) throw new Error('template_snapshot_missing')
-    const members = agentRepo
-      .list(db, { includeArchived: true })
-      .filter((agent) => agent.groupId === groupId)
-    const memberIds = new Set(members.map((agent) => agent.id))
-    const mapping = new Map(input.slotMappings.map((item) => [item.slotId, item.agentId]))
-    if (mapping.size !== input.slotMappings.length || mapping.size !== snapshot.slots.length) {
-      throw new Error('adoption_mapping_invalid: every active source slot must be mapped once')
-    }
-    const mappedAgents = new Set(mapping.values())
-    if (mappedAgents.size !== mapping.size) {
-      throw new Error('adoption_mapping_invalid: mappings must be injective')
-    }
-    for (const slot of snapshot.slots) {
-      const agentId = mapping.get(slot.slotId)
-      if (!agentId || !memberIds.has(agentId)) {
-        throw new Error(`adoption_mapping_invalid: slot ${slot.slotId} is not mapped to a member`)
-      }
-    }
-    const remainingIds = new Set([...memberIds].filter((id) => !mappedAgents.has(id)))
-    if (
-      input.remainingPlacements.some(
-        (item) =>
-          item.placement !== 'isolated' &&
-          item.placement !== 'open' &&
-          item.placement !== 'profile_defaults',
-      )
-    ) {
-      throw new Error('adoption_mapping_invalid: unknown placement')
-    }
-    const placements = new Map(
-      input.remainingPlacements.map((item) => [item.agentId, item.placement]),
-    )
-    if (
-      placements.size !== input.remainingPlacements.length ||
-      placements.size !== remainingIds.size ||
-      [...remainingIds].some((id) => !placements.has(id)) ||
-      [...placements].some(([id]) => !remainingIds.has(id))
-    ) {
-      throw new Error('adoption_mapping_invalid: every remaining Agent needs one placement')
-    }
-    const resolved = resolveAdoptionEdges(db, snapshot.edges, mapping, placements, members)
+    const { template, snapshot, mapping, resolved } = resolveAdoptionPlan(db, groupId, input)
     if (!sameEdges(resolved, input.previewEdges)) {
       throw new Error('adoption_preview_mismatch: reviewed preview does not match resolved policy')
     }

@@ -1,5 +1,6 @@
 import type {
   LiveAgentState,
+  LiveEndpointKind,
   LiveHarness,
   LiveHarnessEdge,
   ResolvedGroupHarness,
@@ -120,7 +121,29 @@ export function addPlacementEdges(
   placement: 'isolated' | 'open' | 'profile_defaults',
   profileId: string,
 ): void {
-  if (placement === 'isolated') return
+  for (const edge of placementEdgesPreview(db, groupId, agentId, placement, profileId)) {
+    insertLiveEdge(db, groupId, edge.sourceKind, edge.sourceId, edge.targetKind, edge.targetId)
+  }
+}
+
+export function placementEdgesPreview(
+  db: BazilionDb,
+  groupId: string,
+  agentId: string,
+  placement: 'isolated' | 'open' | 'profile_defaults',
+  profileId: string,
+): Array<Omit<LiveHarnessEdge, 'groupId'>> {
+  if (placement === 'isolated') return []
+  const edges = new Map<string, Omit<LiveHarnessEdge, 'groupId'>>()
+  const add = (
+    sourceKind: LiveEndpointKind,
+    sourceId: string | null,
+    targetKind: LiveEndpointKind,
+    targetId: string | null,
+  ) => {
+    const edge = { sourceKind, sourceId, targetKind, targetId }
+    edges.set(`${sourceKind}:${sourceId ?? ''}>${targetKind}:${targetId ?? ''}`, edge)
+  }
   const peers = db.raw
     .query<{ id: string }, [string, string]>(
       'SELECT id FROM agents WHERE group_id = ? AND id <> ? ORDER BY id',
@@ -129,8 +152,8 @@ export function addPlacementEdges(
     .map((row) => row.id)
   if (placement === 'open') {
     for (const peerId of peers) {
-      insertLiveEdge(db, groupId, 'agent', agentId, 'agent', peerId)
-      insertLiveEdge(db, groupId, 'agent', peerId, 'agent', agentId)
+      add('agent', agentId, 'agent', peerId)
+      add('agent', peerId, 'agent', agentId)
     }
     for (const [sourceKind, sourceId, targetKind, targetId] of [
       ['user', null, 'agent', agentId],
@@ -138,9 +161,9 @@ export function addPlacementEdges(
       ['outside_group', null, 'agent', agentId],
       ['agent', agentId, 'outside_group', null],
     ] as const) {
-      insertLiveEdge(db, groupId, sourceKind, sourceId, targetKind, targetId)
+      add(sourceKind, sourceId, targetKind, targetId)
     }
-    return
+    return [...edges.values()]
   }
   const defaults = db.raw
     .query<
@@ -154,21 +177,22 @@ export function addPlacementEdges(
       [string]
     >('SELECT * FROM profile_communication_defaults WHERE profile_id = ?')
     .get(profileId)
-  if (!defaults) return
-  if (defaults.user_input) insertLiveEdge(db, groupId, 'user', null, 'agent', agentId)
-  if (defaults.user_output) insertLiveEdge(db, groupId, 'agent', agentId, 'user', null)
+  if (!defaults) return []
+  if (defaults.user_input) add('user', null, 'agent', agentId)
+  if (defaults.user_output) add('agent', agentId, 'user', null)
   if (defaults.outside_group_input) {
-    insertLiveEdge(db, groupId, 'outside_group', null, 'agent', agentId)
+    add('outside_group', null, 'agent', agentId)
   }
   if (defaults.outside_group_output) {
-    insertLiveEdge(db, groupId, 'agent', agentId, 'outside_group', null)
+    add('agent', agentId, 'outside_group', null)
   }
   if (defaults.peer_default === 'allow_all') {
     for (const peerId of peers) {
-      insertLiveEdge(db, groupId, 'agent', agentId, 'agent', peerId)
-      insertLiveEdge(db, groupId, 'agent', peerId, 'agent', agentId)
+      add('agent', agentId, 'agent', peerId)
+      add('agent', peerId, 'agent', agentId)
     }
   }
+  return [...edges.values()]
 }
 
 export function requireCompatibilityOpen(db: BazilionDb, groupId: string): LiveHarness {

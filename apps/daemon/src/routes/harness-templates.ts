@@ -1,8 +1,10 @@
+import { randomUUID } from 'node:crypto'
 import type { ReasoningLevel } from '@bazilion/api-types'
 import { REASONING_LEVELS } from '@bazilion/api-types'
 import { type Context, Hono } from 'hono'
 import {
   harnessTemplateRepo,
+  previewHarnessTemplateSpawn,
   profileRepo,
   SpawnHarnessTemplateError,
   spawnHarnessTemplate,
@@ -25,6 +27,68 @@ harnessTemplatesRouter.get('/', (c) => {
       slotCount: harnessTemplateRepo.slots(db, template.id).length,
     })),
   )
+})
+
+harnessTemplatesRouter.post('/import', async (c) => {
+  const raw = await jsonObject(c)
+  if (!raw || !Array.isArray(raw.slots) || !Array.isArray(raw.edges)) {
+    return c.json({ error: 'id, name, slots, and edges are required' }, 400)
+  }
+  const id = stringValue(raw.id)
+  const name = stringValue(raw.name)
+  if (!id || !name) return c.json({ error: 'id and name are required' }, 400)
+  try {
+    validateSlug(id)
+    const { db } = getCtx()
+    if (harnessTemplateRepo.get(db, id)) {
+      return c.json({ error: `team template already exists: ${id}` }, 409)
+    }
+    const keyToSlot = new Map<string, string>()
+    const slots = raw.slots.map((value, index) => {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        throw new Error(`invalid_template_import: slot ${index} must be an object`)
+      }
+      const slot = value as Record<string, unknown>
+      const clientKey = stringValue(slot.clientKey)
+      if (!clientKey || keyToSlot.has(clientKey)) {
+        throw new Error(`invalid_template_import: slot ${index} clientKey is missing or duplicate`)
+      }
+      const parsed = parseSlot(slot, index)
+      if (!profileRepo.get(db, parsed.profileId)) {
+        throw new Error(`profile not found: ${parsed.profileId}`)
+      }
+      const slotId = randomUUID()
+      keyToSlot.set(clientKey, slotId)
+      return { ...parsed, slotId }
+    })
+    const edges = raw.edges.map((value, index) => {
+      const parsed = parseEdge(value, index)
+      const translate = (kind: CanonicalEdgeInput['sourceKind'], clientKey: string | null) => {
+        if (kind !== 'slot') return null
+        const slotId = keyToSlot.get(clientKey ?? '')
+        if (!slotId)
+          throw new Error(`invalid_template_import: edge ${index} references an unknown slot`)
+        return slotId
+      }
+      return {
+        ...parsed,
+        sourceId: translate(parsed.sourceKind, parsed.sourceId ?? null),
+        targetId: translate(parsed.targetKind, parsed.targetId ?? null),
+      }
+    })
+    return c.json(
+      harnessTemplateRepo.insertCanonicalDefinition(db, {
+        id,
+        name,
+        userMd: nullableString(raw.userMd),
+        slots,
+        edges,
+      }),
+      201,
+    )
+  } catch (error) {
+    return canonicalError(c, error)
+  }
 })
 
 harnessTemplatesRouter.get('/:id', (c) => {
@@ -160,6 +224,32 @@ harnessTemplatesRouter.post('/:id/spawn', async (c) => {
     )
   } catch (error) {
     return canonicalError(c, error instanceof SpawnHarnessTemplateError ? error.cause : error)
+  }
+})
+
+harnessTemplatesRouter.post('/:id/spawn/preview', async (c) => {
+  const raw = await jsonObject(c)
+  if (!raw) return c.json({ error: 'invalid JSON body' }, 400)
+  const templateExpectedRevision = positiveInteger(raw.templateExpectedRevision)
+  const groupId = stringValue(raw.groupId)
+  const groupExpectedRevision = positiveInteger(raw.groupExpectedRevision) ?? undefined
+  const mode = raw.mode === 'append' ? 'append' : raw.mode === 'initialize' ? 'initialize' : null
+  if (!templateExpectedRevision || !groupId || !mode) {
+    return c.json({ error: 'templateExpectedRevision, groupId, and mode are required' }, 400)
+  }
+  try {
+    return c.json(
+      previewHarnessTemplateSpawn(getCtx().db, getCtx().paths, {
+        templateId: c.req.param('id'),
+        templateExpectedRevision,
+        groupId,
+        groupExpectedRevision,
+        mode,
+        userMd: typeof raw.userMd === 'string' ? raw.userMd : undefined,
+      }),
+    )
+  } catch (error) {
+    return canonicalError(c, error)
   }
 })
 

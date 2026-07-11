@@ -29,10 +29,12 @@ afterEach(() => {
   vi.resetModules()
 })
 
-test('daemon bootstrap refuses enforcement-on while management contract is version 0', async () => {
+test('daemon bootstrap accepts enforcement-on after management contract version 1', async () => {
   process.env.BAZILION_HARNESS_ENFORCEMENT = 'on'
   const { getCtx } = await import('../../src/lib/ctx.ts')
-  expect(() => getCtx()).toThrow(/harness_enforcement_release_not_ready/)
+  const ctx = getCtx()
+  expect(ctx.db).toBeDefined()
+  ctx.db.close()
 })
 
 test('daemon bootstrap remains available with the default-off gate', async () => {

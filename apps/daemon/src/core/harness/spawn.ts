@@ -27,6 +27,89 @@ export interface SpawnHarnessTemplateResult {
   group: ResolvedGroupHarness
 }
 
+export interface SpawnHarnessTemplatePreview {
+  mode: 'initialize' | 'append'
+  groupId: string
+  currentRevision: number | null
+  resultingRevision: number
+  newMembers: Array<{ slotId: string; agentName: string; profileId: string }>
+  edges: Array<{
+    sourceKind: 'user' | 'outside_group' | 'agent'
+    sourceId: string | null
+    targetKind: 'user' | 'outside_group' | 'agent'
+    targetId: string | null
+  }>
+}
+
+export function previewHarnessTemplateSpawn(
+  db: BazilionDb,
+  paths: Paths,
+  input: SpawnHarnessTemplateInput,
+): SpawnHarnessTemplatePreview {
+  const source = harnessTemplateRepo.get(db, input.templateId)
+  if (!source) throw new Error(`team template not found: ${input.templateId}`)
+  if (source.deletedAt !== null) throw new Error(`template_deleted: ${input.templateId}`)
+  if (source.currentRevision !== input.templateExpectedRevision) {
+    throw new Error(
+      `template_revision_conflict: expected ${input.templateExpectedRevision}, current ${source.currentRevision}`,
+    )
+  }
+  const snapshot = harnessTemplateRepo.revision(db, source.id, input.templateExpectedRevision)
+  if (!snapshot)
+    throw new Error(`template_snapshot_missing: ${source.id}@${source.currentRevision}`)
+  const existingGroup = groupRepo.get(db, input.groupId, paths)
+  const harness = existingGroup ? liveHarnessRepo.get(db, input.groupId) : null
+  if (existingGroup && !input.groupExpectedRevision) {
+    throw new Error('group_revision_required: groupExpectedRevision is required')
+  }
+  if (harness && harness.revision !== input.groupExpectedRevision) {
+    throw new Error(
+      `group_revision_conflict: expected ${input.groupExpectedRevision}, current ${harness.revision}`,
+    )
+  }
+  const members = existingGroup
+    ? agentRepo
+        .list(db, { includeArchived: true })
+        .filter((agent) => agent.groupId === input.groupId)
+    : []
+  if (!existingGroup && input.mode !== 'initialize') {
+    throw new Error('initialize_required: a new Group must establish a baseline')
+  }
+  if (
+    existingGroup &&
+    input.mode === 'append' &&
+    members.length === 0 &&
+    !harness?.baselineInstantiationId
+  ) {
+    throw new Error('initialize_required: empty uninitialized Group must establish a baseline')
+  }
+  if (input.mode === 'initialize') {
+    if (members.length > 0) throw new Error('group_not_empty: initialize requires an empty Group')
+    if (harness?.baselineInstantiationId) {
+      throw new Error('baseline_replacement_required: empty Group retains a baseline')
+    }
+  }
+  const slotEndpoint = (slotId: string | null) => (slotId ? `new:${slotId}` : null)
+  const newEdges = snapshot.edges.map((edge) => ({
+    sourceKind: edge.sourceKind === 'slot' ? ('agent' as const) : edge.sourceKind,
+    sourceId: edge.sourceKind === 'slot' ? slotEndpoint(edge.sourceId) : null,
+    targetKind: edge.targetKind === 'slot' ? ('agent' as const) : edge.targetKind,
+    targetId: edge.targetKind === 'slot' ? slotEndpoint(edge.targetId) : null,
+  }))
+  return {
+    mode: input.mode,
+    groupId: input.groupId,
+    currentRevision: harness?.revision ?? null,
+    resultingRevision: harness ? harness.revision + 1 : 1,
+    newMembers: snapshot.slots.map((slot) => ({
+      slotId: slot.slotId,
+      agentName: slot.agentName,
+      profileId: slot.profileId,
+    })),
+    edges: [...(existingGroup ? liveHarnessRepo.edges(db, input.groupId) : []), ...newEdges],
+  }
+}
+
 export class SpawnHarnessTemplateError extends Error {
   override name = 'SpawnHarnessTemplateError'
   readonly orphanAgentIds: string[]

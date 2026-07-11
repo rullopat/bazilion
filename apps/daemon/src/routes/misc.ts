@@ -156,7 +156,7 @@ miscRouter.get('/health', (c) => {
       contractVersion: HARNESS_MANAGEMENT_CONTRACT_VERSION,
       enforcementRequested: harnessEnforcementRequested(),
       enforcementActive: harnessEnforcementRequested() && HARNESS_MANAGEMENT_CONTRACT_VERSION >= 1,
-      releaseReady: false,
+      releaseReady: HARNESS_MANAGEMENT_CONTRACT_VERSION >= 1,
       degraded: harnessEnforcementRequested() && HARNESS_MANAGEMENT_CONTRACT_VERSION < 1,
       decisions: { ...communicationDecisionMetrics },
     },

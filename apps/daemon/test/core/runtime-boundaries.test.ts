@@ -338,11 +338,11 @@ test('inbox claim re-evaluates moved and archived membership at delivery time', 
   ).toBe('policy_blocked')
 })
 
-test('compiled management contract blocks activation until BAZ-017', () => {
-  expect(HARNESS_MANAGEMENT_CONTRACT_VERSION).toBe(0)
+test('compiled management contract permits activation after BAZ-017', () => {
+  expect(HARNESS_MANAGEMENT_CONTRACT_VERSION).toBe(1)
   expect(() =>
     assertHarnessEnforcementReleaseReady({ BAZILION_HARNESS_ENFORCEMENT: 'on' }),
-  ).toThrow(/release_not_ready/)
+  ).not.toThrow()
   expect(() =>
     assertHarnessEnforcementReleaseReady({ BAZILION_HARNESS_ENFORCEMENT: 'off' }),
   ).not.toThrow()

@@ -247,6 +247,22 @@
   a:hover { color: var(--color-sapphire-deep); }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+:where(button, a, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-sapphire);
+  outline-offset: 2px;
+}
+
 /* React Flow inherits Bazilion's semantic palette instead of its default blue UI. */
 .harness-flow {
   --xy-background-color: var(--color-ivory);

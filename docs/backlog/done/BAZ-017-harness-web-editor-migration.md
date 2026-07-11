@@ -1,7 +1,7 @@
 ---
 id: BAZ-017
 title: Production policy editors, local migration, activity, and web QA
-status: todo
+status: done
 size: L (1-2 weeks)
 created: 2026-07-10
 refined: 2026-07-10
@@ -11,8 +11,8 @@ note: Complete BAZ-012 with server-backed Flow/Matrix editors, adoption/source w
 
 # BAZ-017 - Production policy editors, local migration, activity, and web QA
 
-**Status:** Refined and ready after BAZ-012 and disabled BAZ-016; completes the
-management/recovery prerequisite for enabling enforcement. ADR 0001 is normative.
+**Status:** Done. Completed the management/recovery prerequisite and activated the
+release-coupled BAZ-016 enforcement capability. ADR 0001 is normative.
 
 ## User stories
 
@@ -115,3 +115,32 @@ verification.
   restoration, and reduced motion.
 - Full web/root typechecks, build, lint, repository suite, and focused BAZ-010/011/015/016
   contract tests.
+
+## As-built (2026-07-11)
+
+- Replaced the BAZ-009 local prototype projection with canonical server-backed Flow and
+  Matrix editors for Team templates and Group live policy. Both projections share one edge
+  draft, reconcile from revisioned API responses, distinguish stable slot ids from live
+  Agent ids, expose draft/effective state, and preserve both sides of a 409 conflict for
+  explicit reload or reapply.
+- Added exact daemon previews for Team initialize/append, template adoption/rebaseline,
+  direct placement, and Agent moves. Group policy exposes baseline/current-source/live
+  comparison, divergence and tombstone recovery, update-source, save-as-template, total
+  injective adoption mapping, profile-default overlays, presets, and side-effect-free
+  evaluation.
+- Added reviewed local export/import. Imported Team slots always receive server UUIDs,
+  invalid documents fail atomically, local Group drafts compare before expected-revision
+  application, and local simulated blocks never enter durable production activity.
+- Expanded Group activity into paginated durable denial detail with source, target,
+  channel, origin, reason, time, attempt, policy references, revisions, both cross-Group
+  components, and matched/required edges. Agent drill-in restores Group route, projection,
+  selection, and viewport without sending a message.
+- Browser acceptance passed at 1440x900, 1024x768, and 390x844 in light and dark, including
+  long content, dialogs, conflict recovery, degraded/retry recovery, migration, previews,
+  activity, keyboard semantics, focus behavior, and reduced motion. No real Agent message
+  was sent.
+- Focused verification passed 26 activation/editor/API tests. Full repository tests, root
+  and web typechecks, Biome lint (existing warnings only), root and web production builds,
+  enforcement-on startup, and `git diff --check` passed. The compiled management contract
+  is now version 1; enforcement remains operator-configured and no workflow execution or
+  approvals were added.
