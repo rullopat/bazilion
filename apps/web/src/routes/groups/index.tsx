@@ -1,34 +1,49 @@
-import type { Agent, Group } from '@bazilion/api-types'
+import type { Agent, Group, HealthReport, ResolvedGroupHarness } from '@bazilion/api-types'
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { useState } from 'react'
+import { RecoveryState } from '../../components/RecoveryState'
 import { daemonClient } from '../../lib/daemon-client'
 
 interface GroupsData {
   groups: Group[]
   memberCounts: Record<string, number>
+  policies: Record<string, { revision: number; mode: string; baseline: string | null; edges: number }>
+  readiness: HealthReport['harnessManagement']
 }
 
 const fetchGroupsData = createServerFn({ method: 'GET' }).handler(
   async (): Promise<GroupsData> => {
     const c = daemonClient()
-    const [groups, agents] = await Promise.all([
+    const [groups, agents, health] = await Promise.all([
       c.get<Group[]>('/api/groups'),
       c.get<Agent[]>('/api/agents?includeArchived=true'),
+      c.get<HealthReport>('/api/health'),
     ])
     const memberCounts: Record<string, number> = {}
     for (const a of agents) memberCounts[a.groupId] = (memberCounts[a.groupId] ?? 0) + 1
-    return { groups, memberCounts }
+    const policies: GroupsData['policies'] = {}
+    await Promise.all(groups.map(async (group) => {
+      const detail = await c.get<ResolvedGroupHarness>(`/api/groups/${encodeURIComponent(group.id)}/harness`)
+      policies[group.id] = {
+        revision: detail.harness.revision,
+        mode: detail.harness.membershipMode,
+        baseline: detail.baseline ? `${detail.baseline.templateId} r${detail.baseline.templateRevision}` : null,
+        edges: detail.edges.length,
+      }
+    }))
+    return { groups, memberCounts, policies, readiness: health.harnessManagement }
   },
 )
 
 export const Route = createFileRoute('/groups/')({
   loader: () => fetchGroupsData(),
   component: GroupsPage,
+  errorComponent: ({ error, reset }) => <RecoveryState title="Groups unavailable" error={error} reset={reset} fallbackHref="/" />,
 })
 
 function GroupsPage() {
-  const { groups, memberCounts } = Route.useLoaderData()
+  const { groups, memberCounts, policies, readiness } = Route.useLoaderData()
   const router = useRouter()
 
   async function remove(id: string) {
@@ -45,9 +60,14 @@ function GroupsPage() {
     <div>
       <h1>groups</h1>
       <p className="muted">
-        A group is a collaboration context: one filesystem root, one USER.md, one roster. Every
-        agent belongs to exactly one group.
+        A Group owns one workspace, one live membership roster, and exactly one effective policy.
+        Every agent belongs to exactly one Group.
       </p>
+
+      <aside className="card" aria-label="Harness enforcement readiness">
+        <strong>Policy enforcement remains release-disabled.</strong>{' '}
+        <span className="muted">Management contract v{readiness.contractVersion}; BAZ-017 must complete recovery and visual acceptance before activation.</span>
+      </aside>
 
       <RegisterGroupForm onRegistered={() => router.invalidate()} />
 
@@ -56,9 +76,9 @@ function GroupsPage() {
           <tr>
             <th>id</th>
             <th>name</th>
-            <th>path</th>
             <th>members</th>
-            <th>USER.md</th>
+            <th>policy</th>
+            <th>baseline</th>
             <th />
           </tr>
         </thead>
@@ -72,22 +92,20 @@ function GroupsPage() {
           )}
           {groups.map((g) => {
             const count = memberCounts[g.id] ?? 0
-            const userMdBytes = g.userMd.length
+            const policy = policies[g.id]
             return (
               <tr key={g.id}>
                 <td>
                   <code>{g.id}</code>
                 </td>
                 <td>{g.name}</td>
-                <td>
-                  <code>{g.path}</code>
-                </td>
                 <td>{count}</td>
                 <td>
-                  <a href={`/groups/${g.id}`}>
-                    {userMdBytes > 0 ? `${userMdBytes} chars` : 'empty'}
+                  <a href={`/groups/${g.id}/policy`}>
+                    {policy ? `r${policy.revision} · ${policy.mode} · ${policy.edges} edges` : 'unavailable'}
                   </a>
                 </td>
+                <td>{policy?.baseline ?? 'none'}</td>
                 <td>
                   {count === 0 ? (
                     <button type="button" className="ghost-btn" onClick={() => remove(g.id)}>

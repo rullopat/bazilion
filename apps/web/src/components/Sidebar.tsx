@@ -1,7 +1,7 @@
 // Left sidebar: collapsible groups + agent rows + spawn dropdown. Each agent
 // row reveals rename (✎) and archive (×) buttons on hover.
 
-import type { Agent, Group, Profile, ProfileGroupWithCount } from '@bazilion/api-types'
+import type { Agent, Group, HarnessTemplateWithCount, Profile } from '@bazilion/api-types'
 import { Link, useRouter } from '@tanstack/react-router'
 import { useState } from 'react'
 import { DEFAULT_GROUP_ID, DEFAULT_PROFILE_ID } from '../lib/wire-constants'
@@ -13,7 +13,7 @@ interface Props {
   agents: Agent[]
   groups: Group[]
   profiles: Profile[]
-  profileGroups: ProfileGroupWithCount[]
+  profileGroups: HarnessTemplateWithCount[]
   selectedAgentId: string | null
   /** Per-group open/closed map seeded by SSR from the cookie. */
   initialOpenGroups?: Record<string, boolean>
@@ -43,7 +43,7 @@ export function Sidebar({
 }: Props) {
   const router = useRouter()
   const [spawnFor, setSpawnFor] = useState<{ profileId: string; groupHint?: string } | null>(null)
-  const [spawnTeamFor, setSpawnTeamFor] = useState<ProfileGroupWithCount | null>(null)
+  const [spawnTeamFor, setSpawnTeamFor] = useState<HarnessTemplateWithCount | null>(null)
   const [createGroupOpen, setCreateGroupOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   // Seeded by SSR from the cookie so the first paint matches the user's
@@ -120,7 +120,7 @@ export function Sidebar({
                 <div className="px-3 py-2 text-sm text-muted-foreground">
                   No profiles yet.
                   <br />
-                  <a href="/profiles" className="text-primary underline">
+                  <a href="/templates/agents" className="text-primary underline">
                     Create one
                   </a>{' '}
                   to spawn agents.
@@ -158,7 +158,7 @@ export function Sidebar({
               {profileGroups.length === 0 ? (
                 <div className="px-3 py-1.5 text-xs text-muted-foreground">
                   No team templates yet.{' '}
-                  <a href="/profile-groups" className="text-primary underline">
+                  <a href="/templates/teams" className="text-primary underline">
                     Create one
                   </a>
                   .
@@ -169,9 +169,9 @@ export function Sidebar({
                     key={pg.id}
                     type="button"
                     role="menuitem"
-                    disabled={pg.memberCount === 0}
+                    disabled={pg.slotCount === 0}
                     title={
-                      pg.memberCount === 0
+                      pg.slotCount === 0
                         ? 'add at least one member before spawning'
                         : undefined
                     }
@@ -183,7 +183,7 @@ export function Sidebar({
                   >
                     <span>{pg.name || pg.id}</span>
                     <span className="font-mono text-[0.7em] text-muted-foreground">
-                      {pg.memberCount}
+                      {pg.slotCount}
                     </span>
                   </button>
                 ))

@@ -7,6 +7,7 @@ import type { Agent, Group, MemoryEntry, MemoryHit } from '@bazilion/api-types'
 import { createFileRoute, redirect } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { useEffect, useRef, useState } from 'react'
+import { GroupTabs } from '../../../components/GroupTabs'
 import { daemonClient } from '../../../lib/daemon-client'
 
 interface MemoryView {
@@ -220,6 +221,7 @@ function MemoryPage() {
           <code className="font-mono">IDENTITY.md</code> via <code>home_write</code>.
         </p>
       </header>
+      <GroupTabs groupId={group.id} />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[320px_1fr]">
         <div>

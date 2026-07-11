@@ -2,19 +2,20 @@ import { ApiClientError } from '@bazilion/client'
 import type {
   Agent,
   Group,
-  ProfileGroupWithCount,
-  SpawnProfileGroupResponse,
+  HarnessTemplateWithCount,
+  ResolvedGroupHarness,
 } from '@bazilion/api-types'
 import { createFileRoute, redirect, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { useState } from 'react'
 import { Button } from '../../../components/Button'
+import { GroupTabs } from '../../../components/GroupTabs'
 import { daemonClient } from '../../../lib/daemon-client'
 
 interface GroupDetail {
   group: Group
   members: Agent[]
-  profileGroups: ProfileGroupWithCount[]
+  profileGroups: HarnessTemplateWithCount[]
 }
 
 const fetchGroup = createServerFn({ method: 'POST' })
@@ -30,7 +31,7 @@ const fetchGroup = createServerFn({ method: 'POST' })
     }
     const [all, profileGroups] = await Promise.all([
       c.get<Agent[]>('/api/agents?includeArchived=true'),
-      c.get<ProfileGroupWithCount[]>('/api/profile-groups'),
+      c.get<HarnessTemplateWithCount[]>('/api/harness-templates'),
     ])
     const members = all.filter((a) => a.groupId === group.id)
     return { group, members, profileGroups }
@@ -90,6 +91,8 @@ function GroupDetailPage() {
           shared memory →
         </a>
       </p>
+
+      <GroupTabs groupId={group.id} />
 
       <section className="rounded-lg border bg-card p-5 mb-6">
         <h3 className="font-serif text-xl mb-1">USER.md</h3>
@@ -270,10 +273,10 @@ function SpawnFromTemplateCard({
   onSpawned,
 }: {
   groupId: string
-  profileGroups: ProfileGroupWithCount[]
+  profileGroups: HarnessTemplateWithCount[]
   onSpawned: () => void
 }) {
-  const eligible = profileGroups.filter((g) => g.memberCount > 0)
+  const eligible = profileGroups.filter((g) => g.slotCount > 0 && !g.deletedAt)
   const [selected, setSelected] = useState<string>(eligible[0]?.id ?? '')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -283,20 +286,24 @@ function SpawnFromTemplateCard({
     setBusy(true)
     setErr(null)
     try {
-      const res = await fetch(`/api/profile-groups/${encodeURIComponent(selected)}/spawn`, {
+      const template = eligible.find((item) => item.id === selected)
+      if (!template) throw new Error('Team template is unavailable.')
+      const policyResponse = await fetch(`/api/groups/${encodeURIComponent(groupId)}/harness`)
+      if (!policyResponse.ok) throw new Error('The current Group policy is unavailable.')
+      const current = (await policyResponse.json()) as ResolvedGroupHarness
+      const res = await fetch(`/api/harness-templates/${encodeURIComponent(selected)}/spawn`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ groupSlug: groupId }),
+        body: JSON.stringify({
+          templateExpectedRevision: template.currentRevision,
+          groupId,
+          groupExpectedRevision: current.harness.revision,
+          mode: 'initialize',
+        }),
       })
       if (!res.ok) {
         const e = (await res.json().catch(() => ({}))) as { error?: string }
         throw new Error(e.error ?? `${res.status} ${res.statusText}`)
-      }
-      const result = (await res.json()) as SpawnProfileGroupResponse
-      if (result.orphanAgentIds && result.orphanAgentIds.length > 0) {
-        alert(
-          `Spawn completed with warnings: ${result.orphanAgentIds.length} orphan agent dir(s) left on disk.`,
-        )
       }
       onSpawned()
     } catch (e) {
@@ -310,14 +317,14 @@ function SpawnFromTemplateCard({
     <section className="rounded-lg border bg-card p-5 mb-6">
       <h3 className="font-serif text-xl mb-1">spawn a team into this group</h3>
       <p className="text-muted-foreground text-sm mb-3">
-        This group is empty. Pick a profile group template to spawn its entire roster into it in one
-        transactional call.
+        This Group is empty. Pick a canonical Team template to initialize its roster and policy at
+        the current reviewed Group and Team revisions.
       </p>
       {eligible.length === 0 ? (
         <p className="text-muted-foreground text-sm">
-          No profile groups with members yet. Build one on{' '}
-          <a href="/profile-groups" className="text-primary underline">
-            /profile-groups
+          No Team templates with slots yet. Build one on{' '}
+          <a href="/templates/teams" className="text-primary underline">
+            Team templates
           </a>{' '}
           first.
         </p>
@@ -330,7 +337,7 @@ function SpawnFromTemplateCard({
           >
             {eligible.map((g) => (
               <option key={g.id} value={g.id}>
-                {g.name} ({g.memberCount} member{g.memberCount === 1 ? '' : 's'})
+                {g.name} ({g.slotCount} slot{g.slotCount === 1 ? '' : 's'}, r{g.currentRevision})
               </option>
             ))}
           </select>

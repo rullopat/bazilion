@@ -70,7 +70,7 @@ export function MembersEditor({
   if (profiles.length === 0) {
     return (
       <p className="muted">
-        Create a profile first under <a href="/profiles">/profiles</a> — members reference
+        Create an Agent template first under <a href="/templates/agents">Agent templates</a> — slots reference
         existing profiles.
       </p>
     )

@@ -743,6 +743,11 @@ export interface HealthReport {
   triggers: { active: number; disabled: number }
   tokens: { active: number }
   scheduler: { enabled: boolean; tickMs: number }
+  harnessManagement: {
+    contractVersion: number
+    enforcementRequested: boolean
+    releaseReady: boolean
+  }
 }
 
 // --- telegram integration ---

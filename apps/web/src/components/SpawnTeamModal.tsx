@@ -1,117 +1,57 @@
-// Spawn a profile group (team template) into a target group. POSTs to
-// /api/profile-groups/:id/spawn (proxied to daemon) and hands the resulting
-// group slug back to the caller for navigation.
-
-import type {
-  Group,
-  ProfileGroupWithCount,
-  SpawnProfileGroupResponse,
-} from '@bazilion/api-types'
+import type { Group, HarnessTemplateWithCount, ResolvedGroupHarness } from '@bazilion/api-types'
 import { useState } from 'react'
 import { Button } from './Button'
 
 interface Props {
-  profileGroup: ProfileGroupWithCount
+  profileGroup: HarnessTemplateWithCount
   groups: Group[]
   onClose: () => void
   onSpawned: (groupSlug: string) => void
 }
 
-export function SpawnTeamModal({ profileGroup, groups, onClose, onSpawned }: Props) {
-  const [groupSlug, setGroupSlug] = useState('')
+export function SpawnTeamModal({ profileGroup: team, groups, onClose, onSpawned }: Props) {
+  const [groupId, setGroupId] = useState('')
   const [userMd, setUserMd] = useState('')
-  const [err, setErr] = useState<string | null>(null)
-  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
 
   async function spawn() {
-    setErr(null)
-    if (!groupSlug.trim()) {
-      setErr('target group slug is required')
-      return
-    }
-    setSubmitting(true)
+    const target = groupId.trim()
+    if (!target) { setError('target Group slug is required'); return }
+    setBusy(true); setError(null)
     try {
-      const body: Record<string, unknown> = { groupSlug: groupSlug.trim() }
-      if (userMd) body.userMd = userMd
-      const res = await fetch(`/api/profile-groups/${profileGroup.id}/spawn`, {
+      const existing = groups.find((group) => group.id === target)
+      let groupExpectedRevision: number | undefined
+      if (existing) {
+        const policyResponse = await fetch(`/api/groups/${encodeURIComponent(target)}/harness`)
+        if (!policyResponse.ok) throw new Error('The target Group policy is unavailable.')
+        groupExpectedRevision = ((await policyResponse.json()) as ResolvedGroupHarness).harness.revision
+      }
+      const response = await fetch(`/api/harness-templates/${encodeURIComponent(team.id)}/spawn`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify({
+          templateExpectedRevision: team.currentRevision,
+          groupId: target,
+          ...(groupExpectedRevision ? { groupExpectedRevision } : {}),
+          mode: existing ? 'append' : 'initialize',
+          ...(userMd ? { userMd } : {}),
+        }),
       })
-      if (!res.ok) {
-        const e = (await res.json().catch(() => null)) as { error?: string } | null
-        throw new Error(e?.error ?? res.statusText)
-      }
-      const result = (await res.json()) as SpawnProfileGroupResponse
-      if (result.orphanAgentIds && result.orphanAgentIds.length > 0) {
-        alert(
-          `Spawn completed with warnings: ${result.orphanAgentIds.length} orphan agent dir(s) left on disk.`,
-        )
-      }
-      onSpawned(result.groupSlug)
-    } catch (e) {
-      setErr((e as Error).message)
-    } finally {
-      setSubmitting(false)
-    }
+      if (!response.ok) throw new Error(((await response.json().catch(() => null)) as { error?: string } | null)?.error ?? response.statusText)
+      onSpawned(target)
+    } catch (cause) { setError((cause as Error).message) } finally { setBusy(false) }
   }
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-      onClick={onClose}
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') onClose()
-      }}
-    >
-      <div
-        className="card w-full max-w-lg"
-        onClick={(e) => e.stopPropagation()}
-        onKeyDown={(e) => e.stopPropagation()}
-        role="document"
-      >
-        <h3>spawn team — {profileGroup.name}</h3>
-        {err && <div className="err">{err}</div>}
-        <p className="muted">
-          Spawns {profileGroup.memberCount} agent{profileGroup.memberCount === 1 ? '' : 's'} into
-          the target group. If the group doesn't exist, it'll be created on the fly. Failures roll
-          back the whole spawn.
-        </p>
-        <label>
-          target group slug
-          <input
-            value={groupSlug}
-            onChange={(e) => setGroupSlug(e.target.value)}
-            list="existing-groups"
-            required
-          />
-          <datalist id="existing-groups">
-            {groups.map((g) => (
-              <option key={g.id} value={g.id}>
-                {g.name}
-              </option>
-            ))}
-          </datalist>
-        </label>
-        <label>
-          override USER.md (optional — only takes effect on a freshly-created target group)
-          <textarea
-            rows={3}
-            value={userMd}
-            onChange={(e) => setUserMd(e.target.value)}
-            className="font-mono text-[0.88em] leading-[1.55]"
-          />
-        </label>
-        <div className="mt-4 flex gap-2 justify-end">
-          <Button variant="ghost" onClick={onClose}>
-            cancel
-          </Button>
-          <Button variant="primary" onClick={spawn} disabled={submitting}>
-            {submitting ? 'spawning…' : 'spawn team'}
-          </Button>
-        </div>
+    <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose} onKeyDown={(event) => { if (event.key === 'Escape') onClose() }}>
+      <div className="card w-full max-w-lg" role="document" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
+        <h3>spawn team — {team.name}</h3>
+        {error && <div className="err">{error}</div>}
+        <p className="muted">Uses immutable Team revision {team.currentRevision}. Existing Groups append at their current reviewed revision; a new Group initializes at revision 1. Conflicts never overwrite newer state.</p>
+        <label>target Group slug<input value={groupId} onChange={(event) => setGroupId(event.target.value)} list="canonical-groups" required /><datalist id="canonical-groups">{groups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}</datalist></label>
+        <label>starter USER.md (new Group only)<textarea rows={3} value={userMd} onChange={(event) => setUserMd(event.target.value)} className="font-mono text-[0.88em] leading-[1.55]" /></label>
+        <div className="mt-4 flex justify-end gap-2"><Button variant="ghost" onClick={onClose}>cancel</Button><Button variant="primary" onClick={spawn} disabled={busy || team.slotCount === 0}>{busy ? 'spawning…' : 'review and spawn'}</Button></div>
       </div>
     </div>
   )

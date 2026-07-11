@@ -4,6 +4,7 @@ import type {
   ProviderMessage,
   ReasoningLevel,
   ResolvedAgent,
+  ResolvedGroupHarness,
   SessionHeadResponse,
   SkillInfo,
   SkillScanFinding,
@@ -151,7 +152,13 @@ function AgentDetailPage() {
       `Permanently delete agent "${resolved.agent.name}"?\n\n` +
       `This removes the DB rows (messages, triggers, skill attachments) AND the agent's on-disk directory (memory, templates, state, sessions). This cannot be undone.`
     if (!confirm(msg)) return
-    const res = await fetch(`/api/agents/${resolved.agent.id}`, { method: 'DELETE' })
+    const policyResponse = await fetch(`/api/groups/${encodeURIComponent(resolved.group.id)}/harness`)
+    if (!policyResponse.ok) {
+      alert('The current Group policy is unavailable. Nothing was deleted.')
+      return
+    }
+    const current = (await policyResponse.json()) as ResolvedGroupHarness
+    const res = await fetch(`/api/agents/${resolved.agent.id}?expectedGroupRevision=${current.harness.revision}`, { method: 'DELETE' })
     if (res.ok || res.status === 204) {
       window.location.assign('/agents')
     } else {
@@ -461,6 +468,7 @@ function MoveGroupForm({
   const router = useRouter()
   const [groupId, setGroupId] = useState(currentGroupId)
   const [moving, setMoving] = useState(false)
+  const [placement, setPlacement] = useState<'isolated' | 'open' | 'profile_defaults'>('profile_defaults')
   const [err, setErr] = useState<string | null>(null)
 
   async function move(e: React.FormEvent<HTMLFormElement>) {
@@ -469,10 +477,22 @@ function MoveGroupForm({
     setMoving(true)
     setErr(null)
     try {
+      const [sourceResponse, destinationResponse] = await Promise.all([
+        fetch(`/api/groups/${encodeURIComponent(currentGroupId)}/harness`),
+        fetch(`/api/groups/${encodeURIComponent(groupId)}/harness`),
+      ])
+      if (!sourceResponse.ok || !destinationResponse.ok) throw new Error('A Group policy is unavailable. Nothing was moved.')
+      const source = (await sourceResponse.json()) as ResolvedGroupHarness
+      const destination = (await destinationResponse.json()) as ResolvedGroupHarness
       const res = await fetch(`/api/agents/${encodeURIComponent(agentId)}/group`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ groupId }),
+        body: JSON.stringify({
+          groupId,
+          sourceExpectedRevision: source.harness.revision,
+          destinationExpectedRevision: destination.harness.revision,
+          placement,
+        }),
       })
       if (!res.ok) {
         const body = (await res.json().catch(() => null)) as { error?: string } | null
@@ -500,6 +520,14 @@ function MoveGroupForm({
               {g.id} — {g.path}
             </option>
           ))}
+        </select>
+      </label>
+      <label className="flex flex-col gap-1 text-[0.85em] text-mocha-light">
+        destination placement:
+        <select value={placement} onChange={(e) => setPlacement(e.target.value as typeof placement)} className="rounded-sm border border-frost bg-snow px-2 py-1.5">
+          <option value="profile_defaults">agent-template defaults</option>
+          <option value="isolated">isolated</option>
+          <option value="open">open</option>
         </select>
       </label>
       <button type="submit" disabled={moving || groupId === currentGroupId}>

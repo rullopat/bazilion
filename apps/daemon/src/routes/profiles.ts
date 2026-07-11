@@ -130,7 +130,14 @@ profilesRouter.post('/', async (c) => {
 profilesRouter.get('/:id', (c) => {
   const { db } = getCtx()
   try {
-    return c.json(loadProfile(db, c.req.param('id')))
+    const loaded = loadProfile(db, c.req.param('id'))
+    return c.json({
+      ...loaded,
+      profile: {
+        ...loaded.profile,
+        communicationDefaults: profileCommunicationDefaultsRepo.get(db, loaded.profile.id),
+      },
+    })
   } catch (err) {
     return c.json({ error: (err as Error).message }, 404)
   }

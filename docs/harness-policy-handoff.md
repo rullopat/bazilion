@@ -47,6 +47,16 @@ explicit mode permanently, while the one-release omitted-field adapters remain b
 exact Open compatibility state. BAZ-010/015 add no authorizer bypass or runtime
 enforcement.
 
+BAZ-012 is complete. The web now projects the canonical Templates · Agents · Groups
+information architecture: one Agent-template area over Profiles, one Team-template roster
+over canonical HarnessTemplate APIs, and Group-owned Overview/Members/Policy/Memory/Context/
+Activity routes over current membership, sole policy, source lineage, and BAZ-011 blocks.
+Legacy Profile/Profile Group URLs redirect with id/search preservation for one release;
+BAZ-009 Harness URLs are local-only migration compatibility and never effective policy.
+Lifecycle entry points submit BAZ-015 revisions/placements, degraded projections fail
+visibly without local fallback, and health reports management contract version 0 with
+release readiness false until BAZ-017.
+
 ## Cardinality and retained source model
 
 - Profile `1 -> 0..*` Team slots and `1 -> 0..*` Agents; optional defaults are `1 -> 0..1`.
