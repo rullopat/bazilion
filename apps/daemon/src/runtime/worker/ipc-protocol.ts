@@ -12,7 +12,7 @@
 // provider gate, and merged env are pre-computed in the daemon and handed to
 // the worker on stdin (see `WorkerInput` in `worker/entry.ts`).
 
-import type { Message } from '@bazilion/api-types'
+import type { CommunicationApproval, Message } from '@bazilion/api-types'
 import type { ToolResultPart } from '../tools/types.ts'
 
 export type RpcMethod =
@@ -21,6 +21,7 @@ export type RpcMethod =
   | 'listInbox'
   | 'markRead'
   | 'findReplies'
+  | 'approvalStatus'
   | 'userMdGet'
   | 'userMdWrite'
   | 'browserInvoke'
@@ -49,6 +50,11 @@ export interface MarkReadArgs {
 export interface FindRepliesArgs {
   agentId: string
   replyTo: string
+}
+
+export interface ApprovalStatusArgs {
+  agentId: string
+  approvalId: string
 }
 
 export interface UserMdGetArgs {
@@ -107,6 +113,7 @@ export type RpcArgs =
   | { method: 'listInbox'; args: ListInboxArgs }
   | { method: 'markRead'; args: MarkReadArgs }
   | { method: 'findReplies'; args: FindRepliesArgs }
+  | { method: 'approvalStatus'; args: ApprovalStatusArgs }
   | { method: 'userMdGet'; args: UserMdGetArgs }
   | { method: 'userMdWrite'; args: UserMdWriteArgs }
   | { method: 'browserInvoke'; args: BrowserInvokeArgs }
@@ -118,6 +125,7 @@ export type RpcResult =
   | { method: 'listInbox'; value: Message[] }
   | { method: 'markRead'; value: null }
   | { method: 'findReplies'; value: Message[] }
+  | { method: 'approvalStatus'; value: CommunicationApproval | null }
   | { method: 'userMdGet'; value: UserMdGetResult }
   | { method: 'userMdWrite'; value: UserMdWriteResult }
   | { method: 'browserInvoke'; value: ToolResultPart[] }
@@ -140,6 +148,10 @@ export interface MessagingHost {
   listInbox(agentId: string, opts: { unreadOnly: boolean }): Message[] | Promise<Message[]>
   markRead(messageId: string): void | Promise<void>
   findReplies(agentId: string, replyTo: string): Message[] | Promise<Message[]>
+  approvalStatus(
+    agentId: string,
+    approvalId: string,
+  ): CommunicationApproval | null | Promise<CommunicationApproval | null>
 }
 
 /**

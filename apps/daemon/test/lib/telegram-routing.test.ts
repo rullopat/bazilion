@@ -109,6 +109,49 @@ beforeEach(() => {
 afterEach(() => env.cleanup())
 
 describe('routeUpdate classification', () => {
+  test('approval-required Telegram ingress holds media before lookup and returns pending status', async () => {
+    const agent = spawnAgent(env.db, env.paths, { profileId: 'base', groupId: env.groupId })
+    agentRepo.setTelegramTopicId(env.db, agent.id, 42)
+    env.db.raw.run(
+      `UPDATE live_harness_edges SET posture = 'approval_required'
+       WHERE group_id = ? AND source_kind = 'user' AND target_kind = 'agent'
+         AND target_id = ?`,
+      [env.groupId, agent.id],
+    )
+    const previous = process.env.BAZILION_HARNESS_ENFORCEMENT
+    process.env.BAZILION_HARNESS_ENFORCEMENT = 'on'
+    const { api, sends } = makeReplyApi()
+    let lookups = 0
+    api.getFile = async () => {
+      lookups++
+      return { file_path: 'secret.jpg' }
+    }
+    const update = messageUpdate({ threadId: 42 })
+    ;(
+      update.message as never as {
+        photo: Array<{ file_id: string; file_size: number; width: number; height: number }>
+      }
+    ).photo = [{ file_id: 'secret', file_size: 4, width: 1, height: 1 }]
+    try {
+      const outcome = await routeUpdate(
+        { db: env.db, paths: env.paths, authToken: 'token', botToken: 'bot', api, chatId: CHAT_ID },
+        update,
+      )
+      expect(outcome).toMatchObject({ kind: 'agent_topic', queued: false })
+      expect(lookups).toBe(0)
+      expect(pendingMessageCount(agent.id)).toBe(0)
+      expect(sends.at(-1)?.text).toMatch(/pending approval/)
+      expect(
+        env.db.raw
+          .query<{ count: number }, []>('SELECT COUNT(*) count FROM communication_approvals')
+          .get()?.count,
+      ).toBe(1)
+    } finally {
+      if (previous === undefined) delete process.env.BAZILION_HARNESS_ENFORCEMENT
+      else process.env.BAZILION_HARNESS_ENFORCEMENT = previous
+    }
+  })
+
   test('policy denial happens before Telegram media lookup or download', async () => {
     const agent = spawnAgent(env.db, env.paths, { profileId: 'base', groupId: env.groupId })
     agentRepo.setTelegramTopicId(env.db, agent.id, 42)

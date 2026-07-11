@@ -73,6 +73,7 @@ export {
   spawnProfileGroup,
 } from './profile-group/spawn.ts'
 export * as agentRepo from './repos/agents.ts'
+export * as communicationApprovalRepo from './repos/communicationApprovals.ts'
 export type { ConfigStore } from './repos/config.ts'
 export { CONFIG_KEYS, isConfigKey, openConfig } from './repos/config.ts'
 export * as groupRepo from './repos/groups.ts'

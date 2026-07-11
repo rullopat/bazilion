@@ -32,6 +32,7 @@ function dbHost(db: BazilionDb): MessagingHost {
     listInbox: (id, opts) => messageRepo.listInbox(db, id, opts),
     markRead: (id) => messageRepo.markRead(db, id),
     findReplies: (id, replyTo) => messageRepo.findReplies(db, id, replyTo),
+    approvalStatus: () => null,
   }
 }
 

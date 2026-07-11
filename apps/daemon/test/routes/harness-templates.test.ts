@@ -471,7 +471,7 @@ test('adoption requires reviewed total mapping and preview, then save-as-templat
     },
     { sourceKind: 'agent', sourceId: remaining.id, targetKind: 'agent', targetId: mapped.id },
     { sourceKind: 'agent', sourceId: mapped.id, targetKind: 'agent', targetId: remaining.id },
-  ]
+  ].map((edge) => ({ ...edge, posture: 'allow' }))
   const preview = await groupsRouter.request('/g/harness/adopt-template/preview', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },

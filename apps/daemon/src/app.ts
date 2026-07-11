@@ -7,6 +7,7 @@
 import { Hono } from 'hono'
 import { authMiddleware } from './lib/middleware-auth.ts'
 import { agentsRouter } from './routes/agents.ts'
+import { approvalsRouter } from './routes/approvals.ts'
 import { authRouter } from './routes/auth-login.ts'
 import { communicationRouter } from './routes/communication.ts'
 import { configRouter } from './routes/config.ts'
@@ -30,6 +31,7 @@ export function createApp(): Hono {
   app.use('*', authMiddleware)
 
   app.route('/api/agents', agentsRouter)
+  app.route('/api/approvals', approvalsRouter)
   app.route('/api/groups', groupsRouter)
   app.route('/api/harness-templates', harnessTemplatesRouter)
   app.route('/api/profile-groups', profileGroupsRouter)

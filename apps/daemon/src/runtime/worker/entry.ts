@@ -139,6 +139,7 @@ function createIpcMessagingHost(call: IpcCall): MessagingHost {
       await call<null>('markRead', { messageId })
     },
     findReplies: (agentId, replyTo) => call('findReplies', { agentId, replyTo }),
+    approvalStatus: (agentId, approvalId) => call('approvalStatus', { agentId, approvalId }),
   }
 }
 

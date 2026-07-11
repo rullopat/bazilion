@@ -9,7 +9,12 @@
 //      they call `process.send({type: 'rpc', ...})` and the parent dispatches
 //      through this host.
 
-import { agentRepo, type BazilionDb, messageRepo } from '../core/index.ts'
+import {
+  agentRepo,
+  type BazilionDb,
+  communicationApprovalRepo,
+  messageRepo,
+} from '../core/index.ts'
 import type { MessagingHost } from '../runtime/index.ts'
 import { deliverableInbox, deliverableReplies, sendAgentMessage } from './communication.ts'
 
@@ -30,6 +35,10 @@ export function createDbMessagingHost(db: BazilionDb): MessagingHost {
     },
     findReplies(agentId, replyTo) {
       return deliverableReplies(db, agentId, replyTo)
+    },
+    approvalStatus(agentId, approvalId) {
+      const approval = communicationApprovalRepo.get(db, approvalId)
+      return approval?.requester === agentId ? approval : null
     },
   }
 }

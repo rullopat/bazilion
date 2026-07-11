@@ -15,8 +15,12 @@ function position(index: number, saved: { x: number; y: number } | null | undefi
   return saved ?? { x: 250 + (index % 3) * 250, y: 40 + Math.floor(index / 3) * 130 }
 }
 
-function edge(source: HarnessEndpoint, target: HarnessEndpoint): HarnessEdge {
-  return { id: `${endpointKey(source)}>${endpointKey(target)}`, source, target }
+function edge(
+  source: HarnessEndpoint,
+  target: HarnessEndpoint,
+  posture: HarnessEdge['posture'] = 'allow',
+): HarnessEdge {
+  return { id: `${endpointKey(source)}>${endpointKey(target)}`, source, target, posture }
 }
 
 export function templateDocument(detail: HarnessTemplateDetail): HarnessDocument {
@@ -41,6 +45,7 @@ export function templateDocument(detail: HarnessTemplateDetail): HarnessDocument
           item.targetKind === 'slot'
             ? { kind: 'member_slot', slotId: item.targetId ?? '' }
             : { kind: item.targetKind },
+          item.posture,
         ),
       ),
     },
@@ -74,6 +79,7 @@ export function liveDocument(groupId: string, detail: ResolvedGroupHarness): Har
           item.targetKind === 'agent'
             ? { kind: 'agent', agentId: item.targetId ?? '' }
             : { kind: item.targetKind },
+          item.posture,
         ),
       ),
     },
@@ -102,6 +108,7 @@ export function templateDefinition(document: HarnessDocument, profiles: Profile[
       sourceId: item.source.kind === 'member_slot' ? item.source.slotId : null,
       targetKind: item.target.kind === 'member_slot' ? 'slot' : item.target.kind,
       targetId: item.target.kind === 'member_slot' ? item.target.slotId : null,
+      posture: item.posture ?? 'allow',
     })),
   }
 }
@@ -112,6 +119,7 @@ export function liveEdges(document: HarnessDocument): LiveHarnessEdgeInput[] {
     sourceId: item.source.kind === 'agent' ? item.source.agentId : null,
     targetKind: item.target.kind === 'member_slot' ? 'agent' : item.target.kind,
     targetId: item.target.kind === 'agent' ? item.target.agentId : null,
+    posture: item.posture ?? 'allow',
   }))
 }
 

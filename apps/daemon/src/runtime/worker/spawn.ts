@@ -300,6 +300,12 @@ async function dispatch(req: IpcRequest, hosts: IpcHosts): Promise<IpcReply> {
           req.args.replyTo,
         )
         break
+      case 'approvalStatus':
+        result = await require(hosts.messagingHost, 'messaging', req.method).approvalStatus(
+          req.args.agentId,
+          req.args.approvalId,
+        )
+        break
       case 'userMdGet':
         result = await require(hosts.userMdHost, 'userMd', req.method).get(req.args.groupId)
         break

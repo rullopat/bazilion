@@ -19,6 +19,7 @@ import { Route as ProfileGroupsIndexRouteImport } from './routes/profile-groups/
 import { Route as HarnessesIndexRouteImport } from './routes/harnesses/index'
 import { Route as GroupsIndexRouteImport } from './routes/groups/index'
 import { Route as ConfigIndexRouteImport } from './routes/config/index'
+import { Route as ApprovalsIndexRouteImport } from './routes/approvals/index'
 import { Route as AgentsIndexRouteImport } from './routes/agents/index'
 import { Route as ProfilesIdRouteImport } from './routes/profiles/$id'
 import { Route as ProfileGroupsIdRouteImport } from './routes/profile-groups/$id'
@@ -90,6 +91,11 @@ const GroupsIndexRoute = GroupsIndexRouteImport.update({
 const ConfigIndexRoute = ConfigIndexRouteImport.update({
   id: '/config/',
   path: '/config/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApprovalsIndexRoute = ApprovalsIndexRouteImport.update({
+  id: '/approvals/',
+  path: '/approvals/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AgentsIndexRoute = AgentsIndexRouteImport.update({
@@ -216,6 +222,7 @@ export interface FileRoutesByFullPath {
   '/profile-groups/$id': typeof ProfileGroupsIdRoute
   '/profiles/$id': typeof ProfilesIdRoute
   '/agents/': typeof AgentsIndexRoute
+  '/approvals/': typeof ApprovalsIndexRoute
   '/config/': typeof ConfigIndexRoute
   '/groups/': typeof GroupsIndexRoute
   '/harnesses/': typeof HarnessesIndexRoute
@@ -250,6 +257,7 @@ export interface FileRoutesByTo {
   '/profile-groups/$id': typeof ProfileGroupsIdRoute
   '/profiles/$id': typeof ProfilesIdRoute
   '/agents': typeof AgentsIndexRoute
+  '/approvals': typeof ApprovalsIndexRoute
   '/config': typeof ConfigIndexRoute
   '/groups': typeof GroupsIndexRoute
   '/harnesses': typeof HarnessesIndexRoute
@@ -285,6 +293,7 @@ export interface FileRoutesById {
   '/profile-groups/$id': typeof ProfileGroupsIdRoute
   '/profiles/$id': typeof ProfilesIdRoute
   '/agents/': typeof AgentsIndexRoute
+  '/approvals/': typeof ApprovalsIndexRoute
   '/config/': typeof ConfigIndexRoute
   '/groups/': typeof GroupsIndexRoute
   '/harnesses/': typeof HarnessesIndexRoute
@@ -321,6 +330,7 @@ export interface FileRouteTypes {
     | '/profile-groups/$id'
     | '/profiles/$id'
     | '/agents/'
+    | '/approvals/'
     | '/config/'
     | '/groups/'
     | '/harnesses/'
@@ -355,6 +365,7 @@ export interface FileRouteTypes {
     | '/profile-groups/$id'
     | '/profiles/$id'
     | '/agents'
+    | '/approvals'
     | '/config'
     | '/groups'
     | '/harnesses'
@@ -389,6 +400,7 @@ export interface FileRouteTypes {
     | '/profile-groups/$id'
     | '/profiles/$id'
     | '/agents/'
+    | '/approvals/'
     | '/config/'
     | '/groups/'
     | '/harnesses/'
@@ -424,6 +436,7 @@ export interface RootRouteChildren {
   ProfileGroupsIdRoute: typeof ProfileGroupsIdRoute
   ProfilesIdRoute: typeof ProfilesIdRoute
   AgentsIndexRoute: typeof AgentsIndexRoute
+  ApprovalsIndexRoute: typeof ApprovalsIndexRoute
   ConfigIndexRoute: typeof ConfigIndexRoute
   GroupsIndexRoute: typeof GroupsIndexRoute
   HarnessesIndexRoute: typeof HarnessesIndexRoute
@@ -517,6 +530,13 @@ declare module '@tanstack/react-router' {
       path: '/config'
       fullPath: '/config/'
       preLoaderRoute: typeof ConfigIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/approvals/': {
+      id: '/approvals/'
+      path: '/approvals'
+      fullPath: '/approvals/'
+      preLoaderRoute: typeof ApprovalsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/agents/': {
@@ -688,6 +708,7 @@ const rootRouteChildren: RootRouteChildren = {
   ProfileGroupsIdRoute: ProfileGroupsIdRoute,
   ProfilesIdRoute: ProfilesIdRoute,
   AgentsIndexRoute: AgentsIndexRoute,
+  ApprovalsIndexRoute: ApprovalsIndexRoute,
   ConfigIndexRoute: ConfigIndexRoute,
   GroupsIndexRoute: GroupsIndexRoute,
   HarnessesIndexRoute: HarnessesIndexRoute,

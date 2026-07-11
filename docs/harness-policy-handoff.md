@@ -340,7 +340,9 @@ Prototype state is never silently uploaded/deleted and simulated blocks never im
    used because daemon/web ship from the same release.
 8. **BAZ-013 (M, complete):** revision-safe Team/Group CLI inspection, portable
    import/export, diagnostics, and filtered block history.
-9. BAZ-014 adds optional approvals afterward.
+9. **BAZ-014 (L, complete):** optional approval-required edges, durable captured attempts,
+   authenticated decisions, at-most-once dispatch, structured caller state, and the web/CLI
+   approval queue.
 
 Legacy API/CLI/URL adapters remain for one complete release after BAZ-017 migration UX.
 Removal needs a separate breaking-change story.

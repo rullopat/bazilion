@@ -54,6 +54,7 @@ export function diffHarness(db: BazilionDb, groupId: string): HarnessDiff {
         sourceId: sourceId ?? null,
         targetKind: edge.targetKind === 'slot' ? 'agent' : edge.targetKind,
         targetId: targetId ?? null,
+        posture: edge.posture,
       },
     ]
   })
@@ -130,13 +131,14 @@ export function saveHarnessAsTemplate(
         sourceId: edge.sourceKind === 'agent' ? slotByAgent.get(edge.sourceId ?? '') : null,
         targetKind: edge.targetKind === 'agent' ? 'slot' : edge.targetKind,
         targetId: edge.targetKind === 'agent' ? slotByAgent.get(edge.targetId ?? '') : null,
+        posture: edge.posture,
       })),
     })
   })()
 }
 
 function liveEdgeKey(edge: LiveHarnessEdge): string {
-  return `${edge.sourceKind}:${edge.sourceId ?? ''}>${edge.targetKind}:${edge.targetId ?? ''}`
+  return `${edge.sourceKind}:${edge.sourceId ?? ''}>${edge.targetKind}:${edge.targetId ?? ''}[${edge.posture}]`
 }
 
 export function updateHarnessSource(

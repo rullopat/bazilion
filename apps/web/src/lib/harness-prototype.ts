@@ -23,6 +23,7 @@ export interface HarnessEdge {
   id: string
   source: HarnessEndpoint
   target: HarnessEndpoint
+  posture?: 'allow' | 'approval_required'
 }
 
 export interface HarnessPolicy {

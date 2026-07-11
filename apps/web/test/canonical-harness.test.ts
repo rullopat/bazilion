@@ -103,6 +103,7 @@ describe('canonical harness web adapter', () => {
         sourceId: null,
         targetKind: 'agent',
         targetId: 'agent-a',
+        posture: 'allow',
       },
     ])
   })

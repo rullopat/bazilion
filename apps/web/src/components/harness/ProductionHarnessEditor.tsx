@@ -70,6 +70,24 @@ export function ProductionHarnessEditor({ source, profiles, initialUi }: { sourc
     }))
   }
 
+  const setEdgePosture = (
+    from: HarnessEndpoint,
+    to: HarnessEndpoint,
+    posture: 'allow' | 'approval_required',
+  ) =>
+    setDraft((current) => ({
+      ...current,
+      policy: {
+        ...current.policy,
+        edges: current.policy.edges.map((item) =>
+          endpointKey(item.source) === endpointKey(from) &&
+          endpointKey(item.target) === endpointKey(to)
+            ? { ...item, posture }
+            : item,
+        ),
+      },
+    }))
+
   const reloadCurrent = async (): Promise<{ document: HarnessDocument; revision: number }> => {
     const url = source.kind === 'template'
       ? `/api/harness-templates/${encodeURIComponent(source.detail.template.id)}`
@@ -152,7 +170,7 @@ export function ProductionHarnessEditor({ source, profiles, initialUi }: { sourc
           {view === 'flow' ? <HarnessFlow harness={draft} selectedId={selectedId} viewport={viewport} incompleteSlotIds={incomplete} simulatedPath={null} onSelect={setSelectedId} onConnect={(a,b) => mutateEdge(a,b,true)} onRemoveEdge={(a,b) => mutateEdge(a,b,false)} onMoveMember={(slotId, position) => setDraft((current) => ({...current, members: current.members.map((m) => m.slotId === slotId ? {...m, position} : m)}))} onViewportChange={setViewport} onOpenMember={(member) => source.kind === 'live' && member.agentId ? window.location.assign(`/agents/${encodeURIComponent(member.agentId)}?groupPolicy=${encodeURIComponent(source.groupId)}&view=${view}&selected=${encodeURIComponent(selectedId ?? '')}&vx=${viewport.x}&vy=${viewport.y}&vz=${viewport.zoom}`) : setSelectedId(endpointKey(endpointForMember(draft, member)))} /> : <HarnessMatrix harness={draft} selectedId={selectedId} onSelect={setSelectedId} onToggle={mutateEdge} />}
         </div>
         <aside className="border-t border-frost p-4 lg:border-l lg:border-t-0">
-          <Inspector document={draft} selected={selected} selectedMember={selectedMember} profiles={profiles} source={source} onDraft={setDraft} onToggle={mutateEdge} />
+          <Inspector document={draft} selected={selected} selectedMember={selectedMember} profiles={profiles} source={source} onDraft={setDraft} onToggle={mutateEdge} onPosture={setEdgePosture} />
         </aside>
       </div>
     </section>
@@ -176,7 +194,7 @@ function ConflictBanner({ draft, server, onReload, onReapply }: { draft: Harness
   return <div role="alert" className="flex flex-wrap items-center gap-3 border-b border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:bg-amber-950/30 dark:text-amber-100"><AlertTriangle className="h-4 w-4" /><span className="mr-auto">Conflict: server has {server.policy.edges.length} edges; your preserved draft has {draft.policy.edges.length}.</span><Button variant="ghost" onClick={onReload}>Reload server</Button><Button variant="primary" onClick={onReapply}>Keep draft and reapply</Button></div>
 }
 
-function Inspector({ document, selected, selectedMember, profiles, source, onDraft, onToggle }: { document: HarnessDocument; selected: HarnessEndpoint | null; selectedMember?: HarnessDocument['members'][number]; profiles: Profile[]; source: Source; onDraft: React.Dispatch<React.SetStateAction<HarnessDocument>>; onToggle: (a: HarnessEndpoint,b: HarnessEndpoint,c:boolean) => void }) {
+function Inspector({ document, selected, selectedMember, profiles, source, onDraft, onToggle, onPosture }: { document: HarnessDocument; selected: HarnessEndpoint | null; selectedMember?: HarnessDocument['members'][number]; profiles: Profile[]; source: Source; onDraft: React.Dispatch<React.SetStateAction<HarnessDocument>>; onToggle: (a: HarnessEndpoint,b: HarnessEndpoint,c:boolean) => void; onPosture: (a: HarnessEndpoint,b: HarnessEndpoint,p:'allow'|'approval_required')=>void }) {
   const [simSource, setSimSource] = useState('user')
   const [simTarget, setSimTarget] = useState(document.members[0] ? endpointKey(endpointForMember(document, document.members[0])) : 'outside_group')
   const [result, setResult] = useState<CommunicationAuthorizationResult | null>(null)
@@ -193,7 +211,7 @@ function Inspector({ document, selected, selectedMember, profiles, source, onDra
     <div><p className="text-xs font-semibold uppercase text-mocha-light">Inspector</p><h3 className="mt-1 text-base">{selected ? harnessEndpointLabel(document, selected) : 'Policy summary'}</h3><p className="muted text-xs">{document.members.length} actors · {document.policy.edges.length} directed allow edges</p></div>
     {document.kind === 'template' && !selected && <div className="space-y-2"><p className="text-xs font-semibold">Preset preview</p><p className="muted text-xs">Applying a preset visibly replaces this draft edge set; it is never effective until saved.</p><select aria-label="Policy preset" value={document.preset} onChange={(event)=>onDraft((current)=>({...current,preset:event.target.value as HarnessDocument['preset']}))}><option value="open_team">Open Team</option><option value="coordinator">Coordinator</option><option value="review_pipeline">Review Pipeline</option><option value="blank">Blank</option></select><Button variant="ghost" onClick={()=>onDraft((current)=>({...current,policy:createPresetPolicy('template',current.members,current.preset)}))}>Apply preset to draft</Button></div>}
     {selectedMember && document.kind === 'template' && <div className="space-y-2"><label className="text-xs">Agent name<input value={selectedMember.name} onChange={(e) => onDraft((d)=>({...d,members:d.members.map((m)=>m.slotId===selectedMember.slotId?{...m,name:e.target.value}:m)}))}/></label><label className="text-xs">Agent template<select value={selectedMember.profileId} onChange={(e)=>onDraft((d)=>({...d,members:d.members.map((m)=>m.slotId===selectedMember.slotId?{...m,profileId:e.target.value}:m)}))}>{profiles.map((p)=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>{selectedProfile?.communicationDefaults && <Button variant="ghost" onClick={()=>onDraft((current)=>({...current,policy:applyProfileDefaults(current.policy,current,selectedMember,selectedProfile.communicationDefaults!)}))}>Apply Agent-template defaults to draft</Button>}</div>}
-    {selected && <div className="space-y-2"><p className="text-xs font-semibold">Directed permissions</p>{actors.map((actor)=>{const target=endpointFromKey(actor.key); if(!target || !isValidHarnessConnection(selected,target)) return null; const allowed=hasHarnessEdge(document.policy,selected,target); return <button key={actor.key} type="button" aria-pressed={allowed} onClick={()=>onToggle(selected,target,!allowed)} className="flex w-full items-center justify-between rounded border border-frost px-2 py-1.5 text-xs"><span>Send to {actor.label}</span>{allowed?'Allow':'Deny'}</button>})}</div>}
+    {selected && <div className="space-y-2"><p className="text-xs font-semibold">Directed permissions</p>{actors.map((actor)=>{const target=endpointFromKey(actor.key); if(!target || !isValidHarnessConnection(selected,target)) return null; const allowed=hasHarnessEdge(document.policy,selected,target); const current=document.policy.edges.find((item)=>endpointKey(item.source)===endpointKey(selected)&&endpointKey(item.target)===endpointKey(target)); return <div key={actor.key} className="rounded border border-frost p-2 text-xs"><button type="button" aria-pressed={allowed} onClick={()=>onToggle(selected,target,!allowed)} className="flex w-full items-center justify-between"><span>Send to {actor.label}</span>{allowed?'Allowed':'Denied'}</button>{allowed&&<button type="button" aria-pressed={current?.posture==='approval_required'} onClick={()=>onPosture(selected,target,current?.posture==='approval_required'?'allow':'approval_required')} className="mt-2 w-full rounded bg-ivory px-2 py-1 text-left">{current?.posture==='approval_required'?'Approval required':'Immediate delivery'}</button>}</div>})}</div>}
     <div className="space-y-2 border-t border-frost pt-4"><p className="text-xs font-semibold">Side-effect-free simulator</p><select aria-label="Simulation source" value={simSource} onChange={(e)=>setSimSource(e.target.value)}>{actors.map((a)=><option key={a.key} value={a.key}>{a.label}</option>)}</select><select aria-label="Simulation target" value={simTarget} onChange={(e)=>setSimTarget(e.target.value)}>{actors.map((a)=><option key={a.key} value={a.key}>{a.label}</option>)}</select><Button variant="ghost" onClick={simulate}>Evaluate without sending</Button>{result && <p role="status" className={`rounded p-2 text-xs ${result.decision==='allow'?'bg-sapphire-glow':'bg-rose-baziu/10'}`}>{result.decision.toUpperCase()} · {result.reasonCode}<br/>{result.reason}</p>}</div>
     {document.kind === 'template' && <Button variant="ghost" onClick={()=>onDraft((d)=>({...d,members:[...d.members,{slotId:crypto.randomUUID(),profileId:profiles[0]?.id??'',name:`Agent ${d.members.length+1}`,position:{x:250+(d.members.length%3)*250,y:40+Math.floor(d.members.length/3)*130}}]}))}><Plus className="h-4 w-4"/>Add stable slot</Button>}
     {selectedMember && document.kind === 'template' && <Button variant="danger" onClick={()=>onDraft((d)=>({...d,members:d.members.filter((m)=>m.slotId!==selectedMember.slotId),policy:{...d.policy,edges:d.policy.edges.filter((e)=>endpointKey(e.source)!==endpointKey(selected!)&& endpointKey(e.target)!==endpointKey(selected!))}}))}><X className="h-4 w-4"/>Remove slot and incident edges</Button>}

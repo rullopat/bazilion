@@ -352,6 +352,7 @@ function parseEdge(value: unknown, index: number): CanonicalEdgeInput {
     sourceId: stringValue(edge.sourceId) || null,
     targetKind: edge.targetKind as CanonicalEdgeInput['targetKind'],
     targetId: stringValue(edge.targetId) || null,
+    posture: edge.posture === 'approval_required' ? 'approval_required' : 'allow',
   }
 }
 

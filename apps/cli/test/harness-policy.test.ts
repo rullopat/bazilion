@@ -94,6 +94,7 @@ test('Team import requires review/apply, allocates server ids, and exports porta
       sourceKey: 'slot-1',
       targetKind: 'slot',
       targetKey: 'slot-2',
+      posture: 'allow',
     },
   ])
   expect(result.stdout).not.toMatch(/[0-9a-f]{8}-[0-9a-f-]{27}/)

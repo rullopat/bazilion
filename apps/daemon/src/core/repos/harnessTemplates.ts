@@ -40,6 +40,7 @@ interface RawEdge {
   source_id: string
   target_kind: HarnessTemplateEdge['targetKind']
   target_id: string
+  posture: HarnessTemplateEdge['posture']
 }
 
 export interface CompatibilityMemberInput {
@@ -66,6 +67,7 @@ export interface CanonicalEdgeInput {
   sourceId?: string | null
   targetKind: HarnessTemplateEdge['targetKind']
   targetId?: string | null
+  posture?: HarnessTemplateEdge['posture']
 }
 
 export interface CanonicalDefinitionInput {
@@ -114,6 +116,7 @@ function toEdge(row: RawEdge): HarnessTemplateEdge {
     sourceId: row.source_id || null,
     targetKind: row.target_kind,
     targetId: row.target_id || null,
+    posture: row.posture,
   }
 }
 
@@ -454,7 +457,7 @@ export function revision(
     .map(toSlot)
   const revisionEdges = db.raw
     .query<RawEdge, [string, number]>(
-      `SELECT template_id, source_kind, source_id, target_kind, target_id
+      `SELECT template_id, source_kind, source_id, target_kind, target_id, posture
        FROM harness_template_revision_edges
        WHERE template_id = ? AND revision = ?
        ORDER BY source_kind, source_id, target_kind, target_id`,
@@ -598,6 +601,7 @@ export function regenerateExactOpenEdges(db: BazilionDb, templateId: string): vo
   db.raw.run('DELETE FROM harness_template_edges WHERE template_id = ?', [templateId])
   db.raw.run(
     `INSERT INTO harness_template_edges
+       (template_id, source_kind, source_id, target_kind, target_id)
      SELECT a.template_id, 'slot', a.slot_id, 'slot', b.slot_id
      FROM harness_template_slots a JOIN harness_template_slots b
        ON b.template_id = a.template_id AND b.slot_id <> a.slot_id
@@ -614,6 +618,7 @@ export function regenerateExactOpenEdges(db: BazilionDb, templateId: string): vo
     const targetId = targetKind === 'slot' ? 'slot_id' : "''"
     db.raw.run(
       `INSERT INTO harness_template_edges
+         (template_id, source_kind, source_id, target_kind, target_id)
        SELECT template_id, '${sourceKind}', ${sourceId}, '${targetKind}', ${targetId}
        FROM harness_template_slots WHERE template_id = ? AND tombstoned_at IS NULL`,
       [templateId],
@@ -643,7 +648,7 @@ function snapshotCurrent(
   )
   db.raw.run(
     `INSERT INTO harness_template_revision_edges
-     SELECT template_id, ?, source_kind, source_id, target_kind, target_id
+     SELECT template_id, ?, source_kind, source_id, target_kind, target_id, posture
      FROM harness_template_edges WHERE template_id = ?`,
     [revisionNumber, templateId],
   )
@@ -773,6 +778,13 @@ function validateCanonicalDefinition(
   }
   const edgeKeys = new Set<string>()
   for (const edge of definitionEdges) {
+    if (
+      edge.posture !== undefined &&
+      edge.posture !== 'allow' &&
+      edge.posture !== 'approval_required'
+    ) {
+      throw new Error(`invalid_template_definition: invalid edge posture ${edge.posture}`)
+    }
     for (const endpoint of [
       [edge.sourceKind, edge.sourceId],
       [edge.targetKind, edge.targetId],
@@ -803,8 +815,15 @@ function validateCanonicalDefinition(
 function insertTemplateEdge(db: BazilionDb, templateId: string, edge: CanonicalEdgeInput): void {
   db.raw.run(
     `INSERT INTO harness_template_edges
-       (template_id, source_kind, source_id, target_kind, target_id)
-     VALUES (?, ?, ?, ?, ?)`,
-    [templateId, edge.sourceKind, edge.sourceId ?? '', edge.targetKind, edge.targetId ?? ''],
+       (template_id, source_kind, source_id, target_kind, target_id, posture)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [
+      templateId,
+      edge.sourceKind,
+      edge.sourceId ?? '',
+      edge.targetKind,
+      edge.targetId ?? '',
+      edge.posture ?? 'allow',
+    ],
   )
 }

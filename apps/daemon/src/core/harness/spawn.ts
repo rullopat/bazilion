@@ -38,6 +38,7 @@ export interface SpawnHarnessTemplatePreview {
     sourceId: string | null
     targetKind: 'user' | 'outside_group' | 'agent'
     targetId: string | null
+    posture: 'allow' | 'approval_required'
   }>
 }
 
@@ -95,6 +96,7 @@ export function previewHarnessTemplateSpawn(
     sourceId: edge.sourceKind === 'slot' ? slotEndpoint(edge.sourceId) : null,
     targetKind: edge.targetKind === 'slot' ? ('agent' as const) : edge.targetKind,
     targetId: edge.targetKind === 'slot' ? slotEndpoint(edge.targetId) : null,
+    posture: edge.posture,
   }))
   return {
     mode: input.mode,
@@ -245,14 +247,15 @@ export async function spawnHarnessTemplate(
         }
         db.raw.run(
           `INSERT INTO live_harness_edges
-             (group_id, source_kind, source_id, target_kind, target_id)
-           VALUES (?, ?, ?, ?, ?)`,
+             (group_id, source_kind, source_id, target_kind, target_id, posture)
+           VALUES (?, ?, ?, ?, ?, ?)`,
           [
             input.groupId,
             edge.sourceKind === 'slot' ? 'agent' : edge.sourceKind,
             sourceId ?? '',
             edge.targetKind === 'slot' ? 'agent' : edge.targetKind,
             targetId ?? '',
+            edge.posture,
           ],
         )
       }

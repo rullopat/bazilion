@@ -65,6 +65,7 @@ import {
   authorizeHttpChatFrame,
   authorizeUserIngress,
   CommunicationDeniedError,
+  CommunicationPendingError,
   sendAgentMessage,
 } from '../lib/communication.ts'
 import { validateCron } from '../lib/cron.ts'
@@ -814,6 +815,19 @@ agentsRouter.post('/:id/messages', async (c) => {
         403,
       )
     }
+    if (error instanceof CommunicationPendingError) {
+      return c.json(
+        {
+          decision: 'approval_required',
+          approvalId: error.approval.id,
+          status: error.approval.status,
+          expiresAt: error.approval.expiresAt,
+          attemptKind: error.approval.attemptKind,
+          attemptId: error.approval.attemptId,
+        },
+        202,
+      )
+    }
     throw error
   }
 })
@@ -896,8 +910,25 @@ agentsRouter.post('/:id/chat', async (c) => {
       origin: 'http_chat',
       attemptKind: 'http_chat_ingress',
       attemptId: requestAttemptId,
+      approvalPayloadKind: 'agent_turn',
+      approvalPayload: { agentId: id, message, attachments },
+      requester: 'user',
     })
   } catch (error) {
+    if (error instanceof CommunicationPendingError) {
+      return c.json(
+        {
+          code: 'communication_pending',
+          decision: 'approval_required',
+          approvalId: error.approval.id,
+          status: error.approval.status,
+          expiresAt: error.approval.expiresAt,
+          attemptKind: error.approval.attemptKind,
+          attemptId: error.approval.attemptId,
+        },
+        202,
+      )
+    }
     if (!(error instanceof CommunicationDeniedError)) throw error
     return c.json(
       {
@@ -943,7 +974,15 @@ agentsRouter.post('/:id/chat', async (c) => {
                 channel: err.result.channel,
                 policyRefs: err.result.policyRefs,
               })
-            : (err as Error).message
+            : err instanceof CommunicationPendingError
+              ? JSON.stringify({
+                  code: 'communication_pending',
+                  decision: 'approval_required',
+                  approvalId: err.approval.id,
+                  status: err.approval.status,
+                  expiresAt: err.approval.expiresAt,
+                })
+              : (err as Error).message
         try {
           controller.enqueue(encoder.encode(`${JSON.stringify({ kind: 'fatal', error })}\n`))
         } catch {}

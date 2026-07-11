@@ -18,7 +18,11 @@ import type { ChatFrame, TelegramMirrorMode, ToolResultImage } from '@bazilion/a
 import { InputFile } from 'grammy'
 import type { BazilionDb } from '../../core/db/client.ts'
 import { agentRepo } from '../../core/index.ts'
-import { authorizeAgentEgress, CommunicationDeniedError } from '../communication.ts'
+import {
+  authorizeAgentEgress,
+  CommunicationDeniedError,
+  CommunicationPendingError,
+} from '../communication.ts'
 import { _resetLoopGuardForTest, allowTelegramOutboundNoise } from './loop-guard.ts'
 import { renderTelegramMessages, stripTelegramHtml, TELEGRAM_SAFE_BUDGET } from './markdown.ts'
 import { enqueueOutbound } from './outbound-queue.ts'
@@ -129,7 +133,15 @@ export async function mirrorAgentTurnFrame(
   for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
     const chunk = chunks[chunkIndex]
     if (!chunk) continue
-    if (!telegramEgressAllowed(deps, agent.id, `${attemptBase}:text:${chunkIndex}`)) return
+    if (
+      !telegramEgressAllowed(deps, agent.id, `${attemptBase}:text:${chunkIndex}`, 'telegram_text', {
+        chatId: deps.chatId,
+        topicId,
+        text: chunk,
+        parseMode: isReply ? 'HTML' : null,
+      })
+    )
+      return
     try {
       await enqueueOutbound(deps.chatId, () =>
         deps.api.sendMessage(deps.chatId, chunk, {
@@ -150,7 +162,20 @@ export async function mirrorAgentTurnFrame(
       // never costs the user their reply.
       if (isReply && isParseEntitiesError(e)) {
         try {
-          if (!telegramEgressAllowed(deps, agent.id, `${attemptBase}:text:${chunkIndex}:fallback`))
+          if (
+            !telegramEgressAllowed(
+              deps,
+              agent.id,
+              `${attemptBase}:text:${chunkIndex}:fallback`,
+              'telegram_text',
+              {
+                chatId: deps.chatId,
+                topicId,
+                text: stripTelegramHtml(chunk),
+                parseMode: null,
+              },
+            )
+          )
             return
           await enqueueOutbound(deps.chatId, () =>
             deps.api.sendMessage(deps.chatId, stripTelegramHtml(chunk), {
@@ -212,7 +237,16 @@ async function mirrorImages(
   for (let imageIndex = 0; imageIndex < payload.images.length; imageIndex++) {
     const img = payload.images[imageIndex]
     if (!img) continue
-    if (!telegramEgressAllowed(deps, agentId, `${attemptBase}:${imageIndex}`)) return
+    if (
+      !telegramEgressAllowed(deps, agentId, `${attemptBase}:${imageIndex}`, 'telegram_image', {
+        chatId: deps.chatId,
+        topicId,
+        data: img.data,
+        mimeType: img.mimeType,
+        caption,
+      })
+    )
+      return
     const buf = Buffer.from(img.data, 'base64')
     const ext = img.mimeType.includes('jpeg') ? 'jpg' : 'png'
     // InputFile wraps a Buffer as a single-use stream — build a fresh one per
@@ -228,7 +262,22 @@ async function mirrorImages(
         return
       }
       try {
-        if (!telegramEgressAllowed(deps, agentId, `${attemptBase}:${imageIndex}:fallback`)) {
+        if (
+          !telegramEgressAllowed(
+            deps,
+            agentId,
+            `${attemptBase}:${imageIndex}:fallback`,
+            'telegram_image',
+            {
+              chatId: deps.chatId,
+              topicId,
+              data: img.data,
+              mimeType: img.mimeType,
+              caption,
+              asDocument: true,
+            },
+          )
+        ) {
           return
         }
         await enqueueOutbound(deps.chatId, () =>
@@ -252,7 +301,16 @@ async function mirrorFile(
   ev: { name: string; mimeType: string; data: string },
   attemptId: string,
 ): Promise<void> {
-  if (!telegramEgressAllowed(deps, agentId, attemptId)) return
+  if (
+    !telegramEgressAllowed(deps, agentId, attemptId, 'telegram_file', {
+      chatId: deps.chatId,
+      topicId,
+      name: ev.name,
+      mimeType: ev.mimeType,
+      data: ev.data,
+    })
+  )
+    return
   const buf = Buffer.from(ev.data, 'base64')
   try {
     await enqueueOutbound(deps.chatId, () =>
@@ -273,16 +331,26 @@ async function mirrorFile(
   }
 }
 
-function telegramEgressAllowed(deps: MirrorDeps, agentId: string, attemptId: string): boolean {
+function telegramEgressAllowed(
+  deps: MirrorDeps,
+  agentId: string,
+  attemptId: string,
+  payloadKind = 'telegram_typing',
+  payload: unknown = { chatId: deps.chatId },
+): boolean {
   try {
     authorizeAgentEgress(deps.db, agentId, {
       origin: 'telegram_mirror',
       attemptKind: 'telegram_egress',
       attemptId,
+      approvalPayloadKind: payloadKind,
+      approvalPayload: payload,
+      requester: agentId,
     })
     return true
   } catch (error) {
-    if (error instanceof CommunicationDeniedError) return false
+    if (error instanceof CommunicationDeniedError || error instanceof CommunicationPendingError)
+      return false
     throw error
   }
 }
@@ -440,7 +508,12 @@ export function mirrorTypingStart(
   mirrorTypingStop(agentId)
 
   const fire = (): boolean => {
-    if (!telegramEgressAllowed(deps, agentId, attemptId)) {
+    if (
+      !telegramEgressAllowed(deps, agentId, attemptId, 'telegram_typing', {
+        chatId: deps.chatId,
+        topicId,
+      })
+    ) {
       mirrorTypingStop(agentId)
       return false
     }
