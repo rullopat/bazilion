@@ -5,18 +5,26 @@ import * as agentRepo from '../repos/agents.ts'
 import * as liveHarnessRepo from '../repos/liveHarnesses.ts'
 import { pruneBindingAndEmptyCohort } from './move.ts'
 
-export function deleteAgent(db: BazilionDb, id: string): void {
+export function deleteAgent(db: BazilionDb, id: string, expectedGroupRevision?: number): void {
   const agent = agentRepo.get(db, id)
   if (!agent) throw new Error(`agent not found: ${id}`)
   const fullId = agent.id
-  liveHarnessRepo.requireCompatibilityOpen(db, agent.groupId)
+  const canonical = expectedGroupRevision !== undefined
+  if (!canonical) liveHarnessRepo.requireCompatibilityOpen(db, agent.groupId)
   const stagedDir = `${agent.dir}.deleting-${randomUUID()}`
   const hadDir = existsSync(agent.dir)
   if (hadDir) renameSync(agent.dir, stagedDir)
 
   try {
     db.raw.transaction(() => {
-      liveHarnessRepo.requireCompatibilityOpen(db, agent.groupId)
+      const harness = liveHarnessRepo.get(db, agent.groupId)
+      if (!harness) throw new Error(`group_policy_missing: ${agent.groupId}`)
+      if (canonical && harness.revision !== expectedGroupRevision) {
+        throw new Error(
+          `group_revision_conflict: expected ${expectedGroupRevision}, current ${harness.revision}`,
+        )
+      }
+      if (!canonical) liveHarnessRepo.requireCompatibilityOpen(db, agent.groupId)
       // messages.from_agent_id and to_agent_id reference agents(id) with no ON
       // DELETE rule, and messages.reply_to references messages(id) the same way,
       // so a naive DELETE of the agent fails if it has any mailbox history.
@@ -34,8 +42,18 @@ export function deleteAgent(db: BazilionDb, id: string): void {
         fullId,
       ])
       pruneBindingAndEmptyCohort(db, fullId, agent.groupId)
+      if (canonical) {
+        db.raw.run(
+          `DELETE FROM live_harness_edges WHERE group_id = ? AND
+           ((source_kind = 'agent' AND source_id = ?) OR
+            (target_kind = 'agent' AND target_id = ?))`,
+          [agent.groupId, fullId, fullId],
+        )
+        db.raw.run('DELETE FROM live_agent_state WHERE agent_id = ?', [fullId])
+      }
       agentRepo.remove(db, fullId)
-      liveHarnessRepo.regenerateExactOpen(db, agent.groupId)
+      if (canonical) liveHarnessRepo.bumpExplicit(db, agent.groupId)
+      else liveHarnessRepo.regenerateExactOpen(db, agent.groupId)
     })()
   } catch (error) {
     if (hadDir && existsSync(stagedDir)) renameSync(stagedDir, agent.dir)

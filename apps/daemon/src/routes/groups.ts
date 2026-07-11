@@ -8,8 +8,18 @@ import type {
   SetGroupTopicFormatRequest,
   SetGroupUserMdRequest,
 } from '@bazilion/api-types'
-import { Hono } from 'hono'
-import { deleteGroup, groupRepo, registerGroup } from '../core/index.ts'
+import { type Context, Hono } from 'hono'
+import {
+  adoptHarnessTemplate,
+  deleteGroup,
+  diffHarness,
+  groupRepo,
+  liveHarnessRepo,
+  registerGroup,
+  saveHarnessAsTemplate,
+  updateHarnessSource,
+} from '../core/index.ts'
+import { validateSlug } from '../core/profile/validate.ts'
 import { getCtx } from '../lib/ctx.ts'
 import { validateTopicNameFormat } from '../lib/telegram/naming.ts'
 import { syncGroupTopicNames } from '../lib/telegram/topic-rename.ts'
@@ -47,10 +57,149 @@ groupsRouter.get('/:id', (c) => {
   return c.json(g)
 })
 
+groupsRouter.get('/:id/harness', (c) => {
+  const detail = liveHarnessRepo.detail(getCtx().db, c.req.param('id'))
+  if (!detail) return c.json({ error: `group not found: ${c.req.param('id')}` }, 404)
+  c.header('ETag', `"${detail.harness.revision}"`)
+  return c.json(detail)
+})
+
+groupsRouter.put('/:id/harness/policy', async (c) => {
+  const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null
+  if (!body || !Number.isInteger(body.expectedRevision) || !Array.isArray(body.edges)) {
+    return c.json({ error: 'expectedRevision and edges are required' }, 400)
+  }
+  try {
+    const edges = body.edges.map((value, index) => {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        throw new Error(`group_policy_invalid: edge ${index} must be an object`)
+      }
+      const edge = value as Record<string, unknown>
+      return {
+        sourceKind: edge.sourceKind as 'user' | 'outside_group' | 'agent',
+        sourceId: typeof edge.sourceId === 'string' && edge.sourceId ? edge.sourceId : null,
+        targetKind: edge.targetKind as 'user' | 'outside_group' | 'agent',
+        targetId: typeof edge.targetId === 'string' && edge.targetId ? edge.targetId : null,
+      }
+    })
+    return c.json(
+      liveHarnessRepo.replacePolicy(getCtx().db, c.req.param('id'), {
+        expectedRevision: body.expectedRevision as number,
+        edges,
+      }),
+    )
+  } catch (error) {
+    return groupHarnessError(c, error)
+  }
+})
+
+groupsRouter.get('/:id/harness/diff', (c) => {
+  try {
+    return c.json(diffHarness(getCtx().db, c.req.param('id')))
+  } catch (error) {
+    return groupHarnessError(c, error)
+  }
+})
+
+groupsRouter.post('/:id/harness/adopt-template', async (c) => {
+  const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null
+  if (
+    !body ||
+    !Number.isInteger(body.groupExpectedRevision) ||
+    typeof body.templateId !== 'string' ||
+    !Number.isInteger(body.templateExpectedRevision) ||
+    !Array.isArray(body.slotMappings) ||
+    !Array.isArray(body.remainingPlacements) ||
+    !Array.isArray(body.previewEdges)
+  ) {
+    return c.json({ error: 'invalid adoption request' }, 400)
+  }
+  try {
+    return c.json(
+      adoptHarnessTemplate(getCtx().db, c.req.param('id'), {
+        groupExpectedRevision: body.groupExpectedRevision as number,
+        templateId: body.templateId,
+        templateExpectedRevision: body.templateExpectedRevision as number,
+        slotMappings: body.slotMappings as Array<{ slotId: string; agentId: string }>,
+        remainingPlacements: body.remainingPlacements as Array<{
+          agentId: string
+          placement: 'isolated' | 'open' | 'profile_defaults'
+        }>,
+        previewEdges: body.previewEdges as Array<{
+          sourceKind: 'user' | 'outside_group' | 'agent'
+          sourceId: string | null
+          targetKind: 'user' | 'outside_group' | 'agent'
+          targetId: string | null
+        }>,
+      }),
+    )
+  } catch (error) {
+    return groupHarnessError(c, error)
+  }
+})
+
+groupsRouter.post('/:id/harness/save-as-template', async (c) => {
+  const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null
+  const expectedRevision = body?.expectedRevision
+  const templateId = typeof body?.id === 'string' ? body.id.trim() : ''
+  const name = typeof body?.name === 'string' ? body.name.trim() : ''
+  if (!body || !Number.isInteger(expectedRevision) || !templateId || !name) {
+    return c.json({ error: 'expectedRevision, id, and name are required' }, 400)
+  }
+  try {
+    validateSlug(templateId)
+    return c.json(
+      saveHarnessAsTemplate(getCtx().db, getCtx().paths, c.req.param('id'), {
+        expectedRevision: expectedRevision as number,
+        id: templateId,
+        name,
+        ...(Object.hasOwn(body, 'userMd')
+          ? { userMd: typeof body.userMd === 'string' ? body.userMd : null }
+          : {}),
+      }),
+      201,
+    )
+  } catch (error) {
+    return groupHarnessError(c, error)
+  }
+})
+
+groupsRouter.post('/:id/harness/update-source', async (c) => {
+  const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null
+  if (
+    !body ||
+    !Number.isInteger(body.groupExpectedRevision) ||
+    !Number.isInteger(body.templateExpectedRevision) ||
+    !Array.isArray(body.includeAgentIds) ||
+    body.includeAgentIds.some((id) => typeof id !== 'string')
+  ) {
+    return c.json({ error: 'invalid source update request' }, 400)
+  }
+  try {
+    return c.json(
+      updateHarnessSource(getCtx().db, c.req.param('id'), {
+        groupExpectedRevision: body.groupExpectedRevision as number,
+        templateExpectedRevision: body.templateExpectedRevision as number,
+        includeAgentIds: body.includeAgentIds as string[],
+      }),
+    )
+  } catch (error) {
+    return groupHarnessError(c, error)
+  }
+})
+
 groupsRouter.delete('/:id', (c) => {
   const { db, paths } = getCtx()
   try {
-    deleteGroup(db, paths, c.req.param('id'))
+    const rawRevision = c.req.query('expectedHarnessRevision')
+    const expectedHarnessRevision = rawRevision ? Number.parseInt(rawRevision, 10) : undefined
+    if (
+      rawRevision &&
+      (!Number.isInteger(expectedHarnessRevision) || (expectedHarnessRevision ?? 0) < 1)
+    ) {
+      return c.json({ error: 'expectedHarnessRevision must be a positive integer' }, 400)
+    }
+    deleteGroup(db, paths, c.req.param('id'), expectedHarnessRevision)
     return c.body(null, 204)
   } catch (err) {
     const message = (err as Error).message
@@ -59,11 +208,15 @@ groupsRouter.delete('/:id', (c) => {
         error: message,
         ...(message.startsWith('placement_required')
           ? { code: 'revision_required' }
-          : message.startsWith('group_policy_invalid')
-            ? { code: 'group_policy_invalid' }
-            : {}),
+          : message.startsWith('group_revision_conflict')
+            ? { code: 'group_revision_conflict' }
+            : message.startsWith('group_policy_invalid')
+              ? { code: 'group_policy_invalid' }
+              : {}),
       },
-      message.startsWith('placement_required') || message.startsWith('group_policy_invalid')
+      message.startsWith('placement_required') ||
+        message.startsWith('group_policy_invalid') ||
+        message.startsWith('group_revision_conflict')
         ? 409
         : 400,
     )
@@ -174,3 +327,31 @@ groupsRouter.delete('/:id/memory/:key{.+}', async (c) => {
     return c.json({ error: (err as Error).message }, 500)
   }
 })
+
+function groupHarnessError(c: Context, error: unknown): Response {
+  const message = (error as Error).message
+  if (message.startsWith('group_policy_missing')) return c.json({ error: message }, 404)
+  if (message.startsWith('group_revision_conflict')) {
+    const currentRevision = Number.parseInt(message.match(/current (\d+)/)?.[1] ?? '', 10)
+    return c.json({ error: message, code: 'group_revision_conflict', currentRevision }, 409)
+  }
+  if (message.startsWith('member_not_in_group')) {
+    return c.json({ error: message, code: 'member_not_in_group' }, 400)
+  }
+  if (message.startsWith('template_deleted')) {
+    return c.json({ error: message, code: 'template_deleted' }, 410)
+  }
+  if (message.startsWith('template_revision_conflict')) {
+    return c.json({ error: message, code: 'template_revision_conflict' }, 409)
+  }
+  if (
+    message.startsWith('adoption_mapping_invalid') ||
+    message.startsWith('adoption_preview_mismatch')
+  ) {
+    return c.json({ error: message, code: message.split(':')[0] }, 400)
+  }
+  if (message.startsWith('source_diverged')) {
+    return c.json({ error: message, code: 'source_diverged' }, 409)
+  }
+  return c.json({ error: message, code: 'group_policy_invalid' }, 400)
+}

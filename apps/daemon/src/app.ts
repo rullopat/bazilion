@@ -10,6 +10,7 @@ import { agentsRouter } from './routes/agents.ts'
 import { authRouter } from './routes/auth-login.ts'
 import { configRouter } from './routes/config.ts'
 import { groupsRouter } from './routes/groups.ts'
+import { harnessTemplatesRouter } from './routes/harness-templates.ts'
 import { mcpRouter } from './routes/mcp.ts'
 import { messagesRouter } from './routes/messages.ts'
 import { miscRouter } from './routes/misc.ts'
@@ -29,6 +30,7 @@ export function createApp(): Hono {
 
   app.route('/api/agents', agentsRouter)
   app.route('/api/groups', groupsRouter)
+  app.route('/api/harness-templates', harnessTemplatesRouter)
   app.route('/api/profile-groups', profileGroupsRouter)
   app.route('/api/profiles', profilesRouter)
   app.route('/api/skills', skillsRouter)

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { Agent, ReasoningLevel } from '@bazilion/api-types'
+import type { Agent, HarnessPlacement, ReasoningLevel } from '@bazilion/api-types'
 import type { BazilionDb } from '../db/client.ts'
 import type { Paths } from '../paths.ts'
 import { loadProfile } from '../profile/load.ts'
@@ -24,6 +24,8 @@ export interface SpawnAgentInput {
   groupId?: string
   /** Internal batch-spawn switch; the caller regenerates/bump the aggregate once. */
   deferHarnessUpdate?: boolean
+  groupExpectedRevision?: number
+  placement?: Exclude<HarnessPlacement, 'template_snapshot'>
 }
 
 export function spawnAgent(db: BazilionDb, paths: Paths, input: SpawnAgentInput): Agent {
@@ -70,8 +72,21 @@ export function spawnAgent(db: BazilionDb, paths: Paths, input: SpawnAgentInput)
           `spawnAgent: group "${groupId}" does not exist. Pass an explicit --group or complete first-run setup first.`,
         )
       }
-      if (!input.deferHarnessUpdate) {
+      const canonical = input.groupExpectedRevision !== undefined || input.placement !== undefined
+      if (canonical && (!input.groupExpectedRevision || !input.placement)) {
+        throw new Error('placement_required: groupExpectedRevision and placement are required')
+      }
+      if (!input.deferHarnessUpdate && !canonical) {
         liveHarnessRepo.requireCompatibilityOpen(db, group.id)
+      }
+      if (canonical) {
+        const harness = liveHarnessRepo.get(db, group.id)
+        if (!harness) throw new Error(`group_policy_missing: ${group.id}`)
+        if (harness.revision !== input.groupExpectedRevision) {
+          throw new Error(
+            `group_revision_conflict: expected ${input.groupExpectedRevision}, current ${harness.revision}`,
+          )
+        }
       }
 
       const agentJson = {
@@ -103,7 +118,17 @@ export function spawnAgent(db: BazilionDb, paths: Paths, input: SpawnAgentInput)
           : loaded.defaultSkills
       for (const s of skills) agentRepo.attachSkill(db, id, s)
 
-      if (!input.deferHarnessUpdate) {
+      if (!input.deferHarnessUpdate && canonical) {
+        liveHarnessRepo.insertAgentState(db, group.id, agent.id)
+        liveHarnessRepo.addPlacementEdges(
+          db,
+          group.id,
+          agent.id,
+          input.placement as Exclude<HarnessPlacement, 'template_snapshot'>,
+          input.profileId,
+        )
+        liveHarnessRepo.bumpExplicit(db, group.id)
+      } else if (!input.deferHarnessUpdate) {
         liveHarnessRepo.regenerateExactOpen(db, group.id)
       }
 

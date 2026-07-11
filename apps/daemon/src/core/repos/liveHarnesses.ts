@@ -2,10 +2,12 @@ import type {
   LiveAgentState,
   LiveHarness,
   LiveHarnessEdge,
+  ResolvedGroupHarness,
   SourceSlotBinding,
   TemplateInstantiation,
 } from '@bazilion/api-types'
 import type { BazilionDb } from '../db/client.ts'
+import * as agentRepo from './agents.ts'
 
 interface RawHarness {
   group_id: string
@@ -52,6 +54,121 @@ export function edges(db: BazilionDb, groupId: string): LiveHarnessEdge[] {
       targetKind: row.target_kind,
       targetId: row.target_id || null,
     }))
+}
+
+export function detail(db: BazilionDb, groupId: string): ResolvedGroupHarness | null {
+  const harness = get(db, groupId)
+  if (!harness) return null
+  const allInstantiations = instantiations(db, groupId)
+  return {
+    harness,
+    edges: edges(db, groupId),
+    instantiations: allInstantiations,
+    bindings: bindings(db, groupId),
+    agentState: agentState(db, groupId),
+    baseline: allInstantiations.find((item) => item.id === harness.baselineInstantiationId) ?? null,
+    members: agentRepo
+      .list(db, { includeArchived: true })
+      .filter((agent) => agent.groupId === groupId),
+  }
+}
+
+export function replacePolicy(
+  db: BazilionDb,
+  groupId: string,
+  input: { expectedRevision: number; edges: Omit<LiveHarnessEdge, 'groupId'>[] },
+): ResolvedGroupHarness {
+  return db.raw.transaction(() => {
+    const harness = requireHarness(db, groupId)
+    requireRevision(harness, input.expectedRevision)
+    validateEdges(db, groupId, input.edges)
+    db.raw.run('DELETE FROM live_harness_edges WHERE group_id = ?', [groupId])
+    for (const edge of input.edges) {
+      db.raw.run(
+        `INSERT INTO live_harness_edges
+           (group_id, source_kind, source_id, target_kind, target_id)
+         VALUES (?, ?, ?, ?, ?)`,
+        [groupId, edge.sourceKind, edge.sourceId ?? '', edge.targetKind, edge.targetId ?? ''],
+      )
+    }
+    bumpExplicit(db, groupId)
+    return requireDetail(db, groupId)
+  })()
+}
+
+export function bumpExplicit(db: BazilionDb, groupId: string): LiveHarness {
+  db.raw.run(
+    `UPDATE live_harnesses SET revision = revision + 1, membership_mode = 'explicit',
+       updated_at = ? WHERE group_id = ?`,
+    [Date.now(), groupId],
+  )
+  return requireHarness(db, groupId)
+}
+
+export function insertAgentState(db: BazilionDb, groupId: string, agentId: string): void {
+  db.raw.run(
+    `INSERT INTO live_agent_state (agent_id, group_id, position_x, position_y, display_json)
+     VALUES (?, ?, NULL, NULL, NULL)`,
+    [agentId, groupId],
+  )
+}
+
+export function addPlacementEdges(
+  db: BazilionDb,
+  groupId: string,
+  agentId: string,
+  placement: 'isolated' | 'open' | 'profile_defaults',
+  profileId: string,
+): void {
+  if (placement === 'isolated') return
+  const peers = db.raw
+    .query<{ id: string }, [string, string]>(
+      'SELECT id FROM agents WHERE group_id = ? AND id <> ? ORDER BY id',
+    )
+    .all(groupId, agentId)
+    .map((row) => row.id)
+  if (placement === 'open') {
+    for (const peerId of peers) {
+      insertLiveEdge(db, groupId, 'agent', agentId, 'agent', peerId)
+      insertLiveEdge(db, groupId, 'agent', peerId, 'agent', agentId)
+    }
+    for (const [sourceKind, sourceId, targetKind, targetId] of [
+      ['user', null, 'agent', agentId],
+      ['agent', agentId, 'user', null],
+      ['outside_group', null, 'agent', agentId],
+      ['agent', agentId, 'outside_group', null],
+    ] as const) {
+      insertLiveEdge(db, groupId, sourceKind, sourceId, targetKind, targetId)
+    }
+    return
+  }
+  const defaults = db.raw
+    .query<
+      {
+        user_input: number
+        user_output: number
+        outside_group_input: number
+        outside_group_output: number
+        peer_default: string
+      },
+      [string]
+    >('SELECT * FROM profile_communication_defaults WHERE profile_id = ?')
+    .get(profileId)
+  if (!defaults) return
+  if (defaults.user_input) insertLiveEdge(db, groupId, 'user', null, 'agent', agentId)
+  if (defaults.user_output) insertLiveEdge(db, groupId, 'agent', agentId, 'user', null)
+  if (defaults.outside_group_input) {
+    insertLiveEdge(db, groupId, 'outside_group', null, 'agent', agentId)
+  }
+  if (defaults.outside_group_output) {
+    insertLiveEdge(db, groupId, 'agent', agentId, 'outside_group', null)
+  }
+  if (defaults.peer_default === 'allow_all') {
+    for (const peerId of peers) {
+      insertLiveEdge(db, groupId, 'agent', agentId, 'agent', peerId)
+      insertLiveEdge(db, groupId, 'agent', peerId, 'agent', agentId)
+    }
+  }
 }
 
 export function requireCompatibilityOpen(db: BazilionDb, groupId: string): LiveHarness {
@@ -218,4 +335,77 @@ export function agentState(db: BazilionDb, groupId: string): LiveAgentState[] {
           : { x: row.position_x, y: row.position_y },
       display: row.display_json ? (JSON.parse(row.display_json) as Record<string, unknown>) : null,
     }))
+}
+
+function requireHarness(db: BazilionDb, groupId: string): LiveHarness {
+  const harness = get(db, groupId)
+  if (!harness) throw new Error(`group_policy_missing: ${groupId}`)
+  return harness
+}
+
+function requireDetail(db: BazilionDb, groupId: string): ResolvedGroupHarness {
+  const found = detail(db, groupId)
+  if (!found) throw new Error(`group_policy_missing: ${groupId}`)
+  return found
+}
+
+function requireRevision(harness: LiveHarness, expected: number): void {
+  if (!Number.isInteger(expected) || expected < 1 || expected !== harness.revision) {
+    throw new Error(`group_revision_conflict: expected ${expected}, current ${harness.revision}`)
+  }
+}
+
+function validateEdges(
+  db: BazilionDb,
+  groupId: string,
+  policyEdges: Omit<LiveHarnessEdge, 'groupId'>[],
+): void {
+  const members = new Set(
+    db.raw
+      .query<{ id: string }, [string]>('SELECT id FROM agents WHERE group_id = ?')
+      .all(groupId)
+      .map((row) => row.id),
+  )
+  const keys = new Set<string>()
+  for (const edge of policyEdges) {
+    for (const [kind, id] of [
+      [edge.sourceKind, edge.sourceId],
+      [edge.targetKind, edge.targetId],
+    ] as const) {
+      if (!['user', 'outside_group', 'agent'].includes(kind)) {
+        throw new Error(`group_policy_invalid: invalid endpoint kind ${kind}`)
+      }
+      if ((kind === 'agent') !== (typeof id === 'string' && id.length > 0)) {
+        throw new Error('group_policy_invalid: Agent endpoints require an id')
+      }
+      if (kind === 'agent' && !members.has(id ?? '')) {
+        throw new Error(`member_not_in_group: ${id}`)
+      }
+    }
+    if (edge.sourceKind !== 'agent' && edge.targetKind !== 'agent') {
+      throw new Error('group_policy_invalid: boundary-to-boundary edge')
+    }
+    if (edge.sourceKind === edge.targetKind && edge.sourceId === edge.targetId) {
+      throw new Error('group_policy_invalid: self edge')
+    }
+    const key = `${edge.sourceKind}:${edge.sourceId ?? ''}>${edge.targetKind}:${edge.targetId ?? ''}`
+    if (keys.has(key)) throw new Error(`group_policy_invalid: duplicate edge ${key}`)
+    keys.add(key)
+  }
+}
+
+function insertLiveEdge(
+  db: BazilionDb,
+  groupId: string,
+  sourceKind: LiveHarnessEdge['sourceKind'],
+  sourceId: string | null,
+  targetKind: LiveHarnessEdge['targetKind'],
+  targetId: string | null,
+): void {
+  db.raw.run(
+    `INSERT OR IGNORE INTO live_harness_edges
+       (group_id, source_kind, source_id, target_kind, target_id)
+     VALUES (?, ?, ?, ?, ?)`,
+    [groupId, sourceKind, sourceId ?? '', targetKind, targetId ?? ''],
+  )
 }

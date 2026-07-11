@@ -1,11 +1,12 @@
 ---
 id: BAZ-015
 title: Revisioned Team-template, Group-policy, and Agent lifecycle APIs
-status: todo
+status: done
 size: L (1-2 weeks)
 created: 2026-07-10
 refined: 2026-07-10
 priority: high
+shipped: 2026-07-11
 note: Complete the second half of BAZ-010 with custom revisioned policy APIs, stable-slot operations, explicit placement, adoption/re-baselining, source workflows, and atomic Agent membership lifecycle.
 ---
 
@@ -176,3 +177,75 @@ lineage, and files together.
 - Route/client tests for auth, validation, fully resolved responses, stale conflicts,
   permanent Agent URLs, and one-release legacy payloads.
 - Full repository suite, root/web typechecks, lint, and build.
+
+## As-built (2026-07-11, unreleased)
+
+BAZ-015 completed the custom/revisioned API and lifecycle layer on the sole BAZ-010
+Team-template roster and per-Group live policy:
+
+- Added authenticated canonical Team-template list/create/read/metadata/delete,
+  stable-slot definition, clone, and reviewed spawn endpoints under
+  `/api/harness-templates`. New slots use request-local `clientKey` references and
+  server-allocated UUIDs; reorder/edit retains stable ids, removal tombstones, re-add and
+  clone allocate independent ids, and every definition/metadata mutation appends one full
+  immutable revision snapshot. The first canonical definition write permanently clears
+  legacy compatibility management. Lineage-free delete is hard; retained lineage produces
+  a read-only tombstone and all materializing/source operations return `410
+  template_deleted`.
+- Added the sole resolved Group-policy projection and revisioned policy replacement under
+  `/api/groups/:id/harness`. Reads include the archived-inclusive authoritative Agent
+  roster, live edges and presentation state, all retained instantiations/bindings, and the
+  one baseline. Writes validate endpoint kinds, membership, self/boundary paths,
+  duplicates, and expected revision, then permanently enter explicit mode with one bump.
+- Added reviewed Team initialize/append. A new Group finishes initialized at revision 1;
+  existing empty/uninitialized Groups require initialize and preserve USER.md; an empty
+  retained baseline requires explicit replacement; append preserves baseline and existing
+  topology, adds only the reviewed cohort snapshot/bindings, and creates no implicit
+  cross-cohort peers. Every source materialization pins the reviewed current template
+  revision transactionally and cleans database plus filesystem diffs on failure.
+- Added roster-neutral adopt/rebaseline with total injective stable-slot mapping, one
+  explicit placement for every remaining Agent, and daemon-recomputed preview equality.
+  Template edges translate exactly; open/profile-default live-only placement expands
+  deterministically; two live-only peers connect only when both request peer access. The
+  operation replaces current lineage/policy, establishes exactly one baseline, enters
+  explicit mode, and bumps once.
+- Added semantic diff, update-source, and save-as-template. Diff compares live edges with
+  the retained immutable baseline and reports current-source slot divergence. Source
+  promotion rejects divergence, retains baseline slot order/ids, allocates new ids for
+  explicitly included cohort/direct Agents, transfers their unique bindings, preserves
+  nonincluded cohorts, prunes only cohorts emptied by transfer, advances source and live
+  once, and leaves live edges unchanged. Save-as-template copies every current Agent
+  including archived membership, policy, and presentation into independent revision-1
+  slots without changing the live baseline/revision.
+- Extended permanent Agent/Group lifecycle URLs with explicit placement and expected
+  revision fields. Direct spawn materializes isolated/open/Profile-default edges and bumps
+  once. Two-Group move runs under the shared turn/lifecycle lease, atomically removes the
+  source edge/state/binding, prunes an empty nonbaseline cohort while retaining a baseline,
+  updates `agents.group_id` plus `agent.json`, places at the destination, and bumps both
+  Groups once. Revisioned Agent and Group deletion stage filesystem slots, restore them on
+  SQL/conflict failure, retain empty baselines, and permanently enter explicit mode where
+  applicable. Archive/unarchive retain membership, policy, lineage, and revision.
+- Kept the one-release omitted-field adapters bounded to exact Open compatibility state.
+  No canonical mutation restores `compatibility_open`; customized legacy Team/Group
+  surfaces continue returning the structured migration, placement, revision, or merge
+  conflicts defined by the ADR.
+- Added hermetic canonical request/response types and resolved aggregate shapes in
+  `@bazilion/api-types`. No `/api/harnesses`, detached live harness, caller-authoritative
+  harness id, runtime communication authorization, audit event, workflow execution,
+  production UI, CLI policy tooling, or approval behavior was introduced.
+
+Verification completed:
+
+- Focused authenticated route/domain/lifecycle tests pass for stable ids and repeated
+  Profiles, immutable snapshots, clone independence, invalid endpoint rollback, explicit
+  policy replacement, direct placement, revision conflicts, new initialization, append
+  cohort isolation, adoption preview/mapping, save-as-template, source transfer/divergence,
+  two-Group move, Agent delete, and Group delete.
+- `pnpm test`: 86 test files and 687 tests passed.
+- `pnpm typecheck`, `pnpm --filter @bazilion/web typecheck`, and
+  `pnpm --filter @bazilion/mobile typecheck` passed.
+- `pnpm lint` passed with no errors; 41 existing warnings and two Biome configuration
+  notices remain outside this story.
+- `pnpm build` passed, including the production web, daemon, worker, CLI, API-types, and
+  client bundles. Existing TanStack `inputValidator()` deprecation notices remain
+  unrelated.

@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { Agent } from '@bazilion/api-types'
+import type { Agent, HarnessPlacement } from '@bazilion/api-types'
 import type { BazilionDb } from '../db/client.ts'
 import type { Paths } from '../paths.ts'
 import * as agentRepo from '../repos/agents.ts'
@@ -41,6 +41,75 @@ export function moveAgentCompatibility(
       liveHarnessRepo.regenerateExactOpen(db, destinationGroupId)
       const moved = agentRepo.get(db, agent.id)
       if (!moved) throw new Error(`agent vanished after move: ${agent.id}`)
+      return moved
+    })()
+  } catch (error) {
+    writeFileSync(metadataPath, beforeMetadata)
+    throw error
+  }
+}
+
+export function moveAgentCanonical(
+  db: BazilionDb,
+  paths: Paths,
+  agentId: string,
+  input: {
+    destinationGroupId: string
+    sourceExpectedRevision: number
+    destinationExpectedRevision: number
+    placement: Exclude<HarnessPlacement, 'template_snapshot'>
+  },
+): Agent {
+  const agent = agentRepo.get(db, agentId)
+  if (!agent) throw new Error(`agent not found: ${agentId}`)
+  if (!groupRepo.get(db, input.destinationGroupId, paths)) {
+    throw new Error(`group not found: ${input.destinationGroupId}`)
+  }
+  if (agent.groupId === input.destinationGroupId) return agent
+  const metadataPath = join(agent.dir, 'agent.json')
+  const beforeMetadata = readFileSync(metadataPath, 'utf8')
+  try {
+    return db.raw.transaction(() => {
+      const current = agentRepo.get(db, agent.id)
+      if (!current || current.groupId !== agent.groupId) {
+        throw new Error(`group_revision_conflict: Agent membership changed for ${agent.id}`)
+      }
+      const source = liveHarnessRepo.get(db, current.groupId)
+      const destination = liveHarnessRepo.get(db, input.destinationGroupId)
+      if (!source || !destination) throw new Error('group_policy_missing')
+      if (source.revision !== input.sourceExpectedRevision) {
+        throw new Error(
+          `source_group_revision_conflict: expected ${input.sourceExpectedRevision}, current ${source.revision}`,
+        )
+      }
+      if (destination.revision !== input.destinationExpectedRevision) {
+        throw new Error(
+          `destination_group_revision_conflict: expected ${input.destinationExpectedRevision}, current ${destination.revision}`,
+        )
+      }
+      db.raw.run(
+        `DELETE FROM live_harness_edges WHERE group_id = ? AND
+         ((source_kind = 'agent' AND source_id = ?) OR (target_kind = 'agent' AND target_id = ?))`,
+        [current.groupId, current.id, current.id],
+      )
+      db.raw.run('DELETE FROM live_agent_state WHERE agent_id = ?', [current.id])
+      pruneBindingAndEmptyCohort(db, current.id, current.groupId)
+      agentRepo.setGroup(db, current.id, input.destinationGroupId)
+      const metadata = JSON.parse(beforeMetadata) as Record<string, unknown>
+      metadata.groupId = input.destinationGroupId
+      writeFileSync(metadataPath, `${JSON.stringify(metadata, null, 2)}\n`)
+      liveHarnessRepo.insertAgentState(db, input.destinationGroupId, current.id)
+      liveHarnessRepo.addPlacementEdges(
+        db,
+        input.destinationGroupId,
+        current.id,
+        input.placement,
+        current.profileId,
+      )
+      liveHarnessRepo.bumpExplicit(db, current.groupId)
+      liveHarnessRepo.bumpExplicit(db, input.destinationGroupId)
+      const moved = agentRepo.get(db, current.id)
+      if (!moved) throw new Error(`agent vanished after move: ${current.id}`)
       return moved
     })()
   } catch (error) {

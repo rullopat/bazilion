@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type {
   HarnessTemplate,
+  HarnessTemplateDetail,
   HarnessTemplateEdge,
   HarnessTemplateRevision,
   HarnessTemplateSlot,
@@ -46,6 +47,33 @@ export interface CompatibilityMemberInput {
   agentName: string
   modelOverride: string | null
   reasoningLevel: ReasoningLevel | null
+}
+
+export interface CanonicalSlotInput {
+  slotId?: string
+  /** Request-local reference for a new server-allocated slot. Never persisted. */
+  clientKey?: string
+  profileId: string
+  agentName: string
+  modelOverride?: string | null
+  reasoningLevel?: ReasoningLevel | null
+  layoutPosition?: { x: number; y: number } | null
+  display?: Record<string, unknown> | null
+}
+
+export interface CanonicalEdgeInput {
+  sourceKind: HarnessTemplateEdge['sourceKind']
+  sourceId?: string | null
+  targetKind: HarnessTemplateEdge['targetKind']
+  targetId?: string | null
+}
+
+export interface CanonicalDefinitionInput {
+  expectedRevision: number
+  slots: CanonicalSlotInput[]
+  edges: CanonicalEdgeInput[]
+  /** Daemon-only workflows may pass UUIDs they just allocated. HTTP callers never set this. */
+  allowAllocatedSlotIds?: boolean
 }
 
 function toTemplate(row: RawTemplate): HarnessTemplate {
@@ -101,6 +129,280 @@ export function list(db: BazilionDb): HarnessTemplate[] {
     .query<RawTemplate, []>('SELECT * FROM harness_templates ORDER BY created_at ASC')
     .all()
     .map(toTemplate)
+}
+
+export function detail(db: BazilionDb, id: string): HarnessTemplateDetail | null {
+  const template = get(db, id)
+  if (!template) return null
+  const currentSnapshot = revision(db, id, template.currentRevision)
+  if (!currentSnapshot)
+    throw new Error(`template_snapshot_missing: ${id}@${template.currentRevision}`)
+  return { template, slots: slots(db, id), edges: edges(db, id), currentSnapshot }
+}
+
+export function insertCanonical(
+  db: BazilionDb,
+  input: { id: string; name: string; userMd?: string | null },
+): HarnessTemplateDetail {
+  const now = Date.now()
+  db.raw.transaction(() => {
+    db.raw.run(
+      `INSERT INTO harness_templates
+         (id, name, user_md, current_revision, compatibility_managed, deleted_at, created_at, updated_at)
+       VALUES (?, ?, ?, 1, 0, NULL, ?, ?)`,
+      [input.id, input.name, input.userMd ?? null, now, now],
+    )
+    snapshotCurrent(db, input.id, 1, now)
+  })()
+  return requireDetail(db, input.id)
+}
+
+export function insertCanonicalDefinition(
+  db: BazilionDb,
+  input: {
+    id: string
+    name: string
+    userMd?: string | null
+    slots: CanonicalSlotInput[]
+    edges: CanonicalEdgeInput[]
+  },
+): HarnessTemplateDetail {
+  return db.raw.transaction(() => {
+    validateCanonicalDefinition(input.slots, input.edges)
+    if (input.slots.some((slot) => !slot.slotId)) {
+      throw new Error('invalid_template_definition: initial slots require allocated ids')
+    }
+    const now = Date.now()
+    db.raw.run(
+      `INSERT INTO harness_templates
+         (id, name, user_md, current_revision, compatibility_managed, deleted_at, created_at, updated_at)
+       VALUES (?, ?, ?, 1, 0, NULL, ?, ?)`,
+      [input.id, input.name, input.userMd ?? null, now, now],
+    )
+    for (let position = 0; position < input.slots.length; position++) {
+      const slot = input.slots[position]
+      if (!slot?.slotId) continue
+      db.raw.run(
+        `INSERT INTO harness_template_slots
+           (template_id, slot_id, position, profile_id, agent_name, model_override,
+            reasoning_level, position_x, position_y, display_json, tombstoned_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+        [
+          input.id,
+          slot.slotId,
+          position,
+          slot.profileId,
+          slot.agentName,
+          slot.modelOverride ?? null,
+          slot.reasoningLevel ?? null,
+          slot.layoutPosition?.x ?? null,
+          slot.layoutPosition?.y ?? null,
+          slot.display ? JSON.stringify(slot.display) : null,
+        ],
+      )
+    }
+    for (const edge of input.edges) insertTemplateEdge(db, input.id, edge)
+    snapshotCurrent(db, input.id, 1, now)
+    return requireDetail(db, input.id)
+  })()
+}
+
+export function updateCanonicalMetadata(
+  db: BazilionDb,
+  id: string,
+  input: { expectedRevision: number; name?: string; userMd?: string | null },
+): HarnessTemplateDetail {
+  return db.raw.transaction(() => {
+    const template = requireMutable(db, id)
+    requireRevision(template, input.expectedRevision)
+    const name = input.name ?? template.name
+    const userMd = Object.hasOwn(input, 'userMd') ? (input.userMd ?? null) : template.userMd
+    if (name === template.name && userMd === template.userMd) return requireDetail(db, id)
+    const now = Date.now()
+    const next = template.currentRevision + 1
+    db.raw.run(
+      `UPDATE harness_templates SET name = ?, user_md = ?, current_revision = ?, updated_at = ?
+       WHERE id = ?`,
+      [name, userMd, next, now, id],
+    )
+    snapshotCurrent(db, id, next, now)
+    return requireDetail(db, id)
+  })()
+}
+
+export function replaceCanonicalDefinition(
+  db: BazilionDb,
+  templateId: string,
+  input: CanonicalDefinitionInput,
+): HarnessTemplateDetail {
+  return db.raw.transaction(() => {
+    const template = requireMutable(db, templateId)
+    requireRevision(template, input.expectedRevision)
+    const current = slots(db, templateId, { includeTombstoned: true })
+    const currentById = new Map(current.map((slot) => [slot.slotId, slot]))
+    const activeIds = new Set<string>()
+    const resolvedRefs = new Map<string, string>()
+    for (const value of input.slots) {
+      if (value.slotId && !currentById.has(value.slotId) && !input.allowAllocatedSlotIds) {
+        throw new Error(
+          `invalid_template_definition: caller cannot allocate slot id ${value.slotId}`,
+        )
+      }
+      if (value.slotId && value.clientKey) {
+        throw new Error('invalid_template_definition: slotId and clientKey are mutually exclusive')
+      }
+      const reference = value.slotId ?? value.clientKey
+      if (!reference) continue
+      if (resolvedRefs.has(reference)) {
+        throw new Error(`invalid_template_definition: duplicate slot reference ${reference}`)
+      }
+      resolvedRefs.set(reference, value.slotId ?? randomUUID())
+    }
+    const resolvedEdges = input.edges.map((edge) => ({
+      ...edge,
+      sourceId:
+        edge.sourceKind === 'slot'
+          ? (resolvedRefs.get(edge.sourceId ?? '') ?? edge.sourceId)
+          : null,
+      targetId:
+        edge.targetKind === 'slot'
+          ? (resolvedRefs.get(edge.targetId ?? '') ?? edge.targetId)
+          : null,
+    }))
+    const resolvedSlots = input.slots.map((slot) => ({
+      ...slot,
+      slotId: slot.slotId ?? (slot.clientKey ? resolvedRefs.get(slot.clientKey) : randomUUID()),
+    }))
+    validateCanonicalDefinition(resolvedSlots, resolvedEdges)
+    const now = Date.now()
+    // Free the partial unique position index before applying an arbitrary reorder.
+    db.raw.run(
+      `UPDATE harness_template_slots SET position = position + 1000000
+       WHERE template_id = ? AND tombstoned_at IS NULL`,
+      [templateId],
+    )
+    for (let position = 0; position < resolvedSlots.length; position++) {
+      const value = resolvedSlots[position]
+      if (!value) continue
+      const slotId = value.slotId ?? randomUUID()
+      if (activeIds.has(slotId))
+        throw new Error(`invalid_template_definition: duplicate slot ${slotId}`)
+      activeIds.add(slotId)
+      const existing = currentById.get(slotId)
+      if (existing?.tombstonedAt !== null && existing) {
+        throw new Error(
+          `invalid_template_definition: tombstoned slot cannot be re-added: ${slotId}`,
+        )
+      }
+      const coordinates = value.layoutPosition ?? null
+      const params = [
+        position,
+        value.profileId,
+        value.agentName,
+        value.modelOverride ?? null,
+        value.reasoningLevel ?? null,
+        coordinates?.x ?? null,
+        coordinates?.y ?? null,
+        value.display ? JSON.stringify(value.display) : null,
+      ]
+      if (existing) {
+        db.raw.run(
+          `UPDATE harness_template_slots SET position = ?, profile_id = ?, agent_name = ?,
+             model_override = ?, reasoning_level = ?, position_x = ?, position_y = ?, display_json = ?
+           WHERE template_id = ? AND slot_id = ?`,
+          [...params, templateId, slotId],
+        )
+      } else {
+        db.raw.run(
+          `INSERT INTO harness_template_slots
+             (template_id, slot_id, position, profile_id, agent_name, model_override,
+              reasoning_level, position_x, position_y, display_json, tombstoned_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+          [templateId, slotId, ...params],
+        )
+      }
+    }
+    for (const old of current) {
+      if (old.tombstonedAt === null && !activeIds.has(old.slotId)) {
+        db.raw.run(
+          'UPDATE harness_template_slots SET tombstoned_at = ? WHERE template_id = ? AND slot_id = ?',
+          [now, templateId, old.slotId],
+        )
+      }
+    }
+    db.raw.run('DELETE FROM harness_template_edges WHERE template_id = ?', [templateId])
+    for (const edge of resolvedEdges) insertTemplateEdge(db, templateId, edge)
+    const next = template.currentRevision + 1
+    db.raw.run(
+      `UPDATE harness_templates SET current_revision = ?, compatibility_managed = 0,
+       updated_at = ? WHERE id = ?`,
+      [next, now, templateId],
+    )
+    snapshotCurrent(db, templateId, next, now)
+    return requireDetail(db, templateId)
+  })()
+}
+
+export function cloneCanonical(
+  db: BazilionDb,
+  sourceId: string,
+  input: { expectedRevision: number; id: string; name?: string },
+): HarnessTemplateDetail {
+  return db.raw.transaction(() => {
+    const source = requireMutable(db, sourceId)
+    requireRevision(source, input.expectedRevision)
+    const snapshot = revision(db, sourceId, input.expectedRevision)
+    if (!snapshot)
+      throw new Error(`template_snapshot_missing: ${sourceId}@${input.expectedRevision}`)
+    const translated = new Map(snapshot.slots.map((slot) => [slot.slotId, randomUUID()]))
+    return insertCanonicalDefinition(db, {
+      id: input.id,
+      name: input.name ?? `${source.name} copy`,
+      userMd: snapshot.userMd,
+      slots: snapshot.slots.map((slot) => ({
+        slotId: translated.get(slot.slotId),
+        profileId: slot.profileId,
+        agentName: slot.agentName,
+        modelOverride: slot.modelOverride,
+        reasoningLevel: slot.reasoningLevel,
+        layoutPosition: slot.layoutPosition,
+        display: slot.display,
+      })),
+      edges: snapshot.edges.map((edge) => ({
+        sourceKind: edge.sourceKind,
+        sourceId: edge.sourceKind === 'slot' ? translated.get(edge.sourceId ?? '') : null,
+        targetKind: edge.targetKind,
+        targetId: edge.targetKind === 'slot' ? translated.get(edge.targetId ?? '') : null,
+      })),
+    })
+  })()
+}
+
+export function removeCanonical(
+  db: BazilionDb,
+  id: string,
+  expectedRevision: number,
+): 'deleted' | 'tombstoned' {
+  return db.raw.transaction(() => {
+    const template = requireMutable(db, id)
+    requireRevision(template, expectedRevision)
+    const lineage = db.raw
+      .query<{ count: number }, [string]>(
+        'SELECT COUNT(*) AS count FROM template_instantiations WHERE template_id = ?',
+      )
+      .get(id)?.count
+    if ((lineage ?? 0) > 0) {
+      const now = Date.now()
+      db.raw.run('UPDATE harness_templates SET deleted_at = ?, updated_at = ? WHERE id = ?', [
+        now,
+        now,
+        id,
+      ])
+      return 'tombstoned'
+    }
+    db.raw.run('DELETE FROM harness_templates WHERE id = ?', [id])
+    return 'deleted'
+  })()
 }
 
 export function slots(
@@ -435,4 +737,74 @@ export function hasExactOpenTopology(db: BazilionDb, templateId: string): boolea
     ),
   )
   return expected.size === actual.size && [...expected].every((key) => actual.has(key))
+}
+
+function requireDetail(db: BazilionDb, id: string): HarnessTemplateDetail {
+  const found = detail(db, id)
+  if (!found) throw new Error(`team template not found: ${id}`)
+  return found
+}
+
+function requireMutable(db: BazilionDb, id: string): HarnessTemplate {
+  const template = get(db, id)
+  if (!template) throw new Error(`team template not found: ${id}`)
+  if (template.deletedAt !== null) throw new Error(`template_deleted: ${id}`)
+  return template
+}
+
+function requireRevision(template: HarnessTemplate, expected: number): void {
+  if (!Number.isInteger(expected) || expected < 1 || expected !== template.currentRevision) {
+    throw new Error(
+      `template_revision_conflict: expected ${expected}, current ${template.currentRevision}`,
+    )
+  }
+}
+
+function validateCanonicalDefinition(
+  definitionSlots: CanonicalSlotInput[],
+  definitionEdges: CanonicalEdgeInput[],
+): void {
+  if (!Array.isArray(definitionSlots) || !Array.isArray(definitionEdges)) {
+    throw new Error('invalid_template_definition: slots and edges arrays are required')
+  }
+  const ids = new Set(definitionSlots.map((slot) => slot.slotId).filter(Boolean) as string[])
+  if (ids.size !== definitionSlots.filter((slot) => slot.slotId).length) {
+    throw new Error('invalid_template_definition: duplicate slot id')
+  }
+  const edgeKeys = new Set<string>()
+  for (const edge of definitionEdges) {
+    for (const endpoint of [
+      [edge.sourceKind, edge.sourceId],
+      [edge.targetKind, edge.targetId],
+    ] as const) {
+      const [kind, id] = endpoint
+      if (!['user', 'outside_group', 'slot'].includes(kind)) {
+        throw new Error(`invalid_template_definition: invalid endpoint kind ${kind}`)
+      }
+      if ((kind === 'slot') !== (typeof id === 'string' && id.length > 0)) {
+        throw new Error('invalid_template_definition: slot endpoints require an id')
+      }
+      if (kind === 'slot' && !ids.has(id ?? '')) {
+        throw new Error(`invalid_template_definition: unknown slot endpoint ${id}`)
+      }
+    }
+    if (edge.sourceKind !== 'slot' && edge.targetKind !== 'slot') {
+      throw new Error('invalid_template_definition: boundary-to-boundary edge')
+    }
+    if (edge.sourceKind === edge.targetKind && edge.sourceId === edge.targetId) {
+      throw new Error('invalid_template_definition: self edge')
+    }
+    const key = `${edge.sourceKind}:${edge.sourceId ?? ''}>${edge.targetKind}:${edge.targetId ?? ''}`
+    if (edgeKeys.has(key)) throw new Error(`invalid_template_definition: duplicate edge ${key}`)
+    edgeKeys.add(key)
+  }
+}
+
+function insertTemplateEdge(db: BazilionDb, templateId: string, edge: CanonicalEdgeInput): void {
+  db.raw.run(
+    `INSERT INTO harness_template_edges
+       (template_id, source_kind, source_id, target_kind, target_id)
+     VALUES (?, ?, ?, ?, ?)`,
+    [templateId, edge.sourceKind, edge.sourceId ?? '', edge.targetKind, edge.targetId ?? ''],
+  )
 }
