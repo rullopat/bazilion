@@ -83,6 +83,33 @@ export interface CommunicationAuthorizationResult {
   requiredEdgeIds: string[]
 }
 
+export interface HarnessBlockEvent {
+  id: string
+  attempt_kind: string
+  attempt_id: string
+  operation: string
+  source_kind: string
+  source_id: string
+  target_kind: string
+  target_id: string
+  source_group_id: string
+  target_group_id: string
+  channel: CommunicationChannel
+  origin: string
+  reason_code: string
+  reason: string
+  created_at: Timestamp
+  policyRefs: CommunicationPolicyRef[]
+  componentOutcomes: CommunicationComponentOutcome[]
+  matchedEdgeIds: string[]
+  requiredEdgeIds: string[]
+}
+
+export interface HarnessBlockPage {
+  blocks: HarnessBlockEvent[]
+  nextCursor: string | null
+}
+
 export interface HarnessTemplate {
   id: string
   name: string

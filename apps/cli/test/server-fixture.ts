@@ -113,6 +113,15 @@ export interface TestServer {
 }
 
 const WIPE_SQL = `
+  DELETE FROM harness_block_events;
+  DELETE FROM source_slot_bindings;
+  DELETE FROM template_instantiations;
+  DELETE FROM live_harness_edges;
+  DELETE FROM live_agent_state;
+  DELETE FROM harness_template_edges;
+  DELETE FROM harness_template_slots;
+  DELETE FROM harness_template_revisions;
+  DELETE FROM harness_templates;
   DELETE FROM messages;
   DELETE FROM agent_triggers;
   DELETE FROM agent_skills;

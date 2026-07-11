@@ -34,19 +34,18 @@ docs/backlog/
 | [BAZ-001](draft/BAZ-001-a2a-federation-spike.md) | Spike — federated multi-employee Bazilion via A2A | S | Investigation only; output is a follow-up implementation BAZ |
 | [BAZ-003](draft/BAZ-003-hermes-self-learning.md) | Hermes-style self-learning loop — background reviewer + skill self-editing | L | MVP = reviewer + human-approval gate; curator / FTS5 / runtime skill authoring deferred to v2 BAZs |
 
-## Todo (3)
+## Todo (2)
 
 | ID | Title | Size | Notes |
 |----|-------|------|-------|
 | [BAZ-006](todo/BAZ-006-skill-execution-security.md) | Skill execution security - sandbox and command approval | L | Runtime hardening after BAZ-008: opt-in Docker bash sandbox + dangerous-command approval; selection is *not* security |
-| [BAZ-013](todo/BAZ-013-harness-cli-policy-tools.md) | Harness CLI policy show, import/export, and block history | M | Revision-aware typed CLI management and canonical JSON interchange |
 | [BAZ-014](todo/BAZ-014-harness-communication-approvals.md) | Human approval gates for harness communication | L | Optional approval-required edges after production allow/deny is validated |
 
 ## In Progress (0)
 
 _None right now._
 
-## Done (11)
+## Done (12)
 
 | ID | Title | Size | Shipped | Release | Notes |
 |----|-------|------|---------|---------|-------|
@@ -57,3 +56,8 @@ _None right now._
 | [BAZ-009](done/BAZ-009-configurable-agent-harness.md) | Configurable agent harness - functional communication-flow prototype | L | 2026-07-10 | unreleased | Local-only Flow/Matrix policy prototype, live-group snapshots, denial simulation, and verified responsive Browser matrix |
 | [BAZ-010](done/BAZ-010-harness-persistence-api.md) | Canonical harness storage and compatibility migration | L | 2026-07-11 | unreleased | Canonical Team revisions, one Group policy, atomic legacy migration, exact-Open adapters, and lifecycle lease |
 | [BAZ-015](done/BAZ-015-harness-policy-lifecycle-api.md) | Revisioned Team-template, Group-policy, and Agent lifecycle APIs | L | 2026-07-11 | unreleased | Canonical Team/Group policy APIs, stable-slot source workflows, explicit placement, and atomic lifecycle |
+| [BAZ-011](done/BAZ-011-harness-runtime-enforcement.md) | Harness authorizer, denial audit, and gated Agent messaging | L | 2026-07-11 | unreleased | Shared authorizer, immutable denial audit, diagnostic evaluation, and gated messaging |
+| [BAZ-012](done/BAZ-012-production-harness-web.md) | Production Templates and Groups web information architecture | L | 2026-07-11 | unreleased | Canonical navigation, projections, redirects, lifecycle shells, and degraded recovery |
+| [BAZ-016](done/BAZ-016-harness-runtime-boundaries.md) | Harness ingress, egress, scheduler, and turn-boundary enforcement | L | 2026-07-11 | unreleased | All runtime boundaries and activation-safe lifecycle linearization |
+| [BAZ-017](done/BAZ-017-harness-web-editor-migration.md) | Production policy editors, local migration, activity, and web QA | L | 2026-07-11 | unreleased | Server-backed editors, conflicts/import/activity, accessibility, and viewport matrix |
+| [BAZ-013](done/BAZ-013-harness-cli-policy-tools.md) | Harness CLI policy show, import/export, and block history | M | 2026-07-11 | unreleased | Revision-safe typed CLI management, portable JSON, diagnostics, and block filters |

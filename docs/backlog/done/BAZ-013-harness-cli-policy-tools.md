@@ -1,7 +1,7 @@
 ---
 id: BAZ-013
 title: Harness CLI policy show, import/export, and block history
-status: todo
+status: done
 size: M (~1 week)
 created: 2026-07-10
 refined: 2026-07-10
@@ -11,7 +11,7 @@ note: Typed CLI management over BAZ-010/011 Team-template and Group-policy APIs.
 
 # BAZ-013 - Harness CLI policy show, import/export, and block history
 
-**Status:** Todo. Ready to pull after BAZ-015 and BAZ-011.
+**Status:** Done.
 
 ## User stories
 
@@ -74,3 +74,31 @@ Group.
 - Round-trip export/import fixtures for all four presets and repeated profiles.
 - Validation, dry-run, conflict, non-interactive confirmation, auth, and exit-code tests.
 - Block pagination/filter tests and full CLI build/repository suite.
+
+## As-built (2026-07-11)
+
+- Added `bazilion team list|show|export|import` over canonical Team-template APIs. Export
+  emits version-1 portable JSON with normalized stable slot references and directed edges;
+  it excludes server slot UUIDs, credentials, paths, message bodies, and database-only ids.
+- Added `bazilion group policy show|export|import|diff|evaluate|blocks`, always addressed by
+  Group id. There is no detached live-harness list or identity.
+- Team and Group imports validate before mutation, print resolved roster/policy diffs, offer
+  dry-run, require explicit `--apply`, and use optimistic revisions. Existing Team
+  replacement requires `--expected-revision`; Group documents carry their revision.
+  `--force` refetches, prints the fresh diff, requires
+  `--confirm-current-revision <n>`, and submits that same revision, so a later race still
+  returns 409.
+- Added client-side validation for document kind/version, endpoint kinds, missing and
+  duplicate slots, self edges, duplicate edges, reasoning/layout/display shapes, and Group
+  ownership. Canonical daemon validation remains the second gate.
+- Extended durable block history with source, target, channel, origin, reason, from/to,
+  cursor, and limit filters. CLI evaluation calls the side-effect-free evaluator and sends
+  no message or durable block.
+- Added human tables, stable JSON output, generated shell completion/help, README examples,
+  and documented exit codes: success 0, operational failure 1, validation/confirmation 2,
+  revision conflict 3, and authentication/authorization 4.
+- Focused verification passed 21 tests covering all four preset-shaped round trips,
+  repeated Profiles, validation, dry-run, confirmation, force, stale revisions, auth,
+  output, filters, pagination, completion, and side-effect-free evaluation. Full
+  verification passed 94 files / 734 tests, root and web typechecks, Biome lint (existing
+  warnings only), root and web production builds, and `git diff --check`.

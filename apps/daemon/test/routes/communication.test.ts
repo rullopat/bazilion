@@ -134,4 +134,20 @@ test('authenticated evaluator is side-effect free and block history is filtered 
     { headers: auth },
   )
   expect(((await filtered.json()) as { blocks: unknown[] }).blocks).toEqual([])
+  const matching = await app.request(
+    `/api/groups/default/harness/blocks?source=${a.id}&target=${b.id}&channel=same_group&origin=http_agent_message&reasonCode=no_allow_edge&from=0&to=${Date.now() + 1_000}`,
+    { headers: auth },
+  )
+  expect(((await matching.json()) as { blocks: unknown[] }).blocks).toHaveLength(2)
+  const wrongSource = await app.request('/api/groups/default/harness/blocks?source=missing', {
+    headers: auth,
+  })
+  expect(((await wrongSource.json()) as { blocks: unknown[] }).blocks).toEqual([])
+  expect(
+    (
+      await app.request('/api/groups/default/harness/blocks?from=not-a-time', {
+        headers: auth,
+      })
+    ).status,
+  ).toBe(400)
 })

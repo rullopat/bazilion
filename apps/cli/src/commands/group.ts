@@ -9,6 +9,7 @@ import type {
 import { defineCommand } from 'citty'
 import { createClient } from '../client.ts'
 import { columnize } from '../columnize.ts'
+import { groupPolicyCommand } from './group-policy.ts'
 
 const addCmd = defineCommand({
   meta: {
@@ -189,5 +190,6 @@ export const groupCommand = defineCommand({
     rm: rmCmd,
     'user-md': userMdCmd,
     'topic-format': topicFormatCmd,
+    policy: groupPolicyCommand,
   },
 })

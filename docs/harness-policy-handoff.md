@@ -338,7 +338,9 @@ Prototype state is never silently uploaded/deleted and simulated blocks never im
 7. BAZ-017 flipped the compiled management capability to 1 only after both stories passed; the
    daemon refuses enforcement-on below version 1. No cross-process runtime handshake is
    used because daemon/web ship from the same release.
-8. BAZ-013 adds CLI policy tools; BAZ-014 adds approvals afterward.
+8. **BAZ-013 (M, complete):** revision-safe Team/Group CLI inspection, portable
+   import/export, diagnostics, and filtered block history.
+9. BAZ-014 adds optional approvals afterward.
 
 Legacy API/CLI/URL adapters remain for one complete release after BAZ-017 migration UX.
 Removal needs a separate breaking-change story.
