@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import type { Attachment, ChatFrame } from '@bazilion/api-types'
 import { mergeSecretsIntoEnv, providerStateRepo, resolveAgent } from '../core/index.ts'
 import { spawnWorkerTurn } from '../runtime/index.ts'
@@ -7,6 +8,7 @@ import { resolveAgentApiKey } from './api-key.ts'
 import { saveInputFiles } from './attachments.ts'
 import { isBrowserEnabled, resolveBrowserConfig } from './browser/config.ts'
 import { createBrowserHost } from './browser/host.ts'
+import { authorizeUserIngress, type CommunicationAttempt } from './communication.ts'
 import { getCtx } from './ctx.ts'
 import { resolveMcpForTurn } from './mcp/resolve.ts'
 import { createDbMessagingHost } from './messaging-host.ts'
@@ -22,6 +24,14 @@ interface RunAgentTurnOpts {
    * agent can open/process it.
    */
   attachments?: Attachment[]
+  /** Semantic user-side attempt authorizing this turn before any protected side effect. */
+  authorization?: CommunicationAttempt
+  /** Inbox wake already authorizes every source path atomically while claiming rows. */
+  skipUserIngress?: boolean
+  /** Internal scheduler handoff: lease acquired before its atomic claim. */
+  acquiredLeaseRelease?: () => void
+  /** Scheduler registered the active turn atomically with its durable claim. */
+  alreadyRegistered?: boolean
 }
 
 /**
@@ -43,11 +53,25 @@ export async function* runAgentTurn(
 ): AsyncGenerator<ChatFrame> {
   const { db, paths, authToken } = getCtx()
   const controller = opts.controller ?? new AbortController()
-  const releaseLease = await acquireAgentLifecycleLease(agentId)
+  const authorization = opts.authorization ?? {
+    origin: 'internal_turn',
+    attemptKind: 'turn',
+    attemptId: randomUUID(),
+  }
+  const releaseLease = opts.acquiredLeaseRelease ?? (await acquireAgentLifecycleLease(agentId))
   let agent: ReturnType<typeof resolveAgent>
   try {
     agent = resolveAgent(db, paths, agentId)
-    registerAgent(agentId, controller)
+    if (!opts.alreadyRegistered) {
+      if (!opts.skipUserIngress) {
+        authorizeUserIngress(db, agentId, authorization, () => registerAgent(agentId, controller))
+      } else {
+        registerAgent(agentId, controller)
+      }
+    }
+  } catch (error) {
+    if (opts.alreadyRegistered) unregisterAgent(agentId)
+    throw error
   } finally {
     releaseLease()
   }
@@ -84,7 +108,8 @@ export async function* runAgentTurn(
 
     // Telegram "typing..." indicator while the turn runs. Safe to call even
     // when the agent has no bound topic — mirror.ts checks before firing.
-    mirrorTypingStart(agentId)
+    mirrorTypingStart(agentId, `${authorization.attemptKind}:${authorization.attemptId}:typing`)
+    let mirrorFrameIndex = 0
     for await (const frame of spawnWorkerTurn(
       {
         agent,
@@ -108,7 +133,11 @@ export async function* runAgentTurn(
       // deleted, transient API errors) are logged inside but never bubble
       // here — the turn's own consumers (web chat stream, scheduler, etc.)
       // see every frame regardless of mirror status.
-      void mirrorAgentTurnFrame(agentId, frame).catch((e) => {
+      void mirrorAgentTurnFrame(
+        agentId,
+        frame,
+        `${authorization.attemptKind}:${authorization.attemptId}:${mirrorFrameIndex++}`,
+      ).catch((e) => {
         console.warn(
           `telegram mirror: unexpected error (agent=${agentId}) —`,
           e instanceof Error ? e.message : String(e),

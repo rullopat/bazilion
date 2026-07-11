@@ -22,7 +22,10 @@ test('health exposes the disabled BAZ-012 harness management contract', async ()
   expect(report.harnessManagement).toEqual({
     contractVersion: 0,
     enforcementRequested: false,
+    enforcementActive: false,
     releaseReady: false,
+    degraded: false,
+    decisions: { allowed: 0, denied: 0 },
   })
 })
 
@@ -34,6 +37,8 @@ test('health reports a requested gate without claiming release readiness', async
   }
   expect(report.harnessManagement).toMatchObject({
     enforcementRequested: true,
+    enforcementActive: false,
     releaseReady: false,
+    degraded: true,
   })
 })

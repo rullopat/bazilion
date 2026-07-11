@@ -135,7 +135,7 @@ test('listEnabled filters out disabled rows', () => {
   expect(enabled[0]?.message).toBe('on')
 })
 
-test('listEnabled excludes triggers on archived agents', () => {
+test('listEnabled retains archived targets for terminal scheduler authorization', () => {
   const other = agentRepo.insert(env.db, {
     id: 'a2',
     profileId: 'p',
@@ -162,8 +162,7 @@ test('listEnabled excludes triggers on archived agents', () => {
   })
   agentRepo.archive(env.db, other.id)
   const enabled = triggerRepo.listEnabled(env.db)
-  expect(enabled).toHaveLength(1)
-  expect(enabled[0]?.message).toBe('live')
+  expect(enabled.map((trigger) => trigger.message)).toEqual(['live', 'archived'])
 })
 
 describe('ON DELETE CASCADE', () => {

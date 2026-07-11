@@ -19,10 +19,12 @@
 
 import type { Attachment } from '@bazilion/api-types'
 import { runAgentTurn } from '../agent-turn.ts'
+import type { CommunicationAttempt } from '../communication.ts'
 
 interface QueueItem {
   text: string
   attachments: Attachment[]
+  authorization: CommunicationAttempt
 }
 
 const _queues = new Map<string, QueueItem[]>()
@@ -37,9 +39,14 @@ export function enqueueAgentMessage(
   agentId: string,
   text: string,
   attachments: Attachment[] = [],
+  authorization: CommunicationAttempt = {
+    origin: 'telegram_agent_topic',
+    attemptKind: 'telegram_ingress',
+    attemptId: `legacy:${agentId}:${Date.now()}`,
+  },
 ): void {
   const q = _queues.get(agentId) ?? []
-  q.push({ text, attachments })
+  q.push({ text, attachments, authorization })
   _queues.set(agentId, q)
   ensureDrainStarted(agentId)
 }
@@ -77,7 +84,11 @@ async function drainLoop(agentId: string): Promise<void> {
     const attachments = q.flatMap((i) => i.attachments)
     _queues.set(agentId, [])
     try {
-      for await (const _frame of runAgentTurn(agentId, message, { attachments })) {
+      const batchAttempt = q[0]?.authorization
+      for await (const _frame of runAgentTurn(agentId, message, {
+        attachments,
+        ...(batchAttempt ? { authorization: batchAttempt } : {}),
+      })) {
         // Mirror handles the assistant's reply via the runAgentTurn frame
         // hook; we just need to drain the iterator so the worker doesn't
         // back up.

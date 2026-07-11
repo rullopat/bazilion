@@ -9,6 +9,7 @@ import {
   runMigrations,
   webTokenRepo,
 } from '../core/index.ts'
+import { assertHarnessEnforcementReleaseReady } from './harness-contract.ts'
 import { startScheduler } from './scheduler.ts'
 
 let _db: BazilionDb | null = null
@@ -78,6 +79,7 @@ function bootstrap(paths: Paths): { db: BazilionDb; authToken: string } {
 export function getCtx(): DaemonCtx {
   if (!_paths) _paths = resolvePaths()
   if (!_db || _authToken === null) {
+    assertHarnessEnforcementReleaseReady()
     const result = bootstrap(_paths)
     _db = result.db
     _authToken = result.authToken

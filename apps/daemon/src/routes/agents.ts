@@ -6,6 +6,7 @@
 // all share `/api/agents/:id/...` and benefit from being adjacent — e.g. the
 // chat streaming endpoint and chat/compact next to each other.
 
+import { randomUUID } from 'node:crypto'
 import { existsSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import {
@@ -59,7 +60,12 @@ import { runAgentLifecycleMutation } from '../lib/agent-lifecycle-lease.ts'
 import { runAgentTurn } from '../lib/agent-turn.ts'
 import { resolveAgentApiKey } from '../lib/api-key.ts'
 import { closeBrowserSession } from '../lib/browser/pool.ts'
-import { CommunicationDeniedError, sendAgentMessage } from '../lib/communication.ts'
+import {
+  authorizeHttpChatFrame,
+  authorizeUserIngress,
+  CommunicationDeniedError,
+  sendAgentMessage,
+} from '../lib/communication.ts'
 import { validateCron } from '../lib/cron.ts'
 import { getCtx } from '../lib/ctx.ts'
 import { createDbMessagingHost } from '../lib/messaging-host.ts'
@@ -749,11 +755,44 @@ agentsRouter.post('/:id/chat', async (c) => {
     return c.json({ error: 'message or an attachment is required' }, 400)
   }
 
+  const requestAttemptId = c.req.header('x-request-id') ?? randomUUID()
+  try {
+    authorizeUserIngress(db, id, {
+      origin: 'http_chat',
+      attemptKind: 'http_chat_ingress',
+      attemptId: requestAttemptId,
+    })
+  } catch (error) {
+    if (!(error instanceof CommunicationDeniedError)) throw error
+    return c.json(
+      {
+        code: 'communication_denied',
+        decision: error.result.decision,
+        channel: error.result.channel,
+        reasonCode: error.result.reasonCode,
+        reason: error.result.reason,
+        policyRefs: error.result.policyRefs,
+        attemptKind: error.attemptKind,
+        attemptId: error.attemptId,
+      },
+      403,
+    )
+  }
   const stream = new ReadableStream({
     async start(controller) {
       const encoder = new TextEncoder()
+      let frameIndex = 0
       try {
-        for await (const frame of runAgentTurn(id, message, { attachments })) {
+        for await (const frame of runAgentTurn(id, message, {
+          attachments,
+          authorization: {
+            origin: 'http_chat',
+            attemptKind: 'http_chat_ingress',
+            attemptId: requestAttemptId,
+          },
+        })) {
+          authorizeHttpChatFrame(db, id, requestAttemptId, frameIndex, frame)
+          frameIndex++
           try {
             controller.enqueue(encoder.encode(`${JSON.stringify(frame)}\n`))
           } catch {
@@ -761,10 +800,17 @@ agentsRouter.post('/:id/chat', async (c) => {
           }
         }
       } catch (err) {
+        const error =
+          err instanceof CommunicationDeniedError
+            ? JSON.stringify({
+                code: 'communication_denied',
+                reasonCode: err.result.reasonCode,
+                channel: err.result.channel,
+                policyRefs: err.result.policyRefs,
+              })
+            : (err as Error).message
         try {
-          controller.enqueue(
-            encoder.encode(`${JSON.stringify({ kind: 'fatal', error: (err as Error).message })}\n`),
-          )
+          controller.enqueue(encoder.encode(`${JSON.stringify({ kind: 'fatal', error })}\n`))
         } catch {}
       }
       try {

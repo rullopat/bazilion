@@ -81,7 +81,7 @@ export function listEnabled(db: BazilionDb): AgentTrigger[] {
     .query<RawTrigger, []>(
       `SELECT t.* FROM agent_triggers t
          JOIN agents a ON a.id = t.agent_id
-         WHERE t.enabled = 1 AND a.status != 'archived'
+         WHERE t.enabled = 1
          ORDER BY t.created_at ASC`,
     )
     .all()

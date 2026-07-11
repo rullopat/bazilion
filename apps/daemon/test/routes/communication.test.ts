@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
@@ -15,7 +15,7 @@ beforeEach(() => {
   home = mkdtempSync(join(tmpdir(), 'bazilion-communication-route-'))
   process.env.BAZILION_HOME = home
   process.env.BAZILION_SCHEDULER = 'off'
-  process.env.BAZILION_HARNESS_ENFORCEMENT = 'on'
+  process.env.BAZILION_HARNESS_ENFORCEMENT = 'off'
   vi.resetModules()
 })
 
@@ -39,6 +39,7 @@ test('authenticated evaluator is side-effect free and block history is filtered 
     await import('../../src/core/index.ts')
   const { getCtx } = await import('../../src/lib/ctx.ts')
   const ctx = getCtx()
+  process.env.BAZILION_HARNESS_ENFORCEMENT = 'on'
   providerStateRepo.setEnabled(ctx.db, 'lmstudio', true)
   providerModelRepo.replace(ctx.db, 'lmstudio', ['model'])
   createProfile(ctx.db, ctx.paths, { id: 'p', defaultModel: 'm' })
@@ -76,6 +77,26 @@ test('authenticated evaluator is side-effect free and block history is filtered 
     ctx.db.raw.query<{ count: number }, []>('SELECT COUNT(*) count FROM harness_block_events').get()
       ?.count,
   ).toBe(0)
+
+  const deniedChat = await app.request(`/api/agents/${b.id}/chat`, {
+    method: 'POST',
+    headers: { ...auth, 'x-request-id': 'chat-denied' },
+    body: JSON.stringify({
+      message: 'private prompt',
+      attachments: [{ name: 'secret.txt', mimeType: 'text/plain', data: 'c2VjcmV0' }],
+    }),
+  })
+  expect(deniedChat.status).toBe(403)
+  expect(await deniedChat.json()).toMatchObject({
+    code: 'communication_denied',
+    reasonCode: 'no_allow_edge',
+    attemptKind: 'http_chat_ingress',
+    attemptId: 'chat-denied',
+  })
+  expect(existsSync(join(b.dir, 'uploads'))).toBe(false)
+  const history = await app.request(`/api/agents/${b.id}/sessions/messages`, { headers: auth })
+  expect(history.status).toBe(200)
+  expect(await history.json()).toMatchObject({ messages: [] })
 
   for (const id of ['one', 'two']) {
     const response = await app.request(`/api/agents/${b.id}/messages`, {

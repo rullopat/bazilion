@@ -57,6 +57,14 @@ Lifecycle entry points submit BAZ-015 revisions/placements, degraded projections
 visibly without local fallback, and health reports management contract version 0 with
 release readiness false until BAZ-017.
 
+BAZ-016 is complete and merged-ready with enforcement deliberately disabled. HTTP and
+Telegram ingress authorize before protected persistence/queue/start effects; every Agent
+output frame or transport item reauthorizes at final egress; scheduler occurrences and
+inbox rows use atomic current-policy claims under the shared lifecycle lease. Health exposes
+contract/readiness/degraded state and decision counters. The compiled management contract
+remains version 0, startup refuses an enforcement-on configuration, and BAZ-017 alone may
+raise it to version 1 after recovery/editor migration and release acceptance pass.
+
 ## Cardinality and retained source model
 
 - Profile `1 -> 0..*` Team slots and `1 -> 0..*` Agents; optional defaults are `1 -> 0..1`.
