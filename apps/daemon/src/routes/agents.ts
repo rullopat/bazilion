@@ -37,9 +37,11 @@ import {
   deleteAgent,
   discoverSkills,
   groupRepo,
+  liveHarnessRepo,
   loadIdentityFromFile,
   mergeSecretsIntoEnv,
   messageRepo,
+  moveAgentCanonical,
   moveAgentCompatibility,
   parseSkillFile,
   providerStateRepo,
@@ -141,6 +143,23 @@ agentsRouter.post('/', async (c) => {
       : typeof raw.group === 'string' && raw.group
         ? (raw.group as string)
         : undefined
+  const groupExpectedRevision =
+    typeof raw.groupExpectedRevision === 'number' && Number.isInteger(raw.groupExpectedRevision)
+      ? raw.groupExpectedRevision
+      : undefined
+  const placement =
+    raw.placement === 'isolated' || raw.placement === 'open' || raw.placement === 'profile_defaults'
+      ? raw.placement
+      : undefined
+  if (
+    (Object.hasOwn(raw, 'groupExpectedRevision') || Object.hasOwn(raw, 'placement')) &&
+    (!groupExpectedRevision || !placement)
+  ) {
+    return c.json(
+      { error: 'groupExpectedRevision and placement are required', code: 'placement_required' },
+      400,
+    )
+  }
   let reasoningLevel: ReasoningLevel | undefined
   if (typeof raw.reasoningLevel === 'string') {
     if (!REASONING_LEVELS.includes(raw.reasoningLevel as ReasoningLevel)) {
@@ -157,21 +176,30 @@ agentsRouter.post('/', async (c) => {
       modelOverride: model,
       reasoningLevel,
       groupId,
+      groupExpectedRevision,
+      placement,
     })
     notifyDirectoryDirty()
+    if (groupExpectedRevision && placement) {
+      return c.json({ agent, group: liveHarnessRepo.detail(db, agent.groupId) }, 201)
+    }
     return c.json(agent, 201)
   } catch (err) {
     const message = (err as Error).message
     const conflict =
-      message.startsWith('placement_required') || message.startsWith('group_policy_invalid')
+      message.startsWith('placement_required') ||
+      message.startsWith('group_policy_invalid') ||
+      message.startsWith('group_revision_conflict')
     return c.json(
       {
         error: message,
         ...(message.startsWith('placement_required')
           ? { code: 'placement_required' }
-          : message.startsWith('group_policy_invalid')
-            ? { code: 'group_policy_invalid' }
-            : {}),
+          : message.startsWith('group_revision_conflict')
+            ? { code: 'group_revision_conflict' }
+            : message.startsWith('group_policy_invalid')
+              ? { code: 'group_policy_invalid' }
+              : {}),
       },
       conflict ? 409 : 400,
     )
@@ -252,7 +280,15 @@ agentsRouter.delete('/:id', async (c) => {
   const id = agentRepo.resolveId(db, c.req.param('id'))
   if (!id) return c.json({ error: `agent not found: ${c.req.param('id')}` }, 404)
   try {
-    await runAgentLifecycleMutation(id, () => deleteAgent(db, id))
+    const revisionParam = c.req.query('expectedGroupRevision')
+    const expectedGroupRevision = revisionParam ? Number.parseInt(revisionParam, 10) : undefined
+    if (
+      revisionParam &&
+      (!Number.isInteger(expectedGroupRevision) || (expectedGroupRevision ?? 0) < 1)
+    ) {
+      return c.json({ error: 'expectedGroupRevision must be a positive integer' }, 400)
+    }
+    await runAgentLifecycleMutation(id, () => deleteAgent(db, id, expectedGroupRevision))
     // Best-effort teardown after the mutation wins the lifecycle lease. An
     // active-turn rejection must not close resources owned by that turn.
     void closeBrowserSession(id).catch(() => {})
@@ -267,12 +303,15 @@ agentsRouter.delete('/:id', async (c) => {
           ? { code: 'agent_turn_active' }
           : message.startsWith('placement_required')
             ? { code: 'revision_required' }
-            : message.startsWith('group_policy_invalid')
-              ? { code: 'group_policy_invalid' }
-              : {}),
+            : message.startsWith('group_revision_conflict')
+              ? { code: 'group_revision_conflict' }
+              : message.startsWith('group_policy_invalid')
+                ? { code: 'group_policy_invalid' }
+                : {}),
       },
       message.startsWith('agent_turn_active') ||
         message.startsWith('placement_required') ||
+        message.startsWith('group_revision_conflict') ||
         message.startsWith('group_policy_invalid')
         ? 409
         : 400,
@@ -377,7 +416,9 @@ agentsRouter.delete('/:id/telegram/binding', (c) => {
 // ─── Group move ──────────────────────────────────────────────────────────
 
 agentsRouter.patch('/:id/group', async (c) => {
-  const body = (await c.req.json().catch(() => null)) as MoveAgentRequest | null
+  const body = (await c.req.json().catch(() => null)) as
+    | (MoveAgentRequest & Record<string, unknown>)
+    | null
   if (!body || typeof body.groupId !== 'string' || !body.groupId) {
     return c.json({ error: 'groupId (string) is required' }, 400)
   }
@@ -391,18 +432,60 @@ agentsRouter.patch('/:id/group', async (c) => {
   if (!groupRepo.get(db, body.groupId, paths)) {
     return c.json({ error: `group not found: ${body.groupId}` }, 404)
   }
+  const canonical =
+    Object.hasOwn(body, 'sourceExpectedRevision') ||
+    Object.hasOwn(body, 'destinationExpectedRevision') ||
+    Object.hasOwn(body, 'placement')
   try {
-    await runAgentLifecycleMutation(resolved.agent.id, () =>
-      moveAgentCompatibility(db, paths, resolved.agent.id, body.groupId),
-    )
+    if (canonical) {
+      const sourceExpectedRevision = body.sourceExpectedRevision
+      const destinationExpectedRevision = body.destinationExpectedRevision
+      const placement = body.placement
+      if (
+        typeof sourceExpectedRevision !== 'number' ||
+        !Number.isInteger(sourceExpectedRevision) ||
+        typeof destinationExpectedRevision !== 'number' ||
+        !Number.isInteger(destinationExpectedRevision) ||
+        (placement !== 'isolated' && placement !== 'open' && placement !== 'profile_defaults')
+      ) {
+        return c.json(
+          {
+            error:
+              'sourceExpectedRevision, destinationExpectedRevision, and placement are required',
+            code: 'placement_required',
+          },
+          400,
+        )
+      }
+      await runAgentLifecycleMutation(resolved.agent.id, () =>
+        moveAgentCanonical(db, paths, resolved.agent.id, {
+          destinationGroupId: body.groupId,
+          sourceExpectedRevision,
+          destinationExpectedRevision,
+          placement,
+        }),
+      )
+    } else {
+      await runAgentLifecycleMutation(resolved.agent.id, () =>
+        moveAgentCompatibility(db, paths, resolved.agent.id, body.groupId),
+      )
+    }
     notifyDirectoryDirty()
+    if (canonical) {
+      return c.json({
+        agent: resolveAgent(db, paths, resolved.agent.id),
+        sourceGroup: liveHarnessRepo.detail(db, resolved.group.id),
+        destinationGroup: liveHarnessRepo.detail(db, body.groupId),
+      })
+    }
     return c.json(resolveAgent(db, paths, resolved.agent.id))
   } catch (err) {
     const message = (err as Error).message
     const conflict =
       message.startsWith('agent_turn_active') ||
       message.startsWith('placement_required') ||
-      message.startsWith('group_policy_invalid')
+      message.startsWith('group_policy_invalid') ||
+      message.includes('group_revision_conflict')
     return c.json(
       {
         error: message,
@@ -410,9 +493,11 @@ agentsRouter.patch('/:id/group', async (c) => {
           ? { code: 'agent_turn_active' }
           : message.startsWith('placement_required')
             ? { code: 'placement_required' }
-            : message.startsWith('group_policy_invalid')
-              ? { code: 'group_policy_invalid' }
-              : {}),
+            : message.includes('group_revision_conflict')
+              ? { code: message.split(':')[0] }
+              : message.startsWith('group_policy_invalid')
+                ? { code: 'group_policy_invalid' }
+                : {}),
       },
       conflict ? 409 : 400,
     )

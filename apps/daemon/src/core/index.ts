@@ -1,6 +1,6 @@
 export { archiveAgent } from './agent/archive.ts'
 export { deleteAgent } from './agent/delete.ts'
-export { moveAgentCompatibility } from './agent/move.ts'
+export { moveAgentCanonical, moveAgentCompatibility } from './agent/move.ts'
 export { resolveAgent } from './agent/resolve.ts'
 export type { SpawnAgentInput } from './agent/spawn.ts'
 export { spawnAgent } from './agent/spawn.ts'
@@ -17,6 +17,22 @@ export { runMigrations } from './db/migrate.ts'
 export { deleteGroup } from './group/delete.ts'
 export type { RegisterGroupInput } from './group/register.ts'
 export { registerGroup } from './group/register.ts'
+export {
+  type AdoptHarnessTemplateInput,
+  adoptHarnessTemplate,
+} from './harness/adopt.ts'
+export {
+  diffHarness,
+  type HarnessDiff,
+  saveHarnessAsTemplate,
+  updateHarnessSource,
+} from './harness/source.ts'
+export {
+  SpawnHarnessTemplateError,
+  type SpawnHarnessTemplateInput,
+  type SpawnHarnessTemplateResult,
+  spawnHarnessTemplate,
+} from './harness/spawn.ts'
 export type { Paths } from './paths.ts'
 export { resolvePaths } from './paths.ts'
 export type { CreateProfileInput } from './profile/create.ts'

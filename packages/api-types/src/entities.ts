@@ -53,6 +53,7 @@ export interface ProfileCommunicationDefaults {
 }
 
 export type HarnessMembershipMode = 'compatibility_open' | 'explicit'
+export type HarnessPlacement = 'isolated' | 'open' | 'profile_defaults' | 'template_snapshot'
 export type TemplateEndpointKind = 'user' | 'outside_group' | 'slot'
 export type LiveEndpointKind = 'user' | 'outside_group' | 'agent'
 
@@ -152,6 +153,12 @@ export interface LiveHarnessDetail {
   instantiations: TemplateInstantiation[]
   bindings: SourceSlotBinding[]
   agentState: LiveAgentState[]
+}
+
+export interface ResolvedGroupHarness extends LiveHarnessDetail {
+  baseline: TemplateInstantiation | null
+  /** Canonical membership projection; includes archived Agents. */
+  members: Agent[]
 }
 
 export type AgentStatus = 'idle' | 'running' | 'archived'

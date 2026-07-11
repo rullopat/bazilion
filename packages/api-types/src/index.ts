@@ -12,6 +12,7 @@ export type {
   AgentTrigger,
   Group,
   HarnessMembershipMode,
+  HarnessPlacement,
   HarnessTemplate,
   HarnessTemplateDetail,
   HarnessTemplateEdge,
@@ -39,6 +40,7 @@ export type {
   ProfilePeerDefault,
   ReasoningLevel,
   ResolvedAgent,
+  ResolvedGroupHarness,
   SkillMeta,
   SkillsMode,
   SourceSlotBinding,
@@ -66,11 +68,14 @@ export type { MemoryEntry, MemoryHit } from './memory.ts'
 import type {
   Agent,
   AgentTrigger,
+  HarnessPlacement,
+  LiveEndpointKind,
   Message,
   ProfileCommunicationDefaults,
   ReasoningLevel,
   TelegramAclRole,
   TelegramMirrorMode,
+  TemplateEndpointKind,
   WebToken,
 } from './entities.ts'
 
@@ -93,6 +98,9 @@ export interface SpawnAgentRequest {
   reasoningLevel?: ReasoningLevel
   /** Group the new agent joins. Falls back to the seeded 'default' group when omitted. */
   groupId?: string
+  /** Canonical explicit placement requires both fields; omission is the one-release adapter. */
+  groupExpectedRevision?: number
+  placement?: Exclude<HarnessPlacement, 'template_snapshot'>
 }
 
 export interface UpdateAgentRequest {
@@ -118,6 +126,101 @@ export interface AttachSkillRequest {
 /** Body for `PATCH /api/agents/:id/group`: move the agent to a new group. */
 export interface MoveAgentRequest {
   groupId: string
+  /** Canonical move requires all three fields; omission is the one-release adapter. */
+  sourceExpectedRevision?: number
+  destinationExpectedRevision?: number
+  placement?: Exclude<HarnessPlacement, 'template_snapshot'>
+}
+
+// --- canonical Team templates and Group policy ---
+
+export interface HarnessTemplateSlotInput {
+  /** Existing stable slot. Omit for a new server-allocated slot. */
+  slotId?: string
+  /** Request-local reference used by edges for a new slot. */
+  clientKey?: string
+  profileId: string
+  agentName: string
+  modelOverride?: string | null
+  reasoningLevel?: ReasoningLevel | null
+  layoutPosition?: { x: number; y: number } | null
+  display?: Record<string, unknown> | null
+}
+
+export interface HarnessTemplateEdgeInput {
+  sourceKind: TemplateEndpointKind
+  sourceId?: string | null
+  targetKind: TemplateEndpointKind
+  targetId?: string | null
+}
+
+export interface CreateHarnessTemplateRequest {
+  id: string
+  name: string
+  userMd?: string | null
+}
+
+export interface UpdateHarnessTemplateRequest {
+  expectedRevision: number
+  name?: string
+  userMd?: string | null
+}
+
+export interface PutHarnessTemplateDefinitionRequest {
+  expectedRevision: number
+  slots: HarnessTemplateSlotInput[]
+  edges: HarnessTemplateEdgeInput[]
+}
+
+export interface CloneHarnessTemplateRequest {
+  templateExpectedRevision: number
+  id: string
+  name?: string
+}
+
+export interface SpawnHarnessTemplateRequest {
+  templateExpectedRevision: number
+  groupId: string
+  groupExpectedRevision?: number
+  mode: 'initialize' | 'append'
+  userMd?: string
+}
+
+export interface LiveHarnessEdgeInput {
+  sourceKind: LiveEndpointKind
+  sourceId?: string | null
+  targetKind: LiveEndpointKind
+  targetId?: string | null
+}
+
+export interface PutGroupHarnessPolicyRequest {
+  expectedRevision: number
+  edges: LiveHarnessEdgeInput[]
+}
+
+export interface AdoptHarnessTemplateRequest {
+  groupExpectedRevision: number
+  templateId: string
+  templateExpectedRevision: number
+  slotMappings: Array<{ slotId: string; agentId: string }>
+  remainingPlacements: Array<{
+    agentId: string
+    placement: Exclude<HarnessPlacement, 'template_snapshot'>
+  }>
+  previewEdges: LiveHarnessEdgeInput[]
+}
+
+export interface UpdateHarnessSourceRequest {
+  groupExpectedRevision: number
+  templateExpectedRevision: number
+  includeAgentIds: string[]
+}
+
+export interface SaveHarnessAsTemplateRequest {
+  expectedRevision: number
+  id: string
+  name: string
+  userMd?: string | null
 }
 
 export interface SendMessageRequest {

@@ -39,10 +39,13 @@ archive, unarchive, and delete through cancellation settlement. BAZ-015 still ow
 canonical Team and Group-policy API endpoints; BAZ-010 exposes no new unpaired management
 surface.
 
-BAZ-015 starts from these shipped repositories and wire types. It still owns every custom
-or explicit mutation: Team definition writes, live policy replacement, placement,
-adoption/re-baselining, clone, diff, update-source, save-as-template, and canonical
-lifecycle revision payloads. BAZ-010 adds no authorizer bypass or runtime enforcement.
+BAZ-015 is complete. The shipped canonical routes now own every custom or explicit
+mutation: Team definition writes, live policy replacement, placement,
+adoption/re-baselining, clone, semantic diff, update-source, save-as-template, and
+canonical lifecycle revision payloads. Every canonical membership/policy mutation enters
+explicit mode permanently, while the one-release omitted-field adapters remain bounded to
+exact Open compatibility state. BAZ-010/015 add no authorizer bypass or runtime
+enforcement.
 
 ## Cardinality and retained source model
 
@@ -299,7 +302,8 @@ Prototype state is never silently uploaded/deleted and simulated blocks never im
 
 1. **BAZ-010 (L, complete):** canonical storage, immutable revisions, atomic migration,
    exact-Open adapters, and the shared lifecycle/turn lease.
-2. **BAZ-015 (L):** custom revisioned Team/Group policy APIs and atomic Agent lifecycle.
+2. **BAZ-015 (L, complete):** custom revisioned Team/Group policy APIs and atomic Agent
+   lifecycle.
 3. **BAZ-011 (L):** authorizer/audit/diagnostics and gated Agent messaging; gate defaults
    off from first merge.
 4. **BAZ-012 (L):** canonical web IA/projections/redirects/lifecycle and recovery shell.
