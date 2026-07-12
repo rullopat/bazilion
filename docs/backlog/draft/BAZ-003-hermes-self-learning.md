@@ -9,7 +9,7 @@ note: Pattern is borrowed from Nous Research's hermes-agent (MIT, github.com/Nou
 
 # BAZ-003 — Hermes-style self-learning loop — background reviewer + skill self-editing
 
-**Status:** Backlog (draft). Bazilion agents today are amnesiac across the learning axis — they write to per-group qmd memory and per-agent `IDENTITY.md` while answering the user, but nothing wakes them up to review their own past turns and update either store with lessons. Nous Research shipped `hermes-agent` in Feb 2026 ([github.com/NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent), MIT, model-agnostic) around a single load-bearing idea — **"a closed learning loop"**: after each turn the agent is briefly forked into a "reviewer" copy of itself that reads the transcript and edits its own markdown memory and skill files via the same tool API the main agent uses. Same model, different prompt, write access to procedural memory. No fine-tuning, no embeddings, no separate critic model — just structured prompt-and-skill-library editing as a first-class tool call. Bazilion already has every primitive needed (worker subprocess, `agent_triggers` scheduler at [apps/daemon/src/lib/scheduler.ts](../../../apps/daemon/src/lib/scheduler.ts), qmd memory at `groups/<slug>/memory/`, `home_write` tool, pi session JSONL, `MessagingHost` IPC). This BAZ wires those primitives into the same loop, scoped tightly so v1 ships in a week.
+**Status:** Backlog (draft). Bazilion agents today are amnesiac across the learning axis — they write to per-team qmd memory and per-agent `IDENTITY.md` while answering the user, but nothing wakes them up to review their own past turns and update either store with lessons. Nous Research shipped `hermes-agent` in Feb 2026 ([github.com/NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent), MIT, model-agnostic) around a single load-bearing idea — **"a closed learning loop"**: after each turn the agent is briefly forked into a "reviewer" copy of itself that reads the transcript and edits its own markdown memory and skill files via the same tool API the main agent uses. Same model, different prompt, write access to procedural memory. No fine-tuning, no embeddings, no separate critic model — just structured prompt-and-skill-library editing as a first-class tool call. Bazilion already has every primitive needed (worker subprocess, `agent_triggers` scheduler at [apps/daemon/src/lib/scheduler.ts](../../../apps/daemon/src/lib/scheduler.ts), qmd memory at `teams/<slug>/memory/`, `home_write` tool, pi session JSONL, `MessagingHost` IPC). This BAZ wires those primitives into the same loop, scoped tightly so v1 ships in a week.
 
 **Dependency:** None. Sits on top of the existing scheduler + tools + session-transcript layer.
 
@@ -35,14 +35,14 @@ And the **anti-pattern blocklist** (same file) is what makes the loop survivable
 
 ## User stories
 
-- **As an operator running a long-lived agent across many sessions**, I want the agent to wake itself up periodically and distill its own mistakes and successful patterns into durable lessons in its `IDENTITY.md` and in the group's shared memory, so repeated work surfaces less repeated failure and the agent visibly gets better at recurring tasks instead of forgetting everything between sessions.
+- **As an operator running a long-lived agent across many sessions**, I want the agent to wake itself up periodically and distill its own mistakes and successful patterns into durable lessons in its `IDENTITY.md` and in the team's shared memory, so repeated work surfaces less repeated failure and the agent visibly gets better at recurring tasks instead of forgetting everything between sessions.
 - **As an operator who has corrected the same stylistic mistake three times this week** ("no, use single quotes", "no, no trailing semicolons", "stop adding emojis"), I want the agent to notice the pattern and write the rule into its own identity file without me running `bazilion agent edit <id> IDENTITY.md` manually each time.
 - **As an operator skeptical of "the agent thinks it's doing great when it isn't"**, I want a human-in-the-loop review surface that shows me every lesson the reviewer produced, so I can promote, edit, or trash each one before it ossifies — instead of finding out three weeks later that the agent built a long list of misleading "lessons" that it now cites against itself.
 - **As an operator who's seen this play out in hermes-agent and wants the *good* parts without the failure mode**, I want the v1 to ship the background-reviewer loop *with* the anti-pattern blocklist baked into the prompt and *with* the human-approval gate enabled by default, with the auto-promote behavior available behind a flag only.
 
 ## Goal
 
-Ship an MVP of the Hermes loop scoped to **one job**: after every N turns of conversation, fork the agent into a reviewer that reads the recent transcript, identifies high-signal lessons (style corrections, repeated tool errors, repeated user corrections), and proposes 0–5 lesson edits in a strict format. The lessons land in a **pending review queue** that the operator approves/edits/rejects from CLI + web UI. Approved lessons get written to `IDENTITY.md` (private) or to group qmd memory (shared) via the existing tool surface.
+Ship an MVP of the Hermes loop scoped to **one job**: after every N turns of conversation, fork the agent into a reviewer that reads the recent transcript, identifies high-signal lessons (style corrections, repeated tool errors, repeated user corrections), and proposes 0–5 lesson edits in a strict format. The lessons land in a **pending review queue** that the operator approves/edits/rejects from CLI + web UI. Approved lessons get written to `IDENTITY.md` (private) or to team qmd memory (shared) via the existing tool surface.
 
 **MVP explicitly does NOT include** runtime skill authoring (the `skill_manage` equivalent), curator-style long-horizon GC, FTS5 cross-session search, or Honcho user modeling. Each of those is a separate follow-on BAZ — see "Out of scope" below.
 
@@ -52,8 +52,8 @@ Ship an MVP of the Hermes loop scoped to **one job**: after every N turns of con
 
 Three reasons converging:
 
-1. **The primitives just landed.** `agent_triggers` + scheduler ([apps/daemon/src/lib/scheduler.ts](../../../apps/daemon/src/lib/scheduler.ts)) shipped recently; per-group qmd memory shipped; the worker subprocess can be re-invoked with synthetic input (`runAgentTurn` is parameterized). The cost of adding the loop today is wiring, not new infrastructure.
-2. **OpenClaw lineage matters for positioning.** Bazilion documents the [OpenClaw skill model](../openclaw-reference.md) as its skill spec; hermes-agent's own README calls itself "the only agent with a built-in learning loop" and includes a `hermes claw migrate` command importing `~/.openclaw/` state. Bazilion already speaks the same skill standard ([agentskills.io](https://agentskills.io)) — there's a credible "we have the OpenClaw model AND a learning loop too" story that lands flat without this feature.
+1. **The primitives just landed.** `agent_triggers` + scheduler ([apps/daemon/src/lib/scheduler.ts](../../../apps/daemon/src/lib/scheduler.ts)) shipped recently; per-team qmd memory shipped; the worker subprocess can be re-invoked with synthetic input (`runAgentTurn` is parameterized). The cost of adding the loop today is wiring, not new infrastructure.
+2. **OpenClaw lineage matters for positioning.** Bazilion documents the [OpenClaw skill model](../../openclaw-reference.md) as its skill spec; hermes-agent's own README calls itself "the only agent with a built-in learning loop" and includes a `hermes claw migrate` command importing `~/.openclaw/` state. Bazilion already speaks the same skill standard ([agentskills.io](https://agentskills.io)) — there's a credible "we have the OpenClaw model AND a learning loop too" story that lands flat without this feature.
 3. **Known failure mode is documented.** Independent reviewers have already surfaced where hermes-agent's self-grading goes wrong (over-optimistic, hardens transient errors into refusals). Building it after that's in the wild means we can ship the v1 with the human-approval gate enabled by default — we don't have to discover the failure mode ourselves.
 
 ## Scope (MVP)
@@ -84,7 +84,7 @@ A new function in [apps/daemon/src/lib/agent-turn.ts](../../../apps/daemon/src/l
 
 A new file `apps/daemon/src/runtime/session/prompts/review.md` — borrowed conceptually from hermes-agent's `_MEMORY_REVIEW_PROMPT` + `_SKILL_REVIEW_PROMPT` but trimmed to Bazilion's shape. Bakes in the anti-pattern blocklist verbatim (quoted in the research section above) — that's the load-bearing safety rail. Encodes the private-vs-shared classifier:
 
-> "Private (→ your own IDENTITY.md): persona, voice, tone, format preferences, your own preferred working style, anything that reflects who *you* are. Shared (→ group memory): domain facts about the project, procedures that any teammate could reuse, gotchas about the codebase or tools."
+> "Private (→ your own IDENTITY.md): persona, voice, tone, format preferences, your own preferred working style, anything that reflects who *you* are. Shared (→ team memory): domain facts about the project, procedures that any teammate could reuse, gotchas about the codebase or tools."
 
 ### Data model
 
@@ -121,7 +121,7 @@ CREATE INDEX idx_proposals_agent_status ON agent_lesson_proposals(agent_id, stat
 ### Routes
 
 - `GET /api/agents/:id/lesson-proposals?status=pending` — list pending proposals.
-- `POST /api/agents/:id/lesson-proposals/:proposal_id/approve` — flips status; on private scope, appends a line to a `## Lessons` section in `agents/<id>/IDENTITY.md` (creating the section if absent) via the same file-write path as `home_write`; on shared scope, writes to the group qmd store via `memory_write` tagged `lesson:`.
+- `POST /api/agents/:id/lesson-proposals/:proposal_id/approve` — flips status; on private scope, appends a line to a `## Lessons` section in `agents/<id>/IDENTITY.md` (creating the section if absent) via the same file-write path as `home_write`; on shared scope, writes to the team qmd store via `memory_write` tagged `lesson:`.
 - `POST /api/agents/:id/lesson-proposals/:proposal_id/reject` — sets status to rejected, leaves the row for audit.
 - `PATCH /api/agents/:id/lesson-proposals/:proposal_id` — body `{ text, scope? }` — operator edits before approve.
 - `POST /api/agents/:id/review` — manual one-shot trigger (operator forces a review pass now).
@@ -150,7 +150,7 @@ Each of these is a credible v2 — but landing the MVP without them is the whole
 - **Runtime skill authoring (Voyager-style `skill_manage` tool).** Letting agents draft new `SKILL.md` files at runtime is hermes-agent's signature feature ([tools/skill_manager_tool.py](https://github.com/NousResearch/hermes-agent/blob/main/tools/skill_manager_tool.py)) but it dramatically expands the failure surface — a hallucinated skill loaded into every subsequent agent's system prompt is the worst kind of bug. **v2 BAZ:** "Self-authored skills with promotion gate". Reuses the same proposal queue model — agent proposes a skill, operator promotes from review surface to `~/.bazilion/skills/<name>/`.
 - **Curator / long-horizon GC.** Hermes's `~/.hermes/skills/.usage.json` + `curator.py` 7-day consolidation pass is the right answer eventually, but only after we have enough lessons + skills to need GC. **v2 BAZ:** "Lesson and skill curator". Adds the usage telemetry sidecar + the 7-day consolidation trigger.
 - **FTS5 cross-session search.** Hermes uses SQLite FTS5 over session transcripts for cross-session recall ([tools/session_search_tool.py](https://github.com/NousResearch/hermes-agent/blob/main/tools/session_search_tool.py)). Bazilion's existing qmd memory is BM25 over the *memory* store, not the session JSONLs. **v3 BAZ:** "Session search tool over pi JSONL transcripts".
-- **Dialectic user modeling (Honcho).** Bazilion has per-group USER.md but no auto-update loop. **v3 BAZ:** "Auto-updating USER.md from cross-session observations".
+- **Dialectic user modeling (Honcho).** Bazilion has per-team USER.md but no auto-update loop. **v3 BAZ:** "Auto-updating USER.md from cross-session observations".
 - **Auto-approval mode** (skipping the human gate). Should exist as a per-agent flag eventually for trusted agents on stable tasks. Deliberately *not* the default for MVP — the known failure mode (over-optimistic self-grading) is enough reason to start with the gate on and unlock auto-approval later only for agents that have demonstrated a high accept rate over time.
 - **Reviewer-specific cheaper model.** Hermes pins the curator to an `auxiliary.curator` slot (e.g. `google/gemini-3-flash-preview`). Bazilion's review pass uses the agent's own provider config in MVP. **Small follow-up:** add `agents.review_model_override TEXT` later if cost matters.
 - **Background-thread forking inside the worker.** Hermes literally forks a daemon thread inside the live process. Bazilion's worker subprocess model means each review pass is a separate subprocess via `runAgentTurn`. Slightly more expensive (worker spin-up) but architecturally cleaner — *don't* try to clone hermes's thread-fork pattern, the IPC + worker boundary is the right place to draw the line.
@@ -162,7 +162,7 @@ Each of these is a credible v2 — but landing the MVP without them is the whole
 2. **Scope classifier source of truth.** Does the agent classify private-vs-shared in the proposal itself, or does the human always reclassify at approve time? **Lean: agent proposes, human can flip in the review UI. Track agreement rate as a signal of whether the prompt is calibrated.**
 3. **Where does the `## Lessons` section live in `IDENTITY.md`?** Appended? At a marker like `<!-- bazilion-lessons -->`? **Lean: a marker comment, since `home_write` lets the agent rewrite the whole file and we don't want a runaway rewrite to nuke the lessons section.**
 4. **Cost ceiling.** A review pass on a long agent could read 32 turns × 4K tokens = 128K input tokens. At Opus pricing that's not nothing. Should we hard-cap input tokens (truncate transcript) or input turns (already do, at 32)? **Lean: cap turns at 32 AND total input at ~80K tokens (rough). Surface the cost-per-review in the audit table for operators to monitor.**
-5. **Should approved-private lessons also appear in the group memory?** Sometimes "I learned that *I* prefer X" is also useful for teammates. **Lean: no — keep the private/shared boundary clean. Operator can manually re-classify by editing and re-approving as shared if they think a private lesson generalizes.**
+5. **Should approved-private lessons also appear in the team memory?** Sometimes "I learned that *I* prefer X" is also useful for teammates. **Lean: no — keep the private/shared boundary clean. Operator can manually re-classify by editing and re-approving as shared if they think a private lesson generalizes.**
 6. **Per-turn trigger or per-task-completion trigger?** Hermes uses per-turn counters. Bazilion could plausibly fire only when the agent emits a `final_response`-equivalent event. **Lean: per-turn counter (simpler, matches Hermes); revisit if reviews fire mid-multi-turn-task too often.**
 
 ## Deliverable
@@ -173,7 +173,7 @@ A working end-to-end self-learning loop with the human-approval gate:
 - 0–5 lesson proposals land in `agent_lesson_proposals` with `status='pending'`.
 - Operator visits `/agents/:id/lessons`, sees the proposals, edits one, approves two, rejects one.
 - Approved private lessons appear as new lines in `agents/<id>/IDENTITY.md` under a `## Lessons` section, visible in the agent's next-turn system prompt.
-- Approved shared lessons appear in the group's qmd memory tagged `lesson:`, searchable via `memory_search`.
+- Approved shared lessons appear in the team's qmd memory tagged `lesson:`, searchable via `memory_search`.
 - Operator can disable reviews per-agent (`review_enabled = 0`) and adjust cadence (`review_every_n_turns`).
 
 ## Tests
@@ -183,7 +183,7 @@ A working end-to-end self-learning loop with the human-approval gate:
 - **Integration: review pass produces proposals** — fixture transcript with planted "stop using semicolons" user correction → run reviewer → assert ≥1 pending proposal with scope `private`. Uses a mocked provider that returns a canned `propose_lesson` tool call so the test is deterministic.
 - **Integration: anti-pattern blocklist** — fixture transcript with a *transient* tool error (network timeout that resolved on retry) → run reviewer → assert 0 proposals about "network is broken". This is the load-bearing safety test; the prompt either holds the line or it doesn't.
 - **Integration: approval writes to IDENTITY.md** — approve a private proposal → assert `agents/<id>/IDENTITY.md` contains the line under the `## Lessons` marker, and that the section is created if previously absent.
-- **Integration: approval writes to group memory** — approve a shared proposal → assert a qmd entry tagged `lesson:` exists; `memory_search` returns it.
+- **Integration: approval writes to team memory** — approve a shared proposal → assert a qmd entry tagged `lesson:` exists; `memory_search` returns it.
 - **Integration: edit-then-approve** — PATCH a proposal's text, then approve → asserted-on-disk content matches the edited text, not the original.
 - **Route tests** — full CRUD on proposals (list/approve/reject/edit), manual `/review` trigger.
 - **CLI smoke** — `bazilion agent review <id>` → `bazilion agent lessons <id> --pending` shows what was just produced.
@@ -199,7 +199,7 @@ This BAZ was drafted from three parallel research streams over the hermes-agent 
 
 1. **Repo overview + README** — confirmed elevator pitch ("the only agent with a built-in learning loop"), four-signal model (memory nudges, autonomous skill creation, skills self-improve, FTS5 session search), MIT license, model-agnostic, active dev (last push 2026-05-23). Lineage: explicit OpenClaw successor with `hermes claw migrate` import path.
 2. **Code-level architecture** — confirmed the three-subsystem decomposition (background reviewer, `skill_manage` tool, curator), the daemon-thread fork pattern with credential inheritance, the trigger counter shape (`_turns_since_memory` / `_iters_since_skill`), the auto-deny on approval prompts inside the fork, the storage medium (markdown + SQLite FTS5 + Honcho), the verbatim reflection prompt and anti-pattern blocklist quoted above, the Voyager-style `skill_manage` actions, and the single-agent-with-introspection-forks architecture (plus `delegate_tool` as a separate parallel-subagent primitive that is NOT part of the learning loop).
-3. **Ecosystem context** — confirmed no formal paper, disambiguated Hermes 4 LLM family vs hermes-agent harness, surfaced the over-optimistic self-grading failure mode from independent reviews (autogpt.net), confirmed OpenClaw is the most-frequently-compared system.
+3. **Ecosystem context** — confirmed no formal paper, disambiguated Hermes 4 LLM family vs hermes-agent teamPolicy, surfaced the over-optimistic self-grading failure mode from independent reviews (autogpt.net), confirmed OpenClaw is the most-frequently-compared system.
 
 Key sources:
 

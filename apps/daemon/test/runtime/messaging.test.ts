@@ -15,7 +15,7 @@ import {
   messageRepo,
   openInMemoryDb,
   type Paths,
-  registerGroup,
+  registerTeam,
   resolveAgent,
   resolvePaths,
   runMigrations,
@@ -40,7 +40,7 @@ interface Env {
   home: string
   paths: Paths
   db: BazilionDb
-  groupId: string
+  teamId: string
   cleanup(): void
 }
 
@@ -52,18 +52,18 @@ function makeEnv(): Env {
     paths.agentsDir,
     paths.skillsDir,
     paths.logsDir,
-    paths.groupsDir,
+    paths.teamsDir,
   ]) {
     mkdirSync(d, { recursive: true })
   }
   const db = openInMemoryDb()
   runMigrations(db)
-  const g = registerGroup(db, { id: 'test-group', name: 'test' }, paths)
+  const g = registerTeam(db, { id: 'test-team', name: 'test' }, paths)
   return {
     home,
     paths,
     db,
-    groupId: g.id,
+    teamId: g.id,
     cleanup() {
       db.close()
       rmSync(home, { recursive: true, force: true })
@@ -75,7 +75,7 @@ function makeAgent(env: Env, name: string): ResolvedAgent {
   const a = spawnAgent(env.db, env.paths, {
     profileId: 'p',
     name,
-    groupId: env.groupId,
+    teamId: env.teamId,
   })
   return resolveAgent(env.db, env.paths, a.id)
 }

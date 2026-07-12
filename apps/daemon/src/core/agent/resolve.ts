@@ -4,8 +4,8 @@ import type { BazilionDb } from '../db/client.ts'
 import type { Paths } from '../paths.ts'
 import { loadIdentityFromFile } from '../profile/identity.ts'
 import * as agentRepo from '../repos/agents.ts'
-import * as groupRepo from '../repos/groups.ts'
 import * as profileRepo from '../repos/profiles.ts'
+import * as teamRepo from '../repos/teams.ts'
 
 export function resolveAgent(db: BazilionDb, paths: Paths, agentId: string): ResolvedAgent {
   // `agentRepo.get` accepts either a full UUID or an unambiguous prefix.
@@ -22,9 +22,9 @@ export function resolveAgent(db: BazilionDb, paths: Paths, agentId: string): Res
     throw new Error(`profile not found for agent ${agentId}: ${agent.profileId}`)
   }
 
-  const group = groupRepo.get(db, agent.groupId, paths)
-  if (!group) {
-    throw new Error(`group not found for agent ${agentId}: ${agent.groupId}`)
+  const team = teamRepo.get(db, agent.teamId, paths)
+  if (!team) {
+    throw new Error(`team not found for agent ${agentId}: ${agent.teamId}`)
   }
 
   return {
@@ -32,7 +32,7 @@ export function resolveAgent(db: BazilionDb, paths: Paths, agentId: string): Res
     profile,
     model: agent.modelOverride ?? profile.defaultModel,
     reasoningLevel: agent.reasoningLevel,
-    group,
+    team,
     skills: agentRepo.listAttachedSkills(db, agentId),
   }
 }

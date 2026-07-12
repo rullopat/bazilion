@@ -32,7 +32,7 @@ export const doctorCommand = defineCommand({
         console.log(
           `  ${r.database.activeAgents} active agent(s) (${r.database.totalAgents} total)`,
         )
-        console.log(`  ${r.database.groups} group(s)`)
+        console.log(`  ${r.database.teams} team(s)`)
       } else {
         check('open database', false, r.database.error)
       }

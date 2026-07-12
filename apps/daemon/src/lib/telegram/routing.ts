@@ -142,7 +142,7 @@ export type RouteOutcome =
   | { kind: 'general_redirect'; suppressed: boolean }
   | { kind: 'unknown_topic'; topicId: number }
   | { kind: 'callback_spawn_profile'; profileId: string }
-  | { kind: 'callback_spawn_team'; profileGroupId: string }
+  | { kind: 'callback_spawn_team'; templateId: string }
   | { kind: 'callback_unknown' }
   | { kind: 'non_message' }
   | { kind: 'ignored_bot' }
@@ -171,7 +171,7 @@ export async function routeUpdate(deps: RouterDeps, update: Update): Promise<Rou
   if (m.from?.is_bot) return { kind: 'ignored_bot' }
 
   // Supergroup migration: Telegram fires `migrate_to_chat_id` in the OLD chat
-  // (the one we're configured for) when a basic group is upgraded. Stash the
+  // (the one we're configured for) when a basic team is upgraded. Stash the
   // new id and surface a reconnect prompt — we don't auto-rewrite config from
   // a runtime event (v1 principle); the operator confirms via /reconnect.
   if (typeof m.migrate_to_chat_id === 'number') {
@@ -279,7 +279,7 @@ export async function routeUpdate(deps: RouterDeps, update: Update): Promise<Rou
       if (!(error instanceof CommunicationDeniedError)) throw error
       await deps.api.sendMessage(
         deps.chatId,
-        `Communication blocked by Group policy (${error.result.reasonCode}).`,
+        `Communication blocked by Team policy (${error.result.reasonCode}).`,
         { message_thread_id: threadId },
       )
       return { kind: 'agent_topic', agentId: agent.id, topicId: threadId, queued: false }
@@ -336,7 +336,7 @@ export async function routeUpdate(deps: RouterDeps, update: Update): Promise<Rou
       if (!(error instanceof CommunicationDeniedError)) throw error
       await deps.api.sendMessage(
         deps.chatId,
-        `Communication blocked by Group policy (${error.result.reasonCode}).`,
+        `Communication blocked by Team policy (${error.result.reasonCode}).`,
         { message_thread_id: threadId },
       )
       return { kind: 'agent_topic', agentId: agent.id, topicId: threadId, queued: false }
@@ -518,18 +518,18 @@ async function handleCallbackQuery(deps: RouterDeps, q: CallbackQuery): Promise<
   // don't know what the callback is for.
   const data = q.data ?? ''
 
-  // Spawn-team picker: tapping a profile group spawns the whole team
+  // Spawn-team picker: tapping a profile team spawns the whole team
   // immediately (no name step — names come from the template).
   if (data.startsWith(SPAWN_TEAM_CALLBACK_PREFIX)) {
     await deps.api.answerCallbackQuery(q.id, {}).catch(() => undefined)
-    const profileGroupId = data.slice(SPAWN_TEAM_CALLBACK_PREFIX.length)
+    const templateId = data.slice(SPAWN_TEAM_CALLBACK_PREFIX.length)
     const result = await spawnTeamAndBind(
       { db: deps.db, paths: deps.paths, api: deps.api, chatId: deps.chatId },
-      profileGroupId,
+      templateId,
       null,
     )
     await sendCommandResult(deps, q.message?.message_thread_id ?? undefined, result)
-    return { kind: 'callback_spawn_team', profileGroupId }
+    return { kind: 'callback_spawn_team', templateId }
   }
 
   if (!data.startsWith(SPAWN_PROFILE_CALLBACK_PREFIX)) {

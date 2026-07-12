@@ -141,7 +141,7 @@ function ApprovalQueue() {
                 <Fact label="Attempt" value={`${selected.attemptKind}:${selected.attemptId}`} />
                 <Fact label="Operation" value={selected.operation} />
                 <Fact label="Path" value={`${endpoint(selected.source)} → ${endpoint(selected.target)}`} />
-                <Fact label="Policy" value={selected.policyRefs.map((ref) => `${ref.groupId}@${ref.revision}`).join(', ')} />
+                <Fact label="Policy" value={selected.policyRefs.map((ref) => `${ref.teamId}@${ref.revision}`).join(', ')} />
                 <Fact label="Expires" value={formatTimestamp(selected.expiresAt)} />
               </dl>
               <details>
@@ -176,7 +176,7 @@ function Status({ value }: { value: CommunicationApprovalStatus }) {
 }
 
 function endpoint(value: CommunicationApproval['source']): string {
-  return value.kind === 'agent' ? `Agent ${value.id}` : value.kind === 'user' ? 'User' : `Outside ${value.groupId}`
+  return value.kind === 'agent' ? `Agent ${value.id}` : value.kind === 'user' ? 'User' : `Outside ${value.teamId}`
 }
 
 function Fact({ label, value }: { label: string; value: string }) {

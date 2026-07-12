@@ -110,16 +110,16 @@ afterEach(() => env.cleanup())
 
 describe('routeUpdate classification', () => {
   test('approval-required Telegram ingress holds media before lookup and returns pending status', async () => {
-    const agent = spawnAgent(env.db, env.paths, { profileId: 'base', groupId: env.groupId })
+    const agent = spawnAgent(env.db, env.paths, { profileId: 'base', teamId: env.teamId })
     agentRepo.setTelegramTopicId(env.db, agent.id, 42)
     env.db.raw.run(
-      `UPDATE live_harness_edges SET posture = 'approval_required'
-       WHERE group_id = ? AND source_kind = 'user' AND target_kind = 'agent'
+      `UPDATE team_policy_edges SET posture = 'approval_required'
+       WHERE team_id = ? AND source_kind = 'user' AND target_kind = 'agent'
          AND target_id = ?`,
-      [env.groupId, agent.id],
+      [env.teamId, agent.id],
     )
-    const previous = process.env.BAZILION_HARNESS_ENFORCEMENT
-    process.env.BAZILION_HARNESS_ENFORCEMENT = 'on'
+    const previous = process.env.BAZILION_TEAM_POLICY_ENFORCEMENT
+    process.env.BAZILION_TEAM_POLICY_ENFORCEMENT = 'on'
     const { api, sends } = makeReplyApi()
     let lookups = 0
     api.getFile = async () => {
@@ -147,19 +147,19 @@ describe('routeUpdate classification', () => {
           .get()?.count,
       ).toBe(1)
     } finally {
-      if (previous === undefined) delete process.env.BAZILION_HARNESS_ENFORCEMENT
-      else process.env.BAZILION_HARNESS_ENFORCEMENT = previous
+      if (previous === undefined) delete process.env.BAZILION_TEAM_POLICY_ENFORCEMENT
+      else process.env.BAZILION_TEAM_POLICY_ENFORCEMENT = previous
     }
   })
 
   test('policy denial happens before Telegram media lookup or download', async () => {
-    const agent = spawnAgent(env.db, env.paths, { profileId: 'base', groupId: env.groupId })
+    const agent = spawnAgent(env.db, env.paths, { profileId: 'base', teamId: env.teamId })
     agentRepo.setTelegramTopicId(env.db, agent.id, 42)
-    env.db.raw.run("DELETE FROM live_harness_edges WHERE group_id = ? AND source_kind = 'user'", [
-      env.groupId,
+    env.db.raw.run("DELETE FROM team_policy_edges WHERE team_id = ? AND source_kind = 'user'", [
+      env.teamId,
     ])
-    const previous = process.env.BAZILION_HARNESS_ENFORCEMENT
-    process.env.BAZILION_HARNESS_ENFORCEMENT = 'on'
+    const previous = process.env.BAZILION_TEAM_POLICY_ENFORCEMENT
+    process.env.BAZILION_TEAM_POLICY_ENFORCEMENT = 'on'
     const { api, sends } = makeReplyApi()
     let lookups = 0
     api.getFile = async () => {
@@ -180,23 +180,23 @@ describe('routeUpdate classification', () => {
       expect(outcome).toMatchObject({ kind: 'agent_topic', queued: false })
       expect(lookups).toBe(0)
       expect(pendingMessageCount(agent.id)).toBe(0)
-      expect(sends.at(-1)?.text).toMatch(/blocked by Group policy/)
+      expect(sends.at(-1)?.text).toMatch(/blocked by Team policy/)
     } finally {
-      if (previous === undefined) delete process.env.BAZILION_HARNESS_ENFORCEMENT
-      else process.env.BAZILION_HARNESS_ENFORCEMENT = previous
+      if (previous === undefined) delete process.env.BAZILION_TEAM_POLICY_ENFORCEMENT
+      else process.env.BAZILION_TEAM_POLICY_ENFORCEMENT = previous
     }
   })
 
   test('policy revocation during Telegram media fetch discards bytes before enqueue', async () => {
-    const agent = spawnAgent(env.db, env.paths, { profileId: 'base', groupId: env.groupId })
+    const agent = spawnAgent(env.db, env.paths, { profileId: 'base', teamId: env.teamId })
     agentRepo.setTelegramTopicId(env.db, agent.id, 42)
-    const previous = process.env.BAZILION_HARNESS_ENFORCEMENT
-    process.env.BAZILION_HARNESS_ENFORCEMENT = 'on'
+    const previous = process.env.BAZILION_TEAM_POLICY_ENFORCEMENT
+    process.env.BAZILION_TEAM_POLICY_ENFORCEMENT = 'on'
     const { api } = makeReplyApi()
     api.getFile = async () => ({ file_path: 'secret.jpg' })
     vi.stubGlobal('fetch', async () => {
-      env.db.raw.run("DELETE FROM live_harness_edges WHERE group_id = ? AND source_kind = 'user'", [
-        env.groupId,
+      env.db.raw.run("DELETE FROM team_policy_edges WHERE team_id = ? AND source_kind = 'user'", [
+        env.teamId,
       ])
       return new Response(new Uint8Array([1, 2, 3]), { headers: { 'content-type': 'image/jpeg' } })
     })
@@ -215,13 +215,13 @@ describe('routeUpdate classification', () => {
       expect(pendingMessageCount(agent.id)).toBe(0)
       expect(
         env.db.raw
-          .query<{ count: number }, []>('SELECT COUNT(*) count FROM harness_block_events')
+          .query<{ count: number }, []>('SELECT COUNT(*) count FROM team_policy_block_events')
           .get()?.count,
       ).toBe(1)
     } finally {
       vi.unstubAllGlobals()
-      if (previous === undefined) delete process.env.BAZILION_HARNESS_ENFORCEMENT
-      else process.env.BAZILION_HARNESS_ENFORCEMENT = previous
+      if (previous === undefined) delete process.env.BAZILION_TEAM_POLICY_ENFORCEMENT
+      else process.env.BAZILION_TEAM_POLICY_ENFORCEMENT = previous
     }
   })
 
@@ -240,7 +240,7 @@ describe('routeUpdate classification', () => {
     // Another bot posting in a bound agent topic must NOT drive an agent turn.
     const agent = spawnAgent(env.db, env.paths, {
       profileId: 'base',
-      groupId: env.groupId,
+      teamId: env.teamId,
       name: 'r1',
     })
     agentRepo.setTelegramTopicId(env.db, agent.id, 42)
@@ -383,7 +383,7 @@ describe('routeUpdate classification', () => {
   test('service-chat /talk creates a topic for an existing agent', async () => {
     const agent = spawnAgent(env.db, env.paths, {
       profileId: 'base',
-      groupId: env.groupId,
+      teamId: env.teamId,
       name: 'r1',
     })
     const { api, sends, creates } = makeReplyApi()
@@ -403,9 +403,9 @@ describe('routeUpdate classification', () => {
     expect(agentRepo.getTelegramTopicId(env.db, agent.id)).not.toBeNull()
   })
 
-  test('/spawn <profile> <name> in <group> spawns into the named group', async () => {
-    const { registerGroup } = await import('../../src/core/group/register.ts')
-    registerGroup(env.db, { id: 'work', name: 'Work' }, env.paths)
+  test('/spawn <profile> <name> in <team> spawns into the named team', async () => {
+    const { registerTeam } = await import('../../src/core/team/register.ts')
+    registerTeam(env.db, { id: 'work', name: 'Work' }, env.paths)
     const { api, creates } = makeReplyApi()
     const u = messageUpdate({ threadId: SERVICE_TOPIC, text: '/spawn base teammate in work' })
     const outcome = await routeUpdate(
@@ -414,11 +414,11 @@ describe('routeUpdate classification', () => {
     )
     expect(outcome.kind).toBe('service_command')
     const created = agentRepo.list(env.db).find((a) => a.name === 'teammate')
-    expect(created?.groupId).toBe('work')
+    expect(created?.teamId).toBe('work')
     expect(creates.length).toBe(1)
   })
 
-  test('/spawn into an unknown group is rejected with a hint', async () => {
+  test('/spawn into an unknown team is rejected with a hint', async () => {
     const { api, creates } = makeReplyApi()
     const u = messageUpdate({ threadId: SERVICE_TOPIC, text: '/spawn base x in nope' })
     const outcome = await routeUpdate(
@@ -433,7 +433,7 @@ describe('routeUpdate classification', () => {
   test('agent-topic inbound identifies the agent but sends no reply (step 3 behavior)', async () => {
     const agent = spawnAgent(env.db, env.paths, {
       profileId: 'base',
-      groupId: env.groupId,
+      teamId: env.teamId,
       name: 'r1',
     })
     agentRepo.setTelegramTopicId(env.db, agent.id, 42)
@@ -492,10 +492,10 @@ describe('routeUpdate classification', () => {
   })
 
   test('plain text from a user with pending-spawn state completes the spawn', async () => {
-    // /spawn always lands new agents in the 'default' group; register it so
+    // /spawn always lands new agents in the 'default' team; register it so
     // spawnAgent's fallback resolves.
-    const { registerGroup } = await import('../../src/core/group/register.ts')
-    registerGroup(env.db, { id: 'default', name: 'Default' }, env.paths)
+    const { registerTeam } = await import('../../src/core/team/register.ts')
+    registerTeam(env.db, { id: 'default', name: 'Default' }, env.paths)
 
     // Stash pending state directly (simulating a prior callback_query tap).
     const { setPendingSpawn } = await import('../../src/lib/telegram/spawn-state.ts')
@@ -549,7 +549,7 @@ describe('routeUpdate classification', () => {
   test('/close in an agent topic dispatches as a topic command', async () => {
     const agent = spawnAgent(env.db, env.paths, {
       profileId: 'base',
-      groupId: env.groupId,
+      teamId: env.teamId,
       name: 'r1',
     })
     agentRepo.setTelegramTopicId(env.db, agent.id, 42)
@@ -571,7 +571,7 @@ describe('routeUpdate classification', () => {
   test('/unbind clears the topic binding and updates the directory', async () => {
     const agent = spawnAgent(env.db, env.paths, {
       profileId: 'base',
-      groupId: env.groupId,
+      teamId: env.teamId,
       name: 'r1',
     })
     agentRepo.setTelegramTopicId(env.db, agent.id, 42)
@@ -588,12 +588,12 @@ describe('routeUpdate classification', () => {
   test('/rebind swaps the topic to a different agent when target is unbound', async () => {
     const sourceAgent = spawnAgent(env.db, env.paths, {
       profileId: 'base',
-      groupId: env.groupId,
+      teamId: env.teamId,
       name: 'source',
     })
     const targetAgent = spawnAgent(env.db, env.paths, {
       profileId: 'base',
-      groupId: env.groupId,
+      teamId: env.teamId,
       name: 'target',
     })
     agentRepo.setTelegramTopicId(env.db, sourceAgent.id, 42)
@@ -613,12 +613,12 @@ describe('routeUpdate classification', () => {
   test('/rebind refuses when the target agent already has a topic', async () => {
     const sourceAgent = spawnAgent(env.db, env.paths, {
       profileId: 'base',
-      groupId: env.groupId,
+      teamId: env.teamId,
       name: 'source',
     })
     const targetAgent = spawnAgent(env.db, env.paths, {
       profileId: 'base',
-      groupId: env.groupId,
+      teamId: env.teamId,
       name: 'target',
     })
     agentRepo.setTelegramTopicId(env.db, sourceAgent.id, 42)
@@ -640,7 +640,7 @@ describe('routeUpdate classification', () => {
   test('/spawn in an agent topic is rejected (wrong surface)', async () => {
     const agent = spawnAgent(env.db, env.paths, {
       profileId: 'base',
-      groupId: env.groupId,
+      teamId: env.teamId,
       name: 'r1',
     })
     agentRepo.setTelegramTopicId(env.db, agent.id, 42)
@@ -658,7 +658,7 @@ describe('routeUpdate classification', () => {
   test('/help in an agent topic returns the topic-contextualized body', async () => {
     const agent = spawnAgent(env.db, env.paths, {
       profileId: 'base',
-      groupId: env.groupId,
+      teamId: env.teamId,
       name: 'r1',
     })
     agentRepo.setTelegramTopicId(env.db, agent.id, 42)

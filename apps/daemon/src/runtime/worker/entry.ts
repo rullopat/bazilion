@@ -145,9 +145,9 @@ function createIpcMessagingHost(call: IpcCall): MessagingHost {
 
 function createIpcUserMdHost(call: IpcCall): UserMdHost {
   return {
-    get: (groupId) => call<UserMdGetResult>('userMdGet', { groupId }),
-    write: (groupId, content, ifMatch) =>
-      call<UserMdWriteResult>('userMdWrite', { groupId, content, ifMatch }),
+    get: (teamId) => call<UserMdGetResult>('userMdGet', { teamId }),
+    write: (teamId, content, ifMatch) =>
+      call<UserMdWriteResult>('userMdWrite', { teamId, content, ifMatch }),
   }
 }
 
@@ -199,7 +199,7 @@ async function main(): Promise<void> {
   // probe of the live tree.
   const paths = resolvePaths()
 
-  const memory = qmdBackend(join(agent.group.path, 'memory'))
+  const memory = qmdBackend(join(agent.team.path, 'memory'))
   await memory.init()
 
   const ipcCall = createIpcClient()

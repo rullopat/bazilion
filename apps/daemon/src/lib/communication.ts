@@ -11,7 +11,7 @@ import {
   recordDenial,
   triggerRepo,
 } from '../core/index.ts'
-import { harnessEnforcementRequested } from './harness-contract.ts'
+import { teamPolicyEnforcementRequested } from './team-policy-contract.ts'
 
 export const communicationDecisionMetrics = { allowed: 0, denied: 0 }
 
@@ -19,7 +19,7 @@ function observeDenial(result: AuthorizationResult, attempt: CommunicationAttemp
   communicationDecisionMetrics.denied++
   console.warn(
     JSON.stringify({
-      event: 'harness_communication_denied',
+      event: 'teamPolicy_communication_denied',
       attemptKind: attempt.attemptKind,
       attemptId: attempt.attemptId,
       channel: result.channel,
@@ -29,8 +29,8 @@ function observeDenial(result: AuthorizationResult, attempt: CommunicationAttemp
   )
 }
 
-export function harnessEnforcementEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
-  return harnessEnforcementRequested(env)
+export function teamPolicyEnforcementEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return teamPolicyEnforcementRequested(env)
 }
 
 export class CommunicationDeniedError extends Error {
@@ -85,13 +85,13 @@ function authorizeBoundary(
   operation: string,
   onAllowed?: () => void,
 ): AuthorizationResult {
-  if (!harnessEnforcementEnabled()) {
+  if (!teamPolicyEnforcementEnabled()) {
     onAllowed?.()
     return {
       decision: 'allow',
       channel: 'user',
       reasonCode: 'enforcement_disabled',
-      reason: 'Harness enforcement is disabled',
+      reason: 'TeamPolicy enforcement is disabled',
       policyRefs: [],
       componentOutcomes: [],
       matchedEdgeIds: [],
@@ -131,11 +131,11 @@ export function authorizeUserIngress(
   onAllowed?: () => void,
 ): AuthorizationResult {
   const agent = agentRepo.get(db, agentId)
-  const groupId = agent?.groupId ?? '__missing__'
+  const teamId = agent?.teamId ?? '__missing__'
   return authorizeBoundary(
     db,
     {
-      source: { kind: 'user', groupId },
+      source: { kind: 'user', teamId },
       target: { kind: 'agent', id: agentId },
       ...attempt,
     },
@@ -150,12 +150,12 @@ export function authorizeAgentEgress(
   attempt: CommunicationAttempt,
 ): AuthorizationResult {
   const agent = agentRepo.get(db, agentId)
-  const groupId = agent?.groupId ?? '__missing__'
+  const teamId = agent?.teamId ?? '__missing__'
   return authorizeBoundary(
     db,
     {
       source: { kind: 'agent', id: agentId },
-      target: { kind: 'user', groupId },
+      target: { kind: 'user', teamId },
       ...attempt,
     },
     'agent_to_user',
@@ -193,7 +193,7 @@ function isUserFacingFrame(frame: ChatFrame): boolean {
 }
 
 export function sendAgentMessage(db: BazilionDb, input: SendAgentMessageInput): Message {
-  if (!harnessEnforcementEnabled()) return messageRepo.send(db, input)
+  if (!teamPolicyEnforcementEnabled()) return messageRepo.send(db, input)
   const attemptKind = input.attemptKind ?? 'agent_tool'
   const attemptId = input.attemptId ?? randomUUID()
   const outcome = db.raw.transaction(
@@ -247,7 +247,7 @@ export function sendAgentMessage(db: BazilionDb, input: SendAgentMessageInput): 
 }
 
 export function deliverableInbox(db: BazilionDb, agentId: string, unreadOnly: boolean): Message[] {
-  if (!harnessEnforcementEnabled()) return messageRepo.listInbox(db, agentId, { unreadOnly })
+  if (!teamPolicyEnforcementEnabled()) return messageRepo.listInbox(db, agentId, { unreadOnly })
   const outcome = db.raw.transaction(() => {
     const messages = messageRepo.listInbox(db, agentId, { unreadOnly })
     const deliverable: Message[] = []
@@ -305,7 +305,7 @@ export function claimSchedulerTrigger(
   db: BazilionDb,
   input: { triggerId: string; agentId: string; occurrence: number; onAllowed?: () => void },
 ): boolean {
-  if (!harnessEnforcementEnabled()) {
+  if (!teamPolicyEnforcementEnabled()) {
     return db.raw.transaction(() => {
       const current = triggerRepo.get(db, input.triggerId)
       if (!current) throw new Error(`trigger not found: ${input.triggerId}`)
@@ -347,7 +347,7 @@ export function claimSchedulerTrigger(
       }
       const agent = agentRepo.get(db, input.agentId)
       const authorization: AuthorizationInput = {
-        source: { kind: 'user', groupId: agent?.groupId ?? '__missing__' },
+        source: { kind: 'user', teamId: agent?.teamId ?? '__missing__' },
         target: { kind: 'agent', id: input.agentId },
         ...attempt,
       }
@@ -399,7 +399,7 @@ export function claimDeliverableInbox(
   agentId: string,
   onAllowed?: () => void,
 ): Message[] {
-  if (!harnessEnforcementEnabled()) {
+  if (!teamPolicyEnforcementEnabled()) {
     const messages = messageRepo.drainUnreadForAgent(db, agentId)
     if (messages.length > 0) onAllowed?.()
     return messages

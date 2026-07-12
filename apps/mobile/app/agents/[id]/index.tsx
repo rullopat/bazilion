@@ -85,9 +85,9 @@ export default function AgentDetail() {
         <Text style={styles.mono}>{a.reasoningLevel}</Text>
       </Section>
 
-      <Section label="group">
-        <Text style={styles.mono}>{a.group.name}</Text>
-        <Text style={styles.dim}>{a.group.path}</Text>
+      <Section label="team">
+        <Text style={styles.mono}>{a.team.name}</Text>
+        <Text style={styles.dim}>{a.team.path}</Text>
       </Section>
 
       <Section label={`skills (${a.skills.length})`}>

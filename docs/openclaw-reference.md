@@ -181,7 +181,7 @@ Official registry: `github.com/openclaw/clawhub`. ~13,729 third-party skills as 
 
 - The **prompt-only skill model.** `apps/daemon/src/core/skills/` reads `SKILL.md` and injects the body into the system prompt of every attached agent. Helper scripts run via the agent's generic `bash` tool. See `AGENTS.md` → "OpenClaw skill model: prompt-only".
 - The **`SKILL.md` + YAML frontmatter format.** Upstream skills "drop in unchanged" per the README — `bazilion skill import --from openclaw` resolves to `~/.openclaw/skills/` (see `apps/daemon/src/routes/skills.ts`).
-- The general idea of a per-user state root with a workspace concept. Bazilion's `~/.bazilion/groups/<slug>/` is roughly the analogue of OpenClaw's `<workspace>/`.
+- The general idea of a per-user state root with a workspace concept. Bazilion's `~/.bazilion/teams/<slug>/` is roughly the analogue of OpenClaw's `<workspace>/`.
 
 **Bazilion-only extensions on top of the upstream format:**
 

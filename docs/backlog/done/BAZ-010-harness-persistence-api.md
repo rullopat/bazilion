@@ -1,23 +1,23 @@
 ---
 id: BAZ-010
-title: Canonical harness storage and compatibility migration
+title: Canonical teamPolicy storage and compatibility migration
 status: done
 size: L (1-2 weeks)
 created: 2026-07-10
 refined: 2026-07-10
 priority: high
 shipped: 2026-07-11
-note: Establish canonical Team-template and one-per-Group policy storage, migrate and remove legacy Profile Group tables, and preserve exact Open Team behavior through bounded adapters. Explicit policy/lifecycle APIs continue in BAZ-015.
+note: Establish canonical Team-template and one-per-Team policy storage, migrate and remove legacy Profile Team tables, and preserve exact Open Team behavior through bounded adapters. Explicit policy/lifecycle APIs continue in BAZ-015.
 ---
 
-# BAZ-010 - Canonical harness storage and compatibility migration
+# BAZ-010 - Canonical teamPolicy storage and compatibility migration
 
 **Status:** Refined and ready after BAZ-009. ADR 0001 is normative. This is the first half
 of the former XL persistence story; BAZ-015 owns revisioned policy and lifecycle APIs.
 
 ## User stories
 
-- **As an existing operator**, I want Profile Groups and Groups migrated without changing
+- **As an existing operator**, I want Profile Teams and Teams migrated without changing
   communication behavior, so the production ownership model can land safely.
 - **As a template editor**, I want server-generated stable slot ids and immutable revision
   snapshots, so later policy work has reproducible identities and baselines.
@@ -29,30 +29,30 @@ of the former XL persistence story; BAZ-015 owns revisioned policy and lifecycle
 Create the canonical storage and one-release migration foundation from
 [ADR 0001](../../adr/0001-production-harness-domain.md), while runtime remains unenforced.
 
-> There is one canonical Team/Harness Template roster, exactly one effective live policy
-> per Group, and `agents.group_id` is the sole live-membership authority.
+> There is one canonical Team/TeamPolicy Template roster, exactly one effective live policy
+> per Team, and `agents.team_id` is the sole live-membership authority.
 
 ## Scope
 
 - Add hermetic wire types and normalized repositories for Team templates, current stable
   slots/edges, immutable full definition snapshots by revision, optional Profile
-  communication defaults, one LiveHarness keyed by Group id, live edges, current
+  communication defaults, one TeamPolicy keyed by Team id, live edges, current
   baseline/cohort instantiations, unique-per-Agent source bindings, and optional live
   presentation state.
-- Persist `harness_templates.compatibility_managed` and
-  `live_harnesses.membership_mode`. Neither flag is an authorizer bypass.
+- Persist `team_templates.compatibility_managed` and
+  `team_policies.membership_mode`. Neither flag is an authorizer bypass.
 - Add Profile create/detail/update support for optional communication defaults: create
   omission means no row, PATCH omission leaves unchanged, and explicit null clears.
-- Make standalone Group creation create an empty compatibility_open LiveHarness at revision
+- Make standalone Team creation create an empty compatibility_open TeamPolicy at revision
   1 in the same transaction.
-- Add compatibility-safe domain wrappers for existing Agent spawn/move/delete and Group
-  delete payloads so every migrated Group remains exact Open Team. Missing revisions are
-  allowed only while all affected Groups are compatibility_open; explicit Groups return
+- Add compatibility-safe domain wrappers for existing Agent spawn/move/delete and Team
+  delete payloads so every migrated Team remains exact Open Team. Missing revisions are
+  allowed only while all affected Teams are compatibility_open; explicit Teams return
   the ADR's structured 409 errors.
 - Add the shared per-Agent turn/lifecycle lease and route all current turn registration plus
   compatibility move/archive/delete through it, closing the active-check-to-mutation race
   before later stories add authorization.
-- Migrate Profile Group CRUD/spawn and CLI commands to one-release adapters over canonical
+- Migrate Profile Team CRUD/spawn and CLI commands to one-release adapters over canonical
   Team-template storage. Responses include deprecation/sunset/successor metadata.
 - Do not expose custom live-policy mutation, adoption, source update, or runtime enforcement
   in this story.
@@ -65,19 +65,19 @@ Create the canonical storage and one-release migration foundation from
 | `profile_group_members` | One opaque UUID slot per row; preserve Profile, name, overrides, and ordinal |
 | Missing template policy | Exact Open Team current edges and immutable revision-1 snapshot |
 | Profiles | Preserve; no defaults row is invented because prior production defaults do not exist |
-| Groups | Exactly one LiveHarness revision 1, `compatibility_open`, null baseline pointer |
-| Existing Agents including archived | Preserve `agents.group_id`; no source binding; materialize exact Open Team live edges |
-| Historical Profile Group spawns | No inferred baseline, instantiation, or slot binding |
+| Teams | Exactly one TeamPolicy revision 1, `compatibility_open`, null baseline pointer |
+| Existing Agents including archived | Preserve `agents.team_id`; no source binding; materialize exact Open Team live edges |
+| Historical Profile Team spawns | No inferred baseline, instantiation, or slot binding |
 | BAZ-009 localStorage/simulated blocks | Leave untouched and never import as production state/evidence |
 
 For member set `M`, exact Open Team is every `a -> b` where `a != b`, plus
-`user <-> m` and `outside_group <-> m` for each member: `|M|(|M|-1) + 4|M|` edges.
+`user <-> m` and `outside_team <-> m` for each member: `|M|(|M|-1) + 4|M|` edges.
 
 The migration copies and validates in one transaction, then drops the legacy
 `profile_groups` and `profile_group_members` tables. Filesystem state is untouched. It
 rolls back unless counts match, all stable ids are unique, every current template has its
-revision snapshot, every Group has exactly one LiveHarness, every compatibility topology
-is exact Open Team, all membership projections agree with `agents.group_id`, and no source
+revision snapshot, every Team has exactly one TeamPolicy, every compatibility topology
+is exact Open Team, all membership projections agree with `agents.team_id`, and no source
 lineage was fabricated.
 
 ## Stable slots and revision snapshots
@@ -91,12 +91,12 @@ lineage was fabricated.
 - Every committed template mutation atomically appends a complete immutable validated
   definition snapshot. A current or live-referenced revision cannot be pruned.
 - Current bindings are unique by Agent and are lineage only, never membership.
-- `live_harnesses.baseline_instantiation_id` is the sole baseline pointer. Template id and
-  revision derive from the retained instantiation; migrated Groups begin null.
+- `team_policies.baseline_instantiation_id` is the sole baseline pointer. Template id and
+  revision derive from the retained instantiation; migrated Teams begin null.
 
 ## One-release compatibility behavior
 
-### Profile Group surfaces
+### Profile Team surfaces
 
 - GET projects canonical Team templates and adds slot/revision fields for upgraded clients.
 - POST creates compatibility-managed Open Team plus revision 1.
@@ -109,41 +109,41 @@ lineage was fabricated.
 - Only migration and legacy POST create the true marker. Canonical create/clone/
   save-as-template in BAZ-015 always create false and never inherit/re-enable it.
 - Delete hard-deletes when unreferenced or tombstones when live lineage exists. It never
-  mutates a Group.
+  mutates a Team.
 - Spawn into new/empty-uninitialized establishes the Open baseline and remains
-  compatibility_open. Spawn into any other compatibility_open Group, including an empty
-  retained-baseline Group, appends a cohort, retains the baseline, regenerates full Open
-  Team, and stays compatible. An explicit Group returns `409 policy_merge_required`.
+  compatibility_open. Spawn into any other compatibility_open Team, including an empty
+  retained-baseline Team, appends a cohort, retains the baseline, regenerates full Open
+  Team, and stays compatible. An explicit Team returns `409 policy_merge_required`.
 - A tombstoned source is read-only lineage display and legacy spawn returns
   `410 template_deleted`.
 - Missing expected revision is a serialized one-release exception while compatibility is
   intact; additive `If-Match` is honored when present.
 
 Legacy spawn reads the compatibility-managed source's current immutable revision in the
-same transaction; it never guesses a revision. For a new Group it creates Agents,
-instantiation/bindings, baseline pointer, exact Open edges, and the final LiveHarness at
-revision 1, and seeds starter USER.md. For an existing empty/uninitialized Group it
-preserves USER.md and finishes at N+1. For any other compatible Group it creates a cohort
+same transaction; it never guesses a revision. For a new Team it creates Agents,
+instantiation/bindings, baseline pointer, exact Open edges, and the final TeamPolicy at
+revision 1, and seeds starter USER.md. For an existing empty/uninitialized Team it
+preserves USER.md and finishes at N+1. For any other compatible Team it creates a cohort
 and bindings, preserves a null or existing baseline and USER.md, regenerates exact Open
 over all members including archived, and finishes at N+1. Name collision and filesystem
-rollback behavior remains the current Profile Group spawn contract.
+rollback behavior remains the current Profile Team spawn contract.
 
-### Existing Agent and Group URLs
+### Existing Agent and Team URLs
 
 - `POST /api/agents` without placement/revision serializes on the target
-  compatibility_open Group, spawns a live-only Agent, regenerates exact Open Team including
+  compatibility_open Team, spawns a live-only Agent, regenerates exact Open Team including
   archived members, and bumps once.
-- `PATCH /api/agents/:id/group` without new fields succeeds only when both Groups are
+- `PATCH /api/agents/:id/team` without new fields succeeds only when both Teams are
   compatibility_open; it rejects an active turn, atomically removes source binding/edges,
-  prunes an empty nonbaseline cohort but retains an empty baseline, updates `group_id` and
+  prunes an empty nonbaseline cohort but retains an empty baseline, updates `team_id` and
   agent.json, adds destination live-only state, regenerates both exact Open topologies, and
   bumps both once.
 - Agent hard delete without expected revision succeeds only in compatibility_open, removes
   state/binding/edges, prunes an empty nonbaseline cohort but retains an empty baseline,
   regenerates exact Open Team, bumps once, and then purges current dependents/home. Active
   delete is rejected.
-- Group delete without expected revision succeeds only for an empty compatibility_open
-  Group and cascades its LiveHarness.
+- Team delete without expected revision succeeds only for an empty compatibility_open
+  Team and cascades its TeamPolicy.
 - Archive/unarchive keep their existing payloads, membership, topology, and lineage; active
   archive is rejected and no live revision changes.
 
@@ -154,25 +154,25 @@ The URLs remain permanent; BAZ-015 adds canonical revision/placement fields to t
 
 ## Out of scope
 
-- Custom Team-template definitions, Group policy CRUD, clone/adopt/diff/update-source,
+- Custom Team-template definitions, Team policy CRUD, clone/adopt/diff/update-source,
   explicit placement, and the full lifecycle contract (BAZ-015).
 - Runtime authorization, enforcement, or block events (BAZ-011/016).
 - Production web migration (BAZ-012/017) and canonical CLI policy tools (BAZ-013).
-- Approvals, workflow execution, routing, retries, federation, or multi-Group membership.
+- Approvals, workflow execution, routing, retries, federation, or multi-Team membership.
 
 ## Acceptance criteria
 
 - Migration is atomic, idempotent, filesystem-neutral, and satisfies every postcondition
   before dropping the legacy tables.
-- There is exactly one writable Team-template roster, one LiveHarness row per Group, and no
-  writable Profile Group or live-member roster.
+- There is exactly one writable Team-template roster, one TeamPolicy row per Team, and no
+  writable Profile Team or live-member roster.
 - Restart preserves all canonical current rows, immutable revision snapshots, stable ids,
   compatibility flags, memberships, and explicit Open edges.
-- Existing Profile Group API/CLI CRUD/spawn and Agent/Group lifecycle clients preserve
-  exact prior Open Team behavior on migrated Groups using canonical storage only.
+- Existing Profile Team API/CLI CRUD/spawn and Agent/Team lifecycle clients preserve
+  exact prior Open Team behavior on migrated Teams using canonical storage only.
 - Legacy positional replacement follows the exact ordinal/suffix contract and cannot alter
-  a customized template or explicit Group.
-- Existing and archived Agents remain in the same Groups; no historical source is guessed.
+  a customized template or explicit Team.
+- Existing and archived Agents remain in the same Teams; no historical source is guessed.
 - Profile defaults are additive and neutral when absent; no runtime inheritance exists.
 - Profile deletion returns `409 profile_in_use` while any Agent including archived or any
   current/immutable retained Team slot references it; no cascade changes a roster.
@@ -181,13 +181,13 @@ The URLs remain permanent; BAZ-015 adds canonical revision/placement fields to t
 ## Tests and verification
 
 - Migration fixtures: empty, repeated-member templates, existing/archived Agents, multiple
-  Groups, idempotent restart, invariant failure, SQL rollback, and unchanged filesystem.
-- Repository tests: one-to-one Group policy, stable ids, exact Open formula, immutable
+  Teams, idempotent restart, invariant failure, SQL rollback, and unchanged filesystem.
+- Repository tests: one-to-one Team policy, stable ids, exact Open formula, immutable
   revisions/retention, unique current bindings, baseline pointer, tombstones, and Profile
   defaults.
 - Turn/lifecycle lease tests proving turn registration orders wholly before or after legacy
   move/archive/delete, including cancellation settlement and filesystem rollback.
-- Compatibility tests: every legacy Profile Group and Agent/Group path, additive If-Match,
+- Compatibility tests: every legacy Profile Team and Agent/Team path, additive If-Match,
   serialized concurrency, explicit-state 409s, deprecation headers/warnings, and no legacy
   table access.
 - API type/client compilation, full repository suite, root/web typechecks, lint, and build.
@@ -196,38 +196,38 @@ The URLs remain permanent; BAZ-015 adds canonical revision/placement fields to t
 
 The canonical persistence and one-release compatibility foundation landed as specified:
 
-- Added migration `0009_canonical_harness.sql`. It creates optional Profile communication
+- Added migration `0009_canonical_teamPolicy.sql`. It creates optional Profile communication
   defaults; the sole normalized Team-template roster; stable current slots and edges;
-  complete immutable revision slot/edge snapshots; one `live_harnesses` row keyed by every
-  Group; explicit live edges; retained template instantiations; unique Agent source-slot
+  complete immutable revision slot/edge snapshots; one `team_policies` row keyed by every
+  Team; explicit live edges; retained template instantiations; unique Agent source-slot
   bindings; and optional Agent-keyed presentation state.
-- The migration converts every legacy Profile Group to a same-id revision-1
+- The migration converts every legacy Profile Team to a same-id revision-1
   compatibility-managed Team template, assigns an opaque UUID to every repeated or unique
   member row, creates exact Open Team template and live edges, preserves live and archived
-  `agents.group_id`, invents no Profile defaults or source lineage, validates all counts,
+  `agents.team_id`, invents no Profile defaults or source lineage, validates all counts,
   cardinality, snapshots, UUIDs, topology, and membership projections, and only then drops
   `profile_groups` and `profile_group_members`. Re-running migrations is idempotent and no
   filesystem state is read or changed.
-- Replaced the Profile Group repository with a canonical projection. Legacy GET/CRUD/spawn
-  routes and CLI commands use only Team-template and Group-policy tables, expose stable slot
+- Replaced the Profile Team repository with a canonical projection. Legacy GET/CRUD/spawn
+  routes and CLI commands use only Team-template and Team-policy tables, expose stable slot
   and revision fields, honor additive `If-Match`, and return Deprecation, Sunset, and
   successor Link metadata. The CLI emits a deprecation warning.
 - Legacy positional member PUT retains the prior slot id at each existing ordinal, appends
   new UUID slots, suffix-tombstones removals, regenerates exact Open Team, and appends one
   immutable full snapshot. Customized/tombstoned templates return the specified structured
   migration/410 errors.
-- Standalone Group creation atomically creates its empty revision-1
-  `compatibility_open` policy. Direct spawn, move, hard delete, Group delete, and legacy
+- Standalone Team creation atomically creates its empty revision-1
+  `compatibility_open` policy. Direct spawn, move, hard delete, Team delete, and legacy
   Team spawn serialize against compatible policy state, maintain exact Open Team over all
   Agents including archived members, update lineage and `agent.json`, prune only empty
   nonbaseline cohorts, retain empty baselines, and bump each affected policy exactly once.
-  Explicit Groups reject omitted revision/placement with structured 409 responses.
+  Explicit Teams reject omitted revision/placement with structured 409 responses.
 - Added the shared per-Agent lifecycle/turn lease. Turn registration and compatibility
   move/archive/unarchive/delete now have a single ordering point; cancellation keeps an
   Agent registered as active until worker settlement, closing the former cancel-to-mutation
-  gap. Filesystem failure paths restore or clean Agent/Group slots alongside SQL rollback.
+  gap. Filesystem failure paths restore or clean Agent/Team slots alongside SQL rollback.
 - Added hermetic wire types and normalized canonical repositories. The one-release legacy
-  GETs project them with additive stable-slot/revision fields; canonical Team/Group-policy
+  GETs project them with additive stable-slot/revision fields; canonical Team/Team-policy
   endpoints remain owned by BAZ-015 so this story does not create API surfaces without the
   required later CLI/web parity.
 - Profile create/detail/list/PATCH now support the exact optional defaults tri-state:
@@ -251,7 +251,13 @@ Verification completed:
 
 Deliberately not built here:
 
-- Custom/revisioned Team-definition or Group-policy writes, explicit placement,
+- Custom/revisioned Team-definition or Team-policy writes, explicit placement,
   adoption/re-baselining, diff/update-source/save-as-template workflows (BAZ-015).
 - Communication authorization, denial audit, runtime enforcement, workflow execution,
   approvals, production web migration, or canonical policy CLI tools.
+
+## Post-cleanup status (BAZ-018, 2026-07-12)
+
+The canonical Team Template and Team Policy storage survived. The legacy-table migration,
+compatibility state, and omitted-field adapters described by this historical story were removed;
+fresh installs now create the final schema directly from `0001_init.sql`.

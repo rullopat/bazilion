@@ -1,0 +1,4 @@
+interface:
+  display_name: "Refresh Pi Models"
+  short_description: "Update Pi packages and Bazilion model examples"
+  default_prompt: "Use $refresh-pi-models to update Bazilion to the latest Pi packages and refresh its model examples."

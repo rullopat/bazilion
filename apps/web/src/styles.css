@@ -264,7 +264,7 @@
 }
 
 /* React Flow inherits Bazilion's semantic palette instead of its default blue UI. */
-.harness-flow {
+.teamPolicy-flow {
   --xy-background-color: var(--color-ivory);
   --xy-node-color: var(--color-chocolate);
   --xy-node-border: 1px solid var(--color-frost);

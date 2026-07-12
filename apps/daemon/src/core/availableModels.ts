@@ -41,12 +41,12 @@ export function listAvailableModels(db: BazilionDb): AvailableModel[] {
  */
 export function groupAvailableModels(db: BazilionDb): { provider: string; models: string[] }[] {
   const enabled = providerStateRepo.listEnabled(db)
-  const groups: { provider: string; models: string[] }[] = []
+  const teams: { provider: string; models: string[] }[] = []
   for (const provider of enabled) {
     const models = providerModelRepo.list(db, provider)
-    if (models.length > 0) groups.push({ provider, models })
+    if (models.length > 0) teams.push({ provider, models })
   }
-  return groups
+  return teams
 }
 
 /**

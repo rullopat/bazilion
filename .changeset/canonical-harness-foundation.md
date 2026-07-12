@@ -2,4 +2,6 @@
 'bazilion': patch
 ---
 
-Add the canonical Team-template and one-policy-per-Group persistence foundation, atomically migrate legacy Profile Groups, and preserve their CLI/API behavior through deprecated compatibility adapters.
+Complete the breaking alpha cleanup to canonical Teams, Team Templates, and Team Policy. Remove
+Group, Profile Group, Harness prototype, compatibility API/URL, and incremental migration
+surfaces; consolidate fresh installs into the final `0001_init.sql` schema.

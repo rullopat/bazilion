@@ -1,24 +1,22 @@
-import type { Agent, Group, Profile, ResolvedGroupHarness } from '@bazilion/api-types'
+import type { Agent, Team, Profile, ResolvedTeamPolicy } from '@bazilion/api-types'
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { useState } from 'react'
 import { AgentAvatar } from '../../components/AgentAvatar'
-import { useHarnessPrototype } from '../../hooks/use-harness-prototype'
 import { daemonClient } from '../../lib/daemon-client'
-import { addDirectSpawnToPrototype } from '../../lib/harness-prototype'
 
 interface ModelGroup {
   provider: string
   models: string[]
 }
 interface AvailableModelsResponse {
-  groups: ModelGroup[]
+  teams: ModelGroup[]
 }
 
 interface AgentsView {
   agents: Agent[]
   profiles: Profile[]
-  groups: Group[]
+  teams: Team[]
   modelGroups: ModelGroup[]
 }
 
@@ -26,13 +24,13 @@ const fetchAgents = createServerFn({ method: 'POST' })
   .inputValidator((d: { all: boolean }) => d)
   .handler(async ({ data }): Promise<AgentsView> => {
     const c = daemonClient()
-    const [agents, profiles, groups, models] = await Promise.all([
+    const [agents, profiles, teams, models] = await Promise.all([
       c.get<Agent[]>(`/api/agents?includeArchived=${data.all}`),
       c.get<Profile[]>('/api/profiles'),
-      c.get<Group[]>('/api/groups'),
+      c.get<Team[]>('/api/teams'),
       c.get<AvailableModelsResponse>('/api/config/available-models'),
     ])
-    return { agents, profiles, groups, modelGroups: models.groups }
+    return { agents, profiles, teams, modelGroups: models.teams }
   })
 
 export const Route = createFileRoute('/agents/')({
@@ -45,7 +43,7 @@ export const Route = createFileRoute('/agents/')({
 })
 
 function AgentsPage() {
-  const { agents, profiles, groups, modelGroups } = Route.useLoaderData()
+  const { agents, profiles, teams, modelGroups } = Route.useLoaderData()
   const { all } = Route.useSearch()
   const showAll = all === '1'
   const router = useRouter()
@@ -61,7 +59,15 @@ function AgentsPage() {
   }
   async function del(id: string) {
     if (!confirm('permanently delete this agent and all its data?')) return
-    await fetch(`/api/agents/${id}`, { method: 'DELETE' })
+    const agent = agents.find((candidate) => candidate.id === id)
+    if (!agent) return
+    const policyResponse = await fetch(`/api/teams/${encodeURIComponent(agent.teamId)}/policy`)
+    if (!policyResponse.ok) return
+    const policy = (await policyResponse.json()) as ResolvedTeamPolicy
+    await fetch(
+      `/api/agents/${encodeURIComponent(id)}?expectedTeamRevision=${policy.teamPolicy.revision}`,
+      { method: 'DELETE' },
+    )
     await router.invalidate()
   }
 
@@ -71,7 +77,7 @@ function AgentsPage() {
 
       <SpawnForm
         profiles={profiles}
-        groups={groups}
+        teams={teams}
         modelGroups={modelGroups}
         onSpawned={router.invalidate}
       />
@@ -155,23 +161,22 @@ function AgentsPage() {
 
 function SpawnForm({
   profiles,
-  groups,
+  teams,
   modelGroups,
   onSpawned,
 }: {
   profiles: Profile[]
-  groups: Group[]
+  teams: Team[]
   modelGroups: ModelGroup[]
   onSpawned: () => void
 }) {
-  const { update: updateHarnessPrototype } = useHarnessPrototype()
   const [profileId, setProfileId] = useState('')
   const [name, setName] = useState('')
   const [model, setModel] = useState('')
-  // Default to the seeded 'default' group when present so the form matches the
+  // Default to the seeded 'default' team when present so the form matches the
   // server-side fallback. Empty string means "let the daemon pick" — same end
   // result as picking 'default' explicitly.
-  const [groupId, setGroupId] = useState(groups.find((g) => g.id === 'default')?.id ?? '')
+  const [teamId, setTeamId] = useState(teams.find((g) => g.id === 'default')?.id ?? '')
   const [placement, setPlacement] = useState<'isolated' | 'open' | 'profile_defaults'>('profile_defaults')
   const [submitting, setSubmitting] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -188,12 +193,12 @@ function SpawnForm({
       const body: Record<string, unknown> = { profile: profileId }
       if (name) body.name = name
       if (model) body.model = model
-      if (groupId) {
-        const policyResponse = await fetch(`/api/groups/${encodeURIComponent(groupId)}/harness`)
-        if (!policyResponse.ok) throw new Error('The selected Group policy is unavailable.')
-        const current = (await policyResponse.json()) as ResolvedGroupHarness
-        body.groupId = groupId
-        body.groupExpectedRevision = current.harness.revision
+      if (teamId) {
+        const policyResponse = await fetch(`/api/teams/${encodeURIComponent(teamId)}/policy`)
+        if (!policyResponse.ok) throw new Error('The selected Team policy is unavailable.')
+        const current = (await policyResponse.json()) as ResolvedTeamPolicy
+        body.teamId = teamId
+        body.teamExpectedRevision = current.teamPolicy.revision
         body.placement = placement
       }
       const res = await fetch('/api/agents', {
@@ -205,15 +210,7 @@ function SpawnForm({
         const b = (await res.json().catch(() => null)) as { error?: string } | null
         throw new Error(b?.error ?? res.statusText)
       }
-      const payload = (await res.json()) as Agent | { agent: Agent }
-      const created = 'agent' in payload ? payload.agent : payload
-      updateHarnessPrototype((current) =>
-        addDirectSpawnToPrototype({
-          state: current,
-          agent: created,
-          groupName: groups.find((group) => group.id === created.groupId)?.name,
-        }),
-      )
+      await res.json()
       // Reset on success.
       setName('')
       setModel('')
@@ -274,14 +271,14 @@ function SpawnForm({
         )}
       </label>
       <label>
-        group
-        {groups.length === 0 ? (
+        team
+        {teams.length === 0 ? (
           <select disabled>
-            <option>(no groups — register one on /groups)</option>
+            <option>(no teams — register one on /teams)</option>
           </select>
         ) : (
-          <select value={groupId} onChange={(e) => setGroupId(e.target.value)}>
-            {groups.map((g) => (
+          <select value={teamId} onChange={(e) => setTeamId(e.target.value)}>
+            {teams.map((g) => (
               <option key={g.id} value={g.id}>
                 {g.id} ({g.name})
               </option>
@@ -296,7 +293,7 @@ function SpawnForm({
           <option value="isolated">isolated</option>
           <option value="open">open to current members and boundaries</option>
         </select>
-        <span className="muted mt-1 block text-xs">Submit uses the latest displayed Group revision; a concurrent policy change is shown as a conflict and never overwritten.</span>
+        <span className="muted mt-1 block text-xs">Submit uses the latest displayed Team revision; a concurrent policy change is shown as a conflict and never overwritten.</span>
       </label>
 
       <button type="submit" disabled={submitting}>

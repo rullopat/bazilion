@@ -1,6 +1,6 @@
 // Per-supergroup outbound queue.
 //
-// Telegram caps outbound to ~20 msg/min per group (across all topics) and
+// Telegram caps outbound to ~20 msg/min per team (across all topics) and
 // ~1 msg/sec to the same chat. With many agents in one supergroup, bursts
 // of mirror sends + first-traffic `createForumTopic` calls all share that
 // budget. The queue serializes outbound work per chat_id and enforces a

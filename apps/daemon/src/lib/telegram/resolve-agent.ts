@@ -2,13 +2,13 @@
 // `/adopt`, ...). Three forms:
 //
 //   bare         "/talk researcher"               — agent name only
-//   qualified    "/talk home-reno/researcher"     — group/agent qualifier
+//   qualified    "/talk home-reno/researcher"     — team/agent qualifier
 //   quoted       "/talk \"Patrizio's Coder\""      — agent name with spaces
 //
 // Resolution outcomes:
 //
 //   ok           — exactly one matching agent
-//   ambiguous    — multiple agents share the bare name across groups
+//   ambiguous    — multiple agents share the bare name across teams
 //   not-found    — no matching agent
 //   bad-input    — empty / malformed reference (e.g. "/" with no parts)
 //
@@ -27,14 +27,14 @@ export type AgentResolution =
   | { kind: 'bad-input'; message: string }
 
 export interface ParsedRef {
-  /** Group slug when the reference was qualified, else null. */
-  groupId: string | null
+  /** Team slug when the reference was qualified, else null. */
+  teamId: string | null
   /** Agent name portion of the reference. */
   name: string
 }
 
 /**
- * Parse a raw `/talk` argument into `{ groupId, name }`. Returns null for
+ * Parse a raw `/talk` argument into `{ teamId, name }`. Returns null for
  * obviously malformed input (empty, slash-only, etc.) so the caller can
  * render a "bad input" reply.
  */
@@ -51,12 +51,12 @@ export function parseAgentRef(raw: string): ParsedRef | null {
   const slashIdx = unquoted.indexOf('/')
   if (slashIdx < 0) {
     // bare name
-    return { groupId: null, name: unquoted }
+    return { teamId: null, name: unquoted }
   }
-  const groupId = unquoted.slice(0, slashIdx).trim()
+  const teamId = unquoted.slice(0, slashIdx).trim()
   const name = unquoted.slice(slashIdx + 1).trim()
-  if (!groupId || !name) return null
-  return { groupId, name }
+  if (!teamId || !name) return null
+  return { teamId, name }
 }
 
 /**
@@ -64,11 +64,11 @@ export function parseAgentRef(raw: string): ParsedRef | null {
  * parsed (or knows the input was empty); this just runs the DB lookup.
  */
 export function resolveAgentRef(db: BazilionDb, ref: ParsedRef): AgentResolution {
-  if (ref.groupId !== null) {
-    const found = agentRepo.findByNameInGroup(db, ref.groupId, ref.name)
+  if (ref.teamId !== null) {
+    const found = agentRepo.findByNameInGroup(db, ref.teamId, ref.name)
     return found ? { kind: 'ok', agent: found } : { kind: 'not-found' }
   }
-  // Bare name — may match multiple agents across groups.
+  // Bare name — may match multiple agents across teams.
   const matches = agentRepo.findByName(db, ref.name)
   if (matches.length === 0) return { kind: 'not-found' }
   if (matches.length === 1) return { kind: 'ok', agent: matches[0]! }
@@ -84,7 +84,7 @@ export function parseAndResolveAgent(db: BazilionDb, raw: string): AgentResoluti
   if (!parsed) {
     return {
       kind: 'bad-input',
-      message: 'Usage: /talk <agent> — or /talk <group>/<agent> when ambiguous.',
+      message: 'Usage: /talk <agent> — or /talk <team>/<agent> when ambiguous.',
     }
   }
   return resolveAgentRef(db, parsed)

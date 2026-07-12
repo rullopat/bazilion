@@ -45,7 +45,7 @@ app/
   agents/
     index.tsx        FlatList of agents (pull-to-refresh, unpair header, 401 → /pair)
     [id]/
-      index.tsx      detail: name, status, model, profile, group, skills
+      index.tsx      detail: name, status, model, profile, team, skills
       chat.tsx       NDJSON streaming chat screen
 src/
   auth.ts            SecureStore wrapper + verifyCredentials + clientFor()

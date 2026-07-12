@@ -14,19 +14,19 @@ import { Hono } from 'hono'
 import {
   agentRepo,
   discoverSkills,
-  groupRepo,
   mergeSecretsIntoEnv,
   parseSkillFile,
   profileRepo,
   resolvePaths,
+  teamRepo,
   webTokenRepo,
 } from '../core/index.ts'
 import { communicationDecisionMetrics } from '../lib/communication.ts'
 import { getCtx } from '../lib/ctx.ts'
 import {
-  HARNESS_MANAGEMENT_CONTRACT_VERSION,
-  harnessEnforcementRequested,
-} from '../lib/harness-contract.ts'
+  TEAM_POLICY_MANAGEMENT_CONTRACT_VERSION,
+  teamPolicyEnforcementRequested,
+} from '../lib/team-policy-contract.ts'
 import { loadProviderConfigFromEnv } from '../runtime/index.ts'
 
 export const miscRouter = new Hono()
@@ -56,7 +56,7 @@ miscRouter.get('/health', (c) => {
         profiles: profileRepo.list(db).length,
         activeAgents: agentRepo.list(db).length,
         totalAgents: agentRepo.list(db, { includeArchived: true }).length,
-        groups: groupRepo.list(db, paths).length,
+        teams: teamRepo.list(db, paths).length,
       }
       const triggerRows = db.raw
         .query<{ enabled: number; n: number }, []>(
@@ -152,12 +152,13 @@ miscRouter.get('/health', (c) => {
       enabled: process.env.BAZILION_SCHEDULER !== 'off',
       tickMs: Number(process.env.BAZILION_SCHEDULER_TICK_MS ?? 5_000),
     },
-    harnessManagement: {
-      contractVersion: HARNESS_MANAGEMENT_CONTRACT_VERSION,
-      enforcementRequested: harnessEnforcementRequested(),
-      enforcementActive: harnessEnforcementRequested() && HARNESS_MANAGEMENT_CONTRACT_VERSION >= 1,
-      releaseReady: HARNESS_MANAGEMENT_CONTRACT_VERSION >= 1,
-      degraded: harnessEnforcementRequested() && HARNESS_MANAGEMENT_CONTRACT_VERSION < 1,
+    teamPolicyManagement: {
+      contractVersion: TEAM_POLICY_MANAGEMENT_CONTRACT_VERSION,
+      enforcementRequested: teamPolicyEnforcementRequested(),
+      enforcementActive:
+        teamPolicyEnforcementRequested() && TEAM_POLICY_MANAGEMENT_CONTRACT_VERSION >= 1,
+      releaseReady: TEAM_POLICY_MANAGEMENT_CONTRACT_VERSION >= 1,
+      degraded: teamPolicyEnforcementRequested() && TEAM_POLICY_MANAGEMENT_CONTRACT_VERSION < 1,
       decisions: { ...communicationDecisionMetrics },
     },
   }

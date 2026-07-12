@@ -11,7 +11,7 @@
 
 import type { InlineKeyboardMarkup } from 'grammy/types'
 import type { BazilionDb } from '../../core/db/client.ts'
-import { agentRepo, groupRepo, openConfig } from '../../core/index.ts'
+import { agentRepo, openConfig, teamRepo } from '../../core/index.ts'
 import type { Paths } from '../../core/paths.ts'
 import { getTelegramBotState } from './bot.ts'
 import { htmlEscape } from './html.ts'
@@ -57,13 +57,13 @@ export interface DirectoryDeps {
 }
 
 /**
- * Build the directory message body. Group agents by their bazilion group;
- * within each group, show bound agents with a clickable deep-link and
+ * Build the directory message body. Team agents by their bazilion team;
+ * within each team, show bound agents with a clickable deep-link and
  * unbound agents with an `(unbound)` marker. Empty installs show a
  * welcome / "spawn one to get started" hint.
  */
 export function buildDirectoryBody(db: BazilionDb, paths: Paths, chatId: number): string {
-  const groups = groupRepo.list(db, paths)
+  const teams = teamRepo.list(db, paths)
   const agents = agentRepo.list(db) // archived excluded by default
   if (agents.length === 0) {
     return [
@@ -76,13 +76,13 @@ export function buildDirectoryBody(db: BazilionDb, paths: Paths, chatId: number)
 
   const byGroup = new Map<string, typeof agents>()
   for (const a of agents) {
-    const bucket = byGroup.get(a.groupId) ?? []
+    const bucket = byGroup.get(a.teamId) ?? []
     bucket.push(a)
-    byGroup.set(a.groupId, bucket)
+    byGroup.set(a.teamId, bucket)
   }
 
   const lines: string[] = ['🛟 <b>Available agents</b>', '']
-  for (const g of groups) {
+  for (const g of teams) {
     const members = byGroup.get(g.id)
     if (!members || members.length === 0) continue
     lines.push(`<b>${htmlEscape(g.id)}</b>`)

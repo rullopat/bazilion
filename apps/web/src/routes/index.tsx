@@ -1,9 +1,9 @@
 import { ApiClientError } from '@bazilion/client'
 import type {
   Agent,
-  Group,
+  Team,
   Profile,
-  HarnessTemplateWithCount,
+  TeamTemplateWithCount,
   ProviderMessage,
   ResolvedAgent,
   SessionHeadResponse,
@@ -24,14 +24,14 @@ interface SelectedView {
 interface HomeData {
   agents: Agent[]
   profiles: Profile[]
-  profileGroups: HarnessTemplateWithCount[]
-  groups: Group[]
+  profileGroups: TeamTemplateWithCount[]
+  teams: Team[]
   selected: SelectedView | null
   initialOpenGroups: Record<string, boolean>
 }
 
 // Pure parser so the rule lives next to the cookie name. getCookie may or may
-// not URL-decode depending on the harness; handle either form defensively.
+// not URL-decode depending on the teamPolicy; handle either form defensively.
 function parseOpenGroupsCookie(raw: string | undefined | null): Record<string, boolean> {
   if (!raw) return {}
   try {
@@ -56,11 +56,11 @@ const fetchHomeData = createServerFn({ method: 'POST' })
   .inputValidator((d: { agentId?: string }) => d)
   .handler(async ({ data }): Promise<HomeData> => {
     const client = daemonClient()
-    const [agents, profiles, profileGroups, groups] = await Promise.all([
+    const [agents, profiles, profileGroups, teams] = await Promise.all([
       client.get<Agent[]>('/api/agents?includeArchived=false'),
       client.get<Profile[]>('/api/profiles'),
-      client.get<HarnessTemplateWithCount[]>('/api/harness-templates'),
-      client.get<Group[]>('/api/groups'),
+      client.get<TeamTemplateWithCount[]>('/api/team-templates'),
+      client.get<Team[]>('/api/teams'),
     ])
 
     const initialOpenGroups = parseOpenGroupsCookie(getCookie(SIDEBAR_OPEN_GROUPS_COOKIE))
@@ -97,7 +97,7 @@ const fetchHomeData = createServerFn({ method: 'POST' })
         if (!(err instanceof ApiClientError) || err.status !== 404) throw err
       }
     }
-    return { agents, profiles, profileGroups, groups, selected, initialOpenGroups }
+    return { agents, profiles, profileGroups, teams, selected, initialOpenGroups }
   })
 
 export const Route = createFileRoute('/')({
@@ -117,7 +117,7 @@ function HomePage() {
     <div className="grid h-full grid-cols-1 gap-3 py-3 sm:grid-cols-[16rem_minmax(0,1fr)]">
       <Sidebar
         agents={data.agents}
-        groups={data.groups}
+        teams={data.teams}
         profiles={data.profiles}
         profileGroups={data.profileGroups}
         selectedAgentId={selectedAgentId}

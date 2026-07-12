@@ -7,22 +7,22 @@
 export type Timestamp = number
 
 /**
- * A group is a collaboration context: one filesystem root, one USER.md
+ * A team is a collaboration context: one filesystem root, one USER.md
  * (read-only to agents, edited by the human), one roster of member agents.
- * Every agent belongs to exactly one group.
+ * Every agent belongs to exactly one team.
  */
-export interface Group {
+export interface Team {
   id: string
   name: string
   path: string
-  /** Read-only context about the human for all agents in this group.
+  /** Read-only context about the human for all agents in this team.
    * Injected into the system prompt; never exposed as a file on disk. */
   userMd: string
   /**
-   * Optional Telegram forum-topic name template for this group's agents.
+   * Optional Telegram forum-topic name template for this team's agents.
    * `null` = built-in naming (bare name for `default`, `<slug> › <name>`
-   * otherwise). When set, rendered with {agent.name}, {group.name},
-   * {group.slug}. Must contain {agent.name} so topics stay distinct.
+   * otherwise). When set, rendered with {agent.name}, {team.name},
+   * {team.slug}. Must contain {agent.name} so topics stay distinct.
    */
   telegramTopicNameFormat: string | null
   createdAt: Timestamp
@@ -42,34 +42,33 @@ export interface Profile {
   communicationDefaults?: ProfileCommunicationDefaults | null
 }
 
-export type ProfilePeerDefault = 'inherit_harness' | 'allow_all' | 'deny_all'
+export type ProfilePeerDefault = 'inherit_team_policy' | 'allow_all' | 'deny_all'
 
 export interface ProfileCommunicationDefaults {
   userInput: boolean
   userOutput: boolean
-  outsideGroupInput: boolean
-  outsideGroupOutput: boolean
+  outsideTeamInput: boolean
+  outsideTeamOutput: boolean
   peerDefault: ProfilePeerDefault
 }
 
-export type HarnessMembershipMode = 'compatibility_open' | 'explicit'
-export type HarnessPlacement = 'isolated' | 'open' | 'profile_defaults' | 'template_snapshot'
-export type TemplateEndpointKind = 'user' | 'outside_group' | 'slot'
-export type LiveEndpointKind = 'user' | 'outside_group' | 'agent'
+export type TeamPolicyPlacement = 'isolated' | 'open' | 'profile_defaults' | 'template_snapshot'
+export type TemplateEndpointKind = 'user' | 'outside_team' | 'slot'
+export type LiveEndpointKind = 'user' | 'outside_team' | 'agent'
 
 export type CommunicationEndpoint =
   | { kind: 'agent'; id: string }
-  | { kind: 'user'; groupId: string }
-  | { kind: 'outside_group'; groupId: string }
-export type CommunicationChannel = 'same_group' | 'cross_group' | 'user' | 'outside_group'
+  | { kind: 'user'; teamId: string }
+  | { kind: 'outside_team'; teamId: string }
+export type CommunicationChannel = 'same_team' | 'cross_team' | 'user' | 'outside_team'
 export type CommunicationEdgePosture = 'allow' | 'approval_required'
 export type CommunicationDecision = 'allow' | 'deny' | 'approval_required'
 export interface CommunicationPolicyRef {
-  groupId: string
+  teamId: string
   revision: number
 }
 export interface CommunicationComponentOutcome {
-  groupId: string
+  teamId: string
   edge: string
   matched: boolean
   posture: CommunicationEdgePosture | null
@@ -85,7 +84,7 @@ export interface CommunicationAuthorizationResult {
   requiredEdgeIds: string[]
 }
 
-export interface HarnessBlockEvent {
+export interface TeamPolicyBlockEvent {
   id: string
   attempt_kind: string
   attempt_id: string
@@ -94,8 +93,8 @@ export interface HarnessBlockEvent {
   source_id: string
   target_kind: string
   target_id: string
-  source_group_id: string
-  target_group_id: string
+  source_team_id: string
+  target_team_id: string
   channel: CommunicationChannel
   origin: string
   reason_code: string
@@ -107,23 +106,22 @@ export interface HarnessBlockEvent {
   requiredEdgeIds: string[]
 }
 
-export interface HarnessBlockPage {
-  blocks: HarnessBlockEvent[]
+export interface TeamPolicyBlockPage {
+  blocks: TeamPolicyBlockEvent[]
   nextCursor: string | null
 }
 
-export interface HarnessTemplate {
+export interface TeamTemplate {
   id: string
   name: string
   userMd: string | null
   currentRevision: number
-  compatibilityManaged: boolean
   deletedAt: Timestamp | null
   createdAt: Timestamp
   updatedAt: Timestamp
 }
 
-export interface HarnessTemplateSlot {
+export interface TeamTemplateSlot {
   templateId: string
   slotId: string
   position: number
@@ -136,7 +134,7 @@ export interface HarnessTemplateSlot {
   tombstonedAt: Timestamp | null
 }
 
-export interface HarnessTemplateEdge {
+export interface TeamTemplateEdge {
   templateId: string
   sourceKind: TemplateEndpointKind
   sourceId: string | null
@@ -145,37 +143,36 @@ export interface HarnessTemplateEdge {
   posture: CommunicationEdgePosture
 }
 
-export interface HarnessTemplateRevision {
+export interface TeamTemplateRevision {
   templateId: string
   revision: number
   name: string
   userMd: string | null
-  slots: HarnessTemplateSlot[]
-  edges: HarnessTemplateEdge[]
+  slots: TeamTemplateSlot[]
+  edges: TeamTemplateEdge[]
   createdAt: Timestamp
 }
 
-export interface HarnessTemplateDetail {
-  template: HarnessTemplate
-  slots: HarnessTemplateSlot[]
-  edges: HarnessTemplateEdge[]
-  currentSnapshot: HarnessTemplateRevision
+export interface TeamTemplateDetail {
+  template: TeamTemplate
+  slots: TeamTemplateSlot[]
+  edges: TeamTemplateEdge[]
+  currentSnapshot: TeamTemplateRevision
 }
 
-export interface HarnessTemplateWithCount extends HarnessTemplate {
+export interface TeamTemplateWithCount extends TeamTemplate {
   slotCount: number
 }
 
-export interface LiveHarness {
-  groupId: string
+export interface TeamPolicy {
+  teamId: string
   revision: number
-  membershipMode: HarnessMembershipMode
   baselineInstantiationId: string | null
   updatedAt: Timestamp
 }
 
-export interface LiveHarnessEdge {
-  groupId: string
+export interface TeamPolicyEdge {
+  teamId: string
   sourceKind: LiveEndpointKind
   sourceId: string | null
   targetKind: LiveEndpointKind
@@ -200,8 +197,8 @@ export interface CommunicationApproval {
   operation: string
   source: CommunicationEndpoint
   target: CommunicationEndpoint
-  sourceGroupId: string | null
-  targetGroupId: string | null
+  sourceTeamId: string | null
+  targetTeamId: string | null
   channel: CommunicationChannel
   origin: string
   requester: string
@@ -242,7 +239,7 @@ export interface CommunicationApprovalEvent {
 
 export interface TemplateInstantiation {
   id: string
-  groupId: string
+  teamId: string
   templateId: string
   templateRevision: number
   createdAt: Timestamp
@@ -254,22 +251,22 @@ export interface SourceSlotBinding {
   sourceSlotId: string
 }
 
-export interface LiveAgentState {
+export interface TeamAgentState {
   agentId: string
-  groupId: string
+  teamId: string
   position: { x: number; y: number } | null
   display: Record<string, unknown> | null
 }
 
-export interface LiveHarnessDetail {
-  harness: LiveHarness
-  edges: LiveHarnessEdge[]
+export interface TeamPolicyDetail {
+  teamPolicy: TeamPolicy
+  edges: TeamPolicyEdge[]
   instantiations: TemplateInstantiation[]
   bindings: SourceSlotBinding[]
-  agentState: LiveAgentState[]
+  agentState: TeamAgentState[]
 }
 
-export interface ResolvedGroupHarness extends LiveHarnessDetail {
+export interface ResolvedTeamPolicy extends TeamPolicyDetail {
   baseline: TemplateInstantiation | null
   /** Canonical membership projection; includes archived Agents. */
   members: Agent[]
@@ -303,8 +300,8 @@ export interface Agent {
   reasoningLevel: ReasoningLevel
   status: AgentStatus
   dir: string
-  /** The group this agent belongs to. Every agent has exactly one. */
-  groupId: string
+  /** The team this agent belongs to. Every agent has exactly one. */
+  teamId: string
   /**
    * Forum-topic id this agent is bound to in the configured Telegram
    * supergroup, or `null` when unbound. Web UI shows binding state +
@@ -414,46 +411,8 @@ export interface ResolvedAgent {
   profile: Profile
   model: string
   reasoningLevel: ReasoningLevel
-  group: Group
+  team: Team
   skills: string[]
-}
-
-/**
- * A profile group is a reusable team template: an ordered list of slots,
- * each pointing at an existing Profile with optional per-slot overrides.
- * Spawning a profile group creates N agents in one transactional call.
- * Strictly additive — the single-profile spawn path is untouched.
- */
-export interface ProfileGroup {
-  id: string
-  name: string
-  /** Optional starter USER.md content; only seeded into a freshly-created target group. */
-  userMd: string | null
-  createdAt: Timestamp
-  updatedAt: Timestamp
-  /** Additive canonical fields exposed by the one-release compatibility projection. */
-  revision?: number
-  compatibilityManaged?: boolean
-}
-
-export interface ProfileGroupMember {
-  profileGroupId: string
-  position: number
-  profileId: string
-  agentName: string
-  modelOverride: string | null
-  reasoningLevel: ReasoningLevel | null
-  /** Stable canonical slot identity; legacy clients may ignore it. */
-  slotId?: string
-}
-
-export interface ProfileGroupDetail {
-  group: ProfileGroup
-  members: ProfileGroupMember[]
-}
-
-export interface ProfileGroupWithCount extends ProfileGroup {
-  memberCount: number
 }
 
 export type McpTransport = 'stdio' | 'http' | 'sse'

@@ -4,7 +4,7 @@ Hermetic TypeScript wire types for the [Bazilion](https://github.com/rullopat/ba
 
 [![npm](https://img.shields.io/npm/v/@bazilion/api-types.svg)](https://www.npmjs.com/package/@bazilion/api-types) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/rullopat/bazilion/blob/main/LICENSE)
 
-This package is the canonical source of truth for everything that crosses the daemon's HTTP wire: entity shapes (`Agent`, `Group`, `Profile`, `Message`, `WebToken`, `AgentTrigger`, `ResolvedAgent`, `LoadedProfile`, …), chat/provider events (`ChatFrame`, `SessionEvent`, `ProviderMessage`, `ToolCall`, `ToolDef`), memory wire types, and request/response envelopes. The daemon, the official `@bazilion/client`, and the bazilion CLI all import their types from here.
+This package is the canonical source of truth for everything that crosses the daemon's HTTP wire: entity shapes (`Agent`, `Team`, `Profile`, `Message`, `WebToken`, `AgentTrigger`, `ResolvedAgent`, `LoadedProfile`, …), chat/provider events (`ChatFrame`, `SessionEvent`, `ProviderMessage`, `ToolCall`, `ToolDef`), memory wire types, and request/response envelopes. The daemon, the official `@bazilion/client`, and the bazilion CLI all import their types from here.
 
 ## Install
 

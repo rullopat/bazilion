@@ -7,7 +7,7 @@ export function memoryTools(memory: MemoryBackend): ToolHandler[] {
       def: {
         name: 'memory_write',
         description:
-          'Write or update a memory note in the GROUP-SHARED memory. All agents in this group can read what you write. Use it for project knowledge, codebase notes, decisions, and findings — anything other agents in the group should benefit from. For personal notes about yourself (preferences, persona) use `home_write` on IDENTITY.md. For STABLE facts about the human you\'re working with (their preferences, role, working hours, how they like to be addressed) use `user_md_get` then `user_md_write` — those land in every agent\'s system prompt directly. Key is a path-like string with a markdown extension, e.g. "auth-flow.md" or "decisions/2026-05-migration.md".',
+          'Write or update a memory note in the GROUP-SHARED memory. All agents in this team can read what you write. Use it for project knowledge, codebase notes, decisions, and findings — anything other agents in the team should benefit from. For personal notes about yourself (preferences, persona) use `home_write` on IDENTITY.md. For STABLE facts about the human you\'re working with (their preferences, role, working hours, how they like to be addressed) use `user_md_get` then `user_md_write` — those land in every agent\'s system prompt directly. Key is a path-like string with a markdown extension, e.g. "auth-flow.md" or "decisions/2026-05-migration.md".',
         parameters: {
           type: 'object',
           properties: {
@@ -29,7 +29,7 @@ export function memoryTools(memory: MemoryBackend): ToolHandler[] {
       def: {
         name: 'memory_search',
         description:
-          'Search the group-shared memory by substring. Returns matching entry keys with short snippets around the match.',
+          'Search the team-shared memory by substring. Returns matching entry keys with short snippets around the match.',
         parameters: {
           type: 'object',
           properties: {
@@ -51,7 +51,7 @@ export function memoryTools(memory: MemoryBackend): ToolHandler[] {
     {
       def: {
         name: 'memory_read',
-        description: 'Read a single entry from the group-shared memory by key.',
+        description: 'Read a single entry from the team-shared memory by key.',
         parameters: {
           type: 'object',
           properties: { key: { type: 'string' } },
@@ -68,7 +68,7 @@ export function memoryTools(memory: MemoryBackend): ToolHandler[] {
     {
       def: {
         name: 'memory_list',
-        description: 'List every entry in the group-shared memory with its byte size.',
+        description: 'List every entry in the team-shared memory with its byte size.',
         parameters: { type: 'object', properties: {} },
       },
       async invoke() {

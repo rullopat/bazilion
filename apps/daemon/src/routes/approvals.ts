@@ -33,7 +33,7 @@ approvalsRouter.get('/', (c) => {
   return c.json({
     approvals: communicationApprovalRepo.list(getCtx().db, {
       status,
-      groupId: c.req.query('groupId'),
+      teamId: c.req.query('teamId'),
       limit,
     }),
   })

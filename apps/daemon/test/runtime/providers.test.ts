@@ -2,7 +2,7 @@ import {
   createAssistantMessageEventStream,
   registerApiProvider,
   unregisterApiProviders,
-} from '@earendil-works/pi-ai'
+} from '@earendil-works/pi-ai/compat'
 import { afterEach, beforeEach, expect, test } from 'vitest'
 import { piProvider } from '../../src/runtime/providers/pi-adapter.ts'
 import {

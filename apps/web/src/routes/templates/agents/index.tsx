@@ -3,10 +3,10 @@ import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { useState } from 'react'
 import { Button } from '../../../components/Button'
-import { ProfileCommunicationEditor } from '../../../components/harness/ProfileCommunicationEditor'
+import { ProfileCommunicationEditor } from '../../../components/team-policy/ProfileCommunicationEditor'
 import { TemplatesTabs } from '../../../components/TemplatesTabs'
 import { daemonClient } from '../../../lib/daemon-client'
-import { DEFAULT_PROFILE_COMMUNICATION } from '../../../lib/harness-prototype'
+import { DEFAULT_PROFILE_COMMUNICATION } from '../../../lib/team-policy'
 
 interface ProfileWithCounts extends Profile {
   agentCount: number
@@ -17,7 +17,7 @@ interface ModelGroup {
   models: string[]
 }
 interface AvailableModelsResponse {
-  groups: ModelGroup[]
+  teams: ModelGroup[]
 }
 interface TemplatesResponse {
   soul: string
@@ -44,7 +44,7 @@ const fetchProfiles = createServerFn({ method: 'GET' }).handler(async (): Promis
     c.get<SkillInfo[]>('/api/skills'),
     c.get<TemplatesResponse>('/api/profiles/_/templates'),
   ])
-  return { profiles, modelGroups: models.groups, skills, templates }
+  return { profiles, modelGroups: models.teams, skills, templates }
 })
 
 export const Route = createFileRoute('/templates/agents/')({
@@ -73,7 +73,7 @@ function ProfilesPage() {
       <h1>agent templates</h1>
       <p className="muted">
         An agent template is a spawn template — SOUL/IDENTITY templates, a default model, a skills
-        policy. Agents choose a Group at spawn time, independent of their Agent template.
+        policy. Agents choose a Team at spawn time, independent of their Agent template.
       </p>
 
       <CreateProfileForm

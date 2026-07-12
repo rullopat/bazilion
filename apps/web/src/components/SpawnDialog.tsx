@@ -1,25 +1,25 @@
-// Spawn an agent from a profile, with name + group fields. POSTs to
+// Spawn an agent from a profile, with name + team fields. POSTs to
 // /api/agents (proxied to daemon) and navigates to ?agent=<newId>.
 
-import type { Agent, Group, ResolvedGroupHarness } from '@bazilion/api-types'
+import type { Agent, Team, ResolvedTeamPolicy } from '@bazilion/api-types'
 import { useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
-import { DEFAULT_GROUP_ID } from '../lib/wire-constants'
+import { DEFAULT_TEAM_ID } from '../lib/wire-constants'
 
 interface Props {
   profileId: string
-  groupHint?: string
-  groups: Group[]
+  teamHint?: string
+  teams: Team[]
   onClose: () => void
 }
 
-export function SpawnDialog({ profileId, groupHint, groups, onClose }: Props) {
+export function SpawnDialog({ profileId, teamHint, teams, onClose }: Props) {
   const navigate = useNavigate()
   const [name, setName] = useState('')
-  const [groupId, setGroupId] = useState(
-    groupHint ??
-      groups.find((group) => group.id === DEFAULT_GROUP_ID)?.id ??
-      groups[0]?.id ??
+  const [teamId, setTeamId] = useState(
+    teamHint ??
+      teams.find((team) => team.id === DEFAULT_TEAM_ID)?.id ??
+      teams[0]?.id ??
       '',
   )
   const [placement, setPlacement] = useState<'isolated' | 'open' | 'profile_defaults'>('profile_defaults')
@@ -39,15 +39,15 @@ export function SpawnDialog({ profileId, groupHint, groups, onClose }: Props) {
   } | null>(null)
 
   async function requestBody() {
-    const policy = await fetch(`/api/groups/${encodeURIComponent(groupId)}/harness`)
-    if (!policy.ok) throw new Error('The selected Group policy is unavailable. Reload and try again.')
-    const current = (await policy.json()) as ResolvedGroupHarness
+    const policy = await fetch(`/api/teams/${encodeURIComponent(teamId)}/policy`)
+    if (!policy.ok) throw new Error('The selected Team policy is unavailable. Reload and try again.')
+    const current = (await policy.json()) as ResolvedTeamPolicy
     return {
       current,
       body: {
         profileId,
-        groupId,
-        groupExpectedRevision: current.harness.revision,
+        teamId,
+        teamExpectedRevision: current.teamPolicy.revision,
         placement,
       },
     }
@@ -86,11 +86,11 @@ export function SpawnDialog({ profileId, groupHint, groups, onClose }: Props) {
       }
       const body: Record<string, string | number> = {
         profile: profileId,
-        groupExpectedRevision: preview.currentRevision,
+        teamExpectedRevision: preview.currentRevision,
         placement,
       }
       if (name.trim()) body.name = name.trim()
-      if (groupId) body.groupId = groupId
+      if (teamId) body.teamId = teamId
       const res = await fetch('/api/agents', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -146,25 +146,25 @@ export function SpawnDialog({ profileId, groupHint, groups, onClose }: Props) {
             <option value="isolated">isolated</option>
             <option value="open">open to current members and boundaries</option>
           </select>
-          <span className="mt-1 block text-xs text-muted-foreground">The current Group revision is checked again when you submit.</span>
+          <span className="mt-1 block text-xs text-muted-foreground">The current Team revision is checked again when you submit.</span>
         </label>
         <label className="block text-sm text-foreground mb-3">
-          Group
+          Team
           <select
-            value={groupId}
-            onChange={(e) => {setGroupId(e.target.value);setPreview(null)}}
+            value={teamId}
+            onChange={(e) => {setTeamId(e.target.value);setPreview(null)}}
             className="mt-1 block w-full rounded-md border bg-background px-3 py-2 outline-none focus:ring-2 focus:ring-ring/30"
           >
-            {groups.map((g) => (
+            {teams.map((g) => (
               <option key={g.id} value={g.id}>
                 {g.name}
-                {g.id === DEFAULT_GROUP_ID ? ' (default)' : ''}
+                {g.id === DEFAULT_TEAM_ID ? ' (default)' : ''}
               </option>
             ))}
           </select>
         </label>
         {err && <p className="mt-2 text-sm text-rose-700">{err}</p>}
-        {preview && <div className="mt-3 rounded-md border border-sapphire-light bg-sapphire-glow p-3 text-sm"><p>Creating this Agent advances Group revision {preview.currentRevision} → <strong>{preview.resultingRevision}</strong> and adds <strong>{preview.addedEdges.length}</strong> directed edges to the existing {preview.existingEdges.length}.</p><ul className="mt-2 max-h-36 overflow-auto">{preview.addedEdges.map((edge,index)=><li key={`${edge.sourceKind}:${edge.sourceId??''}>${edge.targetKind}:${edge.targetId??''}:${index}`}><code>{edge.sourceKind}{edge.sourceId?`:${edge.sourceId}`:''} → {edge.targetKind}{edge.targetId?`:${edge.targetId}`:''}</code></li>)}</ul>{preview.addedEdges.length===0&&<p className="mt-2">The new Agent starts isolated.</p>}</div>}
+        {preview && <div className="mt-3 rounded-md border border-sapphire-light bg-sapphire-glow p-3 text-sm"><p>Creating this Agent advances Team revision {preview.currentRevision} → <strong>{preview.resultingRevision}</strong> and adds <strong>{preview.addedEdges.length}</strong> directed edges to the existing {preview.existingEdges.length}.</p><ul className="mt-2 max-h-36 overflow-auto">{preview.addedEdges.map((edge,index)=><li key={`${edge.sourceKind}:${edge.sourceId??''}>${edge.targetKind}:${edge.targetId??''}:${index}`}><code>{edge.sourceKind}{edge.sourceId?`:${edge.sourceId}`:''} → {edge.targetKind}{edge.targetId?`:${edge.targetId}`:''}</code></li>)}</ul>{preview.addedEdges.length===0&&<p className="mt-2">The new Agent starts isolated.</p>}</div>}
         <div className="mt-5 flex justify-end gap-2">
           <button
             type="button"

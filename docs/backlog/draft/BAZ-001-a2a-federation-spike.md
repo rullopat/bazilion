@@ -25,7 +25,7 @@ Produce a written recommendation that answers the questions below with enough de
 
 ## Why now
 
-The exploratory conversation surfaced federation as a credible alternative to SaaS that preserves Bazilion's single-tenant ethos ("bleeding-edge personal software, skip compat shims"). Before committing direction — and before any of the existing internals (the in-process `MessagingHost`, the `~/.bazilion/groups/<slug>/` filesystem-rooted group model, the bootstrap-token-equals-god-mode auth) get refactored in ways that prematurely lock in either direction — confirm whether federation actually answers the company-deployment question or whether it just punts the hard problems to a different layer.
+The exploratory conversation surfaced federation as a credible alternative to SaaS that preserves Bazilion's single-tenant ethos ("bleeding-edge personal software, skip compat shims"). Before committing direction — and before any of the existing internals (the in-process `MessagingHost`, the `~/.bazilion/teams/<slug>/` filesystem-rooted team model, the bootstrap-token-equals-god-mode auth) get refactored in ways that prematurely lock in either direction — confirm whether federation actually answers the company-deployment question or whether it just punts the hard problems to a different layer.
 
 ## Questions to answer
 
@@ -52,7 +52,7 @@ The exploratory conversation surfaced federation as a credible alternative to Sa
 
 4. **Per-agent authorization — who can invoke which of my agents.**
    - Today: token holders can do everything. A federated story needs `alice` to expose `refactor-helper` to "the whole company", `code-reviewer` to "team-platform", and `personal-todo` to nobody.
-   - Schema sketch: an `agent_exposures(agent_id, audience, capability)` table on each install. `audience` could be `*`, `@company`, `@group:platform`, `@user:bob@acme`. `capability` could be `chat`, `read_inbox`, `read_skills_list`.
+   - Schema sketch: an `agent_exposures(agent_id, audience, capability)` table on each install. `audience` could be `*`, `@company`, `@team:platform`, `@user:bob@acme`. `capability` could be `chat`, `read_inbox`, `read_skills_list`.
    - Default-deny: a newly spawned agent is local-only until the operator publishes it.
    - Open question: where does the audience definition live? On the directory service (single source of truth) or on each install (federated and possibly inconsistent)?
 
@@ -63,16 +63,16 @@ The exploratory conversation surfaced federation as a credible alternative to Sa
    - Option C: third-party message bus (Matrix federation, NATS JetStream). External dep, but separates concerns cleanly.
    - Recommendation expected: option B for the first cut (operationally simpler than running a Matrix homeserver), with the door left open to swap in C later.
 
-6. **Cross-install group state — the deepest problem.**
-   - Today: a Bazilion group is `~/.bazilion/groups/<slug>/` (real dir or symlink) + the `groups.user_md` DB column + shared qmd memory at `<group.path>/memory/`. Every member of the group writes to the same store.
-   - Federated equivalent: "Alice and Bob both belong to the platform-team group" — where does the group filesystem live? Where do the shared memory writes go?
-   - Option A — **single-owner groups**: a group lives on exactly one employee's install (its "host"). Other employees join as remote guests via A2A; their `memory_*` tool calls become A2A round-trips to the host. Loses local availability for guests when the host is offline. Simple to implement, big UX limitation.
-   - Option B — **mirrored groups with sync**: each member's install has a local copy of group state; changes sync via CRDT or last-writer-wins. Genuinely hard (qmd index conflicts, USER.md merge conflicts, file content conflicts) and changes the on-disk model materially.
-   - Option C — **directory-hosted groups**: the directory service stores group memory and USER.md; every install reads/writes via the directory. Centralises the most contested piece of state.
+6. **Cross-install team state — the deepest problem.**
+   - Today: a Bazilion team is `~/.bazilion/teams/<slug>/` (real dir or symlink) + the `teams.user_md` DB column + shared qmd memory at `<team.path>/memory/`. Every member of the team writes to the same store.
+   - Federated equivalent: "Alice and Bob both belong to the platform-team team" — where does the team filesystem live? Where do the shared memory writes go?
+   - Option A — **single-owner teams**: a team lives on exactly one employee's install (its "host"). Other employees join as remote guests via A2A; their `memory_*` tool calls become A2A round-trips to the host. Loses local availability for guests when the host is offline. Simple to implement, big UX limitation.
+   - Option B — **mirrored teams with sync**: each member's install has a local copy of team state; changes sync via CRDT or last-writer-wins. Genuinely hard (qmd index conflicts, USER.md merge conflicts, file content conflicts) and changes the on-disk model materially.
+   - Option C — **directory-hosted teams**: the directory service stores team memory and USER.md; every install reads/writes via the directory. Centralises the most contested piece of state.
    - Recommendation expected: option A for the first cut (smallest delta from today's code). Explicitly document the limitation; revisit if the limitation becomes the dominant complaint.
 
 7. **Offboarding + audit — the compliance angle.**
-   - When Alice leaves Acme: who can revoke her A2A access? Who gets her agent transcripts? Who shuts down her install's group-host role for groups she was hosting (option A from question 6)?
+   - When Alice leaves Acme: who can revoke her A2A access? Who gets her agent transcripts? Who shuts down her install's team-host role for teams she was hosting (option A from question 6)?
    - Pure peer-to-peer makes this brittle. A central component (the directory) is the natural revocation point — yanking Alice's directory entry makes her unaddressable.
    - Centralised audit: even with a federated runtime, compliance will likely want all transcripts streamed to a central audit sink. pi's session JSONL files are local-only today; the design should at least define the streaming hook (a webhook fired per `SessionEvent`?), even if the spike doesn't implement it.
    - Output of the spike: a one-paragraph plain-English summary of "what central infra is mandatory for a viable company deployment" so the operator can decide whether to commit to running a directory + audit sink, or whether that footprint reframes the decision toward SaaS.
@@ -100,7 +100,7 @@ A new BAZ file `docs/backlog/todo/BAZ-NNN-a2a-federation-implementation.md` (num
 1. The chosen protocol (A2A vs. alternative) + one-paragraph rationale.
 2. The directory service shape: language/runtime, hosting model, endpoint surface, auth model. (Could itself be a separate BAZ if the directory turns out to be a non-trivial service.)
 3. The per-install changes: routes added, middleware changes, `MessagingHost` shape, schema additions for `agent_exposures` + remote-peer auth.
-4. The cross-install group model decision (single-owner / mirrored / directory-hosted) + rationale + a one-paragraph description of the limitation it accepts.
+4. The cross-install team model decision (single-owner / mirrored / directory-hosted) + rationale + a one-paragraph description of the limitation it accepts.
 5. The async-delivery model (sender-retries / directory-inbox / external-bus) + rationale.
 6. The compliance hook (audit-streaming webhook? per-`SessionEvent` outbound?) — at minimum, a defined surface even if implementation is deferred.
 7. A size estimate (S/M/L/XL) and explicit dependencies. If the answer is XL, split into multiple BAZs at this point.
@@ -111,15 +111,15 @@ The implementation BAZ (or BAZs) is what gets pulled into a sprint. **This BAZ (
 ## Open questions to confirm with the operator before starting the spike
 
 1. **Is federation actually the chosen direction**, or is this spike comparing federation against hardened-multi-user-self-hosted and SaaS as siblings? If sibling-comparison, the spike's deliverable is a three-way recommendation, not a federation implementation plan — which roughly doubles the timebox.
-2. **Target company size for the first deployment** — 5 employees? 50? 500? The directory service shape and the group-state decision both flex significantly between those numbers.
+2. **Target company size for the first deployment** — 5 employees? 50? 500? The directory service shape and the team-state decision both flex significantly between those numbers.
 3. **Operator's appetite for running central infrastructure** — "I'll happily run a small directory + audit sink on Kamal / Fly / a VPS" keeps federation in play; "I want zero central infra" forces the spike to investigate fully peer-to-peer alternatives (BitTorrent-style DHT discovery, gossip-based presence) which are research-grade and probably push the size to L or XL.
 4. **Interop ambition** — does Bazilion want to be addressable from non-Bazilion A2A clients (a Google ADK agent, a LangGraph agent), or is A2A just an internal wire format between Bazilion installs? Affects strictness of spec compliance and how much of A2A's surface needs implementing.
 
 ## Tests (sketch — for the eventual implementation BAZ, not the spike itself)
 
 - Two Bazilion installs on the same machine, different ports, register with a local directory; install A invokes an agent on install B via A2A; the `ChatFrame` NDJSON stream round-trips end-to-end through the new `MessagingHost`.
-- Per-agent ACL: an agent published to `@group:platform` rejects a call from a peer not in that group; the rejection is logged on both sides.
+- Per-agent ACL: an agent published to `@team:platform` rejects a call from a peer not in that team; the rejection is logged on both sides.
 - Offline-recipient delivery: install A sends to an agent on install B while B is down; B comes online and drains the queued message via whatever path question 5 picks.
-- Cross-install group memory: a `memory_write` from install A appears in subsequent `memory_search` results from install B (assuming the chosen group-state model supports it; if option A from question 6 wins, the test instead asserts that B's `memory_*` tool calls correctly proxy to A as host).
+- Cross-install team memory: a `memory_write` from install A appears in subsequent `memory_search` results from install B (assuming the chosen team-state model supports it; if option A from question 6 wins, the test instead asserts that B's `memory_*` tool calls correctly proxy to A as host).
 - Peer-auth code path: an A2A call presenting a valid peer credential CANNOT escalate to bootstrap-token actions (e.g. cannot mint new tokens, cannot read `auth.json`, cannot list other agents not exposed to it).
 - Compliance hook (if scoped into the first implementation BAZ): an A2A-initiated turn produces an audit event with the remote caller's identity stamped on it.

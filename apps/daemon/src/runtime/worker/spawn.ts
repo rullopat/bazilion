@@ -307,11 +307,11 @@ async function dispatch(req: IpcRequest, hosts: IpcHosts): Promise<IpcReply> {
         )
         break
       case 'userMdGet':
-        result = await require(hosts.userMdHost, 'userMd', req.method).get(req.args.groupId)
+        result = await require(hosts.userMdHost, 'userMd', req.method).get(req.args.teamId)
         break
       case 'userMdWrite':
         result = await require(hosts.userMdHost, 'userMd', req.method).write(
-          req.args.groupId,
+          req.args.teamId,
           req.args.content,
           req.args.ifMatch,
         )

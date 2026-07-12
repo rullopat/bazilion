@@ -17,23 +17,23 @@ export const Route = createFileRoute('/config/services')({
 })
 
 /**
- * Bucket services into groups while preserving the order each group first
- * appears in the daemon's SERVICES list. Cards without a `group` field land
+ * Bucket services into teams while preserving the order each team first
+ * appears in the daemon's SERVICES list. Cards without a `team` field land
  * in an "Other" bucket at the end.
  */
-function groupServices(services: ServiceCard[]): { group: string; items: ServiceCard[] }[] {
+function groupServices(services: ServiceCard[]): { team: string; items: ServiceCard[] }[] {
   const buckets = new Map<string, ServiceCard[]>()
   for (const s of services) {
-    const key = s.group ?? UNGROUPED_LABEL
+    const key = s.team ?? UNGROUPED_LABEL
     const bucket = buckets.get(key) ?? []
     bucket.push(s)
     buckets.set(key, bucket)
   }
-  const entries = Array.from(buckets, ([group, items]) => ({ group, items }))
+  const entries = Array.from(buckets, ([team, items]) => ({ team, items }))
   if (entries.length > 1) {
     entries.sort((a, b) => {
-      if (a.group === UNGROUPED_LABEL) return 1
-      if (b.group === UNGROUPED_LABEL) return -1
+      if (a.team === UNGROUPED_LABEL) return 1
+      if (b.team === UNGROUPED_LABEL) return -1
       return 0
     })
   }
@@ -59,10 +59,10 @@ function ServicesPage() {
         <p className="text-muted-foreground italic">(no services registered)</p>
       )}
 
-      {grouped.map(({ group, items }) => (
-        <section key={group} className="mb-6">
+      {grouped.map(({ team, items }) => (
+        <section key={team} className="mb-6">
           <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            {group}
+            {team}
           </h2>
           {items.map((s) => (
             <section key={s.id} className="rounded-lg border bg-card p-5 mb-3">

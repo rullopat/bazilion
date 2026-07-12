@@ -1,14 +1,14 @@
-import type { HarnessTemplateDetail, HarnessTemplateRevision, HarnessTemplateSlot, Profile } from '@bazilion/api-types'
+import type { TeamTemplateDetail, TeamTemplateRevision, TeamTemplateSlot, Profile } from '@bazilion/api-types'
 import { createFileRoute } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
-import { ProductionHarnessEditor } from '../../../../components/harness/ProductionHarnessEditor'
+import { ProductionTeamPolicyEditor } from '../../../../components/team-policy/ProductionTeamPolicyEditor'
 import { RecoveryState } from '../../../../components/RecoveryState'
 import { TemplatesTabs } from '../../../../components/TemplatesTabs'
 import { daemonClient } from '../../../../lib/daemon-client'
 
-type SafeSlot = Omit<HarnessTemplateSlot, 'display'> & { display: null }
-type SafeRevision = Omit<HarnessTemplateRevision, 'slots'> & { slots: SafeSlot[] }
-type SafeDetail = Omit<HarnessTemplateDetail, 'slots' | 'currentSnapshot'> & {
+type SafeSlot = Omit<TeamTemplateSlot, 'display'> & { display: null }
+type SafeRevision = Omit<TeamTemplateRevision, 'slots'> & { slots: SafeSlot[] }
+type SafeDetail = Omit<TeamTemplateDetail, 'slots' | 'currentSnapshot'> & {
   slots: SafeSlot[]
   currentSnapshot: SafeRevision
 }
@@ -22,7 +22,7 @@ const fetchTeam = createServerFn({ method: 'POST' })
     try {
       const client = daemonClient()
       const [detail, profiles] = await Promise.all([
-        client.get<HarnessTemplateDetail>(`/api/harness-templates/${encodeURIComponent(data.id)}`),
+        client.get<TeamTemplateDetail>(`/api/team-templates/${encodeURIComponent(data.id)}`),
         client.get<Profile[]>('/api/profiles'),
       ])
       return {
@@ -58,7 +58,7 @@ function TeamDetailPage() {
   const { detail, profiles } = result.value
   return <div className="space-y-5"><TemplatesTabs /><p><a href="/templates/teams">← team templates</a></p>
     {detail.template.deletedAt && <div role="alert" className="err rounded-md border p-3">Source deleted — lineage is read-only and cannot be edited or spawned.</div>}
-    <ProductionHarnessEditor source={{ kind: 'template', detail }} profiles={profiles} />
+    <ProductionTeamPolicyEditor source={{ kind: 'template', detail }} profiles={profiles} />
     <p className="muted text-xs">Stable slot IDs remain distinct from live Agent IDs. Every successful save creates a new immutable revision; the reconciled editor badge is authoritative.</p>
   </div>
 }

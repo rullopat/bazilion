@@ -5,7 +5,7 @@ import { ThemeToggle } from './ThemeToggle'
 const NAV_LINKS = [
   { to: '/templates', label: 'templates' },
   { to: '/agents', label: 'agents' },
-  { to: '/groups', label: 'groups' },
+  { to: '/teams', label: 'teams' },
   { to: '/approvals', label: 'approvals' },
   { to: '/skills', label: 'skills' },
   { to: '/config', label: 'config' },
@@ -14,8 +14,8 @@ const NAV_LINKS = [
 export function TopNav() {
   return (
     <nav className="flex flex-wrap items-center gap-y-1 gap-x-1 border-b border-frost py-5">
-      <Link to="/" className="logo group mr-6 flex items-center gap-[0.45rem] text-charcoal">
-        <BaziuLogo className="logo-paw h-[28px] w-[28px] transition-transform duration-300 group-hover:rotate-[-8deg] group-hover:scale-[1.08]" />
+      <Link to="/" className="logo team mr-6 flex items-center gap-[0.45rem] text-charcoal">
+        <BaziuLogo className="logo-paw h-[28px] w-[28px] transition-transform duration-300 team-hover:rotate-[-8deg] team-hover:scale-[1.08]" />
         <span className="font-display text-[1.35rem] tracking-[-0.02em]">bazilion</span>
       </Link>
       {NAV_LINKS.map((link) => (

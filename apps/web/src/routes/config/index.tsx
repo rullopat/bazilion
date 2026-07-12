@@ -265,13 +265,14 @@ function ProviderCard({
   )
 }
 
-// Examples mirror pi-ai 0.79's current catalog. Update when bumping pi-ai.
+// Examples mirror pi-ai 0.80's current catalog. Refresh with the repository
+// `refresh-pi-models` skill whenever Pi's catalog changes.
 function exampleModelFor(providerId: string): string {
   switch (providerId) {
     case 'openai-codex':
-      return 'gpt-5.3-codex-spark'
+      return 'gpt-5.6-luna'
     case 'openai':
-      return 'gpt-5.5'
+      return 'gpt-5.6-luna'
     case 'anthropic':
       return 'claude-opus-4-8'
     case 'google':
@@ -333,7 +334,7 @@ function exampleModelFor(providerId: string): string {
     case 'zai-coding-cn':
       return 'glm-5.2'
     case 'azure-openai':
-      return 'gpt-5.5'
+      return 'gpt-5.6-luna'
     case 'bedrock':
       return 'anthropic.claude-opus-4-8'
     case 'ollama':

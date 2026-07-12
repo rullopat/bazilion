@@ -1,43 +1,10 @@
--- Bazilion initial schema (consolidated, post-IPC + secrets-in-DB cleanup).
---
--- The daemon is the sole owner of `~/.bazilion/`. All state — entity
--- metadata, inbox, scheduler, web tokens, encrypted secrets, plaintext
--- config — lives in this single SQLite file. The only other file at the
--- bazilion home root is `auth.json`: a tiny bootstrap shared by the daemon
--- (which uses its `token` as the PBKDF2 seed for the `secrets` table) and
--- the CLI (which uses the same token as its loopback bearer).
---
--- On-disk layout owned by the daemon:
---   ~/.bazilion/bazilion.db
---   ~/.bazilion/groups/<slug>/        — group root, mounted as cwd; may be a
---                                       symlink for "agents working on my
---                                       existing project tree" use cases
---                  /memory/           — qmd index for the group (shared by
---                                       all member agents)
---   ~/.bazilion/agents/<id>/          — agent's private home (NEVER inside
---                                       the group tree, so the cwd-rooted
---                                       coding tools can't see/clobber it)
---                  /sessions/*.jsonl  — pi transcripts
---   ~/.bazilion/profiles/<id>/        — profile templates
---   ~/.bazilion/skills/<name>/        — installed skills
---   ~/.bazilion/logs/                 — daemon logs
-
--- Groups are collaboration contexts: one filesystem root, one USER.md, one
--- roster of member agents. The id IS the slug IS the directory name under
--- `~/.bazilion/groups/`. No `path` column — paths derive from id.
--- `user_md` is read-only context about the human (edited via web UI; never
--- exposed as a file the agent could clobber via `edit`/`write`).
-CREATE TABLE groups (
+-- Canonical clean-install schema. Bazilion is alpha and does not support legacy DB upgrades.
+CREATE TABLE IF NOT EXISTS "teams" (
   id          TEXT PRIMARY KEY,
   name        TEXT NOT NULL,
   user_md     TEXT NOT NULL DEFAULT '',
   created_at  INTEGER NOT NULL
-);
-
--- Profiles are agent templates. `dir` is the on-disk directory for the
--- profile's SOUL.md / IDENTITY.md / etc. master files, derived from id.
--- `skills_mode = 'all'` attaches every installed skill at spawn;
--- `'selected'` attaches only those listed in `profile_default_skills`.
+, telegram_icon_color INTEGER, telegram_topic_name_format TEXT);
 CREATE TABLE profiles (
   id            TEXT PRIMARY KEY,
   name          TEXT NOT NULL,
@@ -46,19 +13,12 @@ CREATE TABLE profiles (
   skills_mode   TEXT NOT NULL DEFAULT 'selected' CHECK (skills_mode IN ('all','selected')),
   created_at    INTEGER NOT NULL,
   updated_at    INTEGER NOT NULL
-);
-
+, telegram_icon_emoji TEXT);
 CREATE TABLE profile_default_skills (
   profile_id  TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
   skill_name  TEXT NOT NULL,
   PRIMARY KEY (profile_id, skill_name)
 );
-
--- Agents have exactly one group. `dir` is the agent's private home,
--- ~/.bazilion/agents/<id>/ — strictly outside the group tree so that
--- pi's coding tools (rooted at the group dir) can't reach into it.
--- `reasoning_level` feeds pi-ai's streamSimple `reasoning` option;
--- 'medium' is the sensible default.
 CREATE TABLE agents (
   id              TEXT PRIMARY KEY,
   profile_id      TEXT NOT NULL REFERENCES profiles(id),
@@ -67,27 +27,17 @@ CREATE TABLE agents (
   status          TEXT NOT NULL CHECK (status IN ('idle','running','archived')),
   dir             TEXT NOT NULL,
   reasoning_level TEXT NOT NULL DEFAULT 'medium',
-  group_id        TEXT NOT NULL REFERENCES groups(id) ON DELETE RESTRICT,
+  team_id        TEXT NOT NULL REFERENCES teams(id) ON DELETE RESTRICT,
   created_at      INTEGER NOT NULL,
   archived_at     INTEGER
-);
-
+, telegram_topic_id INTEGER, telegram_topic_name_locked INTEGER NOT NULL DEFAULT 0, telegram_icon_emoji TEXT, telegram_mirror_mode TEXT NOT NULL DEFAULT 'minimal'
+  CHECK (telegram_mirror_mode IN ('minimal','verbose')));
 CREATE TABLE agent_skills (
   agent_id    TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
   skill_name  TEXT NOT NULL,
   attached_at INTEGER NOT NULL,
   PRIMARY KEY (agent_id, skill_name)
 );
-
--- Periodic / scheduled wake-up triggers. The scheduler picks rows whose
--- next-fire time has elapsed and kicks off a turn with `message` as the
--- user input.
---
--- kind='interval' → interval_sec holds seconds between fires (cron_expr NULL)
--- kind='cron'     → cron_expr holds a 5-field cron expression (interval_sec NULL)
---
--- last_fired_at is bumped *before* the run kicks off so a daemon restart
--- mid-fire doesn't double-trigger.
 CREATE TABLE agent_triggers (
   id             TEXT PRIMARY KEY,
   agent_id       TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
@@ -101,10 +51,6 @@ CREATE TABLE agent_triggers (
 );
 CREATE INDEX agent_triggers_agent ON agent_triggers(agent_id);
 CREATE INDEX agent_triggers_enabled ON agent_triggers(enabled) WHERE enabled = 1;
-
--- Inter-agent inbox. The scheduler's auto-deliver loop polls
--- `messages_to_unread` to fan out wakeup turns; the messaging tools insert
--- here when one agent sends another a message.
 CREATE TABLE messages (
   id            TEXT PRIMARY KEY,
   from_agent_id TEXT NOT NULL REFERENCES agents(id),
@@ -113,23 +59,14 @@ CREATE TABLE messages (
   payload       TEXT NOT NULL,
   created_at    INTEGER NOT NULL,
   read_at       INTEGER
-);
+, policy_disposition TEXT NOT NULL DEFAULT 'deliverable'
+  CHECK (policy_disposition IN ('deliverable', 'policy_blocked')), policy_blocked_at INTEGER, policy_claimed_at INTEGER, policy_delivered_at INTEGER);
 CREATE INDEX messages_to_unread ON messages(to_agent_id) WHERE read_at IS NULL;
-
--- Per-skill import provenance. Skills live on disk under ~/.bazilion/skills/<name>/;
--- this table records where each was imported from and when.
 CREATE TABLE skill_meta (
   name         TEXT PRIMARY KEY,
   source       TEXT,
   imported_at  INTEGER
 );
-
--- Per-client web tokens. Each row stores SHA-256(token) hex; the plaintext
--- is returned exactly once at creation time and never persisted in this
--- table. The CLI's bootstrap token is one row here — its plaintext lives
--- in `~/.bazilion/auth.json` so both the daemon (PBKDF2 seed for the
--- secrets table) and the CLI (loopback bearer) can read it.
--- `revoked_at` is a soft-delete marker to keep audit trail intact.
 CREATE TABLE web_tokens (
   id            TEXT PRIMARY KEY,
   label         TEXT NOT NULL,
@@ -139,9 +76,6 @@ CREATE TABLE web_tokens (
   revoked_at    INTEGER
 );
 CREATE INDEX web_tokens_active ON web_tokens(token_hash) WHERE revoked_at IS NULL;
-
--- Curated list of models per provider. Drives the model dropdowns in
--- profile creation and agent spawn/edit forms.
 CREATE TABLE provider_models (
   provider   TEXT    NOT NULL,
   model      TEXT    NOT NULL,
@@ -149,31 +83,327 @@ CREATE TABLE provider_models (
   PRIMARY KEY (provider, model)
 );
 CREATE INDEX idx_provider_models_provider ON provider_models (provider);
-
--- Admin-toggled enabled state per provider.
 CREATE TABLE provider_state (
   provider_id TEXT    NOT NULL PRIMARY KEY,
   enabled     INTEGER NOT NULL DEFAULT 0,
   updated_at  INTEGER NOT NULL
 );
-
--- Encrypted secrets. AES-256-GCM envelopes (salt+iv+tag+data hex JSON),
--- one row per env-var-shaped key (`ANTHROPIC_API_KEY`, `OPENAI_CODEX_OAUTH`, …).
--- The encryption key is derived from the bootstrap web token (PBKDF2-SHA256,
--- 100k iterations) — same crypto as the previous file-based secrets.enc,
--- now atomic with the rest of the DB.
 CREATE TABLE secrets (
   key         TEXT PRIMARY KEY,
   envelope    TEXT NOT NULL,
   updated_at  INTEGER NOT NULL
 );
-
--- Plaintext config. Same env-var-shaped keys as secrets, but for values
--- that don't need confidentiality (server URLs, region slugs, project IDs).
--- The application layer enforces a CONFIG_KEYS allowlist on writes so a
--- typo can't put a secret in this table.
 CREATE TABLE config (
   key         TEXT PRIMARY KEY,
   value       TEXT NOT NULL,
   updated_at  INTEGER NOT NULL
 );
+CREATE UNIQUE INDEX idx_agents_telegram_topic_id
+  ON agents(telegram_topic_id)
+  WHERE telegram_topic_id IS NOT NULL;
+CREATE TABLE telegram_allowed_users (
+  user_id   INTEGER PRIMARY KEY,
+  username  TEXT,
+  label     TEXT,
+  role      TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('owner','member')),
+  added_at  INTEGER NOT NULL
+);
+CREATE TABLE mcp_servers (
+  id          TEXT PRIMARY KEY,
+  name        TEXT NOT NULL UNIQUE,
+  transport   TEXT NOT NULL CHECK (transport IN ('stdio','http','sse')),
+  command     TEXT,
+  args        TEXT NOT NULL DEFAULT '[]',
+  url         TEXT,
+  has_auth    INTEGER NOT NULL DEFAULT 0,
+  enabled     INTEGER NOT NULL DEFAULT 1,
+  created_at  INTEGER NOT NULL,
+  updated_at  INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS "team_templates" (
+  id                    TEXT PRIMARY KEY,
+  name                  TEXT NOT NULL,
+  user_md               TEXT,
+  current_revision      INTEGER NOT NULL CHECK (current_revision >= 1),
+  deleted_at            INTEGER,
+  created_at            INTEGER NOT NULL,
+  updated_at            INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS "team_template_slots" (
+  template_id    TEXT NOT NULL REFERENCES team_templates(id) ON DELETE CASCADE,
+  slot_id        TEXT NOT NULL,
+  position       INTEGER NOT NULL CHECK (position >= 0),
+  profile_id     TEXT NOT NULL REFERENCES profiles(id) ON DELETE RESTRICT,
+  agent_name     TEXT NOT NULL,
+  model_override TEXT,
+  reasoning_level TEXT CHECK (reasoning_level IS NULL OR reasoning_level IN ('off','minimal','low','medium','high','xhigh')),
+  position_x     REAL,
+  position_y     REAL,
+  display_json   TEXT,
+  tombstoned_at  INTEGER,
+  PRIMARY KEY (template_id, slot_id)
+);
+CREATE TABLE IF NOT EXISTS "team_template_revisions" (
+  template_id TEXT NOT NULL REFERENCES team_templates(id) ON DELETE CASCADE,
+  revision    INTEGER NOT NULL CHECK (revision >= 1),
+  name        TEXT NOT NULL,
+  user_md     TEXT,
+  created_at  INTEGER NOT NULL,
+  PRIMARY KEY (template_id, revision)
+);
+CREATE TABLE IF NOT EXISTS "team_template_revision_slots" (
+  template_id     TEXT NOT NULL,
+  revision        INTEGER NOT NULL,
+  slot_id         TEXT NOT NULL,
+  position        INTEGER NOT NULL CHECK (position >= 0),
+  profile_id      TEXT NOT NULL REFERENCES profiles(id) ON DELETE RESTRICT,
+  agent_name      TEXT NOT NULL,
+  model_override  TEXT,
+  reasoning_level TEXT CHECK (reasoning_level IS NULL OR reasoning_level IN ('off','minimal','low','medium','high','xhigh')),
+  position_x      REAL,
+  position_y      REAL,
+  display_json    TEXT,
+  PRIMARY KEY (template_id, revision, slot_id),
+  UNIQUE (template_id, revision, position),
+  FOREIGN KEY (template_id, revision)
+    REFERENCES team_template_revisions(template_id, revision) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS "team_policies" (
+  team_id                  TEXT PRIMARY KEY REFERENCES teams(id) ON DELETE CASCADE,
+  revision                  INTEGER NOT NULL CHECK (revision >= 1),
+  baseline_instantiation_id TEXT REFERENCES template_instantiations(id) ON DELETE RESTRICT
+    DEFERRABLE INITIALLY DEFERRED,
+  updated_at                INTEGER NOT NULL
+);
+CREATE TABLE template_instantiations (
+  id                TEXT PRIMARY KEY,
+  team_id          TEXT NOT NULL REFERENCES team_policies(team_id) ON DELETE CASCADE,
+  template_id       TEXT NOT NULL,
+  template_revision INTEGER NOT NULL,
+  created_at        INTEGER NOT NULL,
+  FOREIGN KEY (template_id, template_revision)
+    REFERENCES team_template_revisions(template_id, revision) ON DELETE RESTRICT
+);
+CREATE TABLE source_slot_bindings (
+  agent_id        TEXT PRIMARY KEY REFERENCES agents(id) ON DELETE CASCADE,
+  instantiation_id TEXT NOT NULL REFERENCES template_instantiations(id) ON DELETE CASCADE,
+  source_slot_id   TEXT NOT NULL,
+  UNIQUE (instantiation_id, source_slot_id)
+);
+CREATE TABLE IF NOT EXISTS "team_agent_state" (
+  agent_id      TEXT PRIMARY KEY REFERENCES agents(id) ON DELETE CASCADE,
+  team_id      TEXT NOT NULL REFERENCES team_policies(team_id) ON DELETE CASCADE,
+  position_x    REAL,
+  position_y    REAL,
+  display_json  TEXT,
+  CHECK ((position_x IS NULL) = (position_y IS NULL))
+);
+CREATE TABLE IF NOT EXISTS "team_policy_block_events" (
+  id TEXT PRIMARY KEY,
+  attempt_kind TEXT NOT NULL,
+  attempt_id TEXT NOT NULL,
+  operation TEXT NOT NULL,
+  source_kind TEXT NOT NULL,
+  source_id TEXT NOT NULL DEFAULT '',
+  target_kind TEXT NOT NULL,
+  target_id TEXT NOT NULL DEFAULT '',
+  source_team_id TEXT,
+  target_team_id TEXT,
+  channel TEXT NOT NULL,
+  origin TEXT NOT NULL,
+  reason_code TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  policy_refs_json TEXT NOT NULL,
+  component_outcomes_json TEXT NOT NULL,
+  matched_edge_ids_json TEXT NOT NULL,
+  required_edge_ids_json TEXT NOT NULL,
+  fingerprint TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  UNIQUE (attempt_kind, attempt_id)
+);
+CREATE INDEX messages_policy_delivery_queue
+  ON messages(to_agent_id, policy_disposition, read_at, policy_claimed_at, created_at);
+CREATE TABLE communication_approvals (
+  id TEXT PRIMARY KEY,
+  attempt_kind TEXT NOT NULL,
+  attempt_id TEXT NOT NULL,
+  fingerprint TEXT NOT NULL,
+  operation TEXT NOT NULL,
+  source_kind TEXT NOT NULL,
+  source_id TEXT NOT NULL DEFAULT '',
+  target_kind TEXT NOT NULL,
+  target_id TEXT NOT NULL DEFAULT '',
+  source_team_id TEXT,
+  target_team_id TEXT,
+  channel TEXT NOT NULL,
+  origin TEXT NOT NULL,
+  requester TEXT NOT NULL,
+  policy_refs_json TEXT NOT NULL,
+  required_edge_ids_json TEXT NOT NULL,
+  payload_kind TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  status TEXT NOT NULL
+    CHECK (status IN (
+      'pending', 'approved', 'denied', 'expired', 'cancelled',
+      'delivering', 'delivered', 'delivery_failed'
+    )),
+  expires_at INTEGER NOT NULL,
+  decided_at INTEGER,
+  decided_by TEXT,
+  decision_reason TEXT,
+  delivery_error TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  UNIQUE(attempt_kind, attempt_id)
+);
+CREATE INDEX communication_approvals_queue
+  ON communication_approvals(status, expires_at, created_at DESC);
+CREATE TABLE communication_approval_events (
+  id TEXT PRIMARY KEY,
+  approval_id TEXT NOT NULL REFERENCES communication_approvals(id) ON DELETE CASCADE,
+  event TEXT NOT NULL
+    CHECK (event IN (
+      'requested', 'approved', 'denied', 'expired', 'cancelled',
+      'delivery_started', 'delivered', 'delivery_failed'
+    )),
+  actor TEXT NOT NULL,
+  detail TEXT,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX communication_approval_events_attempt
+  ON communication_approval_events(approval_id, created_at ASC);
+CREATE TABLE communication_approval_message_grants (
+  approval_id TEXT PRIMARY KEY REFERENCES communication_approvals(id) ON DELETE CASCADE,
+  message_id TEXT NOT NULL UNIQUE REFERENCES messages(id) ON DELETE CASCADE,
+  created_at INTEGER NOT NULL
+);
+CREATE TABLE profile_communication_defaults (
+  profile_id           TEXT PRIMARY KEY REFERENCES profiles(id) ON DELETE CASCADE,
+  user_input           INTEGER NOT NULL CHECK (user_input IN (0, 1)),
+  user_output          INTEGER NOT NULL CHECK (user_output IN (0, 1)),
+  outside_team_input   INTEGER NOT NULL CHECK (outside_team_input IN (0, 1)),
+  outside_team_output  INTEGER NOT NULL CHECK (outside_team_output IN (0, 1)),
+  peer_default         TEXT NOT NULL CHECK (peer_default IN ('inherit_team_policy','allow_all','deny_all')),
+  updated_at           INTEGER NOT NULL
+);
+CREATE TABLE team_template_edges (
+  template_id TEXT NOT NULL REFERENCES team_templates(id) ON DELETE CASCADE,
+  source_kind TEXT NOT NULL CHECK (source_kind IN ('user','outside_team','slot')),
+  source_id   TEXT NOT NULL DEFAULT '',
+  target_kind TEXT NOT NULL CHECK (target_kind IN ('user','outside_team','slot')),
+  target_id   TEXT NOT NULL DEFAULT '',
+  posture     TEXT NOT NULL DEFAULT 'allow' CHECK (posture IN ('allow','approval_required')),
+  CHECK ((source_kind = 'slot') = (length(source_id) > 0)),
+  CHECK ((target_kind = 'slot') = (length(target_id) > 0)),
+  CHECK (source_kind = 'slot' OR target_kind = 'slot'),
+  CHECK (source_kind != target_kind OR source_id != target_id),
+  PRIMARY KEY (template_id, source_kind, source_id, target_kind, target_id)
+);
+CREATE TABLE team_template_revision_edges (
+  template_id TEXT NOT NULL,
+  revision    INTEGER NOT NULL,
+  source_kind TEXT NOT NULL CHECK (source_kind IN ('user','outside_team','slot')),
+  source_id   TEXT NOT NULL DEFAULT '',
+  target_kind TEXT NOT NULL CHECK (target_kind IN ('user','outside_team','slot')),
+  target_id   TEXT NOT NULL DEFAULT '',
+  posture     TEXT NOT NULL DEFAULT 'allow' CHECK (posture IN ('allow','approval_required')),
+  CHECK ((source_kind = 'slot') = (length(source_id) > 0)),
+  CHECK ((target_kind = 'slot') = (length(target_id) > 0)),
+  CHECK (source_kind = 'slot' OR target_kind = 'slot'),
+  CHECK (source_kind != target_kind OR source_id != target_id),
+  PRIMARY KEY (template_id, revision, source_kind, source_id, target_kind, target_id),
+  FOREIGN KEY (template_id, revision)
+    REFERENCES team_template_revisions(template_id, revision) ON DELETE CASCADE
+);
+CREATE TABLE team_policy_edges (
+  team_id     TEXT NOT NULL REFERENCES team_policies(team_id) ON DELETE CASCADE,
+  source_kind TEXT NOT NULL CHECK (source_kind IN ('user','outside_team','agent')),
+  source_id   TEXT NOT NULL DEFAULT '',
+  target_kind TEXT NOT NULL CHECK (target_kind IN ('user','outside_team','agent')),
+  target_id   TEXT NOT NULL DEFAULT '',
+  posture     TEXT NOT NULL DEFAULT 'allow' CHECK (posture IN ('allow','approval_required')),
+  CHECK ((source_kind = 'agent') = (length(source_id) > 0)),
+  CHECK ((target_kind = 'agent') = (length(target_id) > 0)),
+  CHECK (source_kind = 'agent' OR target_kind = 'agent'),
+  CHECK (source_kind != target_kind OR source_id != target_id),
+  PRIMARY KEY (team_id, source_kind, source_id, target_kind, target_id)
+);
+CREATE UNIQUE INDEX team_template_active_position
+  ON team_template_slots(template_id, position) WHERE tombstoned_at IS NULL;
+CREATE UNIQUE INDEX team_policy_baseline_owner
+  ON team_policies(baseline_instantiation_id) WHERE baseline_instantiation_id IS NOT NULL;
+CREATE INDEX team_policy_blocks_team_time
+  ON team_policy_block_events(source_team_id, target_team_id, created_at DESC, id DESC);
+CREATE INDEX communication_approvals_teams
+  ON communication_approvals(source_team_id, target_team_id, created_at DESC);
+CREATE TRIGGER create_team_policy
+AFTER INSERT ON teams
+BEGIN
+  INSERT INTO team_policies
+    (team_id, revision, baseline_instantiation_id, updated_at)
+  VALUES (NEW.id, 1, NULL, NEW.created_at);
+END;
+CREATE TRIGGER prevent_detached_team_policy_delete
+BEFORE DELETE ON team_policies
+WHEN EXISTS (SELECT 1 FROM teams t WHERE t.id = OLD.team_id)
+BEGIN
+  SELECT RAISE(ABORT, 'Team policy cannot be deleted independently of its Team');
+END;
+CREATE TRIGGER validate_team_template_edge_insert
+BEFORE INSERT ON team_template_edges
+WHEN (NEW.source_kind = 'slot' AND NOT EXISTS (
+        SELECT 1 FROM team_template_slots s
+        WHERE s.template_id = NEW.template_id AND s.slot_id = NEW.source_id
+          AND s.tombstoned_at IS NULL
+      ))
+  OR (NEW.target_kind = 'slot' AND NOT EXISTS (
+        SELECT 1 FROM team_template_slots s
+        WHERE s.template_id = NEW.template_id AND s.slot_id = NEW.target_id
+          AND s.tombstoned_at IS NULL
+      ))
+BEGIN
+  SELECT RAISE(ABORT, 'Team Template edge endpoint is not an active slot');
+END;
+CREATE TRIGGER validate_team_policy_edge_insert
+BEFORE INSERT ON team_policy_edges
+WHEN (NEW.source_kind = 'agent' AND NOT EXISTS (
+        SELECT 1 FROM agents a WHERE a.id = NEW.source_id AND a.team_id = NEW.team_id
+      ))
+  OR (NEW.target_kind = 'agent' AND NOT EXISTS (
+        SELECT 1 FROM agents a WHERE a.id = NEW.target_id AND a.team_id = NEW.team_id
+      ))
+BEGIN
+  SELECT RAISE(ABORT, 'Team policy edge endpoint is not a Team member');
+END;
+CREATE TRIGGER validate_source_binding_insert
+BEFORE INSERT ON source_slot_bindings
+WHEN NOT EXISTS (
+  SELECT 1
+  FROM template_instantiations i
+  JOIN team_template_revision_slots s
+    ON s.template_id = i.template_id
+   AND s.revision = i.template_revision
+   AND s.slot_id = NEW.source_slot_id
+  JOIN agents a ON a.id = NEW.agent_id AND a.team_id = i.team_id
+  WHERE i.id = NEW.instantiation_id
+)
+BEGIN
+  SELECT RAISE(ABORT, 'source binding does not match retained revision or Team membership');
+END;
+CREATE TRIGGER validate_team_agent_state_insert
+BEFORE INSERT ON team_agent_state
+WHEN NOT EXISTS (
+  SELECT 1 FROM agents a WHERE a.id = NEW.agent_id AND a.team_id = NEW.team_id
+)
+BEGIN
+  SELECT RAISE(ABORT, 'Team Agent state does not match agents.team_id');
+END;
+CREATE TRIGGER validate_team_policy_baseline_update
+BEFORE UPDATE OF baseline_instantiation_id ON team_policies
+WHEN NEW.baseline_instantiation_id IS NOT NULL AND NOT EXISTS (
+  SELECT 1 FROM template_instantiations i
+  WHERE i.id = NEW.baseline_instantiation_id AND i.team_id = NEW.team_id
+)
+BEGIN
+  SELECT RAISE(ABORT, 'baseline instantiation belongs to another Team');
+END;

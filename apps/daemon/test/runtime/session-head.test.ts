@@ -8,11 +8,11 @@ import { loadSessionHead } from '../../src/runtime/pi/session.ts'
 // Minimal ResolvedAgent shape loadSessionHead actually reads — we don't need
 // a real spawn + provider wiring for this unit test, only the agent.id (used
 // to resolve the session dir). loadSessionHead itself doesn't touch the
-// group, but the type still requires it.
+// team, but the type still requires it.
 function fakeAgent(id: string, dir: string) {
   return {
     agent: { id, dir, name: id, status: 'idle' as const },
-    group: { id: 'g', name: 'g', path: dir, userMd: '', createdAt: 0 },
+    team: { id: 'g', name: 'g', path: dir, userMd: '', createdAt: 0 },
     skills: [],
   } as unknown as Parameters<typeof loadSessionHead>[0]
 }

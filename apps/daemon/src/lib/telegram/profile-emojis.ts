@@ -2,7 +2,7 @@
 //
 // Two layers:
 //   1. A curated default emoji per profile *name* (BUILTIN_PROFILE_EMOJI) so a
-//      profile called "researcher" gets 📚 with zero config. The default group
+//      profile called "researcher" gets 📚 with zero config. The default team
 //      ("Default") has no entry → color-only.
 //   2. A per-agent override (`agents.telegram_icon_emoji`) that wins over the
 //      profile default.

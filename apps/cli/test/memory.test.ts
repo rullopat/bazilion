@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, expect, test } from 'vitest'
 import { startTestServer, type TestServer } from './server-fixture.ts'
 
-// The fixture seeds a `default` group on every reset — that's our scope.
+// The fixture seeds a `default` team on every reset — that's our scope.
 const GROUP = 'default'
 
 let server: TestServer
@@ -49,16 +49,16 @@ test('memory rm deletes the entry', async () => {
   expect(r.stderr + r.stdout).toContain('not found')
 })
 
-test('memory persists across CLI invocations under the group dir', async () => {
+test('memory persists across CLI invocations under the team dir', async () => {
   await server.cli(['memory', 'write', GROUP, 'persist.md', 'survives restart'])
   // New CLI invocation = new subprocess; state lives server-side.
   const r = await server.cli(['memory', 'read', GROUP, 'persist.md'])
   expect(r.stdout).toContain('survives restart')
 })
 
-test('memory is shared across every agent in the group', async () => {
+test('memory is shared across every agent in the team', async () => {
   // Spawn two agents both implicitly placed in `default`. They must see
-  // the same entry — the whole point of moving memory to the group level.
+  // the same entry — the whole point of moving memory to the team level.
   await server.cli(['profile', 'create', 'p', '--model', 'm'])
   await server.cli(['agent', 'spawn', '--profile', 'p'])
   await server.cli(['agent', 'spawn', '--profile', 'p'])

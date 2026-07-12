@@ -1,4 +1,0 @@
--- BAZ-012 added optional visual layout metadata to Team-template slots after
--- 0009 had shipped. The migration runner adds each column only when absent so
--- it can converge both older upgraded databases and databases created during
--- the interval in which 0009 incorrectly contained the later columns.

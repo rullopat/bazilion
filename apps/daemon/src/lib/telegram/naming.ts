@@ -1,23 +1,23 @@
-// Topic-name templating + group icon-color allocation.
+// Topic-name templating + team icon-color allocation.
 //
-// Names:  default group → bare agent.name;
-//         every other group → "<group.id> › <agent.name>".
+// Names:  default team → bare agent.name;
+//         every other team → "<team.id> › <agent.name>".
 // Colors: Telegram exposes a 6-value icon-color enum. Red (16478047) is
 //         reserved for the ⚙ bazilion service topic. The remaining 5 are
-//         dealt out round-robin to bazilion groups in the order each group's
-//         first agent first touches Telegram. Past the 5th group, colors
+//         dealt out round-robin to bazilion teams in the order each team's
+//         first agent first touches Telegram. Past the 5th team, colors
 //         repeat — name prefixing is authoritative for disambiguation, color
 //         is a visual hint.
 
-import type { Agent, Group } from '@bazilion/api-types'
+import type { Agent, Team } from '@bazilion/api-types'
 import type { BazilionDb } from '../../core/db/client.ts'
-import { groupRepo } from '../../core/index.ts'
+import { teamRepo } from '../../core/index.ts'
 
-/** ⚙ bazilion service topic uses red; groups get the other 5. */
+/** ⚙ bazilion service topic uses red; teams get the other 5. */
 export const SERVICE_TOPIC_COLOR = 16478047
 
 /** Telegram's non-red icon-color enum values, in round-robin order. */
-export const GROUP_COLORS: readonly number[] = [
+export const TEAM_COLORS: readonly number[] = [
   7322096, // light blue / cyan
   16766590, // orange
   13338331, // purple / lavender
@@ -25,20 +25,20 @@ export const GROUP_COLORS: readonly number[] = [
   16749490, // pink / rose
 ]
 
-/** The seeded default group id — bare topic names for its agents. */
-export const DEFAULT_GROUP_ID = 'default'
+/** The seeded default team id — bare topic names for its agents. */
+export const DEFAULT_TEAM_ID = 'default'
 
-/** Template tokens a group's `telegramTopicNameFormat` may reference. */
-export const TOPIC_NAME_TOKENS = ['{agent.name}', '{group.name}', '{group.slug}'] as const
+/** Template tokens a team's `telegramTopicNameFormat` may reference. */
+export const TOPIC_NAME_TOKENS = ['{agent.name}', '{team.name}', '{team.slug}'] as const
 
 /**
- * Build the forum-topic name for an agent in a group.
+ * Build the forum-topic name for an agent in a team.
  *
- * When the group has an explicit `telegramTopicNameFormat`, it wins: the
- * template is rendered with {agent.name}/{group.name}/{group.slug}. Otherwise
- * the built-in convention applies — the default group uses the bare agent name
- * (single-tenant feel); every other group prefixes the slug + arrow separator
- * so cross-group topics are visually distinguishable when they share a
+ * When the team has an explicit `telegramTopicNameFormat`, it wins: the
+ * template is rendered with {agent.name}/{team.name}/{team.slug}. Otherwise
+ * the built-in convention applies — the default team uses the bare agent name
+ * (single-tenant feel); every other team prefixes the slug + arrow separator
+ * so cross-team topics are visually distinguishable when they share a
  * supergroup.
  *
  * Length budget: Telegram caps topic names at 128 characters. In practice
@@ -47,36 +47,36 @@ export const TOPIC_NAME_TOKENS = ['{agent.name}', '{group.name}', '{group.slug}'
  */
 export function topicNameFor(
   agent: Pick<Agent, 'name'>,
-  group: Pick<Group, 'id'> & Partial<Pick<Group, 'name' | 'telegramTopicNameFormat'>>,
+  team: Pick<Team, 'id'> & Partial<Pick<Team, 'name' | 'telegramTopicNameFormat'>>,
 ): string {
-  const fmt = group.telegramTopicNameFormat ?? null
+  const fmt = team.telegramTopicNameFormat ?? null
   if (fmt) {
     return renderTopicNameFormat(fmt, {
       agentName: agent.name,
-      groupName: group.name ?? group.id,
-      groupSlug: group.id,
+      teamName: team.name ?? team.id,
+      teamSlug: team.id,
     })
   }
-  if (group.id === DEFAULT_GROUP_ID) return agent.name
-  return `${group.id} › ${agent.name}`
+  if (team.id === DEFAULT_TEAM_ID) return agent.name
+  return `${team.id} › ${agent.name}`
 }
 
 /** Substitute the supported tokens into a topic-name template. */
 export function renderTopicNameFormat(
   fmt: string,
-  vals: { agentName: string; groupName: string; groupSlug: string },
+  vals: { agentName: string; teamName: string; teamSlug: string },
 ): string {
   return fmt
     .replaceAll('{agent.name}', vals.agentName)
-    .replaceAll('{group.name}', vals.groupName)
-    .replaceAll('{group.slug}', vals.groupSlug)
+    .replaceAll('{team.name}', vals.teamName)
+    .replaceAll('{team.slug}', vals.teamSlug)
 }
 
 /**
  * Validate a topic-name template before persisting it. Returns an error
  * message string when invalid, or `null` when the template is acceptable.
  * Rules: non-empty, only known {tokens}, and must contain {agent.name} —
- * without it every agent in the group would collide on one topic title.
+ * without it every agent in the team would collide on one topic title.
  */
 export function validateTopicNameFormat(fmt: string): string | null {
   if (fmt.trim().length === 0) return 'Format cannot be empty.'
@@ -93,18 +93,18 @@ export function validateTopicNameFormat(fmt: string): string | null {
 }
 
 /**
- * Pick (and persist) the icon color for a bazilion group. Idempotent: a
+ * Pick (and persist) the icon color for a bazilion team. Idempotent: a
  * second call returns the previously-allocated color. The first call
- * computes `GROUP_COLORS[allocatedCount % 5]` and stores it.
+ * computes `TEAM_COLORS[allocatedCount % 5]` and stores it.
  */
-export function allocateGroupColor(db: BazilionDb, groupId: string): number {
-  const existing = groupRepo.getTelegramIconColor(db, groupId)
+export function allocateGroupColor(db: BazilionDb, teamId: string): number {
+  const existing = teamRepo.getTelegramIconColor(db, teamId)
   if (existing !== null) return existing
-  const idx = groupRepo.countAllocatedColors(db) % GROUP_COLORS.length
-  // GROUP_COLORS has 5 elements; idx is bounded — non-null assert avoids the
+  const idx = teamRepo.countAllocatedColors(db) % TEAM_COLORS.length
+  // TEAM_COLORS has 5 elements; idx is bounded — non-null assert avoids the
   // noUncheckedIndexedAccess complaint.
-  const color = GROUP_COLORS[idx]!
-  groupRepo.setTelegramIconColor(db, groupId, color)
+  const color = TEAM_COLORS[idx]!
+  teamRepo.setTelegramIconColor(db, teamId, color)
   return color
 }
 

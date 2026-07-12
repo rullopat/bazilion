@@ -2,13 +2,13 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Multi-agent runtime built on [Pi's coding agent](https://www.npmjs.com/package/@earendil-works/pi-coding-agent) as the core engine, with [OpenClaw](https://docs.openclaw.ai)-inspired skill compatibility around it. Pi owns the per-turn agent loop, transcript storage, compaction, provider execution, and coding tools; Bazilion wraps that engine with local-first orchestration: profiles, groups, skills, shared memory, a DB-backed mailbox, a daemon, CLI, and web UI.
+Multi-agent runtime built on [Pi's coding agent](https://www.npmjs.com/package/@earendil-works/pi-coding-agent) as the core engine, with [OpenClaw](https://docs.openclaw.ai)-inspired skill compatibility around it. Pi owns the per-turn agent loop, transcript storage, compaction, provider execution, and coding tools; Bazilion wraps that engine with local-first orchestration: profiles, teams, skills, shared memory, a DB-backed mailbox, a daemon, CLI, and web UI.
 
 Local-only. TypeScript + Node monorepo (pnpm + tsx + vitest). The web UI lives at `apps/web` (TanStack Start + React 19 + Tailwind v4 + shadcn/ui) and is bundled into the published CLI package. It pairs with the standalone Hono daemon at `apps/daemon`. The CLI talks over HTTP, so keep `bazilion dashboard` or `bazilion serve` running while you work in another terminal.
 
 ## Status
 
-Whole-run subprocess isolation with worker↔daemon Node-IPC for messaging, ChatGPT OAuth, qmd memory (group-shared), scheduler/triggers, profile skills mode, and groups (one-to-one agent membership). The Pi agent engine remains the center of every chat turn; the daemon is the **single owner of `~/.bazilion`** — config + secrets live in the SQLite DB, the only other file at the root is `auth.json` (the bootstrap bearer). See `docs/architecture.md` for the engineer-to-engineer reference.
+Whole-run subprocess isolation with worker↔daemon Node-IPC for messaging, ChatGPT OAuth, qmd memory (team-shared), scheduler/triggers, profile skills mode, and teams (one-to-one agent membership). The Pi agent engine remains the center of every chat turn; the daemon is the **single owner of `~/.bazilion`** — config + secrets live in the SQLite DB, the only other file at the root is `auth.json` (the bootstrap bearer). See `docs/architecture.md` for the engineer-to-engineer reference.
 
 ## Quickstart
 
@@ -24,6 +24,11 @@ bazilion dashboard
 ```
 
 `dashboard` starts the daemon on `127.0.0.1:4321`, starts the bundled web UI on `127.0.0.1:4322`, and opens the dashboard in your browser. The daemon auto-bootstraps `~/.bazilion` on first run (creates dirs, runs migrations, mints the bootstrap token, writes `auth.json`). Save the token somewhere — the local CLI picks it up automatically from `~/.bazilion/auth.json`, but you'll need it to log in to the web UI or pair remote clients.
+
+> **Alpha database contract:** the schema is a clean-install-only `0001_init.sql`. Bazilion does
+> not carry database, API, URL, or filesystem compatibility adapters yet. After a breaking schema
+> change, export anything you need and run `bazilion uninstall --yes --all` before bootstrapping
+> again.
 
 For a daemon-only CLI flow:
 
@@ -48,7 +53,7 @@ bazilion agent chat <uuid>
 bazilion agent chat <uuid> --message "say hi"
 ```
 
-In the web UI, open `http://127.0.0.1:4322` after running `bazilion dashboard`. On a fresh install every page redirects to `/welcome` until you finish first-run setup: enable a provider on `/config` and save at least one curated model for it. The moment both conditions hold, a `default` profile + `default` group (at `~/.bazilion/groups/default/`) are auto-created wired to that model. The default profile uses `skillsMode: 'all'` so spawned agents inherit every installed skill out of the box.
+In the web UI, open `http://127.0.0.1:4322` after running `bazilion dashboard`. On a fresh install every page redirects to `/welcome` until you finish first-run setup: enable a provider on `/config` and save at least one curated model for it. The moment both conditions hold, a `default` profile + `default` team (at `~/.bazilion/teams/default/`) are auto-created wired to that model. The default profile uses `skillsMode: 'all'` so spawned agents inherit every installed skill out of the box.
 
 Other provider env vars: `OPENAI_API_KEY`, `GEMINI_API_KEY`, `LMSTUDIO_URL`/`LMSTUDIO_API_KEY`, `OLLAMA_URL`, etc. You still need to enable the provider and save its curated models (via `bazilion provider enable` + `bazilion provider models-set`, or the web UI) to clear the first-run gate.
 
@@ -80,24 +85,25 @@ bazilion uninstall [--yes] [--all]         # wipe state (two-tier: data vs full)
 bazilion doctor                            # diagnose your install
 bazilion auth openai login|logout|status   # ChatGPT OAuth (Plus/Pro/Team accounts)
 bazilion profile create|list|show|edit|update|delete   # manage profile templates
-bazilion profile-group create|list|show|update|edit|delete|spawn   # reusable team templates (N agents in one transactional spawn)
-bazilion group add|list|rm                 # register groups (always under ~/.bazilion/groups/<slug>/)
-bazilion group user-md show|set|clear      # per-group USER.md (read-only to agents)
+bazilion team-template list|show|export|import        # reusable stable-slot Team Templates
+bazilion team add|list|rm                 # register teams (always under ~/.bazilion/teams/<slug>/)
+bazilion team user-md show|set|clear      # per-team USER.md (read-only to agents)
+bazilion team policy show|export|import|diff|evaluate|blocks  # effective live policy
 bazilion agent spawn|list|show|archive|unarchive|delete  # agent lifecycle
 bazilion agent edit <id> [--model …] [--reasoning …]    # patch agent settings
 bazilion agent chat <id> [--message X] [--image path] [--file path]  # REPL/one-shot; attach images (vision) or any file (reference)
 bazilion agent cancel <id>                 # abort an in-flight turn
-bazilion agent move <id> <group>           # move an agent to a different group
+bazilion agent move <id> <team>           # move an agent to a different team
 bazilion agent skill add|rm <id> <name>    # attach/detach a skill on an agent
 bazilion agent chat-reset|chat-trim|chat-context|chat-compact <id>
 bazilion skill list|import|rm              # skill library (import --from openclaw)
-bazilion memory write|read|search|list|rm <agent>  # group-shared memory accessed via the agent
+bazilion memory write|read|search|list|rm <team>   # Team-shared memory
 bazilion send <from> <to> <message>        # mailbox send
 bazilion inbox list|show|read              # inspect agent inboxes
 bazilion trigger add|list|rm|enable|disable  # heartbeats / cron triggers
 bazilion mcp add|list|show|rm|enable|disable|test    # MCP servers (stdio / http / sse)
 bazilion provider list|enable|disable|models|test    # provider config + smoke test
-bazilion config get|set                    # service config (URLs, IDs, secrets)
+bazilion config list|set|rm                # service config (URLs, IDs, secrets)
 bazilion login --server URL --token T      # save a remote daemon's coordinates
 bazilion token create|list|revoke|show-local         # web tokens for API/CLI clients
 bazilion backup create [output.tar.gz]     # tar ~/.bazilion to a file
@@ -108,12 +114,12 @@ bazilion completion bash|zsh|fish          # print a shell completion script
 ## Concepts
 
 - **Profile** — a template (`SOUL.md`, `IDENTITY.md`, `AGENTS.md`, `TOOLS.md`, `HEARTBEAT.md`, optional `BOOTSTRAP.md`, default model, skills mode + default skills). Profiles are agent classes. `skillsMode: 'all'` attaches every installed skill at spawn, `'selected'` uses the curated `defaultSkills` list. The auto-seeded `default` profile uses `'all'` so a fresh install ships with every skill wired up; user-created profiles default to `'selected'`. Delete `default` freely if you'd rather only keep your own.
-- **Profile Group** — a reusable team template: an ordered list of *members*, each pointing at an existing profile with optional per-member overrides (agent name, model, reasoning level). One transactional `spawn` materializes the whole team into a target group — auto-creating the group if its slug doesn't exist yet, optionally seeding its USER.md, and auto-suffixing name collisions (`webby` → `webby-2` → `webby-3`). Pre-flight validates every referenced `profileId`; failures roll the whole batch back. Manage from `bazilion profile-group …` or `/profile-groups` in the web UI. Strictly additive — the single-profile spawn path is untouched.
-- **Pi agent engine** — Bazilion is based on [pi-coding-agent](https://www.npmjs.com/package/@earendil-works/pi-coding-agent). Pi runs each turn, stores the canonical JSONL transcript under the agent's `sessions/` directory, handles replay and compaction, executes the provider/tool loop, and supplies the coding tools. Bazilion contributes the multi-agent shell around that engine: profiles, groups, USER.md, memory, mailbox, scheduler, browser/MCP integrations, and clients.
-- **Group** — a collaboration context: one filesystem root, one USER.md, one roster, one shared memory. Every agent belongs to exactly one group, chosen at spawn time. The agent's coding tools (`read`/`bash`/`edit`/`write`/`grep`/`find`/`ls`, supplied by [pi-coding-agent](https://www.npmjs.com/package/@earendil-works/pi-coding-agent)) are rooted at the group directory. USER.md is read-only to agents — edit it via `bazilion group user-md set` or the web UI. First-run setup seeds a `default` group at `~/.bazilion/groups/default/`. Groups always live under `~/.bazilion/groups/<slug>/`; pass `--link <existing-path>` to `bazilion group add` to materialize the slot as a symlink to your existing project tree instead of as a fresh directory.
-- **Agent** — an instance spawned from a profile into a group. Has a private home (`~/.bazilion/agents/<id>/` — its copy of the templates, plus pi's append-only session JSONL under `sessions/`) reachable via the `home_*` tools, and one group membership reachable via the coding tools. UUIDs as ids.
+- **Team Template** — the only reusable Team roster. It owns revisioned stable slots and a directed communication policy; each slot references an Agent Profile and may override its name, model, or reasoning level. Spawning a reviewed revision materializes the roster atomically into a Team while retaining template/slot lineage. Manage it with `bazilion team-template …` or `/templates/teams`.
+- **Pi agent engine** — Bazilion is based on [pi-coding-agent](https://www.npmjs.com/package/@earendil-works/pi-coding-agent). Pi runs each turn, stores the canonical JSONL transcript under the agent's `sessions/` directory, handles replay and compaction, executes the provider/tool loop, and supplies the coding tools. Bazilion contributes the multi-agent shell around that engine: profiles, teams, USER.md, memory, mailbox, scheduler, browser/MCP integrations, and clients.
+- **Team** — a live collaboration context: one filesystem root, one USER.md, one Agent roster, one shared memory, and exactly one effective revisioned communication policy. Every Agent belongs to exactly one Team. The agent's coding tools (`read`/`bash`/`edit`/`write`/`grep`/`find`/`ls`, supplied by [pi-coding-agent](https://www.npmjs.com/package/@earendil-works/pi-coding-agent)) are rooted at the Team directory. USER.md is read-only to Agents — edit it via `bazilion team user-md set` or the web UI. First-run setup seeds a `default` Team at `~/.bazilion/teams/default/`. Teams always live under `~/.bazilion/teams/<slug>/`; pass `--link <existing-path>` to `bazilion team add` to materialize the slot as a symlink to your existing project tree instead of as a fresh directory.
+- **Agent** — an instance spawned from a profile into a team. Has a private home (`~/.bazilion/agents/<id>/` — its copy of the templates, plus pi's append-only session JSONL under `sessions/`) reachable via the `home_*` tools, and one team membership reachable via the coding tools. UUIDs as ids.
 - **Skill** — a directory under `~/.bazilion/skills/<name>/` with a `SKILL.md` (standard OpenClaw / Anthropic agent-skill format). Imported via `bazilion skill import --from openclaw` (or any path). The body is injected into the system prompt of every agent the skill is attached to; helper scripts shipped alongside the markdown are invoked by the agent via its generic `bash` tool (no framework-level entrypoint and no trust gate — see AGENTS.md for why we removed both).
-- **Memory** — **group-shared** BM25 index rooted at `<groupPath>/memory/`. Every agent in the group reads + writes the same store. The current backend is `qmdBackend` (BM25 over markdown via [@tobilu/qmd](https://github.com/tobi/qmd)). Use it for project knowledge — codebase notes, decisions, things the user told you about the work; for personal notes about an agent (preferences, persona quirks), use `home_write` on `IDENTITY.md` instead.
+- **Memory** — **Team-shared** BM25 index rooted at `<team.path>/memory/`. Every Agent in the Team reads and writes the same store. The current backend is `qmdBackend` (BM25 over markdown via [@tobilu/qmd](https://github.com/tobi/qmd)). Use it for project knowledge—codebase notes, decisions, and work context; for personal Agent notes, use `home_write` on `IDENTITY.md` instead.
 - **Mailbox** — `messages` table. Agents talk to each other via `send_message` / `read_inbox` / `wait_for_reply` tools, via `bazilion send` from the CLI, or from outside the loop: `bazilion inbox list <agent> [--unread]`, `bazilion inbox show <id>`, `bazilion inbox read <id>`, or the web UI at `/agents/<id>/inbox`. The worker delegates these tool calls to the daemon over Node IPC — workers don't hold their own SQLite handle.
 - **Trigger** — a heartbeat (interval in seconds) or cron expression that periodically wakes an agent with a stored message. An in-process scheduler ticks every 5 s (overridable via `BAZILION_SCHEDULER_TICK_MS`; disable with `BAZILION_SCHEDULER=off`) and fires due triggers through the same code path as user chat. Example: `bazilion trigger add <agent> --every 300 --message "check your inbox"`.
 - **Browser automation** — agents get a `browser_*` tool suite backed by a persistent per-agent Playwright (Chromium) session that survives across turns. Perception is accessibility-tree-first (`browser_snapshot` → aria tree with `[ref=eN]` refs; no vision model needed); screenshots are a secondary tool rendered inline in chat. A network-layer SSRF guard blocks loopback/private targets by default. **One-time setup**: `pnpm exec playwright install chromium` (from `apps/daemon`, or wherever Playwright is installed). Toggle/tune on `/config` → Browser Automation.
@@ -138,7 +144,7 @@ bazilion/
     └── client/                   # cross-origin HTTP client used by CLI + mobile
 ```
 
-The daemon's data layer (`apps/daemon/src/core/`: DB, repos, profile/agent/group ops, skills) and LLM/runtime stack (`apps/daemon/src/runtime/`: providers, tools, memory, worker subprocess) live inside the daemon — they're not separate packages.
+The daemon's data layer (`apps/daemon/src/core/`: DB, repos, profile/agent/team ops, skills) and LLM/runtime stack (`apps/daemon/src/runtime/`: providers, tools, memory, worker subprocess) live inside the daemon — they're not separate packages.
 
 ## Tests
 
@@ -165,7 +171,7 @@ bazilion auth openai logout        # wipe stored credentials
 # CLI from a remote client).
 ```
 
-After connecting, enable `openai-codex` on `/config` and curate at least one model (e.g. `gpt-5.3-codex-spark`, `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.5`). Credentials are stored AES-256-GCM-encrypted in the daemon's `secrets` table (key derived from the bootstrap token in `auth.json`); the access token auto-refreshes via the stored refresh token.
+After connecting, enable `openai-codex` on `/config` and curate at least one model (e.g. `gpt-5.6-luna`, `gpt-5.6-terra`, or `gpt-5.6-sol`). Credentials are stored AES-256-GCM-encrypted in the daemon's `secrets` table (key derived from the bootstrap token in `auth.json`); the access token auto-refreshes via the stored refresh token.
 
 ## Uninstalling
 
@@ -174,11 +180,11 @@ After connecting, enable `openai-codex` on `/config` and curate at least one mod
 bazilion uninstall
 
 # Non-interactive equivalents
-bazilion uninstall --yes          # wipe DB + agent/profile/group data only
+bazilion uninstall --yes          # wipe DB + agent/profile/team data only
 bazilion uninstall --yes --all    # also remove auth.json, logs/, skills/
 ```
 
-Two tiers: the **data tier** (`bazilion.db*`, `profiles/`, `agents/`, `groups/`) is the factory-reset path — useful during alpha when the DB schema moves. The **full wipe** (`--all`) additionally removes `auth.json`, logs, and the skill library, leaving nothing behind under `~/.bazilion/`. Symlinked groups (registered via `--link`) only have their slot under `~/.bazilion/groups/` removed; the symlink target is never touched.
+Two tiers: the **data tier** (`bazilion.db*`, `profiles/`, `agents/`, `teams/`) is the factory-reset path — useful during alpha when the DB schema moves. The **full wipe** (`--all`) additionally removes `auth.json`, logs, and the skill library, leaving nothing behind under `~/.bazilion/`. Symlinked teams (registered via `--link`) only have their slot under `~/.bazilion/teams/` removed; the symlink target is never touched.
 
 ## Stack notes
 

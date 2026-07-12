@@ -1,10 +1,10 @@
-// Per-group topic-name template: rendering, validation, and repo round-trip.
+// Per-team topic-name template: rendering, validation, and repo round-trip.
 
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
-import { registerGroup } from '../../src/core/group/register.ts'
-import * as groupRepo from '../../src/core/repos/groups.ts'
+import * as teamRepo from '../../src/core/repos/teams.ts'
+import { registerTeam } from '../../src/core/team/register.ts'
 import {
-  DEFAULT_GROUP_ID,
+  DEFAULT_TEAM_ID,
   renderTopicNameFormat,
   topicNameFor,
   validateTopicNameFormat,
@@ -13,10 +13,10 @@ import { makeTestEnv, type TestEnv } from '../core/helpers.ts'
 
 describe('renderTopicNameFormat', () => {
   test('substitutes all three tokens', () => {
-    const out = renderTopicNameFormat('{group.name} / {agent.name} [{group.slug}]', {
+    const out = renderTopicNameFormat('{team.name} / {agent.name} [{team.slug}]', {
       agentName: 'researcher',
-      groupName: 'Home Reno',
-      groupSlug: 'home-reno',
+      teamName: 'Home Reno',
+      teamSlug: 'home-reno',
     })
     expect(out).toBe('Home Reno / researcher [home-reno]')
   })
@@ -24,8 +24,8 @@ describe('renderTopicNameFormat', () => {
   test('repeats a token wherever it appears', () => {
     const out = renderTopicNameFormat('{agent.name}-{agent.name}', {
       agentName: 'a',
-      groupName: 'g',
-      groupSlug: 'g',
+      teamName: 'g',
+      teamSlug: 'g',
     })
     expect(out).toBe('a-a')
   })
@@ -33,7 +33,7 @@ describe('renderTopicNameFormat', () => {
 
 describe('validateTopicNameFormat', () => {
   test('accepts a format with known tokens and {agent.name}', () => {
-    expect(validateTopicNameFormat('{group.name} / {agent.name}')).toBeNull()
+    expect(validateTopicNameFormat('{team.name} / {agent.name}')).toBeNull()
   })
 
   test('rejects an unknown token', () => {
@@ -41,7 +41,7 @@ describe('validateTopicNameFormat', () => {
   })
 
   test('rejects a format missing {agent.name}', () => {
-    expect(validateTopicNameFormat('{group.name}')).toMatch(/\{agent\.name\}/)
+    expect(validateTopicNameFormat('{team.name}')).toMatch(/\{agent\.name\}/)
   })
 
   test('rejects an empty format', () => {
@@ -49,14 +49,14 @@ describe('validateTopicNameFormat', () => {
   })
 })
 
-describe('topicNameFor with a group template', () => {
-  test('explicit format wins over the default-group bare-name rule', () => {
+describe('topicNameFor with a team template', () => {
+  test('explicit format wins over the default-team bare-name rule', () => {
     const name = topicNameFor(
       { name: 'researcher' },
       {
-        id: DEFAULT_GROUP_ID,
+        id: DEFAULT_TEAM_ID,
         name: 'default',
-        telegramTopicNameFormat: '{group.slug}:{agent.name}',
+        telegramTopicNameFormat: '{team.slug}:{agent.name}',
       },
     )
     expect(name).toBe('default:researcher')
@@ -68,7 +68,7 @@ describe('topicNameFor with a group template', () => {
       {
         id: 'home-reno',
         name: 'Home Reno',
-        telegramTopicNameFormat: '{group.name} / {agent.name}',
+        telegramTopicNameFormat: '{team.name} / {agent.name}',
       },
     )
     expect(name).toBe('Home Reno / coder')
@@ -81,7 +81,7 @@ describe('topicNameFor with a group template', () => {
   })
 })
 
-describe('groupRepo telegram_topic_name_format round-trip', () => {
+describe('teamRepo telegram_topic_name_format round-trip', () => {
   let env: TestEnv
   beforeEach(() => {
     env = makeTestEnv()
@@ -89,15 +89,15 @@ describe('groupRepo telegram_topic_name_format round-trip', () => {
   afterEach(() => env.cleanup())
 
   test('defaults to null and survives set + clear', () => {
-    registerGroup(env.db, { id: 'g', name: 'G' }, env.paths)
-    expect(groupRepo.get(env.db, 'g', env.paths)?.telegramTopicNameFormat).toBeNull()
+    registerTeam(env.db, { id: 'g', name: 'G' }, env.paths)
+    expect(teamRepo.get(env.db, 'g', env.paths)?.telegramTopicNameFormat).toBeNull()
 
-    groupRepo.setTelegramTopicNameFormat(env.db, 'g', '{group.name} / {agent.name}')
-    expect(groupRepo.get(env.db, 'g', env.paths)?.telegramTopicNameFormat).toBe(
-      '{group.name} / {agent.name}',
+    teamRepo.setTelegramTopicNameFormat(env.db, 'g', '{team.name} / {agent.name}')
+    expect(teamRepo.get(env.db, 'g', env.paths)?.telegramTopicNameFormat).toBe(
+      '{team.name} / {agent.name}',
     )
 
-    groupRepo.setTelegramTopicNameFormat(env.db, 'g', null)
-    expect(groupRepo.get(env.db, 'g', env.paths)?.telegramTopicNameFormat).toBeNull()
+    teamRepo.setTelegramTopicNameFormat(env.db, 'g', null)
+    expect(teamRepo.get(env.db, 'g', env.paths)?.telegramTopicNameFormat).toBeNull()
   })
 })

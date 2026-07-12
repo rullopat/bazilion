@@ -113,7 +113,7 @@ function fileToAttachment(file: File): Promise<Attachment> {
 const isImageMime = (m: string) => m.startsWith('image/')
 
 // Project canonical ProviderMessage[] into render entries: assistant content +
-// any tool calls, then tool-role messages collapse into the same group.
+// any tool calls, then tool-role messages collapse into the same team.
 function projectMessages(msgs: ProviderMessage[]): RenderEntry[] {
   const entries: RenderEntry[] = []
   let openTool: { type: 'tool'; items: ToolItem[] } | null = null
@@ -152,7 +152,7 @@ function projectMessages(msgs: ProviderMessage[]): RenderEntry[] {
         body: m.content,
       })
       // Images are deliverables — emit them as a standalone block OUTSIDE the
-      // tool box (and close the group so they don't get visually nested).
+      // tool box (and close the team so they don't get visually nested).
       if (m.images && m.images.length > 0) {
         entries.push({ type: 'images', images: m.images })
         openTool = null
@@ -168,11 +168,6 @@ export interface ChatPaneProps {
   initialMessages: ProviderMessage[]
   /** SSR snapshot of the session-file head; the stale-banner poll compares against it. */
   initialSessionHead?: SessionHeadResponse
-  prototypePolicy?: {
-    harnessName: string
-    userInputAllowed: boolean
-    userOutputAllowed: boolean
-  }
 }
 
 export function ChatPane({
@@ -180,7 +175,6 @@ export function ChatPane({
   agentName,
   initialMessages,
   initialSessionHead,
-  prototypePolicy,
 }: ChatPaneProps) {
   const [serverMessages, setServerMessages] = useState<ProviderMessage[]>(initialMessages)
   const [liveEntries, setLiveEntries] = useState<RenderEntry[]>([])
@@ -194,7 +188,6 @@ export function ChatPane({
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [dragging, setDragging] = useState(false)
   const [staleBanner, setStaleBanner] = useState(false)
-  const prototypeInputBlocked = prototypePolicy?.userInputAllowed === false
 
   const messagesRef = useRef<HTMLDivElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
@@ -492,7 +485,7 @@ export function ChatPane({
   // --- attachments (one generic list; the daemon classifies each: images →
   // vision, others → stored and referenced by path for the agent) ---
   async function addFiles(files: FileList | File[] | null) {
-    if (!files || streaming || prototypeInputBlocked) return
+    if (!files || streaming) return
     const arr = Array.from(files)
     if (arr.length === 0) return
     const encoded = await Promise.all(arr.map(fileToAttachment))
@@ -510,7 +503,7 @@ export function ChatPane({
   function onDragOver(e: React.DragEvent) {
     if (!Array.from(e.dataTransfer.types).includes('Files')) return
     e.preventDefault()
-    if (streaming || prototypeInputBlocked) {
+    if (streaming) {
       setDragging(false)
       return
     }
@@ -524,14 +517,13 @@ export function ChatPane({
     if (e.dataTransfer.files.length === 0) return
     e.preventDefault()
     setDragging(false)
-    if (streaming || prototypeInputBlocked) return
+    if (streaming) return
     void addFiles(e.dataTransfer.files)
   }
 
   // --- send ---
   const send = useCallback(
     async (text: string) => {
-      if (prototypeInputBlocked) return
       const atts = attachments
       if ((!text.trim() && atts.length === 0) || streaming) return
       setInput('')
@@ -664,7 +656,7 @@ export function ChatPane({
       }
     },
     // biome-ignore lint/correctness/useExhaustiveDependencies: stable refs intentional
-    [agentId, editIdx, serverMessages, streaming, attachments, prototypeInputBlocked],
+    [agentId, editIdx, serverMessages, streaming, attachments],
   )
 
   function handleFrame(frame: ChatFrame) {
@@ -730,7 +722,7 @@ export function ChatPane({
           next.push({ type: 'tool', items: [item] })
         }
         // Images are deliverables — push them as a standalone block outside the
-        // tool box (this also "closes" the group, so the next tool starts fresh).
+        // tool box (this also "closes" the team, so the next tool starts fresh).
         if (images && images.length > 0) next.push({ type: 'images', images })
         return next
       })
@@ -819,37 +811,6 @@ export function ChatPane({
         </a>
       </div>
 
-      {prototypePolicy && (
-        <div className="border-b border-frost bg-sapphire-glow px-5 py-2.5 text-xs text-mocha">
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <strong className="text-chocolate">Local harness preview: {prototypePolicy.harnessName}</strong>
-            <span>user input: {prototypePolicy.userInputAllowed ? 'allowed' : 'denied'}</span>
-            <span>user output: {prototypePolicy.userOutputAllowed ? 'allowed' : 'denied'}</span>
-          </div>
-          <p className="mt-1 text-[0.68rem] leading-5 text-mocha-light">
-            Prototype policy is not daemon-enforced.
-          </p>
-        </div>
-      )}
-
-      {prototypePolicy?.userOutputAllowed === false && (
-        <div
-          role="status"
-          aria-live="polite"
-          className="border-b border-rose-baziu/30 bg-rose-baziu/10 px-5 py-3 text-[#8a5558] dark:text-[#e5b0b3]"
-        >
-          <div className="flex flex-wrap items-center gap-2">
-            <strong className="text-sm">Prototype blocked delivery</strong>
-            <span className="rounded-sm border border-rose-baziu/40 bg-snow/70 px-1.5 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wide dark:bg-charcoal/20">
-              Local-only
-            </span>
-          </div>
-          <p className="mt-1 text-xs leading-5">
-            This harness preview denies user output from {agentName}. History remains visible;
-            delivery is not blocked by the daemon.
-          </p>
-        </div>
-      )}
 
       {staleBanner && (
         <div className="mx-5 mt-2 flex items-center gap-2 rounded-md border border-sapphire bg-frost px-4 py-2 text-[0.86em] text-mocha">
@@ -1027,7 +988,7 @@ export function ChatPane({
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
-          disabled={streaming || prototypeInputBlocked}
+          disabled={streaming}
           title="attach images or files"
           aria-label="attach files"
           className="rounded-md border-[1.5px] border-frost bg-snow px-3 py-2 text-[1em] text-mocha transition-colors hover:border-sapphire hover:text-sapphire disabled:cursor-not-allowed disabled:opacity-50"
@@ -1041,19 +1002,15 @@ export function ChatPane({
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={onKeyDown}
           onPaste={onPaste}
-          disabled={streaming || prototypeInputBlocked}
-          placeholder={
-            prototypeInputBlocked
-              ? 'User input is denied by the local harness policy.'
-              : 'say something… (Shift+Enter for newline; paste or 📎 to attach images/files)'
-          }
+          disabled={streaming}
+          placeholder="say something… (Shift+Enter for newline; paste or 📎 to attach images/files)"
           autoComplete="off"
           className="max-h-[200px] min-h-[2.4rem] flex-1 resize-none overflow-y-auto rounded-md border-[1.5px] border-frost bg-snow px-3 py-2 text-[0.93em] leading-[1.45] text-chocolate outline-none transition-colors focus:border-sapphire focus:shadow-[0_0_0_3px_var(--color-sapphire-glow)]"
         />
         <button
           type="submit"
           disabled={
-            streaming || prototypeInputBlocked || (!input.trim() && attachments.length === 0)
+            streaming || (!input.trim() && attachments.length === 0)
           }
           className="rounded-md bg-sapphire px-4 py-2 text-[0.92em] font-semibold text-snow transition-colors hover:bg-sapphire-deep disabled:cursor-not-allowed disabled:opacity-50"
         >
@@ -1069,11 +1026,6 @@ export function ChatPane({
           </button>
         )}
       </form>
-      {prototypeInputBlocked && (
-        <div className="border-t border-rose-baziu/30 bg-rose-baziu/10 px-5 py-2 text-center text-xs text-[#8a5558] dark:text-[#e5b0b3]">
-          Composer disabled: this harness denies direct user input to {agentName}.
-        </div>
-      )}
     </div>
   )
 }
@@ -1102,7 +1054,7 @@ function Bubble({ entry, isLastUser, isWillDrop, onEdit }: BubbleProps) {
       )
     }
     return (
-      <div className={`group relative my-4 flex flex-col items-end ${dropCls}`}>
+      <div className={`team relative my-4 flex flex-col items-end ${dropCls}`}>
         <span className="sr-only">you</span>
         {entry.images && entry.images.length > 0 && (
           <div className="mb-1 flex max-w-[85%] flex-wrap justify-end gap-1">
@@ -1140,7 +1092,7 @@ function Bubble({ entry, isLastUser, isWillDrop, onEdit }: BubbleProps) {
             type="button"
             onClick={onEdit}
             title="edit and resend — replaces the last turn"
-            className="absolute left-1 top-1 rounded-sm border border-fawn bg-ivory px-2 py-0.5 text-[0.78em] font-medium text-mocha opacity-65 transition hover:border-sapphire hover:bg-sapphire-glow hover:text-sapphire hover:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
+            className="absolute left-1 top-1 rounded-sm border border-fawn bg-ivory px-2 py-0.5 text-[0.78em] font-medium text-mocha opacity-65 transition hover:border-sapphire hover:bg-sapphire-glow hover:text-sapphire hover:opacity-100 team-hover:opacity-100 team-focus-within:opacity-100"
           >
             edit
           </button>

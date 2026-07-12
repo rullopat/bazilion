@@ -14,7 +14,7 @@
 // fetches are surfaced so callers can show "couldn't reach lmstudio" rather
 // than a silent empty list.
 
-import { getModels as piGetModels } from '@earendil-works/pi-ai'
+import { getModels as piGetModels } from '@earendil-works/pi-ai/compat'
 import { fetch as undiciFetch } from 'undici'
 
 // piProviderName: what pi-ai's catalog indexes by. For bedrock we use the

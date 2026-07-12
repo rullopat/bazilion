@@ -87,7 +87,7 @@ configRouter.get('/services', (c) => {
     id: svc.id,
     displayName: svc.displayName,
     ...(svc.hint ? { hint: svc.hint } : {}),
-    ...(svc.group ? { group: svc.group } : {}),
+    ...(svc.team ? { team: svc.team } : {}),
     fields: resolveFieldStates(svc, configValues, secretValues),
   }))
 
@@ -178,7 +178,7 @@ configRouter.put('/fields/:envVar', async (c) => {
 // the model dropdowns on the profile + agent spawn pages.
 configRouter.get('/available-models', (c) => {
   const { db } = getCtx()
-  return c.json({ groups: groupAvailableModels(db) })
+  return c.json({ teams: groupAvailableModels(db) })
 })
 
 configRouter.delete('/fields/:envVar', (c) => {

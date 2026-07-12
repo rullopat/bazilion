@@ -4,7 +4,7 @@ Comprehensive engineer-to-engineer reference for every component in the monorepo
 
 For the LLM turn loop itself, see `agent-engine.md`. Bazilion is based on [Pi's coding agent](https://www.npmjs.com/package/@earendil-works/pi-coding-agent) as that core engine: Pi owns the session loop, replay, compaction, provider/tool execution, and coding tools. This doc is about the system *around* the engine: the DB, the daemon, the CLI, the subprocess boundary, and the flows that stitch them together.
 
-The HTTP API lives in a standalone Hono daemon (`apps/daemon`, port 4321); the web UI is a TanStack Start app (`apps/web`, port 4322) that calls it. A group is a collaboration context (one filesystem root, one USER.md, one roster, one shared memory) and an agent belongs to exactly one group. Pi's session JSONL files are the canonical transcript — there is no separate `runs` / `events` audit layer. Config + secrets live in two SQLite tables; the only remaining file at the bazilion home root besides `bazilion.db` is `auth.json` (the bootstrap bearer used by both the daemon and the CLI). Workers spawned per turn don't hold a SQLite handle of their own — agent resolution happens in the daemon and live messaging tools round-trip via Node IPC.
+The HTTP API lives in a standalone Hono daemon (`apps/daemon`, port 4321); the web UI is a TanStack Start app (`apps/web`, port 4322) that calls it. A team is a collaboration context (one filesystem root, one USER.md, one roster, one shared memory) and an agent belongs to exactly one team. Pi's session JSONL files are the canonical transcript — there is no separate `runs` / `events` audit layer. Config + secrets live in two SQLite tables; the only remaining file at the bazilion home root besides `bazilion.db` is `auth.json` (the bootstrap bearer used by both the daemon and the CLI). Workers spawned per turn don't hold a SQLite handle of their own — agent resolution happens in the daemon and live messaging tools round-trip via Node IPC.
 
 ## 0. Topology at a glance
 
@@ -28,7 +28,7 @@ The HTTP API lives in a standalone Hono daemon (`apps/daemon`, port 4321); the w
                               │  127.0.0.1:4321                               │
                               │  ─ src/app.ts (route mounts)                  │
                               │  ─ src/lib/middleware-auth.ts (auth + gate)   │
-                              │  ─ src/routes/{agents,groups,profiles,        │
+                              │  ─ src/routes/{agents,teams,profiles,        │
                               │      skills,triggers,messages,config,         │
                               │      auth-login,misc}.ts                      │
                               │  ─ src/lib/{ctx, agent-cancel, scheduler,     │
@@ -40,7 +40,7 @@ The HTTP API lives in a standalone Hono daemon (`apps/daemon`, port 4321); the w
                               ┌───────────────────────────────────────────────┐
                               │  apps/daemon/src/core  (pure data layer)      │
                               │  ─ db/{client, migrate, migrations/0001…}     │
-                              │  ─ repos/* profile/* agent/* group/* skills/* │
+                              │  ─ repos/* profile/* agent/* team/* skills/* │
                               │  ─ paths · services · secrets                 │
                               │  ─ availableModels                            │
                               └──────────────────┬────────────────────────────┘
@@ -50,7 +50,7 @@ The HTTP API lives in a standalone Hono daemon (`apps/daemon`, port 4321); the w
                               │  ~/.bazilion                                  │
                               │  bazilion.db (SQLite WAL)                     │
                               │  auth.json {token, remote?}                   │
-                              │  groups/<slug>/{memory,…}                     │
+                              │  teams/<slug>/{memory,…}                     │
                               │  agents/<id>/{sessions/*.jsonl, *.md}         │
                               │  profiles/<id>/  skills/<name>/  logs/        │
                               └───────────────────────────────────────────────┘
@@ -88,10 +88,10 @@ The `ChatFrame` shape is the same across the worker→daemon boundary and the da
 
 **Hermetic** — zero deps, no `node:*` imports, no daemon code. Owns the canonical type definitions for everything that crosses the HTTP/IPC wire. Four modules:
 
-1. **`entities.ts`** — entity shapes that originate in the DB but cross the wire: `Agent`, `Profile`, `Group`, `Message`, `SkillMeta`, `WebToken`, `AgentTrigger`, `LoadedProfile`, `ResolvedAgent`, `OpenAICodexStatus`, …
+1. **`entities.ts`** — entity shapes that originate in the DB but cross the wire: `Agent`, `Profile`, `Team`, `Message`, `SkillMeta`, `WebToken`, `AgentTrigger`, `LoadedProfile`, `ResolvedAgent`, `OpenAICodexStatus`, …
 2. **`events.ts`** — chat/provider wire events: `ChatFrame`, `SessionEvent`, `ProviderMessage`, `ToolCall`, `ToolDef`.
 3. **`memory.ts`** — memory wire types (`MemoryEntry`, `MemoryHit`, …).
-4. **`index.ts`** — request/response envelopes (`SpawnAgentRequest`, `UpdateProfileRequest`, `ChatRequest`, `RegisterGroupRequest`, `SetGroupUserMdRequest`, `ImportSkillsRequest`/`Response`, `ProviderTestRequest`/`Response`, `HealthReport`, `ChatContextResponse`, `ApiError`, `ServiceCard`, `ProviderConfigResponse`, …) plus `PROFILE_FILES` (the whitelist of editable profile markdown filenames) and the matching `ProfileFileName` string-literal union.
+4. **`index.ts`** — request/response envelopes (`SpawnAgentRequest`, `UpdateProfileRequest`, `ChatRequest`, `RegisterTeamRequest`, `SetTeamUserMdRequest`, `ImportSkillsRequest`/`Response`, `ProviderTestRequest`/`Response`, `HealthReport`, `ChatContextResponse`, `ApiError`, `ServiceCard`, `ProviderConfigResponse`, …) plus `PROFILE_FILES` (the whitelist of editable profile markdown filenames) and the matching `ProfileFileName` string-literal union.
 
 The flow has reversed compared to earlier shapes: the daemon imports its entity/wire types **from** `@bazilion/api-types`, not the other way around. That's what keeps `apps/web`, `apps/mobile`, and `@bazilion/client` from ever reaching Node-only code (`node:sqlite`, undici, pi-ai, the worker spawner). Nothing here executes; it's a compile-time contract.
 
@@ -107,7 +107,7 @@ One file: `src/index.ts`. Pure `fetch` + `TextDecoder` + an NDJSON stream async 
 
 ### 2.1 Paths — `paths.ts`
 
-`resolvePaths(home?)` returns the `Paths` struct: `home`, `db`, `authFile`, `profilesDir`, `agentsDir`, `skillsDir`, `groupsDir`, `logsDir`, plus `profileDir(id)` / `agentDir(id)` / `groupDir(slug)` / `skillDir(name)` computed helpers. Override `home` via `$BAZILION_HOME`, default `~/.bazilion`. Every other core + runtime module takes `Paths` as input — no one recomputes paths independently. **There is no `configFile` field anymore** — the previous `config.json` + `secrets.enc` pair was collapsed into DB tables.
+`resolvePaths(home?)` returns the `Paths` struct: `home`, `db`, `authFile`, `profilesDir`, `agentsDir`, `skillsDir`, `teamsDir`, `logsDir`, plus `profileDir(id)` / `agentDir(id)` / `teamDir(slug)` / `skillDir(name)` computed helpers. Override `home` via `$BAZILION_HOME`, default `~/.bazilion`. Every other core + runtime module takes `Paths` as input — no one recomputes paths independently. **There is no `configFile` field anymore** — the previous `config.json` + `secrets.enc` pair was collapsed into DB tables.
 
 ### 2.2 DB client — `db/client.ts` + `db/migrate.ts`
 
@@ -127,10 +127,10 @@ Uses Node 22's built-in `node:sqlite` (`DatabaseSync`). No `better-sqlite3`, no 
 
 | Table | Purpose |
 |---|---|
-| `groups` | Collaboration contexts (`id` (slug, PK), `name`, `user_md`, `created_at`). One filesystem root per group, derived from `paths.groupDir(id)` at read time — there is no `path` column. `user_md` is the per-group human-context block injected into every member's prompt. |
-| `profiles` | Agent templates (`id`, `name`, `dir`, `default_model`, `skills_mode IN ('all','selected')`, timestamps). No `memory_backend` column anymore (memory is per-group, not per-profile). |
+| `teams` | Collaboration contexts (`id` (slug, PK), `name`, `user_md`, `created_at`). One filesystem root per team, derived from `paths.teamDir(id)` at read time — there is no `path` column. `user_md` is the per-team human-context block injected into every member's prompt. |
+| `profiles` | Agent templates (`id`, `name`, `dir`, `default_model`, `skills_mode IN ('all','selected')`, timestamps). No `memory_backend` column anymore (memory is per-team, not per-profile). |
 | `profile_default_skills` | `(profile_id, skill_name)` — seed skills for `selected` mode. |
-| `agents` | Running/archived agent instances (`id`, `profile_id`, `name`, `model_override`, `reasoning_level`, `status`, `dir`, `group_id` `ON DELETE RESTRICT`, timestamps). One agent → one group. |
+| `agents` | Running/archived agent instances (`id`, `profile_id`, `name`, `model_override`, `reasoning_level`, `status`, `dir`, `team_id` `ON DELETE RESTRICT`, timestamps). One agent → one team. |
 | `agent_skills` | `(agent_id, skill_name)` — per-agent skill attachments. Cascade on agent delete. |
 | `agent_triggers` | Per-agent wake-ups (`kind='interval' \| 'cron'`, `interval_sec`, `cron_expr`, `message`, `last_fired_at`, `enabled`). |
 | `messages` | Inter-agent mailbox (`id`, `from_agent_id`, `to_agent_id`, `payload`, `reply_to`, `read_at`). FKs do **not** cascade; `agent/delete.ts` nulls inbound `reply_to` and purges rows manually before removing the agent. |
@@ -141,7 +141,7 @@ Uses Node 22's built-in `node:sqlite` (`DatabaseSync`). No `better-sqlite3`, no 
 | `secrets` | `(key PK, envelope, updated_at)` — AES-256-GCM blobs. PBKDF2 key derived from `auth.json:token`. |
 | `config` | `(key PK, value, updated_at)` — plaintext for env-var-shaped config that doesn't need confidentiality (server URLs, region slugs). `CONFIG_KEYS` allowlist enforced in the repo on writes. |
 
-**Dropped during the alpha**: `runs`, `events` (audit layer for chat turns — pi's session JSONL is now the canonical record), `chat_messages` column on `agents` (pi owns the transcript), `memory_backend` column on `profiles` (memory is per-group), `path` column on `groups` (derived from slug + paths), `agents.chat_messages` (same migration as runs/events).
+**Dropped during the alpha**: `runs`, `events` (audit layer for chat turns — pi's session JSONL is now the canonical record), `chat_messages` column on `agents` (pi owns the transcript), `memory_backend` column on `profiles` (memory is per-team), `path` column on `teams` (derived from slug + paths), `agents.chat_messages` (same migration as runs/events).
 
 ### 2.4 Repos — `repos/*.ts`
 
@@ -149,9 +149,9 @@ One module per table, each exporting narrow operations. Nothing in a repo opens 
 
 | File | Scope |
 |---|---|
-| `agents.ts` | Insert / get (with name + UUID-prefix fallback) / list / `resolveId(prefix)` / archive / unarchive / update (name / model / reasoning) / setGroup / attach+detach skill. |
+| `agents.ts` | Insert / get (with name + UUID-prefix fallback) / list / `resolveId(prefix)` / archive / unarchive / update (name / model / reasoning) / `setTeam` / attach+detach skill. |
 | `profiles.ts` | CRUD + `profile_default_skills` set ops. |
-| `groups.ts` | CRUD (`insert / get / list / remove`, all taking `paths` to derive the path field) + `setUserMd`. No `getByPath` — slug is the unique key. |
+| `teams.ts` | CRUD (`insert / get / list / remove`, all taking `paths` to derive the path field) + `setUserMd`. No `getByPath` — slug is the unique key. |
 | `messages.ts` | `send({from, to, payload, replyTo?}) / get / listInbox(agentId, {unread}) / markRead / findReplies(msgId) / drainUnreadForAgent(agentId)` (txn used by the auto-deliver scheduler). |
 | `triggers.ts` | Insert / list per agent / listEnabled (all agents) / markFired (used by scheduler) / setEnabled / delete. |
 | `skillMeta.ts` | `get / listAll / upsert / remove` — import provenance only. |
@@ -161,13 +161,13 @@ One module per table, each exporting narrow operations. Nothing in a repo opens 
 | `secrets.ts` | `openSecrets(db, password) → SecretsStore` — per-row AES-GCM, password derived from `auth.json:token`. |
 | `config.ts` | `openConfig(db) → ConfigStore`, plus `CONFIG_KEYS` and `isConfigKey`. |
 
-### 2.5 Domain ops — `agent/`, `profile/`, `skills/`, `group/`
+### 2.5 Domain ops — `agent/`, `profile/`, `skills/`, `team/`
 
 Higher-level than repos; they combine DB writes with filesystem operations.
 
 **`agent/`**:
-- `spawn.ts:spawnAgent(db, paths, input)` — allocates UUID, creates `agents/<id>/{sessions/}`, copies profile markdown templates (`SOUL.md`, `IDENTITY.md`, `BOOTSTRAP.md`, `AGENTS.md`, `TOOLS.md`, `HEARTBEAT.md`) so the agent can diverge per-instance, writes `agent.json`, picks the group (caller-supplied or the seeded `default`), inserts into `agents` with `group_id`, attaches skills (honoring `profile.skillsMode`). **Does not create a per-agent `memory/` dir** — memory is at the group level now.
-- `resolve.ts:resolveAgent(db, paths, id)` — joins agent + profile + group + skills into a `ResolvedAgent` (the type the runtime consumes). Accepts UUID prefixes and unique names.
+- `spawn.ts:spawnAgent(db, paths, input)` — allocates UUID, creates `agents/<id>/{sessions/}`, copies profile markdown templates (`SOUL.md`, `IDENTITY.md`, `BOOTSTRAP.md`, `AGENTS.md`, `TOOLS.md`, `HEARTBEAT.md`) so the agent can diverge per-instance, writes `agent.json`, picks the team (caller-supplied or the seeded `default`), inserts into `agents` with `team_id`, attaches skills (honoring `profile.skillsMode`). **Does not create a per-agent `memory/` dir** — memory is at the team level now.
+- `resolve.ts:resolveAgent(db, paths, id)` — joins agent + profile + team + skills into a `ResolvedAgent` (the type the runtime consumes). Accepts UUID prefixes and unique names.
 - `archive.ts` / `unarchive.ts` — flip `status` + enforce state transitions.
 - `delete.ts:deleteAgent(db, id)` — tx: null out inbound `messages.reply_to` pointers, purge messages where the agent is sender or recipient, then `agentRepo.remove` which cascades skills.
 
@@ -176,14 +176,14 @@ Higher-level than repos; they combine DB writes with filesystem operations.
 - `load.ts:loadProfile(db, id)` — returns `LoadedProfile` = the profile row + the parsed files (including `parseIdentityMarkdown`) + `defaultSkills[]` + `skillsMode`.
 - `update.ts` — patch name / default_model / skills_mode / default skills.
 - `delete.ts` — refuses while any non-archived agents reference the profile, removes the dir.
-- `seed.ts:seedDefaults(db, paths, {model})` — idempotent bootstrap: creates the `default` group at `~/.bazilion/groups/default/` + a `default` profile wired to `model` with `skillsMode: 'all'`. `ensureSetupSeeded(db, paths)` is the call-site-safe wrapper that exits early when the default profile already exists. Called on the 0→1 available-models threshold (see §6.7).
+- `seed.ts:seedDefaults(db, paths, {model})` — idempotent bootstrap: creates the `default` team at `~/.bazilion/teams/default/` + a `default` profile wired to `model` with `skillsMode: 'all'`. `ensureSetupSeeded(db, paths)` is the call-site-safe wrapper that exits early when the default profile already exists. Called on the 0→1 available-models threshold (see §6.7).
 - `validate.ts` — slug regex.
 - `templates.ts` — the markdown strings used for the six profile files.
 - `identity.ts` — structured parser for IDENTITY.md (pulls out `name`, `context`, etc.).
 
-**`group/`**:
-- `register.ts:registerGroup(db, input, paths)` — validates slug, materializes `paths.groupDir(id)` either as a fresh real directory (default) or a symlink to `input.link` (the "agents working on my existing project tree" path), creates the `memory/` subdir, inserts the row.
-- `delete.ts:deleteGroup(db, paths, id)` — refuses while members exist (`agents.group_id` FK is `RESTRICT`), removes the row + the on-disk slot.
+**`team/`**:
+- `register.ts:registerTeam(db, input, paths)` — validates slug, materializes `paths.teamDir(id)` either as a fresh real directory (default) or a symlink to `input.link` (the "agents working on my existing project tree" path), creates the `memory/` subdir, inserts the row.
+- `delete.ts:deleteTeam(db, paths, id)` — refuses while members exist (`agents.team_id` FK is `RESTRICT`), removes the row + the on-disk slot.
 
 **`skills/`**:
 - `discover.ts:discoverSkills(paths)` — walks `skillsDir`, returns `[{name, dir, skillFile}]` for each SKILL.md.
@@ -210,7 +210,7 @@ Higher-level than repos; they combine DB writes with filesystem operations.
 
 ### 2.8 Public surface — `index.ts`
 
-Flat barrel: `openDb`, `runMigrations`, `resolvePaths`, `spawnAgent`, `resolveAgent`, `agentRepo`, `messageRepo`, `profileRepo`, `triggerRepo`, `skillMetaRepo`, `webTokenRepo`, `groupRepo`, `providerStateRepo`, `providerModelRepo`, the profile/skill/group domain ops (`createProfile`, `updateProfile`, `deleteProfile`, `loadProfile`, `registerGroup`, `deleteGroup`, `discoverSkills`, `importSkills`, `resolveAgentSkills`, …), `mergeSecretsIntoEnv`, `readAuthFile`, `openSecrets`, `openConfig`, `isSetupComplete`, `SERVICES`, `findFieldByEnvVar`.
+Flat barrel: `openDb`, `runMigrations`, `resolvePaths`, `spawnAgent`, `resolveAgent`, `agentRepo`, `messageRepo`, `profileRepo`, `triggerRepo`, `skillMetaRepo`, `webTokenRepo`, `teamRepo`, `providerStateRepo`, `providerModelRepo`, the profile/skill/team domain ops (`createProfile`, `updateProfile`, `deleteProfile`, `loadProfile`, `registerTeam`, `deleteTeam`, `discoverSkills`, `importSkills`, `resolveAgentSkills`, …), `mergeSecretsIntoEnv`, `readAuthFile`, `openSecrets`, `openConfig`, `isSetupComplete`, `SERVICES`, `findFieldByEnvVar`.
 
 `apps/daemon/src/lib` (HTTP routes, middleware, lifecycle glue) and `apps/daemon/src/runtime` (LLM/tool stack) import from this flat namespace. `apps/cli` keeps a tiny local copy of just the path/auth helpers it needs for filesystem-level commands (`uninstall`, `backup`, `login`, `token show-local`) — it never opens the daemon's DB. `apps/web` never reaches into the daemon's source at all; every data access goes through HTTP.
 
@@ -220,16 +220,16 @@ See `agent-engine.md` for the full turn-loop walkthrough. Structural summary her
 
 - **`worker/{entry,spawn,ipc-protocol}.ts`** — subprocess boundary. `spawn.ts:spawnWorkerTurn` is the parent-side generator. `entry.ts` is the child script — reads stdin → runs the turn → emits NDJSON on stdout → on exit calls `process.disconnect()` so the IPC handle doesn't pin the event loop. `ipc-protocol.ts` declares the `MessagingHost` interface, the `IpcRequest`/`IpcReply` shapes, and the `RpcMethod` union (`agentExists`/`sendMessage`/`listInbox`/`markRead`/`findReplies`). Stdio: `['pipe','pipe','inherit','ipc']`. Communication: stdin (1 JSON line in: agent + message + enabledProviders + apiKey) → stdout (NDJSON `ChatFrame`s) + stderr (inherited) + IPC fd (worker → daemon RPC for messaging tools). SIGTERM triggers the child's internal `AbortController`; 3s grace before SIGKILL.
 - **`pi/`** — the Pi engine bridge. `session.ts:createBazilionSession` builds a pi-coding-agent `AgentSession` for an agent (loads/creates the JSONL session file, wires the tool list, picks a provider). This is the core engine seam: Bazilion enters Pi here and then listens to Pi's events. Takes `enabledProviders: Set<string>`, optional `messagingHost: MessagingHost`, optional `apiKey: string` (pre-fetched OAuth token), and optional `refreshApiKey: (provider) => Promise<string>` (mid-turn refresher; daemon-side only). `tools.ts:createBazilionCustomTools` adapts Bazilion's `ToolHandler` shape to pi's `ToolDefinition` shape and composes the Bazilion-specific tool list (memory, home, web, bootstrap, optional messaging via the host) — it deliberately **excludes** file-IO tools because pi's own `createCodingTools(cwd, …)` provides the richer `read`/`bash`/`edit`/`write`/`grep`/`find`/`ls` set. `events.ts` translates pi's session events back into Bazilion `SessionEvent`s for downstream NDJSON emission.
-- **`session/`** — `prompt.ts` (compose the system prompt from the agent's markdown files + the group block + USER.md), `frame.ts` (the `ChatFrame` type).
+- **`session/`** — `prompt.ts` (compose the system prompt from the agent's markdown files + the team block + USER.md), `frame.ts` (the `ChatFrame` type).
 - **`providers/`** — `pi-adapter.ts` (pi-ai → Bazilion `Provider` adapter), `registry.ts` (provider registration + `enabledSet` gate + model-string parser, takes optional `oauth: {db, authToken}` to pick up `openai-codex` credentials), `retry.ts` (uniform transient-error retry with "no retry once streamed" invariant), `types.ts` (`Provider`, `ProviderRequest`, `ProviderResponse`, `ToolCall`, `ReasoningLevel`, `StopReason`).
 - **`tools/`** — `registry.ts` (Map-backed dispatcher) + one file per tool category:
-  - `memory.ts` — `memory_write / memory_read / memory_search / memory_list` (qmd BM25 over markdown files in `<group.path>/memory/`). Tool descriptions explicitly call out group-shared scope and direct personal notes to `home_write IDENTITY.md`.
+  - `memory.ts` — `memory_write / memory_read / memory_search / memory_list` (qmd BM25 over markdown files in `<team.path>/memory/`). Tool descriptions explicitly call out team-shared scope and direct personal notes to `home_write IDENTITY.md`.
   - `home.ts` — `home_read / home_write / home_list`. Scope: `agents/<id>/` with a hard whitelist of identity files (`SOUL.md`, `IDENTITY.md`, `BOOTSTRAP.md`, `AGENTS.md`, `TOOLS.md`, `HEARTBEAT.md`). No path arg, no traversal. `BOOTSTRAP.md` is read-only — its lifecycle belongs to `bootstrap_done`.
   - `messaging.ts` — `send_message / read_inbox / wait_for_reply`. Takes a `MessagingHost` (not a DB handle) — the worker's host proxies via Node IPC, the daemon's host calls repos directly.
   - `web.ts` + `web-ssrf.ts` + `web-extract.ts` — `web_search` (Brave → SearXNG fallback) + `web_fetch` (Readability + markdown, SSRF guard, 15-min LRU cache, UA spoof, 20s timeout, 3 max redirects).
   - `bootstrap.ts` — `bootstrap_done` (deletes `BOOTSTRAP.md` after onboarding).
-  - File-IO (`read`/`bash`/`edit`/`write`/`grep`/`find`/`ls`) comes from pi-coding-agent's own `createCodingTools(cwd, …)` — `cwd` is the agent's group directory.
-- **`memory/`** — `qmd.ts` (BM25 via `@tobilu/qmd`, one `.qmd-index.sqlite` per group memory dir, `storeCache` module-scope Map dedupes per-process), `files.ts` (zero-deps substring fallback, currently dormant), `types.ts`.
+  - File-IO (`read`/`bash`/`edit`/`write`/`grep`/`find`/`ls`) comes from pi-coding-agent's own `createCodingTools(cwd, …)` — `cwd` is the agent's team directory.
+- **`memory/`** — `qmd.ts` (BM25 via `@tobilu/qmd`, one `.qmd-index.sqlite` per team memory dir, `storeCache` module-scope Map dedupes per-process), `files.ts` (zero-deps substring fallback, currently dormant), `types.ts`.
 - **`auth/openai-codex.ts`** — OAuth storage/refresh for the ChatGPT-backed `openai-codex` provider. Credentials blob lives under secrets-table key `OPENAI_CODEX_OAUTH`. `loadAccessToken(db, authToken)` is what the provider registry hands pi-ai as its `apiKey` supplier.
 
 ## 4. `apps/daemon` — the HTTP server (Hono)
@@ -243,7 +243,7 @@ Auth + first-run middleware mounted on `*`, then route families mounted under th
 ```
 app.use('*', authMiddleware)            // src/lib/middleware-auth.ts
 app.route('/api/agents',   agentsRouter)
-app.route('/api/groups',   groupsRouter)
+app.route('/api/teams',   groupsRouter)
 app.route('/api/profiles', profilesRouter)
 app.route('/api/skills',   skillsRouter)
 app.route('/api/triggers', triggersRouter)
@@ -289,14 +289,14 @@ Grouped by resource. Request/response shapes all live in `@bazilion/api-types`. 
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/api/agents?includeArchived` | List agents. |
-| POST | `/api/agents` | Spawn new agent from a profile (accepts `groupId`). |
-| GET | `/api/agents/:id` | Full resolved agent (profile, group, skills). |
+| POST | `/api/agents` | Spawn new agent from a profile (accepts `teamId`). |
+| GET | `/api/agents/:id` | Full resolved agent (profile, team, skills). |
 | PATCH | `/api/agents/:id` | Edit name / model override / reasoning level. |
-| PATCH | `/api/agents/:id/group` | Move to a different group. |
+| PATCH | `/api/agents/:id/team` | Move to a different team. |
 | POST | `/api/agents/:id/chat` | **Streaming NDJSON** — the main turn endpoint. Calls `runAgentTurn()`. |
 | POST | `/api/agents/:id/cancel` | Abort the in-flight turn for this agent (keyed by agentId). 409 if the agent is idle. |
 | POST | `/api/agents/:id/chat/reset` | Drop the agent's pi session(s) so the next turn starts with an empty transcript. |
-| GET | `/api/agents/:id/chat/context` | `ChatContextResponse` — system prompt / tools / skills / group / history breakdown. `?detail=1` or `?json=1` includes every entry. |
+| GET | `/api/agents/:id/chat/context` | `ChatContextResponse` — system prompt / tools / skills / team / history breakdown. `?detail=1` or `?json=1` includes every entry. |
 | POST | `/api/agents/:id/chat/compact` | Pi-style compaction: summarize the head, preserve `keepTail` entries (default 10) verbatim, persist a compaction marker. |
 | POST | `/api/agents/:id/chat/truncate` | Keep first N entries. |
 | POST | `/api/agents/:id/archive` / `unarchive` | Status flip. |
@@ -307,9 +307,9 @@ Grouped by resource. Request/response shapes all live in `@bazilion/api-types`. 
 | GET / POST | `/api/agents/:id/triggers` | List / create. |
 | GET | `/api/agents/:id/sessions/messages` | SSR transcript replay (the JSONL contents rendered as `ProviderMessage[]`). |
 | GET | `/api/agents/:id/sessions/head` | Latest session metadata for the stale-banner poller. |
-| GET / POST / DELETE / PATCH | `/api/agents/:id/memory*` | qmd-backed memory CRUD + search (`/search`, `/[...key]`). Note: writes to the **group's** shared memory, not a per-agent store. |
+| GET / POST / DELETE / PATCH | `/api/agents/:id/memory*` | qmd-backed memory CRUD + search (`/search`, `/[...key]`). Note: writes to the **team's** shared memory, not a per-agent store. |
 
-**Groups** (`routes/groups.ts`): `GET / POST /api/groups`, `GET / DELETE /api/groups/:id`, `PUT /api/groups/:id/user-md`. POST body is `{id (slug), name?, link?}` — no `path` field; the daemon picks `paths.groupDir(id)`.
+**Teams** (`routes/teams.ts`): `GET / POST /api/teams`, `GET / DELETE /api/teams/:id`, `PUT /api/teams/:id/user-md`. POST body is `{id (slug), name?, link?}` — no `path` field; the daemon picks `paths.teamDir(id)`.
 
 **Messages** (`routes/messages.ts`): `GET / PATCH /api/messages/:id` — detail + mark-read.
 
@@ -342,7 +342,7 @@ POST /api/agents/:id/chat   body = {message}
    ▼
  runAgentTurn(id, message)  [apps/daemon/src/lib/agent-turn.ts]
    │
-   │  resolveAgent(db, paths, id)                       // joins agent+profile+group+skills
+   │  resolveAgent(db, paths, id)                       // joins agent+profile+team+skills
    │  enabledProviders = providerStateRepo.listEnabled(db)
    │  env = mergeSecretsIntoEnv(db, authToken)          // process.env > secrets > config
    │  apiKey = resolveAgentApiKey(db, authToken, agent) // OAuth pre-fetch for openai-codex
@@ -393,7 +393,7 @@ React 19 + Vite 8 + Tailwind v4 + shadcn/ui. File-based routes via `@tanstack/re
 
 **Daemon-only client** — `apps/web` never reaches into daemon source; the only daemon-facing types it imports are wire shapes from `@bazilion/api-types`. Every loader is a `createServerFn` handler that calls `apps/web/src/lib/daemon-client.ts`, which reads the request's `bz_token` cookie via `getCookie` from `@tanstack/react-start/server` and forwards it as `Authorization: Bearer …` to the daemon (`http://127.0.0.1:4321`, overridable via `BAZILION_DAEMON`).
 
-**`daemon-client.ts` is server-only** — Vite's import-protection rejects `@tanstack/react-start/server` in any module that ends up in the client bundle. Client-safe wire constants live in `apps/web/src/lib/wire-constants.ts` (`DEFAULT_GROUP_ID`, `DEFAULT_PROFILE_ID`, `REASONING_LEVELS`).
+**`daemon-client.ts` is server-only** — Vite's import-protection rejects `@tanstack/react-start/server` in any module that ends up in the client bundle. Client-safe wire constants live in `apps/web/src/lib/wire-constants.ts` (`DEFAULT_TEAM_ID`, `DEFAULT_PROFILE_ID`, `REASONING_LEVELS`).
 
 Browser fetches hit relative `/api/*` URLs. The `/api/$` catch-all (`src/routes/api/$.ts`, using `createFileRoute` with `server.handlers`) is a streaming-capable reverse proxy: it pulls the cookie, stamps it as a bearer header, forwards to the daemon, and streams the response back. That's how the chat NDJSON stream survives the trip browser → web server → daemon → worker.
 
@@ -409,7 +409,7 @@ Routes (under `src/routes/`):
 | `welcome.tsx` | First-run setup landing. |
 | `agents/index.tsx` + `agents/$id/{index,memory,inbox,triggers}.tsx` | Agents UI. |
 | `profiles/{index,$id}.tsx` | Profile list + 2-tab editor (basics / skills). After-save `router.invalidate()` keeps `useLoaderData()` fresh on tab toggles. |
-| `groups/{index,$id}.tsx` | Group list (slug + optional `--link` target form) + per-group USER.md editor + member roster. |
+| `teams/{index,$id}.tsx` | Team list (slug + optional `--link` target form) + per-team USER.md editor + member roster. |
 | `skills/index.tsx` | Skill library (import card + installed list). |
 | `config/{index,services,tokens}.tsx` | Provider config / service config / token management. The bootstrap row in `tokens.tsx` is badged `auth.json` and has its revoke button hidden. |
 | `api/$.ts` | The cookie→bearer reverse proxy. |
@@ -423,7 +423,7 @@ Citty-based. Two "modes":
 
 ### 5.1 Entry — `src/index.ts`
 
-Registers the subcommand tree: `serve · dashboard · login · profile · group · agent · skill · memory · provider · send · inbox · config · doctor · backup · trigger · token · auth · uninstall · completion`. Custom `printTopLevelHelp()` renders a grouped layout (setup / catalog / agents / ops / remote / shell) instead of citty's default flat help.
+Registers the subcommand tree: `serve · dashboard · login · profile · team · agent · skill · memory · provider · send · inbox · config · doctor · backup · trigger · token · auth · uninstall · completion`. Custom `printTopLevelHelp()` renders a grouped layout (setup / catalog / agents / ops / remote / shell) instead of citty's default flat help.
 
 Top-level error handler catches `ApiClientError` subclasses (401 token mismatch, 403 origin mismatch) and low-level network errors (`ECONNREFUSED`, `ENOTFOUND`) with friendly hints ("is the daemon running? `bazilion serve`").
 
@@ -449,7 +449,7 @@ The result is wrapped with `createClient({serverUrl, token})` from `@bazilion/cl
 | `token.ts` | `create / list / revoke / show-local` | `/api/tokens/*`. `show-local` reads the bootstrap token from local `auth.json`. |
 | `agent.ts` | `spawn / edit / list / show / chat / archive / unarchive / delete / move / cancel / skill / chat-{reset,trim,context,compact} / session-head` | `/api/agents*` — `chat` drains NDJSON from `/api/agents/:id/chat`; `cancel` POSTs to `/api/agents/:id/cancel`. |
 | `profile.ts` | `create / list / show / edit / update / delete` | `/api/profiles*`. |
-| `group.ts` | `add [--link] / list / rm / user-md {show,set,clear}` | `/api/groups*`. |
+| `team.ts` | `add [--link] / list / rm / user-md {show,set,clear}` | `/api/teams*`. |
 | `skill.ts` | `list / import / rm` | `/api/skills*` (import uses multipart). |
 | `provider.ts` | `list / enable / disable / models / models-set / test` | `/api/config/providers*`, `/api/providers/test`. |
 | `config.ts` | `get / set` | `/api/config/fields/:envVar`. |
@@ -457,7 +457,7 @@ The result is wrapped with `createClient({serverUrl, token})` from `@bazilion/cl
 | `send.ts` | `send` | `POST /api/agents/:id/messages`. |
 | `inbox.ts` | `list / show / read` | `/api/agents/:id/messages`, `/api/messages/:id`. |
 | `trigger.ts` | `add / list / rm / enable / disable / update` | `/api/agents/:id/triggers`, `/api/triggers/:id`. |
-| `memory.ts` | `list / read / write / search / rm` | `/api/agents/:id/memory*` (writes to the group's shared store). |
+| `memory.ts` | `list / read / write / search / rm` | `/api/agents/:id/memory*` (writes to the team's shared store). |
 | `backup.ts` | `create / restore` | `/api/backup` (download) and tar -xzf into `--home` (restore is direct, refuses while a daemon is reachable). |
 | `doctor.ts` | `doctor` | `/api/health` + local checks. |
 | `completion.ts` | `completion <shell>` | (direct) — prints bash/zsh/fish completion script. |
@@ -476,7 +476,7 @@ The daemon's `apps/daemon/src/index.ts` eagerly calls `getCtx()` before `serve()
 ```
 getCtx()
   └─ bootstrap()
-       └─ resolvePaths() → mkdir ~/.bazilion + {profiles,agents,skills,groups,logs}
+       └─ resolvePaths() → mkdir ~/.bazilion + {profiles,agents,skills,teams,logs}
        └─ openDb + runMigrations
        └─ if auth.json missing:
             webTokenRepo.create(db, 'bootstrap') → randomBytes(24).toString('hex')
@@ -573,8 +573,8 @@ user curates a model
       → ensureSetupSeeded(db, paths)
       → isSetupComplete(db)? NOW true
       → seedDefaults(db, paths, {model:'anthropic:claude-opus-4-6'})
-          → registerGroup({id:'default', name:'Default'}, paths)
-              (mkdir paths.groupDir('default') + memory/)
+          → registerTeam({id:'default', name:'Default'}, paths)
+              (mkdir paths.teamDir('default') + memory/)
           → createProfile({id:'default', name:'Default',
                            defaultModel:..., skillsMode:'all'})
  ↓
@@ -616,8 +616,8 @@ bazilion send <from> <to> "text"
 
 - **Daemon is sole owner of `~/.bazilion`**: workers don't open `bazilion.db`. The CLI never opens it at all — its handful of direct-mode commands (`uninstall`, `backup` restore, `login`, `token show-local`) touch only the filesystem. The web UI never touches the DB either.
 - **One owner of LLM traffic**: the worker subprocess. The daemon never calls `provider.chat` in its own event loop.
-- **One agent, one group**: enforced by `agents.group_id NOT NULL REFERENCES groups(id) ON DELETE RESTRICT`. To delete a group with members, move them first.
-- **Memory is group-shared**: every agent in the group reads + writes the same qmd index at `<group.path>/memory/`.
+- **One agent, one team**: enforced by `agents.team_id NOT NULL REFERENCES teams(id) ON DELETE RESTRICT`. To delete a team with members, move them first.
+- **Memory is team-shared**: every agent in the team reads + writes the same qmd index at `<team.path>/memory/`.
 - **`apps/web` never reaches into daemon source**: every data access goes through HTTP, including SSR loaders. Wire shapes are imported from `@bazilion/api-types`.
 - **`daemon-client.ts` is server-only**: any module ending up in the client bundle imports from `wire-constants.ts` instead.
 - **Env vars win over stored secrets**: for debugging / override, a shell export always takes precedence over the `secrets` and `config` tables.

@@ -81,7 +81,7 @@ export const uninstallCommand = defineCommand({
     const dbFile = join(paths.home, 'bazilion.db')
     const profilesDir = join(paths.home, 'profiles')
     const agentsDir = join(paths.home, 'agents')
-    const groupsDir = join(paths.home, 'groups')
+    const teamsDir = join(paths.home, 'teams')
     const skillsDir = join(paths.home, 'skills')
     const logsDir = join(paths.home, 'logs')
 
@@ -93,14 +93,7 @@ export const uninstallCommand = defineCommand({
     console.log(`about to uninstall bazilion at ${paths.home}`)
     console.log('')
 
-    const dataTargets = [
-      dbFile,
-      `${dbFile}-wal`,
-      `${dbFile}-shm`,
-      profilesDir,
-      agentsDir,
-      groupsDir,
-    ]
+    const dataTargets = [dbFile, `${dbFile}-wal`, `${dbFile}-shm`, profilesDir, agentsDir, teamsDir]
 
     const needsPrompt = !args.yes
     const readLine = needsPrompt ? makeLineReader() : null

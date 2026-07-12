@@ -44,20 +44,21 @@ docs/backlog/
 
 _None right now._
 
-## Done (13)
+## Done (14)
 
 | ID | Title | Size | Shipped | Release | Notes |
 |----|-------|------|---------|---------|-------|
-| [BAZ-002](done/BAZ-002-profile-groups.md) | Profile Groups — preconfigured team templates | M | 2026-05-25 | [v0.2.0](https://github.com/rullopat/bazilion/releases/tag/v0.2.0) | Atomic team-template spawn — see the file's As-built block for deltas |
+| [BAZ-002](done/BAZ-002-profile-groups.md) | Profile Groups — preconfigured team templates (historical) | M | 2026-05-25 | [v0.2.0](https://github.com/rullopat/bazilion/releases/tag/v0.2.0) | Superseded by the canonical Team Template model in BAZ-018 |
 | [BAZ-005](done/BAZ-005-agent-templates-refresh.md) | Agent templates refresh — two-sided bootstrap, USER.md seed, workspace doc | M | 2026-05-29 | v0.5.0 | Two-phase bootstrap, USER.md seed + backfill, creature/avatar, default-on AGENTS/TOOLS (HEARTBEAT opt-in) — see As-built for deltas |
 | [BAZ-007](done/BAZ-007-simple-installer-and-dashboard.md) | Simple installer and dashboard launch for non-technical users | M | 2026-06-22 | v0.6.0 | Bundled web UI, `bazilion dashboard`, and one-line website installers |
 | [BAZ-008](done/BAZ-008-skill-content-scan.md) | Skill content scan — prompt-injection and exfiltration warnings | S | 2026-07-02 | unreleased | Static scan on import/list/attach; confirmation required for risky imports and attaches |
-| [BAZ-009](done/BAZ-009-configurable-agent-harness.md) | Configurable agent harness - functional communication-flow prototype | L | 2026-07-10 | unreleased | Local-only Flow/Matrix policy prototype, live-group snapshots, denial simulation, and verified responsive Browser matrix |
-| [BAZ-010](done/BAZ-010-harness-persistence-api.md) | Canonical harness storage and compatibility migration | L | 2026-07-11 | unreleased | Canonical Team revisions, one Group policy, atomic legacy migration, exact-Open adapters, and lifecycle lease |
-| [BAZ-015](done/BAZ-015-harness-policy-lifecycle-api.md) | Revisioned Team-template, Group-policy, and Agent lifecycle APIs | L | 2026-07-11 | unreleased | Canonical Team/Group policy APIs, stable-slot source workflows, explicit placement, and atomic lifecycle |
-| [BAZ-011](done/BAZ-011-harness-runtime-enforcement.md) | Harness authorizer, denial audit, and gated Agent messaging | L | 2026-07-11 | unreleased | Shared authorizer, immutable denial audit, diagnostic evaluation, and gated messaging |
-| [BAZ-012](done/BAZ-012-production-harness-web.md) | Production Templates and Groups web information architecture | L | 2026-07-11 | unreleased | Canonical navigation, projections, redirects, lifecycle shells, and degraded recovery |
-| [BAZ-016](done/BAZ-016-harness-runtime-boundaries.md) | Harness ingress, egress, scheduler, and turn-boundary enforcement | L | 2026-07-11 | unreleased | All runtime boundaries and activation-safe lifecycle linearization |
-| [BAZ-017](done/BAZ-017-harness-web-editor-migration.md) | Production policy editors, local migration, activity, and web QA | L | 2026-07-11 | unreleased | Server-backed editors, conflicts/import/activity, accessibility, and viewport matrix |
-| [BAZ-013](done/BAZ-013-harness-cli-policy-tools.md) | Harness CLI policy show, import/export, and block history | M | 2026-07-11 | unreleased | Revision-safe typed CLI management, portable JSON, diagnostics, and block filters |
-| [BAZ-014](done/BAZ-014-harness-communication-approvals.md) | Human approval gates for harness communication | L | 2026-07-11 | unreleased | Durable approval-required edges, at-most-once dispatch, authenticated queue, CLI/tools, and responsive web workflow |
+| [BAZ-009](done/BAZ-009-configurable-agent-harness.md) | Configurable agent harness prototype (historical) | L | 2026-07-10 | unreleased | Local-only prototype removed after its interaction model graduated to Team Policy |
+| [BAZ-010](done/BAZ-010-harness-persistence-api.md) | Production harness persistence foundation (historical) | L | 2026-07-11 | unreleased | Canonical storage retained; transitional migration/adapters removed by BAZ-018 |
+| [BAZ-015](done/BAZ-015-harness-policy-lifecycle-api.md) | Revisioned Team Template, Team Policy, and Agent lifecycle APIs | L | 2026-07-11 | unreleased | Canonical APIs, stable-slot workflows, explicit placement, and atomic lifecycle |
+| [BAZ-011](done/BAZ-011-harness-runtime-enforcement.md) | Team Policy authorizer, denial audit, and gated Agent messaging | L | 2026-07-11 | unreleased | Shared authorizer, immutable denial audit, diagnostic evaluation, and gated messaging |
+| [BAZ-012](done/BAZ-012-production-harness-web.md) | Production Templates and Teams web information architecture | L | 2026-07-11 | unreleased | Canonical navigation, projections, lifecycle shells, and degraded recovery |
+| [BAZ-016](done/BAZ-016-harness-runtime-boundaries.md) | Team Policy ingress, egress, scheduler, and turn-boundary enforcement | L | 2026-07-11 | unreleased | All runtime boundaries and activation-safe lifecycle linearization |
+| [BAZ-017](done/BAZ-017-harness-web-editor-migration.md) | Production Team Policy editors, activity, and web QA | L | 2026-07-11 | unreleased | Server-backed editors, conflicts/import/activity, accessibility, and viewport matrix |
+| [BAZ-013](done/BAZ-013-harness-cli-policy-tools.md) | Team Policy CLI management and block history | M | 2026-07-11 | unreleased | Revision-safe typed CLI management, portable JSON, diagnostics, and block filters |
+| [BAZ-014](done/BAZ-014-harness-communication-approvals.md) | Human approval gates for Team Policy communication | L | 2026-07-11 | unreleased | Durable approval-required edges, at-most-once dispatch, authenticated queue, CLI/tools, and responsive web workflow |
+| [BAZ-018](done/BAZ-018-canonical-teams-cleanup.md) | Canonical Teams cleanup and clean-install schema | L | 2026-07-12 | unreleased | Removed Group/Harness/Profile Group compatibility and made Teams the only product vocabulary |

@@ -1,12 +1,12 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { Group, Profile } from '@bazilion/api-types'
+import type { Profile, Team } from '@bazilion/api-types'
 import { isSetupComplete, listAvailableModels } from '../availableModels.ts'
 import type { BazilionDb } from '../db/client.ts'
-import { registerGroup } from '../group/register.ts'
 import type { Paths } from '../paths.ts'
-import * as groupRepo from '../repos/groups.ts'
 import * as profileRepo from '../repos/profiles.ts'
+import * as teamRepo from '../repos/teams.ts'
+import { registerTeam } from '../team/register.ts'
 import { createProfile } from './create.ts'
 import {
   DEFAULT_AGENTS,
@@ -17,7 +17,7 @@ import {
 } from './templates.ts'
 
 export const DEFAULT_PROFILE_ID = 'default'
-export const DEFAULT_GROUP_ID = 'default'
+export const DEFAULT_TEAM_ID = 'default'
 
 // HEARTBEAT.md is intentionally absent — it's opt-in, so the
 // managed default profile doesn't ship it.
@@ -62,28 +62,28 @@ export interface SeedDefaultsInput {
 
 export interface SeedResult {
   profile: Profile
-  group: Group
+  team: Team
   /** true if the helper created the profile this call (vs. returned an existing one). */
   profileCreated: boolean
-  /** true if the helper created the group this call. */
-  groupCreated: boolean
+  /** true if the helper created the team this call. */
+  teamCreated: boolean
 }
 
 /**
  * Seed the on-disk + DB defaults users land on after finishing first-run setup:
- * a `default` group at `~/.bazilion/groups/default/` and a `default` profile
+ * a `default` team at `~/.bazilion/teams/default/` and a `default` profile
  * wired to the just-enabled model. Fresh agents spawned from the default
- * profile land in the default group unless another is specified.
+ * profile land in the default team unless another is specified.
  *
  * Idempotent: re-seeding reuses whichever pieces already exist, so it's safe
  * to call whenever the setup state changes.
  */
 export function seedDefaults(db: BazilionDb, paths: Paths, input: SeedDefaultsInput): SeedResult {
-  let group = groupRepo.get(db, DEFAULT_GROUP_ID, paths)
-  let groupCreated = false
-  if (!group) {
-    group = registerGroup(db, { id: DEFAULT_GROUP_ID, name: 'Default' }, paths)
-    groupCreated = true
+  let team = teamRepo.get(db, DEFAULT_TEAM_ID, paths)
+  let teamCreated = false
+  if (!team) {
+    team = registerTeam(db, { id: DEFAULT_TEAM_ID, name: 'Default' }, paths)
+    teamCreated = true
   }
 
   let profile = profileRepo.get(db, DEFAULT_PROFILE_ID)
@@ -101,7 +101,7 @@ export function seedDefaults(db: BazilionDb, paths: Paths, input: SeedDefaultsIn
     profileCreated = true
   }
 
-  return { profile, group, profileCreated, groupCreated }
+  return { profile, team, profileCreated, teamCreated }
 }
 
 /**

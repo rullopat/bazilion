@@ -1,14 +1,14 @@
 import { randomUUID } from 'node:crypto'
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { Agent, HarnessPlacement, ReasoningLevel } from '@bazilion/api-types'
+import type { Agent, ReasoningLevel, TeamPolicyPlacement } from '@bazilion/api-types'
 import type { BazilionDb } from '../db/client.ts'
 import type { Paths } from '../paths.ts'
 import { loadProfile } from '../profile/load.ts'
-import { DEFAULT_GROUP_ID } from '../profile/seed.ts'
+import { DEFAULT_TEAM_ID } from '../profile/seed.ts'
 import * as agentRepo from '../repos/agents.ts'
-import * as groupRepo from '../repos/groups.ts'
-import * as liveHarnessRepo from '../repos/liveHarnesses.ts'
+import * as teamPolicyRepo from '../repos/teamPolicies.ts'
+import * as teamRepo from '../repos/teams.ts'
 import { discoverSkills } from '../skills/discover.ts'
 
 export interface SpawnAgentInput {
@@ -17,15 +17,15 @@ export interface SpawnAgentInput {
   modelOverride?: string | null
   reasoningLevel?: ReasoningLevel
   /**
-   * Group the new agent joins. One agent belongs to exactly one group. When
-   * omitted, falls back to the seeded 'default' group — the same fallback
-   * used everywhere we need a sensible cwd. Must refer to an existing group.
+   * Team the new agent joins. One agent belongs to exactly one team. When
+   * omitted, falls back to the seeded 'default' team — the same fallback
+   * used everywhere we need a sensible cwd. Must refer to an existing team.
    */
-  groupId?: string
+  teamId?: string
   /** Internal batch-spawn switch; the caller regenerates/bump the aggregate once. */
-  deferHarnessUpdate?: boolean
-  groupExpectedRevision?: number
-  placement?: Exclude<HarnessPlacement, 'template_snapshot'>
+  deferTeamPolicyUpdate?: boolean
+  teamExpectedRevision?: number
+  placement?: Exclude<TeamPolicyPlacement, 'template_snapshot'>
 }
 
 export function spawnAgent(db: BazilionDb, paths: Paths, input: SpawnAgentInput): Agent {
@@ -35,7 +35,7 @@ export function spawnAgent(db: BazilionDb, paths: Paths, input: SpawnAgentInput)
   try {
     return db.raw.transaction(() => {
       // Agent's private home: identity files + sessions. Memory now lives at
-      // the group level (`groups/<slug>/memory/`), shared by all member agents,
+      // the team level (`teams/<slug>/memory/`), shared by all member agents,
       // so we no longer create per-agent memory dirs here.
       mkdirSync(dir, { recursive: true })
       mkdirSync(join(dir, 'sessions'), { recursive: true })
@@ -62,29 +62,25 @@ export function spawnAgent(db: BazilionDb, paths: Paths, input: SpawnAgentInput)
 
       const reasoningLevel: ReasoningLevel = input.reasoningLevel ?? 'medium'
 
-      // Resolve group: explicit input wins; otherwise fall back to the seeded
+      // Resolve team: explicit input wins; otherwise fall back to the seeded
       // 'default'. If neither exists, error out — an agent can't live without a
-      // group (the FK `agents.group_id REFERENCES groups(id)` enforces it too).
-      const groupId = input.groupId ?? DEFAULT_GROUP_ID
-      const group = groupRepo.get(db, groupId, paths)
-      if (!group) {
+      // team (the FK `agents.team_id REFERENCES teams(id)` enforces it too).
+      const teamId = input.teamId ?? DEFAULT_TEAM_ID
+      const team = teamRepo.get(db, teamId, paths)
+      if (!team) {
         throw new Error(
-          `spawnAgent: group "${groupId}" does not exist. Pass an explicit --group or complete first-run setup first.`,
+          `spawnAgent: team "${teamId}" does not exist. Pass an explicit --team or complete first-run setup first.`,
         )
       }
-      const canonical = input.groupExpectedRevision !== undefined || input.placement !== undefined
-      if (canonical && (!input.groupExpectedRevision || !input.placement)) {
-        throw new Error('placement_required: groupExpectedRevision and placement are required')
-      }
-      if (!input.deferHarnessUpdate && !canonical) {
-        liveHarnessRepo.requireCompatibilityOpen(db, group.id)
-      }
-      if (canonical) {
-        const harness = liveHarnessRepo.get(db, group.id)
-        if (!harness) throw new Error(`group_policy_missing: ${group.id}`)
-        if (harness.revision !== input.groupExpectedRevision) {
+      let placement = input.placement
+      if (!input.deferTeamPolicyUpdate) {
+        const teamPolicy = teamPolicyRepo.get(db, team.id)
+        if (!teamPolicy) throw new Error(`team_policy_missing: ${team.id}`)
+        const expectedRevision = input.teamExpectedRevision ?? teamPolicy.revision
+        placement ??= 'open'
+        if (teamPolicy.revision !== expectedRevision) {
           throw new Error(
-            `group_revision_conflict: expected ${input.groupExpectedRevision}, current ${harness.revision}`,
+            `team_revision_conflict: expected ${expectedRevision}, current ${teamPolicy.revision}`,
           )
         }
       }
@@ -94,7 +90,7 @@ export function spawnAgent(db: BazilionDb, paths: Paths, input: SpawnAgentInput)
         name: input.name ?? loaded.profile.name,
         modelOverride: input.modelOverride ?? null,
         reasoningLevel,
-        groupId: group.id,
+        teamId: team.id,
       }
       writeFileSync(join(dir, 'agent.json'), `${JSON.stringify(agentJson, null, 2)}\n`)
 
@@ -106,7 +102,7 @@ export function spawnAgent(db: BazilionDb, paths: Paths, input: SpawnAgentInput)
         reasoningLevel,
         status: 'idle',
         dir,
-        groupId: group.id,
+        teamId: team.id,
       })
 
       // Skills come from the profile only — `skills_mode='all'` attaches every
@@ -118,18 +114,16 @@ export function spawnAgent(db: BazilionDb, paths: Paths, input: SpawnAgentInput)
           : loaded.defaultSkills
       for (const s of skills) agentRepo.attachSkill(db, id, s)
 
-      if (!input.deferHarnessUpdate && canonical) {
-        liveHarnessRepo.insertAgentState(db, group.id, agent.id)
-        liveHarnessRepo.addPlacementEdges(
+      if (!input.deferTeamPolicyUpdate) {
+        teamPolicyRepo.insertAgentState(db, team.id, agent.id)
+        teamPolicyRepo.addPlacementEdges(
           db,
-          group.id,
+          team.id,
           agent.id,
-          input.placement as Exclude<HarnessPlacement, 'template_snapshot'>,
+          placement as Exclude<TeamPolicyPlacement, 'template_snapshot'>,
           input.profileId,
         )
-        liveHarnessRepo.bumpExplicit(db, group.id)
-      } else if (!input.deferHarnessUpdate) {
-        liveHarnessRepo.regenerateExactOpen(db, group.id)
+        teamPolicyRepo.bumpRevision(db, team.id)
       }
 
       return agent

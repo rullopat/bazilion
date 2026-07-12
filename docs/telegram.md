@@ -2,13 +2,13 @@
 
 Living design doc. **The v1 user story landed 2026-05-25; implementation shipped through PRs #11–#17 by 2026-05-27.** Seven of the eight planned PRs are merged; Step 8 (webhook ingress) is intentionally deferred — polling is the default and works for every install, webhook is a v2 efficiency upgrade for users who already have a public URL.
 
-**Current state:** Telegram is a fully-functional surface for bazilion. Bot polls a configured supergroup, owns a `⚙ bazilion` service chat with 7 slash commands (`/talk`, `/spawn`, `/list`, `/groups`, `/health`, `/whoami`, `/help`), creates one forum topic per agent, mirrors every assistant turn back into that topic with typing indicator and 👀 reactions, accepts user messages typed in a bound topic as agent input (queued + concatenated when an agent is mid-turn). Topic-context commands (`/close`, `/rebind`, `/unbind`) work inside agent topics. Per-agent verbose mirror mode surfaces tool-call summary lines. The pinned directory message updates on every CRUD event and self-recreates on deletion. CLI + web UI both expose binding/health/mirror-mode controls.
+**Current state:** Telegram is a fully-functional surface for bazilion. Bot polls a configured supergroup, owns a `⚙ bazilion` service chat with 7 slash commands (`/talk`, `/spawn`, `/list`, `/teams`, `/health`, `/whoami`, `/help`), creates one forum topic per agent, mirrors every assistant turn back into that topic with typing indicator and 👀 reactions, accepts user messages typed in a bound topic as agent input (queued + concatenated when an agent is mid-turn). Topic-context commands (`/close`, `/rebind`, `/unbind`) work inside agent topics. Per-agent verbose mirror mode surfaces tool-call summary lines. The pinned directory message updates on every CRUD event and self-recreates on deletion. CLI + web UI both expose binding/health/mirror-mode controls.
 
 The doc below is preserved as the design record. Update it if you tackle Step 8 or surface new design questions during maintenance.
 
 ## Problem
 
-Bazilion agents today are reachable from the web UI, the CLI, and (over LAN) the mobile app. None of those are good for the "ping me from the bus" case. We want a phone-friendly external surface — Telegram first — that lets a single user talk to **any** of their agents and groups from one app.
+Bazilion agents today are reachable from the web UI, the CLI, and (over LAN) the mobile app. None of those are good for the "ping me from the bus" case. We want a phone-friendly external surface — Telegram first — that lets a single user talk to **any** of their agents and teams from one app.
 
 A naive "one bot per agent" approach is unworkable (a BotFather token and chat per agent). A naive "one bot, one chat" approach loses the ability to switch context cleanly. The right primitive is Telegram's **forum supergroup**: one supergroup with topics enabled, one topic per conversation thread. The bot is admin in that supergroup, creates/closes topics on demand, and routes messages by `message_thread_id`.
 
@@ -16,10 +16,10 @@ A naive "one bot per agent" approach is unworkable (a BotFather token and chat p
 
 1. **Topic granularity: one topic per agent.** Each bazilion agent is bound to exactly one forum topic; the topic is permanent for the agent's lifetime. Matches the proven "agent-persona-per-topic" pattern from existing open-source forum bots.
 2. **Topic creation: auto-create on first traffic.** When an agent needs to send to Telegram (heartbeat fires, user replies via web, etc.) and isn't bound to a topic yet, the daemon calls `createForumTopic` lazily and persists the returned `message_thread_id`. Inbound human-initiated binding happens via a `/talk <agent>` slash command in the bazilion service chat (see decision #6).
-3. **Pairing: one bot, one supergroup, global per install.** The user configures `{ TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID }` once in `/config`; every agent in this bazilion install shares that supergroup. Cross-group agents land in the same forum, distinguished by topic name + icon.
+3. **Pairing: one bot, one supergroup, global per install.** The user configures `{ TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID }` once in `/config`; every agent in this bazilion install shares that supergroup. Cross-team agents land in the same forum, distinguished by topic name + icon.
 4. **Ingress: long-polling, daemon-internal.** No public URL required; the daemon runs grammY's `bot.start()` driver as a long-lived task inside its own process. Webhook is a deferred v2 opt-in for users who already have a public URL. Matches OpenClaw's default — see `docs/openclaw-reference.md` and §"Lessons from OpenClaw" below.
-5. **Topic-name and icon convention.** Topic name = `{agent.name}` for the `default` group, `{group.slug} › {agent.name}` for non-default groups (arrow separator; slug source in v1, per-group template-configurable later). Icon color is auto-allocated per bazilion group from Telegram's 6-color enum at first-traffic — wraps round-robin past 5 groups (red is reserved for the service chat — see #6 — leaving 5 colors for groups; color is a visual hint, name prefix is authoritative). Icon emoji is profile-derived (curated default per built-in profile, editable per agent). A human-renamed topic stays renamed — bazilion stops propagating renames once `forum_topic_edited` is observed from a non-bot sender.
-6. **Service chat as control plane.** A dedicated pinned topic named `⚙ bazilion` is created at install setup. It owns all control-plane commands (`/talk`, `/spawn`, `/list`, `/groups`, `/help`, `/health`, `/whoami`) and hosts a bot-maintained pinned directory message linking every bound agent's topic. Plain text in the service chat is ignored. Telegram's General topic is hidden via `hideGeneralForumTopic` at setup (reversible). The service chat takes a reserved red icon color from the 6-enum, so it never collides with a group's allocated color.
+5. **Topic-name and icon convention.** Topic name = `{agent.name}` for the `default` team, `{team.slug} › {agent.name}` for non-default teams (arrow separator; slug source in v1, per-team template-configurable later). Icon color is auto-allocated per bazilion team from Telegram's 6-color enum at first-traffic — wraps round-robin past 5 teams (red is reserved for the service chat — see #6 — leaving 5 colors for teams; color is a visual hint, name prefix is authoritative). Icon emoji is profile-derived (curated default per built-in profile, editable per agent). A human-renamed topic stays renamed — bazilion stops propagating renames once `forum_topic_edited` is observed from a non-bot sender.
+6. **Service chat as control plane.** A dedicated pinned topic named `⚙ bazilion` is created at install setup. It owns all control-plane commands (`/talk`, `/spawn`, `/list`, `/teams`, `/help`, `/health`, `/whoami`) and hosts a bot-maintained pinned directory message linking every bound agent's topic. Plain text in the service chat is ignored. Telegram's General topic is hidden via `hideGeneralForumTopic` at setup (reversible). The service chat takes a reserved red icon color from the 6-enum, so it never collides with a team's allocated color.
 
 ## User story walkthrough
 
@@ -51,9 +51,9 @@ Telegram-side first, then bazilion-side. Order matters — each step unlocks the
 Two paths reach the same end-state — an `agents.telegram_topic_id` populated and a forum topic alive:
 
 - **Daemon-initiated (auto).** Agent has unread outbound (heartbeat, scheduler trigger, assistant turn from the web chat). Daemon checks `telegram_topic_id`. If null, calls `createForumTopic({ name: agent.name, icon_color, icon_custom_emoji_id })` against the configured supergroup, persists the returned `message_thread_id`, then sends the message into the new topic.
-- **Human-initiated (explicit).** Human is in the supergroup, posts `/talk <agent-name>` in the **`⚙ bazilion` service chat**. Bot resolves the name (qualified as `group/agent` if ambiguous — see Command vocabulary below), creates the topic if not already bound, posts a deep-link to it in the service chat, and the human taps in.
+- **Human-initiated (explicit).** Human is in the supergroup, posts `/talk <agent-name>` in the **`⚙ bazilion` service chat**. Bot resolves the name (qualified as `team/agent` if ambiguous — see Command vocabulary below), creates the topic if not already bound, posts a deep-link to it in the service chat, and the human taps in.
 
-In both cases, the topic is created with `name = topicNameFor(agent, group)` (see decision #5 — bare `agent.name` for the `default` group, `{group.slug} › {agent.name}` otherwise), `icon_color` pulled from the bazilion group's slot in `groups.telegram_icon_color` (round-robin-allocated on first agent in the group, over 5 non-red colors, wraps at 5), and `icon_custom_emoji_id` derived from `profiles.telegram_icon_emoji` (curated default per built-in profile; editable per agent later via `bazilion agent set-topic-icon`).
+In both cases, the topic is created with `name = topicNameFor(agent, team)` (see decision #5 — bare `agent.name` for the `default` team, `{team.slug} › {agent.name}` otherwise), `icon_color` pulled from the bazilion team's slot in `teams.telegram_icon_color` (round-robin-allocated on first agent in the team, over 5 non-red colors, wraps at 5), and `icon_custom_emoji_id` derived from `profiles.telegram_icon_emoji` (curated default per built-in profile; editable per agent later via `bazilion agent set-topic-icon`).
 
 ### Steady-state traffic
 
@@ -78,8 +78,8 @@ Commands run in two contexts. The bazilion service chat is the control plane; bo
 |---|---|
 | `/talk <agent>` | Bind a topic to the named agent (auto-create if needed); reply with deep-link |
 | `/spawn` | Open inline-keyboard profile picker → name prompt → auto-create new agent + deep-link |
-| `/list` (alias `/agents`) | List all agents grouped by bazilion group, with deep-links and bound/unbound indicator |
-| `/groups` | List bazilion groups with agent counts |
+| `/list` (alias `/agents`) | List all agents grouped by bazilion team, with deep-links and bound/unbound indicator |
+| `/teams` | List bazilion teams with agent counts |
 | `/help [<command>]` | Command reference |
 | `/health` | Bot identity, supergroup state, polling liveness |
 | `/whoami` | Your Telegram user ID (for future per-user ACL configuration) |
@@ -93,7 +93,7 @@ Commands run in two contexts. The bazilion service chat is the control plane; bo
 | `/unbind` | Clear `agents.telegram_topic_id` for the bound agent; topic becomes an orphan |
 | `/help` | Same help, contextualized to the bound agent |
 
-**Disambiguation.** When two agents share a name across bazilion groups, qualify with `group/agent`:
+**Disambiguation.** When two agents share a name across bazilion teams, qualify with `team/agent`:
 
 ```
 /talk researcher                # unambiguous
@@ -109,7 +109,7 @@ Argument parsing is greedy-after-command: everything after `/talk ` is the agent
 2. User taps a profile button → `callback_query` arrives with the profile id.
 3. Bot edits the original message: "Name for this agent? (reply with `-` to auto-name)".
 4. User replies (the next message in the service chat from the same user; tracked via a short-lived state on `(chat_id, user_id)`).
-5. Bot creates the agent in the `default` bazilion group (v1 keeps it simple; multi-group spawn is a typed-args feature), auto-binds the topic via the normal `createForumTopic` path, and replies with the deep-link.
+5. Bot creates the agent in the `default` bazilion team (v1 keeps it simple; multi-team spawn is a typed-args feature), auto-binds the topic via the normal `createForumTopic` path, and replies with the deep-link.
 
 For power users, `/spawn <profile> [<name>]` works typed and skips the keyboard entirely.
 
@@ -133,8 +133,8 @@ Each "open" link is a Telegram deep-link (`https://t.me/c/<chat_id>/<topic_id>`)
 - **Topic deleted in Telegram by a human.** No event fires. Daemon discovers it lazily on the next outbound send when `sendMessage` returns `400 Bad Request: message thread not found`. Reconcile logic: clear `agents.telegram_topic_id`, log the orphan, recreate on next traffic (which will trigger the auto-create path again).
 - **Bot loses `can_manage_topics`.** Existing topics keep working (sends still route), but `createForumTopic` calls 403. Daemon surfaces this via a health check on `/config/integrations/telegram` and a banner on agents that have no `telegram_topic_id` yet.
 - **Service chat or directory message deleted by a human.** Service chat: discovered lazily on next inbound (the bot tries to send a reply, gets thread-not-found; or routing fails to match the configured `TELEGRAM_SERVICE_TOPIC_ID`). Directory message: discovered on next agent CRUD when the bot tries to `editMessageText`. Either way, recreate and re-pin; surface a one-line note in `/help` so users don't think they've broken anything.
-- **Topic renamed in Telegram by a human.** Bazilion stops auto-renaming that topic. Detected via `forum_topic_edited` service messages whose sender isn't the bot; daemon sets `agents.telegram_topic_name_locked = 1`. Subsequent agent-name or group-slug changes are no-ops for that topic. Telegram users universally expect "I renamed it, it stays renamed."
-- **Agent or group renamed in bazilion.** For every bound topic not flagged `telegram_topic_name_locked`, call `editForumTopic({ name: topicNameFor(agent, group) })` to keep the topic name in sync. Cheap; runs as a background propagation. Also triggers a directory-message refresh.
+- **Topic renamed in Telegram by a human.** Bazilion stops auto-renaming that topic. Detected via `forum_topic_edited` service messages whose sender isn't the bot; daemon sets `agents.telegram_topic_name_locked = 1`. Subsequent agent-name or team-slug changes are no-ops for that topic. Telegram users universally expect "I renamed it, it stays renamed."
+- **Agent or team renamed in bazilion.** For every bound topic not flagged `telegram_topic_name_locked`, call `editForumTopic({ name: topicNameFor(agent, team) })` to keep the topic name in sync. Cheap; runs as a background propagation. Also triggers a directory-message refresh.
 - **Token rotation.** Updating `TELEGRAM_BOT_TOKEN` in the config UI tears down the running bot instance and starts a fresh one. The daemon's bot singleton is replaceable: `ctx.telegramBot` is null until configured, gets created when credentials land, gets recycled on token change, gets stopped on shutdown or token removal.
 - **Bot identity cache.** `getMe` result cached for 24h to avoid burning a call per restart; invalidated on token change. Matches the OpenClaw pattern.
 
@@ -142,17 +142,19 @@ Each "open" link is a Telegram deep-link (`https://t.me/c/<chat_id>/<topic_id>`)
 
 The supergroup membership *is* the auth boundary. If the user adds family/teammates to the supergroup, those people can talk to every agent and run every command. There is no per-user authorization layer. `/whoami` is the seed for a future ACL system (it returns the inviter's Telegram user_id, which we can persist into a future `command_allow_from` list). v1 is "loudly documented, supergroup-membership is auth."
 
-## What this lands in the codebase (sketch)
+## What this landed in the codebase (historical implementation sketch)
 
 Not committing to these paths yet — this is a shape preview, not the implementation plan.
 
-- **Migration.** `apps/daemon/src/core/db/migrations/0003_agent_telegram.sql` adds:
+- **Schema.** These fields now live directly in the canonical clean-install
+  `apps/daemon/src/core/db/migrations/0001_init.sql` (the original incremental migration was
+  folded away):
   - `agents.telegram_topic_id INTEGER NULL UNIQUE` (one topic ↔ one agent).
   - `agents.telegram_topic_name_locked INTEGER NOT NULL DEFAULT 0` (sticky bit set when a human renames the topic).
-  - `groups.telegram_icon_color INTEGER NULL` (the 5-enum color allocated to this bazilion group, picked once at first-traffic; red is reserved for the service chat).
+  - `teams.telegram_icon_color INTEGER NULL` (the 5-enum color allocated to this bazilion team, picked once at first-traffic; red is reserved for the service chat).
   - `profiles.telegram_icon_emoji TEXT NULL` (sticker ID from `getForumTopicIconStickers`; curated default per built-in profile, nullable for custom profiles).
   - `agents.telegram_icon_emoji TEXT NULL` (per-agent override of the profile-derived emoji; falls back to `profiles.telegram_icon_emoji` if null, then to color-only if both are null). Survives topic deletion + recreation, unlike a customization that only lives in Telegram.
-- **Topic-naming helpers.** `apps/daemon/src/lib/telegram/naming.ts` exports `topicNameFor(agent, group): string` (default-group bypass + `{slug} › {name}` template) and `allocateGroupColor(db, groupId): number` (round-robin over the 5 non-red colors keyed by `groups.telegram_icon_color`, wraps past 5).
+- **Topic-naming helpers.** `apps/daemon/src/lib/telegram/naming.ts` exports `topicNameFor(agent, team): string` (default-team bypass + `{slug} › {name}` template) and `allocateGroupColor(db, teamId): number` (round-robin over the 5 non-red colors keyed by `teams.telegram_icon_color`, wraps past 5).
 - **Profile emoji mapping.** `apps/daemon/src/lib/telegram/profile-emojis.ts` exports `BUILTIN_PROFILE_EMOJI: Record<string, string>` — a curated map from built-in profile name to a sticker ID from `getForumTopicIconStickers` (shape: `researcher → 📚`, `coder → 💻`, `notes-archivist → 📝`, `analyst → 📊`, etc., chosen from the ~70-emoji set Telegram returns). Seeded into `profiles.telegram_icon_emoji` for built-in profiles at install time. Custom profiles default to null (color-only icon). The lookup order at topic-creation time is `agents.telegram_icon_emoji` → `profiles.telegram_icon_emoji` → null. The actual mapping is a one-time choice that lives in the seed data; the doc only locks in the *shape* of the table, not the specific emojis.
 - **Config & secrets keys.**
   - `TELEGRAM_BOT_TOKEN` (secrets) — bot credential from BotFather.
@@ -171,7 +173,7 @@ Not committing to these paths yet — this is a shape preview, not the implement
   - `/config/integrations/telegram` — setup form + health card.
   - Per-agent: a small "Telegram: bound to topic #N" indicator on the agent card and detail page, with a "Rebind" / "Unbind" action.
 - **Messaging-host extension.** `MessagingHost` grows a `telegramMirror(agentId, text)` capability; the daemon's NDJSON consumer in `runAgentTurn` calls it when a bound agent emits an assistant message or a tool-driven user-facing message.
-- **Outbound queue.** Per-supergroup serialization (token-bucket) inside the messaging host. Telegram's broadcast rate limit (~20 msg/min per group) is shared across all topics in the supergroup, *not* per topic — so the queue is keyed on `chat_id`, not on `(chat_id, message_thread_id)`. **`createForumTopic` calls go through the same queue.** The thundering-herd case (20 agents heartbeating simultaneously on a fresh install, all needing first-traffic topic creation) is bounded by the same per-supergroup quota — no separate topic-creation throttle needed.
+- **Outbound queue.** Per-supergroup serialization (token-bucket) inside the messaging host. Telegram's broadcast rate limit (~20 msg/min per team) is shared across all topics in the supergroup, *not* per topic — so the queue is keyed on `chat_id`, not on `(chat_id, message_thread_id)`. **`createForumTopic` calls go through the same queue.** The thundering-herd case (20 agents heartbeating simultaneously on a fresh install, all needing first-traffic topic creation) is bounded by the same per-supergroup quota — no separate topic-creation throttle needed.
 
 ### Polling robustness (daemon-internal invariants)
 
@@ -192,10 +194,10 @@ The polling loop is small but has several robustness invariants we picked up fro
 4. **General-topic phantom thread IDs.** Some Telegram clients echo a `message_thread_id <= 1` on inbound messages from General. The routing layer must normalize `message_thread_id <= 1` to "no thread" before reflecting it on outbound, or replies escape to the wrong place. Mostly moot now that General is hidden by default, but the helper still has to exist.
 5. **Forum-mode toggle is owner-only.** A bot with `can_manage_topics` can't turn the forum on/off; the human owner must do this during setup. The preflight check must inspect `chat.is_forum` and refuse to proceed if it's false.
 6. **Multi-user authorization is membership-only.** Adding someone to the Telegram supergroup grants them full agent access *and* the ability to run every slash command. We should at minimum show "supergroup members: N" in the health card so the user sees the blast radius.
-7. **Bound topics across bazilion groups all live in one forum.** With many groups + many agents, topic count grows quickly (1M is the Telegram hard cap, but UX breaks down well before that). The "one supergroup per bazilion group" alternative was considered and rejected for setup-friction reasons. Revisit if installs hit >50 active topics.
-8. **Group migration events.** Telegram occasionally fires `migrate_to_chat_id` when a basic group is upgraded to a supergroup — the chat ID changes underneath us. OpenClaw auto-rewrites their JSON5 config; we'll surface a "your chat ID changed, reconnect" banner in the web UI instead. Defer auto-update.
+7. **Bound topics across bazilion teams all live in one forum.** With many teams + many agents, topic count grows quickly (1M is the Telegram hard cap, but UX breaks down well before that). The "one supergroup per bazilion team" alternative was considered and rejected for setup-friction reasons. Revisit if installs hit >50 active topics.
+8. **Team migration events.** Telegram occasionally fires `migrate_to_chat_id` when a basic team is upgraded to a supergroup — the chat ID changes underneath us. OpenClaw auto-rewrites their JSON5 config; we'll surface a "your chat ID changed, reconnect" banner in the web UI instead. Defer auto-update.
 9. **OAuth-style bot pairing.** Long-term, we may want a `bazilion://pair-telegram` deep link analogous to the existing mobile pairing flow, so adding Telegram is "scan QR" instead of "paste two strings." Out of scope for v1.
-10. **5-color wrap-around at >5 bazilion groups.** The service chat reserves red from the 6-color enum, leaving 5 colors for group allocation. With 6+ groups, distinct groups share an icon color. Acceptable because the name prefix is authoritative; users will tolerate "loose visual hint" semantics. If this bites at scale, the fallback is "groups 6+ get an uncolored topic icon" — implementable later without a migration.
+10. **5-color wrap-around at >5 bazilion teams.** The service chat reserves red from the 6-color enum, leaving 5 colors for team allocation. With 6+ teams, distinct teams share an icon color. Acceptable because the name prefix is authoritative; users will tolerate "loose visual hint" semantics. If this bites at scale, the fallback is "teams 6+ get an uncolored topic icon" — implementable later without a migration.
 11. **Service chat deletion is recoverable but disruptive.** If a human deletes the `⚙ bazilion` topic, the daemon recreates it lazily, but the new topic has a new `message_thread_id` — deep-links from past messages stop working. Surface a one-line note in `/help`: "Don't delete the bazilion topic, but if you do, it'll come back."
 12. **`/spawn` keyboard state is per-`(chat_id, user_id)`.** Holding "waiting for name input" state in memory between callback_query and the next message is straightforward but races on multi-user supergroups: two people running `/spawn` at the same time need isolated state. In-memory `Map<chat_id+user_id, SpawnState>` with a 60s TTL handles this; persist nothing.
 
@@ -205,12 +207,12 @@ The polling loop is small but has several robustness invariants we picked up fro
 - **DM ingress.** v1 is supergroup-only. DMs would require OpenClaw-style pairing codes (`dmPolicy`, 8-char approval codes via CLI, 1h expiration) — substantial surface for a feature personal-laptop users won't need.
 - **Multi-account.** One bot per install in v1. Multiple bot identities sharing one daemon is plausible later but adds significant config and routing complexity.
 - **Per-topic config overrides.** OpenClaw lets you override `requireMention`, `allowFrom`, `systemPrompt`, etc. per topic. A future `agent_telegram_overrides` table could layer this on without changing the auto-bind model.
-- **Per-group topic-name format template.** A `groups.telegram_topic_name_format` column (e.g. `"{group.name} › {agent.name}"`) so installs that prefer display names or different layouts can opt in. v1 hardcodes the slug-arrow format.
-- **`/spawn-team <profile-group>`** — spawning a whole profile group from Telegram. Single-agent `/spawn` ships in v1; team spawning extends the keyboard primitive naturally and lands in v2.
-- **`/spawn` cross-group targeting.** `/spawn <profile> in <group>` typed form. v1 spawns in `default` group only (or the current topic's group when invoked typed-style — the keyboard flow is `default`-only).
+- **Per-team topic-name format template.** A `teams.telegram_topic_name_format` column (e.g. `"{team.name} › {agent.name}"`) so installs that prefer display names or different layouts can opt in. v1 hardcodes the slug-arrow format.
+- **`/spawn-team <profile-team>`** — spawning a whole profile team from Telegram. Single-agent `/spawn` ships in v1; team spawning extends the keyboard primitive naturally and lands in v2.
+- **`/spawn` cross-team targeting.** `/spawn <profile> in <team>` typed form. v1 spawns in `default` team only (or the current topic's team when invoked typed-style — the keyboard flow is `default`-only).
 - **Per-user ACLs.** `command_allow_from` allowlists keyed on Telegram user_id, populated via `/whoami`. v1 trusts supergroup membership as auth.
 - **Streaming modes** (OpenClaw's `off/partial/block/progress`). v1 sends one Telegram message per assistant turn. "Partial" streaming via `editMessage` is a worthwhile UX upgrade later but the outbound design must leave room — don't lock into the single-message-per-turn assumption.
-- **Cross-channel access groups.** Reusable sender allowlists shared across Telegram + future Slack/Discord channels. Premature; revisit when a second channel ships.
+- **Cross-channel access teams.** Reusable sender allowlists shared across Telegram + future Slack/Discord channels. Premature; revisit when a second channel ships.
 - **Telegram WebApp UI.** Rich custom UI hosted inside Telegram. The forum-topic UI + inline keyboards already cover v1; WebApp would be for a future richer config/dashboard experience inside Telegram.
 - **Per-message visibility controls** (mirror this assistant turn, hide that one). v1 mirrors everything.
 - **Topic-icon customization** beyond a fixed profile-derived default.
@@ -245,12 +247,12 @@ OpenClaw (`docs/openclaw-reference.md`) ships a multi-channel gateway with Teleg
 
 **Deliberately not borrowed:**
 
-- **Config-driven topic-to-agent bindings.** OpenClaw stores `groups.<chatId>.topics.<threadId> = { agentId: "main" }` in JSON5 config; the user pre-creates the topic in Telegram, then edits config to bind it. Bazilion agents are dynamic — spawned via CLI/web, deleted, profile-grouped, scheduler-triggered. Auto-create-on-first-traffic with `agents.telegram_topic_id` keeps the binding lifecycle-coupled to the agent and avoids per-agent config edits.
+- **Config-driven topic-to-agent bindings.** OpenClaw stores `teams.<chatId>.topics.<threadId> = { agentId: "main" }` in JSON5 config; the user pre-creates the topic in Telegram, then edits config to bind it. Bazilion agents are dynamic — spawned via CLI/web, deleted, profile-grouped, scheduler-triggered. Auto-create-on-first-traffic with `agents.telegram_topic_id` keeps the binding lifecycle-coupled to the agent and avoids per-agent config edits.
 - **General as the control plane.** OpenClaw routes commands through whichever topic the user types in; we own a dedicated `⚙ bazilion` service chat instead. Cleaner UX, hides Telegram's General quirks behind a single special-case, gives us a natural home for the pinned directory message and the `/spawn` keyboard flow.
 - **`bindings[]` with 8-level routing precedence** (peer / parent / guild+roles / guild / team / account / channel / default). Overkill for "one supergroup, one topic per agent" — our routing is a hashtable lookup.
 - **DM pairing flow with 8-char codes.** Useful when DMs are exposed; our v1 is supergroup-only.
 - **Multi-account on one channel.** Powerful but the config cost is steep.
-- **Cross-channel access groups.** Reusable allowlists across Telegram + Slack + Discord. Premature.
+- **Cross-channel access teams.** Reusable allowlists across Telegram + Slack + Discord. Premature.
 - **Config writes from runtime events** (auto-update config on `migrate_to_chat_id`). We surface a "reconnect" banner instead — simpler, no DB mutations from external events.
 
 ## Step 7 design decisions (locked in during implementation)
@@ -266,7 +268,7 @@ OpenClaw (`docs/openclaw-reference.md`) ships a multi-channel gateway with Teleg
 
 ## Step 6 design decisions (locked in during implementation)
 
-- **Per-agent mirror verbosity** (`agents.telegram_mirror_mode`, default `'minimal'`). Minimal sends only `assistant_message` events plus terminal errors/fatal frames. `'verbose'` adds `tool_call` / `tool_result` / `tool_error` lines as concise summaries (parsed-args pretty-print, 200-char truncation on results). New schema column in migration `0004_agent_mirror_mode.sql`.
+- **Per-agent mirror verbosity** (`agents.telegram_mirror_mode`, default `'minimal'`). Minimal sends only `assistant_message` events plus terminal errors/fatal frames. `'verbose'` adds `tool_call` / `tool_result` / `tool_error` lines as concise summaries (parsed-args pretty-print, 200-char truncation on results). The column now lives in canonical `0001_init.sql`.
 - **`assistant_delta` and `user_message` events never mirror.** Deltas are streaming chunks; mirroring them would spam Telegram with partial text. `user_message` is the input itself (we'd just be echoing what the user just typed in the topic).
 - **`done` frames never mirror.** Internal control signal, not content.
 - **`error` events and `fatal` frames always mirror**, regardless of mode. Errors are important; the user should see them.
@@ -284,7 +286,7 @@ OpenClaw (`docs/openclaw-reference.md`) ships a multi-channel gateway with Teleg
 - **Topic-context commands stay hidden from `setMyCommands`.** `/close`, `/rebind`, `/unbind` work when typed but don't appear in the slash autocomplete menu — the doc decision codified at the start of the integration. The slash menu reflects "what can I do from the service chat?"; topic-context commands are discoverable via `/help` once you're already in an agent topic.
 - **`/help` is the one universal command.** Registered with `context: 'any'`, callable from either surface. When invoked inside a bound agent topic it adds a "You're in <agent>'s topic" header and surfaces the topic-context commands first; in the service chat it shows the regular service-chat reference. Same handler, two render paths gated on `ctx.agent`.
 - **`/rebind` refuses to clobber an existing binding.** If the target agent already has a topic, the command refuses with a hint to `/unbind` the target's old topic first or use `/talk` to switch surfaces. Keeps the 1:1 agent↔topic invariant intact without surprising the operator.
-- **Directory refresh is fired from every CRUD site, not just bot-initiated changes.** `notifyDirectoryDirty()` is called from the daemon's `/api/agents/*` route handlers (spawn, archive, delete, rename, move-group), from profile-group spawn, and from the bot's own paths (/spawn, /talk, /unbind, /rebind). The function coalesces consecutive notifies into a single `setImmediate` refresh; bursts during multi-step user actions collapse to one Telegram API call. No-op when the bot isn't running.
+- **Directory refresh is fired from every CRUD site, not just bot-initiated changes.** `notifyDirectoryDirty()` is called from the daemon's `/api/agents/*` route handlers (spawn, archive, delete, rename, move-team), from profile-team spawn, and from the bot's own paths (/spawn, /talk, /unbind, /rebind). The function coalesces consecutive notifies into a single `setImmediate` refresh; bursts during multi-step user actions collapse to one Telegram API call. No-op when the bot isn't running.
 - **Activation re-runs the directory refresh on every restart**, syncing agent-state changes that happened while the daemon was down. First-time creation skips the refresh (the initial `sendMessage` already wrote the dynamic body); subsequent activations always run it. The refresh handles Telegram's "message is not modified" error silently — benign when nothing changed.
 - **`refreshDirectoryMessage` self-recovers when the pinned message is deleted by a human.** `editMessageText` returns "message to edit not found"; the refresh falls through to `sendMessage` + `pinChatMessage` and persists the new id to `TELEGRAM_DIRECTORY_MESSAGE_ID`. The operator never sees a stale or broken directory.
 - **`installLiveDepsResolver` breaks the static cycle between `bot.ts` and `directory.ts`.** Bot's start path registers a resolver that gives the directory module access to the live chatId/api/db/paths at call time, not at module load. Avoids the otherwise-unavoidable circular import (bot calls activation → activation calls directory → directory wants bot's runtime state).
@@ -293,7 +295,7 @@ OpenClaw (`docs/openclaw-reference.md`) ships a multi-channel gateway with Teleg
 
 - **iOS Telegram cannot deep-link into private-supergroup forum topics.** Confirmed during manual testing: tapping a topic URL on iOS opens the supergroup's topic-list view rather than navigating into the topic itself. Tried every format we could think of — inline `<a href="https://t.me/c/<chat>/<topic>">`, three-segment `t.me/c/<chat>/<topic>/<topic>`, inline-keyboard URL buttons, and the native `tg://privatepost?channel=…&post=…&thread=…` scheme as a URL button. All bounce to the topic list on iOS; all work on Telegram desktop / web / Android. The bot still emits URL buttons for `/talk` and `/spawn` replies (and inline links in `/list`) because the desktop/Android experience is good. iOS users navigate manually through the topic picker. This is a Telegram client limitation we cannot fix from the bot side — revisit if Telegram closes the gap.
 - **`/spawn` auto-name format is `<profile-id>-<count>`** where `count = countByProfile + 1`. Predictable + greppable. Adjective+noun random naming was considered and deferred — the dictionary maintenance cost outweighs the friendliness gain for v1.
-- **`/spawn` always lands new agents in the seeded `default` group.** Multi-group spawn from Telegram (`/spawn <profile> in <group>`) is in the "Explicitly deferred" section. The web UI / CLI already handle multi-group spawn — Telegram is the constrained surface by design.
+- **`/spawn` always lands new agents in the seeded `default` team.** Multi-team spawn from Telegram (`/spawn <profile> in <team>`) is in the "Explicitly deferred" section. The web UI / CLI already handle multi-team spawn — Telegram is the constrained surface by design.
 - **Pending-spawn state lives in-memory with a 60s TTL.** A daemon restart between the profile-pick and the name-input drops the pending spawn silently — the user gets a fresh `/spawn` and re-picks. Persisting to SQLite would survive restarts but at the cost of GC complexity for a flow that takes seconds.
 - **`/spawn` is service-chat-only.** Typing `/spawn` inside an agent topic does nothing (the router treats agent topics as agent-message inbound, not command parsing). The slash menu only appears in the ⚙ bazilion topic anyway.
 - **`CommandResult.replyMarkup` is now part of the shared command shape.** Any command can ship an inline keyboard. The router threads `reply_markup` through `sendMessage`. Keeps `/spawn`'s keyboard out of the command-specific code path.

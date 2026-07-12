@@ -80,16 +80,16 @@ describe('mirrorAgentTurnFrame', () => {
   test('approval-required Telegram egress captures text without transport or list leakage', async () => {
     const { api, sends } = makeApi()
     installMirrorDepsResolver(() => ({ db: env.db, api, chatId: CHAT_ID }))
-    const agent = spawnAgent(env.db, env.paths, { profileId: 'base', groupId: env.groupId })
+    const agent = spawnAgent(env.db, env.paths, { profileId: 'base', teamId: env.teamId })
     agentRepo.setTelegramTopicId(env.db, agent.id, 42)
     env.db.raw.run(
-      `UPDATE live_harness_edges SET posture = 'approval_required'
-       WHERE group_id = ? AND source_kind = 'agent' AND source_id = ?
+      `UPDATE team_policy_edges SET posture = 'approval_required'
+       WHERE team_id = ? AND source_kind = 'agent' AND source_id = ?
          AND target_kind = 'user'`,
-      [env.groupId, agent.id],
+      [env.teamId, agent.id],
     )
-    const previous = process.env.BAZILION_HARNESS_ENFORCEMENT
-    process.env.BAZILION_HARNESS_ENFORCEMENT = 'on'
+    const previous = process.env.BAZILION_TEAM_POLICY_ENFORCEMENT
+    process.env.BAZILION_TEAM_POLICY_ENFORCEMENT = 'on'
     try {
       await mirrorAgentTurnFrame(
         agent.id,
@@ -106,22 +106,22 @@ describe('mirrorAgentTurnFrame', () => {
       expect(rows[0]).toMatchObject({ payload_kind: 'telegram_text' })
       expect(rows[0]?.payload_json).toContain('held Telegram text')
     } finally {
-      if (previous === undefined) delete process.env.BAZILION_HARNESS_ENFORCEMENT
-      else process.env.BAZILION_HARNESS_ENFORCEMENT = previous
+      if (previous === undefined) delete process.env.BAZILION_TEAM_POLICY_ENFORCEMENT
+      else process.env.BAZILION_TEAM_POLICY_ENFORCEMENT = previous
     }
   })
 
   test('revoked Agent-to-user edge blocks text, image, and file before Telegram send', async () => {
     const { api, sends, photos, documents } = makeApi()
     installMirrorDepsResolver(() => ({ db: env.db, api, chatId: CHAT_ID }))
-    const agent = spawnAgent(env.db, env.paths, { profileId: 'base', groupId: env.groupId })
+    const agent = spawnAgent(env.db, env.paths, { profileId: 'base', teamId: env.teamId })
     agentRepo.setTelegramTopicId(env.db, agent.id, 42)
     env.db.raw.run(
-      "DELETE FROM live_harness_edges WHERE group_id = ? AND source_kind = 'agent' AND target_kind = 'user'",
-      [env.groupId],
+      "DELETE FROM team_policy_edges WHERE team_id = ? AND source_kind = 'agent' AND target_kind = 'user'",
+      [env.teamId],
     )
-    const previous = process.env.BAZILION_HARNESS_ENFORCEMENT
-    process.env.BAZILION_HARNESS_ENFORCEMENT = 'on'
+    const previous = process.env.BAZILION_TEAM_POLICY_ENFORCEMENT
+    process.env.BAZILION_TEAM_POLICY_ENFORCEMENT = 'on'
     try {
       await mirrorAgentTurnFrame(
         agent.id,
@@ -155,22 +155,22 @@ describe('mirrorAgentTurnFrame', () => {
       expect(documents).toHaveLength(0)
       expect(
         env.db.raw
-          .query<{ count: number }, []>('SELECT COUNT(*) count FROM harness_block_events')
+          .query<{ count: number }, []>('SELECT COUNT(*) count FROM team_policy_block_events')
           .get()?.count,
       ).toBe(3)
     } finally {
-      if (previous === undefined) delete process.env.BAZILION_HARNESS_ENFORCEMENT
-      else process.env.BAZILION_HARNESS_ENFORCEMENT = previous
+      if (previous === undefined) delete process.env.BAZILION_TEAM_POLICY_ENFORCEMENT
+      else process.env.BAZILION_TEAM_POLICY_ENFORCEMENT = previous
     }
   })
 
   test('Telegram mirror observes revocation between independently sent frames', async () => {
     const { api, sends } = makeApi()
     installMirrorDepsResolver(() => ({ db: env.db, api, chatId: CHAT_ID }))
-    const agent = spawnAgent(env.db, env.paths, { profileId: 'base', groupId: env.groupId })
+    const agent = spawnAgent(env.db, env.paths, { profileId: 'base', teamId: env.teamId })
     agentRepo.setTelegramTopicId(env.db, agent.id, 42)
-    const previous = process.env.BAZILION_HARNESS_ENFORCEMENT
-    process.env.BAZILION_HARNESS_ENFORCEMENT = 'on'
+    const previous = process.env.BAZILION_TEAM_POLICY_ENFORCEMENT
+    process.env.BAZILION_TEAM_POLICY_ENFORCEMENT = 'on'
     try {
       await mirrorAgentTurnFrame(
         agent.id,
@@ -179,8 +179,8 @@ describe('mirrorAgentTurnFrame', () => {
       )
       expect(sends.map((item) => item.text)).toEqual(['sent first'])
       env.db.raw.run(
-        "DELETE FROM live_harness_edges WHERE group_id = ? AND source_kind = 'agent' AND target_kind = 'user'",
-        [env.groupId],
+        "DELETE FROM team_policy_edges WHERE team_id = ? AND source_kind = 'agent' AND target_kind = 'user'",
+        [env.teamId],
       )
       await mirrorAgentTurnFrame(
         agent.id,
@@ -189,8 +189,8 @@ describe('mirrorAgentTurnFrame', () => {
       )
       expect(sends.map((item) => item.text)).toEqual(['sent first'])
     } finally {
-      if (previous === undefined) delete process.env.BAZILION_HARNESS_ENFORCEMENT
-      else process.env.BAZILION_HARNESS_ENFORCEMENT = previous
+      if (previous === undefined) delete process.env.BAZILION_TEAM_POLICY_ENFORCEMENT
+      else process.env.BAZILION_TEAM_POLICY_ENFORCEMENT = previous
     }
   })
 
@@ -208,7 +208,7 @@ describe('mirrorAgentTurnFrame', () => {
     installMirrorDepsResolver(() => ({ db: env.db, api, chatId: CHAT_ID }))
     const a = spawnAgent(env.db, env.paths, {
       profileId: 'base',
-      groupId: env.groupId,
+      teamId: env.teamId,
       name: 'r1',
     })
     await mirrorAgentTurnFrame(a.id, {
@@ -223,7 +223,7 @@ describe('mirrorAgentTurnFrame', () => {
     installMirrorDepsResolver(() => ({ db: env.db, api, chatId: CHAT_ID }))
     const a = spawnAgent(env.db, env.paths, {
       profileId: 'base',
-      groupId: env.groupId,
+      teamId: env.teamId,
       name: 'r1',
     })
     agentRepo.setTelegramTopicId(env.db, a.id, 42)
@@ -240,7 +240,7 @@ describe('mirrorAgentTurnFrame', () => {
   test('assistant_message Markdown is converted to Telegram HTML with parse_mode', async () => {
     const { api, sends } = makeApi()
     installMirrorDepsResolver(() => ({ db: env.db, api, chatId: CHAT_ID }))
-    const a = spawnAgent(env.db, env.paths, { profileId: 'base', groupId: env.groupId, name: 'r1' })
+    const a = spawnAgent(env.db, env.paths, { profileId: 'base', teamId: env.teamId, name: 'r1' })
     agentRepo.setTelegramTopicId(env.db, a.id, 42)
 
     await mirrorAgentTurnFrame(a.id, {
@@ -255,7 +255,7 @@ describe('mirrorAgentTurnFrame', () => {
   test('errors/tool lines are NOT HTML — sent as plain text, no parse_mode', async () => {
     const { api, sends } = makeApi()
     installMirrorDepsResolver(() => ({ db: env.db, api, chatId: CHAT_ID }))
-    const a = spawnAgent(env.db, env.paths, { profileId: 'base', groupId: env.groupId, name: 'r1' })
+    const a = spawnAgent(env.db, env.paths, { profileId: 'base', teamId: env.teamId, name: 'r1' })
     agentRepo.setTelegramTopicId(env.db, a.id, 42)
 
     await mirrorAgentTurnFrame(a.id, {
@@ -289,7 +289,7 @@ describe('mirrorAgentTurnFrame', () => {
       },
     }
     installMirrorDepsResolver(() => ({ db: env.db, api, chatId: CHAT_ID }))
-    const a = spawnAgent(env.db, env.paths, { profileId: 'base', groupId: env.groupId, name: 'r1' })
+    const a = spawnAgent(env.db, env.paths, { profileId: 'base', teamId: env.teamId, name: 'r1' })
     agentRepo.setTelegramTopicId(env.db, a.id, 42)
 
     await mirrorAgentTurnFrame(a.id, {
@@ -308,7 +308,7 @@ describe('mirrorAgentTurnFrame', () => {
     installMirrorDepsResolver(() => ({ db: env.db, api, chatId: CHAT_ID }))
     const a = spawnAgent(env.db, env.paths, {
       profileId: 'base',
-      groupId: env.groupId,
+      teamId: env.teamId,
       name: 'r1',
     })
     agentRepo.setTelegramTopicId(env.db, a.id, 42)
@@ -328,7 +328,7 @@ describe('mirrorAgentTurnFrame', () => {
   test('minimal mode: a tool_result image IS sent as a photo (deliverable, not noise)', async () => {
     const { api, sends, photos } = makeApi()
     installMirrorDepsResolver(() => ({ db: env.db, api, chatId: CHAT_ID }))
-    const a = spawnAgent(env.db, env.paths, { profileId: 'base', groupId: env.groupId, name: 'r1' })
+    const a = spawnAgent(env.db, env.paths, { profileId: 'base', teamId: env.teamId, name: 'r1' })
     agentRepo.setTelegramTopicId(env.db, a.id, 42)
 
     await mirrorAgentTurnFrame(a.id, {
@@ -353,7 +353,7 @@ describe('mirrorAgentTurnFrame', () => {
   test('photo caption is the first non-empty line of the tool result', async () => {
     const { api, photos } = makeApi()
     installMirrorDepsResolver(() => ({ db: env.db, api, chatId: CHAT_ID }))
-    const a = spawnAgent(env.db, env.paths, { profileId: 'base', groupId: env.groupId, name: 'r1' })
+    const a = spawnAgent(env.db, env.paths, { profileId: 'base', teamId: env.teamId, name: 'r1' })
     agentRepo.setTelegramTopicId(env.db, a.id, 42)
 
     await mirrorAgentTurnFrame(a.id, {
@@ -374,7 +374,7 @@ describe('mirrorAgentTurnFrame', () => {
   test('a delivered file (deliver_file) is sent as a Telegram document', async () => {
     const { api, documents, sends } = makeApi()
     installMirrorDepsResolver(() => ({ db: env.db, api, chatId: CHAT_ID }))
-    const a = spawnAgent(env.db, env.paths, { profileId: 'base', groupId: env.groupId, name: 'r1' })
+    const a = spawnAgent(env.db, env.paths, { profileId: 'base', teamId: env.teamId, name: 'r1' })
     agentRepo.setTelegramTopicId(env.db, a.id, 42)
 
     await mirrorAgentTurnFrame(a.id, {
@@ -395,7 +395,7 @@ describe('mirrorAgentTurnFrame', () => {
   test('image send falls back to a document when the photo is rejected', async () => {
     const { api, photos, documents } = makeApi({ photoFailWith: 'IMAGE_PROCESS_FAILED' })
     installMirrorDepsResolver(() => ({ db: env.db, api, chatId: CHAT_ID }))
-    const a = spawnAgent(env.db, env.paths, { profileId: 'base', groupId: env.groupId, name: 'r1' })
+    const a = spawnAgent(env.db, env.paths, { profileId: 'base', teamId: env.teamId, name: 'r1' })
     agentRepo.setTelegramTopicId(env.db, a.id, 42)
 
     await mirrorAgentTurnFrame(a.id, {
@@ -417,7 +417,7 @@ describe('mirrorAgentTurnFrame', () => {
     installMirrorDepsResolver(() => ({ db: env.db, api, chatId: CHAT_ID }))
     const a = spawnAgent(env.db, env.paths, {
       profileId: 'base',
-      groupId: env.groupId,
+      teamId: env.teamId,
       name: 'r1',
     })
     agentRepo.setTelegramTopicId(env.db, a.id, 42)
@@ -445,7 +445,7 @@ describe('mirrorAgentTurnFrame', () => {
     installMirrorDepsResolver(() => ({ db: env.db, api, chatId: CHAT_ID }))
     const a = spawnAgent(env.db, env.paths, {
       profileId: 'base',
-      groupId: env.groupId,
+      teamId: env.teamId,
       name: 'r1',
     })
     agentRepo.setTelegramTopicId(env.db, a.id, 42)
@@ -464,7 +464,7 @@ describe('mirrorAgentTurnFrame', () => {
     installMirrorDepsResolver(() => ({ db: env.db, api, chatId: CHAT_ID }))
     const a = spawnAgent(env.db, env.paths, {
       profileId: 'base',
-      groupId: env.groupId,
+      teamId: env.teamId,
       name: 'r1',
     })
     agentRepo.setTelegramTopicId(env.db, a.id, 42)
@@ -479,7 +479,7 @@ describe('mirrorAgentTurnFrame', () => {
     installMirrorDepsResolver(() => ({ db: env.db, api, chatId: CHAT_ID }))
     const a = spawnAgent(env.db, env.paths, {
       profileId: 'base',
-      groupId: env.groupId,
+      teamId: env.teamId,
       name: 'r1',
     })
     agentRepo.setTelegramTopicId(env.db, a.id, 42)
@@ -492,7 +492,7 @@ describe('mirrorAgentTurnFrame', () => {
     installMirrorDepsResolver(() => ({ db: env.db, api, chatId: CHAT_ID }))
     const a = spawnAgent(env.db, env.paths, {
       profileId: 'base',
-      groupId: env.groupId,
+      teamId: env.teamId,
       name: 'r1',
     })
     agentRepo.setTelegramTopicId(env.db, a.id, 42)
@@ -512,7 +512,7 @@ describe('mirrorAgentTurnFrame', () => {
     installMirrorDepsResolver(() => ({ db: env.db, api, chatId: CHAT_ID }))
     const a = spawnAgent(env.db, env.paths, {
       profileId: 'base',
-      groupId: env.groupId,
+      teamId: env.teamId,
       name: 'r1',
     })
     agentRepo.setTelegramTopicId(env.db, a.id, 42)
@@ -530,7 +530,7 @@ describe('mirrorAgentTurnFrame', () => {
     installMirrorDepsResolver(() => ({ db: env.db, api, chatId: CHAT_ID }))
     const a = spawnAgent(env.db, env.paths, {
       profileId: 'base',
-      groupId: env.groupId,
+      teamId: env.teamId,
       name: 'r1',
     })
     agentRepo.setTelegramTopicId(env.db, a.id, 42)
@@ -555,7 +555,7 @@ describe('mirrorTypingStart / mirrorTypingStop', () => {
     installMirrorDepsResolver(() => ({ db: env.db, api, chatId: CHAT_ID }))
     const a = spawnAgent(env.db, env.paths, {
       profileId: 'base',
-      groupId: env.groupId,
+      teamId: env.teamId,
       name: 'r1',
     })
     agentRepo.setTelegramTopicId(env.db, a.id, 42)
@@ -588,7 +588,7 @@ describe('mirrorTypingStart / mirrorTypingStop', () => {
     installMirrorDepsResolver(() => ({ db: env.db, api, chatId: CHAT_ID }))
     const a = spawnAgent(env.db, env.paths, {
       profileId: 'base',
-      groupId: env.groupId,
+      teamId: env.teamId,
       name: 'r1',
     })
     // No setTelegramTopicId — agent is unbound.
@@ -603,7 +603,7 @@ describe('mirrorTypingStart / mirrorTypingStop', () => {
     installMirrorDepsResolver(() => ({ db: env.db, api, chatId: CHAT_ID }))
     const a = spawnAgent(env.db, env.paths, {
       profileId: 'base',
-      groupId: env.groupId,
+      teamId: env.teamId,
       name: 'r1',
     })
     agentRepo.setTelegramTopicId(env.db, a.id, 42)

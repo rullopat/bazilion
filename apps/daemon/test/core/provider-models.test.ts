@@ -39,7 +39,7 @@ test('replace trims whitespace and drops empties + duplicates', () => {
   expect(providerModelRepo.list(db, 'anthropic')).toEqual(['claude-opus-4-6', 'claude-sonnet-4-6'])
 })
 
-test('listAll groups by provider and omits empties', () => {
+test('listAll teams by provider and omits empties', () => {
   providerModelRepo.replace(db, 'openai', ['gpt-4o'])
   providerModelRepo.replace(db, 'anthropic', ['claude-opus-4-6', 'claude-sonnet-4-6'])
   expect(providerModelRepo.listAll(db)).toEqual({

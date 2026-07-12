@@ -358,7 +358,7 @@ async function dispatchUpdate(handle: BotHandle, db: BazilionDb, u: Update): Pro
   } else if (outcome.kind === 'callback_spawn_profile') {
     console.log(`telegram: callback spawn:profile:${outcome.profileId}`)
   } else if (outcome.kind === 'callback_spawn_team') {
-    console.log(`telegram: callback spawn:team:${outcome.profileGroupId}`)
+    console.log(`telegram: callback spawn:team:${outcome.templateId}`)
   } else if (outcome.kind === 'spawn_name_input') {
     console.log(
       `telegram: spawn-name input completed for profile=${outcome.profileId} spawned=${outcome.spawned}`,

@@ -24,7 +24,7 @@ beforeEach(() => {
     reasoningLevel: 'medium',
     status: 'idle',
     dir: env.paths.agentDir('a1'),
-    groupId: env.groupId,
+    teamId: env.teamId,
   })
   agentId = a.id
 })
@@ -144,7 +144,7 @@ test('listEnabled retains archived targets for terminal scheduler authorization'
     reasoningLevel: 'medium',
     status: 'idle',
     dir: env.paths.agentDir('a2'),
-    groupId: env.groupId,
+    teamId: env.teamId,
   })
   triggerRepo.insert(env.db, {
     agentId,

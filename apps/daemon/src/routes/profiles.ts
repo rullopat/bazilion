@@ -50,7 +50,7 @@ profilesRouter.get('/', (c) => {
 // /api/profiles/_/templates — built-in defaults for every seeded markdown file.
 // Underscore prefix avoids clashing with the `:id` route. Consumed by the
 // profile create form (SOUL/IDENTITY/BOOTSTRAP + the now-default-on
-// AGENTS/TOOLS/HEARTBEAT) and the profile-group create form (userMd).
+// AGENTS/TOOLS/HEARTBEAT) and the profile-team create form (userMd).
 profilesRouter.get('/_/templates', (c) => {
   return c.json({
     soul: DEFAULT_SOUL,
@@ -254,9 +254,9 @@ function parseCommunicationDefaults(
   if (
     typeof raw.userInput !== 'boolean' ||
     typeof raw.userOutput !== 'boolean' ||
-    typeof raw.outsideGroupInput !== 'boolean' ||
-    typeof raw.outsideGroupOutput !== 'boolean' ||
-    (raw.peerDefault !== 'inherit_harness' &&
+    typeof raw.outsideTeamInput !== 'boolean' ||
+    typeof raw.outsideTeamOutput !== 'boolean' ||
+    (raw.peerDefault !== 'inherit_team_policy' &&
       raw.peerDefault !== 'allow_all' &&
       raw.peerDefault !== 'deny_all')
   ) {
@@ -265,8 +265,8 @@ function parseCommunicationDefaults(
   return {
     userInput: raw.userInput,
     userOutput: raw.userOutput,
-    outsideGroupInput: raw.outsideGroupInput,
-    outsideGroupOutput: raw.outsideGroupOutput,
+    outsideTeamInput: raw.outsideTeamInput,
+    outsideTeamOutput: raw.outsideTeamOutput,
     peerDefault: raw.peerDefault,
   }
 }

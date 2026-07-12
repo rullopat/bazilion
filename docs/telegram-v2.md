@@ -40,14 +40,14 @@ maps each item to where it lands below (numbered by the size order).
 |---|---|---|
 | Bot-loop protection (sliding-window budget per bot-pair) | v1 invariant #4, never shipped | 2 |
 | Per-agent outbound throttle (rate limit is per-supergroup today) | risk #2 | 2 |
-| Group-migration resilience (`migrate_to_chat_id`) | risk #8 | 5 |
+| Team-migration resilience (`migrate_to_chat_id`) | risk #8 | 5 |
 
 **Security / access control**
 | Item | Source | Phase |
 |---|---|---|
 | Per-user ACLs (`command_allow_from`, keyed on Telegram user_id) | deferred | 7 |
 | Per-topic config overrides (`requireMention`, `allowFrom`, `silent`) | deferred | 8 |
-| Cross-channel access groups | deferred | *beyond v2* |
+| Cross-channel access teams | deferred | *beyond v2* |
 
 **Noise / visibility controls**
 | Item | Source | Phase |
@@ -59,15 +59,15 @@ maps each item to where it lands below (numbered by the size order).
 **UX polish**
 | Item | Source | Phase |
 |---|---|---|
-| Per-group topic-name format template (`telegram_topic_name_format`) | deferred | 1 |
+| Per-team topic-name format template (`telegram_topic_name_format`) | deferred | 1 |
 | Profile-derived topic emojis (schema exists, unwired) | step-3 decision | 3 |
 | Per-agent topic-icon override (`bazilion agent set-topic-icon`) | v1 sketch | 3 |
 
 **Capability expansion**
 | Item | Source | Phase |
 |---|---|---|
-| `/spawn <profile> in <group>` (cross-group targeting) | deferred | 6 |
-| `/spawn-team <profile-group>` | deferred | 6 |
+| `/spawn <profile> in <team>` (cross-team targeting) | deferred | 6 |
+| `/spawn-team <profile-team>` | deferred | 6 |
 | Multimodal inbound (files / photos / voice) | deferred | 11 |
 | DM ingress + pairing codes + `bazilion://pair-telegram` | deferred, risk #9 | 12 |
 | Multi-account (multiple bot identities per install) | deferred | 13 |
@@ -92,12 +92,12 @@ legend: ✅ built · ❌ dropped · 📋 ready user story · 🔬 spike.
 
 | # | Phase | Effort | Status |
 |---|---|---|---|
-| 1 | Per-group topic-name template | 1 | ✅ built |
+| 1 | Per-team topic-name template | 1 | ✅ built |
 | 2 | Inbound safety guards (drop-bot + rate budgets) | 1.5 | ✅ built |
 | 3 | Profile-derived emojis + per-agent override | 2 | ✅ built |
 | 4 | Granular mirror / visibility controls | 2 | ❌ dropped |
-| 5 | Group-migration resilience | 2 | ✅ built |
-| 6 | `/spawn ... in <group>` + `/spawn-team` | 2.5 | ✅ built |
+| 5 | Team-migration resilience | 2 | ✅ built |
+| 6 | `/spawn ... in <team>` + `/spawn-team` | 2.5 | ✅ built |
 | 7 | Per-user ACLs (TOFU + Flat) | 3.5 | ✅ built |
 | 8 | Per-topic config overrides | 3 | ❌ dropped |
 | 9 | Streaming via `editMessage` | 4 | 📋 ready user story |
@@ -125,30 +125,32 @@ Notes on what shipped vs. the original specs:
 Each phase below is a self-contained PR. The format mirrors v1: **User story →
 Design decisions → Schema & code sketch → Depends on → Open questions.** Open
 questions are decisions to lock *during* the phase's PR review, not now.
-Migrations shipped: `0005_group_topic_name_format`, `0006_telegram_acl`.
+The features described below shipped originally as incremental migrations. BAZ-018 later folded
+all surviving columns and tables into the clean-install-only `0001_init.sql`; the old migration
+filenames are retained in this roadmap only as historical references.
 
 ---
 
-## Phase 1 — Per-group topic-name format template
+## Phase 1 — Per-team topic-name format template
 
 ### User story
 An install prefers `Home Reno / Researcher` (display names) over the hardcoded
-`home-reno › researcher` (slug-arrow). The user wants to set the format per group.
+`home-reno › researcher` (slug-arrow). The user wants to set the format per team.
 
 ### Design decisions
-- **`groups.telegram_topic_name_format` column**, nullable; null = today's hardcoded
-  format. Template tokens: `{group.name}`, `{group.slug}`, `{agent.name}`.
+- **`teams.telegram_topic_name_format` column**, nullable; null = today's hardcoded
+  format. Template tokens: `{team.name}`, `{team.slug}`, `{agent.name}`.
 - **Rendered in `topicNameFor`** — the one place topic names are computed. The
   `telegram_topic_name_locked` sticky bit (human-renamed topics) still wins over any
   template.
-- **Changing a group's template re-propagates** to all non-locked topics in that
-  group via the existing name-sync path.
+- **Changing a team's template re-propagates** to all non-locked topics in that
+  team via the existing name-sync path.
 
 ### Schema & code sketch
-- Migration `0005_group_topic_name_format.sql`: `ALTER TABLE groups ADD COLUMN
+- Migration `0005_group_topic_name_format.sql`: `ALTER TABLE teams ADD COLUMN
   telegram_topic_name_format TEXT`.
 - `naming.ts:topicNameFor` reads the column, falls back to the default.
-- CLI: `bazilion group edit <slug> --topic-format "..."`. Web: a field on the group
+- CLI: `bazilion team edit <slug> --topic-format "..."`. Web: a field on the team
   detail page.
 
 ### Depends on
@@ -302,10 +304,10 @@ Nothing structural; complements Phase 8's per-topic `silent`.
 
 ---
 
-## Phase 5 — Group-migration resilience
+## Phase 5 — Team-migration resilience
 
 ### User story
-Telegram upgrades the user's basic group to a supergroup (or migrates the chat id);
+Telegram upgrades the user's basic team to a supergroup (or migrates the chat id);
 the bot's configured `TELEGRAM_CHAT_ID` is suddenly stale and everything silently
 stops routing.
 
@@ -334,20 +336,20 @@ Nothing.
 
 ---
 
-## Phase 6 — `/spawn` cross-group targeting + `/spawn-team`
+## Phase 6 — `/spawn` cross-team targeting + `/spawn-team`
 
 ### User story
-From Telegram the user can only `/spawn` into the `default` group, one agent at a
+From Telegram the user can only `/spawn` into the `default` team, one agent at a
 time. They want `/spawn coder in home-reno` and `/spawn-team frontend-squad` (a
-profile group) without leaving the app.
+Team Template) without leaving the app.
 
 ### Design decisions
-- **`/spawn <profile> in <group>` (typed form)** extends the existing typed-args path;
-  the keyboard flow stays `default`-only (or grows a second group-picker step — decide
-  at PR time). Group is resolved by slug; unknown slug → error with `/groups` hint.
-- **`/spawn-team <profile-group>`** reuses the daemon's existing transactional
-  `spawnProfileGroup` (already battle-tested for the web/CLI). The Telegram surface is
-  a thin keyboard: pick a profile group → confirm target group → bulk-create →
+- **`/spawn <profile> in <team>` (typed form)** extends the existing typed-args path;
+  the keyboard flow stays `default`-only (or grows a second team-picker step — decide
+  at PR time). Team is resolved by slug; unknown slug → error with `/teams` hint.
+- **`/spawn-team <team-template>`** reuses the daemon's canonical transactional
+  Team Template spawn. The Telegram surface is a thin keyboard: pick a Team Template →
+  confirm target Team → bulk-create →
   auto-bind each new agent's topic → post a directory refresh + a summary with
   deep-links.
 - **Topic auto-creation for a team** goes through the same per-supergroup outbound
@@ -356,16 +358,16 @@ profile group) without leaving the app.
 
 ### Schema & code sketch
 - No migration — pure command-surface work over existing spawn primitives.
-- Extend `commands/spawn.ts` arg parser for the `in <group>` tail; new
+- Extend `commands/spawn.ts` arg parser for the `in <team>` tail; new
   `commands/spawn-team.ts`; register in `commands/index.ts` + `setMyCommands`.
 - New callback prefix for the team-picker keyboard, handled in `routing.ts`.
 
 ### Depends on
-Nothing structural (builds on shipped spawn + profile-group code).
+Nothing structural (builds on shipped spawn + profile-team code).
 
 ### Open questions
-- Does the `/spawn` keyboard grow a group-picker, or stay `default`-only with
-  cross-group reserved for the typed form? (Proposed: typed form for cross-group;
+- Does the `/spawn` keyboard grow a team-picker, or stay `default`-only with
+  cross-team reserved for the typed form? (Proposed: typed form for cross-team;
   keyboard stays simple.)
 
 ---
@@ -640,7 +642,7 @@ Phase 7 (pairing populates / references the ACL). Larger surface.
 
 ### User story
 A power user wants two bot identities on one daemon (e.g. a personal bot and a
-work bot) routing to different groups.
+work bot) routing to different teams.
 
 ### Design decisions
 - **Multiple `(token, chat_id, service_topic)` tuples**, each its own bot singleton +
@@ -674,7 +676,7 @@ Touches the ACL (Phase 7), overrides (Phase 8), and webhook (Phase 10) surfaces
 
 ### User story
 The user wants a richer config/dashboard experience inside Telegram than slash
-commands + inline keyboards can offer — a real UI for managing agents/groups without
+commands + inline keyboards can offer — a real UI for managing agents/teams without
 leaving the app.
 
 ### Design decisions
@@ -700,7 +702,7 @@ A public URL (overlaps Phase 10's webhook infra) and a stable web component laye
 
 ## Still deferred beyond v2
 
-- **Cross-channel access groups.** Reusable sender allowlists shared across Telegram +
+- **Cross-channel access teams.** Reusable sender allowlists shared across Telegram +
   a future Slack/Discord channel. Genuinely premature — it needs a second channel to
   exist before the abstraction pays for itself. Phase 7's `telegram_allowed_users`
   table is deliberately Telegram-scoped; generalizing it is the first step when a
@@ -711,12 +713,9 @@ A public URL (overlaps Phase 10's webhook infra) and a stable web component laye
 
 ## Cross-cutting notes
 
-- **Migration numbering continues from v1.** v1 ended at `0004_agent_mirror_mode.sql`.
-  This roadmap proposes, in phase order, `0005` (group-name-format), `0006`
-  (trigger-silence), `0007` (ACL), `0008` (topic-overrides), `0009` (stream-mode),
-  plus later pairing/multi-account migrations. Numbers are indicative; collapse/
-  renumber per the alpha "wipe and consolidate" convention if shapes churn before a
-  phase lands.
+- **Migration numbering below is historical.** Surviving v1/v2 shapes are now declared directly
+  in `0001_init.sql`. New alpha schema changes edit that canonical file and require a clean
+  rebootstrap; they do not continue the old numbered chain.
 - **CLI/web parity is mandatory** (project invariant): every phase that adds an HTTP
   endpoint adds both a CLI surface and a web UI surface.
 - **The live-deps-resolver pattern** (`installXDepsResolver`) is the established way to

@@ -12,10 +12,10 @@ const SERVICE_BODY = [
   '<b>Available now:</b>',
   '/talk &lt;agent&gt; — Open or create the forum topic for an agent',
   '/spawn — Create a new agent from a profile (interactive)',
-  '/spawn &lt;profile&gt; [&lt;name&gt;] [in &lt;group&gt;] — Create with typed args (<code>-</code> for auto-name)',
-  '/spawn_team &lt;profile-group&gt; [in &lt;group&gt;] — Spawn a whole team template',
+  '/spawn &lt;profile&gt; [&lt;name&gt;] [in &lt;team&gt;] — Create with typed args (<code>-</code> for auto-name)',
+  '/spawn_team &lt;profile-team&gt; [in &lt;team&gt;] — Spawn a whole team template',
   '/list — Show all agents (alias: /agents)',
-  '/groups — Show bazilion groups',
+  '/teams — Show bazilion teams',
   '/health — Bot identity + polling state',
   '/whoami — Show your Telegram user id',
   '/allowed — List allowlisted users',
@@ -29,9 +29,9 @@ const SERVICE_BODY = [
   '/unbind — Clear the binding (topic becomes orphan)',
 ].join('\n')
 
-function topicBody(agentName: string, groupId: string): string {
+function topicBody(agentName: string, teamId: string): string {
   return [
-    `<b>You're in <code>${htmlEscape(agentName)}</code>'s topic</b> (group <code>${htmlEscape(groupId)}</code>)`,
+    `<b>You're in <code>${htmlEscape(agentName)}</code>'s topic</b> (team <code>${htmlEscape(teamId)}</code>)`,
     '',
     '<b>Topic-context commands:</b>',
     '/close — Close this topic (preserves the binding)',
@@ -40,13 +40,13 @@ function topicBody(agentName: string, groupId: string): string {
     '/help — This message',
     '',
     '<b>From the ⚙ bazilion service chat:</b>',
-    '/talk, /spawn, /list, /groups, /health, /whoami',
+    '/talk, /spawn, /list, /teams, /health, /whoami',
   ].join('\n')
 }
 
 export const handle: CommandHandler = async (ctx) => {
   if (ctx.agent) {
-    return { text: topicBody(ctx.agent.name, ctx.agent.groupId), parseMode: 'HTML' }
+    return { text: topicBody(ctx.agent.name, ctx.agent.teamId), parseMode: 'HTML' }
   }
   return { text: SERVICE_BODY, parseMode: 'HTML' }
 }
