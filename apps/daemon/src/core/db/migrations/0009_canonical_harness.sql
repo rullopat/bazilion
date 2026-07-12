@@ -33,11 +33,7 @@ CREATE TABLE harness_template_slots (
   agent_name     TEXT NOT NULL,
   model_override TEXT,
   reasoning_level TEXT CHECK (reasoning_level IS NULL OR reasoning_level IN ('off','minimal','low','medium','high','xhigh')),
-  position_x     REAL,
-  position_y     REAL,
-  display_json   TEXT,
   tombstoned_at  INTEGER,
-  CHECK ((position_x IS NULL) = (position_y IS NULL)),
   PRIMARY KEY (template_id, slot_id)
 );
 CREATE UNIQUE INDEX harness_template_active_position
@@ -74,10 +70,6 @@ CREATE TABLE harness_template_revision_slots (
   agent_name      TEXT NOT NULL,
   model_override  TEXT,
   reasoning_level TEXT CHECK (reasoning_level IS NULL OR reasoning_level IN ('off','minimal','low','medium','high','xhigh')),
-  position_x      REAL,
-  position_y      REAL,
-  display_json    TEXT,
-  CHECK ((position_x IS NULL) = (position_y IS NULL)),
   PRIMARY KEY (template_id, revision, slot_id),
   UNIQUE (template_id, revision, position),
   FOREIGN KEY (template_id, revision)
@@ -238,13 +230,13 @@ FROM profile_groups;
 
 INSERT INTO harness_template_slots
   (template_id, slot_id, position, profile_id, agent_name, model_override, reasoning_level,
-   position_x, position_y, display_json, tombstoned_at)
+   tombstoned_at)
 SELECT profile_group_id,
        lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' ||
        substr(lower(hex(randomblob(2))), 2) || '-' ||
        substr('89ab', abs(random()) % 4 + 1, 1) || substr(lower(hex(randomblob(2))), 2) || '-' ||
        lower(hex(randomblob(6))),
-       position, profile_id, agent_name, model_override, reasoning_level, NULL, NULL, NULL, NULL
+       position, profile_id, agent_name, model_override, reasoning_level, NULL
 FROM profile_group_members;
 
 -- Exact Open Team current policy: every distinct slot pair and four boundary edges per slot.
@@ -264,8 +256,7 @@ SELECT template_id, 'slot', slot_id, 'outside_group', '' FROM harness_template_s
 INSERT INTO harness_template_revisions (template_id, revision, name, user_md, created_at)
 SELECT id, 1, name, user_md, updated_at FROM harness_templates;
 INSERT INTO harness_template_revision_slots
-SELECT template_id, 1, slot_id, position, profile_id, agent_name, model_override, reasoning_level,
-       position_x, position_y, display_json
+SELECT template_id, 1, slot_id, position, profile_id, agent_name, model_override, reasoning_level
 FROM harness_template_slots WHERE tombstoned_at IS NULL;
 INSERT INTO harness_template_revision_edges
 SELECT template_id, 1, source_kind, source_id, target_kind, target_id

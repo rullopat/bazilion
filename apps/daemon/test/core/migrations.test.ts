@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, expect, test } from 'vitest'
+import { openInMemoryDb } from '../../src/core/db/client.ts'
 import { runMigrations } from '../../src/core/db/migrate.ts'
 import { makeTestEnv, type TestEnv } from './helpers.ts'
 
@@ -84,6 +85,40 @@ test('migrations are idempotent', () => {
   expect(after).toEqual(before)
   expect(after.length).toBeGreaterThan(0)
   expect(after[0]?.version).toBe('0001_init')
+})
+
+test('0013 repairs slot layout columns missing from an already-applied 0009', () => {
+  const db = openInMemoryDb()
+  try {
+    runMigrations(db)
+    for (const table of ['harness_template_slots', 'harness_template_revision_slots']) {
+      db.raw.exec(`ALTER TABLE ${table} DROP COLUMN display_json`)
+      db.raw.exec(`ALTER TABLE ${table} DROP COLUMN position_y`)
+      db.raw.exec(`ALTER TABLE ${table} DROP COLUMN position_x`)
+    }
+    db.raw.run("DELETE FROM schema_migrations WHERE version = '0013_harness_slot_layout'")
+
+    runMigrations(db)
+
+    for (const table of ['harness_template_slots', 'harness_template_revision_slots']) {
+      const columns = db.raw
+        .query<{ name: string }, []>(`PRAGMA table_info(${table})`)
+        .all()
+        .map((column) => column.name)
+      expect(columns).toEqual(
+        expect.arrayContaining(['position_x', 'position_y', 'display_json']),
+      )
+    }
+    expect(
+      db.raw
+        .query<{ count: number }, []>(
+          "SELECT COUNT(*) count FROM schema_migrations WHERE version = '0013_harness_slot_layout'",
+        )
+        .get()?.count,
+    ).toBe(1)
+  } finally {
+    db.close()
+  }
 })
 
 test('nested transactions use savepoints without weakening outer rollback', () => {
