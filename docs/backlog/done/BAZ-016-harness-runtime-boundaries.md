@@ -1,6 +1,6 @@
 ---
 id: BAZ-016
-title: Harness ingress, egress, scheduler, and turn-boundary enforcement
+title: TeamPolicy ingress, egress, scheduler, and turn-boundary enforcement
 status: done
 size: L (1-2 weeks)
 created: 2026-07-10
@@ -9,7 +9,7 @@ priority: high
 note: Complete BAZ-011 enforcement at every user, transport, scheduler, and turn boundary with atomic claims and lifecycle leases. Activation is release-coupled to BAZ-017 recovery UX.
 ---
 
-# BAZ-016 - Harness ingress, egress, scheduler, and turn-boundary enforcement
+# BAZ-016 - TeamPolicy ingress, egress, scheduler, and turn-boundary enforcement
 
 **Status:** Refined and ready after BAZ-011 and BAZ-015. Enforcement may merge disabled;
 it may be released enabled only with BAZ-017. ADR 0001 is normative.
@@ -18,7 +18,7 @@ it may be released enabled only with BAZ-017. ADR 0001 is normative.
 
 - **As an operator**, I want web, CLI, API, Telegram, tools, and scheduler to enforce the
   same policy before their first protected side effect.
-- **As two Group owners**, I want both sides to consent to cross-Group delivery at the
+- **As two Team owners**, I want both sides to consent to cross-Team delivery at the
   actual delivery boundary.
 - **As an operator**, I want trigger and inbox denial to become one terminal audited event,
   not a retry loop or split crash state.
@@ -33,10 +33,10 @@ external transport items.
 
 | Attempt | Required current edge(s) | Deny before |
 |---|---|---|
-| User -> Agent via web/CLI/API/Telegram | Target Group `user -> Agent` | Attachment/media persistence, queue insert, active-turn registration, worker start |
-| Agent -> user via HTTP/proactive/file/image/Telegram | Source Group `Agent -> user` | Final enqueue/send of each frame or item |
-| Same-Group A -> B | Exact owning-Group `A -> B` | Message insert/wake |
-| Cross-Group A -> B | Source `A -> outside_group` and target `outside_group -> B` in one snapshot | Message insert/wake |
+| User -> Agent via web/CLI/API/Telegram | Target Team `user -> Agent` | Attachment/media persistence, queue insert, active-turn registration, worker start |
+| Agent -> user via HTTP/proactive/file/image/Telegram | Source Team `Agent -> user` | Final enqueue/send of each frame or item |
+| Same-Team A -> B | Exact owning-Team `A -> B` | Message insert/wake |
+| Cross-Team A -> B | Source `A -> outside_team` and target `outside_team -> B` in one snapshot | Message insert/wake |
 | Reply | Same as a new underlying path | Insert/delivery |
 | Agent inbox read/wait/drain | Re-evaluate original sender -> recipient | Return/prompt inclusion |
 | Operator history/policy/block/inbox read | No delivery edge | API authentication applies instead |
@@ -48,7 +48,7 @@ external transport items.
 | Due interval/cron | Under target turn/lifecycle lease, claim occurrence, evaluate `user -> Agent` with `scheduler_trigger`, update fired state, and insert denial in one transaction; allowed turn is registered before lease release |
 | Inbox wake | Claim rows and evaluate each current sender/recipient in one transaction; denied disposition+block is atomic, allowed rows only enter prompt, allowed turn registers before lease release |
 | Mixed batch | Per-message result; empty allowed set starts no turn |
-| Agent moved after insert | Recompute current same/cross-Group path; insertion allow is not a lease |
+| Agent moved after insert | Recompute current same/cross-Team path; insertion allow is not a lease |
 | Scheduler output | Each user-facing frame/item independently checks `Agent -> user` |
 | Archived/active target | Archived denies; active retains existing defer-until-idle without a duplicate attempt |
 
@@ -101,7 +101,7 @@ and block insert cannot split across a crash or concurrent tick.
 
 ## Acceptance criteria
 
-- Every row in both truth tables passes for same/cross-Group, reply, moved, archived,
+- Every row in both truth tables passes for same/cross-Team, reply, moved, archived,
   mixed-batch, policy-change, and concurrent lifecycle cases.
 - A pre-download denial downloads nothing. If policy changes during an already-authorized
   media fetch, the mandatory second check discards transient bytes, persists/queues
@@ -149,7 +149,7 @@ and block insert cannot split across a crash or concurrent tick.
   and allowed-turn registration in one transaction under the lifecycle lease. Inbox wakes
   transactionally claim each unread row, terminally block denied rows, include only allowed
   messages, and start no turn for an empty allowed set.
-- Migration `0011_harness_runtime_claims.sql` adds inbox claim/delivery state. Archived and
+- Migration `0011_teamPolicy_runtime_claims.sql` adds inbox claim/delivery state. Archived and
   moved targets remain visible to the scheduler long enough for current-policy terminal
   handling instead of accumulating retry loops.
 - Focused verification passed 75 tests across runtime boundaries, contract gating,
@@ -157,3 +157,8 @@ and block insert cannot split across a crash or concurrent tick.
   714 tests, root and web typechecks, Biome lint (existing warnings only), root build, web
   build, and `git diff --check`. No workflow, approval, production editor, or activation
   behavior was added.
+
+## Post-cleanup status (BAZ-018, 2026-07-12)
+
+Runtime enforcement and activation semantics remain. The historical follow-up migration file was
+folded into the canonical `0001_init.sql`; there is no incremental `0011` migration anymore.

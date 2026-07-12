@@ -79,7 +79,7 @@ describe('runPreflight', () => {
     expect(api.calls[2]!.body).toEqual({ chat_id: -1009999, user_id: 42 })
   })
 
-  test('group owner ("creator") is treated as having manage_topics implicitly', async () => {
+  test('team owner ("creator") is treated as having manage_topics implicitly', async () => {
     const api = fakeApi({
       getMe: {
         ok: true,

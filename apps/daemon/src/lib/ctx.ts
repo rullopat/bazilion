@@ -9,8 +9,8 @@ import {
   runMigrations,
   webTokenRepo,
 } from '../core/index.ts'
-import { assertHarnessEnforcementReleaseReady } from './harness-contract.ts'
 import { startScheduler } from './scheduler.ts'
+import { assertTeamPolicyEnforcementReleaseReady } from './team-policy-contract.ts'
 
 let _db: BazilionDb | null = null
 let _paths: Paths | null = null
@@ -35,12 +35,12 @@ export interface DaemonCtx {
  * plaintext into auth.json the first time we see no auth file.
  */
 function bootstrap(paths: Paths): { db: BazilionDb; authToken: string } {
+  mkdirSync(paths.home, { recursive: true })
   for (const d of [
-    paths.home,
     paths.profilesDir,
     paths.agentsDir,
     paths.skillsDir,
-    paths.groupsDir,
+    paths.teamsDir,
     paths.logsDir,
   ]) {
     mkdirSync(d, { recursive: true })
@@ -79,7 +79,7 @@ function bootstrap(paths: Paths): { db: BazilionDb; authToken: string } {
 export function getCtx(): DaemonCtx {
   if (!_paths) _paths = resolvePaths()
   if (!_db || _authToken === null) {
-    assertHarnessEnforcementReleaseReady()
+    assertTeamPolicyEnforcementReleaseReady()
     const result = bootstrap(_paths)
     _db = result.db
     _authToken = result.authToken

@@ -1,8 +1,8 @@
 import { existsSync, rmSync } from 'node:fs'
 import type { BazilionDb } from '../db/client.ts'
 import * as agentRepo from '../repos/agents.ts'
-import * as profileGroupRepo from '../repos/profileGroups.ts'
 import * as profileRepo from '../repos/profiles.ts'
+import * as teamTemplateRepo from '../repos/teamTemplates.ts'
 
 export function deleteProfile(db: BazilionDb, id: string): void {
   const profile = profileRepo.get(db, id)
@@ -20,11 +20,11 @@ export function deleteProfile(db: BazilionDb, id: string): void {
   // Check the canonical Team roster and every retained immutable snapshot.
   // Their Profile foreign keys are RESTRICT, so surface a stable domain error
   // instead of an opaque SQLite constraint failure.
-  const refGroups = profileGroupRepo.findReferencingProfile(db, id)
-  if (refGroups.length > 0) {
-    const names = refGroups.map((g) => `${g.name} (${g.id})`).join(', ')
+  const refTemplates = teamTemplateRepo.findReferencingProfile(db, id)
+  if (refTemplates.length > 0) {
+    const names = refTemplates.map((template) => `${template.name} (${template.id})`).join(', ')
     throw new Error(
-      `profile_in_use: cannot delete profile "${id}": ${refGroups.length} team template(s) still reference it: ${names}. Remove the slot(s) first.`,
+      `profile_in_use: cannot delete profile "${id}": ${refTemplates.length} Team Template(s) still reference it: ${names}. Remove the slot(s) first.`,
     )
   }
 

@@ -11,14 +11,13 @@ import { approvalsRouter } from './routes/approvals.ts'
 import { authRouter } from './routes/auth-login.ts'
 import { communicationRouter } from './routes/communication.ts'
 import { configRouter } from './routes/config.ts'
-import { groupsRouter } from './routes/groups.ts'
-import { harnessTemplatesRouter } from './routes/harness-templates.ts'
 import { mcpRouter } from './routes/mcp.ts'
 import { messagesRouter } from './routes/messages.ts'
 import { miscRouter } from './routes/misc.ts'
-import { profileGroupsRouter } from './routes/profile-groups.ts'
 import { profilesRouter } from './routes/profiles.ts'
 import { skillsRouter } from './routes/skills.ts'
+import { teamTemplatesRouter } from './routes/team-templates.ts'
+import { teamsRouter } from './routes/teams.ts'
 import { telegramRouter } from './routes/telegram.ts'
 import { triggersRouter } from './routes/triggers.ts'
 
@@ -32,9 +31,8 @@ export function createApp(): Hono {
 
   app.route('/api/agents', agentsRouter)
   app.route('/api/approvals', approvalsRouter)
-  app.route('/api/groups', groupsRouter)
-  app.route('/api/harness-templates', harnessTemplatesRouter)
-  app.route('/api/profile-groups', profileGroupsRouter)
+  app.route('/api/teams', teamsRouter)
+  app.route('/api/team-templates', teamTemplatesRouter)
   app.route('/api/profiles', profilesRouter)
   app.route('/api/skills', skillsRouter)
   app.route('/api/triggers', triggersRouter)

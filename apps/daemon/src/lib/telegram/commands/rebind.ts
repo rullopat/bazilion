@@ -1,6 +1,6 @@
 // `/rebind <agent>` — topic-context command. Points the current topic at
 // a different agent. Resolution accepts bare names ("/rebind researcher")
-// and qualified `group/name` ("/rebind home-reno/researcher"), same as
+// and qualified `team/name` ("/rebind home-reno/researcher"), same as
 // `/talk`.
 //
 // Refuses if the target agent already has a topic — the operator should
@@ -24,7 +24,7 @@ export const handle: CommandHandler = async (ctx) => {
 
   if (!ctx.args) {
     return {
-      text: 'Usage: <code>/rebind &lt;agent&gt;</code> — or <code>/rebind &lt;group&gt;/&lt;agent&gt;</code> when ambiguous.',
+      text: 'Usage: <code>/rebind &lt;agent&gt;</code> — or <code>/rebind &lt;team&gt;/&lt;agent&gt;</code> when ambiguous.',
       parseMode: 'HTML',
     }
   }
@@ -45,10 +45,10 @@ export const handle: CommandHandler = async (ctx) => {
       const lines = [
         `Multiple agents match <code>${htmlEscape(ctx.args.trim())}</code>:`,
         ...resolution.matches.map(
-          (a) => `  • <code>${htmlEscape(a.groupId)}/${htmlEscape(a.name)}</code>`,
+          (a) => `  • <code>${htmlEscape(a.teamId)}/${htmlEscape(a.name)}</code>`,
         ),
         '',
-        'Use <code>/rebind &lt;group&gt;/&lt;agent&gt;</code> to disambiguate.',
+        'Use <code>/rebind &lt;team&gt;/&lt;agent&gt;</code> to disambiguate.',
       ]
       return { text: lines.join('\n'), parseMode: 'HTML' }
     }

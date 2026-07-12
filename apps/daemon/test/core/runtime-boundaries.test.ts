@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, expect, test } from 'vitest'
 import { spawnAgent } from '../../src/core/agent/spawn.ts'
-import { registerGroup } from '../../src/core/group/register.ts'
 import { createProfile } from '../../src/core/profile/create.ts'
 import * as messageRepo from '../../src/core/repos/messages.ts'
 import * as triggerRepo from '../../src/core/repos/triggers.ts'
+import { registerTeam } from '../../src/core/team/register.ts'
 import { isActiveAgent, registerAgent, unregisterAgent } from '../../src/lib/agent-cancel.ts'
 import {
   acquireAgentLifecycleLease,
@@ -18,9 +18,9 @@ import {
   claimSchedulerTrigger,
 } from '../../src/lib/communication.ts'
 import {
-  assertHarnessEnforcementReleaseReady,
-  HARNESS_MANAGEMENT_CONTRACT_VERSION,
-} from '../../src/lib/harness-contract.ts'
+  assertTeamPolicyEnforcementReleaseReady,
+  TEAM_POLICY_MANAGEMENT_CONTRACT_VERSION,
+} from '../../src/lib/team-policy-contract.ts'
 import { makeTestEnv, type TestEnv } from './helpers.ts'
 
 let env: TestEnv
@@ -28,27 +28,27 @@ let oldGate: string | undefined
 
 beforeEach(() => {
   env = makeTestEnv()
-  oldGate = process.env.BAZILION_HARNESS_ENFORCEMENT
-  process.env.BAZILION_HARNESS_ENFORCEMENT = 'on'
+  oldGate = process.env.BAZILION_TEAM_POLICY_ENFORCEMENT
+  process.env.BAZILION_TEAM_POLICY_ENFORCEMENT = 'on'
   createProfile(env.db, env.paths, { id: 'p', defaultModel: 'm' })
 })
 
 afterEach(() => {
-  if (oldGate === undefined) delete process.env.BAZILION_HARNESS_ENFORCEMENT
-  else process.env.BAZILION_HARNESS_ENFORCEMENT = oldGate
+  if (oldGate === undefined) delete process.env.BAZILION_TEAM_POLICY_ENFORCEMENT
+  else process.env.BAZILION_TEAM_POLICY_ENFORCEMENT = oldGate
   env.cleanup()
 })
 
 function edge(sourceKind: string, sourceId: string, targetKind: string, targetId: string) {
   env.db.raw.run(
-    'INSERT INTO live_harness_edges (group_id, source_kind, source_id, target_kind, target_id) VALUES (?, ?, ?, ?, ?)',
-    [env.groupId, sourceKind, sourceId, targetKind, targetId],
+    'INSERT INTO team_policy_edges (team_id, source_kind, source_id, target_kind, target_id) VALUES (?, ?, ?, ?, ?)',
+    [env.teamId, sourceKind, sourceId, targetKind, targetId],
   )
 }
 
 test('user ingress and Agent egress re-read current policy and produce private terminal denials', () => {
-  const agent = spawnAgent(env.db, env.paths, { profileId: 'p', groupId: env.groupId })
-  env.db.raw.run('DELETE FROM live_harness_edges WHERE group_id = ?', [env.groupId])
+  const agent = spawnAgent(env.db, env.paths, { profileId: 'p', teamId: env.teamId })
+  env.db.raw.run('DELETE FROM team_policy_edges WHERE team_id = ?', [env.teamId])
   const ingress = { origin: 'http_chat', attemptKind: 'http_chat_ingress', attemptId: 'request' }
   expect(() => authorizeUserIngress(env.db, agent.id, ingress)).toThrow(CommunicationDeniedError)
   edge('user', '', 'agent', agent.id)
@@ -65,8 +65,8 @@ test('user ingress and Agent egress re-read current policy and produce private t
     }).decision,
   ).toBe('allow')
   env.db.raw.run(
-    "DELETE FROM live_harness_edges WHERE group_id = ? AND source_kind = 'agent' AND target_kind = 'user'",
-    [env.groupId],
+    "DELETE FROM team_policy_edges WHERE team_id = ? AND source_kind = 'agent' AND target_kind = 'user'",
+    [env.teamId],
   )
   expect(() =>
     authorizeAgentEgress(env.db, agent.id, {
@@ -77,15 +77,17 @@ test('user ingress and Agent egress re-read current policy and produce private t
   ).toThrow(CommunicationDeniedError)
 
   const stored = env.db.raw
-    .query<Record<string, unknown>, []>('SELECT * FROM harness_block_events ORDER BY created_at')
+    .query<Record<string, unknown>, []>(
+      'SELECT * FROM team_policy_block_events ORDER BY created_at',
+    )
     .all()
   expect(stored).toHaveLength(2)
   expect(JSON.stringify(stored)).not.toContain('payload')
 })
 
 test('HTTP egress reauthorizes each user-facing frame and ignores internal-only frames', () => {
-  const agent = spawnAgent(env.db, env.paths, { profileId: 'p', groupId: env.groupId })
-  env.db.raw.run('DELETE FROM live_harness_edges WHERE group_id = ?', [env.groupId])
+  const agent = spawnAgent(env.db, env.paths, { profileId: 'p', teamId: env.teamId })
+  env.db.raw.run('DELETE FROM team_policy_edges WHERE team_id = ?', [env.teamId])
   edge('agent', agent.id, 'user', '')
   expect(() =>
     authorizeHttpChatFrame(env.db, agent.id, 'turn', 0, {
@@ -100,8 +102,8 @@ test('HTTP egress reauthorizes each user-facing frame and ignores internal-only 
     }),
   ).not.toThrow()
   env.db.raw.run(
-    "DELETE FROM live_harness_edges WHERE group_id = ? AND source_kind = 'agent' AND target_kind = 'user'",
-    [env.groupId],
+    "DELETE FROM team_policy_edges WHERE team_id = ? AND source_kind = 'agent' AND target_kind = 'user'",
+    [env.teamId],
   )
   expect(() =>
     authorizeHttpChatFrame(env.db, agent.id, 'turn', 2, {
@@ -111,13 +113,13 @@ test('HTTP egress reauthorizes each user-facing frame and ignores internal-only 
   ).toThrow(CommunicationDeniedError)
   expect(
     env.db.raw
-      .query<{ attempt_id: string }, []>('SELECT attempt_id FROM harness_block_events')
+      .query<{ attempt_id: string }, []>('SELECT attempt_id FROM team_policy_block_events')
       .get()?.attempt_id,
   ).toBe('turn:2')
 })
 
 test('ingress authorization and active registration callback are one rollback boundary', () => {
-  const agent = spawnAgent(env.db, env.paths, { profileId: 'p', groupId: env.groupId })
+  const agent = spawnAgent(env.db, env.paths, { profileId: 'p', teamId: env.teamId })
   expect(() =>
     authorizeUserIngress(
       env.db,
@@ -129,13 +131,14 @@ test('ingress authorization and active registration callback are one rollback bo
     ),
   ).toThrow('registration failed')
   expect(
-    env.db.raw.query<{ count: number }, []>('SELECT COUNT(*) count FROM harness_block_events').get()
-      ?.count,
+    env.db.raw
+      .query<{ count: number }, []>('SELECT COUNT(*) count FROM team_policy_block_events')
+      .get()?.count,
   ).toBe(0)
 })
 
 test('trigger occurrence claim, denial, and registration callback share one transaction', () => {
-  const agent = spawnAgent(env.db, env.paths, { profileId: 'p', groupId: env.groupId })
+  const agent = spawnAgent(env.db, env.paths, { profileId: 'p', teamId: env.teamId })
   const trigger = triggerRepo.insert(env.db, {
     agentId: agent.id,
     kind: 'interval',
@@ -143,13 +146,13 @@ test('trigger occurrence claim, denial, and registration callback share one tran
     cronExpr: null,
     message: 'private trigger body',
   })
-  env.db.raw.run('DELETE FROM live_harness_edges WHERE group_id = ?', [env.groupId])
+  env.db.raw.run('DELETE FROM team_policy_edges WHERE team_id = ?', [env.teamId])
   expect(() =>
     claimSchedulerTrigger(env.db, { triggerId: trigger.id, agentId: agent.id, occurrence: 100 }),
   ).toThrow(CommunicationDeniedError)
   expect(triggerRepo.get(env.db, trigger.id)?.lastFiredAt).toBe(100)
   expect(
-    JSON.stringify(env.db.raw.query('SELECT * FROM harness_block_events').all()),
+    JSON.stringify(env.db.raw.query('SELECT * FROM team_policy_block_events').all()),
   ).not.toContain('private trigger body')
 
   edge('user', '', 'agent', agent.id)
@@ -167,7 +170,7 @@ test('trigger occurrence claim, denial, and registration callback share one tran
 })
 
 test('scheduler claim registers under the lifecycle lease before mutation can enter', async () => {
-  const agent = spawnAgent(env.db, env.paths, { profileId: 'p', groupId: env.groupId })
+  const agent = spawnAgent(env.db, env.paths, { profileId: 'p', teamId: env.teamId })
   const trigger = triggerRepo.insert(env.db, {
     agentId: agent.id,
     kind: 'interval',
@@ -195,7 +198,7 @@ test('scheduler claim registers under the lifecycle lease before mutation can en
 })
 
 test('same scheduler occurrence is claimed once under concurrent-tick replay', () => {
-  const agent = spawnAgent(env.db, env.paths, { profileId: 'p', groupId: env.groupId })
+  const agent = spawnAgent(env.db, env.paths, { profileId: 'p', teamId: env.teamId })
   const trigger = triggerRepo.insert(env.db, {
     agentId: agent.id,
     kind: 'interval',
@@ -228,10 +231,10 @@ test('same scheduler occurrence is claimed once under concurrent-tick replay', (
 })
 
 test('mixed inbox claim returns allowed rows, terminally blocks denied rows, and registers once', () => {
-  const allowedSender = spawnAgent(env.db, env.paths, { profileId: 'p', groupId: env.groupId })
-  const deniedSender = spawnAgent(env.db, env.paths, { profileId: 'p', groupId: env.groupId })
-  const recipient = spawnAgent(env.db, env.paths, { profileId: 'p', groupId: env.groupId })
-  env.db.raw.run('DELETE FROM live_harness_edges WHERE group_id = ?', [env.groupId])
+  const allowedSender = spawnAgent(env.db, env.paths, { profileId: 'p', teamId: env.teamId })
+  const deniedSender = spawnAgent(env.db, env.paths, { profileId: 'p', teamId: env.teamId })
+  const recipient = spawnAgent(env.db, env.paths, { profileId: 'p', teamId: env.teamId })
+  env.db.raw.run('DELETE FROM team_policy_edges WHERE team_id = ?', [env.teamId])
   edge('agent', allowedSender.id, 'agent', recipient.id)
   const allowed = messageRepo.send(env.db, {
     from: allowedSender.id,
@@ -269,14 +272,15 @@ test('mixed inbox claim returns allowed rows, terminally blocks denied rows, and
       .get(denied.id)?.policy_disposition,
   ).toBe('policy_blocked')
   expect(
-    env.db.raw.query<{ count: number }, []>('SELECT COUNT(*) count FROM harness_block_events').get()
-      ?.count,
+    env.db.raw
+      .query<{ count: number }, []>('SELECT COUNT(*) count FROM team_policy_block_events')
+      .get()?.count,
   ).toBe(1)
 })
 
 test('inbox callback failure rolls back claim, dispositions, and denial audit', () => {
-  const sender = spawnAgent(env.db, env.paths, { profileId: 'p', groupId: env.groupId })
-  const recipient = spawnAgent(env.db, env.paths, { profileId: 'p', groupId: env.groupId })
+  const sender = spawnAgent(env.db, env.paths, { profileId: 'p', teamId: env.teamId })
+  const recipient = spawnAgent(env.db, env.paths, { profileId: 'p', teamId: env.teamId })
   const message = messageRepo.send(env.db, { from: sender.id, to: recipient.id, payload: 'secret' })
   expect(() =>
     claimDeliverableInbox(env.db, recipient.id, () => {
@@ -295,22 +299,23 @@ test('inbox callback failure rolls back claim, dispositions, and denial audit', 
     policy_delivered_at: null,
   })
   expect(
-    env.db.raw.query<{ count: number }, []>('SELECT COUNT(*) count FROM harness_block_events').get()
-      ?.count,
+    env.db.raw
+      .query<{ count: number }, []>('SELECT COUNT(*) count FROM team_policy_block_events')
+      .get()?.count,
   ).toBe(0)
 })
 
 test('inbox claim re-evaluates moved and archived membership at delivery time', () => {
-  registerGroup(env.db, { id: 'other' }, env.paths)
-  const sender = spawnAgent(env.db, env.paths, { profileId: 'p', groupId: env.groupId })
-  const recipient = spawnAgent(env.db, env.paths, { profileId: 'p', groupId: env.groupId })
-  const sender2 = spawnAgent(env.db, env.paths, { profileId: 'p', groupId: env.groupId })
+  registerTeam(env.db, { id: 'other' }, env.paths)
+  const sender = spawnAgent(env.db, env.paths, { profileId: 'p', teamId: env.teamId })
+  const recipient = spawnAgent(env.db, env.paths, { profileId: 'p', teamId: env.teamId })
+  const sender2 = spawnAgent(env.db, env.paths, { profileId: 'p', teamId: env.teamId })
   const movedMessage = messageRepo.send(env.db, {
     from: sender.id,
     to: recipient.id,
-    payload: 'inserted while same Group',
+    payload: 'inserted while same Team',
   })
-  env.db.raw.run('UPDATE agents SET group_id = ? WHERE id = ?', ['other', sender.id])
+  env.db.raw.run('UPDATE agents SET team_id = ? WHERE id = ?', ['other', sender.id])
   expect(claimDeliverableInbox(env.db, recipient.id)).toEqual([])
   expect(
     env.db.raw
@@ -339,11 +344,11 @@ test('inbox claim re-evaluates moved and archived membership at delivery time', 
 })
 
 test('compiled management contract permits activation after BAZ-017', () => {
-  expect(HARNESS_MANAGEMENT_CONTRACT_VERSION).toBe(1)
+  expect(TEAM_POLICY_MANAGEMENT_CONTRACT_VERSION).toBe(1)
   expect(() =>
-    assertHarnessEnforcementReleaseReady({ BAZILION_HARNESS_ENFORCEMENT: 'on' }),
+    assertTeamPolicyEnforcementReleaseReady({ BAZILION_TEAM_POLICY_ENFORCEMENT: 'on' }),
   ).not.toThrow()
   expect(() =>
-    assertHarnessEnforcementReleaseReady({ BAZILION_HARNESS_ENFORCEMENT: 'off' }),
+    assertTeamPolicyEnforcementReleaseReady({ BAZILION_TEAM_POLICY_ENFORCEMENT: 'off' }),
   ).not.toThrow()
 })

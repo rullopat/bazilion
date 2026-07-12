@@ -1,16 +1,16 @@
 import type { CommunicationApprovalDetail } from '@bazilion/api-types'
 import { afterEach, beforeEach, expect, test } from 'vitest'
 import { spawnAgent } from '../../src/core/agent/spawn.ts'
+import { createProfile } from '../../src/core/profile/create.ts'
+import * as approvalRepo from '../../src/core/repos/communicationApprovals.ts'
+import * as messageRepo from '../../src/core/repos/messages.ts'
+import * as teamTemplateRepo from '../../src/core/repos/teamTemplates.ts'
+import * as triggerRepo from '../../src/core/repos/triggers.ts'
 import {
   authorizeCommunication,
   authorizeInSnapshot,
-} from '../../src/core/harness/authorization.ts'
-import { spawnHarnessTemplate } from '../../src/core/harness/spawn.ts'
-import { createProfile } from '../../src/core/profile/create.ts'
-import * as approvalRepo from '../../src/core/repos/communicationApprovals.ts'
-import * as harnessTemplateRepo from '../../src/core/repos/harnessTemplates.ts'
-import * as messageRepo from '../../src/core/repos/messages.ts'
-import * as triggerRepo from '../../src/core/repos/triggers.ts'
+} from '../../src/core/team-policy/authorization.ts'
+import { spawnTeamTemplate } from '../../src/core/team-policy/spawn.ts'
 import {
   CommunicationPendingError,
   claimDeliverableInbox,
@@ -24,26 +24,26 @@ let oldGate: string | undefined
 
 beforeEach(() => {
   env = makeTestEnv()
-  oldGate = process.env.BAZILION_HARNESS_ENFORCEMENT
-  process.env.BAZILION_HARNESS_ENFORCEMENT = 'on'
+  oldGate = process.env.BAZILION_TEAM_POLICY_ENFORCEMENT
+  process.env.BAZILION_TEAM_POLICY_ENFORCEMENT = 'on'
   createProfile(env.db, env.paths, { id: 'p', defaultModel: 'm' })
 })
 
 afterEach(() => {
-  if (oldGate === undefined) delete process.env.BAZILION_HARNESS_ENFORCEMENT
-  else process.env.BAZILION_HARNESS_ENFORCEMENT = oldGate
+  if (oldGate === undefined) delete process.env.BAZILION_TEAM_POLICY_ENFORCEMENT
+  else process.env.BAZILION_TEAM_POLICY_ENFORCEMENT = oldGate
   env.cleanup()
 })
 
 function protectedPair() {
-  const source = spawnAgent(env.db, env.paths, { profileId: 'p', groupId: env.groupId })
-  const target = spawnAgent(env.db, env.paths, { profileId: 'p', groupId: env.groupId })
-  env.db.raw.run('DELETE FROM live_harness_edges WHERE group_id = ?', [env.groupId])
+  const source = spawnAgent(env.db, env.paths, { profileId: 'p', teamId: env.teamId })
+  const target = spawnAgent(env.db, env.paths, { profileId: 'p', teamId: env.teamId })
+  env.db.raw.run('DELETE FROM team_policy_edges WHERE team_id = ?', [env.teamId])
   env.db.raw.run(
-    `INSERT INTO live_harness_edges
-       (group_id, source_kind, source_id, target_kind, target_id, posture)
+    `INSERT INTO team_policy_edges
+       (team_id, source_kind, source_id, target_kind, target_id, posture)
      VALUES (?, 'agent', ?, 'agent', ?, 'approval_required')`,
-    [env.groupId, source.id, target.id],
+    [env.teamId, source.id, target.id],
   )
   return { source, target }
 }
@@ -62,7 +62,7 @@ test('approval posture is a third decision without changing absent-edge denial',
     reasonCode: 'approval_required',
     componentOutcomes: [{ matched: true, posture: 'approval_required' }],
   })
-  env.db.raw.run('DELETE FROM live_harness_edges WHERE group_id = ?', [env.groupId])
+  env.db.raw.run('DELETE FROM team_policy_edges WHERE team_id = ?', [env.teamId])
   expect(authorizeCommunication(env.db, input)).toMatchObject({
     decision: 'deny',
     reasonCode: 'no_allow_edge',
@@ -163,7 +163,7 @@ test('expiry, terminal denial, and policy change all fail closed', () => {
     'agent_message',
     { from: source.id, to: target.id, payload: '{}' },
   )
-  env.db.raw.run('DELETE FROM live_harness_edges WHERE group_id = ?', [env.groupId])
+  env.db.raw.run('DELETE FROM team_policy_edges WHERE team_id = ?', [env.teamId])
   expect(() =>
     approvalRepo.claimDelivery(env.db, pending.id, 'operator', (approval) =>
       authorizeInSnapshot(env.db, {
@@ -184,10 +184,10 @@ test('expiry, terminal denial, and policy change all fail closed', () => {
 test('scheduler and inbox boundaries hold protected effects until one approval grant', () => {
   const { source, target } = protectedPair()
   env.db.raw.run(
-    `INSERT INTO live_harness_edges
-       (group_id, source_kind, source_id, target_kind, target_id, posture)
+    `INSERT INTO team_policy_edges
+       (team_id, source_kind, source_id, target_kind, target_id, posture)
      VALUES (?, 'user', '', 'agent', ?, 'approval_required')`,
-    [env.groupId, target.id],
+    [env.teamId, target.id],
   )
   const trigger = triggerRepo.insert(env.db, {
     agentId: target.id,
@@ -212,12 +212,12 @@ test('scheduler and inbox boundaries hold protected effects until one approval g
     true,
   )
 
-  env.db.raw.run('DELETE FROM live_harness_edges WHERE group_id = ?', [env.groupId])
+  env.db.raw.run('DELETE FROM team_policy_edges WHERE team_id = ?', [env.teamId])
   env.db.raw.run(
-    `INSERT INTO live_harness_edges
-       (group_id, source_kind, source_id, target_kind, target_id, posture)
+    `INSERT INTO team_policy_edges
+       (team_id, source_kind, source_id, target_kind, target_id, posture)
      VALUES (?, 'agent', ?, 'agent', ?, 'allow')`,
-    [env.groupId, source.id, target.id],
+    [env.teamId, source.id, target.id],
   )
   const message = messageRepo.send(env.db, {
     from: source.id,
@@ -225,9 +225,9 @@ test('scheduler and inbox boundaries hold protected effects until one approval g
     payload: JSON.stringify({ text: 'held inbox' }),
   })
   env.db.raw.run(
-    `UPDATE live_harness_edges SET posture = 'approval_required'
-     WHERE group_id = ? AND source_id = ? AND target_id = ?`,
-    [env.groupId, source.id, target.id],
+    `UPDATE team_policy_edges SET posture = 'approval_required'
+     WHERE team_id = ? AND source_id = ? AND target_id = ?`,
+    [env.teamId, source.id, target.id],
   )
   expect(claimDeliverableInbox(env.db, target.id)).toEqual([])
   const inboxApproval = approvalRepo
@@ -257,7 +257,7 @@ test('scheduler and inbox boundaries hold protected effects until one approval g
 })
 
 test('approval posture survives Team snapshots and spawn into live policy', async () => {
-  harnessTemplateRepo.insertCanonicalDefinition(env.db, {
+  teamTemplateRepo.insertCanonicalDefinition(env.db, {
     id: 'approval-team',
     name: 'Approval team',
     slots: [{ slotId: 'slot', profileId: 'p', agentName: 'reviewed' }],
@@ -270,14 +270,14 @@ test('approval posture survives Team snapshots and spawn into live policy', asyn
       },
     ],
   })
-  expect(harnessTemplateRepo.revision(env.db, 'approval-team', 1)?.edges).toMatchObject([
+  expect(teamTemplateRepo.revision(env.db, 'approval-team', 1)?.edges).toMatchObject([
     { posture: 'approval_required' },
   ])
-  const result = await spawnHarnessTemplate(env.db, env.paths, {
+  const result = await spawnTeamTemplate(env.db, env.paths, {
     templateId: 'approval-team',
     templateExpectedRevision: 1,
-    groupId: 'approval-spawn',
+    teamId: 'approval-spawn',
     mode: 'initialize',
   })
-  expect(result.group.edges).toMatchObject([{ posture: 'approval_required' }])
+  expect(result.team.edges).toMatchObject([{ posture: 'approval_required' }])
 })

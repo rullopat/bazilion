@@ -7,7 +7,7 @@ import {
   openDb,
   providerModelRepo,
   providerStateRepo,
-  registerGroup,
+  registerTeam,
   resolvePaths,
   runMigrations,
   webTokenRepo,
@@ -51,7 +51,7 @@ function initHome(): { home: string; token: string } {
     paths.profilesDir,
     paths.agentsDir,
     paths.skillsDir,
-    paths.groupsDir,
+    paths.teamsDir,
     paths.logsDir,
   ]) {
     mkdirSync(d, { recursive: true })
@@ -72,10 +72,10 @@ function initHome(): { home: string; token: string } {
   // Tests that care about a specific model still override via --model.
   providerModelRepo.replace(db, 'lmstudio', ['test-model'])
   providerModelRepo.replace(db, 'ollama', ['test-model'])
-  // Seed the 'default' group so spawnAgent's default-group fallback works
+  // Seed the 'default' team so spawnAgent's default-team fallback works
   // without tests having to register one first. Matches the fresh-install
   // post-first-run-setup state.
-  registerGroup(db, { id: 'default', name: 'Default' }, paths)
+  registerTeam(db, { id: 'default', name: 'Default' }, paths)
   db.close()
   return { home, token: created.token }
 }
@@ -101,7 +101,7 @@ export interface TestServer {
   /** Run the CLI as a subprocess against this test server. */
   cli(args: string[], extraEnv?: NodeJS.ProcessEnv): Promise<CliResult>
   /**
-   * Wipe per-test state (DB rows + on-disk profiles/agents/skills/groups dirs)
+   * Wipe per-test state (DB rows + on-disk profiles/agents/skills/teams dirs)
    * so the same daemon process can host multiple tests. Lets test files use
    * `beforeAll(start)` + `beforeEach(reset)` instead of paying daemon cold
    * start per test. The server's cached DB handle reads the post-reset state
@@ -113,22 +113,22 @@ export interface TestServer {
 }
 
 const WIPE_SQL = `
-  DELETE FROM harness_block_events;
+  DELETE FROM team_policy_block_events;
   DELETE FROM source_slot_bindings;
   DELETE FROM template_instantiations;
-  DELETE FROM live_harness_edges;
-  DELETE FROM live_agent_state;
-  DELETE FROM harness_template_edges;
-  DELETE FROM harness_template_slots;
-  DELETE FROM harness_template_revisions;
-  DELETE FROM harness_templates;
+  DELETE FROM team_policy_edges;
+  DELETE FROM team_agent_state;
+  DELETE FROM team_template_edges;
+  DELETE FROM team_template_slots;
+  DELETE FROM team_template_revisions;
+  DELETE FROM team_templates;
   DELETE FROM messages;
   DELETE FROM agent_triggers;
   DELETE FROM agent_skills;
   DELETE FROM agents;
   DELETE FROM profile_default_skills;
   DELETE FROM profiles;
-  DELETE FROM groups;
+  DELETE FROM teams;
   DELETE FROM skill_meta;
   DELETE FROM provider_models;
   DELETE FROM provider_state;
@@ -147,10 +147,10 @@ function resetHome(home: string): void {
   // Re-curate the placeholder model so the first-run gate stays open.
   providerModelRepo.replace(db, 'lmstudio', ['test-model'])
   providerModelRepo.replace(db, 'ollama', ['test-model'])
-  // Wipe + re-create the groups directory so the auto-seeded slot is fresh.
-  rmSync(paths.groupsDir, { recursive: true, force: true })
-  mkdirSync(paths.groupsDir, { recursive: true })
-  registerGroup(db, { id: 'default', name: 'Default' }, paths)
+  // Wipe + re-create the teams directory so the auto-seeded slot is fresh.
+  rmSync(paths.teamsDir, { recursive: true, force: true })
+  mkdirSync(paths.teamsDir, { recursive: true })
+  registerTeam(db, { id: 'default', name: 'Default' }, paths)
   db.close()
   for (const dir of [paths.profilesDir, paths.agentsDir, paths.skillsDir]) {
     rmSync(dir, { recursive: true, force: true })

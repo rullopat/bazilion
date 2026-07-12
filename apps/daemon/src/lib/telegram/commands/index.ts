@@ -13,7 +13,6 @@
 
 import { handleAllow, handleAllowed, handleDeny } from './acl.ts'
 import { handle as handleClose } from './close.ts'
-import { handle as handleGroups } from './groups.ts'
 import { handle as handleHealth } from './health.ts'
 import { handle as handleHelp } from './help.ts'
 import { handle as handleList } from './list.ts'
@@ -21,6 +20,7 @@ import { handle as handleRebind } from './rebind.ts'
 import { handle as handleSpawn } from './spawn.ts'
 import { handle as handleSpawnTeam } from './spawn-team.ts'
 import { handle as handleTalk } from './talk.ts'
+import { handle as handleGroups } from './teams.ts'
 import type { CommandContext, CommandCtx, CommandDescriptor, CommandResult } from './types.ts'
 import { handle as handleUnbind } from './unbind.ts'
 import { handle as handleWhoami } from './whoami.ts'
@@ -37,17 +37,17 @@ export const ALL_COMMANDS: readonly CommandDescriptor[] = [
     // Telegram command names allow only [a-z0-9_] — hence the underscore.
     // `spawn-team` is accepted as a typed alias (our parser is lenient).
     name: 'spawn_team',
-    description: 'Spawn a whole profile group (team template) at once',
+    description: 'Spawn a whole profile team (team template) at once',
     handle: handleSpawnTeam,
     aliases: ['spawn-team'],
   },
   {
     name: 'list',
-    description: 'Show all agents grouped by bazilion group',
+    description: 'Show all agents grouped by bazilion team',
     handle: handleList,
     aliases: ['agents'],
   },
-  { name: 'groups', description: 'Show bazilion groups with agent counts', handle: handleGroups },
+  { name: 'teams', description: 'Show bazilion teams with agent counts', handle: handleGroups },
   { name: 'health', description: 'Bot identity + polling state', handle: handleHealth },
   { name: 'whoami', description: 'Show your Telegram user id', handle: handleWhoami },
   { name: 'allowed', description: 'List allowlisted users', handle: handleAllowed },
@@ -105,7 +105,7 @@ export interface ParsedCommand {
  * Pull `{name, args}` out of a message body if it starts with a slash command.
  * Returns null when the body doesn't look like a command (no leading slash,
  * mention-only, etc.). Strips `@botname` suffix Telegram adds when commands
- * are issued in groups (`/talk@bazilion_bot foo` → `{name: 'talk', args: 'foo'}`).
+ * are issued in teams (`/talk@bazilion_bot foo` → `{name: 'talk', args: 'foo'}`).
  */
 export function parseCommand(text: string | undefined): ParsedCommand | null {
   if (!text) return null

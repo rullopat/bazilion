@@ -26,21 +26,21 @@ test('scaffold profile, spawn three agents, inspect', async () => {
   ])
   expect(r.exitCode).toBe(0)
 
-  await server.cli(['group', 'add', 'g1'])
-  await server.cli(['group', 'add', 'g2'])
+  await server.cli(['team', 'add', 'g1'])
+  await server.cli(['team', 'add', 'g2'])
 
-  // A1: group g1, default skills
-  r = await server.cli(['agent', 'spawn', '--profile', 'p', '--name', 'A1', '--group', 'g1'])
+  // A1: team g1, default skills
+  r = await server.cli(['agent', 'spawn', '--profile', 'p', '--name', 'A1', '--team', 'g1'])
   expect(r.exitCode).toBe(0)
   const id1 = extractAgentId(r.stdout)
 
-  // A2: group g2, attach an extra skill post-spawn
-  r = await server.cli(['agent', 'spawn', '--profile', 'p', '--name', 'A2', '--group', 'g2'])
+  // A2: team g2, attach an extra skill post-spawn
+  r = await server.cli(['agent', 'spawn', '--profile', 'p', '--name', 'A2', '--team', 'g2'])
   expect(r.exitCode).toBe(0)
   const id2 = extractAgentId(r.stdout)
   await server.cli(['agent', 'skill', 'add', id2, 'extra'])
 
-  // A3: default-group fallback, default skills, model override
+  // A3: default-team fallback, default skills, model override
   r = await server.cli([
     'agent',
     'spawn',
@@ -63,7 +63,7 @@ test('scaffold profile, spawn three agents, inspect', async () => {
   // Show A1: inherits default skills s1,s2 and is in g1
   r = await server.cli(['agent', 'show', id1])
   expect(r.stdout).toContain('A1')
-  expect(r.stdout).toContain('group:')
+  expect(r.stdout).toContain('team:')
   expect(r.stdout).toContain('g1')
   expect(r.stdout).toContain('s1')
   expect(r.stdout).toContain('s2')
@@ -73,7 +73,7 @@ test('scaffold profile, spawn three agents, inspect', async () => {
   expect(r.stdout).toContain('extra')
   expect(r.stdout).toContain('g2')
 
-  // Show A3: model override + lands in the seeded default group
+  // Show A3: model override + lands in the seeded default team
   r = await server.cli(['agent', 'show', id3])
   expect(r.stdout).toContain('openai:gpt-5')
   expect(r.stdout).toContain('default')
@@ -198,12 +198,12 @@ test('agent list short format shows 8-char prefix, --long shows full id + profil
   expect(long.stdout).toContain('myprofile')
 })
 
-test('agent move changes group membership', async () => {
+test('agent move changes team membership', async () => {
   await server.cli(['profile', 'create', 'p', '--model', 'm'])
   let r = await server.cli(['agent', 'spawn', '--profile', 'p', '--name', 'wanderer'])
   const id = extractAgentId(r.stdout)
 
-  await server.cli(['group', 'add', 'elsewhere'])
+  await server.cli(['team', 'add', 'elsewhere'])
 
   r = await server.cli(['agent', 'move', id, 'elsewhere'])
   expect(r.exitCode).toBe(0)

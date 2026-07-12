@@ -4,9 +4,9 @@
 
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import { spawnAgent } from '../../src/core/agent/spawn.ts'
-import { registerGroup } from '../../src/core/group/register.ts'
 import { createProfile } from '../../src/core/profile/create.ts'
 import * as agentRepo from '../../src/core/repos/agents.ts'
+import { registerTeam } from '../../src/core/team/register.ts'
 import { ensureAgentTopic, type TopicCreateApi } from '../../src/lib/telegram/topic-autocreate.ts'
 import { makeTestEnv, type TestEnv } from '../core/helpers.ts'
 
@@ -43,7 +43,7 @@ describe('ensureAgentTopic', () => {
   test('first call creates topic, persists binding, returns created=true', async () => {
     const agent = spawnAgent(env.db, env.paths, {
       profileId: 'base',
-      groupId: env.groupId,
+      teamId: env.teamId,
       name: 'r1',
     })
     const { api, calls } = recordingApi({ nextTopicId: 42 })
@@ -65,14 +65,14 @@ describe('ensureAgentTopic', () => {
 
     // Persisted in agents.telegram_topic_id.
     expect(agentRepo.getTelegramTopicId(env.db, agent.id)).toBe(42)
-    // Created with the test-group's name as prefix (non-default group).
-    expect(calls[0]?.name).toBe('test-group › r1')
+    // Created with the test-team's name as prefix (non-default team).
+    expect(calls[0]?.name).toBe('test-team › r1')
   })
 
   test('second call returns the same topic and does NOT call createForumTopic', async () => {
     const agent = spawnAgent(env.db, env.paths, {
       profileId: 'base',
-      groupId: env.groupId,
+      teamId: env.teamId,
       name: 'r1',
     })
     const { api, calls } = recordingApi({ nextTopicId: 7 })
@@ -101,11 +101,11 @@ describe('ensureAgentTopic', () => {
     expect(calls.length).toBe(0)
   })
 
-  test('default-group agent gets a bare name (no slug prefix)', async () => {
-    registerGroup(env.db, { id: 'default', name: 'default' }, env.paths)
+  test('default-team agent gets a bare name (no slug prefix)', async () => {
+    registerTeam(env.db, { id: 'default', name: 'default' }, env.paths)
     const agent = spawnAgent(env.db, env.paths, {
       profileId: 'base',
-      groupId: 'default',
+      teamId: 'default',
       name: 'researcher',
     })
     const { api, calls } = recordingApi()
@@ -133,10 +133,10 @@ describe('ensureAgentTopic', () => {
     expect(calls.length).toBe(0)
   })
 
-  test('allocates a group color on first use', async () => {
+  test('allocates a team color on first use', async () => {
     const agent = spawnAgent(env.db, env.paths, {
       profileId: 'base',
-      groupId: env.groupId,
+      teamId: env.teamId,
       name: 'r1',
     })
     const { api, calls } = recordingApi()
@@ -147,20 +147,20 @@ describe('ensureAgentTopic', () => {
       chatId: CHAT_ID,
       agentId: agent.id,
     })
-    // First group → first color in the rotation; opts include icon_color.
+    // First team → first color in the rotation; opts include icon_color.
     const optsRecord = calls[0]?.opts as { icon_color: number } | undefined
     expect(typeof optsRecord?.icon_color).toBe('number')
   })
 
-  test("subsequent agents in the same group reuse that group's color", async () => {
+  test("subsequent agents in the same team reuse that team's color", async () => {
     const a = spawnAgent(env.db, env.paths, {
       profileId: 'base',
-      groupId: env.groupId,
+      teamId: env.teamId,
       name: 'a',
     })
     const b = spawnAgent(env.db, env.paths, {
       profileId: 'base',
-      groupId: env.groupId,
+      teamId: env.teamId,
       name: 'b',
     })
     const { api, calls } = recordingApi()

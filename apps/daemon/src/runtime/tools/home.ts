@@ -57,7 +57,7 @@ export function homeTools(agentDir: string): ToolHandler[] {
       def: {
         name: 'home_write',
         description:
-          "Overwrite one of your own home files. Use this to update your name, personality, or persistent self-definition. Do NOT use this for work output (use `write` / `edit` — those land in your group's shared directory) or for facts you want to remember (use `memory_write`). BOOTSTRAP.md is not writable here; call `bootstrap_done` to retire it.",
+          "Overwrite one of your own home files. Use this to update your name, personality, or persistent self-definition. Do NOT use this for work output (use `write` / `edit` — those land in your team's shared directory) or for facts you want to remember (use `memory_write`). BOOTSTRAP.md is not writable here; call `bootstrap_done` to retire it.",
         parameters: {
           type: 'object',
           properties: {

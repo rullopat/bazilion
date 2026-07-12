@@ -17,7 +17,7 @@ Bazilion's skill model is prompt-only: a `SKILL.md` under `~/.bazilion/skills/<n
 is represented in the agent prompt, and any procedural work happens through the
 agent's normal tools. BAZ-008 now scans skill content at import, list, and attach
 time, but runtime command execution is still unrestricted: pi's built-in `bash`
-tool runs from the agent group directory with the worker's merged environment,
+tool runs from the agent team directory with the worker's merged environment,
 including provider credentials and service config.
 
 This BAZ adds the remaining runtime boundary: an opt-in sandboxed bash runner
@@ -42,7 +42,7 @@ shell command came from the skill rather than the model's ordinary reasoning.
   to run without my host secrets in their environment, so a malicious prompt or
   compromised skill cannot simply print provider keys or OAuth tokens.
 - **As an operator using agents on real projects**, I want an opt-in hard
-  sandbox for `bash` that mounts only the agent's group directory, so a command
+  sandbox for `bash` that mounts only the agent's team directory, so a command
   cannot read `~/.ssh`, `~/.aws`, `~/.bazilion/auth.json`, or the Bazilion DB.
 - **As an operator who wants a tripwire, not a full cage**, I want risky shell
   commands to pause for approval in the web and CLI chat flows, so I can allow
@@ -82,7 +82,7 @@ to live at the tool execution layer.
 2. **Default off.** Existing installs and local workflows keep today's
    behaviour until the operator enables sandboxing and/or approval.
 3. **Hard sandbox backend is Docker for v1.** When sandboxing is enabled, run
-   commands in an ephemeral container with the group directory mounted as the
+   commands in an ephemeral container with the team directory mounted as the
    working directory, a scrubbed env, no Bazilion home mount, and network
    disabled by default. If Docker is unavailable, fail closed with a clear
    operator-facing error instead of silently falling back to host execution.
@@ -106,7 +106,7 @@ to live at the tool execution layer.
   - reads of sensitive paths: `~/.ssh`, `~/.aws`, `~/.gnupg`, `auth.json`,
     `bazilion.db`, `.env`, provider key names;
   - destructive broad writes/deletes: `rm -rf /`, `rm -rf ~`, recursive deletes
-    outside the group directory, chmod/chown across home/system paths;
+    outside the team directory, chmod/chown across home/system paths;
   - shell-pipe installers and remote execution: `curl ... | sh`, `wget ... | bash`;
   - outbound upload/exfil commands: `curl -X POST`, `scp`, `rsync`, `nc`, `sftp`
     when pointed outside localhost;
@@ -134,7 +134,7 @@ to live at the tool execution layer.
 - Implement an ephemeral Docker runner for `bash` when sandbox mode is enabled:
   - image: configurable, default to a small Linux image with `bash`;
   - workdir: `/workspace`;
-  - mount: agent group directory to `/workspace` read/write;
+  - mount: agent team directory to `/workspace` read/write;
   - env: scrubbed allowlist only (`PATH`, `HOME`, locale, shell basics, plus
     explicit operator-configured variables);
   - home: temp/in-container home, not host `~`;
@@ -168,7 +168,7 @@ to live at the tool execution layer.
 
 - Show current shell-security posture in `bazilion doctor` and the web config
   page.
-- Log sandbox/approval decisions with agent id, group id, risk codes, and
+- Log sandbox/approval decisions with agent id, team id, risk codes, and
   whether the command was allowed, denied, or auto-denied. Do not log secret
   values or full env.
 
@@ -195,8 +195,8 @@ to live at the tool execution layer.
 - Denied and auto-denied commands are returned to the model as tool errors and
   do not execute.
 - With `BAZILION_BASH_SANDBOX=docker`, `bash` cannot read a sentinel file
-  outside the group directory and cannot see provider secret env vars.
-- Sandboxed commands can still read/write files under the mounted group
+  outside the team directory and cannot see provider secret env vars.
+- Sandboxed commands can still read/write files under the mounted team
   directory.
 - Cancellation of a turn with a running sandboxed command stops the process and
   cleans up the container.
@@ -215,7 +215,7 @@ to live at the tool execution layer.
 - Worker IPC tests for approval request/reply, timeout cleanup, and cancellation
   cleanup.
 - Docker-backed integration tests gated behind an env flag, proving filesystem
-  isolation, env isolation, writable group mount, network-disabled behaviour,
+  isolation, env isolation, writable team mount, network-disabled behaviour,
   and abort cleanup.
 - Web/CLI focused tests for rendering an approval request and sending allow/deny
   responses.

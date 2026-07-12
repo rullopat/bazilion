@@ -1,6 +1,6 @@
 ---
 id: BAZ-014
-title: Human approval gates for harness communication
+title: Human approval gates for teamPolicy communication
 status: done
 size: L (1-2 weeks)
 created: 2026-07-10
@@ -10,7 +10,7 @@ shipped: 2026-07-11
 note: Optional follow-up after BAZ-016 allow/deny enforcement and BAZ-017 production UI. Adds approval-required delivery without adding general workflow execution.
 ---
 
-# BAZ-014 - Human approval gates for harness communication
+# BAZ-014 - Human approval gates for teamPolicy communication
 
 **Status:** Done.
 
@@ -89,7 +89,7 @@ then deliver at most once or expire visibly.
 ## As-built (2026-07-11)
 
 - Added `allow` / `approval_required` posture to canonical Team-template revisions and the
-  one effective live Group policy. Snapshots, spawn/adopt, portable CLI documents, diffs,
+  one effective live Team policy. Snapshots, spawn/adopt, portable CLI documents, diffs,
   and production editors preserve the posture; missing edges remain deny-by-absence.
 - Added durable, payload-holding communication approvals keyed by typed attempt identity
   and semantic fingerprint. The state machine records payload-free audit events and uses

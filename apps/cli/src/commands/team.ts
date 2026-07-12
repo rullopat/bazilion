@@ -1,216 +1,201 @@
 import { readFileSync } from 'node:fs'
+import { stdin } from 'node:process'
 import type {
-  HarnessTemplateDetail,
-  HarnessTemplateWithCount,
-  PutHarnessTemplateDefinitionRequest,
+  RegisterTeamRequest,
+  ResolvedTeamPolicy,
+  SetTeamTopicFormatRequest,
+  SetTeamUserMdRequest,
+  Team,
 } from '@bazilion/api-types'
 import { defineCommand } from 'citty'
-import { ApiClientError, createClient } from '../client.ts'
+import { createClient } from '../client.ts'
 import { columnize } from '../columnize.ts'
-import {
-  edgeDiff,
-  exportTeamDocument,
-  parseTeamDocument,
-  teamImportBody,
-} from '../harness-interchange.ts'
+import { teamPolicyCommand } from './team-policy.ts'
 
-function jsonFile(path: string): unknown {
-  try {
-    return JSON.parse(readFileSync(path, 'utf8')) as unknown
-  } catch (error) {
-    throw new Error(`invalid JSON: ${(error as Error).message}`)
-  }
-}
-
-function printTeam(detail: HarnessTemplateDetail): void {
-  console.log(`# ${detail.template.id} — ${detail.template.name}`)
-  console.log(`revision: ${detail.template.currentRevision}`)
-  console.log(`slots:    ${detail.slots.length}`)
-  console.log(`edges:    ${detail.edges.length}`)
-  if (detail.slots.length) {
-    console.log('')
-    for (const line of columnize([
-      ['slot', 'profile', 'Agent name', 'model', 'reasoning'],
-      ...detail.slots.map((slot, index) => [
-        String(index + 1),
-        slot.profileId,
-        slot.agentName,
-        slot.modelOverride ?? '-',
-        slot.reasoningLevel ?? '-',
-      ]),
-    ]))
-      console.log(line)
-  }
-}
-
-const list = defineCommand({
-  meta: { name: 'list', description: 'List canonical Team templates' },
-  args: { json: { type: 'boolean', description: 'Emit stable JSON' } },
+const addCmd = defineCommand({
+  meta: {
+    name: 'add',
+    description:
+      'Register a team at ~/.bazilion/teams/<slug>/ (use --link to point at an existing tree)',
+  },
+  args: {
+    id: { type: 'positional', required: true, description: 'Team slug' },
+    name: { type: 'string', description: 'Display name (defaults to slug)' },
+    link: {
+      type: 'string',
+      description: 'Absolute path of an existing directory; the team slot becomes a symlink to it',
+    },
+  },
   async run({ args }) {
-    const rows = await createClient().get<HarnessTemplateWithCount[]>('/api/harness-templates')
-    if (args.json) return console.log(JSON.stringify(rows, null, 2))
-    if (!rows.length) return console.log('(no Team templates)')
-    for (const line of columnize([
-      ['id', 'revision', 'slots', 'name'],
-      ...rows.map((row) => [row.id, String(row.currentRevision), String(row.slotCount), row.name]),
-    ]))
-      console.log(line)
+    const client = createClient()
+    const body: RegisterTeamRequest = {
+      id: args.id,
+      ...(args.name ? { name: args.name } : {}),
+      ...(args.link ? { link: args.link } : {}),
+    }
+    const g = await client.post<Team>('/api/teams', body)
+    console.log(`registered team ${g.id} at ${g.path}`)
   },
 })
 
-const show = defineCommand({
-  meta: { name: 'show', description: 'Show a canonical Team template' },
+const listCmd = defineCommand({
+  meta: { name: 'list', description: 'List teams' },
+  async run() {
+    const client = createClient()
+    const list = await client.get<Team[]>('/api/teams')
+    if (list.length === 0) {
+      console.log('(no teams)')
+      return
+    }
+    const rows = list.map((g) => [g.id, g.path])
+    for (const line of columnize(rows)) console.log(line)
+  },
+})
+
+const rmCmd = defineCommand({
+  meta: { name: 'rm', description: 'Remove a team registration' },
   args: {
     id: { type: 'positional', required: true },
-    json: { type: 'boolean', description: 'Emit the canonical API aggregate' },
   },
   async run({ args }) {
-    const detail = await createClient().get<HarnessTemplateDetail>(
-      `/api/harness-templates/${encodeURIComponent(args.id)}`,
+    const client = createClient()
+    const policy = await client.get<ResolvedTeamPolicy>(
+      `/api/teams/${encodeURIComponent(args.id)}/policy`,
     )
-    if (args.json) console.log(JSON.stringify(detail, null, 2))
-    else printTeam(detail)
+    await client.del(
+      `/api/teams/${encodeURIComponent(args.id)}?expectedTeamPolicyRevision=${policy.teamPolicy.revision}`,
+    )
+    console.log(`removed team ${args.id}`)
   },
 })
 
-const exportCommand = defineCommand({
-  meta: {
-    name: 'export',
-    description: 'Export a portable versioned Team-template document to stdout',
-  },
-  args: { id: { type: 'positional', required: true } },
-  async run({ args }) {
-    const detail = await createClient().get<HarnessTemplateDetail>(
-      `/api/harness-templates/${encodeURIComponent(args.id)}`,
-    )
-    console.log(JSON.stringify(exportTeamDocument(detail), null, 2))
-  },
-})
-
-function printImportDiff(
-  current: HarnessTemplateDetail | null,
-  document: ReturnType<typeof parseTeamDocument>,
-): void {
-  const before = current ? exportTeamDocument(current) : null
-  console.log(`Team: ${current ? current.template.id : '(new)'} -> ${document.template.id}`)
-  console.log(`Roster: ${current?.slots.length ?? 0} -> ${document.slots.length}`)
-  const previousSlots = new Map(before?.slots.map((slot) => [slot.key, slot]) ?? [])
-  const nextSlots = new Map(document.slots.map((slot) => [slot.key, slot]))
-  for (const [key, slot] of nextSlots) {
-    const previous = previousSlots.get(key)
-    if (!previous) console.log(`  + ${key}: ${slot.profileId} / ${slot.agentName}`)
-    else if (JSON.stringify(previous) !== JSON.stringify(slot))
-      console.log(
-        `  ~ ${key}: ${previous.profileId} / ${previous.agentName} -> ${slot.profileId} / ${slot.agentName}`,
-      )
-  }
-  for (const [key, slot] of previousSlots)
-    if (!nextSlots.has(key)) console.log(`  - ${key}: ${slot.profileId} / ${slot.agentName}`)
-  const toEdge = (edge: (typeof document.edges)[number]) => ({
-    sourceKind: edge.sourceKind,
-    sourceId: edge.sourceKey,
-    targetKind: edge.targetKind,
-    targetId: edge.targetKey,
-  })
-  const diff = edgeDiff(before?.edges.map(toEdge) ?? [], document.edges.map(toEdge))
-  console.log(`Edges: +${diff.added.length} -${diff.removed.length}`)
-  for (const value of diff.added) console.log(`  + ${value}`)
-  for (const value of diff.removed) console.log(`  - ${value}`)
+async function readStdin(): Promise<string> {
+  const chunks: Buffer[] = []
+  for await (const chunk of stdin) chunks.push(chunk as Buffer)
+  return Buffer.concat(chunks).toString('utf8')
 }
 
-const importCommand = defineCommand({
+const userMdShowCmd = defineCommand({
+  meta: { name: 'show', description: "Print the team's USER.md" },
+  args: { id: { type: 'positional', required: true } },
+  async run({ args }) {
+    const client = createClient()
+    const g = await client.get<Team>(`/api/teams/${args.id}`)
+    process.stdout.write(g.userMd)
+    if (g.userMd && !g.userMd.endsWith('\n')) process.stdout.write('\n')
+  },
+})
+
+const userMdSetCmd = defineCommand({
   meta: {
-    name: 'import',
-    description: 'Validate, diff, and explicitly apply a portable Team-template document',
+    name: 'set',
+    description: "Replace the team's USER.md (from --file, --from-stdin, or inline text)",
   },
   args: {
-    file: { type: 'positional', required: true, description: 'JSON document path' },
-    'dry-run': { type: 'boolean', description: 'Validate and print the resolved diff only' },
-    apply: { type: 'boolean', description: 'Apply non-interactively after printing the diff' },
-    'expected-revision': {
-      type: 'string',
-      description: 'Required current revision when replacing an existing Team',
-    },
-    force: {
-      type: 'boolean',
-      description: 'Refetch current revision; requires --apply and still uses optimistic locking',
-    },
-    'confirm-current-revision': {
-      type: 'string',
-      description: 'Second force confirmation: the freshly displayed current revision',
+    id: { type: 'positional', required: true },
+    file: { type: 'string', description: 'Read content from a file path' },
+    'from-stdin': { type: 'boolean', description: 'Read content from stdin' },
+    text: { type: 'string', description: 'Inline content' },
+  },
+  async run({ args }) {
+    let content: string
+    if (args['from-stdin']) content = await readStdin()
+    else if (args.file) content = readFileSync(args.file, 'utf8')
+    else if (args.text !== undefined) content = args.text
+    else {
+      console.error('team user-md set: provide --file, --from-stdin, or --text')
+      process.exit(2)
+    }
+    const client = createClient()
+    const body: SetTeamUserMdRequest = { userMd: content }
+    await client.put(`/api/teams/${args.id}/user-md`, body)
+    console.log(`updated USER.md for team ${args.id} (${content.length} bytes)`)
+  },
+})
+
+const userMdClearCmd = defineCommand({
+  meta: { name: 'clear', description: "Clear the team's USER.md to empty" },
+  args: { id: { type: 'positional', required: true } },
+  async run({ args }) {
+    const client = createClient()
+    const body: SetTeamUserMdRequest = { userMd: '' }
+    await client.put(`/api/teams/${args.id}/user-md`, body)
+    console.log(`cleared USER.md for team ${args.id}`)
+  },
+})
+
+const userMdCmd = defineCommand({
+  meta: { name: 'user-md', description: "View or edit a team's USER.md" },
+  subCommands: {
+    show: userMdShowCmd,
+    set: userMdSetCmd,
+    clear: userMdClearCmd,
+  },
+})
+
+const topicFormatShowCmd = defineCommand({
+  meta: { name: 'show', description: "Print the team's Telegram topic-name template" },
+  args: { id: { type: 'positional', required: true } },
+  async run({ args }) {
+    const client = createClient()
+    const g = await client.get<Team>(`/api/teams/${args.id}`)
+    console.log(g.telegramTopicNameFormat ?? '(default naming)')
+  },
+})
+
+const topicFormatSetCmd = defineCommand({
+  meta: {
+    name: 'set',
+    description:
+      'Set the topic-name template. Tokens: {agent.name} {team.name} {team.slug} (must include {agent.name})',
+  },
+  args: {
+    id: { type: 'positional', required: true },
+    format: {
+      type: 'positional',
+      required: true,
+      description: 'e.g. "{team.name} / {agent.name}"',
     },
   },
   async run({ args }) {
-    if (args.force && !args.apply)
-      throw new Error('--force requires --apply (interactive force is intentionally unsupported)')
-    const document = parseTeamDocument(jsonFile(args.file))
     const client = createClient()
-    let current: HarnessTemplateDetail | null = null
-    try {
-      current = await client.get<HarnessTemplateDetail>(
-        `/api/harness-templates/${encodeURIComponent(document.template.id)}`,
-      )
-    } catch (error) {
-      if (!(error instanceof ApiClientError) || error.status !== 404) throw error
-    }
-    printImportDiff(current, document)
-    if (args['dry-run']) {
-      console.log('valid: no changes applied')
-      return
-    }
-    if (!args.apply) throw new Error('refusing mutation: review the diff, then pass --apply')
-    if (!current) {
-      const body = teamImportBody(document)
-      const created = await client.post<HarnessTemplateDetail>('/api/harness-templates/import', {
-        id: document.template.id,
-        name: document.template.name,
-        userMd: document.template.userMd,
-        slots: document.slots.map((slot, index) => ({
-          ...body.slots[index],
-          clientKey: slot.key,
-        })),
-        edges: body.edges,
-      })
-      console.log(
-        `created Team ${created.template.id} at revision ${created.template.currentRevision}`,
-      )
-      return
-    }
-    if (
-      document.template.name !== current.template.name ||
-      document.template.userMd !== current.template.userMd
-    )
-      throw new Error(
-        'replacement document metadata differs; update Team name/USER.md separately before import',
-      )
-    const supplied = Number.parseInt(args['expected-revision'] ?? '', 10)
-    const expectedRevision = args.force ? current.template.currentRevision : supplied
-    if (
-      args.force &&
-      Number.parseInt(args['confirm-current-revision'] ?? '', 10) !==
-        current.template.currentRevision
-    )
-      throw new Error(
-        `--force requires --confirm-current-revision ${current.template.currentRevision} after reviewing the fresh diff`,
-      )
-    if (!Number.isInteger(expectedRevision) || expectedRevision < 1)
-      throw new Error('--expected-revision is required when replacing an existing Team')
-    const definition = teamImportBody(document, current)
-    const body: PutHarnessTemplateDefinitionRequest = { expectedRevision, ...definition }
-    const updated = await client.put<HarnessTemplateDetail>(
-      `/api/harness-templates/${encodeURIComponent(document.template.id)}/definition`,
-      body,
-    )
-    console.log(
-      `updated Team ${updated.template.id} to revision ${updated.template.currentRevision}`,
-    )
+    const body: SetTeamTopicFormatRequest = { format: args.format }
+    const g = await client.put<Team>(`/api/teams/${args.id}/topic-format`, body)
+    console.log(`set topic-name template for team ${args.id}: ${g.telegramTopicNameFormat}`)
+  },
+})
+
+const topicFormatClearCmd = defineCommand({
+  meta: { name: 'clear', description: 'Clear the template (revert to built-in naming)' },
+  args: { id: { type: 'positional', required: true } },
+  async run({ args }) {
+    const client = createClient()
+    const body: SetTeamTopicFormatRequest = { format: null }
+    await client.put(`/api/teams/${args.id}/topic-format`, body)
+    console.log(`cleared topic-name template for team ${args.id}`)
+  },
+})
+
+const topicFormatCmd = defineCommand({
+  meta: {
+    name: 'topic-format',
+    description: "View or edit a team's Telegram forum-topic name template",
+  },
+  subCommands: {
+    show: topicFormatShowCmd,
+    set: topicFormatSetCmd,
+    clear: topicFormatClearCmd,
   },
 })
 
 export const teamCommand = defineCommand({
-  meta: {
-    name: 'team',
-    description: 'Inspect and exchange canonical Team templates',
+  meta: { name: 'team', description: 'Manage teams (collaboration contexts)' },
+  subCommands: {
+    add: addCmd,
+    list: listCmd,
+    rm: rmCmd,
+    'user-md': userMdCmd,
+    'topic-format': topicFormatCmd,
+    policy: teamPolicyCommand,
   },
-  subCommands: { list, show, export: exportCommand, import: importCommand },
 })

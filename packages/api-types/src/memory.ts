@@ -1,4 +1,4 @@
-// Wire shapes for the per-group memory store. The `MemoryBackend` interface
+// Wire shapes for the per-team memory store. The `MemoryBackend` interface
 // itself stays in apps/daemon/src/runtime/memory (it has methods and is
 // server-internal); these are the values that cross the HTTP wire.
 

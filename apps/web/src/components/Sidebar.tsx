@@ -1,26 +1,26 @@
-// Left sidebar: collapsible groups + agent rows + spawn dropdown. Each agent
+// Left sidebar: collapsible teams + agent rows + spawn dropdown. Each agent
 // row reveals rename (✎) and archive (×) buttons on hover.
 
-import type { Agent, Group, HarnessTemplateWithCount, Profile } from '@bazilion/api-types'
+import type { Agent, Team, TeamTemplateWithCount, Profile } from '@bazilion/api-types'
 import { Link, useRouter } from '@tanstack/react-router'
 import { useRef, useState } from 'react'
-import { DEFAULT_GROUP_ID, DEFAULT_PROFILE_ID } from '../lib/wire-constants'
-import { CreateGroupDialog } from './CreateGroupDialog'
+import { DEFAULT_TEAM_ID, DEFAULT_PROFILE_ID } from '../lib/wire-constants'
+import { CreateTeamDialog } from './CreateTeamDialog'
 import { SpawnDialog } from './SpawnDialog'
 import { SpawnTeamModal } from './SpawnTeamModal'
 
 interface Props {
   agents: Agent[]
-  groups: Group[]
+  teams: Team[]
   profiles: Profile[]
-  profileGroups: HarnessTemplateWithCount[]
+  profileGroups: TeamTemplateWithCount[]
   selectedAgentId: string | null
-  /** Per-group open/closed map seeded by SSR from the cookie. */
+  /** Per-team open/closed map seeded by SSR from the cookie. */
   initialOpenGroups?: Record<string, boolean>
 }
 
 // Cookie name shared with the SSR loader in `routes/index.tsx`. Stored as
-// URL-encoded JSON of `Record<string, boolean>` — keys are group IDs, values
+// URL-encoded JSON of `Record<string, boolean>` — keys are team IDs, values
 // are the user's explicit open/closed preference. Used over localStorage so
 // the SSR render lands with the correct state and the user never sees a flash
 // of default state before hydration corrects it.
@@ -35,15 +35,15 @@ function writeOpenGroupsCookie(map: Record<string, boolean>): void {
 
 export function Sidebar({
   agents,
-  groups,
+  teams,
   profiles,
   profileGroups,
   selectedAgentId,
   initialOpenGroups,
 }: Props) {
   const router = useRouter()
-  const [spawnFor, setSpawnFor] = useState<{ profileId: string; groupHint?: string } | null>(null)
-  const [spawnTeamFor, setSpawnTeamFor] = useState<HarnessTemplateWithCount | null>(null)
+  const [spawnFor, setSpawnFor] = useState<{ profileId: string; teamHint?: string } | null>(null)
+  const [spawnTeamFor, setSpawnTeamFor] = useState<TeamTemplateWithCount | null>(null)
   const [createGroupOpen, setCreateGroupOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const newButtonRef = useRef<HTMLButtonElement | null>(null)
@@ -79,26 +79,26 @@ export function Sidebar({
     await router.invalidate()
   }
 
-  // Float the seeded `default` profile + group to the top so new users land
+  // Float the seeded `default` profile + team to the top so new users land
   // on the one-click spawn path.
   const sortedProfiles = [...profiles].sort((a, b) => {
     if (a.id === DEFAULT_PROFILE_ID) return -1
     if (b.id === DEFAULT_PROFILE_ID) return 1
     return 0
   })
-  const sortedGroups = [...groups].sort((a, b) => {
-    if (a.id === DEFAULT_GROUP_ID) return -1
-    if (b.id === DEFAULT_GROUP_ID) return 1
+  const sortedGroups = [...teams].sort((a, b) => {
+    if (a.id === DEFAULT_TEAM_ID) return -1
+    if (b.id === DEFAULT_TEAM_ID) return 1
     return 0
   })
   const agentsByGroup = new Map<string, Agent[]>()
   for (const a of agents) {
-    const list = agentsByGroup.get(a.groupId) ?? []
+    const list = agentsByGroup.get(a.teamId) ?? []
     list.push(a)
-    agentsByGroup.set(a.groupId, list)
+    agentsByGroup.set(a.teamId, list)
   }
 
-  const selectedGroupId = agents.find((a) => a.id === selectedAgentId)?.groupId ?? null
+  const selectedTeamId = agents.find((a) => a.id === selectedAgentId)?.teamId ?? null
 
   return (
     <aside className="flex h-full flex-col rounded-lg border bg-card overflow-hidden">
@@ -156,7 +156,7 @@ export function Sidebar({
               )}
               <div className="my-1 h-px bg-border" />
               <div className="px-3 pt-1 pb-0.5 text-[0.7em] uppercase tracking-wide text-muted-foreground">
-                spawn group from template
+                spawn team from template
               </div>
               {profileGroups.length === 0 ? (
                 <div className="px-3 py-1.5 text-xs text-muted-foreground">
@@ -200,7 +200,7 @@ export function Sidebar({
                 }}
                 className="block w-full text-left rounded-sm px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent"
               >
-                + create group
+                + create team
               </button>
             </div>
           )}
@@ -208,7 +208,7 @@ export function Sidebar({
       </header>
 
       <nav className="flex-1 overflow-y-auto p-1">
-        {agents.length === 0 && groups.length === 0 ? (
+        {agents.length === 0 && teams.length === 0 ? (
           <div className="p-4 text-sm text-muted-foreground">
             No agents yet.{' '}
             <a href="/agents" className="text-primary underline">
@@ -218,13 +218,13 @@ export function Sidebar({
           </div>
         ) : (
           sortedGroups.map((g) => {
-            const groupAgents = agentsByGroup.get(g.id) ?? []
-            const containsSelected = selectedGroupId === g.id
+            const teamAgents = agentsByGroup.get(g.id) ?? []
+            const containsSelected = selectedTeamId === g.id
             // Explicit user preference wins; otherwise fall back to the
-            // "auto-open if selected or the seeded default group" heuristic.
+            // "auto-open if selected or the seeded default team" heuristic.
             const stored = openGroups[g.id]
             const isOpen =
-              stored !== undefined ? stored : containsSelected || g.id === DEFAULT_GROUP_ID
+              stored !== undefined ? stored : containsSelected || g.id === DEFAULT_TEAM_ID
             return (
               <details
                 key={g.id}
@@ -241,25 +241,25 @@ export function Sidebar({
                   setOpenGroups(merged)
                   void router.invalidate()
                 }}
-                className="group/details mb-1 last:mb-0"
+                className="team/details mb-1 last:mb-0"
               >
                 <summary className="flex cursor-pointer list-none items-center gap-1.5 rounded-sm px-2 py-1.5 text-xs uppercase tracking-wide text-muted-foreground hover:bg-accent">
-                  <span className="w-3 text-xs transition-transform group-open/details:rotate-90 inline-block">
+                  <span className="w-3 text-xs transition-transform team-open/details:rotate-90 inline-block">
                     ▸
                   </span>
                   <span className="flex-1 truncate font-semibold">{g.name}</span>
                   <span className="font-mono text-xs rounded bg-muted px-1 min-w-[1.4em] text-center">
-                    {groupAgents.length}
+                    {teamAgents.length}
                   </span>
                 </summary>
-                {groupAgents.length === 0 ? (
+                {teamAgents.length === 0 ? (
                   <div className="pl-6 py-1 text-xs italic text-muted-foreground">
                     no agents
                   </div>
                 ) : (
                   <div className="pl-2">
-                    {groupAgents.map((a) => (
-                      <div key={a.id} className="group/row relative">
+                    {teamAgents.map((a) => (
+                      <div key={a.id} className="team/row relative">
                         <Link
                           to="/"
                           search={{ agent: a.id }}
@@ -286,7 +286,7 @@ export function Sidebar({
                             <code>{a.id.slice(0, 8)}</code>
                           </div>
                         </Link>
-                        <div className="absolute right-1 top-1 flex gap-0.5 opacity-0 transition-opacity group-hover/row:opacity-100 focus-within:opacity-100">
+                        <div className="absolute right-1 top-1 flex gap-0.5 opacity-0 transition-opacity team-hover/row:opacity-100 focus-within:opacity-100">
                           <button
                             type="button"
                             onClick={() => rename(a)}
@@ -319,23 +319,23 @@ export function Sidebar({
       {spawnFor && (
         <SpawnDialog
           profileId={spawnFor.profileId}
-          groupHint={spawnFor.groupHint}
-          groups={sortedGroups}
+          teamHint={spawnFor.teamHint}
+          teams={sortedGroups}
           onClose={() => { setSpawnFor(null); restoreNewButton() }}
         />
       )}
       {spawnTeamFor && (
         <SpawnTeamModal
           profileGroup={spawnTeamFor}
-          groups={sortedGroups}
+          teams={sortedGroups}
           onClose={() => { setSpawnTeamFor(null); restoreNewButton() }}
           onSpawned={(slug) => {
             setSpawnTeamFor(null)
-            router.navigate({ to: '/groups/$id', params: { id: slug } })
+            router.navigate({ to: '/teams/$id', params: { id: slug } })
           }}
         />
       )}
-      {createGroupOpen && <CreateGroupDialog onClose={() => { setCreateGroupOpen(false); restoreNewButton() }} />}
+      {createGroupOpen && <CreateTeamDialog onClose={() => { setCreateGroupOpen(false); restoreNewButton() }} />}
     </aside>
   )
 }

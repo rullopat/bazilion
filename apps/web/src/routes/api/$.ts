@@ -1,5 +1,5 @@
 // Catch-all reverse proxy: forwards every browser /api/* request to the
-// daemon. Browser scripts use relative URLs (/api/agents, /api/groups, …)
+// daemon. Browser scripts use relative URLs (/api/agents, /api/teams, …)
 // so the bz_token cookie auto-attaches; this proxy translates that cookie
 // into a Bearer header for the daemon, which lives on a different origin.
 //

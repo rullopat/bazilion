@@ -1,6 +1,6 @@
 ---
 id: BAZ-011
-title: Harness authorizer, denial audit, and gated Agent messaging
+title: TeamPolicy authorizer, denial audit, and gated Agent messaging
 status: done
 size: L (1-2 weeks)
 created: 2026-07-10
@@ -9,7 +9,7 @@ priority: high
 note: Build the single authorizer, immutable idempotent denial audit, diagnostics, and gated Agent-message/inbox integration. Full ingress, egress, scheduler, and release activation continue in BAZ-016.
 ---
 
-# BAZ-011 - Harness authorizer, denial audit, and gated Agent messaging
+# BAZ-011 - TeamPolicy authorizer, denial audit, and gated Agent messaging
 
 **Status:** Refined and ready after BAZ-015. ADR 0001 is normative. This is the first half
 of the former XL enforcement story; BAZ-016 completes all remaining boundaries.
@@ -35,11 +35,11 @@ and BAZ-017 are complete.
     authorizeCommunication({ source, target, origin, attemptKind, attemptId })
       -> { decision, channel, reasonCode, reason, policyRefs[] }
 
-- The daemon resolves current status, `agents.group_id`, channel, and one or two Group
-  policies in one SQLite snapshot. Callers never supply an authoritative harness id.
-- Same-Group A -> B requires exact A -> B. Cross-Group A -> B requires source
-  A -> outside_group **and** target outside_group -> B in the same snapshot.
-- User -> Agent and Agent -> user use the target/source Group boundary edge respectively.
+- The daemon resolves current status, `agents.team_id`, channel, and one or two Team
+  policies in one SQLite snapshot. Callers never supply an authoritative teamPolicy id.
+- Same-Team A -> B requires exact A -> B. Cross-Team A -> B requires source
+  A -> outside_team **and** target outside_team -> B in the same snapshot.
+- User -> Agent and Agent -> user use the target/source Team boundary edge respectively.
 - Archived/deleted/missing/nonmember/self/boundary-to-boundary paths deny before matching.
 - Origin is required audit metadata and never changes the decision.
 - Operator-authenticated history/policy/block/inbox inspection is exempt; Agent-visible
@@ -88,9 +88,9 @@ retry ledger is introduced, and each operation retains its existing delivery sem
 
 ## Scope
 
-- Add pure endpoint/channel/policy resolution and two-sided cross-Group evaluation over
+- Add pure endpoint/channel/policy resolution and two-sided cross-Team evaluation over
   BAZ-015 canonical state.
-- Add immutable `harness_block_events` with semantic endpoint snapshots, channel, origin,
+- Add immutable `team_policy_block_events` with semantic endpoint snapshots, channel, origin,
   stable reason, one/two policy revisions, component outcomes, matched/required edge ids,
   fingerprint, first-observed origin, timestamp, and unique typed attempt identity. Store no payload, secret, or
   attachment content.
@@ -99,7 +99,7 @@ retry ledger is introduced, and each operation retains its existing delivery sem
   `apps/daemon/src/lib/messaging-host.ts`, direct/reply Agent-message routes, and
   Agent-visible read/wait paths. The repo remains a storage primitive.
 - Add authenticated cursor-paginated
-  `GET /api/groups/:groupId/harness/blocks` and side-effect-free
+  `GET /api/teams/:teamId/policy/blocks` and side-effect-free
   `POST /api/communication/evaluate`.
 - Return a common structured tool/API denial with decision, channel, reason, typed attempt
   id, and policy references.
@@ -118,17 +118,17 @@ retry ledger is introduced, and each operation retains its existing delivery sem
 
 ## Acceptance criteria
 
-- Unit/property tests prove exact same-Group, two-sided cross-Group, boundary, lifecycle,
+- Unit/property tests prove exact same-Team, two-sided cross-Team, boundary, lifecycle,
   origin-invariant, malformed-policy, and invalid-path decisions.
-- Cross-Group denial is one result/event containing both policy revisions and component
-  outcomes, never one event per Group.
+- Cross-Team denial is one result/event containing both policy revisions and component
+  outcomes, never one event per Team.
 - With the gate enabled in tests, denied Agent messages insert no deliverable message and
   return a structured denial; allowed/reply paths preserve current semantics.
 - Agent read/wait and any later scheduler consumer share `inbox:<messageId>`; terminal
   disposition and denial audit are atomic. Operator reads remain inspectable.
 - Lookup-first/fingerprint/unique-conflict behavior creates exactly one immutable block for
   sequential and concurrent retries and never reuses a key for different semantics.
-- The diagnostic evaluator is authenticated, current, cross-Group capable, side-effect
+- The diagnostic evaluator is authenticated, current, cross-Team capable, side-effect
   free, and never writes a block.
 - Missing or corrupt policy fails closed with distinct stable reason codes when enabled.
 - The gate defaults off in production configuration; off preserves current behavior and
@@ -150,10 +150,10 @@ retry ledger is introduced, and each operation retains its existing delivery sem
 
 Completed on 2026-07-11.
 
-- Added the snapshot-linearized authorizer for same-Group, two-sided cross-Group, user,
-  outside-Group, lifecycle, malformed-policy, and invalid-path decisions. Origins remain
+- Added the snapshot-linearized authorizer for same-Team, two-sided cross-Team, user,
+  outside-Team, lifecycle, malformed-policy, and invalid-path decisions. Origins remain
   audit-only and callers never provide authoritative policy identity.
-- Migration `0010_harness_blocks.sql` adds the immutable typed-attempt denial ledger and
+- Migration `0010_teamPolicy_blocks.sql` adds the immutable typed-attempt denial ledger and
   terminal message policy disposition. Block rows contain semantic endpoint and policy
   evidence but no message body, attachment, or credential content.
 - `sendAgentMessage` is the sole enforcing Agent-message service used by IPC tools and the
@@ -161,7 +161,7 @@ Completed on 2026-07-11.
   one transaction. Agent inbox read/wait reauthorizes with `inbox:<messageId>` while
   operator history remains inspectable.
 - Added authenticated, side-effect-free `POST /api/communication/evaluate` and filtered,
-  cursor-paginated `GET /api/groups/:groupId/harness/blocks`.
+  cursor-paginated `GET /api/teams/:teamId/policy/blocks`.
 - Enforcement is enabled only by the exact value `BAZILION_HARNESS_ENFORCEMENT=on`; absent
   or any other value is compatibility behavior and writes no authoritative block history.
   BAZ-016/017 still own complete-boundary activation.

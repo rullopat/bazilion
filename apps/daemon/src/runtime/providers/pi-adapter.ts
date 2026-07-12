@@ -26,7 +26,7 @@ import {
   streamSimple,
   type TextContent,
   Type,
-} from '@earendil-works/pi-ai'
+} from '@earendil-works/pi-ai/compat'
 import type { Provider, ProviderRequest, ProviderResponse, StopReason } from './types.ts'
 
 export interface PiProviderConfig {

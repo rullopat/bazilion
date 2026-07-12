@@ -87,7 +87,7 @@ export interface CreateBazilionSessionOptions {
    */
   messagingHost?: MessagingHost
   /**
-   * Optional host for the group-shared USER.md append tool. Like
+   * Optional host for the team-shared USER.md append tool. Like
    * `messagingHost`, this is wired via the worker's IPC channel. Omit to
    * disable the `user_md_append` tool.
    */
@@ -210,12 +210,12 @@ export async function createBazilionSession(
     })
   }
 
-  // cwd for pi's coding tools is the agent's group directory. Every agent
-  // belongs to exactly one group; the group's filesystem root is where work
+  // cwd for pi's coding tools is the agent's team directory. Every agent
+  // belongs to exactly one team; the team's filesystem root is where work
   // product lives and where the agent's `read`/`bash`/`edit`/`write` are
   // rooted. Private identity/soul files live in `agent.dir` and are reached
   // through the scoped `home_*` tools, not via cwd.
-  const cwd = agent.group.path
+  const cwd = agent.team.path
   if (!existsSync(cwd)) mkdirSync(cwd, { recursive: true })
 
   // Session file under the agent's own directory. Keeping it under
@@ -467,7 +467,7 @@ export function loadEnabledRegistry(db: BazilionDb, authToken: string, env: Node
 export function loadInitialMessages(agent: ResolvedAgent, paths: Paths): AgentMessage[] {
   const sessionDir = join(paths.agentDir(agent.agent.id), 'sessions')
   if (!existsSync(sessionDir)) return []
-  const cwd = agent.group.path
+  const cwd = agent.team.path
   if (!existsSync(cwd)) return []
   const recent = findMostRecent(sessionDir)
   if (!recent) return []
@@ -522,7 +522,7 @@ export function seedSessionForTest(
   paths: Paths,
   messages: Array<{ role: 'user' | 'assistant'; text: string }>,
 ): void {
-  const cwd = agent.group.path
+  const cwd = agent.team.path
   if (!existsSync(cwd)) mkdirSync(cwd, { recursive: true })
   const sessionDir = join(paths.agentDir(agent.agent.id), 'sessions')
   mkdirSync(sessionDir, { recursive: true })
@@ -565,7 +565,7 @@ export function countSessionMessagesForTest(agent: ResolvedAgent, paths: Paths):
   const sessionDir = join(paths.agentDir(agent.agent.id), 'sessions')
   const recent = findMostRecent(sessionDir)
   if (!recent) return 0
-  const cwd = agent.group.path
+  const cwd = agent.team.path
   try {
     const sm = SessionManager.open(recent, sessionDir, cwd)
     return sm.getBranch().filter((e) => e.type === 'message').length

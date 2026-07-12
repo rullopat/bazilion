@@ -78,8 +78,8 @@ function RootComponent() {
   // Interactive workspaces fill the viewport and hide the footer.
   // Everything else gets the standard 1100px shell and footer.
   const isHome = pathname === '/'
-  const isHarnessBuilder = /^\/harnesses\/[^/]+$/.test(pathname)
-  const isWorkspace = isHome || isHarnessBuilder
+  const isTeamPolicyBuilder = /^\/policyes\/[^/]+$/.test(pathname)
+  const isWorkspace = isHome || isTeamPolicyBuilder
 
   return (
     // In workspaces, lock html + body to the viewport so only the inner panels

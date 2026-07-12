@@ -1,5 +1,4 @@
 import { afterAll, beforeAll, expect, test } from 'vitest'
-import { openInMemoryDb } from '../../src/core/db/client.ts'
 import { runMigrations } from '../../src/core/db/migrate.ts'
 import { makeTestEnv, type TestEnv } from './helpers.ts'
 
@@ -20,16 +19,16 @@ test('migrations create all expected tables', () => {
   for (const t of [
     'agent_skills',
     'agents',
-    'groups',
-    'harness_template_edges',
-    'harness_template_revision_edges',
-    'harness_template_revision_slots',
-    'harness_template_revisions',
-    'harness_template_slots',
-    'harness_templates',
-    'live_agent_state',
-    'live_harness_edges',
-    'live_harnesses',
+    'teams',
+    'team_template_edges',
+    'team_template_revision_edges',
+    'team_template_revision_slots',
+    'team_template_revisions',
+    'team_template_slots',
+    'team_templates',
+    'team_agent_state',
+    'team_policy_edges',
+    'team_policies',
     'messages',
     'profile_default_skills',
     'profile_communication_defaults',
@@ -59,15 +58,15 @@ test('profiles table has skills_mode and no default_workspace_id', () => {
   expect(cols).not.toContain('default_workspace_id')
 })
 
-test('agents table has group_id; groups table has user_md', () => {
+test('agents table has team_id; teams table has user_md', () => {
   const agentCols = env.db.raw
     .query<{ name: string }, []>("SELECT name FROM pragma_table_info('agents')")
     .all()
     .map((r) => r.name)
-  expect(agentCols).toContain('group_id')
+  expect(agentCols).toContain('team_id')
 
   const groupCols = env.db.raw
-    .query<{ name: string }, []>("SELECT name FROM pragma_table_info('groups')")
+    .query<{ name: string }, []>("SELECT name FROM pragma_table_info('teams')")
     .all()
     .map((r) => r.name)
   expect(groupCols).toContain('user_md')
@@ -85,40 +84,6 @@ test('migrations are idempotent', () => {
   expect(after).toEqual(before)
   expect(after.length).toBeGreaterThan(0)
   expect(after[0]?.version).toBe('0001_init')
-})
-
-test('0013 repairs slot layout columns missing from an already-applied 0009', () => {
-  const db = openInMemoryDb()
-  try {
-    runMigrations(db)
-    for (const table of ['harness_template_slots', 'harness_template_revision_slots']) {
-      db.raw.exec(`ALTER TABLE ${table} DROP COLUMN display_json`)
-      db.raw.exec(`ALTER TABLE ${table} DROP COLUMN position_y`)
-      db.raw.exec(`ALTER TABLE ${table} DROP COLUMN position_x`)
-    }
-    db.raw.run("DELETE FROM schema_migrations WHERE version = '0013_harness_slot_layout'")
-
-    runMigrations(db)
-
-    for (const table of ['harness_template_slots', 'harness_template_revision_slots']) {
-      const columns = db.raw
-        .query<{ name: string }, []>(`PRAGMA table_info(${table})`)
-        .all()
-        .map((column) => column.name)
-      expect(columns).toEqual(
-        expect.arrayContaining(['position_x', 'position_y', 'display_json']),
-      )
-    }
-    expect(
-      db.raw
-        .query<{ count: number }, []>(
-          "SELECT COUNT(*) count FROM schema_migrations WHERE version = '0013_harness_slot_layout'",
-        )
-        .get()?.count,
-    ).toBe(1)
-  } finally {
-    db.close()
-  }
 })
 
 test('nested transactions use savepoints without weakening outer rollback', () => {
@@ -152,19 +117,19 @@ test('nested transactions use savepoints without weakening outer rollback', () =
 test('canonical current and immutable Team slots restrict Profile deletion', () => {
   const fks = env.db.raw
     .query<{ table: string; from: string; on_delete: string }, []>(
-      'SELECT "table", "from", on_delete FROM pragma_foreign_key_list(\'harness_template_slots\')',
+      'SELECT "table", "from", on_delete FROM pragma_foreign_key_list(\'team_template_slots\')',
     )
     .all()
   const profileFk = fks.find((f) => f.table === 'profiles' && f.from === 'profile_id')
   expect(profileFk).toBeDefined()
   expect(profileFk?.on_delete).toBe('RESTRICT')
 
-  const parentFk = fks.find((f) => f.table === 'harness_templates')
+  const parentFk = fks.find((f) => f.table === 'team_templates')
   expect(parentFk?.on_delete).toBe('CASCADE')
 
   const revisionFks = env.db.raw
     .query<{ table: string; from: string; on_delete: string }, []>(
-      'SELECT "table", "from", on_delete FROM pragma_foreign_key_list(\'harness_template_revision_slots\')',
+      'SELECT "table", "from", on_delete FROM pragma_foreign_key_list(\'team_template_revision_slots\')',
     )
     .all()
   expect(
@@ -175,14 +140,14 @@ test('canonical current and immutable Team slots restrict Profile deletion', () 
 test('foreign keys are enforced', () => {
   expect(() =>
     env.db.raw.run(
-      `INSERT INTO agents (id, profile_id, name, status, dir, group_id, created_at)
-       VALUES ('a1', 'nope', 'x', 'idle', '/tmp/x', 'test-group', ?)`,
+      `INSERT INTO agents (id, profile_id, name, status, dir, team_id, created_at)
+       VALUES ('a1', 'nope', 'x', 'idle', '/tmp/x', 'test-team', ?)`,
       [Date.now()],
     ),
   ).toThrow()
 })
 
-test('0003 adds telegram columns to agents/groups/profiles', () => {
+test('0003 adds telegram columns to agents/teams/profiles', () => {
   const agentCols = env.db.raw
     .query<{ name: string }, []>("SELECT name FROM pragma_table_info('agents')")
     .all()
@@ -192,7 +157,7 @@ test('0003 adds telegram columns to agents/groups/profiles', () => {
   expect(agentCols).toContain('telegram_icon_emoji')
 
   const groupCols = env.db.raw
-    .query<{ name: string }, []>("SELECT name FROM pragma_table_info('groups')")
+    .query<{ name: string }, []>("SELECT name FROM pragma_table_info('teams')")
     .all()
     .map((r) => r.name)
   expect(groupCols).toContain('telegram_icon_color')

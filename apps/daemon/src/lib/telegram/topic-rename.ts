@@ -1,7 +1,7 @@
 // Propagate topic-name changes to live Telegram forum topics.
 //
-// Called when a group's `telegram_topic_name_format` changes: every bound,
-// non-locked topic in the group is re-rendered via editForumTopic so existing
+// Called when a team's `telegram_topic_name_format` changes: every bound,
+// non-locked topic in the team is re-rendered via editForumTopic so existing
 // topics pick up the new template immediately (not just newly-created ones).
 //
 // Best-effort and self-contained:
@@ -12,7 +12,7 @@
 //     not abort the rest of the batch.
 
 import type { BazilionDb } from '../../core/db/client.ts'
-import { groupRepo, profileRepo } from '../../core/index.ts'
+import { profileRepo, teamRepo } from '../../core/index.ts'
 import type { Paths } from '../../core/paths.ts'
 import * as agentRepo from '../../core/repos/agents.ts'
 import { getTelegramBotApi } from './bot.ts'
@@ -23,16 +23,16 @@ import { emojiForAgent, resolveStickerId } from './profile-emojis.ts'
 export async function syncGroupTopicNames(
   db: BazilionDb,
   paths: Paths,
-  groupId: string,
+  teamId: string,
 ): Promise<void> {
   const live = getTelegramBotApi()
   if (!live) return
-  const group = groupRepo.get(db, groupId, paths)
-  if (!group) return
+  const team = teamRepo.get(db, teamId, paths)
+  if (!team) return
 
-  const topics = agentRepo.listBoundUnlockedTopicsInGroup(db, groupId)
+  const topics = agentRepo.listBoundUnlockedTopicsInGroup(db, teamId)
   for (const t of topics) {
-    const name = topicNameFor({ name: t.name }, group)
+    const name = topicNameFor({ name: t.name }, team)
     await enqueueOutbound(live.chatId, () =>
       live.api.editForumTopic(live.chatId, t.topicId, { name }),
     ).catch((e) => {

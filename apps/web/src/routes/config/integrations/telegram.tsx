@@ -152,7 +152,7 @@ function TelegramIntegrationPage() {
               required={!initial.configured}
             />
             <p className="text-xs text-muted-foreground mt-1">
-              From @BotFather → /newbot. Disable Privacy Mode in <em>Bot Settings → Group
+              From @BotFather → /newbot. Disable Privacy Mode in <em>Bot Settings → Team
               Privacy → Turn off</em>.
             </p>
           </label>
@@ -369,7 +369,7 @@ function MigrationBanner({ toChatId }: { toChatId: string }) {
         Telegram migrated this supergroup to a new chat id (
         <code className="font-mono">{toChatId}</code>). The bot is still pointed at the old id.
         Reconnect to repoint it and re-create the <code className="font-mono">⚙ bazilion</code>{' '}
-        service chat in the new group. Agent topic bindings will reconcile on next use.
+        service chat in the new team. Agent topic bindings will reconcile on next use.
       </p>
       <Button variant="primary" onClick={reconnect} disabled={busy}>
         {busy ? 'reconnecting…' : `Reconnect to ${toChatId}`}
@@ -448,7 +448,7 @@ function PreflightResult({ health }: { health: TelegramHealth }) {
       <Check ok={p.isForum} label="Forum topics enabled">
         {p.isForum
           ? 'is_forum: true'
-          : 'is_forum: false — the supergroup owner must enable Topics in group settings'}
+          : 'is_forum: false — the supergroup owner must enable Topics in team settings'}
       </Check>
       <Check ok={p.hasManageTopics} label="Bot has can_manage_topics">
         {p.hasManageTopics
@@ -458,7 +458,7 @@ function PreflightResult({ health }: { health: TelegramHealth }) {
       <Check ok={p.privacyModeOff} label="Privacy Mode is OFF">
         {p.privacyModeOff
           ? 'can_read_all_group_messages: true'
-          : 'BotFather → /mybots → select bot → Bot Settings → Group Privacy → Turn off'}
+          : 'BotFather → /mybots → select bot → Bot Settings → Team Privacy → Turn off'}
       </Check>
     </ul>
   )
@@ -505,9 +505,9 @@ function hintFor(step: 'getMe' | 'getChat' | 'getChatMember') {
     case 'getChat':
       return (
         <p className="text-xs text-rose-900 mt-1">
-          The chat id either doesn't exist, points at a basic group (not a supergroup), or
+          The chat id either doesn't exist, points at a basic team (not a supergroup), or
           the bot isn't a member. Forward any message from the supergroup to the bot to
-          double-check the id, then add the bot to the group.
+          double-check the id, then add the bot to the team.
         </p>
       )
     case 'getChatMember':

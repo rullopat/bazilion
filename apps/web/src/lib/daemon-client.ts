@@ -3,7 +3,7 @@
 // dependency reads request-scoped storage that doesn't exist in the
 // browser, and Vite's import-protection enforces this at build time.
 //
-// For client-safe wire constants (DEFAULT_GROUP_ID, REASONING_LEVELS, …)
+// For client-safe wire constants (DEFAULT_TEAM_ID, REASONING_LEVELS, …)
 // import from `./wire-constants` instead.
 //
 // Server fns and route loaders running on the server can call

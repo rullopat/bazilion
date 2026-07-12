@@ -21,12 +21,12 @@ export interface Paths {
   profilesDir: string
   agentsDir: string
   skillsDir: string
-  groupsDir: string
+  teamsDir: string
   logsDir: string
   profileDir(id: string): string
   agentDir(id: string): string
   skillDir(name: string): string
-  groupDir(slug: string): string
+  teamDir(slug: string): string
 }
 
 export function resolvePaths(home?: string): Paths {
@@ -38,7 +38,7 @@ export function resolvePaths(home?: string): Paths {
     profilesDir: join(root, 'profiles'),
     agentsDir: join(root, 'agents'),
     skillsDir: join(root, 'skills'),
-    groupsDir: join(root, 'groups'),
+    teamsDir: join(root, 'teams'),
     logsDir: join(root, 'logs'),
     profileDir(id) {
       return join(root, 'profiles', id)
@@ -49,8 +49,8 @@ export function resolvePaths(home?: string): Paths {
     skillDir(name) {
       return join(root, 'skills', name)
     },
-    groupDir(slug) {
-      return join(root, 'groups', slug)
+    teamDir(slug) {
+      return join(root, 'teams', slug)
     },
   }
 }

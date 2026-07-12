@@ -1,7 +1,4 @@
-import type {
-  CommunicationApproval,
-  CommunicationApprovalDetail,
-} from '@bazilion/api-types'
+import type { CommunicationApproval, CommunicationApprovalDetail } from '@bazilion/api-types'
 import { defineCommand } from 'citty'
 import { createClient } from '../client.ts'
 import { columnize } from '../columnize.ts'
@@ -10,12 +7,12 @@ const list = defineCommand({
   meta: { name: 'list', description: 'List communication approval queue/history' },
   args: {
     status: { type: 'string', default: 'pending' },
-    group: { type: 'string' },
+    team: { type: 'string' },
     json: { type: 'boolean' },
   },
   async run({ args }) {
     const query = new URLSearchParams({ status: args.status, limit: '100' })
-    if (args.group) query.set('groupId', args.group)
+    if (args.team) query.set('teamId', args.team)
     const body = await createClient().get<{ approvals: CommunicationApproval[] }>(
       `/api/approvals?${query}`,
     )
@@ -50,7 +47,7 @@ const show = defineCommand({
     console.log(`origin:    ${item.origin}`)
     console.log(`expires:   ${new Date(item.expiresAt).toISOString()}`)
     console.log(
-      `revisions: ${item.policyRefs.map((ref) => `${ref.groupId}@${ref.revision}`).join(', ')}`,
+      `revisions: ${item.policyRefs.map((ref) => `${ref.teamId}@${ref.revision}`).join(', ')}`,
     )
     console.log(`events:    ${item.events.map((event) => event.event).join(' -> ')}`)
   },
@@ -87,8 +84,8 @@ function endpoint(value: CommunicationApproval['source']): string {
   return value.kind === 'agent'
     ? `agent:${value.id}`
     : value.kind === 'user'
-      ? `user:${value.groupId}`
-      : `outside:${value.groupId}`
+      ? `user:${value.teamId}`
+      : `outside:${value.teamId}`
 }
 
 export const approvalCommand = defineCommand({

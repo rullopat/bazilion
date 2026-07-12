@@ -13,30 +13,24 @@ import { Route as WelcomeRouteImport } from './routes/welcome'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as TemplatesIndexRouteImport } from './routes/templates/index'
+import { Route as TeamsIndexRouteImport } from './routes/teams/index'
 import { Route as SkillsIndexRouteImport } from './routes/skills/index'
-import { Route as ProfilesIndexRouteImport } from './routes/profiles/index'
-import { Route as ProfileGroupsIndexRouteImport } from './routes/profile-groups/index'
-import { Route as HarnessesIndexRouteImport } from './routes/harnesses/index'
-import { Route as GroupsIndexRouteImport } from './routes/groups/index'
 import { Route as ConfigIndexRouteImport } from './routes/config/index'
 import { Route as ApprovalsIndexRouteImport } from './routes/approvals/index'
 import { Route as AgentsIndexRouteImport } from './routes/agents/index'
-import { Route as ProfilesIdRouteImport } from './routes/profiles/$id'
-import { Route as ProfileGroupsIdRouteImport } from './routes/profile-groups/$id'
-import { Route as HarnessesIdRouteImport } from './routes/harnesses/$id'
 import { Route as ConfigTokensRouteImport } from './routes/config/tokens'
 import { Route as ConfigServicesRouteImport } from './routes/config/services'
 import { Route as ConfigMcpRouteImport } from './routes/config/mcp'
 import { Route as ApiSplatRouteImport } from './routes/api/$'
 import { Route as TemplatesTeamsIndexRouteImport } from './routes/templates/teams/index'
 import { Route as TemplatesAgentsIndexRouteImport } from './routes/templates/agents/index'
-import { Route as GroupsIdIndexRouteImport } from './routes/groups/$id/index'
+import { Route as TeamsIdIndexRouteImport } from './routes/teams/$id/index'
 import { Route as AgentsIdIndexRouteImport } from './routes/agents/$id/index'
-import { Route as GroupsIdPolicyRouteImport } from './routes/groups/$id/policy'
-import { Route as GroupsIdMemoryRouteImport } from './routes/groups/$id/memory'
-import { Route as GroupsIdMembersRouteImport } from './routes/groups/$id/members'
-import { Route as GroupsIdContextRouteImport } from './routes/groups/$id/context'
-import { Route as GroupsIdActivityRouteImport } from './routes/groups/$id/activity'
+import { Route as TeamsIdPolicyRouteImport } from './routes/teams/$id/policy'
+import { Route as TeamsIdMemoryRouteImport } from './routes/teams/$id/memory'
+import { Route as TeamsIdMembersRouteImport } from './routes/teams/$id/members'
+import { Route as TeamsIdContextRouteImport } from './routes/teams/$id/context'
+import { Route as TeamsIdActivityRouteImport } from './routes/teams/$id/activity'
 import { Route as ConfigIntegrationsTelegramRouteImport } from './routes/config/integrations/telegram'
 import { Route as AgentsIdTriggersRouteImport } from './routes/agents/$id/triggers'
 import { Route as AgentsIdInboxRouteImport } from './routes/agents/$id/inbox'
@@ -63,29 +57,14 @@ const TemplatesIndexRoute = TemplatesIndexRouteImport.update({
   path: '/templates/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TeamsIndexRoute = TeamsIndexRouteImport.update({
+  id: '/teams/',
+  path: '/teams/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SkillsIndexRoute = SkillsIndexRouteImport.update({
   id: '/skills/',
   path: '/skills/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ProfilesIndexRoute = ProfilesIndexRouteImport.update({
-  id: '/profiles/',
-  path: '/profiles/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ProfileGroupsIndexRoute = ProfileGroupsIndexRouteImport.update({
-  id: '/profile-groups/',
-  path: '/profile-groups/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const HarnessesIndexRoute = HarnessesIndexRouteImport.update({
-  id: '/harnesses/',
-  path: '/harnesses/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const GroupsIndexRoute = GroupsIndexRouteImport.update({
-  id: '/groups/',
-  path: '/groups/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ConfigIndexRoute = ConfigIndexRouteImport.update({
@@ -101,21 +80,6 @@ const ApprovalsIndexRoute = ApprovalsIndexRouteImport.update({
 const AgentsIndexRoute = AgentsIndexRouteImport.update({
   id: '/agents/',
   path: '/agents/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ProfilesIdRoute = ProfilesIdRouteImport.update({
-  id: '/profiles/$id',
-  path: '/profiles/$id',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ProfileGroupsIdRoute = ProfileGroupsIdRouteImport.update({
-  id: '/profile-groups/$id',
-  path: '/profile-groups/$id',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const HarnessesIdRoute = HarnessesIdRouteImport.update({
-  id: '/harnesses/$id',
-  path: '/harnesses/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ConfigTokensRoute = ConfigTokensRouteImport.update({
@@ -148,9 +112,9 @@ const TemplatesAgentsIndexRoute = TemplatesAgentsIndexRouteImport.update({
   path: '/templates/agents/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const GroupsIdIndexRoute = GroupsIdIndexRouteImport.update({
-  id: '/groups/$id/',
-  path: '/groups/$id/',
+const TeamsIdIndexRoute = TeamsIdIndexRouteImport.update({
+  id: '/teams/$id/',
+  path: '/teams/$id/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AgentsIdIndexRoute = AgentsIdIndexRouteImport.update({
@@ -158,29 +122,29 @@ const AgentsIdIndexRoute = AgentsIdIndexRouteImport.update({
   path: '/agents/$id/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const GroupsIdPolicyRoute = GroupsIdPolicyRouteImport.update({
-  id: '/groups/$id/policy',
-  path: '/groups/$id/policy',
+const TeamsIdPolicyRoute = TeamsIdPolicyRouteImport.update({
+  id: '/teams/$id/policy',
+  path: '/teams/$id/policy',
   getParentRoute: () => rootRouteImport,
 } as any)
-const GroupsIdMemoryRoute = GroupsIdMemoryRouteImport.update({
-  id: '/groups/$id/memory',
-  path: '/groups/$id/memory',
+const TeamsIdMemoryRoute = TeamsIdMemoryRouteImport.update({
+  id: '/teams/$id/memory',
+  path: '/teams/$id/memory',
   getParentRoute: () => rootRouteImport,
 } as any)
-const GroupsIdMembersRoute = GroupsIdMembersRouteImport.update({
-  id: '/groups/$id/members',
-  path: '/groups/$id/members',
+const TeamsIdMembersRoute = TeamsIdMembersRouteImport.update({
+  id: '/teams/$id/members',
+  path: '/teams/$id/members',
   getParentRoute: () => rootRouteImport,
 } as any)
-const GroupsIdContextRoute = GroupsIdContextRouteImport.update({
-  id: '/groups/$id/context',
-  path: '/groups/$id/context',
+const TeamsIdContextRoute = TeamsIdContextRouteImport.update({
+  id: '/teams/$id/context',
+  path: '/teams/$id/context',
   getParentRoute: () => rootRouteImport,
 } as any)
-const GroupsIdActivityRoute = GroupsIdActivityRouteImport.update({
-  id: '/groups/$id/activity',
-  path: '/groups/$id/activity',
+const TeamsIdActivityRoute = TeamsIdActivityRouteImport.update({
+  id: '/teams/$id/activity',
+  path: '/teams/$id/activity',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ConfigIntegrationsTelegramRoute =
@@ -218,28 +182,22 @@ export interface FileRoutesByFullPath {
   '/config/mcp': typeof ConfigMcpRoute
   '/config/services': typeof ConfigServicesRoute
   '/config/tokens': typeof ConfigTokensRoute
-  '/harnesses/$id': typeof HarnessesIdRoute
-  '/profile-groups/$id': typeof ProfileGroupsIdRoute
-  '/profiles/$id': typeof ProfilesIdRoute
   '/agents/': typeof AgentsIndexRoute
   '/approvals/': typeof ApprovalsIndexRoute
   '/config/': typeof ConfigIndexRoute
-  '/groups/': typeof GroupsIndexRoute
-  '/harnesses/': typeof HarnessesIndexRoute
-  '/profile-groups/': typeof ProfileGroupsIndexRoute
-  '/profiles/': typeof ProfilesIndexRoute
   '/skills/': typeof SkillsIndexRoute
+  '/teams/': typeof TeamsIndexRoute
   '/templates/': typeof TemplatesIndexRoute
   '/agents/$id/inbox': typeof AgentsIdInboxRoute
   '/agents/$id/triggers': typeof AgentsIdTriggersRoute
   '/config/integrations/telegram': typeof ConfigIntegrationsTelegramRoute
-  '/groups/$id/activity': typeof GroupsIdActivityRoute
-  '/groups/$id/context': typeof GroupsIdContextRoute
-  '/groups/$id/members': typeof GroupsIdMembersRoute
-  '/groups/$id/memory': typeof GroupsIdMemoryRoute
-  '/groups/$id/policy': typeof GroupsIdPolicyRoute
+  '/teams/$id/activity': typeof TeamsIdActivityRoute
+  '/teams/$id/context': typeof TeamsIdContextRoute
+  '/teams/$id/members': typeof TeamsIdMembersRoute
+  '/teams/$id/memory': typeof TeamsIdMemoryRoute
+  '/teams/$id/policy': typeof TeamsIdPolicyRoute
   '/agents/$id/': typeof AgentsIdIndexRoute
-  '/groups/$id/': typeof GroupsIdIndexRoute
+  '/teams/$id/': typeof TeamsIdIndexRoute
   '/templates/agents/': typeof TemplatesAgentsIndexRoute
   '/templates/teams/': typeof TemplatesTeamsIndexRoute
   '/templates/agents/$id/': typeof TemplatesAgentsIdIndexRoute
@@ -253,28 +211,22 @@ export interface FileRoutesByTo {
   '/config/mcp': typeof ConfigMcpRoute
   '/config/services': typeof ConfigServicesRoute
   '/config/tokens': typeof ConfigTokensRoute
-  '/harnesses/$id': typeof HarnessesIdRoute
-  '/profile-groups/$id': typeof ProfileGroupsIdRoute
-  '/profiles/$id': typeof ProfilesIdRoute
   '/agents': typeof AgentsIndexRoute
   '/approvals': typeof ApprovalsIndexRoute
   '/config': typeof ConfigIndexRoute
-  '/groups': typeof GroupsIndexRoute
-  '/harnesses': typeof HarnessesIndexRoute
-  '/profile-groups': typeof ProfileGroupsIndexRoute
-  '/profiles': typeof ProfilesIndexRoute
   '/skills': typeof SkillsIndexRoute
+  '/teams': typeof TeamsIndexRoute
   '/templates': typeof TemplatesIndexRoute
   '/agents/$id/inbox': typeof AgentsIdInboxRoute
   '/agents/$id/triggers': typeof AgentsIdTriggersRoute
   '/config/integrations/telegram': typeof ConfigIntegrationsTelegramRoute
-  '/groups/$id/activity': typeof GroupsIdActivityRoute
-  '/groups/$id/context': typeof GroupsIdContextRoute
-  '/groups/$id/members': typeof GroupsIdMembersRoute
-  '/groups/$id/memory': typeof GroupsIdMemoryRoute
-  '/groups/$id/policy': typeof GroupsIdPolicyRoute
+  '/teams/$id/activity': typeof TeamsIdActivityRoute
+  '/teams/$id/context': typeof TeamsIdContextRoute
+  '/teams/$id/members': typeof TeamsIdMembersRoute
+  '/teams/$id/memory': typeof TeamsIdMemoryRoute
+  '/teams/$id/policy': typeof TeamsIdPolicyRoute
   '/agents/$id': typeof AgentsIdIndexRoute
-  '/groups/$id': typeof GroupsIdIndexRoute
+  '/teams/$id': typeof TeamsIdIndexRoute
   '/templates/agents': typeof TemplatesAgentsIndexRoute
   '/templates/teams': typeof TemplatesTeamsIndexRoute
   '/templates/agents/$id': typeof TemplatesAgentsIdIndexRoute
@@ -289,28 +241,22 @@ export interface FileRoutesById {
   '/config/mcp': typeof ConfigMcpRoute
   '/config/services': typeof ConfigServicesRoute
   '/config/tokens': typeof ConfigTokensRoute
-  '/harnesses/$id': typeof HarnessesIdRoute
-  '/profile-groups/$id': typeof ProfileGroupsIdRoute
-  '/profiles/$id': typeof ProfilesIdRoute
   '/agents/': typeof AgentsIndexRoute
   '/approvals/': typeof ApprovalsIndexRoute
   '/config/': typeof ConfigIndexRoute
-  '/groups/': typeof GroupsIndexRoute
-  '/harnesses/': typeof HarnessesIndexRoute
-  '/profile-groups/': typeof ProfileGroupsIndexRoute
-  '/profiles/': typeof ProfilesIndexRoute
   '/skills/': typeof SkillsIndexRoute
+  '/teams/': typeof TeamsIndexRoute
   '/templates/': typeof TemplatesIndexRoute
   '/agents/$id/inbox': typeof AgentsIdInboxRoute
   '/agents/$id/triggers': typeof AgentsIdTriggersRoute
   '/config/integrations/telegram': typeof ConfigIntegrationsTelegramRoute
-  '/groups/$id/activity': typeof GroupsIdActivityRoute
-  '/groups/$id/context': typeof GroupsIdContextRoute
-  '/groups/$id/members': typeof GroupsIdMembersRoute
-  '/groups/$id/memory': typeof GroupsIdMemoryRoute
-  '/groups/$id/policy': typeof GroupsIdPolicyRoute
+  '/teams/$id/activity': typeof TeamsIdActivityRoute
+  '/teams/$id/context': typeof TeamsIdContextRoute
+  '/teams/$id/members': typeof TeamsIdMembersRoute
+  '/teams/$id/memory': typeof TeamsIdMemoryRoute
+  '/teams/$id/policy': typeof TeamsIdPolicyRoute
   '/agents/$id/': typeof AgentsIdIndexRoute
-  '/groups/$id/': typeof GroupsIdIndexRoute
+  '/teams/$id/': typeof TeamsIdIndexRoute
   '/templates/agents/': typeof TemplatesAgentsIndexRoute
   '/templates/teams/': typeof TemplatesTeamsIndexRoute
   '/templates/agents/$id/': typeof TemplatesAgentsIdIndexRoute
@@ -326,28 +272,22 @@ export interface FileRouteTypes {
     | '/config/mcp'
     | '/config/services'
     | '/config/tokens'
-    | '/harnesses/$id'
-    | '/profile-groups/$id'
-    | '/profiles/$id'
     | '/agents/'
     | '/approvals/'
     | '/config/'
-    | '/groups/'
-    | '/harnesses/'
-    | '/profile-groups/'
-    | '/profiles/'
     | '/skills/'
+    | '/teams/'
     | '/templates/'
     | '/agents/$id/inbox'
     | '/agents/$id/triggers'
     | '/config/integrations/telegram'
-    | '/groups/$id/activity'
-    | '/groups/$id/context'
-    | '/groups/$id/members'
-    | '/groups/$id/memory'
-    | '/groups/$id/policy'
+    | '/teams/$id/activity'
+    | '/teams/$id/context'
+    | '/teams/$id/members'
+    | '/teams/$id/memory'
+    | '/teams/$id/policy'
     | '/agents/$id/'
-    | '/groups/$id/'
+    | '/teams/$id/'
     | '/templates/agents/'
     | '/templates/teams/'
     | '/templates/agents/$id/'
@@ -361,28 +301,22 @@ export interface FileRouteTypes {
     | '/config/mcp'
     | '/config/services'
     | '/config/tokens'
-    | '/harnesses/$id'
-    | '/profile-groups/$id'
-    | '/profiles/$id'
     | '/agents'
     | '/approvals'
     | '/config'
-    | '/groups'
-    | '/harnesses'
-    | '/profile-groups'
-    | '/profiles'
     | '/skills'
+    | '/teams'
     | '/templates'
     | '/agents/$id/inbox'
     | '/agents/$id/triggers'
     | '/config/integrations/telegram'
-    | '/groups/$id/activity'
-    | '/groups/$id/context'
-    | '/groups/$id/members'
-    | '/groups/$id/memory'
-    | '/groups/$id/policy'
+    | '/teams/$id/activity'
+    | '/teams/$id/context'
+    | '/teams/$id/members'
+    | '/teams/$id/memory'
+    | '/teams/$id/policy'
     | '/agents/$id'
-    | '/groups/$id'
+    | '/teams/$id'
     | '/templates/agents'
     | '/templates/teams'
     | '/templates/agents/$id'
@@ -396,28 +330,22 @@ export interface FileRouteTypes {
     | '/config/mcp'
     | '/config/services'
     | '/config/tokens'
-    | '/harnesses/$id'
-    | '/profile-groups/$id'
-    | '/profiles/$id'
     | '/agents/'
     | '/approvals/'
     | '/config/'
-    | '/groups/'
-    | '/harnesses/'
-    | '/profile-groups/'
-    | '/profiles/'
     | '/skills/'
+    | '/teams/'
     | '/templates/'
     | '/agents/$id/inbox'
     | '/agents/$id/triggers'
     | '/config/integrations/telegram'
-    | '/groups/$id/activity'
-    | '/groups/$id/context'
-    | '/groups/$id/members'
-    | '/groups/$id/memory'
-    | '/groups/$id/policy'
+    | '/teams/$id/activity'
+    | '/teams/$id/context'
+    | '/teams/$id/members'
+    | '/teams/$id/memory'
+    | '/teams/$id/policy'
     | '/agents/$id/'
-    | '/groups/$id/'
+    | '/teams/$id/'
     | '/templates/agents/'
     | '/templates/teams/'
     | '/templates/agents/$id/'
@@ -432,28 +360,22 @@ export interface RootRouteChildren {
   ConfigMcpRoute: typeof ConfigMcpRoute
   ConfigServicesRoute: typeof ConfigServicesRoute
   ConfigTokensRoute: typeof ConfigTokensRoute
-  HarnessesIdRoute: typeof HarnessesIdRoute
-  ProfileGroupsIdRoute: typeof ProfileGroupsIdRoute
-  ProfilesIdRoute: typeof ProfilesIdRoute
   AgentsIndexRoute: typeof AgentsIndexRoute
   ApprovalsIndexRoute: typeof ApprovalsIndexRoute
   ConfigIndexRoute: typeof ConfigIndexRoute
-  GroupsIndexRoute: typeof GroupsIndexRoute
-  HarnessesIndexRoute: typeof HarnessesIndexRoute
-  ProfileGroupsIndexRoute: typeof ProfileGroupsIndexRoute
-  ProfilesIndexRoute: typeof ProfilesIndexRoute
   SkillsIndexRoute: typeof SkillsIndexRoute
+  TeamsIndexRoute: typeof TeamsIndexRoute
   TemplatesIndexRoute: typeof TemplatesIndexRoute
   AgentsIdInboxRoute: typeof AgentsIdInboxRoute
   AgentsIdTriggersRoute: typeof AgentsIdTriggersRoute
   ConfigIntegrationsTelegramRoute: typeof ConfigIntegrationsTelegramRoute
-  GroupsIdActivityRoute: typeof GroupsIdActivityRoute
-  GroupsIdContextRoute: typeof GroupsIdContextRoute
-  GroupsIdMembersRoute: typeof GroupsIdMembersRoute
-  GroupsIdMemoryRoute: typeof GroupsIdMemoryRoute
-  GroupsIdPolicyRoute: typeof GroupsIdPolicyRoute
+  TeamsIdActivityRoute: typeof TeamsIdActivityRoute
+  TeamsIdContextRoute: typeof TeamsIdContextRoute
+  TeamsIdMembersRoute: typeof TeamsIdMembersRoute
+  TeamsIdMemoryRoute: typeof TeamsIdMemoryRoute
+  TeamsIdPolicyRoute: typeof TeamsIdPolicyRoute
   AgentsIdIndexRoute: typeof AgentsIdIndexRoute
-  GroupsIdIndexRoute: typeof GroupsIdIndexRoute
+  TeamsIdIndexRoute: typeof TeamsIdIndexRoute
   TemplatesAgentsIndexRoute: typeof TemplatesAgentsIndexRoute
   TemplatesTeamsIndexRoute: typeof TemplatesTeamsIndexRoute
   TemplatesAgentsIdIndexRoute: typeof TemplatesAgentsIdIndexRoute
@@ -490,39 +412,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TemplatesIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/teams/': {
+      id: '/teams/'
+      path: '/teams'
+      fullPath: '/teams/'
+      preLoaderRoute: typeof TeamsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/skills/': {
       id: '/skills/'
       path: '/skills'
       fullPath: '/skills/'
       preLoaderRoute: typeof SkillsIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/profiles/': {
-      id: '/profiles/'
-      path: '/profiles'
-      fullPath: '/profiles/'
-      preLoaderRoute: typeof ProfilesIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/profile-groups/': {
-      id: '/profile-groups/'
-      path: '/profile-groups'
-      fullPath: '/profile-groups/'
-      preLoaderRoute: typeof ProfileGroupsIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/harnesses/': {
-      id: '/harnesses/'
-      path: '/harnesses'
-      fullPath: '/harnesses/'
-      preLoaderRoute: typeof HarnessesIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/groups/': {
-      id: '/groups/'
-      path: '/groups'
-      fullPath: '/groups/'
-      preLoaderRoute: typeof GroupsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/config/': {
@@ -544,27 +445,6 @@ declare module '@tanstack/react-router' {
       path: '/agents'
       fullPath: '/agents/'
       preLoaderRoute: typeof AgentsIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/profiles/$id': {
-      id: '/profiles/$id'
-      path: '/profiles/$id'
-      fullPath: '/profiles/$id'
-      preLoaderRoute: typeof ProfilesIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/profile-groups/$id': {
-      id: '/profile-groups/$id'
-      path: '/profile-groups/$id'
-      fullPath: '/profile-groups/$id'
-      preLoaderRoute: typeof ProfileGroupsIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/harnesses/$id': {
-      id: '/harnesses/$id'
-      path: '/harnesses/$id'
-      fullPath: '/harnesses/$id'
-      preLoaderRoute: typeof HarnessesIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/config/tokens': {
@@ -609,11 +489,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TemplatesAgentsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/groups/$id/': {
-      id: '/groups/$id/'
-      path: '/groups/$id'
-      fullPath: '/groups/$id/'
-      preLoaderRoute: typeof GroupsIdIndexRouteImport
+    '/teams/$id/': {
+      id: '/teams/$id/'
+      path: '/teams/$id'
+      fullPath: '/teams/$id/'
+      preLoaderRoute: typeof TeamsIdIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/agents/$id/': {
@@ -623,39 +503,39 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AgentsIdIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/groups/$id/policy': {
-      id: '/groups/$id/policy'
-      path: '/groups/$id/policy'
-      fullPath: '/groups/$id/policy'
-      preLoaderRoute: typeof GroupsIdPolicyRouteImport
+    '/teams/$id/policy': {
+      id: '/teams/$id/policy'
+      path: '/teams/$id/policy'
+      fullPath: '/teams/$id/policy'
+      preLoaderRoute: typeof TeamsIdPolicyRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/groups/$id/memory': {
-      id: '/groups/$id/memory'
-      path: '/groups/$id/memory'
-      fullPath: '/groups/$id/memory'
-      preLoaderRoute: typeof GroupsIdMemoryRouteImport
+    '/teams/$id/memory': {
+      id: '/teams/$id/memory'
+      path: '/teams/$id/memory'
+      fullPath: '/teams/$id/memory'
+      preLoaderRoute: typeof TeamsIdMemoryRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/groups/$id/members': {
-      id: '/groups/$id/members'
-      path: '/groups/$id/members'
-      fullPath: '/groups/$id/members'
-      preLoaderRoute: typeof GroupsIdMembersRouteImport
+    '/teams/$id/members': {
+      id: '/teams/$id/members'
+      path: '/teams/$id/members'
+      fullPath: '/teams/$id/members'
+      preLoaderRoute: typeof TeamsIdMembersRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/groups/$id/context': {
-      id: '/groups/$id/context'
-      path: '/groups/$id/context'
-      fullPath: '/groups/$id/context'
-      preLoaderRoute: typeof GroupsIdContextRouteImport
+    '/teams/$id/context': {
+      id: '/teams/$id/context'
+      path: '/teams/$id/context'
+      fullPath: '/teams/$id/context'
+      preLoaderRoute: typeof TeamsIdContextRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/groups/$id/activity': {
-      id: '/groups/$id/activity'
-      path: '/groups/$id/activity'
-      fullPath: '/groups/$id/activity'
-      preLoaderRoute: typeof GroupsIdActivityRouteImport
+    '/teams/$id/activity': {
+      id: '/teams/$id/activity'
+      path: '/teams/$id/activity'
+      fullPath: '/teams/$id/activity'
+      preLoaderRoute: typeof TeamsIdActivityRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/config/integrations/telegram': {
@@ -704,28 +584,22 @@ const rootRouteChildren: RootRouteChildren = {
   ConfigMcpRoute: ConfigMcpRoute,
   ConfigServicesRoute: ConfigServicesRoute,
   ConfigTokensRoute: ConfigTokensRoute,
-  HarnessesIdRoute: HarnessesIdRoute,
-  ProfileGroupsIdRoute: ProfileGroupsIdRoute,
-  ProfilesIdRoute: ProfilesIdRoute,
   AgentsIndexRoute: AgentsIndexRoute,
   ApprovalsIndexRoute: ApprovalsIndexRoute,
   ConfigIndexRoute: ConfigIndexRoute,
-  GroupsIndexRoute: GroupsIndexRoute,
-  HarnessesIndexRoute: HarnessesIndexRoute,
-  ProfileGroupsIndexRoute: ProfileGroupsIndexRoute,
-  ProfilesIndexRoute: ProfilesIndexRoute,
   SkillsIndexRoute: SkillsIndexRoute,
+  TeamsIndexRoute: TeamsIndexRoute,
   TemplatesIndexRoute: TemplatesIndexRoute,
   AgentsIdInboxRoute: AgentsIdInboxRoute,
   AgentsIdTriggersRoute: AgentsIdTriggersRoute,
   ConfigIntegrationsTelegramRoute: ConfigIntegrationsTelegramRoute,
-  GroupsIdActivityRoute: GroupsIdActivityRoute,
-  GroupsIdContextRoute: GroupsIdContextRoute,
-  GroupsIdMembersRoute: GroupsIdMembersRoute,
-  GroupsIdMemoryRoute: GroupsIdMemoryRoute,
-  GroupsIdPolicyRoute: GroupsIdPolicyRoute,
+  TeamsIdActivityRoute: TeamsIdActivityRoute,
+  TeamsIdContextRoute: TeamsIdContextRoute,
+  TeamsIdMembersRoute: TeamsIdMembersRoute,
+  TeamsIdMemoryRoute: TeamsIdMemoryRoute,
+  TeamsIdPolicyRoute: TeamsIdPolicyRoute,
   AgentsIdIndexRoute: AgentsIdIndexRoute,
-  GroupsIdIndexRoute: GroupsIdIndexRoute,
+  TeamsIdIndexRoute: TeamsIdIndexRoute,
   TemplatesAgentsIndexRoute: TemplatesAgentsIndexRoute,
   TemplatesTeamsIndexRoute: TemplatesTeamsIndexRoute,
   TemplatesAgentsIdIndexRoute: TemplatesAgentsIdIndexRoute,

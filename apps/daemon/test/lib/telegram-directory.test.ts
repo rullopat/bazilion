@@ -3,10 +3,10 @@
 import type { InlineKeyboardMarkup } from 'grammy/types'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { spawnAgent } from '../../src/core/agent/spawn.ts'
-import { registerGroup } from '../../src/core/group/register.ts'
 import { createProfile } from '../../src/core/profile/create.ts'
 import * as agentRepo from '../../src/core/repos/agents.ts'
 import { openConfig } from '../../src/core/repos/config.ts'
+import { registerTeam } from '../../src/core/team/register.ts'
 import {
   _resetDirectoryStateForTest,
   buildDirectoryBody,
@@ -66,7 +66,7 @@ beforeEach(() => {
   env = makeTestEnv()
   _resetDirectoryStateForTest()
   // Seed prerequisites so spawnAgent works.
-  registerGroup(env.db, { id: 'default', name: 'Default' }, env.paths)
+  registerTeam(env.db, { id: 'default', name: 'Default' }, env.paths)
   createProfile(env.db, env.paths, {
     id: 'base',
     defaultModel: 'anthropic:claude-opus-4-6',
@@ -88,15 +88,15 @@ describe('buildDirectoryBody', () => {
     expect(body).toContain('/spawn')
   })
 
-  test('lists agents grouped by group, with deep-link for bound ones', () => {
+  test('lists agents grouped by team, with deep-link for bound ones', () => {
     const bound = spawnAgent(env.db, env.paths, {
       profileId: 'base',
-      groupId: 'default',
+      teamId: 'default',
       name: 'researcher',
     })
     spawnAgent(env.db, env.paths, {
       profileId: 'base',
-      groupId: 'default',
+      teamId: 'default',
       name: 'wandering',
     })
     agentRepo.setTelegramTopicId(env.db, bound.id, 42)
@@ -111,11 +111,11 @@ describe('buildDirectoryBody', () => {
     expect(body).toContain('(unbound)')
   })
 
-  test('excludes groups with no non-archived agents', () => {
-    registerGroup(env.db, { id: 'g2', name: 'g2' }, env.paths)
+  test('excludes teams with no non-archived agents', () => {
+    registerTeam(env.db, { id: 'g2', name: 'g2' }, env.paths)
     spawnAgent(env.db, env.paths, {
       profileId: 'base',
-      groupId: 'default',
+      teamId: 'default',
       name: 'only-one',
     })
     const body = buildDirectoryBody(env.db, env.paths, CHAT_ID)

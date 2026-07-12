@@ -118,7 +118,7 @@ export function createBazilionCustomTools(opts: BazilionCustomToolsOpts): ToolDe
     handlers.push(...messagingTools(opts.messagingHost, opts.agent.agent.id))
   }
   if (opts.userMdHost) {
-    handlers.push(...userMdTools(opts.userMdHost, opts.agent.group.id))
+    handlers.push(...userMdTools(opts.userMdHost, opts.agent.team.id))
   }
   if (opts.browserHost) {
     handlers.push(...browserTools(opts.browserHost, opts.agent.agent.id))
@@ -127,7 +127,7 @@ export function createBazilionCustomTools(opts: BazilionCustomToolsOpts): ToolDe
     handlers.push(...mcpProxyTools(opts.mcpHost, opts.mcpTools))
   }
   if (opts.fileSink) {
-    handlers.push(deliverFileTool(opts.agent.group.path, opts.fileSink))
+    handlers.push(deliverFileTool(opts.agent.team.path, opts.fileSink))
   }
   return handlers.map(ourToolToPiTool)
 }

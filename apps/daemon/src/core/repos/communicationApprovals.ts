@@ -8,7 +8,7 @@ import type {
   CommunicationEndpoint,
 } from '@bazilion/api-types'
 import type { BazilionDb } from '../db/client.ts'
-import type { AuthorizationInput } from '../harness/authorization.ts'
+import type { AuthorizationInput } from '../team-policy/authorization.ts'
 
 const DEFAULT_TTL_MS = 24 * 60 * 60 * 1_000
 
@@ -22,8 +22,8 @@ interface RawApproval {
   source_id: string
   target_kind: CommunicationEndpoint['kind']
   target_id: string
-  source_group_id: string | null
-  target_group_id: string | null
+  source_team_id: string | null
+  target_team_id: string | null
   channel: CommunicationApproval['channel']
   origin: string
   requester: string
@@ -50,9 +50,9 @@ interface RawEvent {
   created_at: number
 }
 
-function endpoint(kind: CommunicationEndpoint['kind'], id: string, groupId: string | null) {
+function endpoint(kind: CommunicationEndpoint['kind'], id: string, teamId: string | null) {
   if (kind === 'agent') return { kind, id } as const
-  return { kind, groupId: groupId ?? '__missing__' } as const
+  return { kind, teamId: teamId ?? '__missing__' } as const
 }
 
 function toApproval(row: RawApproval): CommunicationApproval {
@@ -61,10 +61,10 @@ function toApproval(row: RawApproval): CommunicationApproval {
     attemptKind: row.attempt_kind,
     attemptId: row.attempt_id,
     operation: row.operation,
-    source: endpoint(row.source_kind, row.source_id, row.source_group_id),
-    target: endpoint(row.target_kind, row.target_id, row.target_group_id),
-    sourceGroupId: row.source_group_id,
-    targetGroupId: row.target_group_id,
+    source: endpoint(row.source_kind, row.source_id, row.source_team_id),
+    target: endpoint(row.target_kind, row.target_id, row.target_team_id),
+    sourceTeamId: row.source_team_id,
+    targetTeamId: row.target_team_id,
     channel: row.channel,
     origin: row.origin,
     requester: row.requester,
@@ -123,15 +123,15 @@ function appendEvent(
   )
 }
 
-function groups(db: BazilionDb, input: AuthorizationInput): [string | null, string | null] {
-  const group = (value: CommunicationEndpoint): string | null =>
+function teams(db: BazilionDb, input: AuthorizationInput): [string | null, string | null] {
+  const team = (value: CommunicationEndpoint): string | null =>
     value.kind === 'agent'
       ? (db.raw
-          .query<{ group_id: string }, [string]>('SELECT group_id FROM agents WHERE id = ?')
-          .get(value.id)?.group_id ?? null)
-      : value.groupId
-  const source = group(input.source) ?? group(input.target)
-  const target = group(input.target) ?? group(input.source)
+          .query<{ team_id: string }, [string]>('SELECT team_id FROM agents WHERE id = ?')
+          .get(value.id)?.team_id ?? null)
+      : value.teamId
+  const source = team(input.source) ?? team(input.target)
+  const target = team(input.target) ?? team(input.source)
   return [source, target]
 }
 
@@ -169,12 +169,12 @@ export function request(
         return toApproval(raw(db, existing.id) as RawApproval)
       }
       const id = randomUUID()
-      const [sourceGroup, targetGroup] = groups(db, input)
+      const [sourceGroup, targetGroup] = teams(db, input)
       const expiresAt = now + (options.ttlMs ?? DEFAULT_TTL_MS)
       db.raw.run(
         `INSERT INTO communication_approvals
          (id, attempt_kind, attempt_id, fingerprint, operation, source_kind, source_id,
-          target_kind, target_id, source_group_id, target_group_id, channel, origin,
+          target_kind, target_id, source_team_id, target_team_id, channel, origin,
           requester, policy_refs_json, required_edge_ids_json, payload_kind, payload_json,
           status, expires_at, decided_at, decided_by, decision_reason, delivery_error,
           created_at, updated_at)
@@ -266,7 +266,7 @@ function detailFromRow(db: BazilionDb, row: RawApproval): CommunicationApprovalD
 
 export function list(
   db: BazilionDb,
-  filters: { status?: CommunicationApprovalStatus; groupId?: string; limit?: number } = {},
+  filters: { status?: CommunicationApprovalStatus; teamId?: string; limit?: number } = {},
 ): CommunicationApproval[] {
   expirePending(db)
   const limit = Math.min(Math.max(filters.limit ?? 50, 1), 100)
@@ -274,15 +274,15 @@ export function list(
     .query<RawApproval, [string, string, string, string, string, number]>(
       `SELECT * FROM communication_approvals
        WHERE (? = '' OR status = ?)
-         AND (? = '' OR source_group_id = ? OR target_group_id = ?)
+         AND (? = '' OR source_team_id = ? OR target_team_id = ?)
        ORDER BY created_at DESC, id DESC LIMIT ?`,
     )
     .all(
       filters.status ?? '',
       filters.status ?? '',
-      filters.groupId ?? '',
-      filters.groupId ?? '',
-      filters.groupId ?? '',
+      filters.teamId ?? '',
+      filters.teamId ?? '',
+      filters.teamId ?? '',
       limit,
     )
     .map(toApproval)

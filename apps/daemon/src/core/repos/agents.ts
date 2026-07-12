@@ -15,7 +15,7 @@ interface RawAgent {
   reasoning_level: string
   status: string
   dir: string
-  group_id: string
+  team_id: string
   telegram_topic_id: number | null
   telegram_mirror_mode: string
   telegram_icon_emoji: string | null
@@ -32,7 +32,7 @@ function toAgent(r: RawAgent): Agent {
     reasoningLevel: r.reasoning_level as ReasoningLevel,
     status: r.status as AgentStatus,
     dir: r.dir,
-    groupId: r.group_id,
+    teamId: r.team_id,
     telegramTopicId: r.telegram_topic_id,
     telegramMirrorMode: (r.telegram_mirror_mode ?? 'minimal') as TelegramMirrorMode,
     telegramIconEmoji: r.telegram_icon_emoji ?? null,
@@ -60,7 +60,7 @@ export function insert(
   const now = Date.now()
   const mirrorMode = a.telegramMirrorMode ?? 'minimal'
   db.raw.run(
-    `INSERT INTO agents (id, profile_id, name, model_override, reasoning_level, status, dir, group_id, telegram_mirror_mode, created_at, archived_at)
+    `INSERT INTO agents (id, profile_id, name, model_override, reasoning_level, status, dir, team_id, telegram_mirror_mode, created_at, archived_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
     [
       a.id,
@@ -70,7 +70,7 @@ export function insert(
       a.reasoningLevel,
       a.status,
       a.dir,
-      a.groupId,
+      a.teamId,
       mirrorMode,
       now,
     ],
@@ -97,9 +97,9 @@ export function setName(db: BazilionDb, id: string, name: string): void {
   db.raw.run('UPDATE agents SET name = ? WHERE id = ?', [name, id])
 }
 
-/** Move the agent to a different group. The new group must exist. */
-export function setGroup(db: BazilionDb, id: string, groupId: string): void {
-  db.raw.run('UPDATE agents SET group_id = ? WHERE id = ?', [groupId, id])
+/** Move the agent to a different team. The new team must exist. */
+export function setGroup(db: BazilionDb, id: string, teamId: string): void {
+  db.raw.run('UPDATE agents SET team_id = ? WHERE id = ?', [teamId, id])
 }
 
 /**
@@ -156,15 +156,15 @@ export function countByProfile(db: BazilionDb, profileId: string): number {
 }
 
 /**
- * Count agents whose group_id matches. Blocks group deletion when > 0 (the
- * `agents.group_id` FK is `ON DELETE RESTRICT` — members must be moved or
- * archived before a group can go away).
+ * Count agents whose team_id matches. Blocks team deletion when > 0 (the
+ * `agents.team_id` FK is `ON DELETE RESTRICT` — members must be moved or
+ * archived before a team can go away).
  */
-export function countByGroup(db: BazilionDb, groupId: string): number {
+export function countByGroup(db: BazilionDb, teamId: string): number {
   return (
     db.raw
-      .query<{ c: number }, [string]>('SELECT COUNT(*) as c FROM agents WHERE group_id = ?')
-      .get(groupId)?.c ?? 0
+      .query<{ c: number }, [string]>('SELECT COUNT(*) as c FROM agents WHERE team_id = ?')
+      .get(teamId)?.c ?? 0
   )
 }
 
@@ -249,7 +249,7 @@ export function setTelegramIconEmoji(db: BazilionDb, agentId: string, emoji: str
 
 /**
  * All agents matching `name` (case-sensitive, exact). Returns the full set
- * so the caller can disambiguate across groups. The `/talk <name>` resolver
+ * so the caller can disambiguate across teams. The `/talk <name>` resolver
  * collapses to a single agent only when the result has length 1.
  */
 export function findByName(db: BazilionDb, name: string): Agent[] {
@@ -262,38 +262,38 @@ export function findByName(db: BazilionDb, name: string): Agent[] {
 }
 
 /**
- * Agent matching `name` within a specific group. Used to resolve the
- * qualified `/talk <group>/<name>` syntax. Null when nothing matches.
+ * Agent matching `name` within a specific team. Used to resolve the
+ * qualified `/talk <team>/<name>` syntax. Null when nothing matches.
  */
-export function findByNameInGroup(db: BazilionDb, groupId: string, name: string): Agent | null {
+export function findByNameInGroup(db: BazilionDb, teamId: string, name: string): Agent | null {
   const row = db.raw
     .query<RawAgent, [string, string]>(
-      "SELECT * FROM agents WHERE group_id = ? AND name = ? AND status != 'archived' LIMIT 1",
+      "SELECT * FROM agents WHERE team_id = ? AND name = ? AND status != 'archived' LIMIT 1",
     )
-    .get(groupId, name)
+    .get(teamId, name)
   return row ? toAgent(row) : null
 }
 
 /**
- * Bound, non-locked agent topics in a group. Drives topic-name propagation
- * when a group's `telegram_topic_name_format` changes
+ * Bound, non-locked agent topics in a team. Drives topic-name propagation
+ * when a team's `telegram_topic_name_format` changes
  * (lib/telegram/topic-rename.ts): only agents with a live topic that a human
  * hasn't manually renamed (`telegram_topic_name_locked = 0`) get re-rendered.
  * Archived agents are excluded — their topics keep whatever name they have.
  */
 export function listBoundUnlockedTopicsInGroup(
   db: BazilionDb,
-  groupId: string,
+  teamId: string,
 ): { agentId: string; name: string; topicId: number }[] {
   return db.raw
     .query<{ id: string; name: string; telegram_topic_id: number }, [string]>(
       `SELECT id, name, telegram_topic_id FROM agents
-       WHERE group_id = ?
+       WHERE team_id = ?
          AND telegram_topic_id IS NOT NULL
          AND telegram_topic_name_locked = 0
          AND status != 'archived'`,
     )
-    .all(groupId)
+    .all(teamId)
     .map((r) => ({ agentId: r.id, name: r.name, topicId: r.telegram_topic_id }))
 }
 

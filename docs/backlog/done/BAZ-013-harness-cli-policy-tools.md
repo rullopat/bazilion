@@ -1,15 +1,15 @@
 ---
 id: BAZ-013
-title: Harness CLI policy show, import/export, and block history
+title: TeamPolicy CLI policy show, import/export, and block history
 status: done
 size: M (~1 week)
 created: 2026-07-10
 refined: 2026-07-10
 priority: medium
-note: Typed CLI management over BAZ-010/011 Team-template and Group-policy APIs. Import is validated and revision-aware; it does not bypass runtime enforcement or create a detached live-harness identity.
+note: Typed CLI management over BAZ-010/011 Team-template and Team-policy APIs. Import is validated and revision-aware; it does not bypass runtime enforcement or create a detached live-teamPolicy identity.
 ---
 
-# BAZ-013 - Harness CLI policy show, import/export, and block history
+# BAZ-013 - TeamPolicy CLI policy show, import/export, and block history
 
 **Status:** Done.
 
@@ -17,23 +17,23 @@ note: Typed CLI management over BAZ-010/011 Team-template and Group-policy APIs.
 
 - **As an operator**, I want to inspect effective policy and recent denials from a terminal,
   so I can debug unattended or remote installs.
-- **As an operator managing repeatable setups**, I want canonical import/export, so harness
+- **As an operator managing repeatable setups**, I want canonical import/export, so teamPolicy
   templates can be reviewed and version controlled.
 - **As an automation author**, I want dry-run validation and stable exit codes, so scripts
   cannot apply malformed or stale policy silently.
 
 ## Goal
 
-Add typed CLI commands for Team templates, Group-owned live policy, canonical JSON
+Add typed CLI commands for Team templates, Team-owned live policy, canonical JSON
 import/export, evaluation, and block history using BAZ-015/011 production APIs. ADR 0001
 ownership is normative: there is one Team-template roster and one effective live policy per
-Group.
+Team.
 
 ## Scope
 
-- Add Team-template list/show/export/import commands over `/api/harness-templates`.
-- Add Group policy show/policy/diff commands addressed by Group id; do not add a separate
-  live-harness list or identity.
+- Add Team-template list/show/export/import commands over `/api/team-templates`.
+- Add Team policy show/policy/diff commands addressed by Team id; do not add a separate
+  live-teamPolicy list or identity.
 - Export a versioned canonical JSON document with stable slots and directed edges but no
   live agent secrets, paths, or local database ids that are not portable.
 - Validate imports client-side and server-side; support dry-run and print the resolved diff.
@@ -80,16 +80,16 @@ Group.
 - Added `bazilion team list|show|export|import` over canonical Team-template APIs. Export
   emits version-1 portable JSON with normalized stable slot references and directed edges;
   it excludes server slot UUIDs, credentials, paths, message bodies, and database-only ids.
-- Added `bazilion group policy show|export|import|diff|evaluate|blocks`, always addressed by
-  Group id. There is no detached live-harness list or identity.
-- Team and Group imports validate before mutation, print resolved roster/policy diffs, offer
+- Added `bazilion team policy show|export|import|diff|evaluate|blocks`, always addressed by
+  Team id. There is no detached live-teamPolicy list or identity.
+- Team and Team imports validate before mutation, print resolved roster/policy diffs, offer
   dry-run, require explicit `--apply`, and use optimistic revisions. Existing Team
-  replacement requires `--expected-revision`; Group documents carry their revision.
+  replacement requires `--expected-revision`; Team documents carry their revision.
   `--force` refetches, prints the fresh diff, requires
   `--confirm-current-revision <n>`, and submits that same revision, so a later race still
   returns 409.
 - Added client-side validation for document kind/version, endpoint kinds, missing and
-  duplicate slots, self edges, duplicate edges, reasoning/layout/display shapes, and Group
+  duplicate slots, self edges, duplicate edges, reasoning/layout/display shapes, and Team
   ownership. Canonical daemon validation remains the second gate.
 - Extended durable block history with source, target, channel, origin, reason, from/to,
   cursor, and limit filters. CLI evaluation calls the side-effect-free evaluator and sends

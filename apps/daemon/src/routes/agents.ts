@@ -1,6 +1,6 @@
-// /api/agents/* — agent CRUD + lifecycle + sub-resources (group, skills,
-// triggers, messages, sessions, chat). Memory is per-group and lives on
-// the groups router.
+// /api/agents/* — agent CRUD + lifecycle + sub-resources (team, skills,
+// triggers, messages, sessions, chat). Memory is per-team and lives on
+// the teams router.
 //
 // Sub-resources are inlined here rather than split across files because they
 // all share `/api/agents/:id/...` and benefit from being adjacent — e.g. the
@@ -37,13 +37,10 @@ import {
   archiveAgent,
   deleteAgent,
   discoverSkills,
-  groupRepo,
-  liveHarnessRepo,
   loadIdentityFromFile,
   mergeSecretsIntoEnv,
   messageRepo,
   moveAgentCanonical,
-  moveAgentCompatibility,
   parseSkillFile,
   profileRepo,
   providerStateRepo,
@@ -52,6 +49,8 @@ import {
   scanSkillContent,
   skillMetaRepo,
   spawnAgent,
+  teamPolicyRepo,
+  teamRepo,
   triggerRepo,
   unarchiveAgent,
 } from '../core/index.ts'
@@ -89,50 +88,44 @@ export const agentsRouter = new Hono()
 agentsRouter.post('/placement-preview', async (c) => {
   const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null
   const profileId = typeof body?.profileId === 'string' ? body.profileId : ''
-  const groupId = typeof body?.groupId === 'string' ? body.groupId : ''
-  const expectedRevision = body?.groupExpectedRevision
+  const teamId = typeof body?.teamId === 'string' ? body.teamId : ''
+  const expectedRevision = body?.teamExpectedRevision
   const placement = body?.placement
   if (
     !profileId ||
-    !groupId ||
+    !teamId ||
     typeof expectedRevision !== 'number' ||
     !Number.isInteger(expectedRevision) ||
     (placement !== 'isolated' && placement !== 'open' && placement !== 'profile_defaults')
   ) {
     return c.json(
-      { error: 'profileId, groupId, groupExpectedRevision, and placement are required' },
+      { error: 'profileId, teamId, teamExpectedRevision, and placement are required' },
       400,
     )
   }
   const { db, paths } = getCtx()
   const profile = profileRepo.get(db, profileId)
   if (!profile) return c.json({ error: `profile not found: ${profileId}` }, 404)
-  const group = groupRepo.get(db, groupId, paths)
-  const harness = liveHarnessRepo.get(db, groupId)
-  if (!group || !harness) return c.json({ error: `group not found: ${groupId}` }, 404)
-  if (harness.revision !== expectedRevision) {
+  const team = teamRepo.get(db, teamId, paths)
+  const teamPolicy = teamPolicyRepo.get(db, teamId)
+  if (!team || !teamPolicy) return c.json({ error: `team not found: ${teamId}` }, 404)
+  if (teamPolicy.revision !== expectedRevision) {
     return c.json(
       {
-        error: `group_revision_conflict: expected ${expectedRevision}, current ${harness.revision}`,
-        code: 'group_revision_conflict',
+        error: `team_revision_conflict: expected ${expectedRevision}, current ${teamPolicy.revision}`,
+        code: 'team_revision_conflict',
       },
       409,
     )
   }
   const symbolicId = 'new-agent'
   return c.json({
-    groupId,
-    currentRevision: harness.revision,
-    resultingRevision: harness.revision + 1,
+    teamId,
+    currentRevision: teamPolicy.revision,
+    resultingRevision: teamPolicy.revision + 1,
     symbolicAgentId: symbolicId,
-    existingEdges: liveHarnessRepo.edges(db, groupId),
-    addedEdges: liveHarnessRepo.placementEdgesPreview(
-      db,
-      groupId,
-      symbolicId,
-      placement,
-      profile.id,
-    ),
+    existingEdges: teamPolicyRepo.edges(db, teamId),
+    addedEdges: teamPolicyRepo.placementEdgesPreview(db, teamId, symbolicId, placement, profile.id),
   })
 })
 
@@ -196,26 +189,23 @@ agentsRouter.post('/', async (c) => {
       : typeof raw.modelOverride === 'string' && raw.modelOverride
         ? raw.modelOverride
         : undefined
-  const groupId =
-    typeof raw.groupId === 'string' && raw.groupId
-      ? raw.groupId
-      : typeof raw.group === 'string' && raw.group
-        ? (raw.group as string)
+  const teamId =
+    typeof raw.teamId === 'string' && raw.teamId
+      ? raw.teamId
+      : typeof raw.team === 'string' && raw.team
+        ? (raw.team as string)
         : undefined
-  const groupExpectedRevision =
-    typeof raw.groupExpectedRevision === 'number' && Number.isInteger(raw.groupExpectedRevision)
-      ? raw.groupExpectedRevision
+  const teamExpectedRevision =
+    typeof raw.teamExpectedRevision === 'number' && Number.isInteger(raw.teamExpectedRevision)
+      ? raw.teamExpectedRevision
       : undefined
   const placement =
     raw.placement === 'isolated' || raw.placement === 'open' || raw.placement === 'profile_defaults'
       ? raw.placement
       : undefined
-  if (
-    (Object.hasOwn(raw, 'groupExpectedRevision') || Object.hasOwn(raw, 'placement')) &&
-    (!groupExpectedRevision || !placement)
-  ) {
+  if (!teamId || !teamExpectedRevision || !placement) {
     return c.json(
-      { error: 'groupExpectedRevision and placement are required', code: 'placement_required' },
+      { error: 'teamExpectedRevision and placement are required', code: 'placement_required' },
       400,
     )
   }
@@ -234,30 +224,27 @@ agentsRouter.post('/', async (c) => {
       name,
       modelOverride: model,
       reasoningLevel,
-      groupId,
-      groupExpectedRevision,
+      teamId,
+      teamExpectedRevision,
       placement,
     })
     notifyDirectoryDirty()
-    if (groupExpectedRevision && placement) {
-      return c.json({ agent, group: liveHarnessRepo.detail(db, agent.groupId) }, 201)
-    }
-    return c.json(agent, 201)
+    return c.json({ agent, team: teamPolicyRepo.detail(db, agent.teamId) }, 201)
   } catch (err) {
     const message = (err as Error).message
     const conflict =
       message.startsWith('placement_required') ||
-      message.startsWith('group_policy_invalid') ||
-      message.startsWith('group_revision_conflict')
+      message.startsWith('team_policy_invalid') ||
+      message.startsWith('team_revision_conflict')
     return c.json(
       {
         error: message,
         ...(message.startsWith('placement_required')
           ? { code: 'placement_required' }
-          : message.startsWith('group_revision_conflict')
-            ? { code: 'group_revision_conflict' }
-            : message.startsWith('group_policy_invalid')
-              ? { code: 'group_policy_invalid' }
+          : message.startsWith('team_revision_conflict')
+            ? { code: 'team_revision_conflict' }
+            : message.startsWith('team_policy_invalid')
+              ? { code: 'team_policy_invalid' }
               : {}),
       },
       conflict ? 409 : 400,
@@ -339,15 +326,16 @@ agentsRouter.delete('/:id', async (c) => {
   const id = agentRepo.resolveId(db, c.req.param('id'))
   if (!id) return c.json({ error: `agent not found: ${c.req.param('id')}` }, 404)
   try {
-    const revisionParam = c.req.query('expectedGroupRevision')
-    const expectedGroupRevision = revisionParam ? Number.parseInt(revisionParam, 10) : undefined
+    const revisionParam = c.req.query('expectedTeamRevision')
+    const expectedTeamRevision = revisionParam ? Number.parseInt(revisionParam, 10) : undefined
     if (
-      revisionParam &&
-      (!Number.isInteger(expectedGroupRevision) || (expectedGroupRevision ?? 0) < 1)
+      !revisionParam ||
+      !Number.isInteger(expectedTeamRevision) ||
+      (expectedTeamRevision ?? 0) < 1
     ) {
-      return c.json({ error: 'expectedGroupRevision must be a positive integer' }, 400)
+      return c.json({ error: 'expectedTeamRevision must be a positive integer' }, 400)
     }
-    await runAgentLifecycleMutation(id, () => deleteAgent(db, id, expectedGroupRevision))
+    await runAgentLifecycleMutation(id, () => deleteAgent(db, id, expectedTeamRevision as number))
     // Best-effort teardown after the mutation wins the lifecycle lease. An
     // active-turn rejection must not close resources owned by that turn.
     void closeBrowserSession(id).catch(() => {})
@@ -362,16 +350,16 @@ agentsRouter.delete('/:id', async (c) => {
           ? { code: 'agent_turn_active' }
           : message.startsWith('placement_required')
             ? { code: 'revision_required' }
-            : message.startsWith('group_revision_conflict')
-              ? { code: 'group_revision_conflict' }
-              : message.startsWith('group_policy_invalid')
-                ? { code: 'group_policy_invalid' }
+            : message.startsWith('team_revision_conflict')
+              ? { code: 'team_revision_conflict' }
+              : message.startsWith('team_policy_invalid')
+                ? { code: 'team_policy_invalid' }
                 : {}),
       },
       message.startsWith('agent_turn_active') ||
         message.startsWith('placement_required') ||
-        message.startsWith('group_revision_conflict') ||
-        message.startsWith('group_policy_invalid')
+        message.startsWith('team_revision_conflict') ||
+        message.startsWith('team_policy_invalid')
         ? 409
         : 400,
     )
@@ -452,7 +440,7 @@ agentsRouter.post('/:id/telegram/bind', async (c) => {
   })
   if (result.kind === 'agent-not-found')
     return c.json({ error: `agent not found: ${resolvedId}` }, 404)
-  if (result.kind === 'group-not-found') return c.json({ error: `group not found for agent` }, 500)
+  if (result.kind === 'team-not-found') return c.json({ error: `team not found for agent` }, 500)
   // notifyDirectoryDirty is already called inside ensureAgentTopic.
   const agent = agentRepo.get(db, resolvedId)
   return c.json({
@@ -472,16 +460,16 @@ agentsRouter.delete('/:id/telegram/binding', (c) => {
   return c.body(null, 204)
 })
 
-// ─── Group move ──────────────────────────────────────────────────────────
+// ─── Team move ──────────────────────────────────────────────────────────
 
-agentsRouter.post('/:id/group/preview', async (c) => {
+agentsRouter.post('/:id/team/preview', async (c) => {
   const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null
-  const destinationGroupId = typeof body?.groupId === 'string' ? body.groupId : ''
+  const destinationTeamId = typeof body?.teamId === 'string' ? body.teamId : ''
   const sourceExpectedRevision = body?.sourceExpectedRevision
   const destinationExpectedRevision = body?.destinationExpectedRevision
   const placement = body?.placement
   if (
-    !destinationGroupId ||
+    !destinationTeamId ||
     typeof sourceExpectedRevision !== 'number' ||
     !Number.isInteger(sourceExpectedRevision) ||
     typeof destinationExpectedRevision !== 'number' ||
@@ -491,7 +479,7 @@ agentsRouter.post('/:id/group/preview', async (c) => {
     return c.json(
       {
         error:
-          'groupId, sourceExpectedRevision, destinationExpectedRevision, and placement are required',
+          'teamId, sourceExpectedRevision, destinationExpectedRevision, and placement are required',
       },
       400,
     )
@@ -503,16 +491,16 @@ agentsRouter.post('/:id/group/preview', async (c) => {
   } catch {
     return c.json({ error: `agent not found: ${c.req.param('id')}` }, 404)
   }
-  const source = liveHarnessRepo.get(db, resolved.group.id)
-  const destination = liveHarnessRepo.get(db, destinationGroupId)
-  if (!destination || !groupRepo.get(db, destinationGroupId, paths)) {
-    return c.json({ error: `group not found: ${destinationGroupId}` }, 404)
+  const source = teamPolicyRepo.get(db, resolved.team.id)
+  const destination = teamPolicyRepo.get(db, destinationTeamId)
+  if (!destination || !teamRepo.get(db, destinationTeamId, paths)) {
+    return c.json({ error: `team not found: ${destinationTeamId}` }, 404)
   }
   if (!source || source.revision !== sourceExpectedRevision) {
     return c.json(
       {
-        error: `source_group_revision_conflict: expected ${sourceExpectedRevision}, current ${source?.revision ?? 'missing'}`,
-        code: 'source_group_revision_conflict',
+        error: `source_team_revision_conflict: expected ${sourceExpectedRevision}, current ${source?.revision ?? 'missing'}`,
+        code: 'source_team_revision_conflict',
       },
       409,
     )
@@ -520,20 +508,20 @@ agentsRouter.post('/:id/group/preview', async (c) => {
   if (destination.revision !== destinationExpectedRevision) {
     return c.json(
       {
-        error: `destination_group_revision_conflict: expected ${destinationExpectedRevision}, current ${destination.revision}`,
-        code: 'destination_group_revision_conflict',
+        error: `destination_team_revision_conflict: expected ${destinationExpectedRevision}, current ${destination.revision}`,
+        code: 'destination_team_revision_conflict',
       },
       409,
     )
   }
-  const sourceEdges = liveHarnessRepo.edges(db, resolved.group.id)
+  const sourceEdges = teamPolicyRepo.edges(db, resolved.team.id)
   const removedEdges = sourceEdges.filter(
     (edge) => edge.sourceId === resolved.agent.id || edge.targetId === resolved.agent.id,
   )
-  const destinationEdges = liveHarnessRepo.edges(db, destinationGroupId)
-  const addedEdges = liveHarnessRepo.placementEdgesPreview(
+  const destinationEdges = teamPolicyRepo.edges(db, destinationTeamId)
+  const addedEdges = teamPolicyRepo.placementEdgesPreview(
     db,
-    destinationGroupId,
+    destinationTeamId,
     resolved.agent.id,
     placement,
     resolved.agent.profileId,
@@ -541,14 +529,14 @@ agentsRouter.post('/:id/group/preview', async (c) => {
   return c.json({
     agentId: resolved.agent.id,
     source: {
-      groupId: resolved.group.id,
+      teamId: resolved.team.id,
       currentRevision: source.revision,
       resultingRevision: source.revision + 1,
       retainedEdges: sourceEdges.filter((edge) => !removedEdges.includes(edge)),
       removedEdges,
     },
     destination: {
-      groupId: destinationGroupId,
+      teamId: destinationTeamId,
       currentRevision: destination.revision,
       resultingRevision: destination.revision + 1,
       existingEdges: destinationEdges,
@@ -558,12 +546,12 @@ agentsRouter.post('/:id/group/preview', async (c) => {
   })
 })
 
-agentsRouter.patch('/:id/group', async (c) => {
+agentsRouter.patch('/:id/team', async (c) => {
   const body = (await c.req.json().catch(() => null)) as
     | (MoveAgentRequest & Record<string, unknown>)
     | null
-  if (!body || typeof body.groupId !== 'string' || !body.groupId) {
-    return c.json({ error: 'groupId (string) is required' }, 400)
+  if (!body || typeof body.teamId !== 'string' || !body.teamId) {
+    return c.json({ error: 'teamId (string) is required' }, 400)
   }
   const { db, paths, authToken } = getCtx()
   let resolved: ReturnType<typeof resolveAgent>
@@ -572,63 +560,49 @@ agentsRouter.patch('/:id/group', async (c) => {
   } catch {
     return c.json({ error: `agent not found: ${c.req.param('id')}` }, 404)
   }
-  if (!groupRepo.get(db, body.groupId, paths)) {
-    return c.json({ error: `group not found: ${body.groupId}` }, 404)
+  if (!teamRepo.get(db, body.teamId, paths)) {
+    return c.json({ error: `team not found: ${body.teamId}` }, 404)
   }
-  const canonical =
-    Object.hasOwn(body, 'sourceExpectedRevision') ||
-    Object.hasOwn(body, 'destinationExpectedRevision') ||
-    Object.hasOwn(body, 'placement')
   try {
-    if (canonical) {
-      const sourceExpectedRevision = body.sourceExpectedRevision
-      const destinationExpectedRevision = body.destinationExpectedRevision
-      const placement = body.placement
-      if (
-        typeof sourceExpectedRevision !== 'number' ||
-        !Number.isInteger(sourceExpectedRevision) ||
-        typeof destinationExpectedRevision !== 'number' ||
-        !Number.isInteger(destinationExpectedRevision) ||
-        (placement !== 'isolated' && placement !== 'open' && placement !== 'profile_defaults')
-      ) {
-        return c.json(
-          {
-            error:
-              'sourceExpectedRevision, destinationExpectedRevision, and placement are required',
-            code: 'placement_required',
-          },
-          400,
-        )
-      }
-      await runAgentLifecycleMutation(resolved.agent.id, () =>
-        moveAgentCanonical(db, paths, resolved.agent.id, {
-          destinationGroupId: body.groupId,
-          sourceExpectedRevision,
-          destinationExpectedRevision,
-          placement,
-        }),
-      )
-    } else {
-      await runAgentLifecycleMutation(resolved.agent.id, () =>
-        moveAgentCompatibility(db, paths, resolved.agent.id, body.groupId),
+    const sourceExpectedRevision = body.sourceExpectedRevision
+    const destinationExpectedRevision = body.destinationExpectedRevision
+    const placement = body.placement
+    if (
+      typeof sourceExpectedRevision !== 'number' ||
+      !Number.isInteger(sourceExpectedRevision) ||
+      typeof destinationExpectedRevision !== 'number' ||
+      !Number.isInteger(destinationExpectedRevision) ||
+      (placement !== 'isolated' && placement !== 'open' && placement !== 'profile_defaults')
+    ) {
+      return c.json(
+        {
+          error: 'sourceExpectedRevision, destinationExpectedRevision, and placement are required',
+          code: 'placement_required',
+        },
+        400,
       )
     }
+    await runAgentLifecycleMutation(resolved.agent.id, () =>
+      moveAgentCanonical(db, paths, resolved.agent.id, {
+        destinationTeamId: body.teamId,
+        sourceExpectedRevision,
+        destinationExpectedRevision,
+        placement,
+      }),
+    )
     notifyDirectoryDirty()
-    if (canonical) {
-      return c.json({
-        agent: resolveAgent(db, paths, resolved.agent.id),
-        sourceGroup: liveHarnessRepo.detail(db, resolved.group.id),
-        destinationGroup: liveHarnessRepo.detail(db, body.groupId),
-      })
-    }
-    return c.json(resolveAgent(db, paths, resolved.agent.id))
+    return c.json({
+      agent: resolveAgent(db, paths, resolved.agent.id),
+      sourceTeam: teamPolicyRepo.detail(db, resolved.team.id),
+      destinationTeam: teamPolicyRepo.detail(db, body.teamId),
+    })
   } catch (err) {
     const message = (err as Error).message
     const conflict =
       message.startsWith('agent_turn_active') ||
       message.startsWith('placement_required') ||
-      message.startsWith('group_policy_invalid') ||
-      message.includes('group_revision_conflict')
+      message.startsWith('team_policy_invalid') ||
+      message.includes('team_revision_conflict')
     return c.json(
       {
         error: message,
@@ -636,10 +610,10 @@ agentsRouter.patch('/:id/group', async (c) => {
           ? { code: 'agent_turn_active' }
           : message.startsWith('placement_required')
             ? { code: 'placement_required' }
-            : message.includes('group_revision_conflict')
+            : message.includes('team_revision_conflict')
               ? { code: message.split(':')[0] }
-              : message.startsWith('group_policy_invalid')
-                ? { code: 'group_policy_invalid' }
+              : message.startsWith('team_policy_invalid')
+                ? { code: 'team_policy_invalid' }
                 : {}),
       },
       conflict ? 409 : 400,
@@ -1018,7 +992,7 @@ agentsRouter.post('/:id/chat/compact', async (c) => {
   if (!agentRepo.get(db, id)) return c.json({ error: 'agent not found' }, 404)
 
   const resolved = resolveAgent(db, paths, id)
-  const memory = qmdBackend(join(resolved.group.path, 'memory'))
+  const memory = qmdBackend(join(resolved.team.path, 'memory'))
   await memory.init()
   const env = mergeSecretsIntoEnv(db, authToken)
 
@@ -1089,23 +1063,23 @@ agentsRouter.get('/:id/chat/context', async (c) => {
       ? `# Available Skills\n\nYou have access to the following skills: ${resolved.skills.join(', ')}.`
           .length
       : 0
-  const groupLines = [
-    '# Group',
+  const teamLines = [
+    '# Team',
     '',
-    `- ${resolved.group.id} (${resolved.group.name}): ${resolved.group.path}`,
+    `- ${resolved.team.id} (${resolved.team.name}): ${resolved.team.path}`,
     '',
-    'Your group is where work product lives — code, docs, artefacts, shared scratch. It may be shared with other agents in the same group. Your coding tools (`read`, `bash`, `edit`, `write`, `grep`, `find`, `ls`) are rooted at the group directory. Never use these tools to edit your identity/soul/behaviour files — those live in your home and are reached via `home_write` / `home_read`.',
+    'Your team is where work product lives — code, docs, artefacts, shared scratch. It may be shared with other agents in the same team. Your coding tools (`read`, `bash`, `edit`, `write`, `grep`, `find`, `ls`) are rooted at the team directory. Never use these tools to edit your identity/soul/behaviour files — those live in your home and are reached via `home_write` / `home_read`.',
   ]
-  const groupListChars = groupLines.join('\n').length
-  const userMdChars = resolved.group.userMd.trim()
-    ? `# About the User\n\nRead-only context about the human you're working with in this group. You cannot edit this — if it's wrong, say so and they will update it.\n\n${resolved.group.userMd.trim()}`
+  const teamListChars = teamLines.join('\n').length
+  const userMdChars = resolved.team.userMd.trim()
+    ? `# About the User\n\nRead-only context about the human you're working with in this team. You cannot edit this — if it's wrong, say so and they will update it.\n\n${resolved.team.userMd.trim()}`
         .length
     : 0
   const memoryHintChars =
     '# Memory\n\nYou have a persistent memory backend. Use `memory_write` to remember things across sessions, and `memory_search` / `memory_read` / `memory_list` to recall them. Always check memory at the start of a session if the user might have told you something important before.'
       .length
 
-  const memory = qmdBackend(join(resolved.group.path, 'memory'))
+  const memory = qmdBackend(join(resolved.team.path, 'memory'))
   await memory.init()
   const env = mergeSecretsIntoEnv(db, authToken)
   const apiKeyResolution = await resolveAgentApiKey(db, authToken, resolved, {
@@ -1155,11 +1129,11 @@ agentsRouter.get('/:id/chat/context', async (c) => {
     }
     skillEntries.sort((a, b) => b.blockChars - a.blockChars)
 
-    const group: ContextGroupEntry = {
-      id: resolved.group.id,
-      name: resolved.group.name,
-      path: resolved.group.path,
-      userMdChars: resolved.group.userMd.length,
+    const team: ContextGroupEntry = {
+      id: resolved.team.id,
+      name: resolved.team.name,
+      path: resolved.team.path,
+      userMdChars: resolved.team.userMd.length,
     }
 
     const stats = handle.session.getSessionStats()
@@ -1185,7 +1159,7 @@ agentsRouter.get('/:id/chat/context', async (c) => {
         tokens: estimateTokens(systemPromptChars),
         files,
         skillsListChars,
-        groupListChars,
+        teamListChars,
         userMdChars,
         memoryHintChars,
       },
@@ -1199,7 +1173,7 @@ agentsRouter.get('/:id/chat/context', async (c) => {
         count: resolved.skills.length,
         entries: skillEntriesOut,
       },
-      group,
+      team,
       history: {
         messageEntries,
         compactionEntries,
@@ -1257,7 +1231,7 @@ agentsRouter.post('/:id/chat/truncate', async (c) => {
   if (!agentRepo.get(db, id)) return c.json({ error: 'agent not found' }, 404)
 
   const resolved = resolveAgent(db, paths, id)
-  const memory = qmdBackend(join(resolved.group.path, 'memory'))
+  const memory = qmdBackend(join(resolved.team.path, 'memory'))
   await memory.init()
   const env = mergeSecretsIntoEnv(db, authToken)
 

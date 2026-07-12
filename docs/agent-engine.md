@@ -6,7 +6,7 @@ Engineer-to-engineer walkthrough of how a chat turn actually runs, end to end.
 > [pi-coding-agent](https://www.npmjs.com/package/@earendil-works/pi-coding-agent).
 > Pi owns the per-turn session loop, transcript storage, replay, compaction,
 > tool execution, provider retries, and the coding tools. Bazilion provides
-> profiles, groups, skills, messaging, memory, the scheduler, the HTTP API
+> profiles, teams, skills, messaging, memory, the scheduler, the HTTP API
 > (`apps/daemon`), the web UI (`apps/web`), and a thin bridge
 > (`apps/daemon/src/runtime/pi/*`) that glues them together. The on-disk JSONL
 > session file under `~/.bazilion/agents/<id>/sessions/` is the canonical
@@ -17,7 +17,7 @@ Engineer-to-engineer walkthrough of how a chat turn actually runs, end to end.
 
 A chat turn starts at `POST /api/agents/:id/chat` (the daemon at `apps/daemon`). The route hands off to `apps/daemon/src/lib/agent-turn.ts:runAgentTurn`, which is a thin relay (~30 lines). It:
 
-1. Resolves the agent (`resolveAgent(db, paths, id)`) — joins agent + profile + group + skills.
+1. Resolves the agent (`resolveAgent(db, paths, id)`) — joins agent + profile + team + skills.
 2. Reads the enabled-provider set (`providerStateRepo.listEnabled(db)`).
 3. Computes the merged env (`mergeSecretsIntoEnv(db, authToken)` — `process.env > secrets table > config table`).
 4. Pre-fetches the API key via `apps/daemon/src/lib/api-key.ts:resolveAgentApiKey(db, authToken, agent)` — a no-op for env-key providers; for `openai-codex` it pulls the OAuth access token out of the secrets table. Throws a friendly "not connected" error here if the user hasn't done the OAuth flow.
@@ -55,7 +55,7 @@ process.on('SIGTERM' / 'SIGINT', onSignal)            // installed FIRST so a si
                                                       // emits a synthetic 'cancelled' event + exits 0
 const {agent, message, enabledProviders, apiKey} = await readInput()
 paths = resolvePaths()                                // BAZILION_HOME from env, no DB access
-memory = qmdBackend(join(agent.group.path, 'memory')) // GROUP-shared store, not per-agent
+memory = qmdBackend(join(agent.team.path, 'memory')) // Team-shared store, not per-agent
                                                       // BM25 index via @tobilu/qmd
 messagingHost = createIpcMessagingHost()              // process.send/on('message') wrapper
 session = createBazilionSession({
@@ -71,7 +71,7 @@ abortSession = () => void session.abort()
 
 `createBazilionSession` (in `apps/daemon/src/runtime/pi/session.ts`) is the integration seam where Bazilion hands control to Pi's agent engine. It instantiates pi-coding-agent's `AgentSession` with:
 - A `SessionManager` rooted at `~/.bazilion/agents/<id>/sessions/` — pi owns the JSONL transcript, compaction, and replay. Resume-or-create: the worker walks the session dir for the newest `.jsonl`, opens it if found, otherwise creates a fresh session.
-- Pi's own `createCodingTools(cwd)` where `cwd = group.path` — that's where `read`/`bash`/`edit`/`write`/`grep`/`find`/`ls` come from.
+- Pi's own `createCodingTools(cwd)` where `cwd = team.path` — that's where `read`/`bash`/`edit`/`write`/`grep`/`find`/`ls` come from.
 - Bazilion's custom tool list via `createBazilionCustomTools` (memory_*, home_*, web_*, bootstrap_done, optional messaging via the `messagingHost`) — see `apps/daemon/src/runtime/pi/tools.ts`.
 - The provider/model pair from the registry, with `apiKey` (caller-supplied for OAuth providers, env-derived for API-key ones), plus the agent's `reasoning_level`.
 
@@ -88,13 +88,13 @@ After the turn finishes (or aborts), the worker calls `process.disconnect()` in 
 
 Those were copied out of the profile at spawn time (`core/agent/spawn.ts`) so an agent can diverge from its profile. If `BOOTSTRAP.md` exists a nudge is appended telling the model to call `bootstrap_done` (which deletes the file) once it's done onboarding.
 
-Then three group-related blocks are appended (when applicable):
+Then three team-related blocks are appended (when applicable):
 
-- **`# Agent Home`** — describes the agent's private home (`agents/<id>/`) and points the model at `home_read` / `home_write` / `home_list` for self-edits and at `memory_write` for things-to-remember-later. Frames the distinction between "who I am" (home) and "what I produce" (group dir).
-- **`# Group`** — `- <id> (<name>): <path>`. Reminds the model that its `read`/`bash`/`edit`/`write`/`grep`/`find`/`ls` tools are rooted at the group directory, that the group may be shared with other agents, and that it must use `home_*` (not these tools) to edit its own identity files.
-- **`# About the User`** — only when `groups.user_md` is non-empty. Read-only context block about the human; the agent is told it can't edit it directly.
+- **`# Agent Home`** — describes the agent's private home (`agents/<id>/`) and points the model at `home_read` / `home_write` / `home_list` for self-edits and at `memory_write` for things-to-remember-later. Frames the distinction between "who I am" (home) and "what I produce" (team dir).
+- **`# Team`** — `- <id> (<name>): <path>`. Reminds the model that its `read`/`bash`/`edit`/`write`/`grep`/`find`/`ls` tools are rooted at the team directory, that the team may be shared with other agents, and that it must use `home_*` (not these tools) to edit its own identity files.
+- **`# About the User`** — only when `teams.user_md` is non-empty. Read-only context block about the human; the agent is told it can't edit it directly.
 
-Finally appends: the list of attached skills (each skill's SKILL.md body is injected into the prompt), and a memory blurb explaining the **group-shared** scope: "You share a persistent memory backend with every other agent in this group. Use `memory_write` for project knowledge — codebase notes, decisions, things the user told you about the work. For personal notes about yourself (preferences, persona quirks), use `home_write` on IDENTITY.md instead."
+Finally appends: the list of attached skills (each skill's SKILL.md body is injected into the prompt), and a memory blurb explaining the **team-shared** scope: "You share a persistent memory backend with every other agent in this team. Use `memory_write` for project knowledge — codebase notes, decisions, things the user told you about the work. For personal notes about yourself (preferences, persona quirks), use `home_write` on IDENTITY.md instead."
 
 ## 4. The turn loop
 
@@ -132,9 +132,9 @@ On replay, pi turns the compaction marker into a synthetic `assistant` message p
 
 CLI: `bazilion agent chat-compact <id> [--keep-tail N] [--instructions "..."]`.
 
-**`/context`** (GET `/api/agents/:id/chat/context`) returns a `ChatContextResponse`: per-file system-prompt contribution, tool count + total schema JSON chars + per-tool schema/description/param-count, skill list + per-skill block size, the agent's group block + USER.md size, history breakdown (message entries / compaction entries / chars / bytes / token estimate), and a `totals` line summing system prompt + tool schemas + history.
+**`/context`** (GET `/api/agents/:id/chat/context`) returns a `ChatContextResponse`: per-file system-prompt contribution, tool count + total schema JSON chars + per-tool schema/description/param-count, skill list + per-skill block size, the agent's team block + USER.md size, history breakdown (message entries / compaction entries / chars / bytes / token estimate), and a `totals` line summing system prompt + tool schemas + history.
 
-Implementation: calls `buildSystemPrompt(resolved)` for the total, re-renders the skills/group subsections inline for subsection sizes, opens `createBazilionSession` to enumerate tools and read pi's session stats. `?detail=1` (or `--json` on the CLI) emits the full `entries` arrays; default truncates to top 30.
+Implementation: calls `buildSystemPrompt(resolved)` for the total, re-renders the skills/team subsections inline for subsection sizes, opens `createBazilionSession` to enumerate tools and read pi's session stats. `?detail=1` (or `--json` on the CLI) emits the full `entries` arrays; default truncates to top 30.
 
 **`/reset`** drops the agent's session(s) so the next turn starts with an empty transcript. Endpoint: `POST /api/agents/:id/chat/reset`; CLI: `bazilion agent chat-reset <id>`; web slash: `/reset`.
 
@@ -163,7 +163,7 @@ Message conversion: `system` is passed separately (pi keeps it out of the messag
 
 `createBazilionCustomTools` (`apps/daemon/src/runtime/pi/tools.ts`) composes the Bazilion-specific tool list and adapts each `ToolHandler` to pi's `ToolDefinition`:
 
-- `memory_{write,read,search,list}` — qmd BM25 over markdown files in `<group.path>/memory/`. The store is **shared by every agent in the group** — descriptions explicitly say so and direct personal notes to `home_write IDENTITY.md` instead.
+- `memory_{write,read,search,list}` — qmd BM25 over markdown files in `<team.path>/memory/`. The store is **shared by every agent in the team** — descriptions explicitly say so and direct personal notes to `home_write IDENTITY.md` instead.
 - `home_{read,write,list}` — scope = `<agentDir>/`, hard whitelist of identity files (`SOUL.md`, `IDENTITY.md`, `BOOTSTRAP.md`, `AGENTS.md`, `TOOLS.md`, `HEARTBEAT.md`). No path arg, no traversal. `BOOTSTRAP.md` is read-only — `bootstrap_done` owns its lifecycle.
 - `web_search` + `web_fetch` — SSRF-guarded, Readability + markdown, 15-min LRU cache, UA spoof, 20s timeout, 3 max redirects.
 - `bootstrap_done` — deletes `BOOTSTRAP.md` after onboarding.
@@ -182,7 +182,7 @@ Message conversion: `system` is passed separately (pi keeps it out of the messag
 
   Worker-side (`createIpcMessagingHost` in `worker/entry.ts`): each method serializes args, sends `process.send({type:'rpc', id, method, args})`, awaits the matching `rpc-reply` (correlation by `id`). Daemon-side (`createDbMessagingHost` in `daemon/src/lib/messaging-host.ts`): passes through to `messageRepo` / `agentRepo`. The daemon's `spawnWorkerTurn` wires the dispatcher: `child.on('message')` → match the request to a `MessagingHost` method → reply.
 
-File-IO tools — `read`, `bash`, `edit`, `write`, `grep`, `find`, `ls` — come from pi-coding-agent's own `createCodingTools(cwd, …)`. The `cwd` is the agent's group directory; that's how the model gets a single rooted view of work product without the legacy workspace-mount juggling.
+File-IO tools — `read`, `bash`, `edit`, `write`, `grep`, `find`, `ls` — come from pi-coding-agent's own `createCodingTools(cwd, …)`. The `cwd` is the agent's team directory; that's how the model gets a single rooted view of work product without the legacy workspace-mount juggling.
 
 ## 7. Cancellation end-to-end
 

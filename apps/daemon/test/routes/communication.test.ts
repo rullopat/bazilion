@@ -11,11 +11,11 @@ let oldGate: string | undefined
 beforeEach(() => {
   oldHome = process.env.BAZILION_HOME
   oldScheduler = process.env.BAZILION_SCHEDULER
-  oldGate = process.env.BAZILION_HARNESS_ENFORCEMENT
+  oldGate = process.env.BAZILION_TEAM_POLICY_ENFORCEMENT
   home = mkdtempSync(join(tmpdir(), 'bazilion-communication-route-'))
   process.env.BAZILION_HOME = home
   process.env.BAZILION_SCHEDULER = 'off'
-  process.env.BAZILION_HARNESS_ENFORCEMENT = 'off'
+  process.env.BAZILION_TEAM_POLICY_ENFORCEMENT = 'off'
   vi.resetModules()
 })
 
@@ -27,26 +27,26 @@ afterEach(async () => {
   else process.env.BAZILION_HOME = oldHome
   if (oldScheduler === undefined) delete process.env.BAZILION_SCHEDULER
   else process.env.BAZILION_SCHEDULER = oldScheduler
-  if (oldGate === undefined) delete process.env.BAZILION_HARNESS_ENFORCEMENT
-  else process.env.BAZILION_HARNESS_ENFORCEMENT = oldGate
+  if (oldGate === undefined) delete process.env.BAZILION_TEAM_POLICY_ENFORCEMENT
+  else process.env.BAZILION_TEAM_POLICY_ENFORCEMENT = oldGate
   rmSync(home, { recursive: true, force: true })
   vi.resetModules()
 })
 
 test('authenticated evaluator is side-effect free and block history is filtered and cursor paginated', async () => {
   const { createApp } = await import('../../src/app.ts')
-  const { createProfile, providerModelRepo, providerStateRepo, registerGroup, spawnAgent } =
+  const { createProfile, providerModelRepo, providerStateRepo, registerTeam, spawnAgent } =
     await import('../../src/core/index.ts')
   const { getCtx } = await import('../../src/lib/ctx.ts')
   const ctx = getCtx()
-  process.env.BAZILION_HARNESS_ENFORCEMENT = 'on'
+  process.env.BAZILION_TEAM_POLICY_ENFORCEMENT = 'on'
   providerStateRepo.setEnabled(ctx.db, 'lmstudio', true)
   providerModelRepo.replace(ctx.db, 'lmstudio', ['model'])
   createProfile(ctx.db, ctx.paths, { id: 'p', defaultModel: 'm' })
-  registerGroup(ctx.db, { id: 'default' }, ctx.paths)
-  const a = spawnAgent(ctx.db, ctx.paths, { profileId: 'p', groupId: 'default' })
-  const b = spawnAgent(ctx.db, ctx.paths, { profileId: 'p', groupId: 'default' })
-  ctx.db.raw.run('DELETE FROM live_harness_edges WHERE group_id = ?', ['default'])
+  registerTeam(ctx.db, { id: 'default' }, ctx.paths)
+  const a = spawnAgent(ctx.db, ctx.paths, { profileId: 'p', teamId: 'default' })
+  const b = spawnAgent(ctx.db, ctx.paths, { profileId: 'p', teamId: 'default' })
+  ctx.db.raw.run('DELETE FROM team_policy_edges WHERE team_id = ?', ['default'])
   const app = createApp()
   const auth = { authorization: `Bearer ${ctx.authToken}`, 'content-type': 'application/json' }
 
@@ -74,8 +74,9 @@ test('authenticated evaluator is side-effect free and block history is filtered 
   expect(evaluated.status).toBe(200)
   expect(await evaluated.json()).toMatchObject({ decision: 'deny', reasonCode: 'no_allow_edge' })
   expect(
-    ctx.db.raw.query<{ count: number }, []>('SELECT COUNT(*) count FROM harness_block_events').get()
-      ?.count,
+    ctx.db.raw
+      .query<{ count: number }, []>('SELECT COUNT(*) count FROM team_policy_block_events')
+      .get()?.count,
   ).toBe(0)
 
   const deniedChat = await app.request(`/api/agents/${b.id}/chat`, {
@@ -112,7 +113,7 @@ test('authenticated evaluator is side-effect free and block history is filtered 
       attemptId: id,
     })
   }
-  const page1 = await app.request('/api/groups/default/harness/blocks?limit=1', { headers: auth })
+  const page1 = await app.request('/api/teams/default/policy/blocks?limit=1', { headers: auth })
   expect(page1.status).toBe(200)
   const first = (await page1.json()) as {
     blocks: Array<{ reason_code: string; origin: string }>
@@ -125,27 +126,26 @@ test('authenticated evaluator is side-effect free and block history is filtered 
   })
   expect(JSON.stringify(first)).not.toContain('secret-')
   const page2 = await app.request(
-    `/api/groups/default/harness/blocks?limit=1&cursor=${encodeURIComponent(first.nextCursor)}`,
+    `/api/teams/default/policy/blocks?limit=1&cursor=${encodeURIComponent(first.nextCursor)}`,
     { headers: auth },
   )
   expect(((await page2.json()) as { blocks: unknown[] }).blocks).toHaveLength(1)
-  const filtered = await app.request(
-    '/api/groups/default/harness/blocks?reasonCode=agent_archived',
-    { headers: auth },
-  )
+  const filtered = await app.request('/api/teams/default/policy/blocks?reasonCode=agent_archived', {
+    headers: auth,
+  })
   expect(((await filtered.json()) as { blocks: unknown[] }).blocks).toEqual([])
   const matching = await app.request(
-    `/api/groups/default/harness/blocks?source=${a.id}&target=${b.id}&channel=same_group&origin=http_agent_message&reasonCode=no_allow_edge&from=0&to=${Date.now() + 1_000}`,
+    `/api/teams/default/policy/blocks?source=${a.id}&target=${b.id}&channel=same_team&origin=http_agent_message&reasonCode=no_allow_edge&from=0&to=${Date.now() + 1_000}`,
     { headers: auth },
   )
   expect(((await matching.json()) as { blocks: unknown[] }).blocks).toHaveLength(2)
-  const wrongSource = await app.request('/api/groups/default/harness/blocks?source=missing', {
+  const wrongSource = await app.request('/api/teams/default/policy/blocks?source=missing', {
     headers: auth,
   })
   expect(((await wrongSource.json()) as { blocks: unknown[] }).blocks).toEqual([])
   expect(
     (
-      await app.request('/api/groups/default/harness/blocks?from=not-a-time', {
+      await app.request('/api/teams/default/policy/blocks?from=not-a-time', {
         headers: auth,
       })
     ).status,
@@ -154,21 +154,21 @@ test('authenticated evaluator is side-effect free and block history is filtered 
 
 test('approval API is authenticated, list-private, idempotent, and delivers one Agent message', async () => {
   const { createApp } = await import('../../src/app.ts')
-  const { createProfile, providerModelRepo, providerStateRepo, registerGroup, spawnAgent } =
+  const { createProfile, providerModelRepo, providerStateRepo, registerTeam, spawnAgent } =
     await import('../../src/core/index.ts')
   const { getCtx } = await import('../../src/lib/ctx.ts')
   const ctx = getCtx()
-  process.env.BAZILION_HARNESS_ENFORCEMENT = 'on'
+  process.env.BAZILION_TEAM_POLICY_ENFORCEMENT = 'on'
   providerStateRepo.setEnabled(ctx.db, 'lmstudio', true)
   providerModelRepo.replace(ctx.db, 'lmstudio', ['model'])
   createProfile(ctx.db, ctx.paths, { id: 'p', defaultModel: 'm' })
-  registerGroup(ctx.db, { id: 'default' }, ctx.paths)
-  const source = spawnAgent(ctx.db, ctx.paths, { profileId: 'p', groupId: 'default' })
-  const target = spawnAgent(ctx.db, ctx.paths, { profileId: 'p', groupId: 'default' })
-  ctx.db.raw.run('DELETE FROM live_harness_edges WHERE group_id = ?', ['default'])
+  registerTeam(ctx.db, { id: 'default' }, ctx.paths)
+  const source = spawnAgent(ctx.db, ctx.paths, { profileId: 'p', teamId: 'default' })
+  const target = spawnAgent(ctx.db, ctx.paths, { profileId: 'p', teamId: 'default' })
+  ctx.db.raw.run('DELETE FROM team_policy_edges WHERE team_id = ?', ['default'])
   ctx.db.raw.run(
-    `INSERT INTO live_harness_edges
-       (group_id, source_kind, source_id, target_kind, target_id, posture)
+    `INSERT INTO team_policy_edges
+       (team_id, source_kind, source_id, target_kind, target_id, posture)
      VALUES ('default', 'agent', ?, 'agent', ?, 'approval_required')`,
     [source.id, target.id],
   )
@@ -223,20 +223,20 @@ test('approval API is authenticated, list-private, idempotent, and delivers one 
 
 test('approval-required chat holds text and attachment before persistence or turn start', async () => {
   const { createApp } = await import('../../src/app.ts')
-  const { createProfile, providerModelRepo, providerStateRepo, registerGroup, spawnAgent } =
+  const { createProfile, providerModelRepo, providerStateRepo, registerTeam, spawnAgent } =
     await import('../../src/core/index.ts')
   const { getCtx } = await import('../../src/lib/ctx.ts')
   const ctx = getCtx()
-  process.env.BAZILION_HARNESS_ENFORCEMENT = 'on'
+  process.env.BAZILION_TEAM_POLICY_ENFORCEMENT = 'on'
   providerStateRepo.setEnabled(ctx.db, 'lmstudio', true)
   providerModelRepo.replace(ctx.db, 'lmstudio', ['model'])
   createProfile(ctx.db, ctx.paths, { id: 'p', defaultModel: 'lmstudio:model' })
-  registerGroup(ctx.db, { id: 'default' }, ctx.paths)
-  const agent = spawnAgent(ctx.db, ctx.paths, { profileId: 'p', groupId: 'default' })
-  ctx.db.raw.run('DELETE FROM live_harness_edges WHERE group_id = ?', ['default'])
+  registerTeam(ctx.db, { id: 'default' }, ctx.paths)
+  const agent = spawnAgent(ctx.db, ctx.paths, { profileId: 'p', teamId: 'default' })
+  ctx.db.raw.run('DELETE FROM team_policy_edges WHERE team_id = ?', ['default'])
   ctx.db.raw.run(
-    `INSERT INTO live_harness_edges
-       (group_id, source_kind, source_id, target_kind, target_id, posture)
+    `INSERT INTO team_policy_edges
+       (team_id, source_kind, source_id, target_kind, target_id, posture)
      VALUES ('default', 'user', '', 'agent', ?, 'approval_required')`,
     [agent.id],
   )

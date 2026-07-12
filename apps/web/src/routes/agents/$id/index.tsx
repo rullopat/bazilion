@@ -1,10 +1,10 @@
 import { ApiClientError } from '@bazilion/client'
 import type {
-  Group,
+  Team,
   ProviderMessage,
   ReasoningLevel,
   ResolvedAgent,
-  ResolvedGroupHarness,
+  ResolvedTeamPolicy,
   SessionHeadResponse,
   SkillInfo,
   SkillScanFinding,
@@ -20,15 +20,7 @@ import { AgentAvatar } from '../../../components/AgentAvatar'
 import { AgentTabs } from '../../../components/AgentTabs'
 import { ChatPane } from '../../../components/ChatPane'
 import { CopyButton } from '../../../components/CopyButton'
-import { PrototypeBadge } from '../../../components/harness/PrototypeBadge'
-import { useHarnessPrototype } from '../../../hooks/use-harness-prototype'
 import { daemonClient } from '../../../lib/daemon-client'
-import {
-  USER_ENDPOINT,
-  endpointForMember,
-  getHarnessById,
-  hasHarnessEdge,
-} from '../../../lib/harness-prototype'
 import { REASONING_LEVELS } from '../../../lib/wire-constants'
 
 interface ModelGroup {
@@ -37,14 +29,14 @@ interface ModelGroup {
 }
 
 interface AvailableModelsResponse {
-  groups: ModelGroup[]
+  teams: ModelGroup[]
 }
 
 interface AgentView {
   resolved: ResolvedAgent
   initialMessages: ProviderMessage[]
   sessionHead: SessionHeadResponse
-  groups: Group[]
+  teams: Team[]
   skills: SkillInfo[]
   modelGroups: ModelGroup[]
   telegramConfigured: boolean
@@ -61,14 +53,14 @@ const fetchAgent = createServerFn({ method: 'POST' })
       if (err instanceof ApiClientError && err.status === 404) return null
       throw err
     }
-    const [msgs, head, groups, skills, models, telegramConfig] = await Promise.all([
+    const [msgs, head, teams, skills, models, telegramConfig] = await Promise.all([
       c.get<{ messages: ProviderMessage[] }>(
         `/api/agents/${encodeURIComponent(resolved.agent.id)}/sessions/messages`,
       ),
       c.get<SessionHeadResponse>(
         `/api/agents/${encodeURIComponent(resolved.agent.id)}/sessions/head`,
       ),
-      c.get<Group[]>('/api/groups'),
+      c.get<Team[]>('/api/teams'),
       c.get<SkillInfo[]>('/api/skills'),
       c.get<AvailableModelsResponse>('/api/config/available-models'),
       c
@@ -79,19 +71,18 @@ const fetchAgent = createServerFn({ method: 'POST' })
       resolved,
       initialMessages: msgs.messages,
       sessionHead: head,
-      groups,
+      teams,
       skills,
-      modelGroups: models.groups,
+      modelGroups: models.teams,
       telegramConfigured: telegramConfig.configured,
     }
   })
 
 export const Route = createFileRoute('/agents/$id/')({
-  validateSearch: (search: Record<string, unknown>): { harness?: string; groupPolicy?: string; view?: 'flow'|'matrix'; selected?: string; vx?: number; vy?: number; vz?: number } => ({
-    ...(typeof search.harness === 'string' && search.harness
-      ? { harness: search.harness }
+  validateSearch: (search: Record<string, unknown>): { teamPolicy?: string; view?: 'flow'|'matrix'; selected?: string; vx?: number; vy?: number; vz?: number } => ({
+    ...(typeof search.teamPolicy === 'string' && search.teamPolicy
+      ? { teamPolicy: search.teamPolicy }
       : {}),
-    ...(typeof search.groupPolicy === 'string' && search.groupPolicy ? { groupPolicy: search.groupPolicy } : {}),
     ...(search.view === 'matrix' || search.view === 'flow' ? { view: search.view } : {}),
     ...(typeof search.selected === 'string' ? { selected: search.selected } : {}),
     ...(Number.isFinite(Number(search.vx)) ? { vx: Number(search.vx) } : {}),
@@ -111,39 +102,13 @@ function AgentDetailPage() {
     resolved,
     initialMessages,
     sessionHead,
-    groups,
+    teams,
     skills,
     modelGroups,
     telegramConfigured,
   } = Route.useLoaderData()
   const search = Route.useSearch()
-  const { harness: harnessId } = search
-  const { state: harnessState, hydrated: harnessHydrated } = useHarnessPrototype()
   const router = useRouter()
-  const prototypeHarness = harnessId ? getHarnessById(harnessState, harnessId) : undefined
-  const prototypeMember = prototypeHarness?.members.find(
-    (member) => member.agentId === resolved.agent.id,
-  )
-  const prototypeEndpoint =
-    prototypeHarness && prototypeMember
-      ? endpointForMember(prototypeHarness, prototypeMember)
-      : undefined
-  const prototypePolicy =
-    harnessHydrated && prototypeHarness && prototypeEndpoint
-      ? {
-          harnessName: prototypeHarness.name,
-          userInputAllowed: hasHarnessEdge(
-            prototypeHarness.policy,
-            USER_ENDPOINT,
-            prototypeEndpoint,
-          ),
-          userOutputAllowed: hasHarnessEdge(
-            prototypeHarness.policy,
-            prototypeEndpoint,
-            USER_ENDPOINT,
-          ),
-        }
-      : undefined
 
   async function archive() {
     if (!confirm(`archive "${resolved.agent.name}"? (reversible)`)) return
@@ -159,13 +124,13 @@ function AgentDetailPage() {
       `Permanently delete agent "${resolved.agent.name}"?\n\n` +
       `This removes the DB rows (messages, triggers, skill attachments) AND the agent's on-disk directory (memory, templates, state, sessions). This cannot be undone.`
     if (!confirm(msg)) return
-    const policyResponse = await fetch(`/api/groups/${encodeURIComponent(resolved.group.id)}/harness`)
+    const policyResponse = await fetch(`/api/teams/${encodeURIComponent(resolved.team.id)}/policy`)
     if (!policyResponse.ok) {
-      alert('The current Group policy is unavailable. Nothing was deleted.')
+      alert('The current Team policy is unavailable. Nothing was deleted.')
       return
     }
-    const current = (await policyResponse.json()) as ResolvedGroupHarness
-    const res = await fetch(`/api/agents/${resolved.agent.id}?expectedGroupRevision=${current.harness.revision}`, { method: 'DELETE' })
+    const current = (await policyResponse.json()) as ResolvedTeamPolicy
+    const res = await fetch(`/api/agents/${resolved.agent.id}?expectedTeamRevision=${current.teamPolicy.revision}`, { method: 'DELETE' })
     if (res.ok || res.status === 204) {
       window.location.assign('/agents')
     } else {
@@ -176,24 +141,10 @@ function AgentDetailPage() {
   return (
     <div>
       <header className="mb-8">
-        {search.groupPolicy && (
+        {search.teamPolicy && (
           <div className="mb-4 flex flex-wrap items-center gap-2">
-            <a href={`/groups/${encodeURIComponent(search.groupPolicy)}/policy?view=${search.view ?? 'flow'}&selected=${encodeURIComponent(search.selected ?? '')}&vx=${search.vx ?? 0}&vy=${search.vy ?? 0}&vz=${search.vz ?? 0.9}`} className="ghost-btn"><ArrowLeft className="h-4 w-4" /> back to Group policy</a>
+            <a href={`/teams/${encodeURIComponent(search.teamPolicy)}/policy?view=${search.view ?? 'flow'}&selected=${encodeURIComponent(search.selected ?? '')}&vx=${search.vx ?? 0}&vy=${search.vy ?? 0}&vz=${search.vz ?? 0.9}`} className="ghost-btn"><ArrowLeft className="h-4 w-4" /> back to Team policy</a>
             <span className="text-xs text-mocha-light">Returns to the same projection, viewport, and selection.</span>
-          </div>
-        )}
-        {prototypeHarness && (
-          <div className="mb-4 flex flex-wrap items-center gap-2">
-            <a
-              href={`/harnesses/${encodeURIComponent(prototypeHarness.id)}`}
-              className="ghost-btn"
-            >
-              <ArrowLeft className="h-4 w-4" /> back to harness
-            </a>
-            <PrototypeBadge />
-            <span className="text-xs text-mocha-light">
-              Canvas view, pan, zoom, and selection are saved locally.
-            </span>
           </div>
         )}
         <div className="flex items-center gap-3">
@@ -227,16 +178,16 @@ function AgentDetailPage() {
             profile: <code className="ml-1 bg-transparent px-0">{resolved.profile.id}</code>
           </Tag>
           <Tag>
-            group:{' '}
+            team:{' '}
             <a
-              href={`/groups/${encodeURIComponent(resolved.group.id)}`}
+              href={`/teams/${encodeURIComponent(resolved.team.id)}`}
               className="ml-1 bg-transparent px-0 font-mono underline"
             >
-              {resolved.group.id}
+              {resolved.team.id}
             </a>{' '}
             ·{' '}
             <a
-              href={`/groups/${encodeURIComponent(resolved.group.id)}/memory`}
+              href={`/teams/${encodeURIComponent(resolved.team.id)}/memory`}
               className="ml-0.5 underline"
             >
               shared memory →
@@ -300,7 +251,6 @@ function AgentDetailPage() {
           agentName={resolved.agent.name}
           initialMessages={initialMessages}
           initialSessionHead={sessionHead}
-          prototypePolicy={prototypePolicy}
         />
       </div>
       <p className="mt-2 text-[0.82em] text-mocha-light">
@@ -308,16 +258,16 @@ function AgentDetailPage() {
       </p>
 
       <section className="mt-10">
-        <SectionTitle>Group</SectionTitle>
+        <SectionTitle>Team</SectionTitle>
         <p className="text-[0.9em] text-mocha-light">
-          Current group: <code>{resolved.group.id}</code> ({resolved.group.name}) —{' '}
-          <code>{resolved.group.path}</code>.{' '}
-          <a href={`/groups/${resolved.group.id}`}>view / edit USER.md</a>
+          Current team: <code>{resolved.team.id}</code> ({resolved.team.name}) —{' '}
+          <code>{resolved.team.path}</code>.{' '}
+          <a href={`/teams/${resolved.team.id}`}>view / edit USER.md</a>
         </p>
         <MoveGroupForm
           agentId={resolved.agent.id}
-          currentGroupId={resolved.group.id}
-          groups={groups}
+          currentTeamId={resolved.team.id}
+          teams={teams}
         />
       </section>
 
@@ -471,15 +421,15 @@ function SettingsDetails({
 
 function MoveGroupForm({
   agentId,
-  currentGroupId,
-  groups,
+  currentTeamId,
+  teams,
 }: {
   agentId: string
-  currentGroupId: string
-  groups: Group[]
+  currentTeamId: string
+  teams: Team[]
 }) {
   const router = useRouter()
-  const [groupId, setGroupId] = useState(currentGroupId)
+  const [teamId, setTeamId] = useState(currentTeamId)
   const [moving, setMoving] = useState(false)
   const [placement, setPlacement] = useState<'isolated' | 'open' | 'profile_defaults'>('profile_defaults')
   const [err, setErr] = useState<string | null>(null)
@@ -491,25 +441,25 @@ function MoveGroupForm({
 
   async function move(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
-    if (groupId === currentGroupId) return
+    if (teamId === currentTeamId) return
     setMoving(true)
     setErr(null)
     try {
       const [sourceResponse, destinationResponse] = await Promise.all([
-        fetch(`/api/groups/${encodeURIComponent(currentGroupId)}/harness`),
-        fetch(`/api/groups/${encodeURIComponent(groupId)}/harness`),
+        fetch(`/api/teams/${encodeURIComponent(currentTeamId)}/policy`),
+        fetch(`/api/teams/${encodeURIComponent(teamId)}/policy`),
       ])
-      if (!sourceResponse.ok || !destinationResponse.ok) throw new Error('A Group policy is unavailable. Nothing was moved.')
-      const source = (await sourceResponse.json()) as ResolvedGroupHarness
-      const destination = (await destinationResponse.json()) as ResolvedGroupHarness
+      if (!sourceResponse.ok || !destinationResponse.ok) throw new Error('A Team policy is unavailable. Nothing was moved.')
+      const source = (await sourceResponse.json()) as ResolvedTeamPolicy
+      const destination = (await destinationResponse.json()) as ResolvedTeamPolicy
       const request = {
-        groupId,
-        sourceExpectedRevision: source.harness.revision,
-        destinationExpectedRevision: destination.harness.revision,
+        teamId,
+        sourceExpectedRevision: source.teamPolicy.revision,
+        destinationExpectedRevision: destination.teamPolicy.revision,
         placement,
       }
       if (!preview) {
-        const response = await fetch(`/api/agents/${encodeURIComponent(agentId)}/group/preview`, {
+        const response = await fetch(`/api/agents/${encodeURIComponent(agentId)}/team/preview`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify(request),
@@ -521,7 +471,7 @@ function MoveGroupForm({
         setPreview(await response.json())
         return
       }
-      const res = await fetch(`/api/agents/${encodeURIComponent(agentId)}/group`, {
+      const res = await fetch(`/api/agents/${encodeURIComponent(agentId)}/team`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -547,11 +497,11 @@ function MoveGroupForm({
       <label className="flex flex-col gap-1 text-[0.85em] text-mocha-light">
         move to:
         <select
-          value={groupId}
-          onChange={(e) => {setGroupId(e.target.value);setPreview(null)}}
+          value={teamId}
+          onChange={(e) => {setTeamId(e.target.value);setPreview(null)}}
           className="min-w-[18rem] rounded-sm border border-frost bg-snow px-2 py-1.5"
         >
-          {groups.map((g) => (
+          {teams.map((g) => (
             <option key={g.id} value={g.id}>
               {g.id} — {g.path}
             </option>
@@ -566,7 +516,7 @@ function MoveGroupForm({
           <option value="open">open</option>
         </select>
       </label>
-      <button type="submit" disabled={moving || groupId === currentGroupId}>
+      <button type="submit" disabled={moving || teamId === currentTeamId}>
         {moving ? 'working…' : preview ? 'commit reviewed move' : 'review move'}
       </button>
       {err && <span className="text-[0.85em] text-[#9B3D3D]">{err}</span>}

@@ -86,27 +86,27 @@ export function buildSystemPrompt(agent: ResolvedAgent): string {
     )
   }
 
-  const groupLines = [
-    '# Group',
+  const teamLines = [
+    '# Team',
     '',
-    `- ${agent.group.id} (${agent.group.name}): ${agent.group.path}`,
+    `- ${agent.team.id} (${agent.team.name}): ${agent.team.path}`,
     '',
-    'Your group is where work product lives — code, docs, artefacts, shared scratch. It may be shared with other agents in the same group. Your coding tools (`read`, `bash`, `edit`, `write`, `grep`, `find`, `ls`) are rooted at the group directory. Never use these tools to edit your identity/soul/behaviour files — those live in your home and are reached via `home_write` / `home_read`.',
+    'Your team is where work product lives — code, docs, artefacts, shared scratch. It may be shared with other agents in the same team. Your coding tools (`read`, `bash`, `edit`, `write`, `grep`, `find`, `ls`) are rooted at the team directory. Never use these tools to edit your identity/soul/behaviour files — those live in your home and are reached via `home_write` / `home_read`.',
   ]
-  parts.push(groupLines.join('\n'))
+  parts.push(teamLines.join('\n'))
 
-  if (agent.group.userMd.trim()) {
+  if (agent.team.userMd.trim()) {
     parts.push(
-      `# About the User\n\nShared context about the human you're working with in this group. Both you and the human curate it. To update: call \`user_md_get\` (returns current content + an etag), merge your change into the full text, then call \`user_md_write\` with the merged content and the etag. Use this for STABLE user-specific facts (preferences, role, working hours, how they like to be addressed) — and to CORRECT stale entries when the human tells you something different from what's recorded. For project knowledge use \`memory_write\` instead; for personal notes about yourself use \`home_write\` on IDENTITY.md. **Do NOT send peer messages announcing USER.md changes — every agent in the group sees the new content in their system prompt on their next turn automatically.**\n\n${agent.group.userMd.trim()}`,
+      `# About the User\n\nShared context about the human you're working with in this team. Both you and the human curate it. To update: call \`user_md_get\` (returns current content + an etag), merge your change into the full text, then call \`user_md_write\` with the merged content and the etag. Use this for STABLE user-specific facts (preferences, role, working hours, how they like to be addressed) — and to CORRECT stale entries when the human tells you something different from what's recorded. For project knowledge use \`memory_write\` instead; for personal notes about yourself use \`home_write\` on IDENTITY.md. **Do NOT send peer messages announcing USER.md changes — every agent in the team sees the new content in their system prompt on their next turn automatically.**\n\n${agent.team.userMd.trim()}`,
     )
   } else {
     parts.push(
-      `# About the User\n\nThis group's USER.md is empty. As you learn STABLE facts about the human (preferences, role, working hours, how they like to be addressed), populate it via \`user_md_get\` then \`user_md_write\` (always get first — you need the etag). Reserve this for things you're confident are durable — project knowledge belongs in \`memory_write\`, personal notes about yourself in \`home_write\` on IDENTITY.md. **Do NOT send peer messages announcing USER.md changes — every agent in the group sees the new content in their system prompt on their next turn automatically.**`,
+      `# About the User\n\nThis team's USER.md is empty. As you learn STABLE facts about the human (preferences, role, working hours, how they like to be addressed), populate it via \`user_md_get\` then \`user_md_write\` (always get first — you need the etag). Reserve this for things you're confident are durable — project knowledge belongs in \`memory_write\`, personal notes about yourself in \`home_write\` on IDENTITY.md. **Do NOT send peer messages announcing USER.md changes — every agent in the team sees the new content in their system prompt on their next turn automatically.**`,
     )
   }
 
   parts.push(
-    '# Memory\n\nYou share a persistent memory backend with every other agent in this group. Use `memory_write` to remember things across sessions, and `memory_search` / `memory_read` / `memory_list` to recall them. This memory is for project knowledge — codebase notes, decisions, things the user told you about the work. For personal notes about yourself (preferences, persona quirks), use `home_write` on IDENTITY.md instead. Always check memory at the start of a session: another agent in the group may have already learned something useful. **Do NOT send peer messages announcing memory writes — every agent has access to the same store via `memory_search` and will find your note when they need it.**',
+    '# Memory\n\nYou share a persistent memory backend with every other agent in this team. Use `memory_write` to remember things across sessions, and `memory_search` / `memory_read` / `memory_list` to recall them. This memory is for project knowledge — codebase notes, decisions, things the user told you about the work. For personal notes about yourself (preferences, persona quirks), use `home_write` on IDENTITY.md instead. Always check memory at the start of a session: another agent in the team may have already learned something useful. **Do NOT send peer messages announcing memory writes — every agent has access to the same store via `memory_search` and will find your note when they need it.**',
   )
 
   return parts.join('\n\n---\n\n')

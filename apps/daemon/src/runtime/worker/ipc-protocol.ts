@@ -58,7 +58,7 @@ export interface ApprovalStatusArgs {
 }
 
 export interface UserMdGetArgs {
-  groupId: string
+  teamId: string
 }
 
 export interface UserMdGetResult {
@@ -68,7 +68,7 @@ export interface UserMdGetResult {
 }
 
 export interface UserMdWriteArgs {
-  groupId: string
+  teamId: string
   content: string
   /** Etag from the most recent get. Write fails with a conflict if it no longer matches. */
   ifMatch: string
@@ -155,16 +155,16 @@ export interface MessagingHost {
 }
 
 /**
- * Host-side surface for the group-shared USER.md. Daemon implements against
- * `groupRepo.get` + `setUserMd`; worker proxies through IPC. Optimistic
+ * Host-side surface for the team-shared USER.md. Daemon implements against
+ * `teamRepo.get` + `setUserMd`; worker proxies through IPC. Optimistic
  * concurrency via etag: `get` returns a content hash, `write` must echo it
  * back; if the stored content has moved on in the meantime the write fails
  * with a typed conflict the model handles by re-reading.
  */
 export interface UserMdHost {
-  get(groupId: string): UserMdGetResult | Promise<UserMdGetResult>
+  get(teamId: string): UserMdGetResult | Promise<UserMdGetResult>
   write(
-    groupId: string,
+    teamId: string,
     content: string,
     ifMatch: string,
   ): UserMdWriteResult | Promise<UserMdWriteResult>

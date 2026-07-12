@@ -45,16 +45,16 @@ ${body}
 }
 
 test('POST /:id/skills rejects risky skill unless findings are confirmed', async () => {
-  const { createProfile, registerGroup, spawnAgent, agentRepo } = await import(
+  const { createProfile, registerTeam, spawnAgent, agentRepo } = await import(
     '../../src/core/index.ts'
   )
   const { getCtx } = await import('../../src/lib/ctx.ts')
   const { agentsRouter } = await import('../../src/routes/agents.ts')
 
   const ctx = getCtx()
-  const group = registerGroup(ctx.db, { id: 'g', name: 'group' }, ctx.paths)
+  const team = registerTeam(ctx.db, { id: 'g', name: 'team' }, ctx.paths)
   createProfile(ctx.db, ctx.paths, { id: 'p', defaultModel: 'm' })
-  const agent = spawnAgent(ctx.db, ctx.paths, { profileId: 'p', groupId: group.id })
+  const agent = spawnAgent(ctx.db, ctx.paths, { profileId: 'p', teamId: team.id })
   writeSkill(
     ctx.paths.skillsDir,
     'risky',

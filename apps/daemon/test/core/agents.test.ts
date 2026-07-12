@@ -6,11 +6,11 @@ import { deleteAgent } from '../../src/core/agent/delete.ts'
 import { resolveAgent } from '../../src/core/agent/resolve.ts'
 import { spawnAgent } from '../../src/core/agent/spawn.ts'
 import { unarchiveAgent } from '../../src/core/agent/unarchive.ts'
-import { registerGroup } from '../../src/core/group/register.ts'
 import { createProfile } from '../../src/core/profile/create.ts'
 import * as agentRepo from '../../src/core/repos/agents.ts'
-import * as liveHarnessRepo from '../../src/core/repos/liveHarnesses.ts'
 import * as messageRepo from '../../src/core/repos/messages.ts'
+import * as teamPolicyRepo from '../../src/core/repos/teamPolicies.ts'
+import { registerTeam } from '../../src/core/team/register.ts'
 import { makeTestEnv, type TestEnv } from './helpers.ts'
 
 let env: TestEnv
@@ -30,7 +30,11 @@ function seedProfile() {
 function spawn(input: Partial<Parameters<typeof spawnAgent>[2]> & { profileId?: string } = {}) {
   return spawnAgent(env.db, env.paths, {
     profileId: input.profileId ?? 'base',
-    groupId: input.groupId ?? env.groupId,
+    teamId: input.teamId ?? env.teamId,
+    teamExpectedRevision:
+      input.teamExpectedRevision ??
+      teamPolicyRepo.get(env.db, input.teamId ?? env.teamId)?.revision,
+    placement: input.placement ?? 'open',
     ...input,
   })
 }
@@ -41,13 +45,13 @@ test('spawnAgent creates dir, copies templates, inserts row, attaches default sk
 
   expect(agent.profileId).toBe('base')
   expect(agent.status).toBe('idle')
-  expect(agent.groupId).toBe(env.groupId)
+  expect(agent.teamId).toBe(env.teamId)
   expect(existsSync(agent.dir)).toBe(true)
   expect(existsSync(join(agent.dir, 'SOUL.md'))).toBe(true)
   expect(existsSync(join(agent.dir, 'IDENTITY.md'))).toBe(true)
   expect(existsSync(join(agent.dir, 'BOOTSTRAP.md'))).toBe(true)
   expect(existsSync(join(agent.dir, 'agent.json'))).toBe(true)
-  // Memory now lives at the group level (`groups/<slug>/memory/`), shared
+  // Memory now lives at the team level (`teams/<slug>/memory/`), shared
   // by all member agents. The agent's private home only carries identity
   // files + sessions/.
   expect(existsSync(join(agent.dir, 'sessions'))).toBe(true)
@@ -135,27 +139,27 @@ test('spawning many agents from one profile produces independent instances', () 
   expect(agentRepo.list(env.db).length).toBe(2)
 })
 
-test('spawnAgent places the agent in the requested group', () => {
+test('spawnAgent places the agent in the requested team', () => {
   seedProfile()
-  const g = registerGroup(env.db, { id: 'extra' }, env.paths)
+  const g = registerTeam(env.db, { id: 'extra' }, env.paths)
 
-  const agent = spawn({ groupId: g.id })
-  expect(agent.groupId).toBe('extra')
+  const agent = spawn({ teamId: g.id })
+  expect(agent.teamId).toBe('extra')
 })
 
-test('spawnAgent rejects an unknown group', () => {
+test('spawnAgent rejects an unknown team', () => {
   seedProfile()
-  expect(() => spawn({ groupId: 'no-such-group' })).toThrow(/group "no-such-group" does not exist/)
+  expect(() => spawn({ teamId: 'no-such-team' })).toThrow(/team "no-such-team" does not exist/)
 })
 
-test('agentRepo.setGroup moves an agent to a different group', () => {
+test('agentRepo.setGroup moves an agent to a different team', () => {
   seedProfile()
-  const g2 = registerGroup(env.db, { id: 'g2' }, env.paths)
+  const g2 = registerTeam(env.db, { id: 'g2' }, env.paths)
   const agent = spawn()
-  expect(agent.groupId).toBe(env.groupId)
+  expect(agent.teamId).toBe(env.teamId)
 
   agentRepo.setGroup(env.db, agent.id, g2.id)
-  expect(agentRepo.get(env.db, agent.id)?.groupId).toBe('g2')
+  expect(agentRepo.get(env.db, agent.id)?.teamId).toBe('g2')
 })
 
 test('attaching and detaching skills on the fly', () => {
@@ -216,7 +220,7 @@ test('deleteAgent removes the DB row and the on-disk directory', () => {
   const agent = spawn()
   expect(existsSync(agent.dir)).toBe(true)
 
-  deleteAgent(env.db, agent.id)
+  deleteAgent(env.db, agent.id, teamPolicyRepo.get(env.db, env.teamId)?.revision ?? 0)
   expect(agentRepo.get(env.db, agent.id)).toBeNull()
   expect(existsSync(agent.dir)).toBe(false)
 })
@@ -238,7 +242,7 @@ test('deleteAgent cascades to attachments, messages, runs', () => {
   expect(agentRepo.listAttachedSkills(env.db, a.id).length).toBeGreaterThan(0)
   expect(messageRepo.listInbox(env.db, a.id).length).toBe(1)
 
-  deleteAgent(env.db, a.id)
+  deleteAgent(env.db, a.id, teamPolicyRepo.get(env.db, env.teamId)?.revision ?? 0)
 
   expect(agentRepo.get(env.db, a.id)).toBeNull()
   expect(agentRepo.listAttachedSkills(env.db, a.id)).toEqual([])
@@ -250,7 +254,7 @@ test('deleteAgent cascades to attachments, messages, runs', () => {
 
 test('deleteAgent throws on an unknown id', () => {
   seedProfile()
-  expect(() => deleteAgent(env.db, 'ghost-id')).toThrow()
+  expect(() => deleteAgent(env.db, 'ghost-id', 1)).toThrow()
 })
 
 test('agentRepo.get resolves an unambiguous UUID prefix (≥4 chars)', () => {
@@ -298,9 +302,8 @@ test('agentRepo.get prefers exact name over prefix collision', () => {
     reasoningLevel: 'medium',
     status: 'idle',
     dir: '/tmp/none-hex',
-    groupId: env.groupId,
+    teamId: env.teamId,
   })
-  liveHarnessRepo.regenerateExactOpen(env.db, env.groupId)
   const b = spawn({ name: 'deadbeef' })
 
   // Lookup "deadbeef": exact name on agent b wins, even though it matches a
@@ -322,7 +325,7 @@ test('agentRepo.get returns null for ambiguous prefix', () => {
     reasoningLevel: 'medium',
     status: 'idle',
     dir: '/tmp/none-a',
-    groupId: env.groupId,
+    teamId: env.teamId,
   })
   agentRepo.insert(env.db, {
     id: 'abcd2222-aaaa-bbbb-cccc-dddddddddddd',
@@ -332,7 +335,7 @@ test('agentRepo.get returns null for ambiguous prefix', () => {
     reasoningLevel: 'medium',
     status: 'idle',
     dir: '/tmp/none-b',
-    groupId: env.groupId,
+    teamId: env.teamId,
   })
   expect(agentRepo.get(env.db, 'abcd')).toBeNull() // ambiguous
   expect(agentRepo.get(env.db, 'abcd1')?.name).toBe('A') // unique
@@ -346,17 +349,17 @@ test('resolveAgent accepts a UUID prefix', () => {
   expect(resolved.agent.id).toBe(agent.id)
 })
 
-test('resolveAgent assembles profile, skills, group, and model', () => {
+test('resolveAgent assembles profile, skills, team, and model', () => {
   seedProfile()
-  const g = registerGroup(env.db, { id: 'rg' }, env.paths)
-  const agent = spawn({ groupId: g.id, modelOverride: 'openai:gpt-5' })
+  const g = registerTeam(env.db, { id: 'rg' }, env.paths)
+  const agent = spawn({ teamId: g.id, modelOverride: 'openai:gpt-5' })
 
   const resolved = resolveAgent(env.db, env.paths, agent.id)
   expect(resolved.model).toBe('openai:gpt-5')
   expect(resolved.profile.id).toBe('base')
-  expect(resolved.group.id).toBe('rg')
-  // New groups seed the starter USER.md instead of starting blank.
-  expect(resolved.group.userMd).toContain('About Your Human')
+  expect(resolved.team.id).toBe('rg')
+  // New teams seed the starter USER.md instead of starting blank.
+  expect(resolved.team.userMd).toContain('About Your Human')
   expect(resolved.skills).toEqual(['skill-a'])
 })
 

@@ -1,6 +1,6 @@
 # bazilion
 
-Multi-agent runtime CLI — spawn LLM agents, manage profiles/groups/skills, and run the local daemon.
+Multi-agent runtime CLI — spawn LLM agents, manage profiles/teams/skills, and run the local daemon.
 
 [![npm](https://img.shields.io/npm/v/bazilion.svg)](https://www.npmjs.com/package/bazilion) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/rullopat/bazilion/blob/main/LICENSE)
 
@@ -45,24 +45,24 @@ bazilion agent chat <uuid> --message "say hi"    # one-shot
 
 Run `bazilion --help` for the full command list, or `bazilion <command> --help` for details on any subcommand.
 
-## Harness policy from the CLI
+## Team Templates and Team Policy from the CLI
 
-Canonical Team templates and the one effective policy owned by each Group can be inspected
+Canonical Team Templates and the one effective policy owned by each Team can be inspected
 and exchanged without direct database access:
 
 ```sh
 bazilion team list
 bazilion team show research-team
-bazilion team export research-team > research-team.json
-bazilion team import research-team.json --dry-run
-bazilion team import research-team.json --apply --expected-revision 3
+bazilion team-template export research-team > research-team.json
+bazilion team-template import research-team.json --dry-run
+bazilion team-template import research-team.json --apply --expected-revision 3
 
-bazilion group policy show default
-bazilion group policy export default > default-policy.json
-bazilion group policy import default default-policy.json --dry-run
-bazilion group policy diff default
-bazilion group policy evaluate default --source user --target agent:<uuid>
-bazilion group policy blocks default --reason no_allow_edge --limit 25 --json
+bazilion team policy show default
+bazilion team policy export default > default-policy.json
+bazilion team policy import default default-policy.json --dry-run
+bazilion team policy diff default
+bazilion team policy evaluate default --source user --target agent:<uuid>
+bazilion team policy blocks default --reason no_allow_edge --limit 25 --json
 
 # Review policy-protected communication attempts.
 bazilion approval list --status pending
@@ -83,7 +83,7 @@ filesystem paths, message bodies, or local database-only identities.
 
 Approval list output is payload-free; `approval show` is the explicit sensitive-payload
 detail surface. Approve, deny, and cancel require `--yes`. Approval authorizes one captured
-attempt only and never changes the Group policy.
+attempt only and never changes the Team policy.
 
 ## Web UI
 
@@ -111,12 +111,14 @@ bazilion auth openai login     # browser flow on localhost:1455
 bazilion auth openai status    # check connection / token expiry
 ```
 
-After connecting, enable `openai-codex` and curate at least one model, for example `gpt-5.3-codex-spark`. Credentials are stored AES-256-GCM-encrypted in the daemon's `secrets` table.
+After connecting, enable `openai-codex` and curate at least one model, for example
+`gpt-5.6-luna` (the Pi 0.80 catalog also includes `gpt-5.6-terra` and `gpt-5.6-sol`).
+Credentials are stored AES-256-GCM-encrypted in the daemon's `secrets` table.
 
 ## What's in the box
 
-- **CLI + daemon + web UI**, spawned together via `bazilion dashboard`. The daemon binds `127.0.0.1:4321`, the web UI binds `127.0.0.1:4322`, and the daemon owns `~/.bazilion/` (SQLite DB, profiles, agents, groups, skills, logs).
-- **Operator command families** include `agent`, `profile`, `team`, `group`, `skill`, `provider`, `config`, `auth`, `memory`, `send`, `inbox`, `trigger`, `serve`, `doctor`, `backup`, `token`, `login`, and `uninstall`.
+- **CLI + daemon + web UI**, spawned together via `bazilion dashboard`. The daemon binds `127.0.0.1:4321`, the web UI binds `127.0.0.1:4322`, and the daemon owns `~/.bazilion/` (SQLite DB, profiles, agents, teams, skills, logs).
+- **Operator command families** include `agent`, `profile`, `team`, `team`, `skill`, `provider`, `config`, `auth`, `memory`, `send`, `inbox`, `trigger`, `serve`, `doctor`, `backup`, `token`, `login`, and `uninstall`.
 - **Provider support** via [pi-ai](https://www.npmjs.com/package/@earendil-works/pi-ai): Anthropic, OpenAI (key + ChatGPT OAuth), Google AI Studio + Vertex, Azure OpenAI, AWS Bedrock, Mistral, Groq, Cerebras, xAI, zAI, Hugging Face, OpenRouter, Vercel AI Gateway, Cloudflare, GitHub Copilot, DeepSeek, Fireworks, Together, Moonshot/Kimi, MiniMax, Xiaomi MiMo, Ant Ling, NVIDIA NIM, OpenCode, LM Studio, Ollama, and llama.cpp.
 - **OpenClaw-compatible skills**: drop a `SKILL.md` into `~/.bazilion/skills/<name>/`, or import in bulk via `bazilion skill import --from openclaw`.
 
@@ -124,7 +126,7 @@ After connecting, enable `openai-codex` and curate at least one model, for examp
 
 ```sh
 bazilion uninstall                # interactive: data wipe, then optional full wipe
-bazilion uninstall --yes          # data tier only (DB + profiles/agents/groups)
+bazilion uninstall --yes          # data tier only (DB + profiles/agents/teams)
 bazilion uninstall --yes --all    # also remove auth.json, logs/, skills/
 ```
 

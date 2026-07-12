@@ -1,7 +1,7 @@
 import { Link, useRouterState } from '@tanstack/react-router'
 
 // Sub-tabs for the unified "templates" nav section. Both profiles and
-// profile groups are spawn-time templates; they share a parent in the
+// profile teams are spawn-time templates; they share a parent in the
 // TopNav and disambiguate here. Active state is derived from the current
 // pathname so it survives client-side navigation without prop drilling.
 export function TemplatesTabs() {

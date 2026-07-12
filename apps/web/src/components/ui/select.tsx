@@ -18,7 +18,7 @@ function SelectGroup({
 }: React.ComponentProps<typeof SelectPrimitive.Group>) {
   return (
     <SelectPrimitive.Group
-      data-slot="select-group"
+      data-slot="select-team"
       className={cn("scroll-my-1 p-1", className)}
       {...props}
     />

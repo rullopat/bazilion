@@ -58,7 +58,7 @@ The one-liners must install at least:
 ## Why now
 
 The product is increasingly centered on the web UI: first-run provider setup,
-templates, groups, inboxes, skills, MCP, browser automation, and Telegram config
+templates, teams, inboxes, skills, MCP, browser automation, and Telegram config
 are all much easier there than in the CLI. The current install flow sends a new
 user through the hardest path before they see the easiest interface. Fixing this
 turns the homepage CTA into a real non-technical onboarding path instead of a

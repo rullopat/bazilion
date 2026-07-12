@@ -9,13 +9,13 @@
 //   /spawn <profile-id> <name>   — spawn immediately. `<name>` may be `-` to
 //                                  auto-name as `<profile-id>-<N>`.
 //
-// Any typed form may end with ` in <group-slug>` to target a non-default
-// group (Phase 6). The keyboard flow stays default-only by design.
+// Any typed form may end with ` in <team-slug>` to target a non-default
+// team (Phase 6). The keyboard flow stays default-only by design.
 
 import type { Profile } from '@bazilion/api-types'
 import type { InlineKeyboardMarkup } from 'grammy/types'
 import { spawnAgent } from '../../../core/agent/spawn.ts'
-import { agentRepo, groupRepo, profileRepo } from '../../../core/index.ts'
+import { agentRepo, profileRepo, teamRepo } from '../../../core/index.ts'
 import { notifyDirectoryDirty } from '../directory.ts'
 import { htmlEscape } from '../html.ts'
 import { setPendingSpawn } from '../spawn-state.ts'
@@ -34,20 +34,20 @@ export const handle: CommandHandler = async (ctx) => {
   // Form 1: no args → keyboard picker.
   if (!args) return renderProfilePicker(ctx)
 
-  // Pull an optional trailing ` in <group-slug>` (Phase 6 cross-group spawn).
-  let groupSlug: string | null = null
+  // Pull an optional trailing ` in <team-slug>` (Phase 6 cross-team spawn).
+  let teamSlug: string | null = null
   const inMatch = args.match(/\s+in\s+(\S+)$/i)
   if (inMatch) {
-    groupSlug = inMatch[1] ?? null
+    teamSlug = inMatch[1] ?? null
     args = args.slice(0, inMatch.index).trim()
   }
 
-  // Validate the target group up-front so the error is clear.
-  if (groupSlug && !groupRepo.get(ctx.db, groupSlug, ctx.paths)) {
+  // Validate the target team up-front so the error is clear.
+  if (teamSlug && !teamRepo.get(ctx.db, teamSlug, ctx.paths)) {
     return {
       text:
-        `No group named <code>${htmlEscape(groupSlug)}</code>.\n` +
-        'Run <code>/groups</code> to see the list.',
+        `No team named <code>${htmlEscape(teamSlug)}</code>.\n` +
+        'Run <code>/teams</code> to see the list.',
       parseMode: 'HTML',
     }
   }
@@ -68,10 +68,10 @@ export const handle: CommandHandler = async (ctx) => {
     }
   }
 
-  // Form 2: profile only → store pending state, prompt for name. (Cross-group
+  // Form 2: profile only → store pending state, prompt for name. (Cross-team
   // is only available on the immediate-spawn forms; the keyboard/name flow is
-  // default-only, so a bare `/spawn <profile> in <group>` still spawns now.)
-  if (!nameArg && !groupSlug) {
+  // default-only, so a bare `/spawn <profile> in <team>` still spawns now.)
+  if (!nameArg && !teamSlug) {
     setPendingSpawn(ctx.chatId, ctx.from.id, profile.id)
     return {
       text: namePrompt(profile),
@@ -79,9 +79,9 @@ export const handle: CommandHandler = async (ctx) => {
     }
   }
 
-  // Form 3: profile + name (and/or group) → spawn immediately. A `-` name (or
-  // a missing name with an explicit group) auto-names.
-  return await spawnAndBind(ctx, profile, nameArg ?? '-', groupSlug)
+  // Form 3: profile + name (and/or team) → spawn immediately. A `-` name (or
+  // a missing name with an explicit team) auto-names.
+  return await spawnAndBind(ctx, profile, nameArg ?? '-', teamSlug)
 }
 
 /**
@@ -133,7 +133,7 @@ export async function spawnAndBind(
   ctx: Pick<CommandCtx, 'db' | 'paths' | 'api' | 'chatId'>,
   profile: Profile,
   rawName: string,
-  groupSlug: string | null = null,
+  teamSlug: string | null = null,
 ): Promise<CommandResult> {
   const requestedName = rawName === '-' ? autoName(ctx, profile) : rawName
 
@@ -142,8 +142,8 @@ export async function spawnAndBind(
     agent = spawnAgent(ctx.db, ctx.paths, {
       profileId: profile.id,
       name: requestedName,
-      // groupId omitted → spawnAgent falls back to 'default'.
-      ...(groupSlug ? { groupId: groupSlug } : {}),
+      // teamId omitted → spawnAgent falls back to 'default'.
+      ...(teamSlug ? { teamId: teamSlug } : {}),
     })
   } catch (e) {
     return {

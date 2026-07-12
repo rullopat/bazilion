@@ -1,4 +1,4 @@
-import type { HarnessTemplateWithCount } from '@bazilion/api-types'
+import type { TeamTemplateWithCount } from '@bazilion/api-types'
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { useState } from 'react'
@@ -7,7 +7,7 @@ import { TemplatesTabs } from '../../../components/TemplatesTabs'
 import { daemonClient } from '../../../lib/daemon-client'
 
 const fetchTeams = createServerFn({ method: 'GET' }).handler(() =>
-  daemonClient().get<HarnessTemplateWithCount[]>('/api/harness-templates'),
+  daemonClient().get<TeamTemplateWithCount[]>('/api/team-templates'),
 )
 
 export const Route = createFileRoute('/templates/teams/')({
@@ -35,7 +35,7 @@ function TeamTemplatesPage() {
               <tr key={team.id}>
                 <td><a href={`/templates/teams/${encodeURIComponent(team.id)}`}><code>{team.id}</code></a></td>
                 <td>{team.name}</td><td>{team.slotCount}</td><td>{team.currentRevision}</td>
-                <td>{team.deletedAt ? 'deleted source' : team.compatibilityManaged ? 'legacy compatible' : 'canonical'}</td>
+                <td>{team.deletedAt ? 'deleted source' : 'canonical'}</td>
               </tr>
             ))}
             {teams.length === 0 && <tr><td colSpan={5} className="muted">No team templates yet.</td></tr>}
@@ -54,7 +54,7 @@ function CreateTeamForm({ onCreated }: { onCreated: () => void }) {
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setError(null)
     try {
-      const response = await fetch('/api/harness-templates', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: id.trim(), name: name.trim() }) })
+      const response = await fetch('/api/team-templates', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: id.trim(), name: name.trim() }) })
       if (!response.ok) throw new Error(((await response.json().catch(() => null)) as { error?: string } | null)?.error ?? response.statusText)
       setId(''); setName(''); await onCreated()
     } catch (cause) { setError((cause as Error).message) } finally { setBusy(false) }

@@ -1,6 +1,6 @@
 export { archiveAgent } from './agent/archive.ts'
 export { deleteAgent } from './agent/delete.ts'
-export { moveAgentCanonical, moveAgentCompatibility } from './agent/move.ts'
+export { moveAgentCanonical } from './agent/move.ts'
 export { resolveAgent } from './agent/resolve.ts'
 export type { SpawnAgentInput } from './agent/spawn.ts'
 export { spawnAgent } from './agent/spawn.ts'
@@ -14,28 +14,6 @@ export {
 export type { BazilionDb } from './db/client.ts'
 export { openDb, openInMemoryDb } from './db/client.ts'
 export { runMigrations } from './db/migrate.ts'
-export { deleteGroup } from './group/delete.ts'
-export type { RegisterGroupInput } from './group/register.ts'
-export { registerGroup } from './group/register.ts'
-export {
-  type AdoptHarnessTemplateInput,
-  adoptHarnessTemplate,
-  previewHarnessAdoption,
-} from './harness/adopt.ts'
-export * from './harness/authorization.ts'
-export {
-  diffHarness,
-  type HarnessDiff,
-  saveHarnessAsTemplate,
-  updateHarnessSource,
-} from './harness/source.ts'
-export {
-  previewHarnessTemplateSpawn,
-  SpawnHarnessTemplateError,
-  type SpawnHarnessTemplateInput,
-  type SpawnHarnessTemplateResult,
-  spawnHarnessTemplate,
-} from './harness/spawn.ts'
 export type { Paths } from './paths.ts'
 export { resolvePaths } from './paths.ts'
 export type { CreateProfileInput } from './profile/create.ts'
@@ -48,8 +26,8 @@ export {
 } from './profile/identity.ts'
 export { loadProfile } from './profile/load.ts'
 export {
-  DEFAULT_GROUP_ID,
   DEFAULT_PROFILE_ID,
+  DEFAULT_TEAM_ID,
   ensureSetupSeeded,
   refreshDefaultProfileTemplates,
   type SeedResult,
@@ -66,29 +44,22 @@ export {
 } from './profile/templates.ts'
 export type { UpdateProfileInput } from './profile/update.ts'
 export { updateProfile } from './profile/update.ts'
-export type { SpawnProfileGroupInput, SpawnProfileGroupResult } from './profile-group/spawn.ts'
-export {
-  resolveMemberNames,
-  SpawnProfileGroupError,
-  spawnProfileGroup,
-} from './profile-group/spawn.ts'
 export * as agentRepo from './repos/agents.ts'
 export * as communicationApprovalRepo from './repos/communicationApprovals.ts'
 export type { ConfigStore } from './repos/config.ts'
 export { CONFIG_KEYS, isConfigKey, openConfig } from './repos/config.ts'
-export * as groupRepo from './repos/groups.ts'
-export * as harnessTemplateRepo from './repos/harnessTemplates.ts'
-export * as liveHarnessRepo from './repos/liveHarnesses.ts'
 export * as mcpServerRepo from './repos/mcpServers.ts'
 export * as messageRepo from './repos/messages.ts'
 export * as profileCommunicationDefaultsRepo from './repos/profileCommunicationDefaults.ts'
-export * as profileGroupRepo from './repos/profileGroups.ts'
 export * as profileRepo from './repos/profiles.ts'
 export * as providerModelRepo from './repos/providerModels.ts'
 export * as providerStateRepo from './repos/providerState.ts'
 export type { SecretsStore } from './repos/secrets.ts'
 export { openSecrets } from './repos/secrets.ts'
 export * as skillMetaRepo from './repos/skillMeta.ts'
+export * as teamPolicyRepo from './repos/teamPolicies.ts'
+export * as teamRepo from './repos/teams.ts'
+export * as teamTemplateRepo from './repos/teamTemplates.ts'
 export * as telegramAclRepo from './repos/telegram-acl.ts'
 export * as triggerRepo from './repos/triggers.ts'
 export * as webTokenRepo from './repos/webTokens.ts'
@@ -105,3 +76,25 @@ export { parseSkillFile } from './skills/parse.ts'
 export type { ResolvedSkill, ResolvedSkillSet } from './skills/resolve.ts'
 export { resolveAgentSkills } from './skills/resolve.ts'
 export { formatSkillScanFindings, scanSkillContent } from './skills/scan.ts'
+export { deleteTeam } from './team/delete.ts'
+export type { RegisterTeamInput } from './team/register.ts'
+export { registerTeam } from './team/register.ts'
+export {
+  type AdoptTeamTemplateInput,
+  adoptTeamTemplate,
+  previewTeamPolicyAdoption,
+} from './team-policy/adopt.ts'
+export * from './team-policy/authorization.ts'
+export {
+  diffTeamPolicy,
+  saveTeamPolicyAsTemplate,
+  type TeamPolicyDiff,
+  updateTeamPolicySource,
+} from './team-policy/source.ts'
+export {
+  previewTeamTemplateSpawn,
+  SpawnTeamTemplateError,
+  type SpawnTeamTemplateInput,
+  type SpawnTeamTemplateResult,
+  spawnTeamTemplate,
+} from './team-policy/spawn.ts'

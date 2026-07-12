@@ -34,7 +34,7 @@ test('only enabled providers with curated models surface', () => {
   providerModelRepo.replace(db, 'openai', ['gpt-4o'])
   // openai but disabled-then-enabled — still has its curated entries
   providerModelRepo.replace(db, 'groq', ['llama-3.3-70b']) // disabled → omitted
-  // lmstudio is enabled but has no curated models → omitted from groups
+  // lmstudio is enabled but has no curated models → omitted from teams
 
   const list = listAvailableModels(db)
   expect(list.map((m) => m.value).sort()).toEqual([
@@ -43,8 +43,8 @@ test('only enabled providers with curated models surface', () => {
     'openai:gpt-4o',
   ])
 
-  const groups = groupAvailableModels(db)
-  expect(groups).toEqual([
+  const teams = groupAvailableModels(db)
+  expect(teams).toEqual([
     { provider: 'anthropic', models: ['claude-opus-4-6', 'claude-sonnet-4-6'] },
     { provider: 'openai', models: ['gpt-4o'] },
   ])

@@ -12,18 +12,17 @@ import { completionCommand } from './commands/completion.ts'
 import { configCommand } from './commands/config.ts'
 import { dashboardCommand } from './commands/dashboard.ts'
 import { doctorCommand } from './commands/doctor.ts'
-import { groupCommand } from './commands/group.ts'
 import { inboxCommand } from './commands/inbox.ts'
 import { loginCommand } from './commands/login.ts'
 import { mcpCommand } from './commands/mcp.ts'
 import { memoryCommand } from './commands/memory.ts'
 import { profileCommand } from './commands/profile.ts'
-import { profileGroupCommand } from './commands/profile-group.ts'
 import { providerCommand } from './commands/provider.ts'
 import { sendCommand } from './commands/send.ts'
 import { serveCommand } from './commands/serve.ts'
 import { skillCommand } from './commands/skill.ts'
 import { teamCommand } from './commands/team.ts'
+import { teamTemplateCommand } from './commands/team-template.ts'
 import { telegramCommand } from './commands/telegram.ts'
 import { tokenCommand } from './commands/token.ts'
 import { triggerCommand } from './commands/trigger.ts'
@@ -38,8 +37,8 @@ const main = defineCommand({
   subCommands: {
     login: loginCommand,
     profile: profileCommand,
-    'profile-group': profileGroupCommand,
-    group: groupCommand,
+    team: teamCommand,
+    'team-template': teamTemplateCommand,
     agent: agentCommand,
     approval: approvalCommand,
     skill: skillCommand,
@@ -57,7 +56,6 @@ const main = defineCommand({
     token: tokenCommand,
     auth: authCommand,
     telegram: telegramCommand,
-    team: teamCommand,
     uninstall: uninstallCommand,
   },
 })
@@ -138,7 +136,7 @@ function printTopLevelHelp(): void {
   console.log('')
   console.log('USAGE bazilion <command> [args]')
   console.log('')
-  const groups: { title: string; items: [string, string][] }[] = [
+  const teams: { title: string; items: [string, string][] }[] = [
     {
       title: 'setup',
       items: [
@@ -152,9 +150,8 @@ function printTopLevelHelp(): void {
       title: 'catalog',
       items: [
         ['profile', 'Manage profiles (templates agents are spawned from)'],
-        ['profile-group', 'Manage profile groups (preconfigured team templates)'],
-        ['team', 'Inspect and exchange canonical Team templates'],
-        ['group', 'Manage groups (collaboration context — filesystem root + USER.md + roster)'],
+        ['team-template', 'Inspect and exchange reusable Team Templates'],
+        ['team', 'Manage teams (collaboration context — filesystem root + USER.md + roster)'],
         ['skill', 'Manage the skill library'],
         ['provider', 'Manage and test LLM providers'],
         ['config', 'Manage service config (credentials + URLs/IDs)'],
@@ -166,7 +163,7 @@ function printTopLevelHelp(): void {
       items: [
         ['approval', 'Review and decide communication approval attempts'],
         ['agent', 'Spawn, list, chat, archive agents'],
-        ['memory', "Read/write a group's shared memory"],
+        ['memory', "Read/write a team's shared memory"],
         ['send', 'Send a message from one agent to another'],
         ['inbox', 'Inspect agent inboxes'],
         ['trigger', 'Manage agent heartbeats / cron triggers'],
@@ -192,8 +189,8 @@ function printTopLevelHelp(): void {
       items: [['completion', 'Print shell completion script (bash | zsh | fish)']],
     },
   ]
-  const nameWidth = 12
-  for (const g of groups) {
+  const nameWidth = 15
+  for (const g of teams) {
     console.log(`  ${g.title}`)
     for (const [name, desc] of g.items) {
       console.log(`    ${name.padEnd(nameWidth)}${desc}`)

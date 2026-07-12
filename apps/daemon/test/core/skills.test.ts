@@ -303,7 +303,7 @@ test('resolveAgentSkills returns parsed skills attached to an agent', () => {
     defaultModel: 'm',
     defaultSkills: ['web-search', 'note-taking'],
   })
-  const agent = spawnAgent(env.db, env.paths, { profileId: 'p', groupId: env.groupId })
+  const agent = spawnAgent(env.db, env.paths, { profileId: 'p', teamId: env.teamId })
 
   const set = resolveAgentSkills(env.db, env.paths, agent.id)
   expect(set.resolved.map((s) => s.name).sort()).toEqual(['note-taking', 'web-search'])
@@ -313,7 +313,7 @@ test('resolveAgentSkills returns parsed skills attached to an agent', () => {
 
 test('resolveAgentSkills reports skills attached but not installed', () => {
   createProfile(env.db, env.paths, { id: 'p', defaultModel: 'm' })
-  const agent = spawnAgent(env.db, env.paths, { profileId: 'p', groupId: env.groupId })
+  const agent = spawnAgent(env.db, env.paths, { profileId: 'p', teamId: env.teamId })
   agentRepo.attachSkill(env.db, agent.id, 'ghost')
 
   const set = resolveAgentSkills(env.db, env.paths, agent.id)

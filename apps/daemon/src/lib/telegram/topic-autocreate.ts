@@ -3,7 +3,7 @@
 // topic id + deep-link. Steps:
 //
 //   1. If `agents.telegram_topic_id` is already set → return it (no-op).
-//   2. Allocate the group's icon color if not yet allocated.
+//   2. Allocate the team's icon color if not yet allocated.
 //   3. Compose the topic name via `topicNameFor`.
 //   4. Call `bot.api.createForumTopic(chatId, name, { icon_color })`.
 //   5. Persist the returned `message_thread_id` to `agents.telegram_topic_id`.
@@ -14,7 +14,7 @@
 
 import type { Agent } from '@bazilion/api-types'
 import type { BazilionDb } from '../../core/db/client.ts'
-import { agentRepo, groupRepo, profileRepo } from '../../core/index.ts'
+import { agentRepo, profileRepo, teamRepo } from '../../core/index.ts'
 import type { Paths } from '../../core/paths.ts'
 import { notifyDirectoryDirty } from './directory.ts'
 import { allocateGroupColor, topicDeepLink, topicNameFor } from './naming.ts'
@@ -44,7 +44,7 @@ export interface EnsureTopicArgs {
 export type EnsureTopicResult =
   | { kind: 'ok'; topicId: number; deepLink: string; created: boolean; agent: Agent }
   | { kind: 'agent-not-found' }
-  | { kind: 'group-not-found' }
+  | { kind: 'team-not-found' }
 
 /**
  * Idempotent ensure-topic-exists call.
@@ -68,11 +68,11 @@ export async function ensureAgentTopic(args: EnsureTopicArgs): Promise<EnsureTop
     }
   }
 
-  const group = groupRepo.get(args.db, agent.groupId, args.paths)
-  if (!group) return { kind: 'group-not-found' }
+  const team = teamRepo.get(args.db, agent.teamId, args.paths)
+  if (!team) return { kind: 'team-not-found' }
 
-  const color = allocateGroupColor(args.db, group.id)
-  const name = topicNameFor(agent, group)
+  const color = allocateGroupColor(args.db, team.id)
+  const name = topicNameFor(agent, team)
   const profile = profileRepo.get(args.db, agent.profileId)
   const stickerId = await resolveStickerId(emojiForAgent(agent, profile?.name ?? ''))
   const result = await args.api.createForumTopic(args.chatId, name, {

@@ -1,47 +1,47 @@
 ---
 id: BAZ-009
-title: Configurable agent harness - functional communication-flow prototype
+title: Configurable agent teamPolicy - functional communication-flow prototype
 status: done
 size: L (1-2 weeks)
 created: 2026-07-06
 refined: 2026-07-10
 shipped: 2026-07-10
 priority: high
-note: Build a functional in-app, locally persisted prototype that validates the policy model and flow-first harness UX before production schema, runtime enforcement, and CLI work are split into follow-up BAZs.
+note: Build a functional in-app, locally persisted prototype that validates the policy model and flow-first teamPolicy UX before production schema, runtime enforcement, and CLI work are split into follow-up BAZs.
 ---
 
-# BAZ-009 - Configurable agent harness - functional communication-flow prototype
+# BAZ-009 - Configurable agent teamPolicy - functional communication-flow prototype
 
 **Status:** Done. Implemented 2026-07-10; unreleased.
 
-Bazilion profile groups are currently ordered team templates. Spawned members share one
-group context and can message any agent id they know; user chat and Telegram reach agents
+Bazilion profile teams are currently ordered team templates. Spawned members share one
+team context and can message any agent id they know; user chat and Telegram reach agents
 without per-agent communication gates. There is no controlled communication topology or
-harness-oriented UI.
+teamPolicy-oriented UI.
 
 This BAZ builds a functional prototype inside the real web app. Operators can create and
-edit a harness policy, switch between Flow and Matrix views, inspect effective gates,
-simulate allowed and denied communication, and move from a live harness into an
+edit a teamPolicy policy, switch between Flow and Matrix views, inspect effective gates,
+simulate allowed and denied communication, and move from a live teamPolicy into an
 individual agent's chat. Policy state remains local to the browser and is not enforced by
 the daemon in this story.
 
-**Dependency:** Conceptual follow-on to BAZ-002 Profile Groups. No production schema or
+**Dependency:** Conceptual follow-on to BAZ-002 Profile Teams. No production schema or
 runtime dependency is added by this prototype.
 
 ## User Stories
 
 - **As an operator designing a team**, I want to control direct user input/output,
-  outside-group input/output, and peer-to-peer communication for every member, so the
+  outside-team input/output, and peer-to-peer communication for every member, so the
   team does not behave as an unrestricted flat chat room.
 - **As an operator designing a communication flow**, I want to connect specific agents
   visually, so planner -> worker -> reviewer -> reporter patterns are understandable
   without relying on prompt instructions.
-- **As an operator creating profiles and harness templates**, I want portable profile
+- **As an operator creating profiles and teamPolicy templates**, I want portable profile
   defaults and reusable policy presets, so new teams start from an intentional posture.
 - **As an operator managing a live team**, I want to change its policy independently of
   the source template and compare any divergence before promoting changes back.
 - **As an operator observing a live team**, I want to double-click an agent and enter that
-  agent's chat, then return to the same place on the harness canvas.
+  agent's chat, then return to the same place on the teamPolicy canvas.
 - **As an operator debugging communication**, I want a clear explanation and audit entry
   for simulated denied attempts, so an intentional gate is not mistaken for agent failure.
 
@@ -54,7 +54,7 @@ editing interactions, and preserve its state across reloads.
 
 The prototype is successful when an operator can understand and configure the four
 boundary gates and directed peer permissions from either Flow or Matrix view, validate the
-result with a simulator, and navigate from a real live-group member to its existing chat.
+result with a simulator, and navigate from a real live-team member to its existing chat.
 
 ## Product Decisions
 
@@ -66,12 +66,12 @@ result with a simulator, and navigate from a real live-group member to its exist
 3. **User gates are directional and transport-independent.** User input covers direct
    human messages from web, CLI, and Telegram. User output covers direct replies and
    proactive notifications through those transports. The two gates are independent.
-4. **Outside group means other local Bazilion groups.** Federation and arbitrary external
-   systems are not represented in v1. Telegram is a user transport, not an outside group.
+4. **Outside team means other local Bazilion teams.** Federation and arbitrary external
+   systems are not represented in v1. Telegram is a user transport, not an outside team.
 5. **Policy decisions are allow or deny.** Approval-required communication is deferred.
    Denial is explicit and observable; there is no silent-drop behavior.
-6. **Existing groups remain open.** Existing groups/profile groups are represented by the
-   Open Team preset. New harnesses require an explicit Open Team, Coordinator, Review
+6. **Existing teams remain open.** Existing teams/profile teams are represented by the
+   Open Team preset. New teamPolicyes require an explicit Open Team, Coordinator, Review
    Pipeline, or Blank choice. Blank and newly added members start isolated.
 7. **Template and live policies are snapshots.** Neither direction propagates
    automatically. Compare/update/save-as-new operations require explicit review and affect
@@ -84,16 +84,16 @@ result with a simulator, and navigate from a real live-group member to its exist
 
 ## Current System Constraints
 
-- Agents belong to exactly one group (`agents.group_id`).
-- Profile group members are position-based today
-  (`profile_group_members.profile_group_id + position`). Production policy edges will need
+- Agents belong to exactly one team (`agents.team_id`).
+- Profile team members are position-based today
+  (`profile_group_members.profile_team_id + position`). Production policy edges will need
   stable member-slot ids so they survive reorder.
 - Inter-agent messages are inserted by `messageRepo.send`; inbox auto-delivery wakes a
   recipient after insertion. Production enforcement therefore belongs before insertion.
 - User input enters through chat routes, Telegram inbound, triggers, and direct
   `runAgentTurn` callers rather than through the `messages` table.
 - User output is currently streamed as `ChatFrame` data and mirrored to Telegram.
-- The web app has no graph-editor dependency or browser UI test harness today.
+- The web app has no graph-editor dependency or browser UI test teamPolicy today.
 
 ## Scope
 
@@ -102,36 +102,36 @@ result with a simulator, and navigate from a real live-group member to its exist
 Implement the prototype around one directed allow-edge model:
 
 ```ts
-type HarnessEndpoint =
+type TeamPolicyEndpoint =
   | { kind: 'user' }
-  | { kind: 'outside_group' }
+  | { kind: 'outside_team' }
   | { kind: 'member_slot'; slotId: string }
   | { kind: 'agent'; agentId: string }
 
-type HarnessEdge = {
+type TeamPolicyEdge = {
   id: string
-  source: HarnessEndpoint
-  target: HarnessEndpoint
+  source: TeamPolicyEndpoint
+  target: TeamPolicyEndpoint
 }
 
-type HarnessPolicy = {
+type TeamPolicyPolicy = {
   version: 1
-  edges: HarnessEdge[]
+  edges: TeamPolicyEdge[]
 }
 
-type HarnessDecision = {
+type TeamPolicyDecision = {
   decision: 'allow' | 'deny'
   reason: string
   edgeId?: string
 }
 
-type ProfilePeerDefault = 'inherit_harness' | 'allow_all' | 'deny_all'
+type ProfilePeerDefault = 'inherit_team_policy' | 'allow_all' | 'deny_all'
 ```
 
 - A matching directed edge means allow; no matching edge means deny.
 - Template policies use `member_slot`; live policies use `agent` after slot resolution.
 - `user -> member` is user input; `member -> user` is user output.
-- `outside_group -> member` is outside-group input; the reverse is outside-group output.
+- `outside_team -> member` is outside-team input; the reverse is outside-team output.
 - Member-to-member edges are specific peer permissions.
 - Self-edges and duplicate edges are invalid. Node positions and viewport state are UI state,
   not communication policy.
@@ -143,51 +143,51 @@ type ProfilePeerDefault = 'inherit_harness' | 'allow_all' | 'deny_all'
 ### 2. Presets And Profile Defaults
 
 - **Open Team:** all current member pairs are connected in both directions; all members
-  have user and outside-group input/output enabled.
+  have user and outside-team input/output enabled.
 - **Coordinator:** the user communicates bidirectionally with one selected coordinator;
   coordinator/worker pairs communicate bidirectionally; workers have no peer, user, or
-  outside-group edges unless added explicitly.
+  outside-team edges unless added explicitly.
 - **Review Pipeline:** the operator assigns planner, worker, reviewer, and reporter roles;
   the initial directed path is user -> planner -> worker -> reviewer -> reporter -> user.
 - **Blank:** no edges and all members visibly isolated.
-- Harness creation must preview the resolved topology before confirmation.
-- Profile create/edit gets prototype controls for user input/output, outside-group
-  input/output, and peer posture (`inherit_harness`, `allow_all`, or `deny_all`). A profile
+- TeamPolicy creation must preview the resolved topology before confirmation.
+- Profile create/edit gets prototype controls for user input/output, outside-team
+  input/output, and peer posture (`inherit_team_policy`, `allow_all`, or `deny_all`). A profile
   cannot name specific peers.
-- The harness preset is applied first, profile defaults overlay it, and the preview is then
+- The teamPolicy preset is applied first, profile defaults overlay it, and the preview is then
   snapshotted into member-slot policy. Later profile edits do not propagate.
 - A profile boundary default adds or removes the corresponding user/outside edge.
-  `inherit_harness` leaves preset peer edges unchanged, `allow_all` adds inbound and outbound
+  `inherit_team_policy` leaves preset peer edges unchanged, `allow_all` adds inbound and outbound
   edges to every current peer, and `deny_all` removes all peer edges incident to that slot.
-- Adding a profile to a live harness remains isolated until the operator explicitly applies
+- Adding a profile to a live teamPolicy remains isolated until the operator explicitly applies
   its defaults. Direct profile spawn copies the defaults into the local live-policy overlay.
 
 ### 3. Prototype Routes And State
 
-- Add a top-level **Harnesses** navigation item marked `Prototype`.
-- `/harnesses` lists prototype templates, locally bound live groups, and creation actions.
-- `/harnesses/$id` opens the builder in template or live mode.
-- Persist a versioned state document under `bazilion:harness-prototype:v1` in
+- Add a top-level **TeamPolicyes** navigation item marked `Prototype`.
+- `/policyes` lists prototype templates, locally bound live teams, and creation actions.
+- `/policyes/$id` opens the builder in template or live mode.
+- Persist a versioned state document under `bazilion:teamPolicy-prototype:v1` in
   `localStorage`, including policies, fixtures, profile defaults, node positions, viewport,
   selected view, selected node/edge, activity, and template relationship metadata.
 - Include a reset-to-fixtures action with confirmation.
 - Supply Open Team, Coordinator, Review Pipeline, and Blank examples.
-- Read existing groups, agents, and profiles through current daemon APIs. Binding an
-  existing group creates a local policy overlay only; no harness-policy API write occurs.
-- Existing Profile Groups, Groups, Profiles, and chat behavior outside prototype context
+- Read existing teams, agents, and profiles through current daemon APIs. Binding an
+  existing team creates a local policy overlay only; no teamPolicy-policy API write occurs.
+- Existing Profile Teams, Teams, Profiles, and chat behavior outside prototype context
   remain unchanged.
 
-### 4. Harness Builder
+### 4. TeamPolicy Builder
 
 - Use `@xyflow/react` for the node canvas, viewport controls, edge creation/deletion, and
   custom accessible agent nodes. Do not hand-roll canvas pan/zoom/selection behavior.
-- Show compact `User` and `Other groups` boundary nodes alongside agent/member nodes so
+- Show compact `User` and `Other teams` boundary nodes alongside agent/member nodes so
   boundary permissions are visible in the graph.
 - Single-click selects a node or edge and opens its inspector. Double-clicking a template
   slot opens slot/profile configuration.
 - Dragging between valid handles adds an allow edge. Removing an edge changes that pair to
   deny. Reject self/duplicate/invalid boundary edges with visible feedback.
-- The agent inspector exposes user input/output, outside-group input/output, inbound peers,
+- The agent inspector exposes user input/output, outside-team input/output, inbound peers,
   outbound peers, isolation state, and recent blocked attempts.
 - Matrix rows are sources and columns are targets. Toggling a cell changes the same edge
   collection immediately; switching views must preserve selection and edits.
@@ -199,14 +199,14 @@ type ProfilePeerDefault = 'inherit_harness' | 'allow_all' | 'deny_all'
 
 ### 5. Live Agent Chat
 
-- A live prototype harness can bind to a real existing group so its nodes carry real agent
+- A live prototype teamPolicy can bind to a real existing team so its nodes carry real agent
   ids.
-- Double-clicking a live agent navigates to the existing `/agents/:id` chat with harness
-  return context. An explicit **Back to harness** action restores the prior view, pan, zoom,
+- Double-clicking a live agent navigates to the existing `/agents/:id` chat with teamPolicy
+  return context. An explicit **Back to teamPolicy** action restores the prior view, pan, zoom,
   and selection.
 - A template slot never pretends to have a chat. Fixture-only agents without a real agent id
   show chat as unavailable.
-- In harness return context, the chat shows the effective prototype user-input/output
+- In teamPolicy return context, the chat shows the effective prototype user-input/output
   posture. Denied input disables the composer; denied output is represented by a clearly
   labeled prototype blocked-delivery state while history remains inspectable.
 - The UI must state that policy is a local prototype and is not daemon-enforced. It must not
@@ -216,10 +216,10 @@ type ProfilePeerDefault = 'inherit_harness' | 'allow_all' | 'deny_all'
 
 - Spawn/bind snapshots the source template and resolves `slotId -> agentId` where a mapping
   exists.
-- A live harness shows `Based on <template>` and `Modified` when policy or roster diverges.
+- A live teamPolicy shows `Based on <template>` and `Modified` when policy or roster diverges.
 - `Compare with template` shows a policy/roster diff.
 - `Update source template` applies only reviewed changes to the local prototype template and
-  affects future local snapshots; it never mutates other live harnesses.
+  affects future local snapshots; it never mutates other live teamPolicyes.
 - `Save as new template` creates an independent local prototype template.
 - Existing members map by stable prototype `slotId`. Live-only members require explicit
   inclusion as new template slots.
@@ -234,7 +234,7 @@ type ProfilePeerDefault = 'inherit_harness' | 'allow_all' | 'deny_all'
 - Produce a short implementation handoff that keeps the model above and identifies the
   production enforcement points: messaging host, external send route, user chat ingress,
   Telegram ingress/egress, and pre-insertion scheduler assumptions.
-- Sketch the production API surface for harness templates, live policy, and block history;
+- Sketch the production API surface for teamPolicy templates, live policy, and block history;
   do not implement those endpoints in this BAZ.
 
 ## Out Of Scope
@@ -244,19 +244,19 @@ type ProfilePeerDefault = 'inherit_harness' | 'allow_all' | 'deny_all'
 - Human approval gates, pending queues, expiry, assignment, or retry semantics.
 - Automatic workflow execution, stages, conditions, payload routing, retries, or state
   machines. Edges authorize communication only.
-- Federated/cross-install actors from BAZ-001 or multi-group agent membership.
-- Replacing or deleting current Profile Groups and Groups screens.
+- Federated/cross-install actors from BAZ-001 or multi-team agent membership.
+- Replacing or deleting current Profile Teams and Teams screens.
 - Production CLI import/export commands.
 - Security sandboxing or command approval from BAZ-006.
 
 ## Acceptance Criteria
 
-- Harnesses is reachable from top navigation and is unmistakably labeled as a prototype.
+- TeamPolicyes is reachable from top navigation and is unmistakably labeled as a prototype.
 - Reloading preserves prototype state; reset restores all supplied fixtures and schema-version
   mismatch fails safely back to fixtures.
 - Flow and Matrix edit one canonical directed edge set and remain synchronized across view
   switches and reloads.
-- User and Other groups are visible boundary actors; all four boundary gates can be changed
+- User and Other teams are visible boundary actors; all four boundary gates can be changed
   from the graph/matrix and agent inspector.
 - The four presets create the documented topology. Blank and newly added members are
   isolated and visibly identified.
@@ -266,16 +266,16 @@ type ProfilePeerDefault = 'inherit_harness' | 'allow_all' | 'deny_all'
   edges.
 - The simulator returns deterministic allow/deny reasons and every denial creates a complete
   local blocked-attempt record without sending a real message.
-- A locally bound real group displays its live agents. Double-click opens the selected
-  agent's existing chat, and Back to harness restores view, pan, zoom, and selection.
+- A locally bound real team displays its live agents. Double-click opens the selected
+  agent's existing chat, and Back to teamPolicy restores view, pan, zoom, and selection.
 - Template slots and fixture-only nodes do not expose a fake live-chat action.
 - Template/live edits never propagate automatically. Compare, reviewed update-source, and
   save-as-new produce the documented local snapshot behavior.
-- The prototype performs no harness-policy write to the daemon and never claims local gates
+- The prototype performs no teamPolicy-policy write to the daemon and never claims local gates
   are enforced outside the prototype.
 - The builder is usable without overlap at 1440x900, 1024x768, and 390x844 in light and dark
   themes; long agent/profile names remain contained.
-- Existing Profile Groups, Groups, Profiles, and ordinary agent-chat routes continue to
+- Existing Profile Teams, Teams, Profiles, and ordinary agent-chat routes continue to
   build and behave as before outside prototype context.
 
 ## Verification
@@ -294,12 +294,12 @@ type ProfilePeerDefault = 'inherit_harness' | 'allow_all' | 'deny_all'
 
 When the prototype is accepted, create separately sized Todo BAZs for:
 
-1. Schema, API types/routes, migrations, stable profile-group member `slotId`s, and profile
+1. Schema, API types/routes, migrations, stable profile-team member `slotId`s, and profile
    communication defaults.
 2. Runtime enforcement for agent messaging, external sends, user ingress/egress, Telegram,
    and blocked-attempt audit persistence.
-3. Production web migration from Profile Groups/Groups to harness templates and live
-   harnesses using persisted APIs.
+3. Production web migration from Profile Teams/Teams to teamPolicy templates and live
+   teamPolicyes using persisted APIs.
 4. CLI policy show/import/export and block-history visibility.
 5. Optional human approval communication gates, only after allow/deny behavior is validated.
 
@@ -308,22 +308,22 @@ When the prototype is accepted, create separately sized Todo BAZs for:
 Shipped as the planned functional, browser-local prototype:
 
 - Added a versioned canonical policy model in
-  `apps/web/src/lib/harness-prototype.ts`, persisted under
-  `bazilion:harness-prototype:v1`. Invalid or version-mismatched payloads fail safely back
+  `apps/web/src/lib/policy-prototype.ts`, persisted under
+  `bazilion:teamPolicy-prototype:v1`. Invalid or version-mismatched payloads fail safely back
   to the supplied fixtures, and Reset restores those fixtures.
-- Added unmistakably local-prototype Harnesses navigation plus list and builder routes.
+- Added unmistakably local-prototype TeamPolicyes navigation plus list and builder routes.
   The builder presents one directed edge set through synchronized Flow and Matrix views,
   boundary actors, member inspection, all four boundary gates, preset selection, profile
   default preview, isolation state, and complete/incomplete definitions.
 - Added exact Open Team, Coordinator, Review Pipeline, and Blank preset expansion. Missing
   profile defaults remain neutral unless a creation flow deliberately supplies a fallback;
   defaults cannot name peers and are copied into snapshots rather than inherited.
-- Added live-group binding from read-only daemon data, stable prototype slot-to-agent
+- Added live-team binding from read-only daemon data, stable prototype slot-to-agent
   mapping, source attribution and divergence state, reviewed compare/update-source,
   save-as-new, and incident-edge review before removing a member. Canonical Open Team
   fixtures expand existing live rosters for compatibility, while edited Open Team policies
   retain their actual restrictions.
-- Added deterministic simulation for user, peer, and other-group channels. Denials render
+- Added deterministic simulation for user, peer, and other-team channels. Denials render
   the attempted path and append a complete local block record without sending a message.
   Prototype-context agent chat shows the applicable local input/output gates, keeps history
   readable, disables blocked composition, and labels blocked delivery as local-only.
@@ -332,13 +332,13 @@ Shipped as the planned functional, browser-local prototype:
   chat action.
 - Added responsive desktop, tablet, and mobile layouts, including the mobile inspector
   drawer, keyboard dismissal/focus behavior, contained long names, and light/dark styling.
-- Added `docs/harness-policy-handoff.md` and Todo stories BAZ-010 through BAZ-014 for the
+- Added `docs/policy-policy-handoff.md` and Todo stories BAZ-010 through BAZ-014 for the
   production persistence/API, enforcement/audit, web migration, CLI, and optional approval
   work.
 
 Verification completed:
 
-- `pnpm vitest run apps/web/test/harness-prototype.test.ts`: 21/21 tests passed, covering
+- `pnpm vitest run apps/web/test/policy-prototype.test.ts`: 21/21 tests passed, covering
   canonical endpoint equality, validation, channel derivation, exact preset topology,
   profile-default precedence, snapshot divergence/diff, version fallback, and complete
   denial records.
@@ -357,14 +357,20 @@ Verification completed:
 
   Each matrix cell exercised fixture reset, Flow selection and edge creation, synchronized
   Matrix/inspector gate edits, deterministic denial and block persistence across reload,
-  live-group binding, member-removal review, compare/update-source, save-as-new, live-agent
+  live-team binding, member-removal review, compare/update-source, save-as-new, live-agent
   chat navigation, blocked composition, and exact return-state restoration. Long names and
   overlap were also inspected. The pass used a scrubbed isolated `BAZILION_HOME`; no real
   agent message was sent.
 
 Deliberately not built here:
 
-- Production database persistence, migrations, harness API writes, daemon enforcement,
+- Production database persistence, migrations, teamPolicy API writes, daemon enforcement,
   workflow execution, or approval queues.
 - Any claim that browser-local policy is a security boundary. Those concerns remain in the
   explicit follow-up BAZs.
+
+## Post-cleanup status (BAZ-018, 2026-07-12)
+
+The local-only prototype and `/harnesses` URLs were removed after their Flow/Matrix interaction
+model graduated into the server-backed Team Template and Team Policy editors. No prototype state
+or migration UI remains in the product.

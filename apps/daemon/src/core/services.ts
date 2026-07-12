@@ -29,7 +29,7 @@ export interface ServiceDef {
   displayName: string
   category: ServiceCategory
   /** Display grouping label shown above the card on the /config tabs. */
-  group?: string
+  team?: string
   /** Sign-up link, docs, or 1-line description shown on the card. */
   hint?: string
   fields: ServiceField[]
@@ -400,7 +400,7 @@ export const SERVICES: ServiceDef[] = [
     id: 'firecrawl',
     displayName: 'Firecrawl',
     category: 'service',
-    group: 'Web Search',
+    team: 'Web Search',
     hint: 'web_fetch fallback for JS-heavy/blocked pages · firecrawl.dev (free tier available)',
     fields: [
       {
@@ -423,7 +423,7 @@ export const SERVICES: ServiceDef[] = [
     id: 'brave-search',
     displayName: 'Brave Search',
     category: 'service',
-    group: 'Web Search',
+    team: 'Web Search',
     hint: 'Web search tool · free tier at brave.com/search/api/',
     fields: [{ envVar: 'BRAVE_API_KEY', kind: 'secret', label: 'API key', placeholder: 'BSA...' }],
   },
@@ -431,7 +431,7 @@ export const SERVICES: ServiceDef[] = [
     id: 'searxng',
     displayName: 'SearXNG',
     category: 'service',
-    group: 'Web Search',
+    team: 'Web Search',
     hint: 'Self-hosted meta-search engine · searxng.org',
     fields: [
       {
@@ -446,7 +446,7 @@ export const SERVICES: ServiceDef[] = [
     id: 'browser',
     displayName: 'Browser Automation',
     category: 'service',
-    group: 'Browser',
+    team: 'Browser',
     hint: 'Playwright-driven browser tools (navigate, snapshot, click, screenshot). Run `pnpm exec playwright install chromium` once.',
     fields: [
       {

@@ -12,6 +12,7 @@ import type {
   ChatFrame,
   MoveAgentRequest,
   ResolvedAgent,
+  ResolvedTeamPolicy,
   SessionEvent,
   SessionHeadResponse,
   SkillScanFinding,
@@ -65,13 +66,13 @@ function asPaths(v: string | string[] | undefined): string[] {
 }
 
 const spawnCmd = defineCommand({
-  meta: { name: 'spawn', description: 'Spawn an agent from a profile into a group' },
+  meta: { name: 'spawn', description: 'Spawn an agent from a profile into a team' },
   args: {
     profile: { type: 'string', required: true, description: 'Profile id' },
     name: { type: 'string', description: 'Agent name (defaults to profile name)' },
-    group: {
+    team: {
       type: 'string',
-      description: "Group to join (defaults to 'default')",
+      description: "Team to join (defaults to 'default')",
     },
     model: { type: 'string', description: 'Override profile default model' },
     reasoning: {
@@ -81,14 +82,21 @@ const spawnCmd = defineCommand({
   },
   async run({ args }) {
     const client = createClient()
+    const teamId = args.team ?? 'default'
+    const policy = await client.get<ResolvedTeamPolicy>(
+      `/api/teams/${encodeURIComponent(teamId)}/policy`,
+    )
     const body: SpawnAgentRequest = {
       profileId: args.profile,
       name: args.name,
       model: args.model,
       reasoningLevel: args.reasoning as SpawnAgentRequest['reasoningLevel'],
-      groupId: args.group,
+      teamId,
+      teamExpectedRevision: policy.teamPolicy.revision,
+      placement: 'open',
     }
-    const agent = await client.post<Agent>('/api/agents', body)
+    const response = await client.post<{ agent: Agent }>('/api/agents', body)
+    const agent = response.agent
     console.log(`spawned agent ${agent.id} (${agent.name})`)
     console.log(`dir: ${agent.dir}`)
   },
@@ -189,7 +197,7 @@ const showCmd = defineCommand({
     console.log(`profile: ${r.profile.id}`)
     console.log(`model:   ${r.model}`)
     console.log(`dir:     ${r.agent.dir}`)
-    console.log(`group:   ${r.group.id} ${r.group.path}`)
+    console.log(`team:   ${r.team.id} ${r.team.path}`)
     console.log('skills:')
     if (r.skills.length === 0) {
       console.log('  (none)')
@@ -230,7 +238,13 @@ const deleteCmd = defineCommand({
   },
   async run({ args }) {
     const client = createClient()
-    await client.del(`/api/agents/${args.id}`)
+    const agent = await client.get<ResolvedAgent>(`/api/agents/${encodeURIComponent(args.id)}`)
+    const policy = await client.get<ResolvedTeamPolicy>(
+      `/api/teams/${encodeURIComponent(agent.team.id)}/policy`,
+    )
+    await client.del(
+      `/api/agents/${encodeURIComponent(args.id)}?expectedTeamRevision=${policy.teamPolicy.revision}`,
+    )
     console.log(`deleted agent ${args.id}`)
   },
 })
@@ -459,8 +473,8 @@ const chatContextCmd = defineCommand({
     if (ctx.systemPrompt.skillsListChars > 0) {
       console.log(`  skills line: ${ctx.systemPrompt.skillsListChars.toLocaleString()} chars`)
     }
-    if (ctx.systemPrompt.groupListChars > 0) {
-      console.log(`  group block: ${ctx.systemPrompt.groupListChars.toLocaleString()} chars`)
+    if (ctx.systemPrompt.teamListChars > 0) {
+      console.log(`  team block: ${ctx.systemPrompt.teamListChars.toLocaleString()} chars`)
     }
     if (ctx.systemPrompt.userMdChars > 0) {
       console.log(`  user_md block: ${ctx.systemPrompt.userMdChars.toLocaleString()} chars`)
@@ -489,10 +503,10 @@ const chatContextCmd = defineCommand({
       }
       console.log('')
     }
-    console.log('## group')
-    console.log(`    - ${ctx.group.id} (${ctx.group.name}): ${ctx.group.path}`)
-    if (ctx.group.userMdChars > 0) {
-      console.log(`    user_md: ${ctx.group.userMdChars.toLocaleString()} chars`)
+    console.log('## team')
+    console.log(`    - ${ctx.team.id} (${ctx.team.name}): ${ctx.team.path}`)
+    if (ctx.team.userMdChars > 0) {
+      console.log(`    user_md: ${ctx.team.userMdChars.toLocaleString()} chars`)
     }
     console.log('')
     console.log('## history')
@@ -623,19 +637,31 @@ const skillCmd = defineCommand({
   },
 })
 
-// --- group membership ---
+// --- team membership ---
 
 const moveCmd = defineCommand({
-  meta: { name: 'move', description: 'Move an agent to a different group' },
+  meta: { name: 'move', description: 'Move an agent to a different team' },
   args: {
     agent: { type: 'positional', required: true },
-    group: { type: 'positional', required: true },
+    team: { type: 'positional', required: true },
   },
   async run({ args }) {
     const client = createClient()
-    const body: MoveAgentRequest = { groupId: args.group }
-    await client.patch(`/api/agents/${args.agent}/group`, body)
-    console.log(`moved ${args.agent} to group ${args.group}`)
+    const [agent, destination] = await Promise.all([
+      client.get<ResolvedAgent>(`/api/agents/${encodeURIComponent(args.agent)}`),
+      client.get<ResolvedTeamPolicy>(`/api/teams/${encodeURIComponent(args.team)}/policy`),
+    ])
+    const source = await client.get<ResolvedTeamPolicy>(
+      `/api/teams/${encodeURIComponent(agent.team.id)}/policy`,
+    )
+    const body: MoveAgentRequest = {
+      teamId: args.team,
+      sourceExpectedRevision: source.teamPolicy.revision,
+      destinationExpectedRevision: destination.teamPolicy.revision,
+      placement: 'open',
+    }
+    await client.patch(`/api/agents/${args.agent}/team`, body)
+    console.log(`moved ${args.agent} to team ${args.team}`)
   },
 })
 

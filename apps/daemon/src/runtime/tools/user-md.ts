@@ -1,10 +1,10 @@
-// Group-shared USER.md read/write surface for agents.
+// Team-shared USER.md read/write surface for agents.
 //
 // USER.md is inlined into every agent's system prompt every turn (capped at
 // 12 KB on the daemon-side host). Agents previously could only read it; now
 // they can also update it via read-modify-write so they can correct stale
 // facts, not just stack new ones. Concurrency between multiple agents in
-// the same group is handled via optimistic etag checks — see
+// the same team is handled via optimistic etag checks — see
 // `lib/user-md-host.ts` for the full rationale.
 //
 // Two tools:
@@ -18,20 +18,20 @@
 import type { UserMdHost } from '../worker/ipc-protocol.ts'
 import type { ToolHandler } from './types.ts'
 
-export function userMdTools(host: UserMdHost, groupId: string): ToolHandler[] {
+export function userMdTools(host: UserMdHost, teamId: string): ToolHandler[] {
   return [
     {
       def: {
         name: 'user_md_get',
         description:
-          'Read the group-shared USER.md (facts every agent in the group knows about the human). Returns the current content followed by an `etag:` line — you MUST pass that etag back as `if_match` on the next `user_md_write` so the daemon can detect concurrent edits by other agents in the group. Always call this immediately before any `user_md_write`.',
+          'Read the team-shared USER.md (facts every agent in the team knows about the human). Returns the current content followed by an `etag:` line — you MUST pass that etag back as `if_match` on the next `user_md_write` so the daemon can detect concurrent edits by other agents in the team. Always call this immediately before any `user_md_write`.',
         parameters: {
           type: 'object',
           properties: {},
         },
       },
       async invoke() {
-        const { content, etag } = await host.get(groupId)
+        const { content, etag } = await host.get(teamId)
         const body = content.length > 0 ? content : '(USER.md is empty)'
         return `${body}\n\n---\netag: ${etag}`
       },
@@ -40,7 +40,7 @@ export function userMdTools(host: UserMdHost, groupId: string): ToolHandler[] {
       def: {
         name: 'user_md_write',
         description:
-          'Replace the group-shared USER.md with new content. Use this for STABLE user-specific facts (preferences, role, working hours, how the human likes to be addressed). MANDATORY workflow: (1) call `user_md_get` first, (2) integrate your change into the full content preserving everything unrelated, (3) call `user_md_write` with the merged content and the etag you got from `user_md_get`. If another agent in the group wrote to USER.md between your get and write, this returns an etag-mismatch error — just call `user_md_get` again and retry the merge. The full result must fit under 12 KB. For project knowledge use `memory_write`; for notes about yourself use `home_write` on IDENTITY.md.',
+          'Replace the team-shared USER.md with new content. Use this for STABLE user-specific facts (preferences, role, working hours, how the human likes to be addressed). MANDATORY workflow: (1) call `user_md_get` first, (2) integrate your change into the full content preserving everything unrelated, (3) call `user_md_write` with the merged content and the etag you got from `user_md_get`. If another agent in the team wrote to USER.md between your get and write, this returns an etag-mismatch error — just call `user_md_get` again and retry the merge. The full result must fit under 12 KB. For project knowledge use `memory_write`; for notes about yourself use `home_write` on IDENTITY.md.',
         parameters: {
           type: 'object',
           properties: {
@@ -66,7 +66,7 @@ export function userMdTools(host: UserMdHost, groupId: string): ToolHandler[] {
             'user_md_write: "if_match" is required — call user_md_get first to obtain the current etag.',
           )
         }
-        const { etag, totalBytes } = await host.write(groupId, content, ifMatch)
+        const { etag, totalBytes } = await host.write(teamId, content, ifMatch)
         return `wrote USER.md (${totalBytes} bytes, new etag: ${etag})`
       },
     },

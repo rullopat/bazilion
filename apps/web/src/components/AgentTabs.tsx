@@ -1,9 +1,9 @@
 // Shared sub-nav for the agent detail tree. Renders the active-tab
 // underline + an `archived` pill when the agent is in that state.
 //
-// Memory deliberately isn't a tab here — it's per-group, not per-agent, and
-// lives at /groups/:slug/memory. The agent's chat header surfaces a link to
-// the group's shared memory for one-click access.
+// Memory deliberately isn't a tab here — it's per-team, not per-agent, and
+// lives at /teams/:slug/memory. The agent's chat header surfaces a link to
+// the team's shared memory for one-click access.
 
 type Tab = 'chat' | 'inbox' | 'triggers'
 

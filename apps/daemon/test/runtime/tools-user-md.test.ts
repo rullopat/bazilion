@@ -22,16 +22,16 @@ function makeInMemoryHost(initial: Record<string, string> = {}): {
 } {
   const store: InMemoryStore = { current: { ...initial } }
   const host: UserMdHost = {
-    get(groupId): UserMdGetResult {
-      const content = store.current[groupId] ?? ''
+    get(teamId): UserMdGetResult {
+      const content = store.current[teamId] ?? ''
       return { content, etag: etag(content) }
     },
-    write(groupId, content, ifMatch): UserMdWriteResult {
-      const prev = store.current[groupId] ?? ''
+    write(teamId, content, ifMatch): UserMdWriteResult {
+      const prev = store.current[teamId] ?? ''
       if (etag(prev) !== ifMatch) {
         throw new Error(`etag mismatch — current is ${etag(prev)}, you passed ${ifMatch}`)
       }
-      store.current[groupId] = content
+      store.current[teamId] = content
       return { etag: etag(content), totalBytes: Buffer.byteLength(content, 'utf8') }
     },
   }
@@ -39,7 +39,7 @@ function makeInMemoryHost(initial: Record<string, string> = {}): {
 }
 
 describe('user_md_get + user_md_write', () => {
-  test('get returns content + etag on a fresh group', async () => {
+  test('get returns content + etag on a fresh team', async () => {
     const { host } = makeInMemoryHost()
     const tools = createToolRegistry(userMdTools(host, 'g1'))
     const out = await tools.invoke('user_md_get', '{}')

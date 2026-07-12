@@ -21,22 +21,7 @@ export type {
   CommunicationEdgePosture,
   CommunicationEndpoint,
   CommunicationPolicyRef,
-  Group,
-  HarnessBlockEvent,
-  HarnessBlockPage,
-  HarnessMembershipMode,
-  HarnessPlacement,
-  HarnessTemplate,
-  HarnessTemplateDetail,
-  HarnessTemplateEdge,
-  HarnessTemplateRevision,
-  HarnessTemplateSlot,
-  HarnessTemplateWithCount,
-  LiveAgentState,
   LiveEndpointKind,
-  LiveHarness,
-  LiveHarnessDetail,
-  LiveHarnessEdge,
   LoadedProfile,
   McpServer,
   McpServerInput,
@@ -46,17 +31,27 @@ export type {
   OpenAICodexStatus,
   Profile,
   ProfileCommunicationDefaults,
-  ProfileGroup,
-  ProfileGroupDetail,
-  ProfileGroupMember,
-  ProfileGroupWithCount,
   ProfilePeerDefault,
   ReasoningLevel,
   ResolvedAgent,
-  ResolvedGroupHarness,
+  ResolvedTeamPolicy,
   SkillMeta,
   SkillsMode,
   SourceSlotBinding,
+  Team,
+  TeamAgentState,
+  TeamPolicy,
+  TeamPolicyBlockEvent,
+  TeamPolicyBlockPage,
+  TeamPolicyDetail,
+  TeamPolicyEdge,
+  TeamPolicyPlacement,
+  TeamTemplate,
+  TeamTemplateDetail,
+  TeamTemplateEdge,
+  TeamTemplateRevision,
+  TeamTemplateSlot,
+  TeamTemplateWithCount,
   TelegramAclRole,
   TelegramAllowedUser,
   TelegramMirrorMode,
@@ -82,11 +77,11 @@ import type {
   Agent,
   AgentTrigger,
   CommunicationEdgePosture,
-  HarnessPlacement,
   LiveEndpointKind,
   Message,
   ProfileCommunicationDefaults,
   ReasoningLevel,
+  TeamPolicyPlacement,
   TelegramAclRole,
   TelegramMirrorMode,
   TemplateEndpointKind,
@@ -110,11 +105,10 @@ export interface SpawnAgentRequest {
   name?: string
   model?: string
   reasoningLevel?: ReasoningLevel
-  /** Group the new agent joins. Falls back to the seeded 'default' group when omitted. */
-  groupId?: string
-  /** Canonical explicit placement requires both fields; omission is the one-release adapter. */
-  groupExpectedRevision?: number
-  placement?: Exclude<HarnessPlacement, 'template_snapshot'>
+  /** Team the new agent joins. */
+  teamId: string
+  teamExpectedRevision: number
+  placement: Exclude<TeamPolicyPlacement, 'template_snapshot'>
 }
 
 export interface UpdateAgentRequest {
@@ -137,18 +131,18 @@ export interface AttachSkillRequest {
   allowFindings?: boolean
 }
 
-/** Body for `PATCH /api/agents/:id/group`: move the agent to a new group. */
+/** Body for `PATCH /api/agents/:id/team`: move the agent to a new team. */
 export interface MoveAgentRequest {
-  groupId: string
-  /** Canonical move requires all three fields; omission is the one-release adapter. */
-  sourceExpectedRevision?: number
-  destinationExpectedRevision?: number
-  placement?: Exclude<HarnessPlacement, 'template_snapshot'>
+  teamId: string
+  /** A move is revision-checked and requires an explicit policy placement. */
+  sourceExpectedRevision: number
+  destinationExpectedRevision: number
+  placement: Exclude<TeamPolicyPlacement, 'template_snapshot'>
 }
 
-// --- canonical Team templates and Group policy ---
+// --- canonical Team templates and Team policy ---
 
-export interface HarnessTemplateSlotInput {
+export interface TeamTemplateSlotInput {
   /** Existing stable slot. Omit for a new server-allocated slot. */
   slotId?: string
   /** Request-local reference used by edges for a new slot. */
@@ -161,7 +155,7 @@ export interface HarnessTemplateSlotInput {
   display?: Record<string, unknown> | null
 }
 
-export interface HarnessTemplateEdgeInput {
+export interface TeamTemplateEdgeInput {
   sourceKind: TemplateEndpointKind
   sourceId?: string | null
   targetKind: TemplateEndpointKind
@@ -169,39 +163,39 @@ export interface HarnessTemplateEdgeInput {
   posture?: CommunicationEdgePosture
 }
 
-export interface CreateHarnessTemplateRequest {
+export interface CreateTeamTemplateRequest {
   id: string
   name: string
   userMd?: string | null
 }
 
-export interface UpdateHarnessTemplateRequest {
+export interface UpdateTeamTemplateRequest {
   expectedRevision: number
   name?: string
   userMd?: string | null
 }
 
-export interface PutHarnessTemplateDefinitionRequest {
+export interface PutTeamTemplateDefinitionRequest {
   expectedRevision: number
-  slots: HarnessTemplateSlotInput[]
-  edges: HarnessTemplateEdgeInput[]
+  slots: TeamTemplateSlotInput[]
+  edges: TeamTemplateEdgeInput[]
 }
 
-export interface CloneHarnessTemplateRequest {
+export interface CloneTeamTemplateRequest {
   templateExpectedRevision: number
   id: string
   name?: string
 }
 
-export interface SpawnHarnessTemplateRequest {
+export interface SpawnTeamTemplateRequest {
   templateExpectedRevision: number
-  groupId: string
-  groupExpectedRevision?: number
+  teamId: string
+  teamExpectedRevision?: number
   mode: 'initialize' | 'append'
   userMd?: string
 }
 
-export interface LiveHarnessEdgeInput {
+export interface TeamPolicyEdgeInput {
   sourceKind: LiveEndpointKind
   sourceId?: string | null
   targetKind: LiveEndpointKind
@@ -209,30 +203,30 @@ export interface LiveHarnessEdgeInput {
   posture?: CommunicationEdgePosture
 }
 
-export interface PutGroupHarnessPolicyRequest {
+export interface PutGroupTeamPolicyPolicyRequest {
   expectedRevision: number
-  edges: LiveHarnessEdgeInput[]
+  edges: TeamPolicyEdgeInput[]
 }
 
-export interface AdoptHarnessTemplateRequest {
-  groupExpectedRevision: number
+export interface AdoptTeamTemplateRequest {
+  teamExpectedRevision: number
   templateId: string
   templateExpectedRevision: number
   slotMappings: Array<{ slotId: string; agentId: string }>
   remainingPlacements: Array<{
     agentId: string
-    placement: Exclude<HarnessPlacement, 'template_snapshot'>
+    placement: Exclude<TeamPolicyPlacement, 'template_snapshot'>
   }>
-  previewEdges: LiveHarnessEdgeInput[]
+  previewEdges: TeamPolicyEdgeInput[]
 }
 
-export interface UpdateHarnessSourceRequest {
-  groupExpectedRevision: number
+export interface UpdateTeamPolicySourceRequest {
+  teamExpectedRevision: number
   templateExpectedRevision: number
   includeAgentIds: string[]
 }
 
-export interface SaveHarnessAsTemplateRequest {
+export interface SaveTeamPolicyAsTemplateRequest {
   expectedRevision: number
   id: string
   name: string
@@ -300,63 +294,16 @@ export interface CreateProfileRequest {
   heartbeat?: string | null
 }
 
-// --- profile groups ---
+// --- teams ---
 
-export interface CreateProfileGroupRequest {
-  /** Slug (lowercase, digits, hyphens). Becomes the row id. */
-  id: string
-  /** Optional display name. Defaults to `id`. */
-  name?: string
-  /** Optional starter USER.md content. */
-  userMd?: string
-}
-
-export interface UpdateProfileGroupRequest {
-  name?: string
-  /** Pass `null` to clear; omit to leave unchanged. */
-  userMd?: string | null
-}
-
-/**
- * PUT-replace semantics: the entire member array is replaced atomically.
- * `position` is implicit from array order (0-based).
- * Duplicate `agentName` values across members are accepted at PUT time —
- * the spawn op auto-suffixes collisions with `-2`, `-3`, ... at spawn time.
- */
-export interface PutProfileGroupMembersRequest {
-  members: Array<{
-    profileId: string
-    agentName: string
-    modelOverride?: string | null
-    reasoningLevel?: ReasoningLevel | null
-  }>
-}
-
-export interface SpawnProfileGroupRequest {
-  /** Target group slug. Falls back to the default group when omitted. */
-  groupSlug?: string
-  /** Override the template's `userMd` for this spawn only. */
-  userMd?: string
-}
-
-export interface SpawnProfileGroupResponse {
-  groupSlug: string
-  /** Created agents in spawn order, with their final (post-suffix) names. */
-  agents: { id: string; name: string }[]
-  /** Populated only when cleanup retries were exhausted during a rollback. */
-  orphanAgentIds?: string[]
-}
-
-// --- groups ---
-
-export interface RegisterGroupRequest {
+export interface RegisterTeamRequest {
   /** Slug (lowercase, digits, hyphens). Becomes the row id AND the directory
-   * name under `~/.bazilion/groups/<slug>/`. */
+   * name under `~/.bazilion/teams/<slug>/`. */
   id: string
   /** Optional human-readable label. Defaults to `id`. */
   name?: string
   /**
-   * Optional symlink target. When set, the daemon materializes the group
+   * Optional symlink target. When set, the daemon materializes the team
    * slot as a symlink to this absolute path instead of as a real directory
    * — useful for "agents working on my existing project tree." Target must
    * exist and be a directory.
@@ -364,16 +311,16 @@ export interface RegisterGroupRequest {
   link?: string
 }
 
-/** Body for `PUT /api/groups/:id/user-md`. */
-export interface SetGroupUserMdRequest {
+/** Body for `PUT /api/teams/:id/user-md`. */
+export interface SetTeamUserMdRequest {
   userMd: string
 }
 
 /**
- * Body for `PUT /api/groups/:id/topic-format`. `null` (or an empty/whitespace
+ * Body for `PUT /api/teams/:id/topic-format`. `null` (or an empty/whitespace
  * string) clears the template and reverts to built-in topic naming.
  */
-export interface SetGroupTopicFormatRequest {
+export interface SetTeamTopicFormatRequest {
   format: string | null
 }
 
@@ -573,9 +520,9 @@ export interface ChatContextResponse {
     files: ContextFileEntry[]
     /** Char count of the skill-list text rendered into the system prompt. */
     skillsListChars: number
-    /** Char count of the group block rendered into the system prompt. */
-    groupListChars: number
-    /** Char count of the USER.md block (0 when the group's userMd is empty). */
+    /** Char count of the team block rendered into the system prompt. */
+    teamListChars: number
+    /** Char count of the USER.md block (0 when the team's userMd is empty). */
     userMdChars: number
     /** Fixed memory-hint block the runtime always appends. */
     memoryHintChars: number
@@ -590,7 +537,7 @@ export interface ChatContextResponse {
     count: number
     entries: ContextSkillEntry[]
   }
-  group: ContextGroupEntry
+  team: ContextGroupEntry
   history: ContextHistoryBreakdown
   /** Sum of system prompt + tool schemas + history, in chars + tokens. */
   totals: { chars: number; tokens: number }
@@ -673,8 +620,8 @@ export interface ServiceCard {
   enabled?: boolean
   envHint?: string
   hint?: string
-  /** Display grouping label (e.g. "Web tools"). Cards without a group are bucketed under "Other". */
-  group?: string
+  /** Display grouping label (e.g. "Web tools"). Cards without a team are bucketed under "Other". */
+  team?: string
   fields: ServiceFieldState[]
 }
 
@@ -748,7 +695,7 @@ export interface HealthReport {
     skills: boolean
   }
   database:
-    | { ok: true; profiles: number; activeAgents: number; totalAgents: number; groups: number }
+    | { ok: true; profiles: number; activeAgents: number; totalAgents: number; teams: number }
     | { ok: false; error: string }
     | null
   skills: { installed: number; parseErrors: number }
@@ -763,7 +710,7 @@ export interface HealthReport {
   triggers: { active: number; disabled: number }
   tokens: { active: number }
   scheduler: { enabled: boolean; tickMs: number }
-  harnessManagement: {
+  teamPolicyManagement: {
     contractVersion: number
     enforcementRequested: boolean
     enforcementActive: boolean

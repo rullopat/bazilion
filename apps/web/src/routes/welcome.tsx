@@ -21,7 +21,7 @@ function WelcomePage() {
         <h1>Welcome to bazilion</h1>
         <p className="muted my-3">
           Before you can spawn agents, enable a provider and save at least one concrete model id.
-          Once you do, a <code>default</code> profile (and a <code>default</code> group
+          Once you do, a <code>default</code> profile (and a <code>default</code> team
           directory) are created automatically and the rest of the app unlocks.
         </p>
         <ol className="my-5 space-y-4">
@@ -34,7 +34,7 @@ function WelcomePage() {
           <Step n={2}>
             <strong>Enable it and save a model.</strong> Flip the provider's toggle on, then click
             a catalog chip or type one exact model id (for example{' '}
-            <code>claude-opus-4-8</code>, <code>gpt-5.5</code>, or <code>llama3.3</code>) and
+            <code>claude-opus-4-8</code>, <code>gpt-5.6-luna</code>, or <code>llama3.3</code>) and
             press <em>save models</em>.
           </Step>
           <Step n={3}>

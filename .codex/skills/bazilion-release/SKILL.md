@@ -7,7 +7,8 @@ description: Bazilion release workflow for the rullopat/bazilion monorepo. Use w
 
 ## Scope
 
-Use this workflow in `/home/patri/coding/bazilion` for the `rullopat/bazilion` monorepo.
+Use this workflow from the root of the `rullopat/bazilion` monorepo. Confirm the root with
+`git rev-parse --show-toplevel`; do not rely on a machine-specific absolute path.
 
 Public release packages are fixed together by `.changeset/config.json`:
 
@@ -58,7 +59,14 @@ Run validation before committing a release:
 ```sh
 pnpm typecheck
 pnpm test
+pnpm --filter @bazilion/web typecheck
+pnpm --filter @bazilion/web build
 ```
+
+Because Bazilion currently has a clean-install-only alpha database contract, also bootstrap a
+fresh temporary `BAZILION_HOME` whenever the release changes the schema, canonical Team APIs, or
+filesystem layout. Verify that `schema_migrations` contains only `0001_init` and that no removed
+Group, Profile Team, Harness, or compatibility route is advertised by current docs or CLI help.
 
 If sandbox loopback/process restrictions cause failures such as `listen EPERM 127.0.0.1` or empty CLI subprocess output, rerun the same test command outside the sandbox with escalation. Treat the sandbox failure as environmental only after the escalated run passes.
 

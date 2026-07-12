@@ -13,8 +13,8 @@ import type { ReasoningLevel } from '@bazilion/api-types'
 /** Stable id for the auto-seeded `default` profile. */
 export const DEFAULT_PROFILE_ID = 'default'
 
-/** Stable id for the auto-seeded `default` group. */
-export const DEFAULT_GROUP_ID = 'default'
+/** Stable id for the auto-seeded `default` team. */
+export const DEFAULT_TEAM_ID = 'default'
 
 /** Mirrors the daemon's REASONING_LEVELS (apps/daemon/src/core). */
 export const REASONING_LEVELS: ReasoningLevel[] = [

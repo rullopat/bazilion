@@ -3,9 +3,9 @@ import type { LoadedProfile, SkillInfo } from '@bazilion/api-types'
 import { createFileRoute, redirect, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { useEffect, useState } from 'react'
-import { ProfileCommunicationEditor } from '../../../../components/harness/ProfileCommunicationEditor'
+import { ProfileCommunicationEditor } from '../../../../components/team-policy/ProfileCommunicationEditor'
 import { daemonClient } from '../../../../lib/daemon-client'
-import { DEFAULT_PROFILE_COMMUNICATION } from '../../../../lib/harness-prototype'
+import { DEFAULT_PROFILE_COMMUNICATION } from '../../../../lib/team-policy'
 import type { ProfileCommunicationDefaults } from '@bazilion/api-types'
 
 interface ModelGroup {
@@ -13,7 +13,7 @@ interface ModelGroup {
   models: string[]
 }
 interface AvailableModelsResponse {
-  groups: ModelGroup[]
+  teams: ModelGroup[]
 }
 
 interface ProfileDetailView {
@@ -37,7 +37,7 @@ const fetchProfile = createServerFn({ method: 'POST' })
       c.get<AvailableModelsResponse>('/api/config/available-models'),
       c.get<SkillInfo[]>('/api/skills'),
     ])
-    return { loaded, modelGroups: models.groups, skills }
+    return { loaded, modelGroups: models.teams, skills }
   })
 
 export const Route = createFileRoute('/templates/agents/$id/')({
@@ -177,7 +177,7 @@ function ProfileCommunicationCard({ profileId, initial }: { profileId: string; i
         </h3>
       </div>
       <p className="muted mb-4">
-        Materialized into new Team and Group policy snapshots after preset resolution. Existing
+        Materialized into new Team and Team policy snapshots after preset resolution. Existing
         snapshots never inherit later changes. Stored by the daemon.
       </p>
       <ProfileCommunicationEditor value={value} onChange={setValue} />

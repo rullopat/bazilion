@@ -334,7 +334,7 @@ async function tick(): Promise<void> {
 export function startScheduler(): void {
   const s = state()
   // Replace any existing timer unconditionally so a duplicate startScheduler
-  // call (e.g. test harness calling getCtx twice) doesn't leave stale loops.
+  // call (e.g. test teamPolicy calling getCtx twice) doesn't leave stale loops.
   if (s.timer) clearInterval(s.timer)
   s.stopped = false
   s.timer = setInterval(() => {

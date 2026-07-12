@@ -23,7 +23,7 @@ afterEach(() => env.cleanup())
 test('newly-spawned agent has telegramTopicId=null and mirror=minimal', () => {
   const a = spawnAgent(env.db, env.paths, {
     profileId: 'base',
-    groupId: env.groupId,
+    teamId: env.teamId,
     name: 'r1',
   })
   expect(a.telegramTopicId).toBeNull()
@@ -39,7 +39,7 @@ test('newly-spawned agent has telegramTopicId=null and mirror=minimal', () => {
 test('binding + mirror-mode changes round-trip through agentRepo', () => {
   const a = spawnAgent(env.db, env.paths, {
     profileId: 'base',
-    groupId: env.groupId,
+    teamId: env.teamId,
     name: 'r1',
   })
   agentRepo.setTelegramTopicId(env.db, a.id, 42)
@@ -56,7 +56,7 @@ test('binding + mirror-mode changes round-trip through agentRepo', () => {
 test('agentRepo.list rows carry telegramTopicId', () => {
   const a = spawnAgent(env.db, env.paths, {
     profileId: 'base',
-    groupId: env.groupId,
+    teamId: env.teamId,
     name: 'r1',
   })
   agentRepo.setTelegramTopicId(env.db, a.id, 99)

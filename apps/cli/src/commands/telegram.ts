@@ -232,13 +232,13 @@ const listBindingsCmd = defineCommand({
     if (bound.length > 0) {
       console.log('bound:')
       for (const a of bound) {
-        console.log(`  #${a.telegramTopicId}\t${a.name}\t(group: ${a.groupId})`)
+        console.log(`  #${a.telegramTopicId}\t${a.name}\t(team: ${a.teamId})`)
       }
     }
     if (unbound.length > 0) {
       console.log('unbound:')
       for (const a of unbound) {
-        console.log(`  —\t${a.name}\t(group: ${a.groupId})`)
+        console.log(`  —\t${a.name}\t(team: ${a.teamId})`)
       }
     }
   },

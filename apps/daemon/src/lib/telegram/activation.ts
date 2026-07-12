@@ -122,7 +122,7 @@ export async function runActivation(args: ActivationArgs): Promise<ActivationRes
 
   if (directoryMessageId === null) {
     // Initial creation — render the dynamic directory body (agents grouped
-    // by group, deep-links for the bound ones, empty-state hint otherwise).
+    // by team, deep-links for the bound ones, empty-state hint otherwise).
     const body = buildDirectoryBody(args.db, args.paths, args.chatId)
     const msg = await args.api.sendMessage(args.chatId, body, {
       message_thread_id: serviceTopicId,
