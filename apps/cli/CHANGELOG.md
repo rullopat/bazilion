@@ -2,6 +2,12 @@
 
 ## 0.9.0
 
+### Breaking Changes
+
+- Replace Group, Profile Group, and Harness commands/routes with canonical `team`,
+  `team-template`, and `team policy` surfaces. Remove compatibility aliases and require a fresh
+  alpha data bootstrap for the consolidated `0001_init.sql` schema.
+
 ### Minor Changes
 
 - [#37](https://github.com/rullopat/bazilion/pull/37) [`6e65d3e`](https://github.com/rullopat/bazilion/commit/6e65d3e97ceb0c4bfdbf996eda3ae194ddc4890a) Thanks [@rullopat](https://github.com/rullopat)! - Update the bundled Pi agent packages to 0.80.6 and refresh provider examples for the GPT-5.6
@@ -12,14 +18,6 @@
 - [#26](https://github.com/rullopat/bazilion/pull/26) [`1989c29`](https://github.com/rullopat/bazilion/commit/1989c29feaa60a3f4f26e2e640ca04507664fe0f) Thanks [@rullopat](https://github.com/rullopat)! - Complete the breaking alpha cleanup to canonical Teams, Team Templates, and Team Policy. Remove
   Group, Profile Group, Harness prototype, compatibility API/URL, and incremental migration
   surfaces; consolidate fresh installs into the final `0001_init.sql` schema.
-
-## Unreleased
-
-### Breaking Changes
-
-- Replace Group, Profile Group, and Harness commands/routes with canonical `team`,
-  `team-template`, and `team policy` surfaces. Remove compatibility aliases and require a fresh
-  alpha data bootstrap for the consolidated `0001_init.sql` schema.
 
 ## 0.8.0
 

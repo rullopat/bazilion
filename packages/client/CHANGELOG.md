@@ -2,17 +2,15 @@
 
 ## 0.9.0
 
-### Patch Changes
-
-- Updated dependencies []:
-  - @bazilion/api-types@0.9.0
-
-## Unreleased
-
 ### Breaking Changes
 
 - Align client methods and paths with the canonical Team, Team Template, and Team Policy API;
   removed Group/Profile Group/Harness compatibility methods are no longer exported.
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @bazilion/api-types@0.9.0
 
 ## 0.8.0
 

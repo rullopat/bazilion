@@ -2,8 +2,6 @@
 
 ## 0.9.0
 
-## Unreleased
-
 ### Breaking Changes
 
 - Replace Group/Profile Group/Harness wire contracts with canonical Team, Team Template, and Team
