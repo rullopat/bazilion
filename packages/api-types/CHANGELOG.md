@@ -1,6 +1,6 @@
 # @bazilion/api-types
 
-## Unreleased
+## 0.9.0
 
 ### Breaking Changes
 
