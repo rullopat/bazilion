@@ -9,6 +9,7 @@ import { createFileRoute, redirect, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { useState } from 'react'
 import { Button } from '../../../components/Button'
+import { PageShell } from '../../../components/Page'
 import { TeamTabs } from '../../../components/TeamTabs'
 import { daemonClient } from '../../../lib/daemon-client'
 
@@ -77,7 +78,7 @@ function TeamDetailPage() {
   }
 
   return (
-    <main className="mx-auto max-w-3xl px-6 py-8">
+    <PageShell>
       <h1 className="font-serif text-3xl text-foreground">
         {team.name} <span className="text-muted-foreground text-base">({team.id})</span>
       </h1>
@@ -118,8 +119,8 @@ function TeamDetailPage() {
           <span className="text-xs text-muted-foreground">
             {userMd.length} / 12000 chars
           </span>
-          {savedAt && <span className="text-xs text-emerald-700">✓ saved</span>}
-          {err && <span className="text-xs text-rose-700">{err}</span>}
+          {savedAt && <span className="text-xs text-success">✓ saved</span>}
+          {err && <span className="text-xs text-danger">{err}</span>}
         </div>
       </section>
 
@@ -174,7 +175,7 @@ function TeamDetailPage() {
           </table>
         )}
       </section>
-    </main>
+    </PageShell>
   )
 }
 
@@ -260,8 +261,8 @@ function TopicNameFormatCard({
             clear
           </Button>
         )}
-        {savedAt && <span className="text-xs text-emerald-700">✓ saved</span>}
-        {err && <span className="text-xs text-rose-700">{err}</span>}
+        {savedAt && <span className="text-xs text-success">✓ saved</span>}
+        {err && <span className="text-xs text-danger">{err}</span>}
       </div>
     </section>
   )
@@ -344,7 +345,7 @@ function SpawnFromTemplateCard({
           <Button variant="primary" onClick={spawn} disabled={busy || !selected}>
             {busy ? 'spawning…' : 'spawn team'}
           </Button>
-          {err && <span className="text-xs text-rose-700">{err}</span>}
+          {err && <span className="text-xs text-danger">{err}</span>}
         </div>
       )}
     </section>

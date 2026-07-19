@@ -125,7 +125,7 @@ export function addPlacementEdges(
   db: BazilionDb,
   teamId: string,
   agentId: string,
-  placement: 'isolated' | 'open' | 'profile_defaults',
+  placement: 'isolated' | 'profile_defaults',
   profileId: string,
 ): void {
   for (const edge of placementEdgesPreview(db, teamId, agentId, placement, profileId)) {
@@ -137,7 +137,7 @@ export function placementEdgesPreview(
   db: BazilionDb,
   teamId: string,
   agentId: string,
-  placement: 'isolated' | 'open' | 'profile_defaults',
+  placement: 'isolated' | 'profile_defaults',
   profileId: string,
 ): Array<Omit<TeamPolicyEdge, 'teamId'>> {
   if (placement === 'isolated') return []
@@ -158,21 +158,6 @@ export function placementEdgesPreview(
     )
     .all(teamId, agentId)
     .map((row) => row.id)
-  if (placement === 'open') {
-    for (const peerId of peers) {
-      add('agent', agentId, 'agent', peerId)
-      add('agent', peerId, 'agent', agentId)
-    }
-    for (const [sourceKind, sourceId, targetKind, targetId] of [
-      ['user', null, 'agent', agentId],
-      ['agent', agentId, 'user', null],
-      ['outside_team', null, 'agent', agentId],
-      ['agent', agentId, 'outside_team', null],
-    ] as const) {
-      add(sourceKind, sourceId, targetKind, targetId)
-    }
-    return [...edges.values()]
-  }
   const defaults = db.raw
     .query<
       {

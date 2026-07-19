@@ -40,9 +40,11 @@ docs/backlog/
 |----|-------|------|-------|
 | [BAZ-006](todo/BAZ-006-skill-execution-security.md) | Skill execution security - sandbox and command approval | L | Runtime hardening after BAZ-008: opt-in Docker bash sandbox + dangerous-command approval; selection is *not* security |
 
-## In Progress (0)
+## In Progress (1)
 
-_None right now._
+| ID | Title | Size | Notes |
+|----|-------|------|-------|
+| [BAZ-019](in_progress/BAZ-019-scheduled-trigger-reliability.md) | Scheduled triggers without heartbeat files | L | Remove HEARTBEAT.md, then add narrow durable/coalescing trigger dispatch |
 
 ## Done (14)
 

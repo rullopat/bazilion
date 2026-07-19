@@ -3,6 +3,7 @@ import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { useState } from 'react'
 import { Button } from '../../../components/Button'
+import { PageHeader, PageShell } from '../../../components/Page'
 import { ProfileCommunicationEditor } from '../../../components/team-policy/ProfileCommunicationEditor'
 import { TemplatesTabs } from '../../../components/TemplatesTabs'
 import { daemonClient } from '../../../lib/daemon-client'
@@ -25,7 +26,6 @@ interface TemplatesResponse {
   bootstrap: string
   agents: string
   tools: string
-  heartbeat: string
   userMd: string
 }
 
@@ -68,13 +68,13 @@ function ProfilesPage() {
   }
 
   return (
-    <div>
+    <PageShell size="wide">
+      <PageHeader
+        eyebrow="Templates"
+        title="Agent templates"
+        description="Define reusable identity, model, skills, and communication defaults for newly spawned agents."
+      />
       <TemplatesTabs />
-      <h1>agent templates</h1>
-      <p className="muted">
-        An agent template is a spawn template — SOUL/IDENTITY templates, a default model, a skills
-        policy. Agents choose a Team at spawn time, independent of their Agent template.
-      </p>
 
       <CreateProfileForm
         modelGroups={modelGroups}
@@ -83,6 +83,7 @@ function ProfilesPage() {
         onCreated={() => router.invalidate()}
       />
 
+      <div className="overflow-x-auto">
       <table>
         <thead>
           <tr>
@@ -138,7 +139,8 @@ function ProfilesPage() {
           })}
         </tbody>
       </table>
-    </div>
+      </div>
+    </PageShell>
   )
 }
 
@@ -149,7 +151,6 @@ type TabKey =
   | 'bootstrap'
   | 'agents'
   | 'tools'
-  | 'heartbeat'
   | 'skills'
   | 'communication'
 
@@ -172,15 +173,12 @@ function CreateProfileForm({
   const [identity, setIdentity] = useState(templates.identity)
   const [bootstrap, setBootstrap] = useState(templates.bootstrap)
   // SOUL + IDENTITY are always included (no toggle). BOOTSTRAP/AGENTS/TOOLS are
-  // on by default; HEARTBEAT is opt-in (off). Textareas are
-  // prefilled with the built-in defaults so an enabled file is ready to edit.
+  // on by default. Textareas are prefilled so an enabled file is ready to edit.
   const [enableBootstrap, setEnableBootstrap] = useState(true)
   const [agentsTpl, setAgentsTpl] = useState(templates.agents)
   const [enableAgents, setEnableAgents] = useState(true)
   const [toolsTpl, setToolsTpl] = useState(templates.tools)
   const [enableTools, setEnableTools] = useState(true)
-  const [heartbeatTpl, setHeartbeatTpl] = useState(templates.heartbeat)
-  const [enableHeartbeat, setEnableHeartbeat] = useState(false)
 
   // Toggle a template on/off. Disabling the currently-open tab drops the editor
   // back to "basics" so we never show a disabled tab's panel.
@@ -228,7 +226,6 @@ function CreateProfileForm({
         bootstrap: enableBootstrap ? bootstrap : null,
         agents: enableAgents ? agentsTpl : null,
         tools: enableTools ? toolsTpl : null,
-        heartbeat: enableHeartbeat ? heartbeatTpl : null,
         communicationDefaults: communication,
       }
       const res = await fetch('/api/profiles', {
@@ -249,8 +246,6 @@ function CreateProfileForm({
       setEnableAgents(true)
       setToolsTpl(templates.tools)
       setEnableTools(true)
-      setHeartbeatTpl(templates.heartbeat)
-      setEnableHeartbeat(false)
       setPicked(new Set())
       setSkillsMode('all')
       setCommunication(DEFAULT_PROFILE_COMMUNICATION)
@@ -276,7 +271,6 @@ function CreateProfileForm({
           { id: 'bootstrap', label: 'BOOTSTRAP', disabled: !enableBootstrap },
           { id: 'agents', label: 'AGENTS', disabled: !enableAgents },
           { id: 'tools', label: 'TOOLS', disabled: !enableTools },
-          { id: 'heartbeat', label: 'HEARTBEAT', disabled: !enableHeartbeat },
           { id: 'skills', label: 'skills' },
           { id: 'communication', label: 'communication' },
         ]}
@@ -318,14 +312,6 @@ function CreateProfileForm({
               onChange={(e) => setTemplateEnabled('tools', setEnableTools, e.target.checked)}
             />
             TOOLS.md
-          </label>
-          <label className="inline-flex cursor-pointer items-center gap-1.5">
-            <input
-              type="checkbox"
-              checked={enableHeartbeat}
-              onChange={(e) => setTemplateEnabled('heartbeat', setEnableHeartbeat, e.target.checked)}
-            />
-            HEARTBEAT.md
           </label>
         </div>
         <p className="muted mt-2 text-[0.8em]">
@@ -420,16 +406,6 @@ function CreateProfileForm({
           rows={14}
         />
       )}
-      {tab === 'heartbeat' && (
-        <TemplateTab
-          label="HEARTBEAT.md"
-          hint="Optional checklist run on scheduled wake-ups. Pair with an interval/cron trigger."
-          value={heartbeatTpl}
-          onChange={setHeartbeatTpl}
-          rows={12}
-        />
-      )}
-
       {tab === 'skills' && (
         <div>
           <p className="muted my-2">

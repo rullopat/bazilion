@@ -1,7 +1,7 @@
 // Live browser smoke test — exercises the real Playwright pool path
 // (launch → navigate → ai aria snapshot → screenshot) against a data: URL so
 // no network egress is needed. Skipped automatically if Chromium isn't
-// installed (run `pnpm exec playwright install chromium`).
+// installed (the @playwright/browser-chromium dependency handles this during install).
 
 import { afterAll, expect, test } from 'vitest'
 import type { BrowserConfig } from '../../src/lib/browser/pool.ts'

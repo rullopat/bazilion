@@ -8,11 +8,11 @@
 //   - another bot posting in a bound topic — handled by dropping is_bot
 //     inbound in routing.ts, NOT here;
 //   - a human or script spamming a bound topic — the inbound budget below;
-//   - a heartbeat-heavy agent flooding its topic with verbose tool-line
+//   - a schedule-heavy Agent flooding its topic with verbose tool-line
 //     noise — the outbound-noise budget below.
 //
 // OUT OF SCOPE: the genuinely cost-dangerous runaway — two agents replying to
-// each other forever via the internal send_message / heartbeat machinery — is
+// each other forever via internal send_message / scheduled-trigger machinery — is
 // not a Telegram concern. Those turns merely *mirror* to Telegram; the loop
 // engine lives in the messaging/scheduler layer and needs its own guard.
 //

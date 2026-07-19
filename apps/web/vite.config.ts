@@ -15,6 +15,9 @@ export default defineConfig({
     port: Number(process.env.WEB_PORT ?? 4322),
   },
   resolve: {
+    // Start's internals and application routes must share one React/router
+    // context even when another workspace package resolves a different version.
+    dedupe: ['react', 'react-dom', '@tanstack/react-router'],
     alias: {
       // Mirrors the tsconfig `@/*` paths so shadcn-style `@/components/...`
       // imports resolve identically in TS-check, dev, and build.

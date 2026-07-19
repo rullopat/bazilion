@@ -17,13 +17,7 @@ import type { ResolvedAgent } from '@bazilion/api-types'
 // per turn, so the section auto-vanishes when `bootstrap_done` removes the
 // file (vs. wrapping the user message, which would persist in pi's session
 // JSONL forever and replay on every future turn).
-const CONTEXT_FILE_ORDER = [
-  'AGENTS.md',
-  'SOUL.md',
-  'TOOLS.md',
-  'IDENTITY.md',
-  'HEARTBEAT.md',
-] as const
+const CONTEXT_FILE_ORDER = ['AGENTS.md', 'SOUL.md', 'TOOLS.md', 'IDENTITY.md'] as const
 
 export function buildSystemPrompt(agent: ResolvedAgent): string {
   const parts: string[] = []
@@ -71,7 +65,7 @@ export function buildSystemPrompt(agent: ResolvedAgent): string {
     [
       '# Agent Home',
       '',
-      'Your private home holds who you are — identity, soul, behaviour rules, wake-up routine. It is not shared with other agents and cannot be overwritten by them. The files above (IDENTITY.md, SOUL.md, AGENTS.md, TOOLS.md, HEARTBEAT.md) live in this home, plus BOOTSTRAP.md when you are still in your first-run ritual.',
+      'Your private home holds who you are — identity, soul, and behaviour rules. It is not shared with other agents and cannot be overwritten by them. The files above (IDENTITY.md, SOUL.md, AGENTS.md, TOOLS.md) live in this home, plus BOOTSTRAP.md when you are still in your first-run ritual.',
       '',
       '- To change who you are (name, vibe, personality, how you behave): use `home_write`.',
       '- To inspect exact wording of your own files: use `home_read` or `home_list`.',

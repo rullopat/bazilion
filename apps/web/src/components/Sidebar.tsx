@@ -1,8 +1,17 @@
-// Left sidebar: collapsible teams + agent rows + spawn dropdown. Each agent
-// row reveals rename (✎) and archive (×) buttons on hover.
+// Left sidebar: collapsible teams + agent rows + spawn dropdown.
 
 import type { Agent, Team, TeamTemplateWithCount, Profile } from '@bazilion/api-types'
 import { Link, useRouter } from '@tanstack/react-router'
+import {
+  Archive,
+  Bot,
+  ChevronDown,
+  ChevronRight,
+  Pencil,
+  Plus,
+  Send,
+  UsersRound,
+} from 'lucide-react'
 import { useRef, useState } from 'react'
 import { DEFAULT_TEAM_ID, DEFAULT_PROFILE_ID } from '../lib/wire-constants'
 import { CreateTeamDialog } from './CreateTeamDialog'
@@ -101,37 +110,54 @@ export function Sidebar({
   const selectedTeamId = agents.find((a) => a.id === selectedAgentId)?.teamId ?? null
 
   return (
-    <aside className="flex h-full flex-col rounded-lg border bg-card overflow-hidden">
-      <header className="flex items-center justify-between border-b px-3 py-2.5 bg-muted/30">
-        <span className="font-serif text-base text-foreground">agents</span>
+    <aside className="flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-baziu-sm">
+      <header className="flex items-center justify-between gap-3 border-b border-border bg-muted/30 px-3 py-2.5">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+            <span className="flex size-7 items-center justify-center rounded-lg bg-accent text-accent-foreground">
+              <Bot className="size-4" aria-hidden="true" />
+            </span>
+            <span>Agents</span>
+          </div>
+          <p className="mt-0.5 truncate pl-9 text-[0.7rem] text-muted-foreground">
+            {agents.length} agent{agents.length === 1 ? '' : 's'} across {teams.length} team
+            {teams.length === 1 ? '' : 's'}
+          </p>
+        </div>
         <div className="relative">
           <button
             ref={newButtonRef}
             type="button"
             onClick={() => setMenuOpen((v) => !v)}
-            className="rounded-md border px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:border-foreground/30"
+            aria-expanded={menuOpen}
+            aria-haspopup="menu"
+            className="unstyled inline-flex h-8 items-center gap-1 rounded-lg border border-border bg-card px-2.5 text-xs font-semibold text-foreground shadow-baziu-sm transition-colors hover:border-primary/30 hover:bg-accent hover:text-accent-foreground"
           >
-            + new ▾
+            <Plus className="size-3.5" aria-hidden="true" />
+            New
+            <ChevronDown
+              className={`size-3.5 text-muted-foreground transition-transform ${menuOpen ? 'rotate-180' : ''}`}
+              aria-hidden="true"
+            />
           </button>
           {menuOpen && (
             <div
               role="menu"
-              className="absolute right-0 top-[calc(100%+0.3rem)] z-20 min-w-[14rem] rounded-md border bg-popover p-1 shadow-md"
+              className="absolute right-0 top-[calc(100%+0.4rem)] z-20 w-60 overflow-hidden rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-baziu-lg"
               onMouseLeave={() => setMenuOpen(false)}
             >
               {profiles.length === 0 ? (
-                <div className="px-3 py-2 text-sm text-muted-foreground">
-                  No profiles yet.
-                  <br />
+                <div className="rounded-lg bg-muted/40 px-3 py-2.5 text-xs leading-5 text-muted-foreground">
+                  No Agent templates yet.{' '}
                   <a href="/templates/agents" className="text-primary underline">
-                    Create one
-                  </a>{' '}
-                  to spawn agents.
+                    Create one to spawn agents.
+                  </a>
                 </div>
               ) : (
                 <>
-                  <div className="px-3 pt-1 pb-0.5 text-[0.7em] uppercase tracking-wide text-muted-foreground">
-                    spawn agent from template
+                  <div className="flex items-center gap-1.5 px-2.5 pb-1 pt-1 text-[0.68rem] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+                    <Bot className="size-3" aria-hidden="true" />
+                    Agent templates
                   </div>
                   {sortedProfiles.map((p) => (
                     <button
@@ -142,24 +168,28 @@ export function Sidebar({
                         setMenuOpen(false)
                         setSpawnFor({ profileId: p.id })
                       }}
-                      className="flex w-full items-center justify-between rounded-sm px-3 py-1.5 text-sm hover:bg-accent"
+                      className="unstyled flex min-h-8 w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm text-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
                     >
-                      <span>{p.name || p.id}</span>
+                      <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+                        <Bot className="size-3.5" aria-hidden="true" />
+                      </span>
+                      <span className="min-w-0 flex-1 truncate">{p.name || p.id}</span>
                       {p.id === DEFAULT_PROFILE_ID && (
-                        <span className="rounded bg-muted px-1 text-[0.7em] text-muted-foreground">
-                          default
+                        <span className="rounded-full border border-border bg-muted px-1.5 py-0.5 text-[0.65rem] font-semibold text-muted-foreground">
+                          Default
                         </span>
                       )}
                     </button>
                   ))}
                 </>
               )}
-              <div className="my-1 h-px bg-border" />
-              <div className="px-3 pt-1 pb-0.5 text-[0.7em] uppercase tracking-wide text-muted-foreground">
-                spawn team from template
+              <div className="my-1.5 h-px bg-border" />
+              <div className="flex items-center gap-1.5 px-2.5 pb-1 pt-1 text-[0.68rem] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+                <UsersRound className="size-3" aria-hidden="true" />
+                Team templates
               </div>
               {profileGroups.length === 0 ? (
-                <div className="px-3 py-1.5 text-xs text-muted-foreground">
+                <div className="rounded-lg bg-muted/40 px-3 py-2 text-xs leading-5 text-muted-foreground">
                   No team templates yet.{' '}
                   <a href="/templates/teams" className="text-primary underline">
                     Create one
@@ -175,46 +205,59 @@ export function Sidebar({
                     disabled={pg.slotCount === 0}
                     title={
                       pg.slotCount === 0
-                        ? 'add at least one member before spawning'
+                        ? 'Add at least one member before spawning'
                         : undefined
                     }
                     onClick={() => {
                       setMenuOpen(false)
                       setSpawnTeamFor(pg)
                     }}
-                    className="flex w-full items-center justify-between rounded-sm px-3 py-1.5 text-sm hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent"
+                    className="unstyled flex min-h-8 w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm text-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent"
                   >
-                    <span>{pg.name || pg.id}</span>
-                    <span className="font-mono text-[0.7em] text-muted-foreground">
+                    <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+                      <UsersRound className="size-3.5" aria-hidden="true" />
+                    </span>
+                    <span className="min-w-0 flex-1 truncate">{pg.name || pg.id}</span>
+                    <span className="inline-flex min-w-6 items-center justify-center rounded-full bg-muted px-1.5 font-mono text-[0.68rem] text-muted-foreground">
                       {pg.slotCount}
                     </span>
                   </button>
                 ))
               )}
-              <div className="my-1 h-px bg-border" />
+              <div className="my-1.5 h-px bg-border" />
               <button
                 type="button"
                 onClick={() => {
                   setMenuOpen(false)
                   setCreateGroupOpen(true)
                 }}
-                className="block w-full text-left rounded-sm px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent"
+                className="unstyled flex min-h-8 w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
               >
-                + create team
+                <Plus className="size-3.5" aria-hidden="true" />
+                Create a team
               </button>
             </div>
           )}
         </div>
       </header>
 
-      <nav className="flex-1 overflow-y-auto p-1">
+      <nav className="flex-1 overflow-y-auto p-1.5" aria-label="Teams and agents">
         {agents.length === 0 && teams.length === 0 ? (
-          <div className="p-4 text-sm text-muted-foreground">
-            No agents yet.{' '}
-            <a href="/agents" className="text-primary underline">
-              Spawn one
-            </a>{' '}
-            to start chatting.
+          <div className="m-1 flex flex-col items-center rounded-xl border border-dashed border-border bg-muted/30 px-4 py-6 text-center">
+            <span className="mb-2 flex size-9 items-center justify-center rounded-full bg-accent text-accent-foreground">
+              <Bot className="size-4" aria-hidden="true" />
+            </span>
+            <p className="text-sm font-semibold text-foreground">No agents yet</p>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              Spawn your first agent to start a conversation.
+            </p>
+            <a
+              href="/agents"
+              className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-primary hover:text-primary/80"
+            >
+              Open agent setup
+              <ChevronRight className="size-3.5" aria-hidden="true" />
+            </a>
           </div>
         ) : (
           sortedGroups.map((g) => {
@@ -243,67 +286,87 @@ export function Sidebar({
                 }}
                 className="team/details mb-1 last:mb-0"
               >
-                <summary className="flex cursor-pointer list-none items-center gap-1.5 rounded-sm px-2 py-1.5 text-xs uppercase tracking-wide text-muted-foreground hover:bg-accent">
-                  <span className="w-3 text-xs transition-transform team-open/details:rotate-90 inline-block">
-                    ▸
+                <summary
+                  className={`flex min-h-8 cursor-pointer list-none items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm transition-colors hover:bg-accent hover:text-accent-foreground ${
+                    containsSelected ? 'bg-muted/60 text-foreground' : 'text-muted-foreground'
+                  }`}
+                >
+                  <ChevronRight
+                    className="size-3.5 shrink-0 transition-transform team-open/details:rotate-90"
+                    aria-hidden="true"
+                  />
+                  <span className="flex size-5 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+                    <UsersRound className="size-3" aria-hidden="true" />
                   </span>
-                  <span className="flex-1 truncate font-semibold">{g.name}</span>
-                  <span className="font-mono text-xs rounded bg-muted px-1 min-w-[1.4em] text-center">
+                  <span className="min-w-0 flex-1 truncate font-medium">{g.name}</span>
+                  {g.id === DEFAULT_TEAM_ID && (
+                    <span className="text-[0.62rem] font-semibold uppercase tracking-wide text-muted-foreground">
+                      Default
+                    </span>
+                  )}
+                  <span className="inline-flex min-w-6 items-center justify-center rounded-full border border-border bg-card px-1.5 font-mono text-[0.68rem] text-muted-foreground">
                     {teamAgents.length}
                   </span>
                 </summary>
                 {teamAgents.length === 0 ? (
-                  <div className="pl-6 py-1 text-xs italic text-muted-foreground">
-                    no agents
+                  <div className="py-2 pl-12 pr-2 text-xs text-muted-foreground">
+                    No agents in this team
                   </div>
                 ) : (
-                  <div className="pl-2">
+                  <div className="space-y-0.5 py-0.5 pl-2">
                     {teamAgents.map((a) => (
-                      <div key={a.id} className="team/row relative">
+                      <div key={a.id} className="team/row relative rounded-lg">
                         <Link
                           to="/"
                           search={{ agent: a.id }}
-                          className={`block rounded-sm border-l-2 px-3 py-1.5 pr-14 hover:bg-accent ${
+                          aria-current={a.id === selectedAgentId ? 'page' : undefined}
+                          className={`block min-h-11 rounded-lg border border-transparent py-1.5 pl-2.5 pr-[4.6rem] transition-colors hover:bg-accent/70 ${
                             a.id === selectedAgentId
-                              ? 'border-primary bg-accent'
-                              : 'border-transparent'
+                              ? 'border-primary/20 bg-accent text-accent-foreground shadow-baziu-sm'
+                              : 'text-foreground'
                           }`}
                         >
-                          <div className="flex items-center gap-1.5 truncate text-sm font-medium">
-                            <span className="truncate">{a.name}</span>
+                          <div className="flex items-center gap-1.5 text-sm font-medium">
+                            <span
+                              className={`size-1.5 shrink-0 rounded-full ${
+                                a.id === selectedAgentId ? 'bg-primary' : 'bg-border'
+                              }`}
+                              aria-hidden="true"
+                            />
+                            <span className="min-w-0 flex-1 truncate">{a.name}</span>
                             {a.telegramTopicId !== null && (
                               <span
-                                className="text-xs"
+                                className="shrink-0 text-primary"
                                 title={`Telegram topic #${a.telegramTopicId}`}
                                 aria-label={`Bound to Telegram topic ${a.telegramTopicId}`}
                               >
-                                ✈
+                                <Send className="size-3" aria-hidden="true" />
                               </span>
                             )}
                           </div>
-                          <div className="flex gap-2 font-mono text-[0.7em] text-muted-foreground">
+                          <div className="mt-0.5 flex gap-2 pl-3 font-mono text-[0.65rem] text-muted-foreground">
                             <span className="uppercase tracking-wide">{a.status}</span>
-                            <code>{a.id.slice(0, 8)}</code>
+                            <span>{a.id.slice(0, 8)}</span>
                           </div>
                         </Link>
-                        <div className="absolute right-1 top-1 flex gap-0.5 opacity-0 transition-opacity team-hover/row:opacity-100 focus-within:opacity-100">
+                        <div className="absolute right-1 top-1/2 z-10 flex -translate-y-1/2 gap-0.5">
                           <button
                             type="button"
                             onClick={() => rename(a)}
-                            title="rename"
-                            aria-label={`rename ${a.name}`}
-                            className="unstyled flex h-6 w-6 items-center justify-center rounded-sm text-mocha-light hover:bg-snow hover:text-sapphire"
+                            title="Rename"
+                            aria-label={`Rename ${a.name}`}
+                            className="unstyled flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-card hover:text-primary focus-visible:bg-card"
                           >
-                            ✎
+                            <Pencil className="size-3.5" aria-hidden="true" />
                           </button>
                           <button
                             type="button"
                             onClick={() => archive(a)}
-                            title="archive"
-                            aria-label={`archive ${a.name}`}
-                            className="unstyled flex h-6 w-6 items-center justify-center rounded-sm text-mocha-light hover:bg-snow hover:text-[#9B3D3D]"
+                            title="Archive"
+                            aria-label={`Archive ${a.name}`}
+                            className="unstyled flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:bg-destructive/10 focus-visible:text-destructive"
                           >
-                            ×
+                            <Archive className="size-3.5" aria-hidden="true" />
                           </button>
                         </div>
                       </div>

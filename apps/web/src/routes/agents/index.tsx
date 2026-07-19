@@ -3,6 +3,14 @@ import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { useState } from 'react'
 import { AgentAvatar } from '../../components/AgentAvatar'
+import { Button } from '../../components/Button'
+import {
+  EmptyState,
+  PageHeader,
+  PageShell,
+  SectionCard,
+  StatusBadge,
+} from '../../components/Page'
 import { daemonClient } from '../../lib/daemon-client'
 
 interface ModelGroup {
@@ -72,8 +80,20 @@ function AgentsPage() {
   }
 
   return (
-    <div>
-      <h1>agents</h1>
+    <PageShell size="wide">
+      <PageHeader
+        eyebrow="Workspace"
+        title="Agents"
+        description="Spawn, inspect, archive, and restore the agents that work across your teams."
+        actions={
+          <Button
+            variant="ghost"
+            onClick={() => window.location.assign(showAll ? '/agents' : '/agents?all=1')}
+          >
+            {showAll ? 'Hide archived' : 'Show archived'}
+          </Button>
+        }
+      />
 
       <SpawnForm
         profiles={profiles}
@@ -82,80 +102,88 @@ function AgentsPage() {
         onSpawned={router.invalidate}
       />
 
-      <p>
-        <a href={showAll ? '/agents' : '/agents?all=1'}>
-          {showAll ? 'hide archived' : 'show archived'}
-        </a>
-      </p>
-
-      <table>
-        <thead>
-          <tr>
-            <th>id</th>
-            <th>name</th>
-            <th>profile</th>
-            <th>status</th>
-            <th />
-          </tr>
-        </thead>
-        <tbody>
-          {agents.length === 0 && (
-            <tr>
-              <td colSpan={5} className="muted">
-                no agents yet
-              </td>
-            </tr>
-          )}
-          {agents.map((a) => (
-            <tr key={a.id}>
-              <td>
-                <a href={`/agents/${a.id}`} title={a.id}>
-                  <code>{a.id.slice(0, 8)}…</code>
-                </a>
-              </td>
-              <td>
-                <div className="flex items-center gap-2">
-                  <AgentAvatar identity={a.identity} size={26} />
-                  <div className="leading-tight">
-                    <div>{a.name}</div>
-                    {(a.identity?.creature || a.identity?.vibe) && (
-                      <div className="muted text-[0.8em]">
-                        {[a.identity?.creature, a.identity?.vibe].filter(Boolean).join(' · ')}
+      <SectionCard
+        title={showAll ? 'All agents' : 'Current agents'}
+        description={
+          showAll
+            ? 'Active and archived agents are shown together.'
+            : 'Archived agents stay hidden until you choose to show them.'
+        }
+      >
+        {agents.length === 0 ? (
+          <EmptyState
+            title={showAll ? 'No agents yet' : 'No current agents'}
+            description="Spawn an agent above to give a team its first working member."
+          />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-[760px]">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Name</th>
+                  <th>Agent template</th>
+                  <th>Status</th>
+                  <th>
+                    <span className="sr-only">Actions</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {agents.map((a) => (
+                  <tr key={a.id}>
+                    <td>
+                      <a href={`/agents/${a.id}`} title={a.id}>
+                        <code>{a.id.slice(0, 8)}…</code>
+                      </a>
+                    </td>
+                    <td>
+                      <div className="flex items-center gap-2">
+                        <AgentAvatar identity={a.identity} size={26} />
+                        <div className="leading-tight">
+                          <div>{a.name}</div>
+                          {(a.identity?.creature || a.identity?.vibe) && (
+                            <div className="muted text-[0.8em]">
+                              {[a.identity?.creature, a.identity?.vibe]
+                                .filter(Boolean)
+                                .join(' · ')}
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    )}
-                  </div>
-                </div>
-              </td>
-              <td>
-                <code>{a.profileId}</code>
-              </td>
-              <td>{a.status}</td>
-              <td>
-                <div className="flex gap-1.5">
-                  {a.status !== 'archived' ? (
-                    <button type="button" className="ghost-btn" onClick={() => archive(a.id)}>
-                      archive
-                    </button>
-                  ) : (
-                    <button type="button" className="ghost-btn" onClick={() => unarchive(a.id)}>
-                      unarchive
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    className="ghost-btn"
-                    style={{ color: 'var(--color-rose-baziu)' }}
-                    onClick={() => del(a.id)}
-                  >
-                    delete
-                  </button>
-                </div>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+                    </td>
+                    <td>
+                      <code>{a.profileId}</code>
+                    </td>
+                    <td>
+                      <StatusBadge variant={a.status === 'archived' ? 'warning' : 'success'}>
+                        {a.status}
+                      </StatusBadge>
+                    </td>
+                    <td>
+                      <div className="flex justify-end gap-1.5">
+                        {a.status !== 'archived' ? (
+                          <Button variant="ghost" onClick={() => archive(a.id)}>
+                            Archive
+                          </Button>
+                        ) : (
+                          <Button variant="ghost" onClick={() => unarchive(a.id)}>
+                            Restore
+                          </Button>
+                        )}
+                        <Button variant="danger" onClick={() => del(a.id)}>
+                          Delete
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </SectionCard>
+    </PageShell>
   )
 }
 
@@ -177,7 +205,7 @@ function SpawnForm({
   // server-side fallback. Empty string means "let the daemon pick" — same end
   // result as picking 'default' explicitly.
   const [teamId, setTeamId] = useState(teams.find((g) => g.id === 'default')?.id ?? '')
-  const [placement, setPlacement] = useState<'isolated' | 'open' | 'profile_defaults'>('profile_defaults')
+  const [placement, setPlacement] = useState<'isolated' | 'profile_defaults'>('profile_defaults')
   const [submitting, setSubmitting] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
@@ -223,82 +251,89 @@ function SpawnForm({
   }
 
   return (
-    <form className="card" onSubmit={submit}>
-      <h3>spawn agent</h3>
-      {err && <div className="err">{err}</div>}
-      <p className="muted my-2 text-[0.85em]">
-        Skills come from the profile's defaults at spawn time. Tweak per-agent skills after the
-        fact from the agent detail page.
-      </p>
-      <div className="flex gap-4">
-        <label className="flex-1">
-          profile
-          <select value={profileId} onChange={(e) => setProfileId(e.target.value)} required>
-            <option value="">--</option>
-            {profiles.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.id}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="flex-1">
-          name
-          <input value={name} onChange={(e) => setName(e.target.value)} />
-        </label>
-      </div>
-      <label>
-        model override
-        {modelGroups.length === 0 ? (
-          <input
-            value=""
-            disabled
-            placeholder="(uses profile default — enable models on /config)"
-          />
-        ) : (
-          <select value={model} onChange={(e) => setModel(e.target.value)}>
-            <option value="">(uses profile default)</option>
-            {modelGroups.map((g) => (
-              <optgroup key={g.provider} label={g.provider}>
-                {g.models.map((m) => (
-                  <option key={m} value={`${g.provider}:${m}`}>
-                    {`${g.provider}:${m}`}
+    <SectionCard
+      title="Spawn an agent"
+      description="Skills come from the Agent template at spawn time. You can adjust an agent's skills later from its detail page."
+    >
+      <form onSubmit={submit}>
+        {err && <div className="err">{err}</div>}
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label>
+            Agent template
+            <select value={profileId} onChange={(e) => setProfileId(e.target.value)} required>
+              <option value="">Select a template</option>
+              {profiles.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.id}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Name
+            <input value={name} onChange={(e) => setName(e.target.value)} />
+          </label>
+          <label>
+            Model override
+            {modelGroups.length === 0 ? (
+              <input
+                value=""
+                disabled
+                placeholder="Uses the template default — enable models in Config"
+              />
+            ) : (
+              <select value={model} onChange={(e) => setModel(e.target.value)}>
+                <option value="">Use the template default</option>
+                {modelGroups.map((g) => (
+                  <optgroup key={g.provider} label={g.provider}>
+                    {g.models.map((m) => (
+                      <option key={m} value={`${g.provider}:${m}`}>
+                        {`${g.provider}:${m}`}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+            )}
+          </label>
+          <label>
+            Team
+            {teams.length === 0 ? (
+              <select disabled>
+                <option>No teams — register one in Teams</option>
+              </select>
+            ) : (
+              <select value={teamId} onChange={(e) => setTeamId(e.target.value)}>
+                {teams.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.id} ({g.name})
                   </option>
                 ))}
-              </optgroup>
-            ))}
-          </select>
-        )}
-      </label>
-      <label>
-        team
-        {teams.length === 0 ? (
-          <select disabled>
-            <option>(no teams — register one on /teams)</option>
-          </select>
-        ) : (
-          <select value={teamId} onChange={(e) => setTeamId(e.target.value)}>
-            {teams.map((g) => (
-              <option key={g.id} value={g.id}>
-                {g.id} ({g.name})
-              </option>
-            ))}
-          </select>
-        )}
-      </label>
-      <label>
-        initial policy placement
-        <select value={placement} onChange={(e) => setPlacement(e.target.value as typeof placement)}>
-          <option value="profile_defaults">agent-template defaults</option>
-          <option value="isolated">isolated</option>
-          <option value="open">open to current members and boundaries</option>
-        </select>
-        <span className="muted mt-1 block text-xs">Submit uses the latest displayed Team revision; a concurrent policy change is shown as a conflict and never overwritten.</span>
-      </label>
+              </select>
+            )}
+          </label>
+          <label className="sm:col-span-2">
+            Initial policy placement
+            <select
+              value={placement}
+              onChange={(e) => setPlacement(e.target.value as typeof placement)}
+            >
+              <option value="profile_defaults">Agent-template defaults</option>
+              <option value="isolated">Isolated</option>
+            </select>
+            <span className="muted mt-1 block text-xs">
+              Submission uses the latest displayed Team revision. A concurrent policy change is
+              shown as a conflict and is never overwritten.
+            </span>
+          </label>
+        </div>
 
-      <button type="submit" disabled={submitting}>
-        {submitting ? 'spawning…' : 'spawn'}
-      </button>
-    </form>
+        <div className="mt-4">
+          <Button variant="primary" type="submit" disabled={submitting}>
+            {submitting ? 'Spawning…' : 'Spawn agent'}
+          </Button>
+        </div>
+      </form>
+    </SectionCard>
   )
 }

@@ -77,7 +77,7 @@ function AgentNode({ data, selected }: NodeProps<FlowNode<AgentNodeData, 'agent'
         )}
         {data.incomplete && (
           <CircleAlert
-            className="h-4 w-4 flex-none text-amber-700 dark:text-amber-300"
+            className="h-4 w-4 flex-none text-warning"
             aria-label="Incomplete member"
           />
         )}

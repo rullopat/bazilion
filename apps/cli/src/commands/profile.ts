@@ -75,10 +75,6 @@ const createCmd = defineCommand({
       type: 'string',
       description: 'Path to TOOLS.md content (optional; omit to skip)',
     },
-    'heartbeat-file': {
-      type: 'string',
-      description: 'Path to HEARTBEAT.md content (optional; omit to skip)',
-    },
   },
   async run({ args }) {
     const skillsMode = parseSkillsMode(args['skills-mode'])
@@ -97,7 +93,6 @@ const createCmd = defineCommand({
         : (readTemplate(args['bootstrap-file']) ?? undefined),
       agents: readTemplate(args['agents-file']),
       tools: readTemplate(args['tools-file']),
-      heartbeat: readTemplate(args['heartbeat-file']),
     }
     const client = createClient()
     const profile = await client.post<Profile>('/api/profiles', body)
@@ -140,7 +135,6 @@ const showCmd = defineCommand({
     console.log(`bootstrap: ${loaded.files.bootstrap !== null ? 'yes' : 'no'}`)
     console.log(`agents:    ${loaded.files.agents !== null ? 'yes' : 'no'}`)
     console.log(`tools:     ${loaded.files.tools !== null ? 'yes' : 'no'}`)
-    console.log(`heartbeat: ${loaded.files.heartbeat !== null ? 'yes' : 'no'}`)
     if (loaded.identity) {
       const fields = Object.entries(loaded.identity)
         .filter(([, v]) => typeof v === 'string' && v.length > 0)

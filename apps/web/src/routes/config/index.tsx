@@ -2,7 +2,7 @@ import type { ProviderConfigEntry, ProviderConfigResponse } from '@bazilion/api-
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { useState } from 'react'
-import { ConfigTabs } from '../../components/ConfigTabs'
+import { ConfigPage } from '../../components/ConfigPage'
 import { FieldRow } from '../../components/FieldRow'
 import { daemonClient } from '../../lib/daemon-client'
 
@@ -37,24 +37,28 @@ function ProvidersPage() {
   const { providers, openaiCodex } = Route.useLoaderData()
   const setupComplete = providers.some((p) => p.enabled && p.curated.length > 0)
   return (
-    <main className="mx-auto max-w-5xl px-6 py-8">
-      <h1 className="font-serif text-3xl text-foreground mb-2">config</h1>
-      <ConfigTabs active="providers" />
+    <ConfigPage
+      active="providers"
+      title="Providers"
+      description={
+        <>
+          Configure credentials, endpoints, and the curated model lists used by agent
+          templates and running agents. Secrets are encrypted; URLs and IDs remain
+          inspectable configuration.
+        </>
+      }
+    >
       {!setupComplete && <SetupBlockerBanner providers={providers} openaiCodex={openaiCodex} />}
-      <p className="text-muted-foreground text-sm mb-6">
-        Each card configures one LLM provider end to end: credentials (encrypted in the{' '}
-        <code className="font-mono">secrets</code> table), URLs and IDs (plaintext in the{' '}
-        <code className="font-mono">config</code> table), and the curated model list that
-        powers profile / agent dropdowns.
-      </p>
-      {providers.map((p) => (
-        <ProviderCard
-          key={p.id}
-          p={p}
-          openaiCodexStatus={p.id === 'openai-codex' ? openaiCodex : undefined}
-        />
-      ))}
-    </main>
+      <div className="space-y-3">
+        {providers.map((p) => (
+          <ProviderCard
+            key={p.id}
+            p={p}
+            openaiCodexStatus={p.id === 'openai-codex' ? openaiCodex : undefined}
+          />
+        ))}
+      </div>
+    </ConfigPage>
   )
 }
 
@@ -79,22 +83,22 @@ function SetupBlockerBanner({
   }
   const enabledCount = providers.filter((p) => p.enabled).length
   return (
-    <div className="rounded-md border-2 border-amber-400 bg-amber-50 px-4 py-3 mb-4 text-sm">
-      <div className="font-semibold text-amber-900 mb-1">First-run setup is not complete</div>
-      <p className="text-amber-900 mb-2">
+    <div className="rounded-md border-2 border-warning/25 bg-warning/10 px-4 py-3 text-sm">
+      <div className="font-semibold text-warning mb-1">First-run setup is not complete</div>
+      <p className="text-warning mb-2">
         The rest of the app stays on the Welcome screen until at least one provider is{' '}
         <strong>enabled</strong> and has <strong>at least one curated model</strong>. Use a
         catalog chip when one is available, or paste the exact model id from your local/server
         provider.
       </p>
       {issues.length > 0 ? (
-        <ul className="list-disc pl-5 text-amber-900 space-y-0.5">
+        <ul className="list-disc pl-5 text-warning space-y-0.5">
           {issues.map((i) => (
             <li key={i}>{i}</li>
           ))}
         </ul>
       ) : enabledCount === 0 ? (
-        <p className="text-amber-900">
+        <p className="text-warning">
           No providers are enabled yet — pick one below, flip the toggle on, set credentials,
           and save at least one model name.
         </p>
@@ -158,8 +162,8 @@ function ProviderCard({
   }
 
   return (
-    <section className="rounded-lg border bg-card mb-3 overflow-hidden">
-      <header className="flex items-center gap-3 px-4 py-3">
+    <section className="overflow-hidden rounded-lg border bg-card">
+      <header className="flex flex-wrap items-center gap-3 px-4 py-3">
         <span className="font-mono font-semibold">{p.id}</span>
         <span className="text-muted-foreground text-sm">· {p.displayName}</span>
         <label className="flex items-center gap-1.5 text-xs uppercase tracking-wide font-semibold cursor-pointer">
@@ -169,11 +173,11 @@ function ProviderCard({
             onChange={(e) => toggle(e.target.checked)}
             className="size-4"
           />
-          <span className={enabled ? 'text-emerald-700' : 'text-muted-foreground'}>
+          <span className={enabled ? 'text-success' : 'text-muted-foreground'}>
             {enabled ? 'enabled' : 'disabled'}
           </span>
         </label>
-        <span className="ml-auto text-xs text-muted-foreground">
+        <span className="w-full text-xs text-muted-foreground sm:ml-auto sm:w-auto">
           {p.curated.length > 0 && <span>{p.curated.length} curated</span>}
           {p.catalog.length > 0 && <span> · {p.catalog.length} catalog</span>}
           {p.live && !p.live.error && <span> · {p.live.models.length} live</span>}
@@ -202,7 +206,7 @@ function ProviderCard({
             curated models (one per line)
           </h4>
           {p.curated.length === 0 && (
-            <p className="mb-2 text-xs font-medium text-amber-700">
+            <p className="mb-2 text-xs font-medium text-warning">
               First-run setup needs at least one model name here — type one (e.g.{' '}
               <code className="font-mono">{exampleModelFor(p.id)}</code>) and click{' '}
               <em>save models</em>. Catalog chips below are the safest source when available.
@@ -257,7 +261,7 @@ function ProviderCard({
             </>
           )}
           {p.live?.error && (
-            <p className="text-xs text-rose-700 mt-2">could not fetch: {p.live.error}</p>
+            <p className="text-xs text-danger mt-2">could not fetch: {p.live.error}</p>
           )}
         </div>
       )}
@@ -406,7 +410,7 @@ function OpenAICodexCard({ status }: { status: OpenAICodexStatus }) {
       {status.connected ? (
         <>
           <div className="flex flex-wrap gap-2 items-center mb-2">
-            <span className="rounded-full bg-emerald-100 text-emerald-800 px-2 py-0.5 text-xs font-semibold uppercase">
+            <span className="rounded-full bg-success/10 text-success px-2 py-0.5 text-xs font-semibold uppercase">
               connected
             </span>
             {status.accountId && (
@@ -425,7 +429,7 @@ function OpenAICodexCard({ status }: { status: OpenAICodexStatus }) {
             type="button"
             onClick={disconnect}
             disabled={busy}
-            className="rounded-md border px-3 py-1.5 text-sm text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+            className="rounded-md border px-3 py-1.5 text-sm text-danger hover:bg-danger/10 disabled:opacity-50"
           >
             disconnect
           </button>
@@ -448,7 +452,7 @@ function OpenAICodexCard({ status }: { status: OpenAICodexStatus }) {
           </button>
         </>
       )}
-      {err && <p className="text-sm text-rose-700 mt-2">{err}</p>}
+      {err && <p className="text-sm text-danger mt-2">{err}</p>}
     </div>
   )
 }

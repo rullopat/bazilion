@@ -12,6 +12,7 @@ import { afterEach, beforeEach, expect, test } from 'vitest'
 import { isSetupComplete } from '../../src/core/availableModels.ts'
 import { ensureSetupSeeded } from '../../src/core/profile/seed.ts'
 import { DEFAULT_USER_MD } from '../../src/core/profile/templates.ts'
+import * as profileCommunicationDefaultsRepo from '../../src/core/repos/profileCommunicationDefaults.ts'
 import * as profileRepo from '../../src/core/repos/profiles.ts'
 import * as providerModelRepo from '../../src/core/repos/providerModels.ts'
 import * as providerStateRepo from '../../src/core/repos/providerState.ts'
@@ -38,9 +39,16 @@ test('ensureSetupSeeded creates the default profile + team once a provider is co
   expect(result?.profile.id).toBe('default')
   expect(result?.team.id).toBe('default')
   expect(profileRepo.get(env.db, 'default')).not.toBeNull()
+  expect(profileCommunicationDefaultsRepo.get(env.db, 'default')).toEqual({
+    userInput: true,
+    userOutput: true,
+    outsideTeamInput: false,
+    outsideTeamOutput: false,
+    peerDefault: 'allow_all',
+  })
 })
 
-test('the seeded default profile ships the default-on template files (HEARTBEAT opt-in)', () => {
+test('the seeded default profile ships the default-on template files', () => {
   providerStateRepo.setEnabled(env.db, 'anthropic', true)
   providerModelRepo.replace(env.db, 'anthropic', ['claude-opus-4-6'])
   const result = ensureSetupSeeded(env.db, env.paths)
@@ -49,8 +57,6 @@ test('the seeded default profile ships the default-on template files (HEARTBEAT 
   for (const file of ['SOUL.md', 'IDENTITY.md', 'BOOTSTRAP.md', 'AGENTS.md', 'TOOLS.md']) {
     expect(existsSync(join(dir as string, file))).toBe(true)
   }
-  // HEARTBEAT is opt-in — the default profile doesn't ship it.
-  expect(existsSync(join(dir as string, 'HEARTBEAT.md'))).toBe(false)
 })
 
 test("the seeded default team's user_md is DEFAULT_USER_MD", () => {

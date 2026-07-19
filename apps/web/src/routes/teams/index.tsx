@@ -2,6 +2,14 @@ import type { Agent, Team, HealthReport, ResolvedTeamPolicy } from '@bazilion/ap
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { useState } from 'react'
+import { Button } from '../../components/Button'
+import {
+  EmptyState,
+  PageHeader,
+  PageShell,
+  SectionCard,
+  StatusBadge,
+} from '../../components/Page'
 import { RecoveryState } from '../../components/RecoveryState'
 import { daemonClient } from '../../lib/daemon-client'
 
@@ -61,84 +69,105 @@ function TeamsPage() {
   }
 
   return (
-    <div>
-      <h1>teams</h1>
-      <p className="muted">
-        A Team owns one workspace, one live membership roster, and exactly one effective policy.
-        Every agent belongs to exactly one Team.
-      </p>
+    <PageShell size="wide">
+      <PageHeader
+        eyebrow="Workspace"
+        title="Teams"
+        description="Each Team owns one workspace, one live membership roster, and one effective communication policy. Every agent belongs to exactly one Team."
+      />
 
-      <aside className="card" aria-label="TeamPolicy enforcement readiness">
-        <strong>
-          {readiness.enforcementActive
-            ? 'Team Policy enforcement is active.'
-            : 'Team Policy enforcement is currently off.'}
-        </strong>{' '}
-        <span className="muted">
-          Management contract v{readiness.contractVersion} is release-ready. Set{' '}
-          <code>BAZILION_TEAM_POLICY_ENFORCEMENT=on</code> and restart the daemon to enforce it.
-        </span>
-      </aside>
+      <SectionCard
+        title="Policy enforcement"
+        description={`Management contract v${readiness.contractVersion} is ready for this daemon.`}
+        actions={
+          <StatusBadge variant={readiness.enforcementActive ? 'success' : 'warning'}>
+            {readiness.enforcementActive ? 'Enforcement on' : 'Enforcement off'}
+          </StatusBadge>
+        }
+        aria-label="Team Policy enforcement readiness"
+      >
+        <p className="text-sm text-muted-foreground">
+          {readiness.enforcementActive ? (
+            'Communication boundaries are currently enforcing each Team policy.'
+          ) : (
+            <>
+              Set <code>BAZILION_TEAM_POLICY_ENFORCEMENT=on</code> and restart the daemon to
+              enforce Team policies.
+            </>
+          )}
+        </p>
+      </SectionCard>
 
       <RegisterTeamForm onRegistered={() => router.invalidate()} />
 
-      <div className="overflow-x-auto">
-        <table>
-        <thead>
-          <tr>
-            <th>id</th>
-            <th>name</th>
-            <th>members</th>
-            <th>policy</th>
-            <th>baseline</th>
-            <th />
-          </tr>
-        </thead>
-        <tbody>
-          {teams.length === 0 && (
-            <tr>
-              <td colSpan={6} className="muted">
-                no teams registered
-              </td>
-            </tr>
-          )}
-          {teams.map((g) => {
-            const count = memberCounts[g.id] ?? 0
-            const policy = policies[g.id]
-            return (
-              <tr key={g.id}>
-                <td>
-                  <code>{g.id}</code>
-                </td>
-                <td>{g.name}</td>
-                <td>{count}</td>
-                <td>
-                  <a href={`/teams/${g.id}/policy`}>
-                    {policy ? `r${policy.revision} · ${policy.edges} edges` : 'unavailable'}
-                  </a>
-                </td>
-                <td>{policy?.baseline ?? 'none'}</td>
-                <td>
-                  {count === 0 ? (
-                    <button type="button" className="ghost-btn" onClick={() => remove(g.id)}>
-                      remove
-                    </button>
-                  ) : (
-                    <span
-                      className="muted"
-                      title={`${count} agent(s) belong to this team`}
-                    >
-                      in use
-                    </span>
-                  )}
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-        </table>
-      </div>
-    </div>
+      <SectionCard
+        title="Registered teams"
+        description="Open a Team to manage its context, members, shared memory, and policy."
+      >
+        {teams.length === 0 ? (
+          <EmptyState
+            title="No teams registered"
+            description="Register a Team above to create a workspace for your agents."
+          />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-[820px]">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Name</th>
+                  <th>Members</th>
+                  <th>Policy</th>
+                  <th>Baseline</th>
+                  <th>
+                    <span className="sr-only">Actions</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {teams.map((g) => {
+                  const count = memberCounts[g.id] ?? 0
+                  const policy = policies[g.id]
+                  return (
+                    <tr key={g.id}>
+                      <td>
+                        <code>{g.id}</code>
+                      </td>
+                      <td>
+                        <a href={`/teams/${g.id}`}>{g.name}</a>
+                      </td>
+                      <td>{count}</td>
+                      <td>
+                        <a href={`/teams/${g.id}/policy`}>
+                          {policy ? `r${policy.revision} · ${policy.edges} edges` : 'Unavailable'}
+                        </a>
+                      </td>
+                      <td>{policy?.baseline ?? 'None'}</td>
+                      <td>
+                        <div className="flex justify-end">
+                          {count === 0 ? (
+                            <Button variant="danger" onClick={() => remove(g.id)}>
+                              Remove
+                            </Button>
+                          ) : (
+                            <StatusBadge
+                              variant="neutral"
+                              title={`${count} agent(s) belong to this Team`}
+                            >
+                              In use
+                            </StatusBadge>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </SectionCard>
+    </PageShell>
   )
 }
 
@@ -183,40 +212,50 @@ function RegisterTeamForm({ onRegistered }: { onRegistered: () => void }) {
   }
 
   return (
-    <form className="card" onSubmit={submit}>
-      <h3>register team</h3>
-      {err && <div className="err">{err}</div>}
-      <p className="muted">
-        Teams always live under <code>~/.bazilion/teams/&lt;slug&gt;/</code>. Leave the link
-        target blank to create a fresh directory; supply an absolute path to materialize the slot
-        as a symlink to your existing project tree instead.
-      </p>
-      <div className="flex gap-4">
-        <label className="flex-1">
-          id (slug)
-          <input
-            value={id}
-            onChange={(e) => setId(e.target.value)}
-            required
-            placeholder="myproject"
-          />
-        </label>
-        <label className="flex-1">
-          name
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="My Project" />
-        </label>
-      </div>
-      <label>
-        link target (optional, absolute path)
-        <input
-          value={link}
-          onChange={(e) => setLink(e.target.value)}
-          placeholder="/home/user/projects/myproject"
-        />
-      </label>
-      <button type="submit" disabled={submitting}>
-        {submitting ? 'registering…' : 'register'}
-      </button>
-    </form>
+    <SectionCard
+      title="Register a team"
+      description={
+        <>
+          Teams live under <code>~/.bazilion/teams/&lt;slug&gt;/</code>. Link an existing project
+          directory or leave the target blank to create a fresh workspace.
+        </>
+      }
+    >
+      <form onSubmit={submit}>
+        {err && <div className="err">{err}</div>}
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label>
+            ID (slug)
+            <input
+              value={id}
+              onChange={(e) => setId(e.target.value)}
+              required
+              placeholder="my-project"
+            />
+          </label>
+          <label>
+            Name
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="My project"
+            />
+          </label>
+          <label className="sm:col-span-2">
+            Link target (optional, absolute path)
+            <input
+              value={link}
+              onChange={(e) => setLink(e.target.value)}
+              placeholder="/home/user/projects/my-project"
+            />
+          </label>
+        </div>
+        <div className="mt-4">
+          <Button variant="primary" type="submit" disabled={submitting}>
+            {submitting ? 'Registering…' : 'Register team'}
+          </Button>
+        </div>
+      </form>
+    </SectionCard>
   )
 }

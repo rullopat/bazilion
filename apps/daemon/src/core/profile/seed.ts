@@ -19,8 +19,6 @@ import {
 export const DEFAULT_PROFILE_ID = 'default'
 export const DEFAULT_TEAM_ID = 'default'
 
-// HEARTBEAT.md is intentionally absent — it's opt-in, so the
-// managed default profile doesn't ship it.
 const DEFAULT_PROFILE_FILES: [string, string][] = [
   ['SOUL.md', DEFAULT_SOUL],
   ['IDENTITY.md', DEFAULT_IDENTITY],
@@ -97,6 +95,13 @@ export function seedDefaults(db: BazilionDb, paths: Paths, input: SeedDefaultsIn
       name: 'Default',
       defaultModel: input.model,
       skillsMode: 'all',
+      communicationDefaults: {
+        userInput: true,
+        userOutput: true,
+        outsideTeamInput: false,
+        outsideTeamOutput: false,
+        peerDefault: 'allow_all',
+      },
     })
     profileCreated = true
   }

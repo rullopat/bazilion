@@ -66,9 +66,9 @@ export function SpawnTeamModal({ profileGroup: team, teams, onClose, onSpawned }
   }
 
   return (
-    <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose} onKeyDown={(event) => { if (event.key === 'Escape') onClose() }}>
-      <div ref={dialogRef} tabIndex={-1} className="card w-full max-w-lg" role="document" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => { if (event.key !== 'Escape') event.stopPropagation() }}>
-        <h3>spawn team — {team.name}</h3>
+    <div role="dialog" aria-modal="true" aria-labelledby="spawn-team-title" className="fixed inset-0 z-50 flex items-center justify-center bg-charcoal/45 p-4 backdrop-blur-sm" onClick={onClose} onKeyDown={(event) => { if (event.key === 'Escape') onClose() }}>
+      <div ref={dialogRef} tabIndex={-1} className="max-h-[calc(100dvh-2rem)] w-full max-w-lg overflow-y-auto rounded-3xl border border-frost bg-card p-6 shadow-baziu-lg sm:p-7" role="document" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => { if (event.key !== 'Escape') event.stopPropagation() }}>
+        <h2 id="spawn-team-title">Spawn team — {team.name}</h2>
         {error && <div className="err">{error}</div>}
         <p className="muted">Uses immutable Team revision {team.currentRevision}. Existing Teams append at their current reviewed revision; a new Team initializes at revision 1. Conflicts never overwrite newer state.</p>
         <label>target Team slug<input value={teamId} onChange={(event) => {setTeamId(event.target.value);setPreview(null)}} list="canonical-teams" required /><datalist id="canonical-teams">{teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}</datalist></label>

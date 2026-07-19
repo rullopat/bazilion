@@ -96,7 +96,7 @@ agentsRouter.post('/placement-preview', async (c) => {
     !teamId ||
     typeof expectedRevision !== 'number' ||
     !Number.isInteger(expectedRevision) ||
-    (placement !== 'isolated' && placement !== 'open' && placement !== 'profile_defaults')
+    (placement !== 'isolated' && placement !== 'profile_defaults')
   ) {
     return c.json(
       { error: 'profileId, teamId, teamExpectedRevision, and placement are required' },
@@ -200,9 +200,7 @@ agentsRouter.post('/', async (c) => {
       ? raw.teamExpectedRevision
       : undefined
   const placement =
-    raw.placement === 'isolated' || raw.placement === 'open' || raw.placement === 'profile_defaults'
-      ? raw.placement
-      : undefined
+    raw.placement === 'isolated' || raw.placement === 'profile_defaults' ? raw.placement : undefined
   if (!teamId || !teamExpectedRevision || !placement) {
     return c.json(
       { error: 'teamExpectedRevision and placement are required', code: 'placement_required' },
@@ -474,7 +472,7 @@ agentsRouter.post('/:id/team/preview', async (c) => {
     !Number.isInteger(sourceExpectedRevision) ||
     typeof destinationExpectedRevision !== 'number' ||
     !Number.isInteger(destinationExpectedRevision) ||
-    (placement !== 'isolated' && placement !== 'open' && placement !== 'profile_defaults')
+    (placement !== 'isolated' && placement !== 'profile_defaults')
   ) {
     return c.json(
       {
@@ -572,7 +570,7 @@ agentsRouter.patch('/:id/team', async (c) => {
       !Number.isInteger(sourceExpectedRevision) ||
       typeof destinationExpectedRevision !== 'number' ||
       !Number.isInteger(destinationExpectedRevision) ||
-      (placement !== 'isolated' && placement !== 'open' && placement !== 'profile_defaults')
+      (placement !== 'isolated' && placement !== 'profile_defaults')
     ) {
       return c.json(
         {
@@ -1278,7 +1276,6 @@ const CONTEXT_FILE_ORDER = [
   'SOUL.md',
   'TOOLS.md',
   'IDENTITY.md',
-  'HEARTBEAT.md',
   'BOOTSTRAP.md',
 ] as const
 

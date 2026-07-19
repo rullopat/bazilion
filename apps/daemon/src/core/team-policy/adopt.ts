@@ -63,10 +63,7 @@ function resolveAdoptionPlan(db: BazilionDb, teamId: string, input: AdoptTeamTem
   const remainingIds = new Set([...memberIds].filter((id) => !mappedAgents.has(id)))
   if (
     input.remainingPlacements.some(
-      (item) =>
-        item.placement !== 'isolated' &&
-        item.placement !== 'open' &&
-        item.placement !== 'profile_defaults',
+      (item) => item.placement !== 'isolated' && item.placement !== 'profile_defaults',
     )
   ) {
     throw new Error('adoption_mapping_invalid: unknown placement')
@@ -190,13 +187,7 @@ function resolveAdoptionEdges(
   for (const [agentId, placement] of placements) {
     const agent = memberById.get(agentId)
     if (!agent) continue
-    if (placement === 'open') {
-      add('user', null, 'agent', agentId)
-      add('agent', agentId, 'user', null)
-      add('outside_team', null, 'agent', agentId)
-      add('agent', agentId, 'outside_team', null)
-      requestsPeers.add(agentId)
-    } else if (placement === 'profile_defaults') {
+    if (placement === 'profile_defaults') {
       const defaults = db.raw
         .query<
           {

@@ -93,7 +93,7 @@ const spawnCmd = defineCommand({
       reasoningLevel: args.reasoning as SpawnAgentRequest['reasoningLevel'],
       teamId,
       teamExpectedRevision: policy.teamPolicy.revision,
-      placement: 'open',
+      placement: 'profile_defaults',
     }
     const response = await client.post<{ agent: Agent }>('/api/agents', body)
     const agent = response.agent
@@ -658,7 +658,7 @@ const moveCmd = defineCommand({
       teamId: args.team,
       sourceExpectedRevision: source.teamPolicy.revision,
       destinationExpectedRevision: destination.teamPolicy.revision,
-      placement: 'open',
+      placement: 'profile_defaults',
     }
     await client.patch(`/api/agents/${args.agent}/team`, body)
     console.log(`moved ${args.agent} to team ${args.team}`)

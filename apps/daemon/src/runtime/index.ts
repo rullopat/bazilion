@@ -10,12 +10,6 @@ export {
   refreshOpenAICodexToken,
   saveLoginCredentials as saveOpenAICodexLoginCredentials,
 } from './auth/openai-codex.ts'
-export {
-  DEFAULT_HEARTBEAT_EVERY_SEC,
-  HEARTBEAT_PROMPT,
-  isHeartbeatContentEffectivelyEmpty,
-  resolveHeartbeatPrompt,
-} from './auto-reply/heartbeat.ts'
 export { filesBackend } from './memory/files.ts'
 export { qmdBackend } from './memory/qmd.ts'
 export type { MemoryBackend } from './memory/types.ts'

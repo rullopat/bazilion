@@ -233,8 +233,30 @@ test('Team policy replacement and canonical direct spawn are revisioned and perm
   const { agentsRouter } = await import('../../src/routes/agents.ts')
   const { teamsRouter } = await import('../../src/routes/teams.ts')
   const ctx = getCtx()
-  createProfile(ctx.db, ctx.paths, { id: 'p', defaultModel: 'm' })
+  createProfile(ctx.db, ctx.paths, {
+    id: 'p',
+    defaultModel: 'm',
+    communicationDefaults: {
+      userInput: true,
+      userOutput: true,
+      outsideTeamInput: false,
+      outsideTeamOutput: false,
+      peerDefault: 'allow_all',
+    },
+  })
   registerTeam(ctx.db, { id: 'g' }, ctx.paths)
+
+  const removedOpenPlacement = await agentsRouter.request('/placement-preview', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      profileId: 'p',
+      teamId: 'g',
+      teamExpectedRevision: 1,
+      placement: 'open',
+    }),
+  })
+  expect(removedOpenPlacement.status).toBe(400)
 
   const placementPreview = await agentsRouter.request('/placement-preview', {
     method: 'POST',
@@ -243,7 +265,7 @@ test('Team policy replacement and canonical direct spawn are revisioned and perm
       profileId: 'p',
       teamId: 'g',
       teamExpectedRevision: 1,
-      placement: 'open',
+      placement: 'profile_defaults',
     }),
   })
   expect(placementPreview.status).toBe(200)
@@ -434,7 +456,17 @@ test('adoption requires reviewed total mapping and preview, then save-as-templat
   const { getCtx } = await import('../../src/lib/ctx.ts')
   const { teamsRouter } = await import('../../src/routes/teams.ts')
   const ctx = getCtx()
-  createProfile(ctx.db, ctx.paths, { id: 'p', defaultModel: 'm' })
+  createProfile(ctx.db, ctx.paths, {
+    id: 'p',
+    defaultModel: 'm',
+    communicationDefaults: {
+      userInput: true,
+      userOutput: true,
+      outsideTeamInput: false,
+      outsideTeamOutput: false,
+      peerDefault: 'allow_all',
+    },
+  })
   registerTeam(ctx.db, { id: 'g' }, ctx.paths)
   const mapped = spawnAgent(ctx.db, ctx.paths, {
     profileId: 'p',
@@ -458,18 +490,6 @@ test('adoption requires reviewed total mapping and preview, then save-as-templat
     { sourceKind: 'user', sourceId: null, targetKind: 'agent', targetId: mapped.id },
     { sourceKind: 'user', sourceId: null, targetKind: 'agent', targetId: remaining.id },
     { sourceKind: 'agent', sourceId: remaining.id, targetKind: 'user', targetId: null },
-    {
-      sourceKind: 'outside_team',
-      sourceId: null,
-      targetKind: 'agent',
-      targetId: remaining.id,
-    },
-    {
-      sourceKind: 'agent',
-      sourceId: remaining.id,
-      targetKind: 'outside_team',
-      targetId: null,
-    },
     { sourceKind: 'agent', sourceId: remaining.id, targetKind: 'agent', targetId: mapped.id },
     { sourceKind: 'agent', sourceId: mapped.id, targetKind: 'agent', targetId: remaining.id },
   ].map((edge) => ({ ...edge, posture: 'allow' }))
@@ -481,7 +501,7 @@ test('adoption requires reviewed total mapping and preview, then save-as-templat
       templateId: 'source',
       templateExpectedRevision: 1,
       slotMappings: [{ slotId: 'slot', agentId: mapped.id }],
-      remainingPlacements: [{ agentId: remaining.id, placement: 'open' }],
+      remainingPlacements: [{ agentId: remaining.id, placement: 'profile_defaults' }],
     }),
   })
   expect(preview.status).toBe(200)
@@ -496,7 +516,7 @@ test('adoption requires reviewed total mapping and preview, then save-as-templat
       templateId: 'source',
       templateExpectedRevision: 1,
       slotMappings: [{ slotId: 'slot', agentId: mapped.id }],
-      remainingPlacements: [{ agentId: remaining.id, placement: 'open' }],
+      remainingPlacements: [{ agentId: remaining.id, placement: 'profile_defaults' }],
       previewEdges,
     }),
   })
@@ -611,14 +631,24 @@ test('canonical move and delete update both explicit Teams exactly once through 
   const { agentsRouter } = await import('../../src/routes/agents.ts')
   const { teamsRouter } = await import('../../src/routes/teams.ts')
   const ctx = getCtx()
-  createProfile(ctx.db, ctx.paths, { id: 'p', defaultModel: 'm' })
+  createProfile(ctx.db, ctx.paths, {
+    id: 'p',
+    defaultModel: 'm',
+    communicationDefaults: {
+      userInput: true,
+      userOutput: true,
+      outsideTeamInput: false,
+      outsideTeamOutput: false,
+      peerDefault: 'allow_all',
+    },
+  })
   registerTeam(ctx.db, { id: 'source' }, ctx.paths)
   registerTeam(ctx.db, { id: 'destination' }, ctx.paths)
   const agent = spawnAgent(ctx.db, ctx.paths, {
     profileId: 'p',
     teamId: 'source',
     teamExpectedRevision: 1,
-    placement: 'open',
+    placement: 'profile_defaults',
   })
 
   const movePreview = await agentsRouter.request(`/${agent.id}/team/preview`, {

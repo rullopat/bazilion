@@ -4,6 +4,7 @@ import { createFileRoute, redirect, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { useState } from 'react'
 import { AgentTabs } from '../../../components/AgentTabs'
+import { PageShell } from '../../../components/Page'
 import { daemonClient } from '../../../lib/daemon-client'
 
 interface TriggersView {
@@ -56,7 +57,7 @@ function TriggersPage() {
   }
 
   return (
-    <div>
+    <PageShell>
       <header className="mb-6">
         <h1>{resolved.agent.name}</h1>
       </header>
@@ -123,7 +124,7 @@ function TriggersPage() {
           </tbody>
         </table>
       )}
-    </div>
+    </PageShell>
   )
 }
 
@@ -232,7 +233,7 @@ function AddTriggerForm({
         <button type="submit" disabled={submitting}>
           {submitting ? 'adding…' : 'add'}
         </button>
-        {err && <span className="text-[0.85em] text-[#9B3D3D]">{err}</span>}
+        {err && <span className="text-[0.85em] text-danger">{err}</span>}
       </div>
     </form>
   )

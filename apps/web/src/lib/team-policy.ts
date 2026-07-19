@@ -71,9 +71,9 @@ export interface TeamPolicyDocument {
 export const DEFAULT_PROFILE_COMMUNICATION: ProfileCommunicationDefaults = {
   userInput: true,
   userOutput: true,
-  outsideTeamInput: true,
-  outsideTeamOutput: true,
-  peerDefault: 'inherit_team_policy',
+  outsideTeamInput: false,
+  outsideTeamOutput: false,
+  peerDefault: 'allow_all',
 }
 
 /**

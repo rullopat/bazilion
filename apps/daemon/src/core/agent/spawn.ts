@@ -56,9 +56,6 @@ export function spawnAgent(db: BazilionDb, paths: Paths, input: SpawnAgentInput)
       if (loaded.files.tools !== null) {
         writeFileSync(join(dir, 'TOOLS.md'), loaded.files.tools)
       }
-      if (loaded.files.heartbeat !== null) {
-        writeFileSync(join(dir, 'HEARTBEAT.md'), loaded.files.heartbeat)
-      }
 
       const reasoningLevel: ReasoningLevel = input.reasoningLevel ?? 'medium'
 
@@ -77,7 +74,7 @@ export function spawnAgent(db: BazilionDb, paths: Paths, input: SpawnAgentInput)
         const teamPolicy = teamPolicyRepo.get(db, team.id)
         if (!teamPolicy) throw new Error(`team_policy_missing: ${team.id}`)
         const expectedRevision = input.teamExpectedRevision ?? teamPolicy.revision
-        placement ??= 'open'
+        placement ??= 'profile_defaults'
         if (teamPolicy.revision !== expectedRevision) {
           throw new Error(
             `team_revision_conflict: expected ${expectedRevision}, current ${teamPolicy.revision}`,

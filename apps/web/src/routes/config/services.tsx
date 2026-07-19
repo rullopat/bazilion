@@ -1,7 +1,7 @@
 import type { ServiceCard, ServiceConfigResponse } from '@bazilion/api-types'
 import { createFileRoute } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
-import { ConfigTabs } from '../../components/ConfigTabs'
+import { ConfigPage } from '../../components/ConfigPage'
 import { FieldRow } from '../../components/FieldRow'
 import { daemonClient } from '../../lib/daemon-client'
 
@@ -44,29 +44,29 @@ function ServicesPage() {
   const { services } = Route.useLoaderData()
   const grouped = groupServices(services)
   return (
-    <main className="mx-auto max-w-5xl px-6 py-8">
-      <h1 className="font-serif text-3xl text-foreground mb-2">config</h1>
-      <ConfigTabs active="services" />
-
-      <p className="text-muted-foreground text-sm mb-6">
-        Configuration for non-LLM integrations — web search, crawlers, and similar. Fields
-        marked as secrets are encrypted in the <code className="font-mono">secrets</code>{' '}
-        table; plaintext URLs and IDs live in the <code className="font-mono">config</code>{' '}
-        table.
-      </p>
-
+    <ConfigPage
+      active="services"
+      title="Services"
+      description={
+        <>
+          Configure non-LLM integrations such as web search and crawlers. Secret fields are
+          encrypted in the <code className="font-mono">secrets</code> table; URLs and IDs live
+          in the <code className="font-mono">config</code> table.
+        </>
+      }
+    >
       {services.length === 0 && (
         <p className="text-muted-foreground italic">(no services registered)</p>
       )}
 
       {grouped.map(({ team, items }) => (
-        <section key={team} className="mb-6">
+        <section key={team}>
           <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             {team}
           </h2>
           {items.map((s) => (
             <section key={s.id} className="rounded-lg border bg-card p-5 mb-3">
-              <header className="flex items-center gap-2 mb-3">
+              <header className="mb-3 flex flex-wrap items-center gap-2">
                 <span className="font-mono font-semibold">{s.id}</span>
                 <span className="text-muted-foreground text-sm">· {s.displayName}</span>
               </header>
@@ -78,6 +78,6 @@ function ServicesPage() {
           ))}
         </section>
       ))}
-    </main>
+    </ConfigPage>
   )
 }

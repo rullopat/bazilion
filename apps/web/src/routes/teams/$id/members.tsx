@@ -1,6 +1,7 @@
 import type { Agent, SourceSlotBinding } from '@bazilion/api-types'
 import { createFileRoute } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
+import { PageShell } from '../../../components/Page'
 import { TeamTabs } from '../../../components/TeamTabs'
 import { daemonClient } from '../../../lib/daemon-client'
 
@@ -24,8 +25,8 @@ function TeamMembersPage() {
   const detail = Route.useLoaderData()
   const { id } = Route.useParams()
   return (
-    <div className="mx-auto max-w-5xl px-6 py-8">
-      <h1>team members</h1>
+    <PageShell>
+      <h1>Team members</h1>
       <p className="muted"><code>agents.team_id</code> is the only live-membership authority.</p>
       <TeamTabs teamId={id} />
       <div className="overflow-x-auto rounded-md border border-frost">
@@ -40,6 +41,6 @@ function TeamMembersPage() {
           </tbody>
         </table>
       </div>
-    </div>
+    </PageShell>
   )
 }

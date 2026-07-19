@@ -1,33 +1,68 @@
-import { Link } from '@tanstack/react-router'
+import { Link, useRouterState } from '@tanstack/react-router'
+import {
+  Bot,
+  LayoutTemplate,
+  Settings2,
+  ShieldCheck,
+  Sparkles,
+  UsersRound,
+} from 'lucide-react'
 import { BaziuLogo } from './BaziuLogo'
 import { ThemeToggle } from './ThemeToggle'
 
 const NAV_LINKS = [
-  { to: '/templates', label: 'templates' },
-  { to: '/agents', label: 'agents' },
-  { to: '/teams', label: 'teams' },
-  { to: '/approvals', label: 'approvals' },
-  { to: '/skills', label: 'skills' },
-  { to: '/config', label: 'config' },
+  { to: '/templates', label: 'templates', icon: LayoutTemplate },
+  { to: '/agents', label: 'agents', icon: Bot },
+  { to: '/teams', label: 'teams', icon: UsersRound },
+  { to: '/approvals', label: 'approvals', icon: ShieldCheck },
+  { to: '/skills', label: 'skills', icon: Sparkles },
+  { to: '/config', label: 'config', icon: Settings2 },
 ] as const
 
 export function TopNav() {
+  const pathname = useRouterState({ select: (state) => state.location.pathname })
+
   return (
-    <nav className="flex flex-wrap items-center gap-y-1 gap-x-1 border-b border-frost py-5">
-      <Link to="/" className="logo team mr-6 flex items-center gap-[0.45rem] text-charcoal">
-        <BaziuLogo className="logo-paw h-[28px] w-[28px] transition-transform duration-300 team-hover:rotate-[-8deg] team-hover:scale-[1.08]" />
-        <span className="font-display text-[1.35rem] tracking-[-0.02em]">bazilion</span>
+    <nav
+      aria-label="Primary navigation"
+      className="mx-auto grid w-full max-w-[1500px] shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 border-b border-frost py-3 md:flex md:gap-2 md:py-4"
+    >
+      <Link
+        to="/"
+        aria-current={pathname === '/' ? 'page' : undefined}
+        className="logo team flex min-w-0 items-center gap-2 rounded-lg text-charcoal transition-opacity hover:text-charcoal hover:opacity-80"
+      >
+        <BaziuLogo className="logo-paw h-8 w-8 shrink-0 transition-transform duration-300 team-hover:rotate-[-8deg] team-hover:scale-[1.08]" />
+        <span className="truncate font-display text-[1.35rem] tracking-[-0.02em]">
+          bazilion
+        </span>
       </Link>
-      {NAV_LINKS.map((link) => (
-        <Link
-          key={link.to}
-          to={link.to}
-          className="rounded-sm px-3 py-1.5 text-[0.92em] font-medium text-mocha transition-colors hover:bg-sapphire-glow hover:text-sapphire"
-        >
-          <span className="inline-flex items-center gap-1.5">{link.label}</span>
-        </Link>
-      ))}
-      <div className="ml-auto">
+
+      <div className="col-span-2 row-start-2 flex min-w-0 items-center justify-between gap-1 md:col-auto md:row-auto md:ml-4 md:flex-1 md:justify-start">
+        {NAV_LINKS.map((link) => {
+          const active = pathname === link.to || pathname.startsWith(`${link.to}/`)
+          const Icon = link.icon
+          return (
+            <Link
+              key={link.to}
+              to={link.to}
+              aria-current={active ? 'page' : undefined}
+              aria-label={link.label}
+              title={link.label}
+              className={`inline-flex h-9 min-w-9 items-center justify-center gap-2 rounded-lg border px-2.5 text-sm font-medium transition-all md:min-w-10 lg:px-3 ${
+                active
+                  ? 'border-sapphire-light bg-sapphire-glow text-sapphire shadow-baziu-sm'
+                  : 'border-transparent text-mocha hover:border-frost hover:bg-ivory hover:text-sapphire'
+              }`}
+            >
+              <Icon className="h-[1.05rem] w-[1.05rem] shrink-0" aria-hidden="true" />
+              <span className="hidden lg:inline">{link.label}</span>
+            </Link>
+          )
+        })}
+      </div>
+
+      <div className="col-start-2 row-start-1 md:col-auto md:row-auto md:ml-auto">
         <ThemeToggle />
       </div>
     </nav>

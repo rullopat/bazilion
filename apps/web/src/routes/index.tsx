@@ -114,16 +114,18 @@ function HomePage() {
   const selectedAgentId = data.selected?.resolved.agent.id ?? null
 
   return (
-    <div className="grid h-full grid-cols-1 gap-3 py-3 sm:grid-cols-[16rem_minmax(0,1fr)]">
-      <Sidebar
-        agents={data.agents}
-        teams={data.teams}
-        profiles={data.profiles}
-        profileGroups={data.profileGroups}
-        selectedAgentId={selectedAgentId}
-        initialOpenGroups={data.initialOpenGroups}
-      />
-      <main className="overflow-hidden">
+    <div className="grid h-full min-h-0 grid-cols-1 gap-3 py-3 lg:grid-cols-[18rem_minmax(0,1fr)]">
+      <div className={`min-h-0 ${data.selected ? 'hidden lg:block' : ''}`}>
+        <Sidebar
+          agents={data.agents}
+          teams={data.teams}
+          profiles={data.profiles}
+          profileGroups={data.profileGroups}
+          selectedAgentId={selectedAgentId}
+          initialOpenGroups={data.initialOpenGroups}
+        />
+      </div>
+      <section className={`min-h-0 overflow-hidden ${data.selected ? '' : 'hidden lg:block'}`}>
         {data.selected ? (
           <ChatPane
             agentId={data.selected.resolved.agent.id}
@@ -138,7 +140,7 @@ function HomePage() {
               : 'Pick an agent on the left to start chatting.'}
           </div>
         )}
-      </main>
+      </section>
     </div>
   )
 }

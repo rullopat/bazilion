@@ -5,6 +5,7 @@
 
 import { useRouter } from '@tanstack/react-router'
 import { useState } from 'react'
+import { Button } from './Button'
 
 interface Props {
   onClose: () => void
@@ -52,19 +53,25 @@ export function CreateTeamDialog({ onClose }: Props) {
     // biome-ignore lint/a11y/useKeyWithClickEvents: ditto
     <div
       onClick={onClose}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-[1px]"
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') onClose()
+      }}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-charcoal/45 p-4 backdrop-blur-sm"
     >
       <form
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="create-team-title"
         onSubmit={submit}
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-md rounded-2xl border bg-card p-6 shadow-lg"
+        className="max-h-[calc(100dvh-2rem)] w-full max-w-lg overflow-y-auto rounded-3xl border border-frost bg-card p-6 shadow-baziu-lg sm:p-7"
       >
-        <h3 className="font-serif text-xl text-foreground mb-1">Create a new team</h3>
+        <h2 id="create-team-title" className="font-serif text-2xl text-foreground">Create a team</h2>
         <p className="text-sm text-muted-foreground mb-4">
           A team is a collaboration context — one filesystem root, one USER.md, one roster. The
           slot lives at <code className="font-mono">~/.bazilion/teams/&lt;slug&gt;/</code>.
         </p>
-        <div className="grid grid-cols-2 gap-3 mb-3">
+        <div className="mb-3 grid gap-3 sm:grid-cols-2">
           <label className="block text-sm">
             ID (slug)
             <input
@@ -104,22 +111,14 @@ export function CreateTeamDialog({ onClose }: Props) {
             slot as a symlink to your existing project tree.
           </span>
         </label>
-        {err && <p className="mt-2 text-sm text-rose-700">{err}</p>}
+        {err && <p className="err mt-2">{err}</p>}
         <div className="mt-5 flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-md border px-3 py-2 text-sm text-foreground hover:bg-accent"
-          >
+          <Button variant="ghost" onClick={onClose}>
             Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={busy}
-            className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
-          >
+          </Button>
+          <Button variant="primary" type="submit" disabled={busy}>
             {busy ? 'Creating…' : 'Create'}
-          </button>
+          </Button>
         </div>
       </form>
     </div>

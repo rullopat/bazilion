@@ -9,7 +9,7 @@
 //                          so the operator can see the agent's steps.
 //
 // Sends route through the per-supergroup outbound queue so multiple agents
-// (heartbeats firing in lockstep, etc.) don't trip Telegram's per-chat rate
+// (scheduled triggers firing in lockstep, etc.) don't trip Telegram's per-chat rate
 // limit. Errors are logged but never crash the turn. The classic
 // "topic deleted by a human" case is reconciled lazily: clear
 // `agents.telegram_topic_id` and stop mirroring there.
@@ -111,7 +111,7 @@ export async function mirrorAgentTurnFrame(
   const text = renderFrame(frame, agent.telegramMirrorMode)
   if (!text) return
 
-  // Per-agent outbound-noise throttle: when a heartbeat-heavy agent floods its
+  // Per-agent outbound-noise throttle: when a scheduled Agent floods its
   // topic with verbose tool-line frames, drop the surplus. Essential frames
   // (assistant_message / error / fatal) always pass — we never drop the
   // agent's actual reply, only the verbose scaffolding around it.

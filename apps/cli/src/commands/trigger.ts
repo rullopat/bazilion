@@ -10,7 +10,7 @@ import { createClient } from '../client.ts'
 import { columnize } from '../columnize.ts'
 
 const addCmd = defineCommand({
-  meta: { name: 'add', description: 'Add a heartbeat / cron trigger to an agent' },
+  meta: { name: 'add', description: 'Add an interval / cron trigger to an agent' },
   args: {
     agent: { type: 'positional', required: true },
     every: {
@@ -118,7 +118,7 @@ const disableCmd = defineCommand({
 })
 
 export const triggerCommand = defineCommand({
-  meta: { name: 'trigger', description: 'Manage agent heartbeats / cron triggers' },
+  meta: { name: 'trigger', description: 'Manage scheduled agent triggers' },
   subCommands: {
     add: addCmd,
     list: listCmd,

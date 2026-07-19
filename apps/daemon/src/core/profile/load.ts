@@ -19,7 +19,6 @@ export function loadProfile(db: BazilionDb, id: string): LoadedProfile {
   const bootstrap = readOptional(join(profile.dir, 'BOOTSTRAP.md'))
   const agents = readOptional(join(profile.dir, 'AGENTS.md'))
   const tools = readOptional(join(profile.dir, 'TOOLS.md'))
-  const heartbeat = readOptional(join(profile.dir, 'HEARTBEAT.md'))
 
   const parsedIdentity = parseIdentityMarkdown(identityRaw)
   const anyIdentity =
@@ -39,7 +38,6 @@ export function loadProfile(db: BazilionDb, id: string): LoadedProfile {
       bootstrap,
       agents,
       tools,
-      heartbeat,
     },
     identity: anyIdentity ? parsedIdentity : null,
     communicationDefaults: profileCommunicationDefaultsRepo.get(db, id),

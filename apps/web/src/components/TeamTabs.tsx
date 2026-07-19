@@ -1,19 +1,20 @@
 import { Link, useRouterState } from '@tanstack/react-router'
+import { SECTION_TABS_CLASS, sectionTabClass } from './SectionTabs'
 
 const TABS = [
-  { suffix: '', label: 'overview', exact: true },
-  { suffix: '/members', label: 'members' },
-  { suffix: '/policy', label: 'policy' },
-  { suffix: '/memory', label: 'memory' },
-  { suffix: '/context', label: 'context' },
-  { suffix: '/activity', label: 'activity' },
+  { suffix: '', label: 'Overview', exact: true },
+  { suffix: '/members', label: 'Members' },
+  { suffix: '/policy', label: 'Policy' },
+  { suffix: '/memory', label: 'Memory' },
+  { suffix: '/context', label: 'Context' },
+  { suffix: '/activity', label: 'Activity' },
 ] as const
 
 export function TeamTabs({ teamId }: { teamId: string }) {
   const pathname = useRouterState({ select: (state) => state.location.pathname })
   const base = `/teams/${encodeURIComponent(teamId)}`
   return (
-    <nav aria-label="Team sections" className="-mb-px mb-5 flex flex-wrap gap-1 border-b border-frost">
+    <nav aria-label="Team sections" className={SECTION_TABS_CLASS}>
       {TABS.map((tab) => {
         const href = `${base}${tab.suffix}`
         const active =
@@ -25,7 +26,7 @@ export function TeamTabs({ teamId }: { teamId: string }) {
             key={tab.label}
             to={href}
             aria-current={active ? 'page' : undefined}
-            className={`whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium ${active ? 'border-sapphire text-sapphire' : 'border-transparent text-mocha hover:text-sapphire'}`}
+            className={sectionTabClass(active)}
           >
             {tab.label}
           </Link>

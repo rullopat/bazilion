@@ -60,16 +60,18 @@ export function ThemeToggle() {
   }
 
   const Icon = ICONS[mode]
-  const label = `Theme: ${mode}`
+  const next = NEXT[mode]
+  const label = `Theme: ${mode}. Switch to ${next}.`
   return (
     <button
       type="button"
       onClick={cycle}
-      className="unstyled rounded-md p-1.5 text-mocha transition-colors hover:bg-sapphire-glow hover:text-sapphire"
+      className="unstyled inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-frost bg-ivory px-2.5 text-mocha shadow-baziu-sm transition-all hover:border-sapphire-light hover:bg-sapphire-glow hover:text-sapphire active:translate-y-px"
       title={label}
       aria-label={label}
     >
-      <Icon className="h-4 w-4" />
+      <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+      <span className="hidden text-xs font-medium capitalize xl:inline">{mode}</span>
     </button>
   )
 }
