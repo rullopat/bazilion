@@ -98,6 +98,13 @@ beforeEach(() => {
     id: 'base',
     defaultModel: 'anthropic:claude-opus-4-6',
     defaultSkills: [],
+    communicationDefaults: {
+      userInput: true,
+      userOutput: true,
+      outsideTeamInput: false,
+      outsideTeamOutput: false,
+      peerDefault: 'allow_all',
+    },
   })
   _resetRouterStateForTest()
   _resetSpawnStateForTest()

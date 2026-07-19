@@ -150,7 +150,7 @@ export function ProductionTeamPolicyEditor({ source, profiles, initialUi }: { so
       <header className="flex flex-wrap items-center gap-2 border-b border-frost bg-cream p-3">
         <div className="mr-auto min-w-0">
           <div className="flex items-center gap-2"><h2 className="m-0 truncate text-lg">{draft.name}</h2>
-            <span className={dirty ? 'rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-900 dark:bg-amber-900/40 dark:text-amber-100' : 'rounded bg-sapphire-glow px-2 py-0.5 text-xs text-sapphire-deep'}>
+            <span className={dirty ? 'rounded bg-warning/10 px-2 py-0.5 text-xs text-warning' : 'rounded bg-sapphire-glow px-2 py-0.5 text-xs text-sapphire-deep'}>
               {dirty ? 'Unsaved draft' : `Effective · revision ${revision}`}
             </span>
           </div>
@@ -191,7 +191,7 @@ function Projection({ active, label, icon, onClick }: { active: boolean; label: 
 }
 
 function ConflictBanner({ draft, server, onReload, onReapply }: { draft: TeamPolicyDocument; server: TeamPolicyDocument; onReload: () => void; onReapply: () => void }) {
-  return <div role="alert" className="flex flex-wrap items-center gap-3 border-b border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:bg-amber-950/30 dark:text-amber-100"><AlertTriangle className="h-4 w-4" /><span className="mr-auto">Conflict: server has {server.policy.edges.length} edges; your preserved draft has {draft.policy.edges.length}.</span><Button variant="ghost" onClick={onReload}>Reload server</Button><Button variant="primary" onClick={onReapply}>Keep draft and reapply</Button></div>
+  return <div role="alert" className="flex flex-wrap items-center gap-3 border-b border-warning/25 bg-warning/10 p-3 text-sm text-warning"><AlertTriangle className="h-4 w-4" /><span className="mr-auto">Conflict: server has {server.policy.edges.length} edges; your preserved draft has {draft.policy.edges.length}.</span><Button variant="ghost" onClick={onReload}>Reload server</Button><Button variant="primary" onClick={onReapply}>Keep draft and reapply</Button></div>
 }
 
 function Inspector({ document, selected, selectedMember, profiles, source, onDraft, onToggle, onPosture }: { document: TeamPolicyDocument; selected: TeamPolicyEndpoint | null; selectedMember?: TeamPolicyDocument['members'][number]; profiles: Profile[]; source: Source; onDraft: React.Dispatch<React.SetStateAction<TeamPolicyDocument>>; onToggle: (a: TeamPolicyEndpoint,b: TeamPolicyEndpoint,c:boolean) => void; onPosture: (a: TeamPolicyEndpoint,b: TeamPolicyEndpoint,p:'allow'|'approval_required')=>void }) {

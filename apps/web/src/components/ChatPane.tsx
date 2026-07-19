@@ -801,11 +801,19 @@ export function ChatPane({
           drop images or files to attach
         </div>
       )}
-      <div className="flex items-baseline justify-between border-b border-frost px-4 py-2.5">
-        <h1 className="font-display text-[1.2rem] text-charcoal">{agentName}</h1>
+      <div className="flex items-center justify-between gap-3 border-b border-frost px-4 py-2.5">
+        <div className="flex min-w-0 items-center gap-2">
+          <a
+            href="/"
+            className="inline-flex h-7 items-center rounded-md border border-frost px-2 text-xs font-semibold text-mocha lg:hidden"
+          >
+            ← agents
+          </a>
+          <h1 className="truncate font-display text-[1.2rem] text-charcoal">{agentName}</h1>
+        </div>
         <a
           href={`/agents/${agentId}`}
-          className="text-xs text-mocha-light hover:text-sapphire"
+          className="shrink-0 text-xs text-mocha-light hover:text-sapphire"
         >
           settings →
         </a>
@@ -1125,11 +1133,11 @@ function Bubble({ entry, isLastUser, isWillDrop, onEdit }: BubbleProps) {
     if (isErr) {
       return (
         <div className={`my-4 flex flex-col items-start ${dropCls}`}>
-          <span className="mb-1 text-[0.72em] font-semibold uppercase tracking-wider text-[#9B3D3D]">
+          <span className="mb-1 text-[0.72em] font-semibold uppercase tracking-wider text-danger">
             error
           </span>
           <div
-            className="bubble-content rounded-r-sm border-l-[3px] border-l-[#9B3D3D] bg-[rgba(196,135,138,0.06)] py-1 pl-3 pr-2 leading-[1.55]"
+            className="bubble-content rounded-r-sm border-l-[3px] border-l-danger bg-danger/10 py-1 pl-3 pr-2 leading-[1.55]"
             // biome-ignore lint/security/noDangerouslySetInnerHtml: marked + DOMPurify
             dangerouslySetInnerHTML={{ __html: renderMd(entry.content) }}
           />
@@ -1195,7 +1203,7 @@ function Bubble({ entry, isLastUser, isWillDrop, onEdit }: BubbleProps) {
   }
   if (entry.type === 'error') {
     return (
-      <div className={`my-3 rounded-r-sm border-l-[3px] border-[#9B3D3D] bg-[rgba(196,135,138,0.08)] px-3 py-1 text-[0.92em] text-[#9B3D3D] ${dropCls}`}>
+      <div className={`my-3 rounded-r-sm border-l-[3px] border-danger bg-danger/10 px-3 py-1 text-[0.92em] text-danger ${dropCls}`}>
         {entry.content}
       </div>
     )

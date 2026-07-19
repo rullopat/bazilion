@@ -31,7 +31,6 @@ export interface CreateProfileInput {
     /** undefined = default template, null = skip, string = override */
     tools?: string | null
     /** opt-in (off by default): null/undefined = skip, string = seed */
-    heartbeat?: string | null
   }
 }
 
@@ -44,16 +43,12 @@ export function createProfile(db: BazilionDb, paths: Paths, input: CreateProfile
   const soul = input.templates?.soul ?? DEFAULT_SOUL
   const identity = input.templates?.identity ?? DEFAULT_IDENTITY
   // SOUL + IDENTITY are always written. BOOTSTRAP/AGENTS/TOOLS are default-on
-  // (undefined → default template, null → skip, string → override). HEARTBEAT
-  // is the exception: opt-in — only written when an explicit
-  // string is supplied (undefined/null → skip).
+  // (undefined → default template, null → skip, string → override).
   const bootstrap =
     input.templates?.bootstrap === null ? null : (input.templates?.bootstrap ?? DEFAULT_BOOTSTRAP)
   const agents =
     input.templates?.agents === null ? null : (input.templates?.agents ?? DEFAULT_AGENTS)
   const tools = input.templates?.tools === null ? null : (input.templates?.tools ?? DEFAULT_TOOLS)
-  const heartbeat =
-    typeof input.templates?.heartbeat === 'string' ? input.templates.heartbeat : null
 
   writeFileSync(join(dir, 'SOUL.md'), soul)
   writeFileSync(join(dir, 'IDENTITY.md'), identity)
@@ -65,9 +60,6 @@ export function createProfile(db: BazilionDb, paths: Paths, input: CreateProfile
   }
   if (tools !== null) {
     writeFileSync(join(dir, 'TOOLS.md'), tools)
-  }
-  if (heartbeat !== null) {
-    writeFileSync(join(dir, 'HEARTBEAT.md'), heartbeat)
   }
 
   const skillsMode: SkillsMode = input.skillsMode ?? 'selected'

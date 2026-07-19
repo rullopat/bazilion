@@ -2,6 +2,8 @@ import type { ImportSkillsResponse, SkillInfo, SkillScanFinding } from '@bazilio
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { type ChangeEvent, type DragEvent, useRef, useState } from 'react'
+import { Button } from '../../components/Button'
+import { EmptyState, PageHeader, PageShell, SectionCard, StatusBadge } from '../../components/Page'
 import { daemonClient } from '../../lib/daemon-client'
 
 const fetchSkills = createServerFn({ method: 'GET' }).handler(() =>
@@ -20,7 +22,7 @@ function SkillsPage() {
   const router = useRouter()
 
   async function remove(name: string) {
-    if (!confirm(`remove skill "${name}"? this deletes the directory on disk.`)) return
+    if (!confirm(`Remove skill "${name}"? This deletes the directory on disk.`)) return
     const res = await fetch(`/api/skills/${encodeURIComponent(name)}`, { method: 'DELETE' })
     if (!res.ok && res.status !== 204) {
       alert(res.statusText)
@@ -30,61 +32,78 @@ function SkillsPage() {
   }
 
   return (
-    <div>
-      <h1>skills</h1>
+    <PageShell size="wide">
+      <PageHeader
+        title="Skills"
+        description="Install and review the prompt-only skills available to your agents."
+      />
       <ImportCard onImported={() => router.invalidate()} />
 
-      <table>
-        <thead>
-          <tr>
-            <th>name</th>
-            <th>description</th>
-            <th>scan</th>
-            <th>source</th>
-            <th />
-          </tr>
-        </thead>
-        <tbody>
-          {skills.length === 0 && (
-            <tr>
-              <td colSpan={5} className="muted">
-                no skills installed yet
-              </td>
-            </tr>
-          )}
-          {skills.map((s) => (
-            <tr key={s.name}>
-              <td>
-                <code>{s.name}</code>
-              </td>
-              <td>
-                {s.parseError ? (
-                  <span className="text-[#9B3D3D]">parse error: {s.parseError}</span>
-                ) : (
-                  s.description
-                )}
-              </td>
-              <td>
-                <FindingSummary findings={s.scanFindings ?? []} />
-              </td>
-              <td className="text-[0.78em] text-mocha-light">
-                <span className="font-mono">{s.source ?? '(unknown)'}</span>
-                {s.importedAt && (
-                  <div className="font-mono">
-                    {new Date(s.importedAt).toLocaleDateString()}
-                  </div>
-                )}
-              </td>
-              <td>
-                <button type="button" className="ghost-btn" onClick={() => remove(s.name)}>
-                  remove
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+      <SectionCard
+        title="Installed skills"
+        description={`${skills.length} skill${skills.length === 1 ? '' : 's'} available`}
+      >
+        {skills.length === 0 ? (
+          <EmptyState
+            title="No skills installed"
+            description="Import from OpenClaw, a server directory, or a ZIP archive to get started."
+          />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="m-0 min-w-[760px]">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Description</th>
+                  <th>Scan</th>
+                  <th>Source</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {skills.map((s) => (
+                  <tr key={s.name}>
+                    <td>
+                      <code>{s.name}</code>
+                    </td>
+                    <td className="max-w-xl">
+                      {s.parseError ? (
+                        <div className="flex items-start gap-2 text-sm">
+                          <StatusBadge variant="danger">Parse error</StatusBadge>
+                          <span className="text-destructive">{s.parseError}</span>
+                        </div>
+                      ) : (
+                        s.description
+                      )}
+                    </td>
+                    <td>
+                      <FindingSummary findings={s.scanFindings ?? []} />
+                    </td>
+                    <td className="text-xs text-muted-foreground">
+                      <span className="font-mono">{s.source ?? 'Unknown'}</span>
+                      {s.importedAt && (
+                        <div className="mt-1 font-mono">
+                          {new Date(s.importedAt).toLocaleDateString()}
+                        </div>
+                      )}
+                    </td>
+                    <td className="text-right">
+                      <Button
+                        variant="danger"
+                        className="whitespace-nowrap"
+                        onClick={() => remove(s.name)}
+                      >
+                        Remove
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </SectionCard>
+    </PageShell>
   )
 }
 
@@ -108,7 +127,7 @@ function ImportCard({ onImported }: { onImported: () => void }) {
       let res: Response
       if (tab === 'zip') {
         if (!zipFile) {
-          setErr('choose a .zip file first')
+          setErr('Choose a ZIP file first.')
           setSubmitting(false)
           return
         }
@@ -123,7 +142,7 @@ function ImportCard({ onImported }: { onImported: () => void }) {
         } else {
           source = path.trim()
           if (!source) {
-            setErr('fill in the server path')
+            setErr('Enter the server path.')
             setSubmitting(false)
             return
           }
@@ -166,7 +185,7 @@ function ImportCard({ onImported }: { onImported: () => void }) {
     const f = files[0]
     if (!f) return
     if (!/\.zip$/i.test(f.name)) {
-      setErr('only .zip archives are supported')
+      setErr('Only ZIP archives are supported.')
       return
     }
     setZipFile(f)
@@ -178,22 +197,28 @@ function ImportCard({ onImported }: { onImported: () => void }) {
     }
   }
 
-  return (
-    <section className="card">
-      <h3 className="mb-1">import skills</h3>
-      <p className="muted mb-3 text-[0.88em]">
-        pick a source. Each skill's <code>SKILL.md</code> body is injected into the system
-        prompt of any agent it's attached to.
-      </p>
+  const findingsVariant = findings.some((finding) => finding.severity === 'danger')
+    ? 'danger'
+    : 'warning'
 
+  return (
+    <SectionCard
+      title="Import skills"
+      description={
+        <>
+          Choose a source. Each skill's <code>SKILL.md</code> body is injected into the system
+          prompt of any agent it is attached to.
+        </>
+      }
+    >
       <div
         role="tablist"
-        className="mb-4 inline-flex gap-0 rounded-md border border-frost bg-ivory p-1"
+        className="mb-5 inline-flex max-w-full gap-0 overflow-x-auto rounded-lg border border-border bg-muted p-1"
       >
         {[
           { id: 'openclaw' as const, label: 'OpenClaw' },
-          { id: 'path' as const, label: 'server directory' },
-          { id: 'zip' as const, label: 'upload zip' },
+          { id: 'path' as const, label: 'Server directory' },
+          { id: 'zip' as const, label: 'Upload ZIP' },
         ].map((it) => (
           <button
             key={it.id}
@@ -204,10 +229,10 @@ function ImportCard({ onImported }: { onImported: () => void }) {
               setTab(it.id)
               setErr(null)
             }}
-            className={`unstyled cursor-pointer rounded-sm border-none bg-transparent px-3 py-1.5 text-[0.88em] font-medium transition-colors ${
+            className={`unstyled cursor-pointer whitespace-nowrap rounded-md border-none bg-transparent px-3 py-1.5 text-sm font-medium transition-colors ${
               tab === it.id
-                ? 'bg-snow text-sapphire-deep shadow-baziu-sm'
-                : 'text-mocha hover:text-sapphire'
+                ? 'bg-card text-accent-foreground shadow-baziu-sm'
+                : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground'
             }`}
           >
             {it.label}
@@ -215,29 +240,38 @@ function ImportCard({ onImported }: { onImported: () => void }) {
         ))}
       </div>
 
-      {err && <div className="err">{err}</div>}
+      {err && (
+        <div
+          role="alert"
+          className="mb-4 rounded-lg border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+        >
+          {err}
+        </div>
+      )}
       {findings.length > 0 && (
-        <div className="mb-3 rounded-md border border-[#D7A3A3] bg-[#FFF7F5] p-3 text-[0.86em] text-[#7C2D2D]">
-          <div className="mb-1 font-semibold">scan findings</div>
+        <div className="mb-4 rounded-lg border border-border bg-muted/30 p-4 text-sm">
+          <StatusBadge variant={findingsVariant} className="mb-2">
+            Scan findings
+          </StatusBadge>
           <FindingList findings={findings} />
         </div>
       )}
 
-      <form onSubmit={submit}>
+      <form className="space-y-4" onSubmit={submit}>
         {tab === 'openclaw' && (
-          <p className="text-[0.92em] text-mocha">
+          <p className="text-sm leading-6 text-muted-foreground">
             One-click import of every skill found in <code>~/.openclaw/skills</code> on the
             server.
           </p>
         )}
         {tab === 'path' && (
           <>
-            <p className="text-[0.92em] text-mocha">
+            <p className="text-sm leading-6 text-muted-foreground">
               Import from an absolute path on the server — either a single skill folder
               (contains <code>SKILL.md</code>) or a parent folder holding many skill subfolders.
             </p>
-            <label>
-              server path
+            <label className="max-w-2xl">
+              Server path
               <input
                 value={path}
                 onChange={(e) => setPath(e.target.value)}
@@ -249,7 +283,7 @@ function ImportCard({ onImported }: { onImported: () => void }) {
         )}
         {tab === 'zip' && (
           <>
-            <p className="text-[0.92em] text-mocha">
+            <p className="text-sm leading-6 text-muted-foreground">
               Upload a <code>.zip</code> archive whose top level contains one folder per skill —
               the folder name becomes the skill name.
             </p>
@@ -260,12 +294,12 @@ function ImportCard({ onImported }: { onImported: () => void }) {
               }}
               onDragLeave={() => setDragOver(false)}
               onDrop={onDrop}
-              className={`block cursor-pointer rounded-md border-2 border-dashed p-6 text-center transition-colors ${
+              className={`block cursor-pointer rounded-xl border-2 border-dashed p-8 text-center transition-colors ${
                 dragOver
-                  ? 'border-sapphire bg-sapphire-glow text-sapphire-deep'
+                  ? 'border-primary bg-accent text-accent-foreground'
                   : zipFile
-                    ? 'border-solid border-sapphire-light bg-snow text-chocolate'
-                    : 'border-frost bg-ivory text-mocha-light hover:border-sapphire hover:bg-sapphire-glow hover:text-sapphire-deep'
+                    ? 'border-solid border-primary/40 bg-card text-foreground'
+                    : 'border-border bg-muted/30 text-muted-foreground hover:border-primary hover:bg-accent hover:text-accent-foreground'
               }`}
             >
               <input
@@ -276,65 +310,74 @@ function ImportCard({ onImported }: { onImported: () => void }) {
                 className="absolute h-px w-px overflow-hidden opacity-0"
               />
               {zipFile ? (
-                <span className="block break-all font-mono text-[0.85em] text-sapphire-deep">
+                <span className="block break-all font-mono text-sm text-accent-foreground">
                   {zipFile.name}
                 </span>
               ) : (
                 <>
-                  <span className="block text-[0.95em] font-medium text-mocha">
-                    click to choose a .zip file
+                  <span className="block text-sm font-medium text-foreground">
+                    Click to choose a ZIP file
                   </span>
-                  <span className="text-[0.82em]">or drag &amp; drop here</span>
+                  <span className="text-xs">or drag and drop it here</span>
                 </>
               )}
             </label>
           </>
         )}
-        <div className="mt-3 flex flex-wrap items-center gap-3">
-          <button type="submit" disabled={submitting}>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button variant="primary" type="submit" disabled={submitting}>
             {submitting
-              ? 'importing…'
+              ? 'Importing…'
               : tab === 'zip'
-                ? 'upload & import'
+                ? 'Upload and import'
                 : tab === 'openclaw'
-                  ? 'import from OpenClaw'
-                  : 'import'}
-          </button>
-          <label className="m-0 inline-flex cursor-pointer items-center text-[0.88em] text-mocha">
+                  ? 'Import from OpenClaw'
+                  : 'Import'}
+          </Button>
+          <label className="m-0 inline-flex cursor-pointer items-center gap-1 text-sm text-foreground">
             <input
               type="checkbox"
               checked={force}
               onChange={(e) => setForce(e.target.checked)}
             />
-            overwrite existing
-            <span className="ml-1 text-mocha-light">/ confirm scan findings</span>
+            <span>Overwrite existing</span>
+            <span className="text-muted-foreground">and confirm scan findings</span>
           </label>
         </div>
       </form>
-    </section>
+    </SectionCard>
   )
 }
 
 function FindingSummary({ findings }: { findings: SkillScanFinding[] }) {
-  if (findings.length === 0) return <span className="text-mocha-light">clean</span>
+  if (findings.length === 0) return <StatusBadge variant="success">Clean</StatusBadge>
   const danger = findings.some((f) => f.severity === 'danger')
   return (
-    <details className="text-[0.82em]">
-      <summary className={danger ? 'cursor-pointer text-[#9B3D3D]' : 'cursor-pointer text-mocha'}>
-        {findings.length} finding{findings.length === 1 ? '' : 's'}
+    <details className="text-xs">
+      <summary className="cursor-pointer list-none">
+        <StatusBadge variant={danger ? 'danger' : 'warning'}>
+          {findings.length} finding{findings.length === 1 ? '' : 's'}
+        </StatusBadge>
       </summary>
-      <FindingList findings={findings} />
+      <div className="mt-2 min-w-64">
+        <FindingList findings={findings} />
+      </div>
     </details>
   )
 }
 
 function FindingList({ findings }: { findings: SkillScanFinding[] }) {
   return (
-    <ul className="m-0 list-disc pl-4">
+    <ul className="m-0 space-y-1.5 pl-0">
       {findings.map((f, i) => (
-        <li key={`${f.code}-${f.line ?? 0}-${i}`}>
-          <span className="font-mono">{f.severity}</span>: {f.code}
-          {f.line ? ` line ${f.line}` : ''} - {f.message}
+        <li key={`${f.code}-${f.line ?? 0}-${i}`} className="flex items-start gap-2">
+          <StatusBadge variant={f.severity === 'danger' ? 'danger' : 'warning'}>
+            {f.severity === 'danger' ? 'Danger' : 'Warning'}
+          </StatusBadge>
+          <span>
+            <code>{f.code}</code>
+            {f.line ? `, line ${f.line}` : ''} — {f.message}
+          </span>
         </li>
       ))}
     </ul>

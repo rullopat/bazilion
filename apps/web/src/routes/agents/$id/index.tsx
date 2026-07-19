@@ -20,6 +20,7 @@ import { AgentAvatar } from '../../../components/AgentAvatar'
 import { AgentTabs } from '../../../components/AgentTabs'
 import { ChatPane } from '../../../components/ChatPane'
 import { CopyButton } from '../../../components/CopyButton'
+import { PageShell } from '../../../components/Page'
 import { daemonClient } from '../../../lib/daemon-client'
 import { REASONING_LEVELS } from '../../../lib/wire-constants'
 
@@ -139,7 +140,7 @@ function AgentDetailPage() {
   }
 
   return (
-    <div>
+    <PageShell>
       <header className="mb-8">
         {search.teamPolicy && (
           <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -215,7 +216,7 @@ function AgentDetailPage() {
           <button
             type="button"
             onClick={del}
-            className="ghost-btn border-[rgba(196,135,138,0.4)] text-[#9B3D3D] hover:bg-[rgba(196,135,138,0.08)]"
+            className="ghost-btn border-[rgba(196,135,138,0.4)] text-danger hover:bg-[rgba(196,135,138,0.08)]"
           >
             delete permanently
           </button>
@@ -232,7 +233,7 @@ function AgentDetailPage() {
 
       {resolved.agent.status === 'archived' && (
         <div className="mb-4 rounded-md border border-frost bg-fawn/35 px-4 py-2 text-[0.9em] text-chocolate">
-          <strong className="text-[#7a4e2a]">This agent is archived.</strong> It's hidden from
+          <strong className="text-warning">This agent is archived.</strong> It's hidden from
           the default agent list; use <em>unarchive</em> above to bring it back, or{' '}
           <em>delete permanently</em> to remove its data entirely.
         </div>
@@ -286,7 +287,7 @@ function AgentDetailPage() {
           <TelegramSection agent={resolved.agent} />
         </section>
       )}
-    </div>
+    </PageShell>
   )
 }
 
@@ -413,7 +414,7 @@ function SettingsDetails({
           {saving ? 'saving…' : 'save'}
         </button>
         {savedFlash && <span className="text-[0.85em] text-[#3b7a3b]">saved ✓</span>}
-        {error && <span className="text-[0.85em] text-[#9B3D3D]">{error}</span>}
+        {error && <span className="text-[0.85em] text-danger">{error}</span>}
       </form>
     </details>
   )
@@ -431,7 +432,7 @@ function MoveGroupForm({
   const router = useRouter()
   const [teamId, setTeamId] = useState(currentTeamId)
   const [moving, setMoving] = useState(false)
-  const [placement, setPlacement] = useState<'isolated' | 'open' | 'profile_defaults'>('profile_defaults')
+  const [placement, setPlacement] = useState<'isolated' | 'profile_defaults'>('profile_defaults')
   const [err, setErr] = useState<string | null>(null)
   const [preview, setPreview] = useState<{
     source: { currentRevision: number; resultingRevision: number; removedEdges: unknown[] }
@@ -511,15 +512,14 @@ function MoveGroupForm({
       <label className="flex flex-col gap-1 text-[0.85em] text-mocha-light">
         destination placement:
         <select value={placement} onChange={(e) => {setPlacement(e.target.value as typeof placement);setPreview(null)}} className="rounded-sm border border-frost bg-snow px-2 py-1.5">
-          <option value="profile_defaults">agent-template defaults</option>
+          <option value="profile_defaults">Agent-template defaults</option>
           <option value="isolated">isolated</option>
-          <option value="open">open</option>
         </select>
       </label>
       <button type="submit" disabled={moving || teamId === currentTeamId}>
         {moving ? 'working…' : preview ? 'commit reviewed move' : 'review move'}
       </button>
-      {err && <span className="text-[0.85em] text-[#9B3D3D]">{err}</span>}
+      {err && <span className="text-[0.85em] text-danger">{err}</span>}
       {preview && <div className="basis-full rounded-md border border-sapphire-light bg-sapphire-glow p-3 text-sm"><p>Source revision {preview.source.currentRevision} → <strong>{preview.source.resultingRevision}</strong>, removing {preview.source.removedEdges.length} incident edges. Destination revision {preview.destination.currentRevision} → <strong>{preview.destination.resultingRevision}</strong>, adding {preview.destination.addedEdges.length} edges to {preview.destination.existingEdges.length} existing edges.</p><p className="mt-1 muted">{preview.lineage}</p></div>}
     </form>
   )
@@ -592,7 +592,7 @@ function SkillsTable({
   }
   return (
     <>
-      {err && <p className="mb-2 text-[0.85em] text-[#9B3D3D]">{err}</p>}
+      {err && <p className="mb-2 text-[0.85em] text-danger">{err}</p>}
       <table>
         <thead>
           <tr>
@@ -650,7 +650,7 @@ function SkillFindingSummary({ findings }: { findings: SkillScanFinding[] }) {
   const danger = findings.some((f) => f.severity === 'danger')
   return (
     <details className="text-[0.82em]">
-      <summary className={danger ? 'cursor-pointer text-[#9B3D3D]' : 'cursor-pointer text-mocha'}>
+      <summary className={danger ? 'cursor-pointer text-danger' : 'cursor-pointer text-mocha'}>
         {findings.length} finding{findings.length === 1 ? '' : 's'}
       </summary>
       <ul className="m-0 list-disc pl-4">
@@ -759,7 +759,7 @@ function TelegramSection({
       <div className="mb-3 flex items-center gap-3">
         {isBound ? (
           <>
-            <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800">
+            <span className="rounded-full bg-success/10 px-2 py-0.5 text-xs font-semibold text-success">
               bound
             </span>
             <span className="font-mono text-mocha">topic #{agent.telegramTopicId}</span>
@@ -776,14 +776,14 @@ function TelegramSection({
               type="button"
               onClick={unbind}
               disabled={busy}
-              className="ghost-btn border-[rgba(196,135,138,0.4)] text-[#9B3D3D] hover:bg-[rgba(196,135,138,0.08)]"
+              className="ghost-btn border-[rgba(196,135,138,0.4)] text-danger hover:bg-[rgba(196,135,138,0.08)]"
             >
               unbind
             </button>
           </>
         ) : (
           <>
-            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">
+            <span className="rounded-full bg-warning/10 px-2 py-0.5 text-xs font-semibold text-warning">
               unbound
             </span>
             <button
@@ -838,7 +838,7 @@ function TelegramSection({
         </button>
       </div>
 
-      {error && <p className="mt-2 text-sm text-rose-700">{error}</p>}
+      {error && <p className="mt-2 text-sm text-danger">{error}</p>}
 
       <p className="mt-3 text-[0.85em] text-mocha-light">
         When bound, every assistant turn for this agent gets mirrored to the topic. Typing in

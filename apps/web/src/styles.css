@@ -17,6 +17,7 @@
    reach them — `text-charcoal` would stay #2A1F16 on a dark background. */
 @theme {
     --font-heading: 'DM Serif Display', Georgia, serif;
+    --font-serif: 'DM Serif Display', Georgia, serif;
     --font-sans: 'DM Sans', system-ui, sans-serif;
     --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
 
@@ -24,24 +25,29 @@
     --font-body: 'DM Sans', system-ui, sans-serif;
     --font-mono-baziu: 'JetBrains Mono', 'Fira Code', monospace;
 
-    --color-cream: #F5F0E8;
+    --color-cream: #F4F1EB;
     --color-ivory: #FAF8F4;
-    --color-frost: #E8E2D8;
-    --color-fawn: #D4CAB8;
-    --color-chocolate: #3D2B1F;
-    --color-charcoal: #2A1F16;
-    --color-mocha: #7A6555;
-    --color-mocha-light: #9E8E7E;
-    --color-sapphire: #4A7C9B;
-    --color-sapphire-deep: #3A6580;
-    --color-sapphire-light: #6BA3C2;
-    --color-sapphire-glow: rgba(74, 124, 155, 0.12);
+    --color-frost: #DED7CD;
+    --color-fawn: #C9BEB1;
+    --color-chocolate: #342820;
+    --color-charcoal: #241C16;
+    --color-mocha: #6F6054;
+    --color-mocha-light: #776A60;
+    --color-sapphire: #3D7899;
+    --color-sapphire-deep: #2F617D;
+    --color-sapphire-light: #72A9C5;
+    --color-sapphire-glow: rgba(61, 120, 153, 0.12);
     --color-rose-baziu: #C4878A;
     --color-snow: #FFFFFF;
 
-    --shadow-baziu-sm: 0 1px 3px rgba(42, 31, 22, 0.06);
-    --shadow-baziu-md: 0 4px 12px rgba(42, 31, 22, 0.08);
-    --shadow-baziu-lg: 0 8px 30px rgba(42, 31, 22, 0.10);
+    --color-success: #3F7D65;
+    --color-warning: #9A6A27;
+    --color-danger: #A34E52;
+    --color-info: #3D7899;
+
+    --shadow-baziu-sm: 0 1px 2px rgba(36, 28, 22, 0.05), 0 1px 8px rgba(36, 28, 22, 0.035);
+    --shadow-baziu-md: 0 8px 24px rgba(36, 28, 22, 0.08);
+    --shadow-baziu-lg: 0 18px 50px rgba(36, 28, 22, 0.12);
 
     --color-sidebar-ring: var(--sidebar-ring);
     --color-sidebar-border: var(--sidebar-border);
@@ -86,38 +92,38 @@
 
 :root {
     /* shadcn semantic tokens, remapped to Baziu colors */
-    --background: #F5F0E8;          /* cream */
-    --foreground: #3D2B1F;          /* chocolate */
+    --background: #F4F1EB;          /* cream */
+    --foreground: #342820;          /* chocolate */
     --card: #FFFFFF;                /* snow */
-    --card-foreground: #3D2B1F;
+    --card-foreground: #342820;
     --popover: #FFFFFF;
-    --popover-foreground: #3D2B1F;
-    --primary: #4A7C9B;             /* sapphire */
+    --popover-foreground: #342820;
+    --primary: #3D7899;             /* sapphire */
     --primary-foreground: #FFFFFF;
     --secondary: #FAF8F4;           /* ivory */
-    --secondary-foreground: #3D2B1F;
+    --secondary-foreground: #342820;
     --muted: #FAF8F4;
-    --muted-foreground: #9E8E7E;    /* mocha-light */
-    --accent: rgba(74, 124, 155, 0.12); /* sapphire-glow */
-    --accent-foreground: #3A6580;   /* sapphire-deep */
-    --destructive: #9B3D3D;
-    --border: #E8E2D8;              /* frost */
-    --input: #E8E2D8;
-    --ring: #4A7C9B;                /* sapphire focus ring */
-    --chart-1: #4A7C9B;
+    --muted-foreground: #776A60;    /* mocha-light */
+    --accent: rgba(61, 120, 153, 0.12); /* sapphire-glow */
+    --accent-foreground: #2F617D;   /* sapphire-deep */
+    --destructive: #A34E52;
+    --border: #DED7CD;              /* frost */
+    --input: #DED7CD;
+    --ring: #3D7899;                /* sapphire focus ring */
+    --chart-1: #3D7899;
     --chart-2: #C4878A;
     --chart-3: #7A6555;
     --chart-4: #D4CAB8;
     --chart-5: #6BA3C2;
     --radius: 16px;
     --sidebar: #FAF8F4;
-    --sidebar-foreground: #3D2B1F;
-    --sidebar-primary: #4A7C9B;
+    --sidebar-foreground: #342820;
+    --sidebar-primary: #3D7899;
     --sidebar-primary-foreground: #FFFFFF;
-    --sidebar-accent: rgba(74, 124, 155, 0.12);
-    --sidebar-accent-foreground: #3A6580;
-    --sidebar-border: #E8E2D8;
-    --sidebar-ring: #4A7C9B;
+    --sidebar-accent: rgba(61, 120, 153, 0.12);
+    --sidebar-accent-foreground: #2F617D;
+    --sidebar-border: #DED7CD;
+    --sidebar-ring: #3D7899;
 }
 
 /* Dark theme — "Mask & Moonlight".
@@ -145,6 +151,10 @@
     --color-sapphire-glow: rgba(123, 180, 210, 0.18);
     --color-rose-baziu: #D89A9D;
     --color-snow: #2A211A;
+    --color-success: #75B99A;
+    --color-warning: #D2A15D;
+    --color-danger: #E28A8E;
+    --color-info: #8AC3DF;
 
     --shadow-baziu-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
     --shadow-baziu-md: 0 4px 12px rgba(0, 0, 0, 0.5);
@@ -195,10 +205,15 @@
     line-height: 1.6;
     -webkit-font-smoothing: antialiased;
     min-height: 100vh;
+    background-image:
+      radial-gradient(circle at 8% -10%, var(--color-sapphire-glow), transparent 28rem),
+      radial-gradient(circle at 94% 0%, color-mix(in srgb, var(--color-rose-baziu) 8%, transparent), transparent 25rem);
+    background-attachment: fixed;
     }
   html {
     @apply font-sans;
     overflow-y: scroll;
+    overflow-x: hidden;
     scrollbar-gutter: stable;
     }
   /* Workspaces lock html and body to the viewport so their panels own internal
@@ -228,9 +243,9 @@
     font-weight: 400;
     letter-spacing: -0.01em;
     }
-  h1 { font-size: 2rem; margin-bottom: 0.25rem; }
-  h2 { font-size: 1.5rem; }
-  h3 { font-size: 1.15rem; margin-bottom: 0.4rem; color: var(--color-mocha); }
+  h1 { font-size: clamp(2rem, 3vw, 2.65rem); line-height: 1.05; }
+  h2 { font-size: clamp(1.4rem, 2vw, 1.75rem); line-height: 1.15; }
+  h3 { font-size: 1.12rem; line-height: 1.25; color: var(--color-mocha); }
   code {
     font-family: var(--font-mono);
     font-size: 0.88em;
@@ -245,6 +260,11 @@
     transition: color 0.2s;
     }
   a:hover { color: var(--color-sapphire-deep); }
+}
+
+::selection {
+  background: color-mix(in srgb, var(--color-sapphire) 24%, transparent);
+  color: var(--color-charcoal);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -285,12 +305,13 @@
   label { display: block; margin: 0.6rem 0; font-size: 0.9em; color: var(--color-mocha); }
   input[type=text], input[type=password], input[type=number], input:not([type]),
   select, textarea {
-    padding: 0.5rem 0.75rem;
+    min-height: 2.65rem;
+    padding: 0.58rem 0.8rem;
     font: inherit; font-size: 0.95em;
-    border: 1.5px solid var(--color-frost);
+    border: 1px solid var(--color-frost);
     border-radius: var(--radius-md);
     width: 100%;
-    background: var(--color-ivory);
+    background: color-mix(in srgb, var(--color-snow) 82%, var(--color-ivory));
     color: var(--color-chocolate);
     transition: all 0.2s;
     outline: none;
@@ -316,16 +337,18 @@
   button[type='submit']:not(.unstyled),
   .btn-primary {
     display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem;
-    padding: 0.5rem 1.25rem;
-    font: inherit; font-size: 0.92em; font-weight: 600; letter-spacing: 0.01em;
+    min-height: 2.55rem;
+    padding: 0.58rem 1.05rem;
+    font: inherit; font-size: 0.9em; font-weight: 650; letter-spacing: 0.005em;
     border: none; border-radius: var(--radius-md); cursor: pointer;
     transition: all 0.2s;
-    background: var(--color-sapphire); color: var(--color-snow);
+    background: var(--color-sapphire); color: #fff;
+    box-shadow: 0 1px 1px rgba(23, 45, 58, 0.12), 0 4px 12px rgba(61, 120, 153, 0.14);
     }
   button[type='submit']:not(.unstyled):hover,
   .btn-primary:hover {
     background: var(--color-sapphire-deep);
-    color: var(--color-snow);
+    color: #fff;
     box-shadow: var(--shadow-baziu-md);
     transform: translateY(-1px);
     }
@@ -339,10 +362,11 @@
     transform: none; box-shadow: none;
     }
   .ghost-btn {
-    display: inline-flex; align-items: center; gap: 0.3rem;
+    display: inline-flex; align-items: center; justify-content: center; gap: 0.35rem;
+    min-height: 2.4rem;
     background: transparent; color: var(--color-mocha);
-    border: 1.5px solid var(--color-frost);
-    padding: 0.35rem 0.85rem; font: inherit; font-weight: 500; font-size: 0.92em;
+    border: 1px solid var(--color-frost);
+    padding: 0.48rem 0.85rem; font: inherit; font-weight: 600; font-size: 0.9em;
     border-radius: var(--radius-md); cursor: pointer;
     transition: all 0.2s;
     }
@@ -354,10 +378,11 @@
     opacity: 0.5; cursor: not-allowed;
     }
   .danger-btn {
-    display: inline-flex; align-items: center; gap: 0.3rem;
+    display: inline-flex; align-items: center; justify-content: center; gap: 0.35rem;
+    min-height: 2.4rem;
     background: transparent; color: var(--destructive);
-    border: 1.5px solid color-mix(in srgb, var(--destructive) 30%, transparent);
-    padding: 0.35rem 0.85rem; font: inherit; font-weight: 500; font-size: 0.92em;
+    border: 1px solid color-mix(in srgb, var(--destructive) 32%, transparent);
+    padding: 0.48rem 0.85rem; font: inherit; font-weight: 600; font-size: 0.9em;
     border-radius: var(--radius-md); cursor: pointer;
     transition: all 0.2s;
     }
@@ -372,18 +397,18 @@
   /* --- tables --- */
   table {
     width: 100%; border-collapse: separate; border-spacing: 0;
-    margin: 1rem 0; background: var(--color-snow);
+    margin: 1rem 0; background: color-mix(in srgb, var(--color-snow) 94%, transparent);
     border: 1px solid var(--color-frost); border-radius: var(--radius-lg); overflow: hidden;
     }
   thead { background: var(--color-ivory); }
   th {
-    text-align: left; padding: 0.65rem 1rem;
-    font-size: 0.82em; font-weight: 600; text-transform: uppercase;
-    letter-spacing: 0.06em; color: var(--color-mocha-light);
+    text-align: left; padding: 0.75rem 1rem;
+    font-size: 0.74em; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.08em; color: var(--color-mocha-light);
     border-bottom: 1px solid var(--color-frost);
     }
   td {
-    padding: 0.6rem 1rem; border-bottom: 1px solid var(--color-frost);
+    padding: 0.78rem 1rem; border-bottom: 1px solid var(--color-frost);
     vertical-align: middle; font-size: 0.93em;
     }
   tr:last-child td { border-bottom: none; }
@@ -478,15 +503,13 @@
 
   /* --- cards --- */
   .card {
-    background: var(--color-snow);
+    background: color-mix(in srgb, var(--color-snow) 94%, transparent);
     border: 1px solid var(--color-frost);
-    border-radius: var(--radius-lg);
+    border-radius: var(--radius-xl);
     padding: 1.5rem;
     margin: 1.25rem 0;
     box-shadow: var(--shadow-baziu-sm);
-    transition: box-shadow 0.2s;
     }
-  .card:hover { box-shadow: var(--shadow-baziu-md); }
   .card h3 {
     font-family: var(--font-body);
     font-weight: 600; font-size: 0.92em;

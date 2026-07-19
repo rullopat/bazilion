@@ -18,7 +18,7 @@ Canonical surfaces:
 | Approvals | `/api/approvals` | `bazilion approval` | `/approvals` |
 
 Agent spawn, move, and deletion are revision checked. Spawn and move require an explicit placement
-(`isolated`, `open`, or `profile_defaults`). Missing edges deny when enforcement is enabled.
+(`isolated` or `profile_defaults`). Missing edges deny when enforcement is enabled.
 
 The database is a clean-install-only alpha schema consolidated in `0001_init.sql`. There are no
 Profile Group adapters, Group APIs, legacy URLs, compatibility membership modes, or upgrade paths.

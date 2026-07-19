@@ -447,7 +447,7 @@ export const SERVICES: ServiceDef[] = [
     displayName: 'Browser Automation',
     category: 'service',
     team: 'Browser',
-    hint: 'Playwright-driven browser tools (navigate, snapshot, click, screenshot). Run `pnpm exec playwright install chromium` once.',
+    hint: 'Playwright-driven browser tools (navigate, snapshot, click, screenshot). Chromium is installed with Bazilion.',
     fields: [
       {
         envVar: 'BROWSER_ENABLED',

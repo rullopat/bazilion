@@ -3,7 +3,9 @@ import type { LoadedProfile, SkillInfo } from '@bazilion/api-types'
 import { createFileRoute, redirect, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { useEffect, useState } from 'react'
+import { PageShell } from '../../../../components/Page'
 import { ProfileCommunicationEditor } from '../../../../components/team-policy/ProfileCommunicationEditor'
+import { TemplatesTabs } from '../../../../components/TemplatesTabs'
 import { daemonClient } from '../../../../lib/daemon-client'
 import { DEFAULT_PROFILE_COMMUNICATION } from '../../../../lib/team-policy'
 import type { ProfileCommunicationDefaults } from '@bazilion/api-types'
@@ -54,7 +56,8 @@ function ProfileDetailPage() {
   const [tab, setTab] = useState<'basics' | 'skills' | 'communication'>('basics')
 
   return (
-    <div>
+    <PageShell>
+      <TemplatesTabs />
       <header className="mb-1">
         <a
           href="/templates/agents"
@@ -133,12 +136,6 @@ function ProfileDetailPage() {
             initialContent={loaded.files.tools}
             hint="Tool playbook. Agent-specific usage notes that go beyond the generic tool descriptions."
           />
-          <OptionalFileCard
-            profileId={loaded.profile.id}
-            file="HEARTBEAT.md"
-            initialContent={loaded.files.heartbeat}
-            hint="Tasks the agent should check on scheduled wake-ups. Pair with a trigger whose message is the canned heartbeat prompt."
-          />
         </div>
       )}
 
@@ -154,7 +151,7 @@ function ProfileDetailPage() {
       {tab === 'communication' && (
         <ProfileCommunicationCard profileId={loaded.profile.id} initial={loaded.profile.communicationDefaults ?? DEFAULT_PROFILE_COMMUNICATION} />
       )}
-    </div>
+    </PageShell>
   )
 }
 
@@ -234,7 +231,7 @@ interface StatusState {
 }
 function statusColor(kind: StatusKind) {
   if (kind === 'saved') return 'text-sapphire'
-  if (kind === 'error') return 'text-[#9B3D3D]'
+  if (kind === 'error') return 'text-danger'
   if (kind === 'dirty') return 'text-mocha'
   return 'text-mocha-light'
 }

@@ -11,16 +11,9 @@ const HOME_FILES_READABLE = [
   'BOOTSTRAP.md',
   'AGENTS.md',
   'TOOLS.md',
-  'HEARTBEAT.md',
 ] as const
 
-const HOME_FILES_WRITABLE = [
-  'IDENTITY.md',
-  'SOUL.md',
-  'AGENTS.md',
-  'TOOLS.md',
-  'HEARTBEAT.md',
-] as const
+const HOME_FILES_WRITABLE = ['IDENTITY.md', 'SOUL.md', 'AGENTS.md', 'TOOLS.md'] as const
 
 export function homeTools(agentDir: string): ToolHandler[] {
   return [

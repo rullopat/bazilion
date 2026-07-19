@@ -1,6 +1,8 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { KeyRound, MessageSquareText, UsersRound } from 'lucide-react'
 import { BaziuLogo } from '../components/BaziuLogo'
 import { PawIcon } from '../components/PawIcon'
+import { ThemeToggle } from '../components/ThemeToggle'
 
 export const Route = createFileRoute('/login')({
   // Optional `?error=1` from a failed POST /api/login redirect — daemon sends
@@ -16,48 +18,89 @@ export const Route = createFileRoute('/login')({
 function LoginPage() {
   const { error } = Route.useSearch()
   return (
-    <main className="relative flex min-h-dvh items-center justify-center bg-cream">
-      {/* Soft radial glows — Baziu's signature warmth on the auth shell. */}
+    <main className="relative flex min-h-dvh items-center overflow-hidden bg-cream px-5 py-16 sm:px-8">
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-0"
         style={{
           background:
-            'radial-gradient(circle at 20% 15%, rgba(74,124,155,0.12), transparent 55%), radial-gradient(circle at 80% 85%, rgba(196,135,138,0.10), transparent 55%)',
+            'radial-gradient(circle at 16% 12%, rgba(61,120,153,0.18), transparent 36rem), radial-gradient(circle at 88% 84%, rgba(196,135,138,0.13), transparent 32rem)',
         }}
       />
-      <div className="relative w-full max-w-sm rounded-[16px] border border-frost bg-snow p-8 text-center shadow-baziu-md">
-        <BaziuLogo className="mx-auto mb-3 h-16 w-16" />
-        <h1 className="font-display text-[2rem] tracking-tight text-charcoal">bazilion</h1>
-        {error && <div className="err mt-4">invalid token</div>}
-        <form method="POST" action="/api/login" className="mt-6 text-left">
-          <label htmlFor="token" className="block text-[0.85em] font-medium text-mocha">
-            Token
-          </label>
-          <input
-            type="password"
-            id="token"
-            name="token"
-            // biome-ignore lint/a11y/noAutofocus: a single-input login page is the canonical case for autofocus.
-            autoFocus
-            required
-            placeholder="paste from auth.json"
-            className="mb-5"
-          />
-          <button type="submit" className="w-full">
-            log in
-          </button>
-        </form>
-        <p className="mt-5 text-[0.78em] leading-relaxed text-mocha-light">
-          Your token is in <code>~/.bazilion/auth.json</code>
-          <br />
-          created on first <code>bazilion dashboard</code> or <code>bazilion serve</code>
-        </p>
+      <div className="absolute right-4 top-4 z-10 sm:right-6 sm:top-6">
+        <ThemeToggle />
       </div>
-      <footer className="absolute bottom-4 left-0 right-0 text-center text-[0.78em] text-fawn">
+
+      <div className="relative mx-auto grid w-full max-w-5xl items-center gap-10 lg:grid-cols-[minmax(0,1fr)_25rem] lg:gap-20">
+        <section className="hidden lg:block">
+          <div className="mb-8 flex items-center gap-3">
+            <BaziuLogo className="h-12 w-12" />
+            <span className="font-display text-3xl tracking-[-0.03em] text-charcoal">bazilion</span>
+          </div>
+          <h1 className="max-w-xl text-[3.4rem] leading-[0.98] tracking-[-0.035em]">
+            Your agents, working as one thoughtful team.
+          </h1>
+          <p className="mt-6 max-w-lg text-base leading-7 text-mocha">
+            A private workspace for long-lived agents, shared context, and communication policies
+            you can actually see and control.
+          </p>
+          <div className="mt-8 grid max-w-lg gap-3 sm:grid-cols-2">
+            <LoginFeature icon={<MessageSquareText className="h-4 w-4" />} label="Persistent conversations" />
+            <LoginFeature icon={<UsersRound className="h-4 w-4" />} label="Team-owned context" />
+          </div>
+        </section>
+
+        <section className="w-full rounded-[24px] border border-frost bg-snow/95 p-7 shadow-baziu-lg backdrop-blur sm:p-9">
+          <div className="mb-6 flex items-center gap-3 lg:hidden">
+            <BaziuLogo className="h-10 w-10" />
+            <span className="font-display text-2xl text-charcoal">bazilion</span>
+          </div>
+          <div className="mb-6 flex h-10 w-10 items-center justify-center rounded-xl bg-sapphire-glow text-sapphire">
+            <KeyRound className="h-5 w-5" aria-hidden="true" />
+          </div>
+          <h2 className="font-display text-3xl text-charcoal">Welcome back</h2>
+          <p className="mt-2 text-sm leading-6 text-mocha-light">
+            Use the local access token created by your Bazilion daemon.
+          </p>
+          {error && <div className="err mt-5">That token was not accepted.</div>}
+          <form method="POST" action="/api/login" className="mt-6 text-left">
+            <label htmlFor="token" className="block text-[0.85em] font-semibold text-mocha">
+              Access token
+            </label>
+            <input
+              type="password"
+              id="token"
+              name="token"
+              // biome-ignore lint/a11y/noAutofocus: a single-input login page is the canonical case for autofocus.
+              autoFocus
+              required
+              placeholder="Paste your token"
+              className="mb-4"
+            />
+            <button type="submit" className="w-full">
+              Open Bazilion
+            </button>
+          </form>
+          <p className="mt-5 rounded-xl bg-ivory px-3 py-2.5 text-[0.78em] leading-relaxed text-mocha-light">
+            Find it in <code>~/.bazilion/auth.json</code>, created the first time you run{' '}
+            <code>bazilion serve</code>.
+          </p>
+        </section>
+      </div>
+
+      <footer className="absolute bottom-4 left-0 right-0 text-center text-[0.75em] text-fawn">
         dedicated to Baziu
         <PawIcon className="ml-1 inline-block h-3 w-3 align-[-1px] opacity-40" />
       </footer>
     </main>
+  )
+}
+
+function LoginFeature({ icon, label }: { icon: React.ReactNode; label: string }) {
+  return (
+    <div className="flex items-center gap-2 rounded-xl border border-frost bg-snow/70 px-3 py-2.5 text-sm font-semibold text-mocha shadow-baziu-sm">
+      <span className="text-sapphire">{icon}</span>
+      {label}
+    </div>
   )
 }

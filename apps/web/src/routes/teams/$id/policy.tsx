@@ -1,6 +1,7 @@
 import type { TeamTemplateWithCount, TeamAgentState, Profile, ResolvedTeamPolicy } from '@bazilion/api-types'
 import { createFileRoute } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
+import { PageShell } from '../../../components/Page'
 import { ProductionTeamPolicyEditor } from '../../../components/team-policy/ProductionTeamPolicyEditor'
 import { TeamPolicyOperations } from '../../../components/team-policy/TeamPolicyOperations'
 import { TeamTabs } from '../../../components/TeamTabs'
@@ -64,8 +65,8 @@ function TeamPolicyPage() {
   const { id } = Route.useParams()
   const search = Route.useSearch()
   const baseline = detail.baseline
-  return <div className="mx-auto max-w-[1500px] space-y-5 px-4 py-6 sm:px-6">
-    <div><h1>team policy</h1><p className="muted">The sole effective live communication policy for <code>{id}</code>.</p></div>
+  return <PageShell size="wide">
+    <div><h1>Team policy</h1><p className="muted">The sole effective live communication policy for <code>{id}</code>.</p></div>
     <TeamTabs teamId={id} />
     <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" aria-label="Policy status">
       <Status label="Revision" value={detail.teamPolicy.revision} />
@@ -74,7 +75,7 @@ function TeamPolicyPage() {
     </section>
     <ProductionTeamPolicyEditor source={{ kind: 'live', teamId: id, detail }} profiles={profiles} initialUi={{view:search.view,selectedId:search.selected,viewport:{x:search.vx,y:search.vy,zoom:search.vz}}} />
     <TeamPolicyOperations teamId={id} detail={detail} templates={templates} />
-  </div>
+  </PageShell>
 }
 
 function Status({ label, value }: { label: string; value: React.ReactNode }) {

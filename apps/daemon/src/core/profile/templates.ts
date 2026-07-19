@@ -211,12 +211,3 @@ re-ask every session:
 ## Patterns
 - (pattern): when to use, what to avoid
 `
-
-export const DEFAULT_HEARTBEAT = `# HEARTBEAT.md — Scheduled Wake-Ups
-
-Tasks the agent should check on every heartbeat. Leave empty (or commented)
-to opt out — an empty file means "nothing to do right now".
-
-## Tasks
-- (task): cadence, exit criteria
-`

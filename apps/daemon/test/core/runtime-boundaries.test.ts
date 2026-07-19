@@ -30,7 +30,17 @@ beforeEach(() => {
   env = makeTestEnv()
   oldGate = process.env.BAZILION_TEAM_POLICY_ENFORCEMENT
   process.env.BAZILION_TEAM_POLICY_ENFORCEMENT = 'on'
-  createProfile(env.db, env.paths, { id: 'p', defaultModel: 'm' })
+  createProfile(env.db, env.paths, {
+    id: 'p',
+    defaultModel: 'm',
+    communicationDefaults: {
+      userInput: true,
+      userOutput: true,
+      outsideTeamInput: false,
+      outsideTeamOutput: false,
+      peerDefault: 'allow_all',
+    },
+  })
 })
 
 afterEach(() => {

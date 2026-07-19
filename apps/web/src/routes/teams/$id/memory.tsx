@@ -7,6 +7,7 @@ import type { Agent, Team, MemoryEntry, MemoryHit } from '@bazilion/api-types'
 import { createFileRoute, redirect } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { useEffect, useRef, useState } from 'react'
+import { PageShell } from '../../../components/Page'
 import { TeamTabs } from '../../../components/TeamTabs'
 import { daemonClient } from '../../../lib/daemon-client'
 
@@ -202,11 +203,11 @@ function MemoryPage() {
   const canDelete = mode === 'edit' && selectedKey !== null
 
   return (
-    <main className="mx-auto max-w-5xl px-6 py-8">
+    <PageShell>
       <header className="mb-6">
         <h1 className="font-serif text-3xl text-foreground">
           {team.name}{' '}
-          <span className="text-muted-foreground text-base">/ shared memory</span>
+          <span className="text-muted-foreground text-base">/ Shared memory</span>
         </h1>
         <p className="text-muted-foreground text-sm mt-1">
           BM25-indexed markdown notes shared by every agent in{' '}
@@ -310,7 +311,7 @@ function MemoryPage() {
           {status && (
             <p
               className={`mt-2 text-[0.9em] ${
-                status.kind === 'error' ? 'text-[#9B3D3D]' : 'text-mocha-light'
+                status.kind === 'error' ? 'text-danger' : 'text-mocha-light'
               }`}
             >
               {status.msg}
@@ -318,6 +319,6 @@ function MemoryPage() {
           )}
         </div>
       </div>
-    </main>
+    </PageShell>
   )
 }

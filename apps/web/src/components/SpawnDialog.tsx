@@ -5,6 +5,7 @@ import type { Agent, Team, ResolvedTeamPolicy } from '@bazilion/api-types'
 import { useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 import { DEFAULT_TEAM_ID } from '../lib/wire-constants'
+import { Button } from './Button'
 
 interface Props {
   profileId: string
@@ -22,7 +23,7 @@ export function SpawnDialog({ profileId, teamHint, teams, onClose }: Props) {
       teams[0]?.id ??
       '',
   )
-  const [placement, setPlacement] = useState<'isolated' | 'open' | 'profile_defaults'>('profile_defaults')
+  const [placement, setPlacement] = useState<'isolated' | 'profile_defaults'>('profile_defaults')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [preview, setPreview] = useState<{
@@ -117,7 +118,7 @@ export function SpawnDialog({ profileId, teamHint, teams, onClose }: Props) {
         aria-modal="true"
         aria-labelledby="spawn-agent-title"
         onSubmit={submit}
-        className="w-full max-w-md rounded-2xl border bg-card p-6 shadow-lg"
+        className="max-h-[calc(100dvh-2rem)] w-full max-w-lg overflow-y-auto rounded-3xl border border-frost bg-card p-6 shadow-baziu-lg sm:p-7"
         onClick={(e) => e.stopPropagation()}
       >
         <h3 id="spawn-agent-title" className="font-serif text-xl text-foreground mb-1">Spawn a new agent</h3>
@@ -142,9 +143,8 @@ export function SpawnDialog({ profileId, teamHint, teams, onClose }: Props) {
         <label className="block text-sm text-foreground mb-3">
           Initial policy placement
           <select value={placement} onChange={(e) => {setPlacement(e.target.value as typeof placement);setPreview(null)}} className="mt-1 block w-full rounded-md border bg-background px-3 py-2">
-            <option value="profile_defaults">agent-template defaults</option>
+            <option value="profile_defaults">Agent-template defaults</option>
             <option value="isolated">isolated</option>
-            <option value="open">open to current members and boundaries</option>
           </select>
           <span className="mt-1 block text-xs text-muted-foreground">The current Team revision is checked again when you submit.</span>
         </label>
@@ -163,23 +163,15 @@ export function SpawnDialog({ profileId, teamHint, teams, onClose }: Props) {
             ))}
           </select>
         </label>
-        {err && <p className="mt-2 text-sm text-rose-700">{err}</p>}
+        {err && <p className="err mt-2">{err}</p>}
         {preview && <div className="mt-3 rounded-md border border-sapphire-light bg-sapphire-glow p-3 text-sm"><p>Creating this Agent advances Team revision {preview.currentRevision} → <strong>{preview.resultingRevision}</strong> and adds <strong>{preview.addedEdges.length}</strong> directed edges to the existing {preview.existingEdges.length}.</p><ul className="mt-2 max-h-36 overflow-auto">{preview.addedEdges.map((edge,index)=><li key={`${edge.sourceKind}:${edge.sourceId??''}>${edge.targetKind}:${edge.targetId??''}:${index}`}><code>{edge.sourceKind}{edge.sourceId?`:${edge.sourceId}`:''} → {edge.targetKind}{edge.targetId?`:${edge.targetId}`:''}</code></li>)}</ul>{preview.addedEdges.length===0&&<p className="mt-2">The new Agent starts isolated.</p>}</div>}
         <div className="mt-5 flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-md border px-3 py-2 text-sm text-foreground hover:bg-accent"
-          >
+          <Button variant="ghost" onClick={onClose}>
             Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={busy}
-            className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
-          >
+          </Button>
+          <Button variant="primary" type="submit" disabled={busy}>
             {busy ? 'Working…' : preview ? 'Commit reviewed creation' : 'Review exact policy'}
-          </button>
+          </Button>
         </div>
       </form>
     </Backdrop>
@@ -199,7 +191,7 @@ function Backdrop({
     <div
       onClick={onClose}
       onKeyDown={(event) => { if (event.key === 'Escape') onClose() }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-[1px]"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-charcoal/45 p-4 backdrop-blur-sm"
     >
       {children}
     </div>

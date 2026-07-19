@@ -1,4 +1,4 @@
-// In-process scheduler for agent triggers (heartbeats + cron) and inbox
+// In-process scheduler for interval/cron agent triggers and inbox
 // auto-delivery.
 //
 // Each tick does two jobs:

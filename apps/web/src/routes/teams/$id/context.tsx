@@ -1,6 +1,7 @@
 import type { Team } from '@bazilion/api-types'
 import { createFileRoute } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
+import { PageShell } from '../../../components/Page'
 import { TeamTabs } from '../../../components/TeamTabs'
 import { daemonClient } from '../../../lib/daemon-client'
 
@@ -18,8 +19,8 @@ export const Route = createFileRoute('/teams/$id/context')({
 function ContextPage() {
   const team = Route.useLoaderData()
   return (
-    <div className="mx-auto max-w-5xl px-6 py-8">
-      <h1>team context</h1>
+    <PageShell>
+      <h1>Team context</h1>
       <p className="muted">Workspace, operator context, and integrations owned by this Team.</p>
       <TeamTabs teamId={team.id} />
       <section className="card">
@@ -30,6 +31,6 @@ function ContextPage() {
         </dl>
         <p className="mt-4 text-sm text-mocha">Edit USER.md and Telegram naming from Overview during this transition. This route is the canonical context projection.</p>
       </section>
-    </div>
+    </PageShell>
   )
 }

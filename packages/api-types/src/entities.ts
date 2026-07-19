@@ -52,7 +52,7 @@ export interface ProfileCommunicationDefaults {
   peerDefault: ProfilePeerDefault
 }
 
-export type TeamPolicyPlacement = 'isolated' | 'open' | 'profile_defaults' | 'template_snapshot'
+export type TeamPolicyPlacement = 'isolated' | 'profile_defaults' | 'template_snapshot'
 export type TemplateEndpointKind = 'user' | 'outside_team' | 'slot'
 export type LiveEndpointKind = 'user' | 'outside_team' | 'agent'
 
@@ -462,7 +462,6 @@ export interface LoadedProfile {
     bootstrap: string | null
     agents: string | null
     tools: string | null
-    heartbeat: string | null
   }
   /** Structured fields parsed from IDENTITY.md — null when no values are set. */
   identity: AgentIdentityFile | null

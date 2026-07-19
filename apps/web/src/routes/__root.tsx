@@ -76,10 +76,9 @@ function RootComponent() {
   const pathname = useRouterState({ select: (s) => s.location.pathname })
   const isLogin = pathname === '/login'
   // Interactive workspaces fill the viewport and hide the footer.
-  // Everything else gets the standard 1100px shell and footer.
+  // Everything else gets the centered application shell and footer.
   const isHome = pathname === '/'
-  const isTeamPolicyBuilder = /^\/policyes\/[^/]+$/.test(pathname)
-  const isWorkspace = isHome || isTeamPolicyBuilder
+  const isWorkspace = isHome
 
   return (
     // In workspaces, lock html + body to the viewport so only the inner panels
@@ -102,19 +101,25 @@ function RootComponent() {
         {isLogin ? (
           <Outlet />
         ) : isWorkspace ? (
-          <div className="flex h-dvh flex-col px-6">
-            <TopNav />
-            <main className="min-h-0 flex-1 overflow-hidden">
+          <div className="flex h-dvh flex-col">
+            <div className="px-3 sm:px-5">
+              <TopNav />
+            </div>
+            <main className="mx-auto min-h-0 w-full max-w-[1600px] flex-1 overflow-hidden px-3 pb-3 sm:px-5 sm:pb-5">
               <Outlet />
             </main>
           </div>
         ) : (
-          <div className="flex min-h-dvh flex-col px-6 pb-12">
-            <TopNav />
-            <main className="mt-8 flex-1">
+          <div className="flex min-h-dvh flex-col">
+            <div className="px-3 sm:px-5">
+              <TopNav />
+            </div>
+            <main className="mx-auto w-full max-w-[1500px] flex-1 px-4 py-9 sm:px-6 sm:py-12">
               <Outlet />
             </main>
-            <Footer />
+            <div className="px-4 sm:px-6">
+              <Footer />
+            </div>
           </div>
         )}
         <Scripts />

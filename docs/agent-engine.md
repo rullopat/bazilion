@@ -84,7 +84,7 @@ After the turn finishes (or aborts), the worker calls `process.disconnect()` in 
 ## 3. The prompt
 
 `session/prompt.ts:buildSystemPrompt` concatenates, in order, whichever of these files exist under the agent's dir:
-`AGENTS.md → SOUL.md → TOOLS.md → IDENTITY.md → HEARTBEAT.md → BOOTSTRAP.md`.
+`AGENTS.md → SOUL.md → TOOLS.md → IDENTITY.md → BOOTSTRAP.md`.
 
 Those were copied out of the profile at spawn time (`core/agent/spawn.ts`) so an agent can diverge from its profile. If `BOOTSTRAP.md` exists a nudge is appended telling the model to call `bootstrap_done` (which deletes the file) once it's done onboarding.
 
@@ -164,7 +164,7 @@ Message conversion: `system` is passed separately (pi keeps it out of the messag
 `createBazilionCustomTools` (`apps/daemon/src/runtime/pi/tools.ts`) composes the Bazilion-specific tool list and adapts each `ToolHandler` to pi's `ToolDefinition`:
 
 - `memory_{write,read,search,list}` — qmd BM25 over markdown files in `<team.path>/memory/`. The store is **shared by every agent in the team** — descriptions explicitly say so and direct personal notes to `home_write IDENTITY.md` instead.
-- `home_{read,write,list}` — scope = `<agentDir>/`, hard whitelist of identity files (`SOUL.md`, `IDENTITY.md`, `BOOTSTRAP.md`, `AGENTS.md`, `TOOLS.md`, `HEARTBEAT.md`). No path arg, no traversal. `BOOTSTRAP.md` is read-only — `bootstrap_done` owns its lifecycle.
+- `home_{read,write,list}` — scope = `<agentDir>/`, hard whitelist of identity files (`SOUL.md`, `IDENTITY.md`, `BOOTSTRAP.md`, `AGENTS.md`, `TOOLS.md`). No path arg, no traversal. `BOOTSTRAP.md` is read-only — `bootstrap_done` owns its lifecycle.
 - `web_search` + `web_fetch` — SSRF-guarded, Readability + markdown, 15-min LRU cache, UA spoof, 20s timeout, 3 max redirects.
 - `bootstrap_done` — deletes `BOOTSTRAP.md` after onboarding.
 - `send_message` / `read_inbox` / `wait_for_reply` — registered only when a `messagingHost` is supplied (always true in production). The **MessagingHost interface** is the seam between the worker (which uses an IPC-backed implementation) and the daemon (which uses a DB-backed implementation):

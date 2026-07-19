@@ -3,6 +3,7 @@ import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { useState } from 'react'
 import { Button } from '../../../components/Button'
+import { PageHeader, PageShell } from '../../../components/Page'
 import { TemplatesTabs } from '../../../components/TemplatesTabs'
 import { daemonClient } from '../../../lib/daemon-client'
 
@@ -19,13 +20,13 @@ function TeamTemplatesPage() {
   const teams = Route.useLoaderData()
   const router = useRouter()
   return (
-    <div>
+    <PageShell size="wide">
+      <PageHeader
+        eyebrow="Templates"
+        title="Team templates"
+        description="Create revisioned rosters with stable slots and a reusable communication policy."
+      />
       <TemplatesTabs />
-      <h1>team templates</h1>
-      <p className="muted">
-        The sole reusable Team roster. Every slot has stable identity and every saved definition
-        has an immutable revision.
-      </p>
       <CreateTeamForm onCreated={() => router.invalidate()} />
       <div className="overflow-x-auto">
         <table>
@@ -42,7 +43,7 @@ function TeamTemplatesPage() {
           </tbody>
         </table>
       </div>
-    </div>
+    </PageShell>
   )
 }
 

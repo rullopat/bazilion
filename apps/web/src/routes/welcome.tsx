@@ -1,4 +1,6 @@
 import { createFileRoute, redirect } from '@tanstack/react-router'
+import { ArrowRight } from 'lucide-react'
+import { PageHeader, PageShell, SectionCard } from '../components/Page'
 import { fetchAuthState } from '../lib/auth'
 
 export const Route = createFileRoute('/welcome')({
@@ -16,12 +18,16 @@ export const Route = createFileRoute('/welcome')({
 
 function WelcomePage() {
   return (
-    <div className="mx-auto max-w-2xl">
-      <div className="card">
-        <h1>Welcome to bazilion</h1>
-        <p className="muted my-3">
+    <PageShell size="narrow">
+      <PageHeader
+        eyebrow="First run"
+        title="Welcome to bazilion"
+        description="Connect one model provider, then Bazilion will prepare your default Agent template and Team."
+      />
+      <SectionCard title="Three steps to your first conversation">
+        <p className="text-sm leading-6 text-muted-foreground">
           Before you can spawn agents, enable a provider and save at least one concrete model id.
-          Once you do, a <code>default</code> profile (and a <code>default</code> team
+          Once you do, a <code>default</code> Agent template (and a <code>default</code> team
           directory) are created automatically and the rest of the app unlocks.
         </p>
         <ol className="my-5 space-y-4">
@@ -39,17 +45,17 @@ function WelcomePage() {
           </Step>
           <Step n={3}>
             <strong>Start chatting.</strong> You'll be redirected to the home page
-            automatically, where a <code>default</code> profile is waiting for a first spawn.
+            automatically, where the <code>default</code> Agent template is ready for your first spawn.
           </Step>
         </ol>
         <a
           href="/config"
-          className="inline-flex items-center gap-2 rounded-md bg-sapphire px-4 py-2 text-[0.92em] font-semibold text-snow no-underline transition-colors hover:bg-sapphire-deep"
+          className="btn-primary no-underline"
         >
-          Go to config →
+          Configure providers <ArrowRight className="h-4 w-4" aria-hidden="true" />
         </a>
-      </div>
-    </div>
+      </SectionCard>
+    </PageShell>
   )
 }
 

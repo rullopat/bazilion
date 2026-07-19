@@ -218,7 +218,7 @@ teamsRouter.post('/:id/policy/adopt-template', async (c) => {
         slotMappings: body.slotMappings as Array<{ slotId: string; agentId: string }>,
         remainingPlacements: body.remainingPlacements as Array<{
           agentId: string
-          placement: 'isolated' | 'open' | 'profile_defaults'
+          placement: 'isolated' | 'profile_defaults'
         }>,
         previewEdges: body.previewEdges as Array<{
           sourceKind: 'user' | 'outside_team' | 'agent'
@@ -255,7 +255,7 @@ teamsRouter.post('/:id/policy/adopt-template/preview', async (c) => {
         slotMappings: body.slotMappings as Array<{ slotId: string; agentId: string }>,
         remainingPlacements: body.remainingPlacements as Array<{
           agentId: string
-          placement: 'isolated' | 'open' | 'profile_defaults'
+          placement: 'isolated' | 'profile_defaults'
         }>,
       }),
     })

@@ -166,7 +166,7 @@ function printTopLevelHelp(): void {
         ['memory', "Read/write a team's shared memory"],
         ['send', 'Send a message from one agent to another'],
         ['inbox', 'Inspect agent inboxes'],
-        ['trigger', 'Manage agent heartbeats / cron triggers'],
+        ['trigger', 'Manage scheduled agent triggers'],
       ],
     },
     {

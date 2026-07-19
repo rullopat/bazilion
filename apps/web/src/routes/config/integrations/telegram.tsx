@@ -19,7 +19,7 @@ import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { useEffect, useState } from 'react'
 import { Button } from '../../../components/Button'
-import { ConfigTabs } from '../../../components/ConfigTabs'
+import { ConfigPage } from '../../../components/ConfigPage'
 import { daemonClient } from '../../../lib/daemon-client'
 
 const fetchTelegramConfig = createServerFn({ method: 'GET' }).handler(() =>
@@ -107,29 +107,23 @@ function TelegramIntegrationPage() {
   }
 
   return (
-    <main className="mx-auto max-w-3xl px-6 py-8">
-      <h1 className="font-serif text-3xl text-foreground mb-2">config</h1>
-      <ConfigTabs active="integrations" />
-
-      <header className="mb-6">
-        <h2 className="text-xl font-semibold">Telegram</h2>
-        <p className="text-muted-foreground text-sm">
-          One forum-supergroup bot, one topic per agent. Talk to any of your agents from a
-          phone.
-        </p>
-      </header>
-
+    <ConfigPage
+      active="integrations"
+      title="Telegram"
+      description="Connect one forum-supergroup bot with one topic per agent, so conversations stay reachable from your phone."
+      size="narrow"
+    >
       <Step2Banner />
 
       {initial.migratedChatId && <MigrationBanner toChatId={initial.migratedChatId} />}
 
-      <section className="rounded-lg border bg-card p-5 mb-6">
+      <section className="rounded-lg border bg-card p-5">
         <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-3">
           Credentials
         </h3>
 
         {initial.configured && (
-          <p className="text-xs text-emerald-700 mb-3">
+          <p className="text-xs text-success mb-3">
             ✓ Stored: <code className="font-mono">{initial.botTokenPreview}</code>{' '}
             {initial.chatId && (
               <>
@@ -173,7 +167,7 @@ function TelegramIntegrationPage() {
             </p>
           </label>
 
-          <div className="flex items-center gap-3 pt-1">
+          <div className="flex flex-wrap items-center gap-3 pt-1">
             <Button variant="primary" type="submit" disabled={saving}>
               {saving ? 'saving…' : 'save credentials'}
             </Button>
@@ -182,14 +176,14 @@ function TelegramIntegrationPage() {
                 clear credentials
               </Button>
             )}
-            {saveOk && <span className="text-xs text-emerald-700">saved ✓</span>}
-            {saveError && <span className="text-xs text-rose-700">error: {saveError}</span>}
+            {saveOk && <span className="text-xs text-success">saved ✓</span>}
+            {saveError && <span className="text-xs text-danger">error: {saveError}</span>}
           </div>
         </form>
       </section>
 
       <section className="rounded-lg border bg-card p-5">
-        <div className="flex items-center justify-between mb-3">
+        <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
             Preflight checks
           </h3>
@@ -216,7 +210,7 @@ function TelegramIntegrationPage() {
       </section>
 
       {initial.configured && <AccessControlCard />}
-    </main>
+    </ConfigPage>
   )
 }
 
@@ -284,7 +278,7 @@ function AccessControlCard() {
   }
 
   return (
-    <section className="rounded-lg border bg-card p-5 mt-6">
+    <section className="rounded-lg border bg-card p-5">
       <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-1">
         Access control
       </h3>
@@ -297,13 +291,13 @@ function AccessControlCard() {
       {users === null ? (
         <p className="text-xs text-muted-foreground italic">loading…</p>
       ) : users.length === 0 ? (
-        <p className="text-xs text-amber-700 mb-3">
+        <p className="text-xs text-warning mb-3">
           Open — no allowlist yet. The first user to message the bot claims owner.
         </p>
       ) : (
         <ul className="mb-3 space-y-1 text-sm">
           {users.map((u) => (
-            <li key={u.userId} className="flex items-center gap-2">
+            <li key={u.userId} className="flex flex-wrap items-center gap-2">
               <code className="font-mono">{u.userId}</code>
               <span className="text-muted-foreground">
                 {u.label ?? (u.username ? `@${u.username}` : '—')} · {u.role}
@@ -312,7 +306,7 @@ function AccessControlCard() {
                 <button
                   type="button"
                   onClick={() => void remove(u.userId)}
-                  className="ghost-btn text-xs text-[#9B3D3D]"
+                  className="ghost-btn text-xs text-rose-baziu"
                 >
                   remove
                 </button>
@@ -322,23 +316,23 @@ function AccessControlCard() {
         </ul>
       )}
 
-      <form onSubmit={add} className="flex items-center gap-2">
+      <form onSubmit={add} className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
         <input
           value={userId}
           onChange={(e) => setUserId(e.target.value)}
           placeholder="user id"
-          className="w-28 rounded-md border bg-background px-2 py-1 font-mono text-sm"
+          className="w-full rounded-md border bg-background px-2 py-1 font-mono text-sm sm:w-28"
         />
         <input
           value={label}
           onChange={(e) => setLabel(e.target.value)}
           placeholder="label (optional)"
-          className="w-40 rounded-md border bg-background px-2 py-1 text-sm"
+          className="w-full rounded-md border bg-background px-2 py-1 text-sm sm:w-40"
         />
         <Button variant="ghost" type="submit" disabled={busy}>
           add
         </Button>
-        {err && <span className="text-xs text-rose-700">{err}</span>}
+        {err && <span className="text-xs text-danger">{err}</span>}
       </form>
     </section>
   )
@@ -363,9 +357,9 @@ function MigrationBanner({ toChatId }: { toChatId: string }) {
     }
   }
   return (
-    <div className="rounded-md border-2 border-rose-400 bg-rose-50 px-4 py-3 mb-6 text-sm">
-      <div className="font-semibold text-rose-900 mb-1">Supergroup chat id changed</div>
-      <p className="text-rose-900 mb-2">
+    <div className="rounded-md border-2 border-danger/25 bg-danger/10 px-4 py-3 text-sm">
+      <div className="font-semibold text-danger mb-1">Supergroup chat id changed</div>
+      <p className="text-danger mb-2">
         Telegram migrated this supergroup to a new chat id (
         <code className="font-mono">{toChatId}</code>). The bot is still pointed at the old id.
         Reconnect to repoint it and re-create the <code className="font-mono">⚙ bazilion</code>{' '}
@@ -374,16 +368,16 @@ function MigrationBanner({ toChatId }: { toChatId: string }) {
       <Button variant="primary" onClick={reconnect} disabled={busy}>
         {busy ? 'reconnecting…' : `Reconnect to ${toChatId}`}
       </Button>
-      {err && <span className="ml-3 text-xs text-rose-700">{err}</span>}
+      {err && <span className="ml-3 text-xs text-danger">{err}</span>}
     </div>
   )
 }
 
 function Step2Banner() {
   return (
-    <div className="rounded-md border-2 border-amber-400 bg-amber-50 px-4 py-3 mb-6 text-sm">
-      <div className="font-semibold text-amber-900 mb-1">Step 2 of the rollout</div>
-      <p className="text-amber-900">
+    <div className="rounded-md border-2 border-warning/25 bg-warning/10 px-4 py-3 text-sm">
+      <div className="font-semibold text-warning mb-1">Step 2 of the rollout</div>
+      <p className="text-warning">
         The bot polls Telegram and creates the <code className="font-mono">⚙ bazilion</code>{' '}
         service chat on first start. Inbound messages are logged but not yet routed to agents —{' '}
         slash commands and per-agent topics ship in the next release. Outbound from agents ships
@@ -404,17 +398,17 @@ function PollingState({ polling }: { polling: NonNullable<TelegramHealth['pollin
         Polling state
       </p>
       <div className="flex flex-wrap gap-x-4 gap-y-1 font-mono">
-        <span className={polling.running ? 'text-emerald-700' : 'text-rose-700'}>
+        <span className={polling.running ? 'text-success' : 'text-danger'}>
           {polling.running ? 'running' : 'stopped'}
         </span>
-        <span className={polling.activated ? 'text-emerald-700' : 'text-amber-700'}>
+        <span className={polling.activated ? 'text-success' : 'text-warning'}>
           {polling.activated ? 'activated' : 'awaiting activation'}
         </span>
         {polling.lastUpdateId !== null && <span>last update {polling.lastUpdateId}</span>}
         {startedAt && <span>started {startedAt}</span>}
         {lastPoll && <span>last poll {lastPoll}</span>}
       </div>
-      {polling.error && <p className="text-rose-700">error: {polling.error}</p>}
+      {polling.error && <p className="text-danger">error: {polling.error}</p>}
     </div>
   )
 }
@@ -422,11 +416,11 @@ function PollingState({ polling }: { polling: NonNullable<TelegramHealth['pollin
 function PreflightResult({ health }: { health: TelegramHealth }) {
   if (health.error) {
     return (
-      <div className="rounded-md border border-rose-300 bg-rose-50 px-3 py-2 text-sm">
-        <p className="font-semibold text-rose-900">
+      <div className="rounded-md border border-danger/25 bg-danger/10 px-3 py-2 text-sm">
+        <p className="font-semibold text-danger">
           Failed at <code className="font-mono">{health.error.step}</code>
         </p>
-        <p className="text-rose-900 mt-1">{health.error.message}</p>
+        <p className="text-danger mt-1">{health.error.message}</p>
         {hintFor(health.error.step)}
       </div>
     )
@@ -477,7 +471,7 @@ function Check({
     <li className="flex items-start gap-2 text-sm">
       <span
         className={`mt-0.5 inline-flex h-4 w-4 items-center justify-center rounded-full text-[10px] font-bold leading-none ${
-          ok ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+          ok ? 'bg-success/10 text-success' : 'bg-danger/10 text-danger'
         }`}
         aria-hidden
       >
@@ -485,7 +479,7 @@ function Check({
       </span>
       <div>
         <span className="font-medium">{label}</span>
-        <span className={`ml-2 text-xs ${ok ? 'text-muted-foreground' : 'text-rose-800'}`}>
+        <span className={`ml-2 text-xs ${ok ? 'text-muted-foreground' : 'text-danger'}`}>
           {children}
         </span>
       </div>
@@ -497,14 +491,14 @@ function hintFor(step: 'getMe' | 'getChat' | 'getChatMember') {
   switch (step) {
     case 'getMe':
       return (
-        <p className="text-xs text-rose-900 mt-1">
+        <p className="text-xs text-danger mt-1">
           The token is invalid or revoked. Re-issue with @BotFather → /token, or paste a
           fresh one above.
         </p>
       )
     case 'getChat':
       return (
-        <p className="text-xs text-rose-900 mt-1">
+        <p className="text-xs text-danger mt-1">
           The chat id either doesn't exist, points at a basic team (not a supergroup), or
           the bot isn't a member. Forward any message from the supergroup to the bot to
           double-check the id, then add the bot to the team.
@@ -512,7 +506,7 @@ function hintFor(step: 'getMe' | 'getChat' | 'getChatMember') {
       )
     case 'getChatMember':
       return (
-        <p className="text-xs text-rose-900 mt-1">
+        <p className="text-xs text-danger mt-1">
           The bot is in the chat but the membership lookup failed. Usually means the bot was
           kicked or the chat id was migrated — confirm the bot is still in the supergroup.
         </p>

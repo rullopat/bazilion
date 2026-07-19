@@ -166,7 +166,7 @@ One module per table, each exporting narrow operations. Nothing in a repo opens 
 Higher-level than repos; they combine DB writes with filesystem operations.
 
 **`agent/`**:
-- `spawn.ts:spawnAgent(db, paths, input)` — allocates UUID, creates `agents/<id>/{sessions/}`, copies profile markdown templates (`SOUL.md`, `IDENTITY.md`, `BOOTSTRAP.md`, `AGENTS.md`, `TOOLS.md`, `HEARTBEAT.md`) so the agent can diverge per-instance, writes `agent.json`, picks the team (caller-supplied or the seeded `default`), inserts into `agents` with `team_id`, attaches skills (honoring `profile.skillsMode`). **Does not create a per-agent `memory/` dir** — memory is at the team level now.
+- `spawn.ts:spawnAgent(db, paths, input)` — allocates UUID, creates `agents/<id>/{sessions/}`, copies profile markdown templates (`SOUL.md`, `IDENTITY.md`, `BOOTSTRAP.md`, `AGENTS.md`, `TOOLS.md`) so the agent can diverge per-instance, writes `agent.json`, picks the team (caller-supplied or the seeded `default`), inserts into `agents` with `team_id`, attaches skills (honoring `profile.skillsMode`). **Does not create a per-agent `memory/` dir** — memory is at the team level now.
 - `resolve.ts:resolveAgent(db, paths, id)` — joins agent + profile + team + skills into a `ResolvedAgent` (the type the runtime consumes). Accepts UUID prefixes and unique names.
 - `archive.ts` / `unarchive.ts` — flip `status` + enforce state transitions.
 - `delete.ts:deleteAgent(db, id)` — tx: null out inbound `messages.reply_to` pointers, purge messages where the agent is sender or recipient, then `agentRepo.remove` which cascades skills.
@@ -224,7 +224,7 @@ See `agent-engine.md` for the full turn-loop walkthrough. Structural summary her
 - **`providers/`** — `pi-adapter.ts` (pi-ai → Bazilion `Provider` adapter), `registry.ts` (provider registration + `enabledSet` gate + model-string parser, takes optional `oauth: {db, authToken}` to pick up `openai-codex` credentials), `retry.ts` (uniform transient-error retry with "no retry once streamed" invariant), `types.ts` (`Provider`, `ProviderRequest`, `ProviderResponse`, `ToolCall`, `ReasoningLevel`, `StopReason`).
 - **`tools/`** — `registry.ts` (Map-backed dispatcher) + one file per tool category:
   - `memory.ts` — `memory_write / memory_read / memory_search / memory_list` (qmd BM25 over markdown files in `<team.path>/memory/`). Tool descriptions explicitly call out team-shared scope and direct personal notes to `home_write IDENTITY.md`.
-  - `home.ts` — `home_read / home_write / home_list`. Scope: `agents/<id>/` with a hard whitelist of identity files (`SOUL.md`, `IDENTITY.md`, `BOOTSTRAP.md`, `AGENTS.md`, `TOOLS.md`, `HEARTBEAT.md`). No path arg, no traversal. `BOOTSTRAP.md` is read-only — its lifecycle belongs to `bootstrap_done`.
+  - `home.ts` — `home_read / home_write / home_list`. Scope: `agents/<id>/` with a hard whitelist of identity files (`SOUL.md`, `IDENTITY.md`, `BOOTSTRAP.md`, `AGENTS.md`, `TOOLS.md`). No path arg, no traversal. `BOOTSTRAP.md` is read-only — its lifecycle belongs to `bootstrap_done`.
   - `messaging.ts` — `send_message / read_inbox / wait_for_reply`. Takes a `MessagingHost` (not a DB handle) — the worker's host proxies via Node IPC, the daemon's host calls repos directly.
   - `web.ts` + `web-ssrf.ts` + `web-extract.ts` — `web_search` (Brave → SearXNG fallback) + `web_fetch` (Readability + markdown, SSRF guard, 15-min LRU cache, UA spoof, 20s timeout, 3 max redirects).
   - `bootstrap.ts` — `bootstrap_done` (deletes `BOOTSTRAP.md` after onboarding).
@@ -313,7 +313,7 @@ Grouped by resource. Request/response shapes all live in `@bazilion/api-types`. 
 
 **Messages** (`routes/messages.ts`): `GET / PATCH /api/messages/:id` — detail + mark-read.
 
-**Profiles** (`routes/profiles.ts`): list, create (POST, seeds markdown files), get, update (PATCH: name, default_model, skills_mode, default_skills), delete. Profile-file editing: `GET / PUT /api/profiles/:id/files/:file` where `:file` is whitelisted to `PROFILE_FILES`. `GET /api/profiles/_/templates` returns the default SOUL/IDENTITY/BOOTSTRAP/AGENTS/TOOLS/HEARTBEAT strings.
+**Profiles** (`routes/profiles.ts`): list, create (POST, seeds markdown files), get, update (PATCH: name, default_model, skills_mode, default_skills), delete. Profile-file editing: `GET / PUT /api/profiles/:id/files/:file` where `:file` is whitelisted to `PROFILE_FILES`. `GET /api/profiles/_/templates` returns the default SOUL/IDENTITY/BOOTSTRAP/AGENTS/TOOLS strings.
 
 **Skills** (`routes/skills.ts`): `GET /api/skills` (discovered + parsed + metadata), `POST /api/skills/import` (multipart zip or JSON body with path/source), `DELETE /api/skills/:name`.
 

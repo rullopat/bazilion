@@ -8,6 +8,7 @@ import type {
 import { createFileRoute, redirect } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { AgentTabs } from '../../../components/AgentTabs'
+import { PageShell } from '../../../components/Page'
 import { daemonClient } from '../../../lib/daemon-client'
 
 interface InboxView {
@@ -95,7 +96,7 @@ function InboxPage() {
   }
 
   return (
-    <main className="mx-auto max-w-5xl px-6 py-8">
+    <PageShell>
       <h1 className="font-serif text-3xl text-foreground mb-1">{resolved.agent.name}</h1>
       <p className="text-xs text-muted-foreground mb-6">
         <code className="font-mono">{resolved.agent.id.slice(0, 8)}…</code> · unread: {unreadCount}
@@ -202,6 +203,6 @@ function InboxPage() {
           </p>
         </div>
       </div>
-    </main>
+    </PageShell>
   )
 }

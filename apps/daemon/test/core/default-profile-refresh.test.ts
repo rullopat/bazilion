@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test } from 'vitest'
@@ -23,8 +23,7 @@ test('overwrites stale/edited default-profile files and adds missing ones', () =
 
   const written = refreshDefaultProfileTemplates(paths)
 
-  // The five default-on files are brought to current. HEARTBEAT is opt-in, so
-  // the managed set never touches it.
+  // The five default-on files are brought to current.
   expect(written.sort()).toEqual([
     'AGENTS.md',
     'BOOTSTRAP.md',
@@ -34,8 +33,6 @@ test('overwrites stale/edited default-profile files and adds missing ones', () =
   ])
   expect(readFileSync(join(dir, 'SOUL.md'), 'utf8')).toBe(DEFAULT_SOUL)
   expect(readFileSync(join(dir, 'AGENTS.md'), 'utf8')).toBe(DEFAULT_AGENTS)
-  // HEARTBEAT.md is not part of the managed default profile.
-  expect(existsSync(join(dir, 'HEARTBEAT.md'))).toBe(false)
 })
 
 test('is a no-op once the files already match the current defaults', () => {

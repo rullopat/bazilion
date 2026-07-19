@@ -4,6 +4,7 @@ import { createServerFn } from '@tanstack/react-start'
 import { ChevronDown } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '../../../components/Button'
+import { PageShell } from '../../../components/Page'
 import { TeamTabs } from '../../../components/TeamTabs'
 import { RecoveryState } from '../../../components/RecoveryState'
 import { daemonClient } from '../../../lib/daemon-client'
@@ -59,13 +60,13 @@ function ActivityPage() {
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)) }
     finally { setLoading(false) }
   }
-  return <div className="mx-auto max-w-5xl space-y-5 px-4 py-6 sm:px-6"><div><h1>blocked communication</h1><p className="muted">Durable denial evidence. Diagnostic simulations never create these records.</p></div><TeamTabs teamId={id} />
+  return <PageShell><div><h1>Blocked communication</h1><p className="muted">Durable denial evidence. Diagnostic simulations never create these records.</p></div><TeamTabs teamId={id} />
     <div className="space-y-3">{page.blocks.map((block) => <BlockCard key={block.id} block={block} />)}
       {page.blocks.length === 0 && <p className="card muted">No blocked communication has been recorded for this team.</p>}
     </div>
     {error && <p role="alert" className="err">{error}</p>}
     {page.nextCursor && <Button variant="ghost" disabled={loading} onClick={loadMore}>{loading ? 'Loading…' : 'Load older evidence'}</Button>}
-  </div>
+  </PageShell>
 }
 
 function BlockCard({ block }: { block: BlockEvent }) {

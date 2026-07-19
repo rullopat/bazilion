@@ -290,8 +290,6 @@ export interface CreateProfileRequest {
   agents?: string | null
   /** Initial TOOLS.md content. Omit for the default template; pass null to skip the file. */
   tools?: string | null
-  /** Initial HEARTBEAT.md content. Omit for the default template; pass null to skip the file. */
-  heartbeat?: string | null
 }
 
 // --- teams ---
@@ -394,7 +392,6 @@ export type ProfileFileName =
   | 'BOOTSTRAP.md'
   | 'AGENTS.md'
   | 'TOOLS.md'
-  | 'HEARTBEAT.md'
 
 export const PROFILE_FILES: ProfileFileName[] = [
   'profile.json',
@@ -403,7 +400,6 @@ export const PROFILE_FILES: ProfileFileName[] = [
   'BOOTSTRAP.md',
   'AGENTS.md',
   'TOOLS.md',
-  'HEARTBEAT.md',
 ]
 
 export interface FileContentResponse {
@@ -516,7 +512,7 @@ export interface ChatContextResponse {
   systemPrompt: {
     chars: number
     tokens: number
-    /** Per-file breakdown of profile markdown sources (AGENTS.md, SOUL.md, TOOLS.md, IDENTITY.md, HEARTBEAT.md, BOOTSTRAP.md). */
+    /** Per-file breakdown of profile markdown sources. */
     files: ContextFileEntry[]
     /** Char count of the skill-list text rendered into the system prompt. */
     skillsListChars: number
@@ -567,7 +563,7 @@ export interface ChatCompactResponse {
   summary: string
 }
 
-// --- triggers (heartbeats / cron) ---
+// --- scheduled triggers (interval / cron) ---
 
 export interface CreateTriggerRequest {
   kind: 'interval' | 'cron'

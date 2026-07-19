@@ -1,4 +1,5 @@
 import { Link, useRouterState } from '@tanstack/react-router'
+import { SECTION_TABS_CLASS, sectionTabClass } from './SectionTabs'
 
 // Sub-tabs for the unified "templates" nav section. Both profiles and
 // profile teams are spawn-time templates; they share a parent in the
@@ -9,17 +10,17 @@ export function TemplatesTabs() {
   const tabs = [
     {
       to: '/templates/agents',
-      label: 'agent templates',
+      label: 'Agent templates',
       match: (p: string) => p.startsWith('/templates/agents'),
     },
     {
       to: '/templates/teams',
-      label: 'team templates',
+      label: 'Team templates',
       match: (p: string) => p.startsWith('/templates/teams'),
     },
   ] as const
   return (
-    <nav role="tablist" className="-mb-px mb-5 flex gap-1 border-b border-frost">
+    <nav role="tablist" className={SECTION_TABS_CLASS}>
       {tabs.map((t) => {
         const active = t.match(pathname)
         return (
@@ -28,11 +29,7 @@ export function TemplatesTabs() {
             to={t.to}
             role="tab"
             aria-selected={active}
-            className={`unstyled cursor-pointer border-b-2 bg-transparent px-4 py-2 text-[0.9em] font-medium transition-colors ${
-              active
-                ? 'border-sapphire text-sapphire'
-                : 'border-transparent text-mocha hover:text-sapphire'
-            }`}
+            className={sectionTabClass(active)}
           >
             {t.label}
           </Link>

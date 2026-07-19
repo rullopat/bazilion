@@ -1,27 +1,27 @@
 // Sub-nav for the /config pages tree.
 
+import { cn } from '../lib/utils'
+import { SECTION_TABS_CLASS, sectionTabClass } from './SectionTabs'
+
 type Tab = 'providers' | 'services' | 'mcp' | 'integrations' | 'tokens'
 
 const TABS: { key: Tab; href: string; label: string }[] = [
-  { key: 'providers', href: '/config', label: 'providers' },
-  { key: 'services', href: '/config/services', label: 'services' },
-  { key: 'mcp', href: '/config/mcp', label: 'mcp' },
-  { key: 'integrations', href: '/config/integrations/telegram', label: 'integrations' },
-  { key: 'tokens', href: '/config/tokens', label: 'tokens' },
+  { key: 'providers', href: '/config', label: 'Providers' },
+  { key: 'services', href: '/config/services', label: 'Services' },
+  { key: 'mcp', href: '/config/mcp', label: 'MCP' },
+  { key: 'integrations', href: '/config/integrations/telegram', label: 'Integrations' },
+  { key: 'tokens', href: '/config/tokens', label: 'Tokens' },
 ]
 
-export function ConfigTabs({ active }: { active: Tab }) {
+export function ConfigTabs({ active, className }: { active: Tab; className?: string }) {
   return (
-    <nav className="flex gap-1 border-b mb-6">
+    <nav aria-label="Configuration sections" className={cn(SECTION_TABS_CLASS, className)}>
       {TABS.map((t) => (
         <a
           key={t.key}
           href={t.href}
-          className={`px-3 py-2 text-sm border-b-2 -mb-px ${
-            t.key === active
-              ? 'border-primary text-primary font-semibold'
-              : 'border-transparent text-muted-foreground hover:text-foreground'
-          }`}
+          aria-current={t.key === active ? 'page' : undefined}
+          className={sectionTabClass(t.key === active)}
         >
           {t.label}
         </a>
