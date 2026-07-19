@@ -1,5 +1,13 @@
 # bazilion
 
+## 0.10.0
+
+### Minor Changes
+
+- [`b4c5b07`](https://github.com/rullopat/bazilion/commit/b4c5b0790153c33d81b2a532e8451902d0f86b3c) Thanks [@rullopat](https://github.com/rullopat)! - Refresh the web application shell and responsive management surfaces, strengthen Team Policy
+  lifecycle handling, and replace the optional `HEARTBEAT.md` profile convention with explicit
+  interval and cron trigger instructions.
+
 ## 0.9.0
 
 ### Breaking Changes
