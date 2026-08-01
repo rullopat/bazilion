@@ -51,6 +51,7 @@ import {
   spawnAgent,
   teamPolicyRepo,
   teamRepo,
+  triggerDispatchRepo,
   triggerRepo,
   unarchiveAgent,
 } from '../core/index.ts'
@@ -686,7 +687,13 @@ agentsRouter.get('/:id/triggers', (c) => {
   const { db, paths, authToken } = getCtx()
   const agent = agentRepo.get(db, c.req.param('id'))
   if (!agent) return c.json({ error: `agent not found: ${c.req.param('id')}` }, 404)
-  return c.json({ triggers: triggerRepo.listForAgent(db, agent.id) })
+  const triggers = triggerRepo.listForAgent(db, agent.id)
+  return c.json({
+    triggers,
+    dispatches: triggers.flatMap((trigger) =>
+      triggerDispatchRepo.listForTrigger(db, trigger.id, 10),
+    ),
+  })
 })
 
 agentsRouter.post('/:id/triggers', async (c) => {

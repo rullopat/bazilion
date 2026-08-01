@@ -2,6 +2,7 @@ import type {
   AgentTrigger,
   CreateTriggerRequest,
   CreateTriggerResponse,
+  ListTriggerDispatchesResponse,
   ListTriggersResponse,
   UpdateTriggerRequest,
 } from '@bazilion/api-types'
@@ -117,6 +118,35 @@ const disableCmd = defineCommand({
   },
 })
 
+const historyCmd = defineCommand({
+  meta: { name: 'history', description: 'Show recent dispatches for a trigger' },
+  args: {
+    id: { type: 'positional', required: true },
+    limit: { type: 'string', description: 'Maximum rows (default 20)' },
+  },
+  async run({ args }) {
+    const limit = args.limit ? Number(args.limit) : 20
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+      throw new Error('--limit must be an integer from 1 to 100')
+    }
+    const client = createClient()
+    const { dispatches } = await client.get<ListTriggerDispatchesResponse>(
+      `/api/triggers/${args.id}/dispatches?limit=${limit}`,
+    )
+    if (dispatches.length === 0) {
+      console.log('(no dispatches)')
+      return
+    }
+    const rows = dispatches.map((dispatch) => [
+      new Date(dispatch.scheduledAt).toISOString(),
+      dispatch.status,
+      `attempts: ${dispatch.attemptCount}`,
+      dispatch.lastError ?? '',
+    ])
+    for (const line of columnize(rows)) console.log(line)
+  },
+})
+
 export const triggerCommand = defineCommand({
   meta: { name: 'trigger', description: 'Manage scheduled agent triggers' },
   subCommands: {
@@ -125,5 +155,6 @@ export const triggerCommand = defineCommand({
     rm: rmCmd,
     enable: enableCmd,
     disable: disableCmd,
+    history: historyCmd,
   },
 })

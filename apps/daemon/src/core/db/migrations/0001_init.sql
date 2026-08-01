@@ -51,6 +51,26 @@ CREATE TABLE agent_triggers (
 );
 CREATE INDEX agent_triggers_agent ON agent_triggers(agent_id);
 CREATE INDEX agent_triggers_enabled ON agent_triggers(enabled) WHERE enabled = 1;
+CREATE TABLE trigger_dispatches (
+  id              TEXT PRIMARY KEY,
+  trigger_id      TEXT NOT NULL REFERENCES agent_triggers(id) ON DELETE CASCADE,
+  agent_id        TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+  scheduled_at    INTEGER NOT NULL,
+  status          TEXT NOT NULL CHECK (status IN ('pending','running','retrying','succeeded','failed','cancelled')),
+  attempt_count   INTEGER NOT NULL DEFAULT 0,
+  next_attempt_at INTEGER NOT NULL,
+  lease_expires_at INTEGER,
+  started_at      INTEGER,
+  finished_at     INTEGER,
+  last_error      TEXT,
+  created_at      INTEGER NOT NULL,
+  updated_at      INTEGER NOT NULL,
+  UNIQUE (trigger_id, scheduled_at)
+);
+CREATE INDEX trigger_dispatches_claimable
+  ON trigger_dispatches(status, next_attempt_at, scheduled_at);
+CREATE INDEX trigger_dispatches_trigger_time
+  ON trigger_dispatches(trigger_id, scheduled_at DESC);
 CREATE TABLE messages (
   id            TEXT PRIMARY KEY,
   from_agent_id TEXT NOT NULL REFERENCES agents(id),

@@ -3,10 +3,18 @@
 
 import type { UpdateTriggerRequest } from '@bazilion/api-types'
 import { Hono } from 'hono'
-import { triggerRepo } from '../core/index.ts'
+import { triggerDispatchRepo, triggerRepo } from '../core/index.ts'
 import { getCtx } from '../lib/ctx.ts'
 
 export const triggersRouter = new Hono()
+
+triggersRouter.get('/:id/dispatches', (c) => {
+  const { db } = getCtx()
+  const id = c.req.param('id')
+  if (!triggerRepo.get(db, id)) return c.json({ error: `trigger not found: ${id}` }, 404)
+  const limit = Math.min(100, Math.max(1, Number(c.req.query('limit') ?? 20)))
+  return c.json({ dispatches: triggerDispatchRepo.listForTrigger(db, id, limit) })
+})
 
 triggersRouter.delete('/:id', (c) => {
   const { db } = getCtx()

@@ -58,6 +58,8 @@ export type {
   TemplateEndpointKind,
   TemplateInstantiation,
   Timestamp,
+  TriggerDispatch,
+  TriggerDispatchStatus,
   TriggerKind,
   WebToken,
 } from './entities.ts'
@@ -85,6 +87,7 @@ import type {
   TelegramAclRole,
   TelegramMirrorMode,
   TemplateEndpointKind,
+  TriggerDispatch,
   WebToken,
 } from './entities.ts'
 
@@ -590,6 +593,11 @@ export interface UpdateTriggerResponse {
 
 export interface ListTriggersResponse {
   triggers: AgentTrigger[]
+  dispatches: TriggerDispatch[]
+}
+
+export interface ListTriggerDispatchesResponse {
+  dispatches: TriggerDispatch[]
 }
 
 // --- config page (providers + services + fields) ---

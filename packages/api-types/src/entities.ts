@@ -389,6 +389,30 @@ export interface AgentTrigger {
   createdAt: Timestamp
 }
 
+export type TriggerDispatchStatus =
+  | 'pending'
+  | 'running'
+  | 'retrying'
+  | 'succeeded'
+  | 'failed'
+  | 'cancelled'
+
+export interface TriggerDispatch {
+  id: string
+  triggerId: string
+  agentId: string
+  scheduledAt: Timestamp
+  status: TriggerDispatchStatus
+  attemptCount: number
+  nextAttemptAt: Timestamp
+  leaseExpiresAt: Timestamp | null
+  startedAt: Timestamp | null
+  finishedAt: Timestamp | null
+  lastError: string | null
+  createdAt: Timestamp
+  updatedAt: Timestamp
+}
+
 export interface OpenAICodexStatus {
   connected: boolean
   /** Unix ms expiry of the current access token; null if disconnected. */

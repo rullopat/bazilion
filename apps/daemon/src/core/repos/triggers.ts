@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { AgentTrigger, TriggerKind } from '@bazilion/api-types'
 import type { BazilionDb } from '../db/client.ts'
+import { cancelPendingForTrigger } from './triggerDispatches.ts'
 
 interface RawTrigger {
   id: string
@@ -89,7 +90,10 @@ export function listEnabled(db: BazilionDb): AgentTrigger[] {
 }
 
 export function setEnabled(db: BazilionDb, id: string, enabled: boolean): void {
-  db.raw.run('UPDATE agent_triggers SET enabled = ? WHERE id = ?', [enabled ? 1 : 0, id])
+  db.raw.transaction(() => {
+    db.raw.run('UPDATE agent_triggers SET enabled = ? WHERE id = ?', [enabled ? 1 : 0, id])
+    if (!enabled) cancelPendingForTrigger(db, id)
+  })()
 }
 
 export function markFired(db: BazilionDb, id: string, when: number = Date.now()): void {

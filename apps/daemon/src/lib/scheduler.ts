@@ -25,8 +25,14 @@
 // source of truth for last_fired_at / read_at — we mark *before* kicking the
 // run, so a server restart won't immediately re-fire.
 
-import type { AgentTrigger, Message } from '@bazilion/api-types'
-import { agentRepo, communicationApprovalRepo, messageRepo, triggerRepo } from '../core/index.ts'
+import type { AgentTrigger, Message, TriggerDispatch } from '@bazilion/api-types'
+import {
+  agentRepo,
+  communicationApprovalRepo,
+  messageRepo,
+  triggerDispatchRepo,
+  triggerRepo,
+} from '../core/index.ts'
 import { isActiveAgent, registerAgent, unregisterAgent } from './agent-cancel.ts'
 import { acquireAgentLifecycleLease } from './agent-lifecycle-lease.ts'
 import { runAgentTurn } from './agent-turn.ts'
@@ -97,15 +103,32 @@ function scheduledOccurrence(t: AgentTrigger, now: number): number {
   return baseline + Math.floor((now - baseline) / every) * every
 }
 
-async function fireTrigger(t: AgentTrigger, occurrence: number): Promise<void> {
+async function fireTrigger(dispatch: TriggerDispatch): Promise<void> {
   const s = state()
-  if (s.firing.has(t.id)) return
-  s.firing.add(t.id)
+  const key = `trigger-dispatch:${dispatch.id}`
+  if (s.firing.has(key)) return
+  s.firing.add(key)
   const ctx = getCtx()
-  const releaseLease = await acquireAgentLifecycleLease(t.agentId)
+  const releaseLease = await acquireAgentLifecycleLease(dispatch.agentId)
+  const claimedDispatch = triggerDispatchRepo.claim(ctx.db, dispatch.id)
+  if (!claimedDispatch) {
+    releaseLease()
+    s.firing.delete(key)
+    return
+  }
+  const t = triggerRepo.get(ctx.db, claimedDispatch.triggerId)
+  if (!t?.enabled) {
+    triggerDispatchRepo.fail(ctx.db, claimedDispatch.id, 'trigger is disabled or deleted', {
+      maxAttempts: 1,
+    })
+    releaseLease()
+    s.firing.delete(key)
+    return
+  }
   if (isActiveAgent(t.agentId)) {
     releaseLease()
-    s.firing.delete(t.id)
+    triggerDispatchRepo.defer(ctx.db, claimedDispatch.id)
+    s.firing.delete(key)
     return
   }
   const controller = new AbortController()
@@ -117,7 +140,8 @@ async function fireTrigger(t: AgentTrigger, occurrence: number): Promise<void> {
     const claimed = claimSchedulerTrigger(ctx.db, {
       triggerId: t.id,
       agentId: t.agentId,
-      occurrence,
+      occurrence: claimedDispatch.scheduledAt,
+      materialized: true,
       onAllowed: () => {
         registerAgent(t.agentId, controller)
         registered = true
@@ -125,21 +149,25 @@ async function fireTrigger(t: AgentTrigger, occurrence: number): Promise<void> {
     })
     if (!claimed) {
       releaseLease()
-      s.firing.delete(t.id)
+      triggerDispatchRepo.succeed(ctx.db, claimedDispatch.id)
+      s.firing.delete(key)
       return
     }
   } catch (err) {
     if (err instanceof CommunicationDeniedError) {
       releaseLease()
-      s.firing.delete(t.id)
+      triggerDispatchRepo.fail(ctx.db, claimedDispatch.id, err.message, { maxAttempts: 1 })
+      s.firing.delete(key)
       return
     }
     releaseLease()
     if (registered) unregisterAgent(t.agentId)
     console.error(`[scheduler] markFired failed for ${t.id}:`, err)
-    s.firing.delete(t.id)
+    triggerDispatchRepo.fail(ctx.db, claimedDispatch.id, (err as Error).message)
+    s.firing.delete(key)
     return
   }
+  let failure: string | null = null
   try {
     // Drain the turn; we don't stream to anyone. Errors surface as `fatal`
     // frames which we log but don't throw — the run row in the DB carries
@@ -148,7 +176,7 @@ async function fireTrigger(t: AgentTrigger, occurrence: number): Promise<void> {
       authorization: {
         origin: 'scheduler_trigger',
         attemptKind: 'scheduler_trigger',
-        attemptId: `${t.id}:${occurrence}`,
+        attemptId: `${t.id}:${claimedDispatch.scheduledAt}`,
       },
       acquiredLeaseRelease: releaseLease,
       controller,
@@ -156,12 +184,16 @@ async function fireTrigger(t: AgentTrigger, occurrence: number): Promise<void> {
     })) {
       if (frame.kind === 'fatal') {
         console.error(`[scheduler] trigger ${t.id} fatal:`, frame.error)
+        failure = frame.error
       }
     }
   } catch (err) {
     console.error(`[scheduler] trigger ${t.id} unexpected throw:`, err)
+    failure = (err as Error).message
   } finally {
-    s.firing.delete(t.id)
+    if (failure) triggerDispatchRepo.fail(ctx.db, claimedDispatch.id, failure)
+    else triggerDispatchRepo.succeed(ctx.db, claimedDispatch.id)
+    s.firing.delete(key)
   }
 }
 
@@ -307,10 +339,10 @@ async function tick(): Promise<void> {
   const s = state()
   if (s.stopped) return
   const now = Date.now()
+  const ctx = getCtx()
   let triggers: AgentTrigger[]
   let recipients: string[] = []
   try {
-    const ctx = getCtx()
     communicationApprovalRepo.expirePending(ctx.db, now)
     triggers = triggerRepo.listEnabled(ctx.db)
     recipients = messageRepo.listRecipientsWithUnread(ctx.db)
@@ -320,9 +352,20 @@ async function tick(): Promise<void> {
   }
   for (const t of triggers) {
     if (isDue(t, now, s.cronCache)) {
-      // Fire async, don't await — the tick itself must stay fast.
-      void fireTrigger(t, scheduledOccurrence(t, now))
+      const occurrence = scheduledOccurrence(t, now)
+      if (!triggerDispatchRepo.hasOpenForTrigger(ctx.db, t.id)) {
+        triggerDispatchRepo.materialize(ctx.db, {
+          triggerId: t.id,
+          agentId: t.agentId,
+          scheduledAt: occurrence,
+          now,
+        })
+      }
+      triggerRepo.markFired(ctx.db, t.id, occurrence)
     }
+  }
+  for (const dispatch of triggerDispatchRepo.listClaimable(ctx.db, now)) {
+    void fireTrigger(dispatch)
   }
   for (const agentId of recipients) {
     // Same fire-and-forget shape as triggers; `fireInboxWake` internally

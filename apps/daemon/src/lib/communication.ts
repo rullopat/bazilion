@@ -303,16 +303,28 @@ export function deliverableReplies(db: BazilionDb, agentId: string, replyTo: str
 
 export function claimSchedulerTrigger(
   db: BazilionDb,
-  input: { triggerId: string; agentId: string; occurrence: number; onAllowed?: () => void },
+  input: {
+    triggerId: string
+    agentId: string
+    occurrence: number
+    materialized?: boolean
+    onAllowed?: () => void
+  },
 ): boolean {
   if (!teamPolicyEnforcementEnabled()) {
     return db.raw.transaction(() => {
       const current = triggerRepo.get(db, input.triggerId)
       if (!current) throw new Error(`trigger not found: ${input.triggerId}`)
-      if (current.lastFiredAt !== null && current.lastFiredAt >= input.occurrence) {
+      if (
+        current.lastFiredAt !== null &&
+        (current.lastFiredAt > input.occurrence ||
+          (!input.materialized && current.lastFiredAt === input.occurrence))
+      ) {
         return false
       }
-      triggerRepo.markFired(db, input.triggerId, input.occurrence)
+      if (current.lastFiredAt === null || current.lastFiredAt < input.occurrence) {
+        triggerRepo.markFired(db, input.triggerId, input.occurrence)
+      }
       input.onAllowed?.()
       return true
     })()
@@ -330,7 +342,11 @@ export function claimSchedulerTrigger(
     } => {
       const current = triggerRepo.get(db, input.triggerId)
       if (!current) throw new Error(`trigger not found: ${input.triggerId}`)
-      if (current.lastFiredAt !== null && current.lastFiredAt >= input.occurrence) {
+      if (
+        current.lastFiredAt !== null &&
+        (current.lastFiredAt > input.occurrence ||
+          (!input.materialized && current.lastFiredAt === input.occurrence))
+      ) {
         return {
           claimed: false,
           result: {
@@ -352,7 +368,9 @@ export function claimSchedulerTrigger(
         ...attempt,
       }
       const result = authorizeInSnapshot(db, authorization)
-      triggerRepo.markFired(db, input.triggerId, input.occurrence)
+      if (current.lastFiredAt === null || current.lastFiredAt < input.occurrence) {
+        triggerRepo.markFired(db, input.triggerId, input.occurrence)
+      }
       if (result.decision === 'deny') {
         return {
           claimed: true,

@@ -98,3 +98,17 @@ runs/events audit layer.
 - Scheduler tests cover busy Agent, coalescing, restart recovery, concurrent claims, success,
   bounded retry, terminal failure, disable/delete behavior, and Team Policy denial/approval.
 - Route/client/CLI/web tests cover dispatch status and validation.
+
+## Implementation status (2026-08-01)
+
+Both slices are implemented locally and awaiting release. The durable-dispatch slice adds:
+
+- clean-install `trigger_dispatches` persistence with idempotent `(trigger_id, scheduled_at)`
+  occurrences;
+- coalesced interval materialization, transactional claims, running leases, restart recovery,
+  bounded exponential retry, and explicit terminal/cancelled states;
+- lifecycle-lease ordering and Team Policy revalidation immediately before each attempt;
+- disable semantics that cancel pending/retrying work; running work is allowed to finish, while
+  trigger deletion cascades its dispatch history without cancelling an already-started turn;
+- recent dispatch diagnostics through agent trigger responses, a dedicated HTTP endpoint,
+  `bazilion trigger history`, and the Agent triggers web page.

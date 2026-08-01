@@ -197,6 +197,7 @@ test('enabled interval trigger fires and updates last_fired_at', async () => {
     'hello from cron',
   ])
   expect(add.exitCode).toBe(0)
+  const [triggerId] = add.stdout.trim().split('\t') as [string]
 
   // Wait up to 15s for `last_fired_at` to flip from never to a timestamp —
   // the scheduler bumps it before it kicks the worker.
@@ -210,6 +211,10 @@ test('enabled interval trigger fires and updates last_fired_at', async () => {
     await new Promise((r) => setTimeout(r, 100))
   }
   expect(fired).toBe(true)
+  const history = await server.cli(['trigger', 'history', triggerId])
+  expect(history.exitCode).toBe(0)
+  expect(history.stdout).toMatch(/(running|succeeded)/)
+  expect(history.stdout).toContain('attempts: 1')
 })
 
 test('cron trigger with invalid expression is rejected', async () => {

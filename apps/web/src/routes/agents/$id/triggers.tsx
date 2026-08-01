@@ -1,5 +1,5 @@
 import { ApiClientError } from '@bazilion/client'
-import type { AgentTrigger, ResolvedAgent } from '@bazilion/api-types'
+import type { AgentTrigger, ResolvedAgent, TriggerDispatch } from '@bazilion/api-types'
 import { createFileRoute, redirect, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { useState } from 'react'
@@ -10,6 +10,7 @@ import { daemonClient } from '../../../lib/daemon-client'
 interface TriggersView {
   resolved: ResolvedAgent
   triggers: AgentTrigger[]
+  dispatches: TriggerDispatch[]
 }
 
 const fetchTriggers = createServerFn({ method: 'POST' })
@@ -23,10 +24,13 @@ const fetchTriggers = createServerFn({ method: 'POST' })
       if (err instanceof ApiClientError && err.status === 404) return null
       throw err
     }
-    const { triggers } = await c.get<{ triggers: AgentTrigger[] }>(
+    const { triggers, dispatches } = await c.get<{
+      triggers: AgentTrigger[]
+      dispatches: TriggerDispatch[]
+    }>(
       `/api/agents/${encodeURIComponent(resolved.agent.id)}/triggers`,
     )
-    return { resolved, triggers }
+    return { resolved, triggers, dispatches }
   })
 
 export const Route = createFileRoute('/agents/$id/triggers')({
@@ -39,7 +43,7 @@ export const Route = createFileRoute('/agents/$id/triggers')({
 })
 
 function TriggersPage() {
-  const { resolved, triggers } = Route.useLoaderData()
+  const { resolved, triggers, dispatches } = Route.useLoaderData()
   const router = useRouter()
 
   async function toggle(t: AgentTrigger) {
@@ -121,6 +125,34 @@ function TriggersPage() {
                 </tr>
               )
             })}
+          </tbody>
+        </table>
+      )}
+
+      <h3 className="mb-3 mt-8 font-body text-[0.85em] font-semibold uppercase tracking-wider text-mocha-light">
+        Recent dispatches
+      </h3>
+      {dispatches.length === 0 ? (
+        <p className="muted">no scheduled occurrences yet.</p>
+      ) : (
+        <table>
+          <thead>
+            <tr>
+              <th>scheduled</th>
+              <th>status</th>
+              <th>attempts</th>
+              <th>error</th>
+            </tr>
+          </thead>
+          <tbody>
+            {dispatches.map((dispatch) => (
+              <tr key={dispatch.id}>
+                <td className="text-[0.82em]">{new Date(dispatch.scheduledAt).toLocaleString()}</td>
+                <td><code>{dispatch.status}</code></td>
+                <td>{dispatch.attemptCount}</td>
+                <td className="text-[0.82em] text-mocha-light">{dispatch.lastError ?? '—'}</td>
+              </tr>
+            ))}
           </tbody>
         </table>
       )}
