@@ -34,13 +34,9 @@ docs/backlog/
 | [BAZ-001](draft/BAZ-001-a2a-federation-spike.md) | Spike — federated multi-employee Bazilion via A2A | S | Investigation only; output is a follow-up implementation BAZ |
 | [BAZ-003](draft/BAZ-003-hermes-self-learning.md) | Hermes-style self-learning loop — background reviewer + skill self-editing | L | MVP = reviewer + human-approval gate; curator / FTS5 / runtime skill authoring deferred to v2 BAZs |
 
-## Todo (3)
+## Todo (0)
 
-| ID | Title | Size | Notes |
-|----|-------|------|-------|
-| [BAZ-020](todo/BAZ-020-team-backlog-domain-api-cli.md) | Team backlog domain, API, and CLI | M | High priority; canonical Markdown foundation for the board and agent integrations |
-| [BAZ-021](todo/BAZ-021-visual-team-backlog-board.md) | Visual Team backlog board | M | High priority; depends on BAZ-020 |
-| [BAZ-022](todo/BAZ-022-agent-backlog-tools-mcp-skill.md) | Agent backlog tools, MCP server, and installable workflow skill | L | High priority; depends on BAZ-020 |
+_None right now._
 
 ## In Progress (0)
 
