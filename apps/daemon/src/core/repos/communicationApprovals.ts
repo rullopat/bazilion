@@ -254,6 +254,18 @@ export function get(
   return detailFromRow(db, row)
 }
 
+export function getByAttempt(
+  db: BazilionDb,
+  attemptKind: string,
+  attemptId: string,
+  includePayload = false,
+): CommunicationApprovalDetail | CommunicationApproval | null {
+  expirePending(db)
+  const row = rawByAttempt(db, attemptKind, attemptId)
+  if (!row) return null
+  return includePayload ? detailFromRow(db, row) : toApproval(row)
+}
+
 function detailFromRow(db: BazilionDb, row: RawApproval): CommunicationApprovalDetail {
   const events = db.raw
     .query<RawEvent, [string]>(
@@ -368,6 +380,99 @@ export function claimDelivery(
     throw new Error('approval_revalidation_failed: policy or membership changed')
   if (!outcome.detail) throw new Error('approval_state_conflict: delivery claim failed')
   return outcome.detail
+}
+
+export interface SchedulerApprovalGrantResult {
+  approval: CommunicationApproval
+  granted: boolean
+  failureKind?: 'revalidation' | 'delivery'
+  error?: string
+}
+
+/**
+ * Convert a scheduler approval into a durable grant without executing the
+ * Agent turn in the HTTP request. The scheduler remains the only owner of
+ * dispatch leases, retries, restart recovery, and final execution status.
+ */
+export function grantSchedulerTrigger(
+  db: BazilionDb,
+  id: string,
+  actor: string,
+  revalidate: (row: CommunicationApprovalDetail) => CommunicationAuthorizationResult,
+  validateDelivery: (row: CommunicationApprovalDetail) => string | null,
+  now = Date.now(),
+): SchedulerApprovalGrantResult {
+  expirePending(db, now)
+  return db.raw.transaction(() => {
+    const current = raw(db, id)
+    if (!current) throw new Error(`approval_not_found: ${id}`)
+    const detail = detailFromRow(db, current)
+    if (detail.status !== 'pending')
+      throw new Error(`approval_state_conflict: current ${detail.status}`)
+    if (detail.operation !== 'scheduler_trigger' || detail.payloadKind !== 'scheduler_trigger') {
+      throw new Error('approval_payload_conflict: not a scheduler trigger approval')
+    }
+
+    const authorization = revalidate(detail)
+    const refsMatch =
+      JSON.stringify(authorization.policyRefs) === JSON.stringify(detail.policyRefs) &&
+      JSON.stringify(authorization.requiredEdgeIds) === JSON.stringify(detail.requiredEdgeIds)
+    if (authorization.decision !== 'approval_required' || !refsMatch) {
+      const error = 'policy or membership changed'
+      const changed = db.raw.run(
+        `UPDATE communication_approvals
+         SET status = 'denied', decided_at = ?, decided_by = ?, decision_reason = ?,
+             updated_at = ? WHERE id = ? AND status = 'pending'`,
+        [now, actor, error, now, id],
+      ).changes
+      if (changed !== 1) throw new Error('approval_state_conflict: concurrent approval')
+      appendEvent(db, id, 'denied', actor, error, now)
+      return {
+        approval: toApproval(raw(db, id) as RawApproval),
+        granted: false,
+        failureKind: 'revalidation' as const,
+        error,
+      }
+    }
+
+    let deliveryError: string | null = null
+    try {
+      deliveryError = validateDelivery(detail)
+    } catch (error) {
+      deliveryError = error instanceof Error ? error.message : String(error)
+    }
+    if (deliveryError) {
+      const changed = db.raw.run(
+        `UPDATE communication_approvals
+         SET status = 'delivery_failed', decided_at = ?, decided_by = ?,
+             delivery_error = ?, updated_at = ?
+         WHERE id = ? AND status = 'pending'`,
+        [now, actor, deliveryError, now, id],
+      ).changes
+      if (changed !== 1) throw new Error('approval_state_conflict: concurrent approval')
+      appendEvent(db, id, 'approved', actor, null, now)
+      appendEvent(db, id, 'delivery_started', actor, null, now)
+      appendEvent(db, id, 'delivery_failed', actor, deliveryError, now)
+      return {
+        approval: toApproval(raw(db, id) as RawApproval),
+        granted: false,
+        failureKind: 'delivery' as const,
+        error: deliveryError,
+      }
+    }
+
+    const changed = db.raw.run(
+      `UPDATE communication_approvals
+       SET status = 'delivered', decided_at = ?, decided_by = ?, delivery_error = NULL,
+           updated_at = ? WHERE id = ? AND status = 'pending'`,
+      [now, actor, now, id],
+    ).changes
+    if (changed !== 1) throw new Error('approval_state_conflict: concurrent approval')
+    appendEvent(db, id, 'approved', actor, null, now)
+    appendEvent(db, id, 'delivery_started', actor, null, now)
+    appendEvent(db, id, 'delivered', actor, null, now)
+    return { approval: toApproval(raw(db, id) as RawApproval), granted: true }
+  })()
 }
 
 export function finishDelivery(

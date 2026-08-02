@@ -1,17 +1,18 @@
 ---
 id: BAZ-019
 title: Scheduled triggers without heartbeat files
-status: in_progress
+status: done
 size: L (1-2 weeks)
 created: 2026-07-19
 refined: 2026-07-19
+shipped: 2026-08-01
 priority: high
 note: Breaking alpha cleanup; HEARTBEAT.md is removed rather than deprecated.
 ---
 
 # BAZ-019 - Scheduled triggers without heartbeat files
 
-**Status:** In progress.
+**Status:** Done. Unreleased.
 
 ## User stories
 
@@ -99,16 +100,24 @@ runs/events audit layer.
   bounded retry, terminal failure, disable/delete behavior, and Team Policy denial/approval.
 - Route/client/CLI/web tests cover dispatch status and validation.
 
-## Implementation status (2026-08-01)
+## As-built (2026-08-01)
 
-Both slices are implemented locally and awaiting release. The durable-dispatch slice adds:
+The heartbeat-file removal shipped in v0.10.0. The durable-dispatch closure is complete and
+verified locally, with its Changeset awaiting the next release. It adds:
 
 - clean-install `trigger_dispatches` persistence with idempotent `(trigger_id, scheduled_at)`
   occurrences;
 - coalesced interval materialization, transactional claims, running leases, restart recovery,
   bounded exponential retry, and explicit terminal/cancelled states;
 - lifecycle-lease ordering and Team Policy revalidation immediately before each attempt;
+- approval-gated occurrences that remain pending until an operator records a durable grant;
+  the scheduler remains the sole owner of execution, retry, restart recovery, and terminal state;
+- correct provider-error/fatal outcome classification, so failed turns retry instead of being
+  recorded as successful, including after the scheduling watermark advances;
 - disable semantics that cancel pending/retrying work; running work is allowed to finish, while
   trigger deletion cascades its dispatch history without cancelling an already-started turn;
 - recent dispatch diagnostics through agent trigger responses, a dedicated HTTP endpoint,
   `bazilion trigger history`, and the Agent triggers web page.
+
+Verification passed 99 test files / 793 tests, root and web typechecks, lint with existing
+warnings only, the production build, and `git diff --check`.

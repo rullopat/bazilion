@@ -58,7 +58,11 @@ export type {
   ProviderResponse,
   StopReason,
 } from './providers/types.ts'
-export { buildSystemPrompt } from './session/prompt.ts'
+export {
+  buildSystemPrompt,
+  loadPromptSkills,
+  type PromptSkill,
+} from './session/prompt.ts'
 export { bootstrapTool } from './tools/bootstrap.ts'
 export { memoryTools } from './tools/memory.ts'
 export { messagingTools } from './tools/messaging.ts'

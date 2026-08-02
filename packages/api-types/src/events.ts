@@ -39,6 +39,49 @@ export interface ToolResultImage {
   mimeType: string
 }
 
+/** Whether a turn has a human response path for dangerous shell commands. */
+export type BashApprovalMode = 'interactive' | 'auto_deny'
+
+export type CommandRiskCode =
+  | 'sensitive-path-read'
+  | 'broad-destructive-operation'
+  | 'remote-pipe-execution'
+  | 'outbound-exfiltration'
+  | 'privilege-or-credential-access'
+
+export type CommandRiskSeverity = 'warning' | 'danger'
+
+export interface CommandRisk {
+  code: CommandRiskCode
+  severity: CommandRiskSeverity
+  message: string
+  matchedText: string
+  /** Inclusive/exclusive UTF-16 offsets into the original command. */
+  span: { start: number; end: number }
+}
+
+export type CommandApprovalStatus =
+  | 'pending'
+  | 'allowed'
+  | 'denied'
+  | 'auto_denied'
+  | 'expired'
+  | 'cancelled'
+
+/** Ephemeral, turn-scoped shell approval state. It is never a Team Policy approval. */
+export interface CommandApproval {
+  id: string
+  turnId: string
+  toolCallId: string
+  agentId: string
+  teamId: string
+  command: string
+  risks: CommandRisk[]
+  status: CommandApprovalStatus
+  /** Epoch milliseconds. */
+  expiresAt: number
+}
+
 export type SessionEvent =
   | { type: 'user_message'; text: string }
   | { type: 'assistant_delta'; delta: string }
@@ -61,6 +104,7 @@ export type SessionEvent =
       /** base64-encoded file bytes. */
       data: string
     }
+  | { type: 'command_approval'; approval: CommandApproval }
   | { type: 'error'; error: string }
 
 /**

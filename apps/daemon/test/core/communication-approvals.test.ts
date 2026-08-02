@@ -197,20 +197,77 @@ test('scheduler and inbox boundaries hold protected effects until one approval g
     message: 'scheduled prompt',
   })
   let started = false
-  expect(
-    claimSchedulerTrigger(env.db, {
-      triggerId: trigger.id,
-      agentId: target.id,
-      occurrence: 1234,
-      onAllowed: () => {
-        started = true
-      },
-    }),
-  ).toBe(false)
+  const schedulerClaim = claimSchedulerTrigger(env.db, {
+    dispatchId: 'dispatch-1234',
+    triggerId: trigger.id,
+    agentId: target.id,
+    occurrence: 1234,
+    materialized: true,
+    onAllowed: () => {
+      started = true
+    },
+  })
+  expect(schedulerClaim.kind).toBe('approval_pending')
+  if (schedulerClaim.kind !== 'approval_pending') throw new Error('expected pending approval')
   expect(started).toBe(false)
-  expect(approvalRepo.list(env.db).some((item) => item.operation === 'scheduler_trigger')).toBe(
+  const schedulerApproval = approvalRepo.get(
+    env.db,
+    schedulerClaim.approval.id,
     true,
+  ) as CommunicationApprovalDetail
+  expect(schedulerApproval).toMatchObject({
+    operation: 'scheduler_trigger',
+    payloadKind: 'scheduler_trigger',
+    status: 'pending',
+    payload: {
+      dispatchId: 'dispatch-1234',
+      triggerId: trigger.id,
+      occurrence: 1234,
+      agentId: target.id,
+      message: 'scheduled prompt',
+    },
+  })
+
+  let deliveryValidated = 0
+  const grant = approvalRepo.grantSchedulerTrigger(
+    env.db,
+    schedulerApproval.id,
+    'operator',
+    (approval) =>
+      authorizeInSnapshot(env.db, {
+        source: approval.source,
+        target: approval.target,
+        origin: approval.origin,
+        attemptKind: approval.attemptKind,
+        attemptId: approval.attemptId,
+      }),
+    (approval) => {
+      deliveryValidated++
+      expect(approval.payload).toMatchObject({ dispatchId: 'dispatch-1234' })
+      return null
+    },
   )
+  expect(grant).toMatchObject({ granted: true, approval: { status: 'delivered' } })
+  expect(deliveryValidated).toBe(1)
+  expect(started).toBe(false)
+  expect(
+    (
+      approvalRepo.get(env.db, schedulerApproval.id, true) as CommunicationApprovalDetail
+    ).events.map((item) => item.event),
+  ).toEqual(['requested', 'approved', 'delivery_started', 'delivered'])
+
+  const grantedClaim = claimSchedulerTrigger(env.db, {
+    dispatchId: 'dispatch-1234',
+    triggerId: trigger.id,
+    agentId: target.id,
+    occurrence: 1234,
+    materialized: true,
+    onAllowed: () => {
+      started = true
+    },
+  })
+  expect(grantedClaim).toEqual({ kind: 'claimed' })
+  expect(started).toBe(true)
 
   env.db.raw.run('DELETE FROM team_policy_edges WHERE team_id = ?', [env.teamId])
   env.db.raw.run(
@@ -254,6 +311,182 @@ test('scheduler and inbox boundaries hold protected effects until one approval g
   )
   approvalRepo.finishDelivery(env.db, claimed.id, true, 'operator')
   expect(claimDeliverableInbox(env.db, target.id).map((item) => item.id)).toEqual([message.id])
+})
+
+test.each([
+  'denied',
+  'expired',
+] as const)('a %s scheduler approval is terminal and never starts the turn', (terminalStatus) => {
+  const { target } = protectedPair()
+  env.db.raw.run(
+    `INSERT INTO team_policy_edges
+         (team_id, source_kind, source_id, target_kind, target_id, posture)
+       VALUES (?, 'user', '', 'agent', ?, 'approval_required')`,
+    [env.teamId, target.id],
+  )
+  const trigger = triggerRepo.insert(env.db, {
+    agentId: target.id,
+    kind: 'interval',
+    intervalSec: 60,
+    cronExpr: null,
+    message: 'held scheduler turn',
+  })
+  const initial = claimSchedulerTrigger(env.db, {
+    dispatchId: 'terminal-dispatch',
+    triggerId: trigger.id,
+    agentId: target.id,
+    occurrence: 5678,
+    materialized: true,
+  })
+  if (initial.kind !== 'approval_pending') throw new Error('expected pending approval')
+
+  if (terminalStatus === 'denied') {
+    approvalRepo.decide(env.db, initial.approval.id, 'deny', 'operator', 'not this time')
+  } else {
+    approvalRepo.expirePending(env.db, initial.approval.expiresAt)
+  }
+
+  let started = false
+  const retried = claimSchedulerTrigger(env.db, {
+    dispatchId: 'terminal-dispatch',
+    triggerId: trigger.id,
+    agentId: target.id,
+    occurrence: 5678,
+    materialized: true,
+    onAllowed: () => {
+      started = true
+    },
+  })
+  expect(retried).toMatchObject({
+    kind: 'approval_terminal',
+    approval: { id: initial.approval.id, status: terminalStatus },
+  })
+  expect(started).toBe(false)
+})
+
+test('an approved scheduler grant fails closed when its captured policy revision changes', () => {
+  const { target } = protectedPair()
+  env.db.raw.run(
+    `INSERT INTO team_policy_edges
+       (team_id, source_kind, source_id, target_kind, target_id, posture)
+     VALUES (?, 'user', '', 'agent', ?, 'approval_required')`,
+    [env.teamId, target.id],
+  )
+  const trigger = triggerRepo.insert(env.db, {
+    agentId: target.id,
+    kind: 'interval',
+    intervalSec: 60,
+    cronExpr: null,
+    message: 'revision-bound scheduler turn',
+  })
+  const initial = claimSchedulerTrigger(env.db, {
+    dispatchId: 'revision-dispatch',
+    triggerId: trigger.id,
+    agentId: target.id,
+    occurrence: 9012,
+    materialized: true,
+  })
+  if (initial.kind !== 'approval_pending') throw new Error('expected pending approval')
+  const grant = approvalRepo.grantSchedulerTrigger(
+    env.db,
+    initial.approval.id,
+    'operator',
+    (approval) =>
+      authorizeInSnapshot(env.db, {
+        source: approval.source,
+        target: approval.target,
+        origin: approval.origin,
+        attemptKind: approval.attemptKind,
+        attemptId: approval.attemptId,
+      }),
+    () => null,
+  )
+  expect(grant.granted).toBe(true)
+  env.db.raw.run(
+    'UPDATE team_policies SET revision = revision + 1, updated_at = ? WHERE team_id = ?',
+    [Date.now(), env.teamId],
+  )
+
+  let started = false
+  const retried = claimSchedulerTrigger(env.db, {
+    dispatchId: 'revision-dispatch',
+    triggerId: trigger.id,
+    agentId: target.id,
+    occurrence: 9012,
+    materialized: true,
+    onAllowed: () => {
+      started = true
+    },
+  })
+  expect(retried).toMatchObject({
+    kind: 'approval_terminal',
+    approval: { id: initial.approval.id, status: 'delivered' },
+    reason: 'approved scheduler policy or membership changed',
+  })
+  expect(started).toBe(false)
+})
+
+test('an approved scheduler grant cannot execute a changed trigger message', () => {
+  const { target } = protectedPair()
+  env.db.raw.run(
+    `INSERT INTO team_policy_edges
+       (team_id, source_kind, source_id, target_kind, target_id, posture)
+     VALUES (?, 'user', '', 'agent', ?, 'approval_required')`,
+    [env.teamId, target.id],
+  )
+  const trigger = triggerRepo.insert(env.db, {
+    agentId: target.id,
+    kind: 'interval',
+    intervalSec: 60,
+    cronExpr: null,
+    message: 'approved instructions',
+  })
+  const initial = claimSchedulerTrigger(env.db, {
+    dispatchId: 'message-bound-dispatch',
+    triggerId: trigger.id,
+    agentId: target.id,
+    occurrence: 3456,
+    materialized: true,
+  })
+  if (initial.kind !== 'approval_pending') throw new Error('expected pending approval')
+  expect(
+    approvalRepo.grantSchedulerTrigger(
+      env.db,
+      initial.approval.id,
+      'operator',
+      (approval) =>
+        authorizeInSnapshot(env.db, {
+          source: approval.source,
+          target: approval.target,
+          origin: approval.origin,
+          attemptKind: approval.attemptKind,
+          attemptId: approval.attemptId,
+        }),
+      () => null,
+    ).granted,
+  ).toBe(true)
+  env.db.raw.run('UPDATE agent_triggers SET message = ? WHERE id = ?', [
+    'different instructions',
+    trigger.id,
+  ])
+
+  let started = false
+  expect(
+    claimSchedulerTrigger(env.db, {
+      dispatchId: 'message-bound-dispatch',
+      triggerId: trigger.id,
+      agentId: target.id,
+      occurrence: 3456,
+      materialized: true,
+      onAllowed: () => {
+        started = true
+      },
+    }),
+  ).toMatchObject({
+    kind: 'approval_terminal',
+    reason: 'approved scheduler occurrence changed',
+  })
+  expect(started).toBe(false)
 })
 
 test('approval posture survives Team snapshots and spawn into live policy', async () => {

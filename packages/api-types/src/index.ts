@@ -65,7 +65,13 @@ export type {
 } from './entities.ts'
 export { REASONING_LEVELS } from './entities.ts'
 export type {
+  BashApprovalMode,
   ChatFrame,
+  CommandApproval,
+  CommandApprovalStatus,
+  CommandRisk,
+  CommandRiskCode,
+  CommandRiskSeverity,
   ProviderMessage,
   Role,
   SessionEvent,
@@ -90,6 +96,7 @@ import type {
   TriggerDispatch,
   WebToken,
 } from './entities.ts'
+import type { BashApprovalMode, CommandApproval } from './events.ts'
 
 export interface ApiError {
   error: string
@@ -384,6 +391,20 @@ export interface ChatRequest {
   message: string
   /** Files attached to this message (images → vision; others → stored + referenced). */
   attachments?: Attachment[]
+  /** Explicit client capability. Omitted callers fail closed instead of waiting for input. */
+  bashApprovalMode?: BashApprovalMode
+}
+
+export interface CommandApprovalDecisionRequest {
+  decision: 'allow' | 'deny'
+}
+
+export interface CommandApprovalDecisionResponse {
+  approval: CommandApproval
+}
+
+export interface ListCommandApprovalsResponse {
+  approvals: CommandApproval[]
 }
 
 // --- profile files ---
@@ -714,6 +735,19 @@ export interface HealthReport {
   triggers: { active: number; disabled: number }
   tokens: { active: number }
   scheduler: { enabled: boolean; tickMs: number }
+  shellSecurity:
+    | {
+        ok: true
+        sandboxMode: 'off' | 'docker'
+        approvalMode: 'off' | 'dangerous'
+        sandboxImage: string
+        hostCodingTools: boolean
+        network: 'host' | 'none'
+      }
+    | {
+        ok: false
+        error: string
+      }
   teamPolicyManagement: {
     contractVersion: number
     enforcementRequested: boolean

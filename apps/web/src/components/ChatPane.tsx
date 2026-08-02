@@ -5,11 +5,16 @@
 import type {
   Attachment,
   ChatFrame,
+  ChatRequest,
+  CommandApproval,
+  CommandApprovalDecisionResponse,
+  ListCommandApprovalsResponse,
   ProviderMessage,
   SessionHeadResponse,
 } from '@bazilion/api-types'
 import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { renderMd } from '../lib/md'
+import { Button } from './Button'
 
 const INBOX_WAKE_PREFIX = '[[bazilion:inbox-wake]]\n'
 const COMPACTION_REPLAY_PREFIX = '[conversation summary]'
@@ -25,7 +30,7 @@ type ToolItem = {
   body: string
 }
 
-type RenderEntry =
+export type RenderEntry =
   | {
       type: 'user'
       content: string
@@ -36,8 +41,34 @@ type RenderEntry =
   | { type: 'tool'; items: ToolItem[] }
   | { type: 'images'; images: { data: string; mimeType: string }[] }
   | { type: 'file'; name: string; mimeType: string; data: string }
+  | { type: 'command_approval'; approval: CommandApproval }
   | { type: 'system'; content: string }
   | { type: 'error'; content: string }
+
+/** Keep one inline card per ephemeral shell approval while preserving its first position. */
+export function upsertCommandApprovalEntry(
+  entries: RenderEntry[],
+  approval: CommandApproval,
+): RenderEntry[] {
+  const index = entries.findIndex(
+    (entry) => entry.type === 'command_approval' && entry.approval.id === approval.id,
+  )
+  if (index === -1) return [...entries, { type: 'command_approval', approval }]
+  const next = [...entries]
+  next[index] = { type: 'command_approval', approval }
+  return next
+}
+
+export function interactiveChatRequest(
+  message: string,
+  attachments: Attachment[],
+): ChatRequest {
+  return { message, attachments, bashApprovalMode: 'interactive' }
+}
+
+export function shellApprovalsUrl(agentId: string): string {
+  return `/api/shell-approvals?agentId=${encodeURIComponent(agentId)}`
+}
 
 const SLASH_HELP =
   'slash commands:\n' +
@@ -188,11 +219,17 @@ export function ChatPane({
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [dragging, setDragging] = useState(false)
   const [staleBanner, setStaleBanner] = useState(false)
+  const [recoveredTurn, setRecoveredTurn] = useState(false)
+  const [approvalBusy, setApprovalBusy] = useState<Record<string, boolean>>({})
+  const [approvalErrors, setApprovalErrors] = useState<Record<string, string>>({})
 
   const messagesRef = useRef<HTMLDivElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
   const currentAbortRef = useRef<AbortController | null>(null)
+  const currentAgentIdRef = useRef(agentId)
+  const commandApprovalTurnRef = useRef(false)
+  currentAgentIdRef.current = agentId
   // Slash-command output bubbles are anchored to the count of visible
   // (non-system) entries at push time, so they stay in place when later
   // messages arrive instead of being pinned to the bottom of the transcript.
@@ -205,11 +242,15 @@ export function ChatPane({
   // loop and visibilitychange handler both read them).
   const streamingRef = useRef(false)
   streamingRef.current = streaming
+  const turnBusy = streaming || recoveredTurn
 
   // Re-seed when the agent prop changes (the loader returns new initialMessages
   // for a different agent on the home page).
   // biome-ignore lint/correctness/useExhaustiveDependencies: explicit reset on agent switch
   useEffect(() => {
+    currentAbortRef.current?.abort()
+    currentAbortRef.current = null
+    commandApprovalTurnRef.current = false
     setServerMessages(initialMessages)
     setLiveEntries([])
     setSystemBubbles([])
@@ -218,7 +259,45 @@ export function ChatPane({
     setThinking(false)
     setStreaming(false)
     setStaleBanner(false)
+    setRecoveredTurn(false)
+    setApprovalBusy({})
+    setApprovalErrors({})
     knownHeadRef.current = initialSessionHead ?? { file: null, size: 0 }
+  }, [agentId])
+
+  // A browser navigation cannot re-open the original NDJSON response, but the
+  // daemon keeps the turn and its shell approval alive. Recover only this
+  // Agent's pending shell cards; Team Policy communication approvals remain on
+  // their separate /approvals surface.
+  useEffect(() => {
+    const controller = new AbortController()
+    let stopped = false
+    async function recoverPendingCommandApprovals() {
+      try {
+        const response = await fetch(shellApprovalsUrl(agentId), {
+          signal: controller.signal,
+        })
+        if (!response.ok) return
+        const body = (await response.json()) as ListCommandApprovalsResponse
+        const pending = body.approvals.filter(
+          (approval) => approval.agentId === agentId && approval.status === 'pending',
+        )
+        if (stopped || pending.length === 0) return
+        sessionStorage.removeItem(`bz_pending_${agentId}`)
+        commandApprovalTurnRef.current = true
+        setLiveEntries((entries) => pending.reduce(upsertCommandApprovalEntry, entries))
+        setRecoveredTurn(true)
+      } catch (error) {
+        if ((error as Error).name === 'AbortError') return
+        // Recovery is best-effort. A live stream still delivers the same
+        // event, and the normal session-head poll reports later activity.
+      }
+    }
+    void recoverPendingCommandApprovals()
+    return () => {
+      stopped = true
+      controller.abort()
+    }
   }, [agentId])
 
   // --- smart autoscroll ---
@@ -296,11 +375,12 @@ export function ChatPane({
   }, [agentId, initialSessionHead, staleBanner])
 
   async function refreshKnownHead() {
+    if (currentAgentIdRef.current !== agentId) return
     try {
       const res = await fetch(`/api/agents/${encodeURIComponent(agentId)}/sessions/head`)
       if (!res.ok) return
       const body = (await res.json()) as SessionHeadResponse
-      if (typeof body.size === 'number') {
+      if (currentAgentIdRef.current === agentId && typeof body.size === 'number') {
         knownHeadRef.current = { file: body.file ?? null, size: body.size }
       }
     } catch {
@@ -468,7 +548,7 @@ export function ChatPane({
   }
 
   function enterEditMode() {
-    if (liveEntries.length > 0 || streaming) return
+    if (liveEntries.length > 0 || turnBusy) return
     const idx = findLastUserIdx()
     if (idx === -1) return
     const userMsg = serverMessages[idx]
@@ -485,7 +565,7 @@ export function ChatPane({
   // --- attachments (one generic list; the daemon classifies each: images →
   // vision, others → stored and referenced by path for the agent) ---
   async function addFiles(files: FileList | File[] | null) {
-    if (!files || streaming) return
+    if (!files || turnBusy) return
     const arr = Array.from(files)
     if (arr.length === 0) return
     const encoded = await Promise.all(arr.map(fileToAttachment))
@@ -503,7 +583,7 @@ export function ChatPane({
   function onDragOver(e: React.DragEvent) {
     if (!Array.from(e.dataTransfer.types).includes('Files')) return
     e.preventDefault()
-    if (streaming) {
+    if (turnBusy) {
       setDragging(false)
       return
     }
@@ -517,7 +597,7 @@ export function ChatPane({
     if (e.dataTransfer.files.length === 0) return
     e.preventDefault()
     setDragging(false)
-    if (streaming) return
+    if (turnBusy) return
     void addFiles(e.dataTransfer.files)
   }
 
@@ -525,7 +605,7 @@ export function ChatPane({
   const send = useCallback(
     async (text: string) => {
       const atts = attachments
-      if ((!text.trim() && atts.length === 0) || streaming) return
+      if ((!text.trim() && atts.length === 0) || turnBusy) return
       setInput('')
 
       // Slash commands shortcut (text-only; leave any attachments pending).
@@ -577,17 +657,22 @@ export function ChatPane({
             : {}),
         },
       ])
+      setRecoveredTurn(false)
+      setApprovalBusy({})
+      setApprovalErrors({})
+      commandApprovalTurnRef.current = false
       sessionStorage.setItem(`bz_pending_${agentId}`, '1')
       const abort = new AbortController()
       currentAbortRef.current = abort
       setStreaming(true)
       setThinking(true)
 
+      let terminalFrameReceived = false
       try {
         const res = await fetch(`/api/agents/${encodeURIComponent(agentId)}/chat`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ message: text, attachments: atts }),
+          body: JSON.stringify(interactiveChatRequest(text, atts)),
           signal: abort.signal,
         })
         if (res.status === 202) {
@@ -630,12 +715,15 @@ export function ChatPane({
             } catch {
               continue
             }
+            if (frame.kind === 'done' || frame.kind === 'fatal') terminalFrameReceived = true
             handleFrame(frame)
           }
         }
         if (buffer.trim()) {
           try {
-            handleFrame(JSON.parse(buffer) as ChatFrame)
+            const frame = JSON.parse(buffer) as ChatFrame
+            if (frame.kind === 'done' || frame.kind === 'fatal') terminalFrameReceived = true
+            handleFrame(frame)
           } catch {}
         }
         await refreshKnownHead()
@@ -650,26 +738,45 @@ export function ChatPane({
         }
         sessionStorage.removeItem(`bz_pending_${agentId}`)
       } finally {
-        setThinking(false)
-        setStreaming(false)
-        currentAbortRef.current = null
+        if (currentAgentIdRef.current === agentId && currentAbortRef.current === abort) {
+          if (!terminalFrameReceived && commandApprovalTurnRef.current) {
+            setRecoveredTurn(true)
+          }
+          setThinking(false)
+          setStreaming(false)
+          currentAbortRef.current = null
+        }
       }
     },
     // biome-ignore lint/correctness/useExhaustiveDependencies: stable refs intentional
-    [agentId, editIdx, serverMessages, streaming, attachments],
+    [agentId, editIdx, serverMessages, turnBusy, attachments],
   )
 
   function handleFrame(frame: ChatFrame) {
+    if (currentAgentIdRef.current !== agentId) return
     if (frame.kind === 'fatal') {
+      commandApprovalTurnRef.current = false
       setLiveEntries((prev) => [
-        ...prev,
+        ...prev.map((entry) =>
+          entry.type === 'command_approval' && entry.approval.status === 'pending'
+            ? {
+                type: 'command_approval' as const,
+                approval: { ...entry.approval, status: 'cancelled' as const },
+              }
+            : entry,
+        ),
         { type: 'error', content: `[fatal] ${frame.error}` },
       ])
+      setRecoveredTurn(false)
       return
     }
     if (frame.kind === 'done') {
+      commandApprovalTurnRef.current = false
       setServerMessages(frame.messages)
       setLiveEntries([])
+      setRecoveredTurn(false)
+      setApprovalBusy({})
+      setApprovalErrors({})
       return
     }
     if (frame.kind !== 'event') return
@@ -702,6 +809,16 @@ export function ChatPane({
         }
         return next
       })
+      return
+    }
+    if (ev.type === 'command_approval') {
+      // The chat endpoint is Agent-scoped. Keep a defensive client-side check
+      // too so a malformed frame can never render an actionable card for a
+      // different Agent.
+      if (ev.approval.agentId !== agentId) return
+      commandApprovalTurnRef.current = true
+      setThinking(ev.approval.status !== 'pending' && ev.approval.status !== 'cancelled')
+      setLiveEntries((entries) => upsertCommandApprovalEntry(entries, ev.approval))
       return
     }
     if (ev.type === 'tool_call' || ev.type === 'tool_result' || ev.type === 'tool_error') {
@@ -740,16 +857,115 @@ export function ChatPane({
     }
   }
 
+  async function reconcileCommandApproval(approvalId: string): Promise<CommandApproval | null> {
+    if (currentAgentIdRef.current !== agentId) return null
+    try {
+      const response = await fetch(shellApprovalsUrl(agentId))
+      if (!response.ok) return null
+      const body = (await response.json()) as ListCommandApprovalsResponse
+      if (currentAgentIdRef.current !== agentId) return null
+      const approval = body.approvals.find(
+        (item) => item.id === approvalId && item.agentId === agentId,
+      )
+      if (approval) {
+        setLiveEntries((entries) => upsertCommandApprovalEntry(entries, approval))
+      }
+      return approval ?? null
+    } catch {
+      return null
+    }
+  }
+
+  async function decideCommandApproval(
+    approval: CommandApproval,
+    decision: 'allow' | 'deny',
+  ) {
+    if (approval.agentId !== agentId || approval.status !== 'pending') return
+    setApprovalBusy((current) => ({ ...current, [approval.id]: true }))
+    setApprovalErrors((current) => {
+      const next = { ...current }
+      delete next[approval.id]
+      return next
+    })
+    try {
+      const response = await fetch(`/api/shell-approvals/${encodeURIComponent(approval.id)}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ decision }),
+      })
+      const body = (await response.json().catch(() => null)) as
+        | (CommandApprovalDecisionResponse & { error?: string })
+        | null
+      if (currentAgentIdRef.current !== agentId) return
+      if (body?.approval?.agentId === agentId) {
+        setLiveEntries((entries) => upsertCommandApprovalEntry(entries, body.approval))
+      }
+      if (!response.ok) {
+        const message = body?.error ?? `Decision failed (${response.status})`
+        const terminalStatus = commandApprovalStatusFromConflict(message)
+        if (terminalStatus) {
+          setLiveEntries((entries) =>
+            upsertCommandApprovalEntry(entries, { ...approval, status: terminalStatus }),
+          )
+          return
+        }
+        throw new Error(message)
+      }
+    } catch (error) {
+      // The daemon may have committed the one-shot decision before the network
+      // response was lost. Reconcile before offering a retry so Allow can never
+      // look pending after it has already started the command.
+      const reconciled = await reconcileCommandApproval(approval.id)
+      if (currentAgentIdRef.current !== agentId) return
+      if (!reconciled || reconciled.status === 'pending') {
+        setApprovalErrors((current) => ({
+          ...current,
+          [approval.id]: error instanceof Error ? error.message : String(error),
+        }))
+      }
+    } finally {
+      if (currentAgentIdRef.current === agentId) {
+        setApprovalBusy((current) => ({ ...current, [approval.id]: false }))
+      }
+    }
+  }
+
   async function cancel() {
+    const hasLocalStream = currentAbortRef.current !== null
     try {
       const res = await fetch(`/api/agents/${encodeURIComponent(agentId)}/cancel`, {
         method: 'POST',
       })
-      if (res.ok || res.status === 204) return
+      if (currentAgentIdRef.current !== agentId) return
+      if (res.ok || res.status === 204) {
+        if (!hasLocalStream) {
+          commandApprovalTurnRef.current = false
+          setLiveEntries((entries) =>
+            entries.map((entry) =>
+              entry.type === 'command_approval' && entry.approval.status === 'pending'
+                ? {
+                    type: 'command_approval',
+                    approval: { ...entry.approval, status: 'cancelled' },
+                  }
+                : entry,
+            ),
+          )
+          setRecoveredTurn(false)
+        }
+        return
+      }
     } catch {
       // fall through to local fetch abort
     }
-    currentAbortRef.current?.abort()
+    if (currentAgentIdRef.current !== agentId) return
+    if (hasLocalStream) {
+      currentAbortRef.current?.abort()
+    } else {
+      setLiveEntries((entries) => [
+        ...entries,
+        { type: 'error', content: '[cancel failed] could not reach the active turn' },
+      ])
+    }
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -765,7 +981,7 @@ export function ChatPane({
   // count. Writing to a ref during render is supported by React.
   visibleEntryCountRef.current = baseEntries.length + liveEntries.length
   const lastUserIdx = (() => {
-    if (liveEntries.length > 0 || streaming) return -1
+    if (liveEntries.length > 0 || turnBusy) return -1
     for (let i = baseEntries.length - 1; i >= 0; i--) {
       if (baseEntries[i]?.type === 'user') return i
     }
@@ -826,7 +1042,11 @@ export function ChatPane({
             className="h-2 w-2 flex-none rounded-full bg-sapphire"
             aria-hidden="true"
           />
-          <span className="flex-1">new activity from another source — reload to see it</span>
+          <span className="flex-1">
+            {recoveredTurn
+              ? 'the recovered turn has new activity — reload to see it'
+              : 'new activity from another source — reload to see it'}
+          </span>
           <button
             type="button"
             onClick={() => window.location.reload()}
@@ -870,6 +1090,7 @@ export function ChatPane({
                 <Bubble
                   key={`y-${sb.id}`}
                   entry={{ type: 'system', content: sb.content }}
+                  onCommandApprovalDecision={decideCommandApproval}
                 />,
               )
               sysIdx++
@@ -885,13 +1106,36 @@ export function ChatPane({
                 isLastUser={i === lastUserIdx && editIdx === null}
                 isWillDrop={willDropFromIdx !== -1 && i >= willDropFromIdx}
                 onEdit={enterEditMode}
+                onCommandApprovalDecision={decideCommandApproval}
+                commandApprovalBusy={
+                  entry.type === 'command_approval' && Boolean(approvalBusy[entry.approval.id])
+                }
+                commandApprovalError={
+                  entry.type === 'command_approval'
+                    ? approvalErrors[entry.approval.id]
+                    : undefined
+                }
               />,
             )
             flushSysUpTo(i + 1)
           }
           for (let i = 0; i < liveEntries.length; i++) {
             const entry = liveEntries[i] as RenderEntry
-            out.push(<Bubble key={`l-${i}`} entry={entry} />)
+            out.push(
+              <Bubble
+                key={`l-${i}`}
+                entry={entry}
+                onCommandApprovalDecision={decideCommandApproval}
+                commandApprovalBusy={
+                  entry.type === 'command_approval' && Boolean(approvalBusy[entry.approval.id])
+                }
+                commandApprovalError={
+                  entry.type === 'command_approval'
+                    ? approvalErrors[entry.approval.id]
+                    : undefined
+                }
+              />,
+            )
             flushSysUpTo(baseEntries.length + i + 1)
           }
           // Anchors past the current real-entry count (e.g. after edit-mode
@@ -906,6 +1150,7 @@ export function ChatPane({
               <Bubble
                 key={`y-${sb.id}`}
                 entry={{ type: 'system', content: sb.content }}
+                onCommandApprovalDecision={decideCommandApproval}
               />,
             )
             sysIdx++
@@ -996,7 +1241,7 @@ export function ChatPane({
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
-          disabled={streaming}
+          disabled={turnBusy}
           title="attach images or files"
           aria-label="attach files"
           className="rounded-md border-[1.5px] border-frost bg-snow px-3 py-2 text-[1em] text-mocha transition-colors hover:border-sapphire hover:text-sapphire disabled:cursor-not-allowed disabled:opacity-50"
@@ -1010,7 +1255,7 @@ export function ChatPane({
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={onKeyDown}
           onPaste={onPaste}
-          disabled={streaming}
+          disabled={turnBusy}
           placeholder="say something… (Shift+Enter for newline; paste or 📎 to attach images/files)"
           autoComplete="off"
           className="max-h-[200px] min-h-[2.4rem] flex-1 resize-none overflow-y-auto rounded-md border-[1.5px] border-frost bg-snow px-3 py-2 text-[0.93em] leading-[1.45] text-chocolate outline-none transition-colors focus:border-sapphire focus:shadow-[0_0_0_3px_var(--color-sapphire-glow)]"
@@ -1018,13 +1263,13 @@ export function ChatPane({
         <button
           type="submit"
           disabled={
-            streaming || (!input.trim() && attachments.length === 0)
+            turnBusy || (!input.trim() && attachments.length === 0)
           }
           className="rounded-md bg-sapphire px-4 py-2 text-[0.92em] font-semibold text-snow transition-colors hover:bg-sapphire-deep disabled:cursor-not-allowed disabled:opacity-50"
         >
           send
         </button>
-        {streaming && (
+        {turnBusy && (
           <button
             type="button"
             onClick={cancel}
@@ -1043,9 +1288,23 @@ interface BubbleProps {
   isLastUser?: boolean
   isWillDrop?: boolean
   onEdit?: () => void
+  onCommandApprovalDecision?: (
+    approval: CommandApproval,
+    decision: 'allow' | 'deny',
+  ) => void
+  commandApprovalBusy?: boolean
+  commandApprovalError?: string
 }
 
-function Bubble({ entry, isLastUser, isWillDrop, onEdit }: BubbleProps) {
+function Bubble({
+  entry,
+  isLastUser,
+  isWillDrop,
+  onEdit,
+  onCommandApprovalDecision,
+  commandApprovalBusy,
+  commandApprovalError,
+}: BubbleProps) {
   const dropCls = isWillDrop ? 'opacity-40 [&_.bubble-content]:line-through' : ''
   if (entry.type === 'user') {
     if (entry.content.startsWith(INBOX_WAKE_PREFIX)) {
@@ -1193,6 +1452,16 @@ function Bubble({ entry, isLastUser, isWillDrop, onEdit }: BubbleProps) {
       </div>
     )
   }
+  if (entry.type === 'command_approval') {
+    return (
+      <CommandApprovalCard
+        approval={entry.approval}
+        busy={commandApprovalBusy}
+        error={commandApprovalError}
+        onDecision={onCommandApprovalDecision}
+      />
+    )
+  }
   if (entry.type === 'system') {
     return (
       <div className={`my-3 rounded-r-sm border-l-[3px] border-sapphire bg-sapphire-glow px-3 py-1 font-mono text-[0.88em] text-sapphire-deep ${dropCls}`}>
@@ -1209,6 +1478,128 @@ function Bubble({ entry, isLastUser, isWillDrop, onEdit }: BubbleProps) {
     )
   }
   return null
+}
+
+export function CommandApprovalCard({
+  approval,
+  busy = false,
+  error,
+  onDecision,
+}: {
+  approval: CommandApproval
+  busy?: boolean
+  error?: string
+  onDecision?: (approval: CommandApproval, decision: 'allow' | 'deny') => void
+}) {
+  const pending = approval.status === 'pending'
+
+  return (
+    <section
+      className="my-3 rounded-lg border border-danger/50 bg-danger/5 p-4 text-chocolate"
+      aria-label="Shell command approval"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <p className="m-0 text-[0.72em] font-semibold uppercase tracking-wider text-danger">
+            Shell command approval
+          </p>
+          <h2 className="m-0 mt-1 font-body text-[0.95em] font-semibold">
+            {pending ? 'A risky command is waiting for you' : 'Command decision recorded'}
+          </h2>
+        </div>
+        <span className="rounded-full border border-danger/30 px-2 py-0.5 text-[0.75em] font-semibold uppercase tracking-wide text-danger">
+          {approval.status.replaceAll('_', ' ')}
+        </span>
+      </div>
+
+      <pre className="mt-3 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-md border border-fawn bg-snow p-3 font-mono text-[0.82em] leading-[1.45] text-charcoal">
+        {approval.command}
+      </pre>
+
+      <ul className="mt-3 space-y-1.5 pl-5 text-[0.84em] leading-[1.4] text-mocha">
+        {approval.risks.map((risk) => (
+          <li key={`${risk.code}:${risk.span.start}:${risk.span.end}`}>
+            <span className="font-medium text-chocolate">{risk.message}</span>{' '}
+            <code className="text-[0.9em]">{risk.code}</code>
+          </li>
+        ))}
+      </ul>
+
+      {pending ? (
+        <>
+          <p className="mt-3 text-[0.78em] text-mocha-light">
+            This approval expires{' '}
+            <time dateTime={new Date(approval.expiresAt).toISOString()}>
+              {new Date(approval.expiresAt).toLocaleString()}
+            </time>
+            . Deny blocks only this command; cancel stops the whole turn.
+          </p>
+          {error && (
+            <p role="alert" className="mt-2 rounded-md bg-danger/10 px-3 py-2 text-[0.82em] text-danger">
+              {error}
+            </p>
+          )}
+          {onDecision && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button
+                variant="primary"
+                disabled={busy}
+                onClick={() => onDecision(approval, 'deny')}
+              >
+                Deny
+              </Button>
+              <Button
+                variant="danger"
+                disabled={busy}
+                onClick={() => onDecision(approval, 'allow')}
+              >
+                Allow once
+              </Button>
+            </div>
+          )}
+        </>
+      ) : (
+        <p role="status" className="mt-3 text-[0.84em] font-medium text-mocha">
+          {commandApprovalStatusCopy(approval.status)}
+        </p>
+      )}
+    </section>
+  )
+}
+
+function commandApprovalStatusCopy(status: CommandApproval['status']): string {
+  switch (status) {
+    case 'pending':
+      return 'Waiting for a decision.'
+    case 'allowed':
+      return 'Allowed once — the command may run for this tool call only.'
+    case 'denied':
+      return 'Denied — the command was not run.'
+    case 'auto_denied':
+      return 'Automatically denied — no interactive approval path was available.'
+    case 'expired':
+      return 'Expired — the command was not run.'
+    case 'cancelled':
+      return 'Cancelled — the command was not run.'
+  }
+}
+
+function commandApprovalStatusFromConflict(
+  message: string,
+): Exclude<CommandApproval['status'], 'pending'> | null {
+  const prefix = 'shell approval already decided: '
+  if (!message.startsWith(prefix)) return null
+  const status = message.slice(prefix.length)
+  switch (status) {
+    case 'allowed':
+    case 'denied':
+    case 'auto_denied':
+    case 'expired':
+    case 'cancelled':
+      return status
+    default:
+      return null
+  }
 }
 
 function ToolGroup({ items, dropCls }: { items: ToolItem[]; dropCls: string }) {

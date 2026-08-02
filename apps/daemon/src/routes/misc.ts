@@ -28,6 +28,7 @@ import {
   teamPolicyEnforcementRequested,
 } from '../lib/team-policy-contract.ts'
 import { loadProviderConfigFromEnv } from '../runtime/index.ts'
+import { resolveShellSecurityConfig } from '../runtime/shell/security.ts'
 
 export const miscRouter = new Hono()
 
@@ -123,6 +124,24 @@ miscRouter.get('/health', (c) => {
     ollama: { baseURL: providerConfig.ollama?.baseURL ?? 'http://localhost:11434/v1' },
   }
 
+  let shellSecurity: HealthReport['shellSecurity']
+  try {
+    const shellConfig = resolveShellSecurityConfig(effectiveEnv)
+    shellSecurity = {
+      ok: true,
+      sandboxMode: shellConfig.sandboxMode,
+      approvalMode: shellConfig.approvalMode,
+      sandboxImage: shellConfig.sandboxImage,
+      hostCodingTools: shellConfig.sandboxMode === 'off',
+      network: shellConfig.sandboxMode === 'docker' ? 'none' : 'host',
+    }
+  } catch (err) {
+    shellSecurity = {
+      ok: false,
+      error: err instanceof Error ? err.message : String(err),
+    }
+  }
+
   const report: HealthReport = {
     ok:
       pathChecks.home &&
@@ -132,7 +151,8 @@ miscRouter.get('/health', (c) => {
       pathChecks.agents &&
       pathChecks.skills &&
       (database === null || database.ok) &&
-      parseErrors === 0,
+      parseErrors === 0 &&
+      shellSecurity.ok,
     home: paths.home,
     paths: pathChecks,
     database,
@@ -152,6 +172,7 @@ miscRouter.get('/health', (c) => {
       enabled: process.env.BAZILION_SCHEDULER !== 'off',
       tickMs: Number(process.env.BAZILION_SCHEDULER_TICK_MS ?? 5_000),
     },
+    shellSecurity,
     teamPolicyManagement: {
       contractVersion: TEAM_POLICY_MANAGEMENT_CONTRACT_VERSION,
       enforcementRequested: teamPolicyEnforcementRequested(),

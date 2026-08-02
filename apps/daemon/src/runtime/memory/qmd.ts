@@ -1,13 +1,18 @@
+import type { Stats } from 'node:fs'
 import {
-  existsSync,
+  closeSync,
+  constants,
+  fstatSync,
+  lstatSync,
   mkdirSync,
+  openSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
-  statSync,
   writeFileSync,
 } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import type { MemoryEntry, MemoryHit } from '@bazilion/api-types'
 import { createStore, extractSnippet, type QMDStore } from '@tobilu/qmd'
 import type { MemoryBackend } from './types.ts'
@@ -36,28 +41,215 @@ function getStore(dir: string): Promise<QMDStore> {
   return p
 }
 
-function safeKey(root: string, key: string): string {
-  if (key.includes('..') || key.startsWith('/') || key.includes('\0')) {
-    throw new Error(`unsafe memory key: ${key}`)
-  }
-  return join(root, key)
+function unsafeMemoryPath(path: string, reason: string): Error {
+  return new Error(`unsafe memory path "${path}": ${reason}`)
 }
 
-function walkMd(dir: string, prefix: string, out: MemoryEntry[]): void {
-  if (!existsSync(dir)) return
-  for (const e of readdirSync(dir, { withFileTypes: true })) {
-    if (e.name.startsWith('.')) continue // skip .qmd-index.sqlite and friends
-    const full = join(dir, e.name)
-    const key = prefix ? `${prefix}/${e.name}` : e.name
-    if (e.isDirectory()) {
-      walkMd(full, key, out)
-    } else if (e.isFile() && e.name.endsWith('.md')) {
-      const stats = statSync(full)
-      out.push({
-        key,
-        content: readFileSync(full, 'utf8'),
-        updatedAt: stats.mtimeMs,
-      })
+function lstatIfPresent(path: string): Stats | undefined {
+  try {
+    return lstatSync(path)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined
+    throw error
+  }
+}
+
+function isContained(root: string, candidate: string): boolean {
+  const rel = relative(root, candidate)
+  return rel === '' || (!isAbsolute(rel) && rel !== '..' && !rel.startsWith(`..${sep}`))
+}
+
+function assertContained(root: string, candidate: string): void {
+  if (!isContained(root, candidate)) {
+    throw unsafeMemoryPath(candidate, `resolved outside memory root "${root}"`)
+  }
+}
+
+/**
+ * Create and canonicalize the memory root without accepting a final symlink.
+ * A Team itself may intentionally be registered through a symlink, so only
+ * the memory root and descendants are treated as the capability boundary.
+ */
+function initializeSafeRoot(root: string): string {
+  mkdirSync(root, { recursive: true })
+  const info = lstatSync(root)
+  if (info.isSymbolicLink()) {
+    throw unsafeMemoryPath(root, 'memory root must not be a symbolic link')
+  }
+  if (!info.isDirectory()) {
+    throw unsafeMemoryPath(root, 'memory root is not a directory')
+  }
+  return realpathSync(root)
+}
+
+function assertRootUnchanged(root: string, canonicalRoot: string): void {
+  const info = lstatIfPresent(root)
+  if (!info) throw unsafeMemoryPath(root, 'memory root disappeared')
+  if (info.isSymbolicLink()) {
+    throw unsafeMemoryPath(root, 'memory root must not be a symbolic link')
+  }
+  if (!info.isDirectory()) {
+    throw unsafeMemoryPath(root, 'memory root is not a directory')
+  }
+  const current = realpathSync(root)
+  if (relative(canonicalRoot, current) !== '' || relative(current, canonicalRoot) !== '') {
+    throw unsafeMemoryPath(root, 'memory root changed after initialization')
+  }
+}
+
+function safeKey(root: string, key: string): string {
+  const segments = key.split(/[\\/]/)
+  if (
+    key.length === 0 ||
+    key.includes('\0') ||
+    isAbsolute(key) ||
+    /^[A-Za-z]:[\\/]/.test(key) ||
+    key.startsWith('\\\\') ||
+    segments.includes('..')
+  ) {
+    throw new Error(`unsafe memory key: ${key}`)
+  }
+
+  const candidate = resolve(root, key)
+  if (candidate === root) throw new Error(`unsafe memory key: ${key}`)
+  assertContained(root, candidate)
+  return candidate
+}
+
+/**
+ * Inspect every existing component of a key without following symlinks.
+ * Returns the final lstat, or undefined when the final path does not exist.
+ */
+function inspectSafePath(root: string, path: string): Stats | undefined {
+  assertContained(root, path)
+  const rel = relative(root, path)
+  let current = root
+  const components = rel.split(sep).filter(Boolean)
+
+  for (let index = 0; index < components.length; index += 1) {
+    current = join(current, components[index] as string)
+    const info = lstatIfPresent(current)
+    if (!info) return undefined
+    if (info.isSymbolicLink()) {
+      throw unsafeMemoryPath(current, 'symbolic links are not allowed')
+    }
+    if (index < components.length - 1 && !info.isDirectory()) {
+      throw unsafeMemoryPath(current, 'path ancestor is not a directory')
+    }
+    assertContained(root, realpathSync(current))
+  }
+
+  return lstatIfPresent(path)
+}
+
+function ensureSafeParentDirectories(root: string, path: string): void {
+  const parent = dirname(path)
+  assertContained(root, parent)
+  const rel = relative(root, parent)
+  let current = root
+
+  for (const component of rel.split(sep).filter(Boolean)) {
+    current = join(current, component)
+    let info = lstatIfPresent(current)
+    if (!info) {
+      mkdirSync(current)
+      info = lstatSync(current)
+    }
+    if (info.isSymbolicLink()) {
+      throw unsafeMemoryPath(current, 'symbolic-link ancestors are not allowed')
+    }
+    if (!info.isDirectory()) {
+      throw unsafeMemoryPath(current, 'path ancestor is not a directory')
+    }
+    assertContained(root, realpathSync(current))
+  }
+}
+
+function readSafeFile(root: string, path: string): { content: string; stats: Stats } {
+  const info = inspectSafePath(root, path)
+  if (!info) throw new Error(`memory entry not found: ${relative(root, path)}`)
+  if (!info.isFile()) throw unsafeMemoryPath(path, 'memory entry is not a regular file')
+
+  let fd: number | undefined
+  try {
+    fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW)
+    const stats = fstatSync(fd)
+    if (!stats.isFile()) throw unsafeMemoryPath(path, 'memory entry is not a regular file')
+    return { content: readFileSync(fd, 'utf8'), stats }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ELOOP') {
+      throw unsafeMemoryPath(path, 'symbolic links are not allowed')
+    }
+    throw error
+  } finally {
+    if (fd !== undefined) closeSync(fd)
+  }
+}
+
+function writeSafeFile(root: string, path: string, content: string): Stats {
+  ensureSafeParentDirectories(root, path)
+  const existing = inspectSafePath(root, path)
+  if (existing?.isSymbolicLink()) {
+    throw unsafeMemoryPath(path, 'symbolic links are not allowed')
+  }
+  if (existing && !existing.isFile()) {
+    throw unsafeMemoryPath(path, 'memory entry is not a regular file')
+  }
+
+  let fd: number | undefined
+  try {
+    fd = openSync(
+      path,
+      constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | constants.O_NOFOLLOW,
+      0o666,
+    )
+    const stats = fstatSync(fd)
+    if (!stats.isFile()) throw unsafeMemoryPath(path, 'memory entry is not a regular file')
+    writeFileSync(fd, content)
+    return fstatSync(fd)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ELOOP') {
+      throw unsafeMemoryPath(path, 'symbolic links are not allowed')
+    }
+    throw error
+  } finally {
+    if (fd !== undefined) closeSync(fd)
+  }
+}
+
+function assertSafeTree(root: string, dir = root): void {
+  assertContained(root, realpathSync(dir))
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name)
+    const info = lstatSync(full)
+    if (info.isSymbolicLink()) {
+      throw unsafeMemoryPath(full, 'symbolic links are not allowed in memory storage')
+    }
+    if (info.isDirectory()) {
+      assertSafeTree(root, full)
+    } else if (!info.isFile()) {
+      throw unsafeMemoryPath(full, 'special files are not allowed in memory storage')
+    }
+  }
+}
+
+function walkMd(root: string, dir: string, prefix: string, out: MemoryEntry[]): void {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name)
+    const info = lstatSync(full)
+    if (info.isSymbolicLink()) {
+      throw unsafeMemoryPath(full, 'symbolic links are not allowed in memory storage')
+    }
+    if (entry.name.startsWith('.')) continue // skip .qmd-index.sqlite and friends
+
+    const key = prefix ? `${prefix}/${entry.name}` : entry.name
+    if (info.isDirectory()) {
+      walkMd(root, full, key, out)
+    } else if (info.isFile() && entry.name.endsWith('.md')) {
+      const { content, stats } = readSafeFile(root, full)
+      out.push({ key, content, updatedAt: stats.mtimeMs })
+    } else if (!info.isFile()) {
+      throw unsafeMemoryPath(full, 'special files are not allowed in memory storage')
     }
   }
 }
@@ -72,43 +264,53 @@ function walkMd(dir: string, prefix: string, out: MemoryEntry[]): void {
  * on `node-llama-cpp` and several GB of GGUF models.
  */
 export function qmdBackend(root: string): MemoryBackend {
+  let canonicalRoot: string | undefined
+
+  const safeRoot = (): string => {
+    if (!canonicalRoot) canonicalRoot = initializeSafeRoot(root)
+    else assertRootUnchanged(root, canonicalRoot)
+    return canonicalRoot
+  }
+
   return {
     async init() {
-      mkdirSync(root, { recursive: true })
+      const safe = safeRoot()
+      assertSafeTree(safe)
       // Opening the store + initial scan. update() is idempotent.
-      const store = await getStore(root)
+      const store = await getStore(safe)
       await store.update()
     },
 
     async read(key) {
-      const path = safeKey(root, key)
-      if (!existsSync(path)) {
-        throw new Error(`memory entry not found: ${key}`)
-      }
-      const stats = statSync(path)
+      const safe = safeRoot()
+      const path = safeKey(safe, key)
+      const { content, stats } = readSafeFile(safe, path)
       return {
         key,
-        content: readFileSync(path, 'utf8'),
+        content,
         updatedAt: stats.mtimeMs,
       }
     },
 
     async write(key, content) {
-      const path = safeKey(root, key)
-      mkdirSync(dirname(path), { recursive: true })
-      writeFileSync(path, content)
-      const stats = statSync(path)
+      const safe = safeRoot()
+      assertSafeTree(safe)
+      const path = safeKey(safe, key)
+      const stats = writeSafeFile(safe, path, content)
       // Reindex so the newly-written file is searchable on the next search().
       // update() re-scans the collection; for typical memory sizes (tens of
       // files) this is sub-millisecond.
-      const store = await getStore(root)
+      assertSafeTree(safe)
+      const store = await getStore(safe)
       await store.update()
       return { key, content, updatedAt: stats.mtimeMs }
     },
 
     async search(query, opts) {
       const limit = opts?.limit ?? 10
-      const store = await getStore(root)
+      const safe = safeRoot()
+      assertSafeTree(safe)
+      const store = await getStore(safe)
       const results = await store.searchLex(query, {
         limit,
         collection: COLLECTION_NAME,
@@ -122,13 +324,13 @@ export function qmdBackend(root: string): MemoryBackend {
         const key = r.displayPath.startsWith(prefix)
           ? r.displayPath.slice(prefix.length)
           : r.displayPath
+        const path = safeKey(safe, key)
+        const info = inspectSafePath(safe, path)
+        if (!info) continue
+        if (!info.isFile()) throw unsafeMemoryPath(path, 'search result is not a regular file')
         let content = r.body ?? ''
         if (!content) {
-          try {
-            content = readFileSync(join(root, key), 'utf8')
-          } catch {
-            content = ''
-          }
+          content = readSafeFile(safe, path).content
         }
         const snippet = extractSnippet(content, query).snippet
         hits.push({ key, snippet, score: r.score })
@@ -137,15 +339,24 @@ export function qmdBackend(root: string): MemoryBackend {
     },
 
     async list() {
+      const safe = safeRoot()
+      assertSafeTree(safe)
       const out: MemoryEntry[] = []
-      walkMd(root, '', out)
+      walkMd(safe, safe, '', out)
       return out.sort((a, b) => a.key.localeCompare(b.key))
     },
 
     async remove(key) {
-      const path = safeKey(root, key)
-      if (existsSync(path)) rmSync(path)
-      const store = await getStore(root)
+      const safe = safeRoot()
+      assertSafeTree(safe)
+      const path = safeKey(safe, key)
+      const info = inspectSafePath(safe, path)
+      if (info) {
+        if (!info.isFile()) throw unsafeMemoryPath(path, 'memory entry is not a regular file')
+        rmSync(path)
+      }
+      assertSafeTree(safe)
+      const store = await getStore(safe)
       await store.update()
     },
   }

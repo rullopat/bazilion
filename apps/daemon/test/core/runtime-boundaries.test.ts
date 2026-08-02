@@ -226,7 +226,7 @@ test('same scheduler occurrence is claimed once under concurrent-tick replay', (
         starts++
       },
     }),
-  ).toBe(true)
+  ).toEqual({ kind: 'claimed' })
   expect(
     claimSchedulerTrigger(env.db, {
       triggerId: trigger.id,
@@ -236,7 +236,7 @@ test('same scheduler occurrence is claimed once under concurrent-tick replay', (
         starts++
       },
     }),
-  ).toBe(false)
+  ).toEqual({ kind: 'already_claimed' })
   expect(starts).toBe(1)
 })
 

@@ -1,5 +1,10 @@
 import { randomUUID } from 'node:crypto'
-import type { ChatFrame, CommunicationApproval, Message } from '@bazilion/api-types'
+import type {
+  ChatFrame,
+  CommunicationApproval,
+  CommunicationApprovalDetail,
+  Message,
+} from '@bazilion/api-types'
 import {
   type AuthorizationInput,
   type AuthorizationResult,
@@ -301,51 +306,106 @@ export function deliverableReplies(db: BazilionDb, agentId: string, replyTo: str
   return deliverableInbox(db, agentId, false).filter((message) => message.replyTo === replyTo)
 }
 
+export type SchedulerTriggerClaim =
+  | { kind: 'claimed' }
+  | { kind: 'already_claimed' }
+  | { kind: 'approval_pending'; approval: CommunicationApproval }
+  | { kind: 'approval_terminal'; approval: CommunicationApproval; reason: string }
+
 export function claimSchedulerTrigger(
   db: BazilionDb,
   input: {
+    dispatchId?: string
     triggerId: string
     agentId: string
     occurrence: number
     materialized?: boolean
     onAllowed?: () => void
   },
-): boolean {
+): SchedulerTriggerClaim {
+  const attempt: CommunicationAttempt = {
+    origin: 'scheduler_trigger',
+    attemptKind: 'scheduler_trigger',
+    attemptId: `${input.triggerId}:${input.occurrence}`,
+  }
+  const existingApproval = communicationApprovalRepo.getByAttempt(
+    db,
+    attempt.attemptKind,
+    attempt.attemptId,
+    true,
+  ) as CommunicationApprovalDetail | null
+  const existingPayload = existingApproval?.payload as
+    | {
+        dispatchId?: unknown
+        triggerId?: unknown
+        occurrence?: unknown
+        agentId?: unknown
+        message?: unknown
+      }
+    | undefined
+  if (
+    existingApproval &&
+    (existingApproval.operation !== 'scheduler_trigger' ||
+      existingApproval.payloadKind !== 'scheduler_trigger' ||
+      !existingPayload ||
+      existingPayload.dispatchId !== input.dispatchId ||
+      existingPayload.triggerId !== input.triggerId ||
+      existingPayload.occurrence !== input.occurrence ||
+      existingPayload.agentId !== input.agentId ||
+      typeof existingPayload.message !== 'string')
+  ) {
+    return {
+      kind: 'approval_terminal',
+      approval: existingApproval,
+      reason: 'scheduler approval does not match the durable occurrence',
+    }
+  }
+  if (existingApproval && ['pending', 'approved', 'delivering'].includes(existingApproval.status)) {
+    return { kind: 'approval_pending', approval: existingApproval }
+  }
+  if (existingApproval && existingApproval.status !== 'delivered') {
+    return {
+      kind: 'approval_terminal',
+      approval: existingApproval,
+      reason:
+        existingApproval.deliveryError ??
+        existingApproval.decisionReason ??
+        `scheduler approval ${existingApproval.status}`,
+    }
+  }
+
   if (!teamPolicyEnforcementEnabled()) {
     return db.raw.transaction(() => {
       const current = triggerRepo.get(db, input.triggerId)
       if (!current) throw new Error(`trigger not found: ${input.triggerId}`)
       if (
+        !input.materialized &&
         current.lastFiredAt !== null &&
-        (current.lastFiredAt > input.occurrence ||
-          (!input.materialized && current.lastFiredAt === input.occurrence))
+        current.lastFiredAt >= input.occurrence
       ) {
-        return false
+        return { kind: 'already_claimed' as const }
       }
       if (current.lastFiredAt === null || current.lastFiredAt < input.occurrence) {
         triggerRepo.markFired(db, input.triggerId, input.occurrence)
       }
       input.onAllowed?.()
-      return true
+      communicationDecisionMetrics.allowed++
+      return { kind: 'claimed' as const }
     })()
-  }
-  const attempt: CommunicationAttempt = {
-    origin: 'scheduler_trigger',
-    attemptKind: 'scheduler_trigger',
-    attemptId: `${input.triggerId}:${input.occurrence}`,
   }
   const outcome = db.raw.transaction(
     (): {
       result: AuthorizationResult
       claimed: boolean
       approval?: { authorization: AuthorizationResult; input: AuthorizationInput; message: string }
+      invalidApproval?: string
     } => {
       const current = triggerRepo.get(db, input.triggerId)
       if (!current) throw new Error(`trigger not found: ${input.triggerId}`)
       if (
+        !input.materialized &&
         current.lastFiredAt !== null &&
-        (current.lastFiredAt > input.occurrence ||
-          (!input.materialized && current.lastFiredAt === input.occurrence))
+        current.lastFiredAt >= input.occurrence
       ) {
         return {
           claimed: false,
@@ -377,7 +437,32 @@ export function claimSchedulerTrigger(
           result: recordDenial(db, authorization, 'scheduler_trigger', result),
         }
       }
+      if (existingApproval?.status === 'delivered' && result.decision !== 'approval_required') {
+        return {
+          claimed: false,
+          result,
+          invalidApproval: 'approved scheduler policy or membership changed',
+        }
+      }
       if (result.decision === 'approval_required') {
+        if (existingApproval?.status === 'delivered') {
+          const attemptMatches = existingPayload?.message === current.message
+          const refsMatch =
+            JSON.stringify(result.policyRefs) === JSON.stringify(existingApproval.policyRefs) &&
+            JSON.stringify(result.requiredEdgeIds) ===
+              JSON.stringify(existingApproval.requiredEdgeIds)
+          if (!attemptMatches || !refsMatch) {
+            return {
+              claimed: false,
+              result,
+              invalidApproval: !attemptMatches
+                ? 'approved scheduler occurrence changed'
+                : 'approved scheduler policy or membership changed',
+            }
+          }
+          input.onAllowed?.()
+          return { claimed: true, result }
+        }
         return {
           claimed: true,
           result,
@@ -392,24 +477,48 @@ export function claimSchedulerTrigger(
     observeDenial(outcome.result, attempt)
     throw new CommunicationDeniedError(outcome.result, attempt.attemptKind, attempt.attemptId)
   }
+  if (outcome.invalidApproval && existingApproval) {
+    return {
+      kind: 'approval_terminal',
+      approval: existingApproval,
+      reason: outcome.invalidApproval,
+    }
+  }
   if (outcome.approval) {
-    communicationApprovalRepo.request(
+    const approval = communicationApprovalRepo.request(
       db,
       outcome.approval.input,
       'scheduler_trigger',
       outcome.approval.authorization,
-      'agent_turn',
+      'scheduler_trigger',
       {
+        dispatchId: input.dispatchId,
+        triggerId: input.triggerId,
+        occurrence: input.occurrence,
         agentId: input.agentId,
         message: outcome.approval.message,
-        attachments: [],
       },
       { requester: 'scheduler' },
     )
-    return false
+    if (['pending', 'approved', 'delivering'].includes(approval.status)) {
+      return { kind: 'approval_pending', approval }
+    }
+    if (approval.status === 'delivered') {
+      // A concurrent approval completed after our initial read. Defer this
+      // provisional claim; the next scheduler pass will validate and execute it.
+      return { kind: 'approval_pending', approval }
+    }
+    return {
+      kind: 'approval_terminal',
+      approval,
+      reason:
+        approval.deliveryError ??
+        approval.decisionReason ??
+        `scheduler approval ${approval.status}`,
+    }
   }
   if (outcome.claimed) communicationDecisionMetrics.allowed++
-  return outcome.claimed
+  return outcome.claimed ? { kind: 'claimed' } : { kind: 'already_claimed' }
 }
 
 export function claimDeliverableInbox(

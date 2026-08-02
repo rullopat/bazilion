@@ -1,4 +1,7 @@
+import { existsSync } from 'node:fs'
 import { createServer, type ServerResponse } from 'node:http'
+import { join } from 'node:path'
+import type { ChatFrame, CommandApproval } from '@bazilion/api-types'
 import { afterAll, beforeAll, beforeEach, expect, test } from 'vitest'
 import { openDb, resolveAgent, resolvePaths } from '../../daemon/src/core/index.ts'
 import { countSessionMessagesForTest, seedSessionForTest } from '../../daemon/src/runtime/index.ts'
@@ -182,6 +185,294 @@ test('agent chat --message round-trips with the provider', async () => {
   const r = await server.cli(['agent', 'chat', agentId, '--message', 'hi'])
   expect(r.exitCode).toBe(0)
   expect(r.stdout).toContain('hello from mock')
+})
+
+test('chat rejects an unknown approval capability before starting a turn', async () => {
+  const agentId = await spawnLmStudioAgent()
+  const response = await fetch(`${server.url}/api/agents/${agentId}/chat`, {
+    method: 'POST',
+    headers: authHeaders(true),
+    body: JSON.stringify({ message: 'hello', bashApprovalMode: 'maybe' }),
+  })
+
+  expect(response.status).toBe(400)
+  expect(await response.json()).toEqual({
+    error: 'bashApprovalMode must be "interactive" or "auto_deny"',
+  })
+  expect(mock.callCount()).toBe(0)
+})
+
+function resolvedAgent(agentId: string) {
+  const paths = resolvePaths(server.home)
+  const db = openDb(paths.db)
+  try {
+    return resolveAgent(db, paths, agentId)
+  } finally {
+    db.close()
+  }
+}
+
+function authHeaders(json = false): Record<string, string> {
+  return {
+    authorization: `Bearer ${server.token}`,
+    origin: server.url,
+    ...(json ? { 'content-type': 'application/json' } : {}),
+  }
+}
+
+async function runInteractiveBashDecision(decision: 'allow' | 'deny'): Promise<{
+  frames: ChatFrame[]
+  approval: CommandApproval
+  proofPath: string
+}> {
+  await server.cli(['config', 'set', 'BAZILION_BASH_APPROVAL', 'dangerous'])
+  const agentId = await spawnLmStudioAgent()
+  const agent = resolvedAgent(agentId)
+  const proofName = `approval-${decision}-proof.txt`
+  const proofPath = join(agent.team.path, proofName)
+  const command = `cat ~/.ssh/id_rsa >/dev/null 2>&1; printf executed > ${proofName}`
+  mock.push([
+    {
+      choices: [
+        {
+          message: {
+            role: 'assistant',
+            content: null,
+            tool_calls: [
+              {
+                id: `call_${decision}`,
+                type: 'function',
+                function: { name: 'bash', arguments: JSON.stringify({ command }) },
+              },
+            ],
+          },
+          finish_reason: 'tool_calls',
+        },
+      ],
+    },
+    {
+      choices: [
+        {
+          message: { role: 'assistant', content: `command ${decision} flow complete` },
+          finish_reason: 'stop',
+        },
+      ],
+    },
+  ])
+
+  const response = await fetch(`${server.url}/api/agents/${agentId}/chat`, {
+    method: 'POST',
+    headers: authHeaders(true),
+    body: JSON.stringify({ message: 'run the requested command', bashApprovalMode: 'interactive' }),
+  })
+  expect(response.status).toBe(200)
+  expect(response.body).not.toBeNull()
+
+  const frames: ChatFrame[] = []
+  let approval: CommandApproval | undefined
+  const reader = response.body?.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  while (reader) {
+    const chunk = await reader.read()
+    if (chunk.done) break
+    buffer += decoder.decode(chunk.value, { stream: true })
+    const lines = buffer.split('\n')
+    buffer = lines.pop() ?? ''
+    for (const line of lines) {
+      if (!line.trim()) continue
+      const frame = JSON.parse(line) as ChatFrame
+      frames.push(frame)
+      if (
+        frame.kind === 'event' &&
+        frame.event.type === 'command_approval' &&
+        frame.event.approval.status === 'pending'
+      ) {
+        approval = frame.event.approval
+        const unauthenticated = await fetch(
+          `${server.url}/api/shell-approvals?agentId=${encodeURIComponent(agentId)}`,
+        )
+        expect(unauthenticated.status).toBe(401)
+        const recovery = await fetch(
+          `${server.url}/api/shell-approvals?agentId=${encodeURIComponent(agentId)}`,
+          { headers: authHeaders() },
+        )
+        expect(recovery.status).toBe(200)
+        expect(await recovery.json()).toMatchObject({
+          approvals: [{ id: approval.id, status: 'pending' }],
+        })
+
+        const approvalResponse = await fetch(
+          `${server.url}/api/shell-approvals/${encodeURIComponent(approval.id)}`,
+          {
+            method: 'POST',
+            headers: authHeaders(true),
+            body: JSON.stringify({ decision }),
+          },
+        )
+        expect(approvalResponse.status).toBe(200)
+        const retry = await fetch(
+          `${server.url}/api/shell-approvals/${encodeURIComponent(approval.id)}`,
+          {
+            method: 'POST',
+            headers: authHeaders(true),
+            body: JSON.stringify({ decision }),
+          },
+        )
+        expect(retry.status).toBe(200)
+      }
+    }
+  }
+  if (buffer.trim()) frames.push(JSON.parse(buffer) as ChatFrame)
+  if (!approval) throw new Error('interactive turn did not request command approval')
+  return { frames, approval, proofPath }
+}
+
+test('interactive HTTP chat pauses a risky command and an allow decision executes it once', async () => {
+  const { frames, approval, proofPath } = await runInteractiveBashDecision('allow')
+
+  expect(
+    frames.some(
+      (frame) =>
+        frame.kind === 'event' &&
+        frame.event.type === 'command_approval' &&
+        frame.event.approval.id === approval.id &&
+        frame.event.approval.status === 'allowed',
+    ),
+  ).toBe(true)
+  expect(existsSync(proofPath)).toBe(true)
+  expect(frames.at(-1)?.kind).toBe('done')
+})
+
+test('interactive HTTP denial is streamed to the turn and never executes the command', async () => {
+  const { frames, approval, proofPath } = await runInteractiveBashDecision('deny')
+
+  expect(
+    frames.some(
+      (frame) =>
+        frame.kind === 'event' &&
+        frame.event.type === 'command_approval' &&
+        frame.event.approval.id === approval.id &&
+        frame.event.approval.status === 'denied',
+    ),
+  ).toBe(true)
+  expect(frames.some((frame) => frame.kind === 'event' && frame.event.type === 'tool_error')).toBe(
+    true,
+  )
+  expect(existsSync(proofPath)).toBe(false)
+})
+
+test('cancelling a turn releases its pending approval and never executes the command', async () => {
+  await server.cli(['config', 'set', 'BAZILION_BASH_APPROVAL', 'dangerous'])
+  const agentId = await spawnLmStudioAgent()
+  const agent = resolvedAgent(agentId)
+  const proofPath = join(agent.team.path, 'cancelled-approval-proof.txt')
+  mock.push([
+    {
+      choices: [
+        {
+          message: {
+            role: 'assistant',
+            content: null,
+            tool_calls: [
+              {
+                id: 'call_cancelled',
+                type: 'function',
+                function: {
+                  name: 'bash',
+                  arguments: JSON.stringify({
+                    command:
+                      'cat ~/.ssh/id_rsa >/dev/null 2>&1; printf executed > cancelled-approval-proof.txt',
+                  }),
+                },
+              },
+            ],
+          },
+          finish_reason: 'tool_calls',
+        },
+      ],
+    },
+  ])
+
+  const response = await fetch(`${server.url}/api/agents/${agentId}/chat`, {
+    method: 'POST',
+    headers: authHeaders(true),
+    body: JSON.stringify({ message: 'run it', bashApprovalMode: 'interactive' }),
+  })
+  const reader = response.body?.getReader()
+  const decoder = new TextDecoder()
+  let raw = ''
+  let cancelled = false
+  while (reader) {
+    const chunk = await reader.read()
+    if (chunk.done) break
+    raw += decoder.decode(chunk.value, { stream: true })
+    if (!cancelled && raw.includes('"status":"pending"')) {
+      const cancel = await fetch(`${server.url}/api/agents/${agentId}/cancel`, {
+        method: 'POST',
+        headers: authHeaders(),
+      })
+      expect(cancel.status).toBe(204)
+      cancelled = true
+    }
+  }
+
+  expect(cancelled).toBe(true)
+  const pending = await fetch(
+    `${server.url}/api/shell-approvals?agentId=${encodeURIComponent(agentId)}`,
+    { headers: authHeaders() },
+  )
+  expect(await pending.json()).toEqual({ approvals: [] })
+  expect(existsSync(proofPath)).toBe(false)
+})
+
+test('non-TTY CLI turns auto-deny risky bash without waiting for stdin or executing it', async () => {
+  await server.cli(['config', 'set', 'BAZILION_BASH_APPROVAL', 'dangerous'])
+  const agentId = await spawnLmStudioAgent()
+  const agent = resolvedAgent(agentId)
+  const proofPath = join(agent.team.path, 'auto-deny-proof.txt')
+  mock.push([
+    {
+      choices: [
+        {
+          message: {
+            role: 'assistant',
+            content: null,
+            tool_calls: [
+              {
+                id: 'call_auto_deny',
+                type: 'function',
+                function: {
+                  name: 'bash',
+                  arguments: JSON.stringify({
+                    command:
+                      'cat ~/.ssh/id_rsa >/dev/null 2>&1; printf executed > auto-deny-proof.txt',
+                  }),
+                },
+              },
+            ],
+          },
+          finish_reason: 'tool_calls',
+        },
+      ],
+    },
+    {
+      choices: [
+        {
+          message: { role: 'assistant', content: 'the command was blocked' },
+          finish_reason: 'stop',
+        },
+      ],
+    },
+  ])
+
+  const result = await server.cli(['agent', 'chat', agentId, '--message', 'run it'])
+
+  expect(result.exitCode).toBe(0)
+  expect(result.stdout).toMatch(/shell command auto-denied/i)
+  expect(result.stdout).toMatch(/tool error: bash/i)
+  expect(result.stdout).toContain('the command was blocked')
+  expect(existsSync(proofPath)).toBe(false)
 })
 
 test('memory persists across chat invocations', async () => {

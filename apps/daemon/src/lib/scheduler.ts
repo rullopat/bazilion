@@ -3,12 +3,16 @@
 //
 // Each tick does two jobs:
 //
-//   1. Trigger firing. Loads enabled `agent_triggers` rows and fires whichever
-//      are due via `runAgentTurn`. A trigger is "due" when:
+//   1. Scheduled-trigger delivery. Loads enabled `agent_triggers` rows and
+//      materializes whichever occurrences are due. A trigger is "due" when:
 //        - interval: last_fired_at + intervalSec*1000 ≤ now (never-fired
 //          uses created_at as the baseline)
 //        - cron:     current minute's wall-clock matches expression AND
 //          last_fired_at's minute < current minute
+//      Materialization is idempotent on (trigger_id, scheduled_at). While a
+//      trigger has open work, later interval occurrences coalesce. Claimable
+//      dispatches are leased transactionally, deferred while their Agent is
+//      busy, and marked succeeded/retrying/failed after the turn.
 //
 //   2. Inbox auto-delivery (always on). Scans `messages` for recipients
 //      with unread mail. For each idle recipient (not already running /
@@ -19,11 +23,11 @@
 //      `BAZILION_SCHEDULER=off` — there is no separate inbox-only knob
 //      because free inter-agent messaging is a baseline Bazilion promise.
 //
-// Concurrency: each trigger gets an in-memory "firing" guard so a slow turn
-// can't pile up overlapping runs for the same trigger. Auto-delivery shares
-// the same mechanism keyed on `msg-wake:<agentId>`. The DB is still the
-// source of truth for last_fired_at / read_at — we mark *before* kicking the
-// run, so a server restart won't immediately re-fire.
+// Concurrency: each dispatch gets an in-memory "firing" guard so one process
+// cannot claim it twice. Auto-delivery uses the same mechanism keyed on
+// `msg-wake:<agentId>`. The DB remains authoritative: trigger_dispatches owns
+// delivery state and restart recovery, last_fired_at is the occurrence-
+// materialization watermark, and read_at owns inbox-delivery state.
 
 import type { AgentTrigger, Message, TriggerDispatch } from '@bazilion/api-types'
 import {
@@ -43,6 +47,7 @@ import {
 } from './communication.ts'
 import { matchesCron, type ParsedCron, parseCron } from './cron.ts'
 import { getCtx } from './ctx.ts'
+import { turnFrameFailure } from './turn-outcome.ts'
 
 const SCHEDULER_KEY = Symbol.for('bazilion.scheduler')
 const TICK_MS = Number(process.env.BAZILION_SCHEDULER_TICK_MS ?? 5_000)
@@ -133,11 +138,12 @@ async function fireTrigger(dispatch: TriggerDispatch): Promise<void> {
   }
   const controller = new AbortController()
   let registered = false
-  // Mark fired first — if the agent turn fails, we still don't want to loop
-  // on the same trigger every tick. The user will see it in `trigger list`
-  // (last_fired_at updated) and the run will be marked failed.
+  // Revalidate policy for every durable attempt. The occurrence watermark was
+  // advanced when this dispatch was materialized; execution outcome belongs
+  // to this dispatch row, not last_fired_at.
   try {
-    const claimed = claimSchedulerTrigger(ctx.db, {
+    const claim = claimSchedulerTrigger(ctx.db, {
+      dispatchId: claimedDispatch.id,
       triggerId: t.id,
       agentId: t.agentId,
       occurrence: claimedDispatch.scheduledAt,
@@ -147,9 +153,21 @@ async function fireTrigger(dispatch: TriggerDispatch): Promise<void> {
         registered = true
       },
     })
-    if (!claimed) {
+    if (claim.kind === 'already_claimed') {
       releaseLease()
       triggerDispatchRepo.succeed(ctx.db, claimedDispatch.id)
+      s.firing.delete(key)
+      return
+    }
+    if (claim.kind === 'approval_pending') {
+      releaseLease()
+      triggerDispatchRepo.defer(ctx.db, claimedDispatch.id, Date.now() + TICK_MS)
+      s.firing.delete(key)
+      return
+    }
+    if (claim.kind === 'approval_terminal') {
+      releaseLease()
+      triggerDispatchRepo.fail(ctx.db, claimedDispatch.id, claim.reason, { maxAttempts: 1 })
       s.firing.delete(key)
       return
     }
@@ -169,9 +187,8 @@ async function fireTrigger(dispatch: TriggerDispatch): Promise<void> {
   }
   let failure: string | null = null
   try {
-    // Drain the turn; we don't stream to anyone. Errors surface as `fatal`
-    // frames which we log but don't throw — the run row in the DB carries
-    // the real status.
+    // Drain the turn; we don't stream to anyone. The dispatch row carries the
+    // operational outcome, while pi's session JSONL remains the transcript.
     for await (const frame of runAgentTurn(t.agentId, t.message, {
       authorization: {
         origin: 'scheduler_trigger',
@@ -181,17 +198,21 @@ async function fireTrigger(dispatch: TriggerDispatch): Promise<void> {
       acquiredLeaseRelease: releaseLease,
       controller,
       alreadyRegistered: true,
+      bashApprovalMode: 'auto_deny',
     })) {
-      if (frame.kind === 'fatal') {
-        console.error(`[scheduler] trigger ${t.id} fatal:`, frame.error)
-        failure = frame.error
+      const frameFailure = turnFrameFailure(frame)
+      if (frameFailure) {
+        console.error(`[scheduler] trigger ${t.id} failed:`, frameFailure)
+        failure ??= frameFailure
       }
     }
   } catch (err) {
     console.error(`[scheduler] trigger ${t.id} unexpected throw:`, err)
     failure = (err as Error).message
   } finally {
-    if (failure) triggerDispatchRepo.fail(ctx.db, claimedDispatch.id, failure)
+    if (controller.signal.aborted) {
+      triggerDispatchRepo.cancelRunning(ctx.db, claimedDispatch.id, 'agent turn cancelled')
+    } else if (failure) triggerDispatchRepo.fail(ctx.db, claimedDispatch.id, failure)
     else triggerDispatchRepo.succeed(ctx.db, claimedDispatch.id)
     s.firing.delete(key)
   }
@@ -318,6 +339,7 @@ async function fireInboxWake(agentId: string): Promise<void> {
         acquiredLeaseRelease: releaseLease,
         controller,
         alreadyRegistered: true,
+        bashApprovalMode: 'auto_deny',
       })) {
         if (frame.kind === 'fatal') {
           console.error(`[scheduler] inbox wake ${agentId} fatal:`, frame.error)
@@ -364,14 +386,16 @@ async function tick(): Promise<void> {
       triggerRepo.markFired(ctx.db, t.id, occurrence)
     }
   }
+  const work: Promise<void>[] = []
   for (const dispatch of triggerDispatchRepo.listClaimable(ctx.db, now)) {
-    void fireTrigger(dispatch)
+    work.push(fireTrigger(dispatch))
   }
   for (const agentId of recipients) {
     // Same fire-and-forget shape as triggers; `fireInboxWake` internally
     // dedup-gates and bails if the agent already has an active run.
-    void fireInboxWake(agentId)
+    work.push(fireInboxWake(agentId))
   }
+  await Promise.allSettled(work)
 }
 
 export function startScheduler(): void {
@@ -408,4 +432,13 @@ export function _isDueForTest(
   cronCache: Map<string, ParsedCron> = new Map(),
 ): boolean {
   return isDue(t, now, cronCache)
+}
+
+export function _resetSchedulerForTest(): void {
+  const s = state()
+  if (s.timer) clearInterval(s.timer)
+  s.timer = null
+  s.firing.clear()
+  s.cronCache.clear()
+  s.stopped = false
 }

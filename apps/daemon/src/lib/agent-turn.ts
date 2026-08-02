@@ -1,11 +1,14 @@
 import { randomUUID } from 'node:crypto'
-import type { Attachment, ChatFrame } from '@bazilion/api-types'
+import type { Attachment, BashApprovalMode, ChatFrame } from '@bazilion/api-types'
 import { mergeSecretsIntoEnv, providerStateRepo, resolveAgent } from '../core/index.ts'
 import { spawnWorkerTurn } from '../runtime/index.ts'
+import { resolveShellSecurityConfig } from '../runtime/shell/security.ts'
+import { SANDBOX_INPUTS_DIR } from '../runtime/shell/tooling.ts'
 import { registerAgent, unregisterAgent } from './agent-cancel.ts'
 import { acquireAgentLifecycleLease } from './agent-lifecycle-lease.ts'
 import { resolveAgentApiKey } from './api-key.ts'
 import { saveInputFiles } from './attachments.ts'
+import { commandApprovalRegistry } from './bash-approval.ts'
 import { isBrowserEnabled, resolveBrowserConfig } from './browser/config.ts'
 import { createBrowserHost } from './browser/host.ts'
 import { authorizeUserIngress, type CommunicationAttempt } from './communication.ts'
@@ -32,6 +35,8 @@ interface RunAgentTurnOpts {
   acquiredLeaseRelease?: () => void
   /** Scheduler registered the active turn atomically with its durable claim. */
   alreadyRegistered?: boolean
+  /** Missing/internal callers fail closed instead of opening a human wait. */
+  bashApprovalMode?: BashApprovalMode
 }
 
 /**
@@ -41,8 +46,8 @@ interface RunAgentTurnOpts {
  * thin relay that:
  *   - resolves the agent + provider gate + secrets envelope here in the
  *     daemon (the worker no longer holds a SQLite handle of its own),
- *   - spawns the worker with an IPC channel and a `MessagingHost` that
- *     services the inter-agent messaging tools the worker calls back into,
+ *   - spawns the worker with an IPC channel for daemon-owned messaging tools
+ *     and turn-scoped shell approvals,
  *   - forwards stdout frames to the caller and wires cancellation through
  *     the agent-cancel registry.
  */
@@ -89,14 +94,19 @@ export async function* runAgentTurn(
   try {
     // Central attachment classifier: images → vision (passed to pi's prompt),
     // everything else → stored on disk + a path reference appended to the message.
+    const env = mergeSecretsIntoEnv(db, authToken)
+    const shellSecurity = resolveShellSecurityConfig(env)
     const attachments = opts.attachments ?? []
     const images = attachments.filter((a) => a.mimeType.startsWith('image/'))
     const docs = attachments.filter((a) => !a.mimeType.startsWith('image/'))
-    const fileNote = saveInputFiles(agent.agent.dir, docs)
+    const fileNote = saveInputFiles(
+      agent.agent.dir,
+      docs,
+      shellSecurity.sandboxMode === 'docker' ? { referenceDir: SANDBOX_INPUTS_DIR } : {},
+    )
     const message = fileNote ? (rawMessage ? `${rawMessage}\n\n${fileNote}` : fileNote) : rawMessage
 
     const enabledProviders = Array.from(providerStateRepo.listEnabled(db))
-    const env = mergeSecretsIntoEnv(db, authToken)
     const messagingHost = createDbMessagingHost(db)
     const userMdHost = createDbUserMdHost(db, paths)
     // Pre-fetch the API key for OAuth providers (`openai-codex`) before the
@@ -129,6 +139,8 @@ export async function* runAgentTurn(
         browserEnabled,
         mcpTools: mcp?.tools,
         images,
+        turnId: authorization.attemptId,
+        bashApprovalMode: opts.bashApprovalMode ?? 'auto_deny',
       },
       {
         signal: controller.signal,
@@ -137,6 +149,7 @@ export async function* runAgentTurn(
         userMdHost,
         browserHost,
         mcpHost: mcp?.host,
+        bashApprovalHost: commandApprovalRegistry,
       },
     )) {
       // Fire-and-forget Telegram mirror. Mirror failures (bot down, topic

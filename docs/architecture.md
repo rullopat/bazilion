@@ -4,7 +4,7 @@ Comprehensive engineer-to-engineer reference for every component in the monorepo
 
 For the LLM turn loop itself, see `agent-engine.md`. Bazilion is based on [Pi's coding agent](https://www.npmjs.com/package/@earendil-works/pi-coding-agent) as that core engine: Pi owns the session loop, replay, compaction, provider/tool execution, and coding tools. This doc is about the system *around* the engine: the DB, the daemon, the CLI, the subprocess boundary, and the flows that stitch them together.
 
-The HTTP API lives in a standalone Hono daemon (`apps/daemon`, port 4321); the web UI is a TanStack Start app (`apps/web`, port 4322) that calls it. A team is a collaboration context (one filesystem root, one USER.md, one roster, one shared memory) and an agent belongs to exactly one team. Pi's session JSONL files are the canonical transcript — there is no separate `runs` / `events` audit layer. Config + secrets live in two SQLite tables; the only remaining file at the bazilion home root besides `bazilion.db` is `auth.json` (the bootstrap bearer used by both the daemon and the CLI). Workers spawned per turn don't hold a SQLite handle of their own — agent resolution happens in the daemon and live messaging tools round-trip via Node IPC.
+The HTTP API lives in a standalone Hono daemon (`apps/daemon`, port 4321); the web UI is a TanStack Start app (`apps/web`, port 4322) that calls it. A team is a collaboration context (one filesystem root, one USER.md, one roster, one shared memory) and an agent belongs to exactly one team. Pi's session JSONL files are the canonical transcript — there is no separate `runs` / `events` audit layer. Config + secrets live in two SQLite tables; the only remaining file at the bazilion home root besides `bazilion.db` is `auth.json` (the bootstrap bearer used by both the daemon and the CLI). Workers spawned per turn don't hold a SQLite handle of their own — agent resolution happens in the daemon, while daemon-owned tools and turn-scoped shell approval round-trip via Node IPC.
 
 ## 0. Topology at a glance
 
@@ -67,6 +67,7 @@ The HTTP API lives in a standalone Hono daemon (`apps/daemon`, port 4321); the w
   │  ─ providers/{pi-adapter, registry, retry, catalog, types}                │
   │  ─ tools/{registry, memory, messaging, home, web, web-ssrf,               │
   │     web-extract, bootstrap}                                               │
+  │  ─ shell/{security, tooling, docker}                                      │
   │  ─ memory/{qmd, files, types}  ─ auth/openai-codex                        │
   └────────────────────────────────────────────────────────────────────────────┘
                                                  │
@@ -80,7 +81,7 @@ Three processes during a chat: the **web UI** (long-lived Vite/Node), the **daem
 
 Wire boundaries:
 - **CLI ↔ daemon, web UI ↔ daemon**: HTTP with bearer auth (CLI) or cookie translated to bearer by web's `/api/$` reverse proxy (browser). Streaming endpoints emit NDJSON.
-- **Daemon ↔ worker**: stdin (one JSON line: `{agent, message, enabledProviders, apiKey?}`), stdout NDJSON `ChatFrame`, plus a Node IPC channel (fd 3) for the worker's messaging tool callbacks (`process.send({type:'rpc', method, args, id})` ↔ `child.send({type:'rpc-reply', id, ok, result|error})`).
+- **Daemon ↔ worker**: stdin (one JSON line: `{agent, message, enabledProviders, apiKey?, turnId, bashApprovalMode}`), stdout NDJSON `ChatFrame`, plus a Node IPC channel (fd 3) for DB-backed tools and turn-scoped shell approval (`process.send({type:'rpc', method, args, id})` ↔ `child.send({type:'rpc-reply', id, ok, result|error})`).
 
 The `ChatFrame` shape is the same across the worker→daemon boundary and the daemon→client boundary — no translation. Worker stdout → daemon HTTP body → CLI stdout / browser parser.
 
@@ -133,6 +134,7 @@ Uses Node 22's built-in `node:sqlite` (`DatabaseSync`). No `better-sqlite3`, no 
 | `agents` | Running/archived agent instances (`id`, `profile_id`, `name`, `model_override`, `reasoning_level`, `status`, `dir`, `team_id` `ON DELETE RESTRICT`, timestamps). One agent → one team. |
 | `agent_skills` | `(agent_id, skill_name)` — per-agent skill attachments. Cascade on agent delete. |
 | `agent_triggers` | Per-agent wake-ups (`kind='interval' \| 'cron'`, `interval_sec`, `cron_expr`, `message`, `last_fired_at`, `enabled`). |
+| `trigger_dispatches` | Durable delivery state for scheduled occurrences. Unique `(trigger_id, scheduled_at)` materialization plus pending/running/retrying/succeeded/failed/cancelled status, attempt count, lease, retry time, and terminal error metadata. It deliberately contains no prompt, response, tool, or provider-event transcript. |
 | `messages` | Inter-agent mailbox (`id`, `from_agent_id`, `to_agent_id`, `payload`, `reply_to`, `read_at`). FKs do **not** cascade; `agent/delete.ts` nulls inbound `reply_to` and purges rows manually before removing the agent. |
 | `skill_meta` | Import provenance — `(name PK, source, imported_at)`. No trust column — see "Skill model" in AGENTS.md. |
 | `web_tokens` | Per-token access records (hashed). The `bootstrap` row's plaintext lives in `auth.json`; revoking it returns 409 (would lock the operator out). |
@@ -153,7 +155,8 @@ One module per table, each exporting narrow operations. Nothing in a repo opens 
 | `profiles.ts` | CRUD + `profile_default_skills` set ops. |
 | `teams.ts` | CRUD (`insert / get / list / remove`, all taking `paths` to derive the path field) + `setUserMd`. No `getByPath` — slug is the unique key. |
 | `messages.ts` | `send({from, to, payload, replyTo?}) / get / listInbox(agentId, {unread}) / markRead / findReplies(msgId) / drainUnreadForAgent(agentId)` (txn used by the auto-deliver scheduler). |
-| `triggers.ts` | Insert / list per agent / listEnabled (all agents) / markFired (used by scheduler) / setEnabled / delete. |
+| `triggers.ts` | Insert / list per agent / listEnabled (all agents) / advance the occurrence-materialization watermark / setEnabled / delete. Disabling also cancels pending/retrying dispatches. |
+| `triggerDispatches.ts` | Idempotently materialize occurrences / list claimable work / transactionally claim with a lease / defer a busy Agent / succeed / bounded retry or terminal failure / cancel / list recent history. |
 | `skillMeta.ts` | `get / listAll / upsert / remove` — import provenance only. |
 | `webTokens.ts` | Insert (hashes), findActiveByToken, markUsed, revoke, list, delete. |
 | `providerModels.ts` | List / listAll / replace / remove per provider. |
@@ -218,9 +221,10 @@ Flat barrel: `openDb`, `runMigrations`, `resolvePaths`, `spawnAgent`, `resolveAg
 
 See `agent-engine.md` for the full turn-loop walkthrough. Structural summary here:
 
-- **`worker/{entry,spawn,ipc-protocol}.ts`** — subprocess boundary. `spawn.ts:spawnWorkerTurn` is the parent-side generator. `entry.ts` is the child script — reads stdin → runs the turn → emits NDJSON on stdout → on exit calls `process.disconnect()` so the IPC handle doesn't pin the event loop. `ipc-protocol.ts` declares the `MessagingHost` interface, the `IpcRequest`/`IpcReply` shapes, and the `RpcMethod` union (`agentExists`/`sendMessage`/`listInbox`/`markRead`/`findReplies`). Stdio: `['pipe','pipe','inherit','ipc']`. Communication: stdin (1 JSON line in: agent + message + enabledProviders + apiKey) → stdout (NDJSON `ChatFrame`s) + stderr (inherited) + IPC fd (worker → daemon RPC for messaging tools). SIGTERM triggers the child's internal `AbortController`; 3s grace before SIGKILL.
-- **`pi/`** — the Pi engine bridge. `session.ts:createBazilionSession` builds a pi-coding-agent `AgentSession` for an agent (loads/creates the JSONL session file, wires the tool list, picks a provider). This is the core engine seam: Bazilion enters Pi here and then listens to Pi's events. Takes `enabledProviders: Set<string>`, optional `messagingHost: MessagingHost`, optional `apiKey: string` (pre-fetched OAuth token), and optional `refreshApiKey: (provider) => Promise<string>` (mid-turn refresher; daemon-side only). `tools.ts:createBazilionCustomTools` adapts Bazilion's `ToolHandler` shape to pi's `ToolDefinition` shape and composes the Bazilion-specific tool list (memory, home, web, bootstrap, optional messaging via the host) — it deliberately **excludes** file-IO tools because pi's own `createCodingTools(cwd, …)` provides the richer `read`/`bash`/`edit`/`write`/`grep`/`find`/`ls` set. `events.ts` translates pi's session events back into Bazilion `SessionEvent`s for downstream NDJSON emission.
-- **`session/`** — `prompt.ts` (compose the system prompt from the agent's markdown files + the team block + USER.md), `frame.ts` (the `ChatFrame` type).
+- **`worker/{entry,spawn,ipc-protocol}.ts`** — subprocess boundary. `spawn.ts:spawnWorkerTurn` is the parent-side generator. `entry.ts` is the child script — reads stdin → runs the turn → emits NDJSON on stdout → on exit calls `process.disconnect()` so the IPC handle doesn't pin the event loop. `ipc-protocol.ts` declares the host interfaces, `IpcRequest`/`IpcReply`, and RPC methods for messaging, USER.md, browser, MCP, and `bashApproval`. Stdio: `['pipe','pipe','inherit','ipc']`. The parent merges worker stdout with daemon-authored `command_approval` frames so registration always happens before a client can respond. SIGTERM cancels both the child and any pending approval; 3s grace before SIGKILL.
+- **`pi/`** — the Pi engine bridge. `session.ts:createBazilionSession` builds a pi-coding-agent `AgentSession` for an agent (loads/creates the JSONL session file, selects the shell-policy tool surface, picks a provider). This is the core engine seam: Bazilion enters Pi here and then listens to Pi's events. Takes `enabledProviders: Set<string>`, optional `messagingHost: MessagingHost`, optional `apiKey: string` (pre-fetched OAuth token), and optional `refreshApiKey: (provider) => Promise<string>` (mid-turn refresher; daemon-side only). `tools.ts:createBazilionCustomTools` adapts Bazilion's scoped `ToolHandler` shape to pi's `ToolDefinition` shape and composes memory, home, web, bootstrap, delivery, and optional IPC-backed tools. Host mode also enables Pi's coding tools; Docker mode enables none of those host-backed definitions and adds only the custom same-name `bash`. `events.ts` translates Pi session events back into Bazilion `SessionEvent`s for downstream NDJSON emission.
+- **`session/`** — `prompt.ts` composes the system prompt from the Agent markdown files, Team block, USER.md, and attached skill bodies. Each skill block includes the directory from which its relative scripts/assets must resolve: the installed host directory in host mode or its matching read-only `/skills/...` mount in Docker mode. `frame.ts` owns the `ChatFrame` type.
+- **`shell/`** — BAZ-006 runtime controls. `security.ts` owns strict default-off sandbox/approval config, structured command-risk classification, and environment scrubbing. `approval.ts` wraps Pi's bash tool at its tool-call boundary and refuses risky commands until the daemon returns a one-shot allow. `tooling.ts` preserves Pi's unchanged host surface with both controls off, replaces only host bash when approval is enabled, or selects the containerized bash in Docker mode; Docker never keeps host `read`/`edit`/`write`/`grep`/`find`/`ls`. `docker.ts` runs one `--rm` container per command with `/workspace` read/write, bounded read-only mounts, a read-only root plus tmpfs `/tmp`, dropped capabilities, the host uid/gid, and `--network none`. The runner rejects remote Docker contexts and image `VOLUME`s, discards image `ENV`, pins a local image id, and never falls back to host execution.
 - **`providers/`** — `pi-adapter.ts` (pi-ai → Bazilion `Provider` adapter), `registry.ts` (provider registration + `enabledSet` gate + model-string parser, takes optional `oauth: {db, authToken}` to pick up `openai-codex` credentials), `retry.ts` (uniform transient-error retry with "no retry once streamed" invariant), `types.ts` (`Provider`, `ProviderRequest`, `ProviderResponse`, `ToolCall`, `ReasoningLevel`, `StopReason`).
 - **`tools/`** — `registry.ts` (Map-backed dispatcher) + one file per tool category:
   - `memory.ts` — `memory_write / memory_read / memory_search / memory_list` (qmd BM25 over markdown files in `<team.path>/memory/`). Tool descriptions explicitly call out team-shared scope and direct personal notes to `home_write IDENTITY.md`.
@@ -228,7 +232,7 @@ See `agent-engine.md` for the full turn-loop walkthrough. Structural summary her
   - `messaging.ts` — `send_message / read_inbox / wait_for_reply`. Takes a `MessagingHost` (not a DB handle) — the worker's host proxies via Node IPC, the daemon's host calls repos directly.
   - `web.ts` + `web-ssrf.ts` + `web-extract.ts` — `web_search` (Brave → SearXNG fallback) + `web_fetch` (Readability + markdown, SSRF guard, 15-min LRU cache, UA spoof, 20s timeout, 3 max redirects).
   - `bootstrap.ts` — `bootstrap_done` (deletes `BOOTSTRAP.md` after onboarding).
-  - File-IO (`read`/`bash`/`edit`/`write`/`grep`/`find`/`ls`) comes from pi-coding-agent's own `createCodingTools(cwd, …)` — `cwd` is the agent's team directory.
+  - Coding tools are policy-selected: with sandboxing off, `read`/`bash`/`edit`/`write`/`grep`/`find`/`ls` come from pi-coding-agent's `createCodingTools(cwd, …)` with the Team directory as `cwd`; with Docker sandboxing on, all host-backed coding tools are hidden and only Bazilion's containerized `bash` is registered.
 - **`memory/`** — `qmd.ts` (BM25 via `@tobilu/qmd`, one `.qmd-index.sqlite` per team memory dir, `storeCache` module-scope Map dedupes per-process), `files.ts` (zero-deps substring fallback, currently dormant), `types.ts`.
 - **`auth/openai-codex.ts`** — OAuth storage/refresh for the ChatGPT-backed `openai-codex` provider. Credentials blob lives under secrets-table key `OPENAI_CODEX_OAUTH`. `loadAccessToken(db, authToken)` is what the provider registry hands pi-ai as its `apiKey` supplier.
 
@@ -334,7 +338,7 @@ Grouped by resource. Request/response shapes all live in `@bazilion/api-types`. 
 ### 4.5 Chat streaming path in detail
 
 ```
-POST /api/agents/:id/chat   body = {message}
+POST /api/agents/:id/chat   body = {message, bashApprovalMode?}
    │
    ▼
  routes/agents.ts: resolveAgentIdParam()  // prefix → UUID
@@ -353,8 +357,8 @@ POST /api/agents/:id/chat   body = {message}
  spawnWorkerTurn(spec, opts)  [apps/daemon/src/runtime/worker/spawn.ts]
    │
    │  stdio: pipe/pipe/inherit/ipc
-   │  stdin: JSON.stringify({agent, message, enabledProviders, apiKey})
-   │  child.on('message', ...) → dispatch via messagingHost → child.send(reply)
+   │  stdin: JSON.stringify({agent, message, enabledProviders, apiKey, turnId, bashApprovalMode})
+   │  child.on('message', ...) → dispatch via daemon hosts → child.send(reply)
    ▼
  node --import <tsx-loader-URL> apps/daemon/src/runtime/worker/entry.ts
    │
@@ -371,6 +375,9 @@ POST /api/agents/:id/chat   body = {message}
    ... more deltas ...
    {kind:'event', event:{type:'assistant_message', text}}
    {kind:'event', event:{type:'tool_call', ...}}
+   {kind:'event', event:{type:'command_approval', approval:{status:'pending',...}}}
+   ... POST /api/shell-approvals/:id while this stream stays open ...
+   {kind:'event', event:{type:'command_approval', approval:{status:'allowed'|'denied'|...}}}
    {kind:'event', event:{type:'tool_result', ...}}
    {kind:'done', messages:[...]}
    │
@@ -508,7 +515,7 @@ client.stream('POST', '/api/agents/:id/chat', {message})
  ↓ HTTP NDJSON body
 server: runAgentTurn → resolve + pre-fetch apiKey → spawnWorkerTurn → node worker entry
  ↓ stdout NDJSON (worker → daemon over the parent's stdout pipe)
-   plus IPC RPC for messaging tools (worker → daemon over fd 3)
+   plus IPC RPC for daemon-owned tools and shell approval (worker → daemon over fd 3)
 server: pipe to response body
  ↓
 client: yield ChatFrame, pretty-print deltas/tool_calls/tool_results
@@ -531,14 +538,28 @@ setInterval(5s) tick
  ↓
 triggerRepo.listEnabled(db)
  ↓ filter isDue(t, now, cronCache)
- ↓ per due trigger:
-    firing.add(t.id)
-    triggerRepo.markFired(t.id)          ← before the run; restart-safe
-    for await frame of runAgentTurn(t.agentId, t.message):
-      (drain, discard, log 'fatal')
-    firing.delete(t.id)
+ ↓ per due trigger, when it has no open dispatch:
+    triggerDispatchRepo.materialize(triggerId, agentId, scheduledOccurrence)
+      ← unique(trigger_id, scheduled_at); durable pending work
+    triggerRepo.markFired(triggerId, scheduledOccurrence)
+      ← scheduling watermark, not execution status
+ ↓ triggerDispatchRepo.listClaimable(now)
+ ↓ per pending/retrying dispatch or expired running lease:
+    acquire Agent lifecycle lease
+    triggerDispatchRepo.claim(dispatchId)   ← transactional running lease
+    busy Agent → defer without consuming an attempt
+    otherwise authorize
+      approval required → defer; operator grants this captured occurrence
+      allowed/granted → runAgentTurn(agentId, trigger.message)
+      success → succeeded
+      fatal/provider error → retrying with backoff, then failed at the attempt bound
 ```
-Same worker-spawn path as HTTP. Pi's session JSONL records the turn; there is no separate runs/events row.
+Only one open dispatch is retained per trigger, so missed interval occurrences coalesce while
+an Agent is busy or a retry is pending. An expired running lease makes an abandoned attempt
+claimable after daemon restart. The same worker-spawn path as HTTP is used; Pi's session JSONL
+remains the content transcript, while `trigger_dispatches` contains operational delivery
+metadata only. Approval does not execute a scheduled turn inside the HTTP request: it durably
+grants the captured dispatch, which the scheduler revalidates and executes on a later tick.
 
 ### 6.6 Provider test
 
@@ -621,8 +642,9 @@ bazilion send <from> <to> "text"
 - **`apps/web` never reaches into daemon source**: every data access goes through HTTP, including SSR loaders. Wire shapes are imported from `@bazilion/api-types`.
 - **`daemon-client.ts` is server-only**: any module ending up in the client bundle imports from `wire-constants.ts` instead.
 - **Env vars win over stored secrets**: for debugging / override, a shell export always takes precedence over the `secrets` and `config` tables.
+- **Shell controls are explicit, independent, and fail-closed**: the default `off` modes preserve host coding tools. In `docker` mode there are no host-backed coding tools, and `bash` runs only in the bounded local-image container described above. A configuration, Docker, image, or mount error never downgrades to host execution. With dangerous-command approval enabled, classified commands require a one-shot web/TTY decision; callers without an interactive response path auto-deny.
 - **Bootstrap token can't be revoked**: `DELETE /api/tokens/:id` rejects (409) when the requested id matches `getCtx().authToken`'s hash.
 - **HMR-safe singletons**: `agent-cancel`, `scheduler` are pinned on `globalThis[Symbol.for(...)]` so dev-mode module reloads don't double them.
 - **Pi owns the transcript**: there is no `chat_messages` blob, no `runs`/`events` audit layer. Conversation state lives in `~/.bazilion/agents/<id>/sessions/<sessionId>.jsonl` under pi-coding-agent's `SessionManager`.
-- **Worker IPC is fd 3**: the worker spawns with `stdio: ['pipe', 'pipe', 'inherit', 'ipc']`. Stdin = turn spec. Stdout = NDJSON `ChatFrame`. Stderr = inherited. fd 3 = JSON RPC for messaging tools.
+- **Worker IPC is fd 3**: the worker spawns with `stdio: ['pipe', 'pipe', 'inherit', 'ipc']`. Stdin = turn spec. Stdout = worker NDJSON `ChatFrame`. Stderr = inherited. fd 3 = JSON RPC for daemon-owned tools and shell approval; the parent injects approval state into the same yielded frame stream.
 - **CLI ↔ web parity**: every endpoint has both a CLI command and a web UI surface. If you add one without the other, you haven't shipped the feature.

@@ -87,6 +87,7 @@ async function drainLoop(agentId: string): Promise<void> {
       const batchAttempt = q[0]?.authorization
       for await (const _frame of runAgentTurn(agentId, message, {
         attachments,
+        bashApprovalMode: 'auto_deny',
         ...(batchAttempt ? { authorization: batchAttempt } : {}),
       })) {
         // Mirror handles the assistant's reply via the runAgentTurn frame

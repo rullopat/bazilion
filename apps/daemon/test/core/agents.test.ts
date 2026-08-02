@@ -50,6 +50,7 @@ test('spawnAgent creates dir, copies templates, inserts row, attaches default sk
   expect(existsSync(join(agent.dir, 'SOUL.md'))).toBe(true)
   expect(existsSync(join(agent.dir, 'IDENTITY.md'))).toBe(true)
   expect(existsSync(join(agent.dir, 'BOOTSTRAP.md'))).toBe(true)
+  expect(existsSync(join(agent.dir, 'HEARTBEAT.md'))).toBe(false)
   expect(existsSync(join(agent.dir, 'agent.json'))).toBe(true)
   // Memory now lives at the team level (`teams/<slug>/memory/`), shared
   // by all member agents. The agent's private home only carries identity
@@ -58,6 +59,16 @@ test('spawnAgent creates dir, copies templates, inserts row, attaches default sk
   expect(existsSync(join(agent.dir, 'memory'))).toBe(false)
 
   expect(agentRepo.listAttachedSkills(env.db, agent.id)).toEqual(['skill-a'])
+})
+
+test('spawnAgent does not copy a legacy profile HEARTBEAT.md', () => {
+  const profile = seedProfile()
+  writeFileSync(join(profile.dir, 'HEARTBEAT.md'), '# legacy scheduled instructions\n')
+
+  const agent = spawn({ name: 'no-heartbeat' })
+
+  expect(existsSync(join(profile.dir, 'HEARTBEAT.md'))).toBe(true)
+  expect(existsSync(join(agent.dir, 'HEARTBEAT.md'))).toBe(false)
 })
 
 test('a fresh spawn from a default-template profile has the default-on files', () => {

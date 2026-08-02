@@ -9,10 +9,9 @@
 //   - stdout (NDJSON): the worker emits `ChatFrame`s; we line-parse and
 //     yield each one to the caller.
 //   - IPC (Node `stdio: 'ipc'`): the worker calls back into the parent for
-//     anything that needs DB access during the turn (today: the messaging
-//     tools `send_message` / `read_inbox` / `wait_for_reply`). We dispatch
-//     each `IpcRequest` through the injected `MessagingHost` and reply with
-//     `child.send`.
+//     daemon-owned tools and dangerous-command approval. We dispatch each
+//     `IpcRequest` through the corresponding injected host and reply with
+//     `child.send`; approval state is also merged into the stdout frame stream.
 //
 // Cancellation: wire an AbortSignal via `opts.signal`. On abort we send
 // SIGTERM to the child — the child has a signal handler that calls
@@ -24,8 +23,10 @@ import { type ChildProcess, spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import type { Attachment, ChatFrame, ResolvedAgent } from '@bazilion/api-types'
+import type { Attachment, BashApprovalMode, ChatFrame, ResolvedAgent } from '@bazilion/api-types'
 import type {
+  BashApprovalHost,
+  BashApprovalResult,
   BrowserHost,
   InjectedMcpTool,
   IpcReply,
@@ -99,6 +100,10 @@ export interface WorkerTurnSpec {
   mcpTools?: InjectedMcpTool[]
   /** Image attachments — passed to pi's prompt (vision). Pre-classified by the daemon. */
   images?: Attachment[]
+  /** Stable identity used to scope ephemeral command approvals. */
+  turnId: string
+  /** Whether this turn's caller can answer an approval request. */
+  bashApprovalMode: BashApprovalMode
 }
 
 export interface SpawnWorkerOpts {
@@ -130,6 +135,8 @@ export interface SpawnWorkerOpts {
    * MCP servers are configured/enabled.
    */
   mcpHost?: McpHost
+  /** Turn-scoped dangerous-command approval registry owned by the daemon. */
+  bashApprovalHost?: BashApprovalHost
 }
 
 export async function* spawnWorkerTurn(
@@ -141,12 +148,26 @@ export async function* spawnWorkerTurn(
     stdio: ['pipe', 'pipe', 'inherit', 'ipc'],
   })
 
-  if (opts.messagingHost || opts.userMdHost || opts.browserHost || opts.mcpHost) {
+  const frames = new AsyncFrameQueue()
+  const ipcLifetime = new AbortController()
+
+  if (
+    opts.messagingHost ||
+    opts.userMdHost ||
+    opts.browserHost ||
+    opts.mcpHost ||
+    opts.bashApprovalHost
+  ) {
     attachIpcHandler(child, {
       messagingHost: opts.messagingHost,
       userMdHost: opts.userMdHost,
       browserHost: opts.browserHost,
       mcpHost: opts.mcpHost,
+      bashApprovalHost: opts.bashApprovalHost,
+      bashApprovalSignal: ipcLifetime.signal,
+      onBashApproval: (approval) => {
+        frames.push({ kind: 'event', event: { type: 'command_approval', approval } })
+      },
     })
   }
 
@@ -156,6 +177,7 @@ export async function* spawnWorkerTurn(
   const grace = opts.killGraceMs ?? DEFAULT_KILL_GRACE_MS
   let killTimer: NodeJS.Timeout | null = null
   const onAbort = (): void => {
+    ipcLifetime.abort()
     if (child.exitCode !== null || child.signalCode !== null) return
     try {
       child.kill('SIGTERM')
@@ -187,27 +209,13 @@ export async function* spawnWorkerTurn(
   let emittedFatal = false
 
   try {
-    let buf = ''
     if (!child.stdout) throw new Error('worker spawn: stdout pipe missing')
-    for await (const chunk of child.stdout) {
-      buf += (chunk as Buffer).toString('utf8')
-      let idx = buf.indexOf('\n')
-      while (idx !== -1) {
-        const line = buf.slice(0, idx)
-        buf = buf.slice(idx + 1)
-        if (line.trim()) {
-          const frame = parseFrame(line)
-          if (frame.kind === 'fatal') emittedFatal = true
-          yield frame
-        }
-        idx = buf.indexOf('\n')
-      }
-    }
-    if (buf.trim()) {
-      const frame = parseFrame(buf)
+    const stdoutTask = pumpWorkerFrames(child.stdout, frames)
+    for await (const frame of frames) {
       if (frame.kind === 'fatal') emittedFatal = true
       yield frame
     }
+    await stdoutTask
 
     const exit = await waitForExit
     // Child exited without emitting a fatal frame but with non-zero status —
@@ -223,6 +231,7 @@ export async function* spawnWorkerTurn(
       yield { kind: 'fatal', error: `worker killed by ${exit.signal}` }
     }
   } finally {
+    ipcLifetime.abort()
     opts.signal?.removeEventListener('abort', onAbort)
     if (killTimer) clearTimeout(killTimer)
     try {
@@ -246,6 +255,9 @@ interface IpcHosts {
   userMdHost?: UserMdHost
   browserHost?: BrowserHost
   mcpHost?: McpHost
+  bashApprovalHost?: BashApprovalHost
+  bashApprovalSignal?: AbortSignal
+  onBashApproval?: (approval: import('@bazilion/api-types').CommandApproval) => void
 }
 
 function attachIpcHandler(child: ChildProcess, hosts: IpcHosts): void {
@@ -330,9 +342,88 @@ async function dispatch(req: IpcRequest, hosts: IpcHosts): Promise<IpcReply> {
           req.args.args,
         )
         break
+      case 'bashApproval': {
+        const handle = require(hosts.bashApprovalHost, 'bashApproval', req.method).begin(
+          req.args,
+          hosts.bashApprovalSignal,
+        )
+        hosts.onBashApproval?.(handle.approval)
+        const decision = await handle.decision
+        result = decision
+        if (handle.approval.status === 'pending') {
+          hosts.onBashApproval?.({
+            ...handle.approval,
+            status: approvalStatusForDecision(decision),
+          })
+        }
+        break
+      }
     }
     return { type: 'rpc-reply', id: req.id, ok: true, result }
   } catch (err) {
     return { type: 'rpc-reply', id: req.id, ok: false, error: (err as Error).message }
+  }
+}
+
+function approvalStatusForDecision(
+  result: BashApprovalResult,
+): 'allowed' | 'denied' | 'auto_denied' | 'expired' | 'cancelled' {
+  if (result.reason === 'auto_deny') return 'auto_denied'
+  if (result.reason === 'timeout') return 'expired'
+  if (result.reason === 'cancelled') return 'cancelled'
+  return result.decision === 'allow' ? 'allowed' : 'denied'
+}
+
+class AsyncFrameQueue implements AsyncIterable<ChatFrame> {
+  readonly #frames: ChatFrame[] = []
+  readonly #waiters: Array<(item: IteratorResult<ChatFrame>) => void> = []
+  #ended = false
+
+  push(frame: ChatFrame): void {
+    if (this.#ended) return
+    const waiter = this.#waiters.shift()
+    if (waiter) waiter({ done: false, value: frame })
+    else this.#frames.push(frame)
+  }
+
+  end(): void {
+    if (this.#ended) return
+    this.#ended = true
+    for (const waiter of this.#waiters.splice(0)) waiter({ done: true, value: undefined })
+  }
+
+  [Symbol.asyncIterator](): AsyncIterator<ChatFrame> {
+    return {
+      next: () => {
+        const frame = this.#frames.shift()
+        if (frame) return Promise.resolve({ done: false, value: frame })
+        if (this.#ended) return Promise.resolve({ done: true, value: undefined })
+        return new Promise((resolve) => this.#waiters.push(resolve))
+      },
+    }
+  }
+}
+
+async function pumpWorkerFrames(
+  stdout: NonNullable<ChildProcess['stdout']>,
+  frames: AsyncFrameQueue,
+): Promise<void> {
+  let buf = ''
+  try {
+    for await (const chunk of stdout) {
+      buf += (chunk as Buffer).toString('utf8')
+      let idx = buf.indexOf('\n')
+      while (idx !== -1) {
+        const line = buf.slice(0, idx)
+        buf = buf.slice(idx + 1)
+        if (line.trim()) frames.push(parseFrame(line))
+        idx = buf.indexOf('\n')
+      }
+    }
+    if (buf.trim()) frames.push(parseFrame(buf))
+  } catch (error) {
+    frames.push({ kind: 'fatal', error: `worker stdout failed: ${(error as Error).message}` })
+  } finally {
+    frames.end()
   }
 }

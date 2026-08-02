@@ -12,7 +12,11 @@ triggersRouter.get('/:id/dispatches', (c) => {
   const { db } = getCtx()
   const id = c.req.param('id')
   if (!triggerRepo.get(db, id)) return c.json({ error: `trigger not found: ${id}` }, 404)
-  const limit = Math.min(100, Math.max(1, Number(c.req.query('limit') ?? 20)))
+  const requestedLimit = Number(c.req.query('limit') ?? 20)
+  if (!Number.isInteger(requestedLimit) || requestedLimit < 1) {
+    return c.json({ error: 'limit must be a positive integer' }, 400)
+  }
+  const limit = Math.min(100, requestedLimit)
   return c.json({ dispatches: triggerDispatchRepo.listForTrigger(db, id, limit) })
 })
 

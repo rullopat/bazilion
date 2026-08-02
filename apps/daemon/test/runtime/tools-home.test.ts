@@ -31,6 +31,24 @@ test('home_read rejects files outside the whitelist', async () => {
   ).rejects.toThrow(/must be one of/)
 })
 
+test('home tools do not expose or edit a legacy HEARTBEAT.md', async () => {
+  const legacy = '# legacy scheduled instructions\n'
+  writeFileSync(join(agentDir, 'HEARTBEAT.md'), legacy, 'utf8')
+  const tools = createToolRegistry(homeTools(agentDir))
+
+  await expect(tools.invoke('home_read', JSON.stringify({ file: 'HEARTBEAT.md' }))).rejects.toThrow(
+    /must be one of/,
+  )
+  await expect(
+    tools.invoke(
+      'home_write',
+      JSON.stringify({ file: 'HEARTBEAT.md', content: '# replacement\n' }),
+    ),
+  ).rejects.toThrow(/must be one of/)
+  expect(await tools.invoke('home_list', '{}')).not.toContain('HEARTBEAT.md')
+  expect(readFileSync(join(agentDir, 'HEARTBEAT.md'), 'utf8')).toBe(legacy)
+})
+
 test('home_read surfaces a helpful error if the file is missing', async () => {
   const tools = createToolRegistry(homeTools(agentDir))
   // TOOLS.md is whitelisted but not seeded in beforeEach — should raise a read error

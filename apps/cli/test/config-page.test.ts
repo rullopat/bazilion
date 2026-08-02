@@ -42,6 +42,35 @@ async function findProvider(id: string): Promise<ProviderEntry> {
   return p
 }
 
+async function findService(id: string): Promise<{
+  id: string
+  fields: Array<{
+    envVar: string
+    kind: 'secret' | 'config'
+    set: boolean
+    value?: string
+  }>
+}> {
+  const res = await fetch(`${server.url}/api/config/services`, {
+    headers: { cookie: `bz_token=${server.token}` },
+  })
+  expect(res.ok).toBe(true)
+  const body = (await res.json()) as {
+    services: Array<{
+      id: string
+      fields: Array<{
+        envVar: string
+        kind: 'secret' | 'config'
+        set: boolean
+        value?: string
+      }>
+    }>
+  }
+  const service = body.services.find((entry) => entry.id === id)
+  if (!service) throw new Error(`service ${id} missing from /api/config/services response`)
+  return service
+}
+
 test('provider toggle defaults respect the test fixture seed (lmstudio enabled)', async () => {
   const lmstudio = await findProvider('lmstudio')
   expect(lmstudio.enabled).toBe(true)
@@ -109,6 +138,27 @@ test('bazilion config set routes config-kind fields to plaintext store', async (
   const lmstudio = await findProvider('lmstudio')
   const url = lmstudio.fields.find((f) => f.envVar === 'LMSTUDIO_URL')
   expect(url?.set).toBe(true)
+})
+
+test('shell sandbox settings are configurable through the shared CLI and web service surface', async () => {
+  const shellSecurity = await findService('shell-security')
+  expect(shellSecurity.fields.map((field) => field.envVar)).toEqual([
+    'BAZILION_BASH_APPROVAL',
+    'BAZILION_BASH_SANDBOX',
+    'BAZILION_BASH_SANDBOX_IMAGE',
+    'BAZILION_BASH_SANDBOX_ENV_ALLOWLIST',
+  ])
+
+  const set = await server.cli(['config', 'set', 'BAZILION_BASH_SANDBOX', 'docker'])
+  expect(set.exitCode).toBe(0)
+  expect(set.stdout).toMatch(/BAZILION_BASH_SANDBOX.*docker/)
+
+  const updated = await findService('shell-security')
+  expect(updated.fields.find((field) => field.envVar === 'BAZILION_BASH_SANDBOX')).toMatchObject({
+    kind: 'config',
+    set: true,
+    value: 'docker',
+  })
 })
 
 test('bazilion config set routes secret-kind fields to encrypted store', async () => {

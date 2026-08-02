@@ -58,6 +58,13 @@ export function materialize(
   return toDispatch(row)
 }
 
+export function get(db: BazilionDb, id: string): TriggerDispatch | null {
+  const row = db.raw
+    .query<RawDispatch, [string]>('SELECT * FROM trigger_dispatches WHERE id = ?')
+    .get(id)
+  return row ? toDispatch(row) : null
+}
+
 export function listClaimable(db: BazilionDb, now = Date.now()): TriggerDispatch[] {
   return db.raw
     .query<RawDispatch, [number, number]>(
@@ -122,6 +129,14 @@ export function defer(db: BazilionDb, id: string, nextAttemptAt = Date.now() + 1
      next_attempt_at = ?, lease_expires_at = NULL, started_at = NULL, updated_at = ?
      WHERE id = ? AND status = 'running'`,
     [nextAttemptAt, Date.now(), id],
+  )
+}
+
+export function cancelRunning(db: BazilionDb, id: string, reason: string, now = Date.now()): void {
+  db.raw.run(
+    `UPDATE trigger_dispatches SET status = 'cancelled', lease_expires_at = NULL,
+     finished_at = ?, last_error = ?, updated_at = ? WHERE id = ? AND status = 'running'`,
+    [now, reason.slice(0, 2_000), now, id],
   )
 }
 

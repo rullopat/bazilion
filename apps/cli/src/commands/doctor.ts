@@ -96,6 +96,37 @@ export const doctorCommand = defineCommand({
     )
 
     console.log()
+    console.log('agent shell security')
+    if (!r.shellSecurity.ok) {
+      check('valid shell-security configuration', false, r.shellSecurity.error)
+    } else {
+      if (r.shellSecurity.approvalMode === 'dangerous') {
+        console.log('  - dangerous-command approval enabled')
+        console.log(
+          '    web and TTY CLI turns can allow once; background and non-TTY turns auto-deny',
+        )
+      } else {
+        console.log('  - dangerous-command approval off')
+        console.log('    set BAZILION_BASH_APPROVAL=dangerous to opt in')
+      }
+      if (r.shellSecurity.sandboxMode === 'docker') {
+        console.log(`  - Docker sandbox configured (${r.shellSecurity.sandboxImage})`)
+        console.log(
+          '    workspace-only writable mount · bounded inputs/skills/memory read-only · network disabled',
+        )
+        console.log('    host coding tools hidden')
+        console.log(
+          '    policy syntax is valid; Docker and image availability are checked on execution',
+        )
+        console.log('    commands fail closed if either is unavailable')
+      } else {
+        console.log('  - sandbox off (agent shell and coding tools run on the host)')
+        console.log('    approval is a host-execution tripwire, not a filesystem sandbox')
+        console.log('    set BAZILION_BASH_SANDBOX=docker to opt in')
+      }
+    }
+
+    console.log()
     console.log('operational counts')
     console.log(`  ${r.triggers.active} active trigger(s), ${r.triggers.disabled} disabled`)
     console.log(`  ${r.tokens.active} active web token(s)`)

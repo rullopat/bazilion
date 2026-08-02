@@ -221,6 +221,77 @@ test('approval API is authenticated, list-private, idempotent, and delivers one 
   ).toBe(1)
 })
 
+test('approving a scheduled occurrence grants its pending dispatch without running the turn', async () => {
+  const { createApp } = await import('../../src/app.ts')
+  const {
+    communicationApprovalRepo,
+    createProfile,
+    providerModelRepo,
+    providerStateRepo,
+    registerTeam,
+    spawnAgent,
+    triggerDispatchRepo,
+    triggerRepo,
+  } = await import('../../src/core/index.ts')
+  const { claimSchedulerTrigger } = await import('../../src/lib/communication.ts')
+  const { getCtx } = await import('../../src/lib/ctx.ts')
+  const ctx = getCtx()
+  process.env.BAZILION_TEAM_POLICY_ENFORCEMENT = 'on'
+  providerStateRepo.setEnabled(ctx.db, 'lmstudio', true)
+  providerModelRepo.replace(ctx.db, 'lmstudio', ['model'])
+  createProfile(ctx.db, ctx.paths, { id: 'p', defaultModel: 'lmstudio:model' })
+  registerTeam(ctx.db, { id: 'default' }, ctx.paths)
+  const agent = spawnAgent(ctx.db, ctx.paths, { profileId: 'p', teamId: 'default' })
+  ctx.db.raw.run('DELETE FROM team_policy_edges WHERE team_id = ?', ['default'])
+  ctx.db.raw.run(
+    `INSERT INTO team_policy_edges
+       (team_id, source_kind, source_id, target_kind, target_id, posture)
+     VALUES ('default', 'user', '', 'agent', ?, 'approval_required')`,
+    [agent.id],
+  )
+  const trigger = triggerRepo.insert(ctx.db, {
+    agentId: agent.id,
+    kind: 'interval',
+    intervalSec: 60,
+    cronExpr: null,
+    message: 'approved scheduled work',
+  })
+  const dispatch = triggerDispatchRepo.materialize(ctx.db, {
+    triggerId: trigger.id,
+    agentId: agent.id,
+    scheduledAt: Date.now(),
+  })
+  const claim = claimSchedulerTrigger(ctx.db, {
+    dispatchId: dispatch.id,
+    triggerId: trigger.id,
+    agentId: agent.id,
+    occurrence: dispatch.scheduledAt,
+    materialized: true,
+  })
+  if (claim.kind !== 'approval_pending') throw new Error('expected pending approval')
+
+  const app = createApp()
+  const response = await app.request(`/api/approvals/${claim.approval.id}/approve`, {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${ctx.authToken}`,
+      'content-type': 'application/json',
+    },
+    body: '{}',
+  })
+
+  expect(response.status).toBe(200)
+  expect(await response.json()).toMatchObject({ status: 'delivered' })
+  expect(communicationApprovalRepo.get(ctx.db, claim.approval.id)).toMatchObject({
+    status: 'delivered',
+  })
+  expect(triggerDispatchRepo.get(ctx.db, dispatch.id)).toMatchObject({
+    status: 'pending',
+    attemptCount: 0,
+  })
+  expect(readdirSync(join(agent.dir, 'sessions'))).toEqual([])
+})
+
 test('approval-required chat holds text and attachment before persistence or turn start', async () => {
   const { createApp } = await import('../../src/app.ts')
   const { createProfile, providerModelRepo, providerStateRepo, registerTeam, spawnAgent } =

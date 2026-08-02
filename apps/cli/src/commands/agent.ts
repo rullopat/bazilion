@@ -6,10 +6,14 @@ import type {
   Agent,
   Attachment,
   AttachSkillRequest,
+  BashApprovalMode,
   ChatCompactRequest,
   ChatCompactResponse,
   ChatContextResponse,
   ChatFrame,
+  ChatRequest,
+  CommandApproval,
+  CommandApprovalDecisionRequest,
   MoveAgentRequest,
   ResolvedAgent,
   ResolvedTeamPolicy,
@@ -255,6 +259,111 @@ interface PrintState {
   inDeltaStream: boolean
 }
 
+type CommandApprovalDecision = CommandApprovalDecisionRequest['decision']
+
+interface CommandApprovalClient {
+  post(path: string, body?: unknown): Promise<unknown>
+}
+
+export interface CommandApprovalPrompt {
+  question(prompt: string): Promise<string>
+  write(line: string): void
+}
+
+/** Only a real terminal can answer while the chat response stream remains open. */
+export function bashApprovalModeForTty(
+  inputIsTty: boolean | undefined,
+  outputIsTty: boolean | undefined,
+): BashApprovalMode {
+  return inputIsTty && outputIsTty ? 'interactive' : 'auto_deny'
+}
+
+/** Build every CLI chat request with an explicit approval capability. */
+export function buildChatRequest(
+  message: string,
+  attachments: Attachment[] | undefined,
+  bashApprovalMode: BashApprovalMode,
+): ChatRequest {
+  return {
+    message,
+    bashApprovalMode,
+    ...(attachments && attachments.length > 0 ? { attachments } : {}),
+  }
+}
+
+function terminalSafe(value: string): string {
+  let safe = ''
+  for (const character of value) {
+    const code = character.charCodeAt(0)
+    const isControl = code <= 9 || (code >= 11 && code <= 31) || (code >= 127 && code <= 159)
+    safe += isControl ? `\\x${code.toString(16).padStart(2, '0')}` : character
+  }
+  return safe
+}
+
+/** Render one pending command and default safely to denial for every answer except y/yes. */
+export async function promptForCommandApproval(
+  approval: CommandApproval,
+  prompt: CommandApprovalPrompt,
+): Promise<CommandApprovalDecision> {
+  prompt.write('  [shell command approval required]')
+  prompt.write('  command:')
+  for (const line of approval.command.split('\n')) prompt.write(`    ${terminalSafe(line)}`)
+  prompt.write('  risks:')
+  for (const risk of approval.risks) {
+    prompt.write(
+      `    - ${terminalSafe(risk.code)} (${terminalSafe(risk.severity)}): ${terminalSafe(risk.message)}`,
+    )
+  }
+
+  try {
+    const answer = (await prompt.question('  Allow this command once? [y/N] ')).trim().toLowerCase()
+    return answer === 'y' || answer === 'yes' ? 'allow' : 'deny'
+  } catch {
+    prompt.write('  [approval input unavailable; denying]')
+    return 'deny'
+  }
+}
+
+/** Post exactly one response for a pending approval; callers without a prompt deny immediately. */
+export async function respondToCommandApproval(
+  client: CommandApprovalClient,
+  approval: CommandApproval,
+  prompt?: CommandApprovalPrompt,
+): Promise<CommandApprovalDecision> {
+  const decision = prompt ? await promptForCommandApproval(approval, prompt) : 'deny'
+  await client.post(`/api/shell-approvals/${encodeURIComponent(approval.id)}`, { decision })
+  return decision
+}
+
+function closeDeltaLine(state: PrintState): void {
+  if (!state.inDeltaStream) return
+  process.stdout.write('\n')
+  state.inDeltaStream = false
+}
+
+function printCommandApprovalStatus(approval: CommandApproval): void {
+  switch (approval.status) {
+    case 'allowed':
+      console.log('  [shell command allowed]')
+      break
+    case 'denied':
+      console.log('  [shell command denied]')
+      break
+    case 'auto_denied':
+      console.log('  [shell command auto-denied: non-interactive turn]')
+      break
+    case 'expired':
+      console.log('  [shell command approval expired]')
+      break
+    case 'cancelled':
+      console.log('  [shell command approval cancelled]')
+      break
+    case 'pending':
+      break
+  }
+}
+
 function printEvent(e: SessionEvent, state: PrintState): void {
   switch (e.type) {
     case 'assistant_delta':
@@ -308,16 +417,38 @@ async function streamTurn(
   agentId: string,
   message: string,
   attachments?: Attachment[],
+  options: {
+    bashApprovalMode: BashApprovalMode
+    approvalPrompt?: CommandApprovalPrompt
+  } = { bashApprovalMode: 'auto_deny' },
 ): Promise<void> {
   const state: PrintState = { inDeltaStream: false }
-  for await (const frame of client.stream<ChatFrame>('POST', `/api/agents/${agentId}/chat`, {
-    message,
-    ...(attachments && attachments.length > 0 ? { attachments } : {}),
-  })) {
+  const respondedApprovalIds = new Set<string>()
+  for await (const frame of client.stream<ChatFrame>(
+    'POST',
+    `/api/agents/${agentId}/chat`,
+    buildChatRequest(message, attachments, options.bashApprovalMode),
+  )) {
     if (frame.kind === 'event') {
-      if (frame.event.type !== 'user_message') printEvent(frame.event, state)
+      // A pending approval pauses rendering while we post a response on a
+      // separate authenticated request; other events remain synchronous.
+      const event = frame.event
+      if (event.type === 'command_approval') {
+        closeDeltaLine(state)
+        const approval = event.approval
+        if (approval.status === 'pending') {
+          if (!respondedApprovalIds.has(approval.id)) {
+            respondedApprovalIds.add(approval.id)
+            await respondToCommandApproval(client, approval, options.approvalPrompt)
+          }
+        } else {
+          printCommandApprovalStatus(approval)
+        }
+      } else if (event.type !== 'user_message') {
+        printEvent(event, state)
+      }
     } else if (frame.kind === 'fatal') {
-      if (state.inDeltaStream) process.stdout.write('\n')
+      closeDeltaLine(state)
       throw new Error(frame.error)
     }
   }
@@ -343,6 +474,7 @@ const chatCmd = defineCommand({
   async run({ args }) {
     const client = createClient()
     const resolved = await client.get<ResolvedAgent>(`/api/agents/${args.id}`)
+    const bashApprovalMode = bashApprovalModeForTty(stdin.isTTY, stdout.isTTY)
 
     const attachments = [
       ...loadImages(asPaths(args.image as string | string[] | undefined)),
@@ -350,7 +482,25 @@ const chatCmd = defineCommand({
     ]
 
     if (args.message || attachments.length > 0) {
-      await streamTurn(client, resolved.agent.id, args.message ?? '', attachments)
+      const rl =
+        bashApprovalMode === 'interactive'
+          ? createInterface({ input: stdin, output: stdout })
+          : null
+      try {
+        await streamTurn(client, resolved.agent.id, args.message ?? '', attachments, {
+          bashApprovalMode,
+          ...(rl
+            ? {
+                approvalPrompt: {
+                  question: (question) => rl.question(question),
+                  write: (line) => console.log(line),
+                },
+              }
+            : {}),
+        })
+      } finally {
+        rl?.close()
+      }
       return
     }
 
@@ -358,24 +508,58 @@ const chatCmd = defineCommand({
     console.log('(type /exit to quit)')
 
     const rl = createInterface({ input: stdin, output: stdout })
-    rl.setPrompt('> ')
-    rl.prompt()
-
-    for await (const line of rl) {
-      const trimmed = line.trim()
-      if (trimmed === '/exit' || trimmed === '/quit') break
-      if (!trimmed) {
+    try {
+      if (bashApprovalMode === 'interactive') {
+        // Sequential questions keep one readline instance as the sole stdin
+        // owner. A command-approval question can safely run after the chat
+        // question resolves; no async iterator is consuming lines in parallel.
+        while (true) {
+          let line: string
+          try {
+            line = await rl.question('> ')
+          } catch {
+            break
+          }
+          const trimmed = line.trim()
+          if (trimmed === '/exit' || trimmed === '/quit') break
+          if (!trimmed) continue
+          try {
+            await streamTurn(client, resolved.agent.id, trimmed, undefined, {
+              bashApprovalMode,
+              approvalPrompt: {
+                question: (question) => rl.question(question),
+                write: (output) => console.log(output),
+              },
+            })
+          } catch (err) {
+            console.error(`error: ${(err as Error).message}`)
+          }
+        }
+      } else {
+        // Preserve piped multi-line chat input, but never claim that this
+        // caller can answer an approval request.
+        rl.setPrompt('> ')
         rl.prompt()
-        continue
+        for await (const line of rl) {
+          const trimmed = line.trim()
+          if (trimmed === '/exit' || trimmed === '/quit') break
+          if (!trimmed) {
+            rl.prompt()
+            continue
+          }
+          try {
+            await streamTurn(client, resolved.agent.id, trimmed, undefined, {
+              bashApprovalMode,
+            })
+          } catch (err) {
+            console.error(`error: ${(err as Error).message}`)
+          }
+          rl.prompt()
+        }
       }
-      try {
-        await streamTurn(client, resolved.agent.id, trimmed)
-      } catch (err) {
-        console.error(`error: ${(err as Error).message}`)
-      }
-      rl.prompt()
+    } finally {
+      rl.close()
     }
-    rl.close()
   },
 })
 

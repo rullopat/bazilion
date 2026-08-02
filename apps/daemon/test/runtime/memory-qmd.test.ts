@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test } from 'vitest'
@@ -85,6 +85,54 @@ test('rejects unsafe keys with path traversal', async () => {
   await expect(mem.write('../../../etc/passwd', 'x')).rejects.toThrow(/unsafe/)
   await expect(mem.write('/abs/path', 'x')).rejects.toThrow(/unsafe/)
 })
+
+test.skipIf(process.platform === 'win32')(
+  'rejects symlink file escapes across read, write, remove, list, and search',
+  async () => {
+    const outside = mkdtempSync(join(tmpdir(), 'bazilion-mem-outside-'))
+    const secret = join(outside, 'secret.txt')
+    const link = join(root, 'leak.md')
+    writeFileSync(secret, 'host secret', 'utf8')
+    symlinkSync(secret, link)
+
+    try {
+      await expect(mem.read('leak.md')).rejects.toThrow(/unsafe memory path.*symbolic link/i)
+      await expect(mem.write('leak.md', 'clobbered')).rejects.toThrow(
+        /unsafe memory path.*symbolic link/i,
+      )
+      await expect(mem.remove('leak.md')).rejects.toThrow(/unsafe memory path.*symbolic link/i)
+      await expect(mem.list()).rejects.toThrow(/unsafe memory path.*symbolic link/i)
+      await expect(mem.search('secret')).rejects.toThrow(/unsafe memory path.*symbolic link/i)
+
+      expect(readFileSync(secret, 'utf8')).toBe('host secret')
+      expect(existsSync(link)).toBe(true)
+    } finally {
+      rmSync(outside, { recursive: true, force: true })
+    }
+  },
+)
+
+test.skipIf(process.platform === 'win32')(
+  'rejects a symlinked directory ancestor before writing outside the root',
+  async () => {
+    const outside = mkdtempSync(join(tmpdir(), 'bazilion-mem-outside-dir-'))
+    const victim = join(outside, 'victim.md')
+    writeFileSync(victim, 'unchanged', 'utf8')
+    symlinkSync(outside, join(root, 'escape'), 'dir')
+
+    try {
+      await expect(mem.write('escape/victim.md', 'clobbered')).rejects.toThrow(
+        /unsafe memory path.*symbolic link/i,
+      )
+      await expect(mem.read('escape/victim.md')).rejects.toThrow(
+        /unsafe memory path.*symbolic link/i,
+      )
+      expect(readFileSync(victim, 'utf8')).toBe('unchanged')
+    } finally {
+      rmSync(outside, { recursive: true, force: true })
+    }
+  },
+)
 
 test('persistence: a new backend instance sees previously written entries', async () => {
   await mem.write('persist.md', 'survives restart')

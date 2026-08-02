@@ -9,7 +9,7 @@
 
 import { randomUUID } from 'node:crypto'
 import { mkdirSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, posix } from 'node:path'
 import type { Attachment } from '@bazilion/api-types'
 
 /** Per-file ceiling for stored uploads. */
@@ -31,7 +31,16 @@ function fmtBytes(n: number): string {
  * note to append to the turn message (or '' when there are none). Oversized
  * files are skipped with an explanatory line rather than stored.
  */
-export function saveInputFiles(agentDir: string, files: Attachment[] | undefined): string {
+export interface SaveInputFilesOptions {
+  /** Alternate path shown to the model (for example the Docker /inputs mount). */
+  referenceDir?: string
+}
+
+export function saveInputFiles(
+  agentDir: string,
+  files: Attachment[] | undefined,
+  options: SaveInputFilesOptions = {},
+): string {
   if (!files || files.length === 0) return ''
   const dir = join(agentDir, 'uploads')
   mkdirSync(dir, { recursive: true })
@@ -44,10 +53,12 @@ export function saveInputFiles(agentDir: string, files: Attachment[] | undefined
       continue
     }
     // Prefix a short uuid slice so same-named uploads don't clobber each other.
-    const path = join(dir, `${randomUUID().slice(0, 8)}-${safeName(label)}`)
+    const filename = `${randomUUID().slice(0, 8)}-${safeName(label)}`
+    const path = join(dir, filename)
     writeFileSync(path, buf)
+    const referencePath = options.referenceDir ? posix.join(options.referenceDir, filename) : path
     lines.push(
-      `[file saved to ${path} (${f.mimeType || 'unknown'}, ${fmtBytes(buf.byteLength)}) — open it with your tools]`,
+      `[file saved to ${referencePath} (${f.mimeType || 'unknown'}, ${fmtBytes(buf.byteLength)}) — open it with your tools]`,
     )
   }
   return lines.join('\n')

@@ -443,6 +443,47 @@ export const SERVICES: ServiceDef[] = [
     ],
   },
   {
+    id: 'shell-security',
+    displayName: 'Agent Shell Security',
+    category: 'service',
+    team: 'Agent Runtime',
+    hint: 'Optional dangerous-command approval and Docker isolation. Disabled by default.',
+    fields: [
+      {
+        envVar: 'BAZILION_BASH_APPROVAL',
+        kind: 'config',
+        label: 'Dangerous-command approval',
+        placeholder: 'off',
+        description:
+          'Use off (current behavior) or dangerous (classified bash commands require per-call approval before execution).',
+      },
+      {
+        envVar: 'BAZILION_BASH_SANDBOX',
+        kind: 'config',
+        label: 'Sandbox mode',
+        placeholder: 'off',
+        description:
+          'Use off (current host tools) or docker (containerized bash only; host-backed coding tools are hidden).',
+      },
+      {
+        envVar: 'BAZILION_BASH_SANDBOX_IMAGE',
+        kind: 'config',
+        label: 'Docker image',
+        placeholder: 'debian:bookworm-slim',
+        description:
+          'Local image with /bin/bash and /usr/bin/env and no VOLUME declarations. Bazilion never falls back to host execution if it is unavailable or incompatible.',
+      },
+      {
+        envVar: 'BAZILION_BASH_SANDBOX_ENV_ALLOWLIST',
+        kind: 'config',
+        label: 'Extra environment allowlist',
+        placeholder: 'MY_SAFE_VARIABLE,ANOTHER_SAFE_VARIABLE',
+        description:
+          'Optional comma-separated variable names copied into the container. Provider credentials remain excluded unless explicitly named.',
+      },
+    ],
+  },
+  {
     id: 'browser',
     displayName: 'Browser Automation',
     category: 'service',

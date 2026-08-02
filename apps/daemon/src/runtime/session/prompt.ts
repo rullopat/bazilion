@@ -3,9 +3,58 @@
 // stacked on top of pi's built-in base prompt (which lists coding tools and
 // general guidelines). Pure filesystem read — no LLM, no DB.
 
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { ResolvedAgent } from '@bazilion/api-types'
+import { parseSkillFile } from '../../core/skills/parse.ts'
+import type { BashSandboxMode } from '../shell/security.ts'
+
+export const SANDBOX_SKILLS_DIR = '/skills'
+
+export interface PromptSkill {
+  name: string
+  description: string
+  body: string
+  hostDir: string
+  sandboxDir: string
+}
+
+export interface BuildSystemPromptOptions {
+  skills?: readonly PromptSkill[]
+  sandboxMode?: BashSandboxMode
+}
+
+/** Load only direct, installed skill directories attached to this agent. */
+export function loadPromptSkills(
+  skillsDir: string,
+  attachedNames: readonly string[],
+): PromptSkill[] {
+  if (!existsSync(skillsDir) || attachedNames.length === 0) return []
+  const attached = new Set(attachedNames)
+  const discovered = readdirSync(skillsDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && attached.has(entry.name))
+    .sort((a, b) => a.name.localeCompare(b.name))
+
+  const loaded: PromptSkill[] = []
+  for (const entry of discovered) {
+    const hostDir = join(skillsDir, entry.name)
+    try {
+      const parsed = parseSkillFile(join(hostDir, 'SKILL.md'))
+      const safeLabel = entry.name.replace(/[^A-Za-z0-9._-]/g, '_') || 'skill'
+      loaded.push({
+        name: entry.name,
+        description: parsed.frontmatter.description,
+        body: parsed.body.trim(),
+        hostDir,
+        sandboxDir: `${SANDBOX_SKILLS_DIR}/${loaded.length}-${safeLabel}`,
+      })
+    } catch {
+      // The attachment surface already reports missing/parse-broken skills.
+      // Keep turn creation resilient and name the unavailable attachment below.
+    }
+  }
+  return loaded
+}
 
 // Prompt order: peers first (who else is around), then persona, then tooling
 // hints, then self-knowledge, then the wake-up playbook.
@@ -19,7 +68,10 @@ import type { ResolvedAgent } from '@bazilion/api-types'
 // JSONL forever and replay on every future turn).
 const CONTEXT_FILE_ORDER = ['AGENTS.md', 'SOUL.md', 'TOOLS.md', 'IDENTITY.md'] as const
 
-export function buildSystemPrompt(agent: ResolvedAgent): string {
+export function buildSystemPrompt(
+  agent: ResolvedAgent,
+  options: BuildSystemPromptOptions = {},
+): string {
   const parts: string[] = []
 
   const contextBlocks: string[] = []
@@ -70,13 +122,42 @@ export function buildSystemPrompt(agent: ResolvedAgent): string {
       '- To change who you are (name, vibe, personality, how you behave): use `home_write`.',
       '- To inspect exact wording of your own files: use `home_read` or `home_list`.',
       '- To remember facts the user told you or things you learned: use `memory_write` — NOT `home_write`.',
-      '- To produce work output (code, docs, artefacts): use `write` / `edit` — those land in your workspace, not your home.',
+      '- To produce work output (code, docs, artefacts): use the workspace tools currently exposed to you — those operate on your team workspace, not your private home.',
     ].join('\n'),
   )
 
   if (agent.skills.length > 0) {
+    const loaded = options.skills ?? []
+    const loadedNames = new Set(loaded.map((skill) => skill.name))
+    const unavailable = agent.skills.filter((name) => !loadedNames.has(name))
+    const skillBlocks = loaded.map((skill) => {
+      const runtimeDir = options.sandboxMode === 'docker' ? skill.sandboxDir : skill.hostDir
+      return [
+        `## ${skill.name}`,
+        '',
+        skill.description,
+        '',
+        `Runtime directory: \`${runtimeDir}\`. Resolve any relative scripts or assets mentioned by this skill from that directory.`,
+        '',
+        skill.body,
+      ]
+        .filter((line, index, lines) => line !== '' || lines[index - 1] !== '')
+        .join('\n')
+        .trimEnd()
+    })
+    const unavailableNote =
+      unavailable.length > 0
+        ? `Attached but unavailable or invalid: ${unavailable.join(', ')}.`
+        : ''
     parts.push(
-      `# Available Skills\n\nYou have access to the following skills: ${agent.skills.join(', ')}.`,
+      [
+        '# Available Skills',
+        '',
+        'Use these attached skill instructions when they are relevant to the task.',
+        '',
+        ...skillBlocks,
+        ...(unavailableNote ? ['', unavailableNote] : []),
+      ].join('\n'),
     )
   }
 
@@ -85,7 +166,7 @@ export function buildSystemPrompt(agent: ResolvedAgent): string {
     '',
     `- ${agent.team.id} (${agent.team.name}): ${agent.team.path}`,
     '',
-    'Your team is where work product lives — code, docs, artefacts, shared scratch. It may be shared with other agents in the same team. Your coding tools (`read`, `bash`, `edit`, `write`, `grep`, `find`, `ls`) are rooted at the team directory. Never use these tools to edit your identity/soul/behaviour files — those live in your home and are reached via `home_write` / `home_read`.',
+    'Your team is where work product lives — code, docs, artefacts, shared scratch. It may be shared with other agents in the same team. Use the workspace tools currently exposed to work there. Never use workspace tools to edit your identity/soul/behaviour files — those live in your private home and are reached via `home_write` / `home_read`.',
   ]
   parts.push(teamLines.join('\n'))
 

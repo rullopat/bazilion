@@ -152,6 +152,26 @@ API in `apps/daemon/src/core/`: `openSecrets(db, password)` and `openConfig(db)`
   `~/.bazilion`; do not add ALTER migrations, legacy-table importers, or API/URL/filesystem
   compatibility adapters. The bootstrap runner remains idempotent for an already-current schema.
 
+## Implemented for the next release (don't re-implement)
+
+- **BAZ-006 Slice A: opt-in Docker shell isolation.** The default remains
+  `BAZILION_BASH_SANDBOX=off`, which keeps Pi's host-backed
+  `read`/`bash`/`edit`/`write`/`grep`/`find`/`ls` surface unchanged. In `docker` mode,
+  Bazilion removes every host-backed coding tool and replaces only `bash` with a fresh,
+  network-disabled container. The Team workspace is mounted read/write at `/workspace`, with its
+  `memory/` subtree over-mounted read-only to `bash` (the scoped `memory_*` tools still own memory
+  writes); Agent document inputs are read-only at `/inputs`, and each attached skill directory is
+  read-only under `/skills/`. Skill bodies remain prompt-only,
+  and each injected body names the matching host or container runtime directory for relative
+  scripts/assets. Recursive bind propagation is disabled. The container gets a scrubbed
+  allowlist environment (image `ENV` is discarded), a read-only root, and a temporary `/tmp`;
+  it uses the configured local image (`debian:bookworm-slim` by default) with `--pull never`.
+  Only a local Unix-socket Docker context is accepted, and images declaring `VOLUME`s are rejected
+  because those would create implicit writable filesystems. Missing Docker, a missing/incompatible
+  local image, or a mount failure fails closed without falling back to host execution. Slice B
+  dangerous-command approval is not implemented yet;
+  do not confuse its classifier foundation with an enforced approval boundary.
+
 ## Already-shipped invariants (don't re-implement)
 
 - **Daemon = sole owner of `~/.bazilion`** — the worker subprocess delegates anything DB-backed (messaging tools, provider gate, agent resolution, secrets) back to the daemon over Node IPC + stdin. There is no per-worker SQLite handle.
@@ -170,7 +190,9 @@ API in `apps/daemon/src/core/`: `openSecrets(db, password)` and `openConfig(db)`
 - **Communication approvals are an edge posture, not a workflow engine.** An
   `approval_required` edge captures and holds one typed attempt before its guarded side
   effect. `/api/approvals`, `bazilion approval`, the web queue, and `approval_status` expose
-  state. Approval revalidates membership/policy and dispatches at most once. Do not couple it
+  state. Approval revalidates membership/policy and dispatches at most once; scheduled-trigger
+  approval instead grants the captured durable occurrence, which the scheduler executes under
+  its normal lease and bounded-retry state machine. Do not couple it
   to BAZ-006 shell approval, or add stages, transformations, general retries, or approver
   assignment engines.
 - **No runs/events tables, no stats CLI.** The runs/events audit layer was dropped in favor of pi's session JSONL files (which are the authoritative transcript). There is no `bazilion run list/show/cancel/prune` and no `bazilion stats`. Cancel is `bazilion agent cancel <id>` (keyed by agentId).
@@ -178,9 +200,9 @@ API in `apps/daemon/src/core/`: `openSecrets(db, password)` and `openConfig(db)`
 - **First-run gate** — `isSetupComplete(db)` returns true iff at least one enabled provider has ≥1 curated model. Web middleware redirects non-API routes to `/welcome` while the gate is closed; API routes return 409. Allowed prefixes during setup: `/welcome`, `/login`, `/config`, `/api/config`, `/api/auth`, `/api/health`, `/api/login`. Crossing the threshold triggers `ensureSetupSeeded(db, paths)` which creates the `default` profile (skillsMode: `'all'`) + `default` team (at `~/.bazilion/teams/default/`).
 - **Spawn-time skill override is gone.** Skills come from the profile only — `skillsMode: 'all'` attaches every installed skill at spawn, `'selected'` uses `profile_default_skills`. Per-agent tweaks happen post-spawn via `bazilion agent skill add/rm` (or the per-agent skills card on the detail page).
 - **Web client constants live in `apps/web/src/lib/wire-constants.ts`** (`DEFAULT_TEAM_ID`, `DEFAULT_PROFILE_ID`, `REASONING_LEVELS`). `apps/web/src/lib/daemon-client.ts` is server-only — Vite's import-protection rejects it from any client-bundled module.
-- **OpenClaw skill model: prompt-only.** Skills under `~/.bazilion/skills/<name>/` get their SKILL.md body injected into the system prompt of every agent they're attached to; helper scripts run via the agent's generic `bash` tool. No framework `entry:` extension, no trust gate.
+- **OpenClaw skill model: prompt-only.** Skills under `~/.bazilion/skills/<name>/` get their SKILL.md body injected into the system prompt of every agent they're attached to; helper scripts run via the active `bash` implementation. The prompt names each attached skill's real host directory in host mode and its read-only `/skills/...` mount in Docker mode. No framework `entry:` extension, no trust gate.
 - **qmd memory backend** (`apps/daemon/src/runtime/memory/qmd.ts`) — wraps `@tobilu/qmd`'s `searchLex` (BM25) for all memory routes. One `.qmd-index.sqlite` per team. Hybrid/vector paths are intentionally not enabled (pulls `node-llama-cpp` and multi-GB GGUF models; excluded in `pnpm.onlyBuiltDependencies`).
-- **Heartbeats / cron triggers** (`agent_triggers` table; `apps/daemon/src/lib/scheduler.ts`) — in-process tick loop (default 5s, `BAZILION_SCHEDULER_TICK_MS`; disable with `BAZILION_SCHEDULER=off`) pinned to `globalThis[Symbol.for('bazilion.scheduler')]`. Interval kind uses `last_fired_at + every ≤ now` with `created_at` as baseline; cron kind parses 5-field expressions via `apps/daemon/src/lib/cron.ts`. Firing reuses `runAgentTurn`; `last_fired_at` is updated *before* the run kicks off so a restart mid-fire doesn't double-trigger. CLI: `bazilion trigger add|list|rm|enable|disable`.
+- **Scheduled interval / cron triggers** (`agent_triggers` + `trigger_dispatches` tables; `apps/daemon/src/lib/scheduler.ts`) — an in-process tick loop (default 5s, `BAZILION_SCHEDULER_TICK_MS`; disable with `BAZILION_SCHEDULER=off`) is pinned to `globalThis[Symbol.for('bazilion.scheduler')]`. Interval kind uses `last_fired_at + every ≤ now` with `created_at` as baseline; cron kind parses 5-field expressions via `apps/daemon/src/lib/cron.ts`. A due occurrence is idempotently materialized in `trigger_dispatches`; while one dispatch is open, later interval occurrences coalesce. `last_fired_at` is the materialization watermark, not proof that the Agent turn succeeded. Claims are transactional and leased, busy Agents defer without losing work, expired running leases are recoverable after restart, and failures retry to a bounded terminal state. Firing reuses `runAgentTurn`; inspect delivery with `bazilion trigger history <id>`. CLI: `bazilion trigger add|list|rm|enable|disable|history`.
 - **Inbox / messaging surfaces** — the `send_message` / `read_inbox` / `wait_for_reply` tools (`apps/daemon/src/runtime/tools/messaging.ts`) are wired with `MessagingHost` injection: in the daemon (compact/context routes) the host is `createDbMessagingHost(db)`; in the worker the host is `createIpcMessagingHost()` which proxies every method through Node IPC. Outside-the-loop surfaces: `GET /api/agents/:id/messages?unread=1` (list), `POST /api/agents/:id/messages` (now accepts `replyTo`), `GET|PATCH /api/messages/:id` (detail + mark-read). CLI: `bazilion inbox list <agent> [--unread]`, `inbox show <id>`, `inbox read <id>`. Web: `/agents/:id/inbox`.
 - **`web_fetch` hardening: Readability + markdown + cache + SSRF guard** — `@mozilla/readability` over `linkedom`, output as markdown (or text via `extract_mode`). SSRF guard at `apps/daemon/src/runtime/tools/web-ssrf.ts` blocks loopback/private/link-local + DNS rebinding (re-validates resolved IPs, pins them into undici's `Agent.connect.lookup`). 15-min in-memory LRU per `${mode}|${url}` (100-entry cap). UA spoofs desktop Safari. 20s default timeout, 3 max redirects.
 - **ChatGPT OAuth / `openai-codex` provider** — credentials in `secrets:OPENAI_CODEX_OAUTH`. CLI runs the loopback flow (port 1455) client-side and PUTs credentials to `/api/auth/openai`; web `/config` has a "Connect ChatGPT" card. `apps/daemon/src/lib/api-key.ts:resolveAgentApiKey` is the single helper every session-creating call site uses to pre-fetch the access token; for daemon-side sessions it also wires a refresher for mid-turn JWT swaps. Worker turns don't get the refresher today (they'd need a new IPC method).

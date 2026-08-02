@@ -8,8 +8,16 @@
 // the daemon forwards it, and each client surfaces it (web download link,
 // Telegram document, CLI save-to-disk).
 
-import { readFileSync, statSync } from 'node:fs'
-import { basename, extname, isAbsolute, resolve } from 'node:path'
+import {
+  closeSync,
+  constants,
+  fstatSync,
+  openSync,
+  readFileSync,
+  realpathSync,
+  statSync,
+} from 'node:fs'
+import { basename, extname, isAbsolute, relative, resolve, sep } from 'node:path'
 import type { ToolHandler } from './types.ts'
 
 const MAX_DELIVER_BYTES = 25 * 1024 * 1024
@@ -31,7 +39,21 @@ const MIME: Record<string, string> = {
 
 export type FileSink = (file: { name: string; mimeType: string; data: string }) => void
 
+function isWithin(root: string, candidate: string): boolean {
+  const rel = relative(root, candidate)
+  return rel === '' || (rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel))
+}
+
 export function deliverFileTool(cwd: string, sink: FileSink): ToolHandler {
+  const workspacePath = resolve(cwd)
+  let workspaceRealPath: string | null = null
+  try {
+    workspaceRealPath = realpathSync(workspacePath)
+  } catch {
+    // Keep tool construction side-effect free. Invocation reports the broken
+    // workspace only if the agent actually tries to deliver a file.
+  }
+
   return {
     def: {
       name: 'deliver_file',
@@ -42,7 +64,7 @@ export function deliverFileTool(cwd: string, sink: FileSink): ToolHandler {
         properties: {
           path: {
             type: 'string',
-            description: 'Path to the file, relative to your workspace or absolute.',
+            description: 'Path to a file, relative to your workspace.',
           },
         },
         required: ['path'],
@@ -52,21 +74,74 @@ export function deliverFileTool(cwd: string, sink: FileSink): ToolHandler {
     async invoke(args) {
       const p = String(args.path ?? '')
       if (!p) throw new Error('deliver_file: path is required')
-      const abs = isAbsolute(p) ? p : resolve(cwd, p)
-      let size: number
+      if (isAbsolute(p)) {
+        throw new Error(`deliver_file: path must stay within the workspace: ${p}`)
+      }
+
+      const abs = resolve(workspacePath, p)
+      if (!isWithin(workspacePath, abs)) {
+        throw new Error(`deliver_file: path must stay within the workspace: ${p}`)
+      }
+
+      if (!workspaceRealPath) {
+        throw new Error('deliver_file: workspace is unavailable')
+      }
+
+      let real: string
+      let expected: ReturnType<typeof statSync>
       try {
-        size = statSync(abs).size
+        real = realpathSync(abs)
+        expected = statSync(real)
       } catch {
         throw new Error(`deliver_file: no such file: ${p}`)
       }
-      if (size > MAX_DELIVER_BYTES) {
-        throw new Error(
-          `deliver_file: "${basename(abs)}" is too large (${(size / 1024 / 1024).toFixed(1)} MB > 25 MB)`,
-        )
+
+      if (!isWithin(workspaceRealPath, real)) {
+        throw new Error(`deliver_file: path must stay within the workspace: ${p}`)
       }
+
+      // Use a no-follow descriptor after canonical validation. Besides making
+      // the regular-file check explicit, this closes the common final-symlink
+      // swap window between realpath/stat/read. Non-blocking mode prevents a
+      // non-regular path such as a FIFO from hanging before fstat can reject it.
+      let fd: number
+      try {
+        fd = openSync(real, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK)
+      } catch {
+        throw new Error(`deliver_file: no such file: ${p}`)
+      }
+
+      let data: string
+      try {
+        const stat = fstatSync(fd)
+        if (!stat.isFile()) {
+          throw new Error(`deliver_file: not a regular file: ${p}`)
+        }
+        if (stat.dev !== expected.dev || stat.ino !== expected.ino) {
+          throw new Error(`deliver_file: path changed during validation: ${p}`)
+        }
+        let confirmedReal: string
+        try {
+          confirmedReal = realpathSync(abs)
+        } catch {
+          throw new Error(`deliver_file: path changed during validation: ${p}`)
+        }
+        if (confirmedReal !== real) {
+          throw new Error(`deliver_file: path changed during validation: ${p}`)
+        }
+        if (stat.size > MAX_DELIVER_BYTES) {
+          throw new Error(
+            `deliver_file: "${basename(abs)}" is too large (${(stat.size / 1024 / 1024).toFixed(1)} MB > 25 MB)`,
+          )
+        }
+        data = readFileSync(fd).toString('base64')
+      } finally {
+        closeSync(fd)
+      }
+
       const name = basename(abs)
       const mimeType = MIME[extname(abs).toLowerCase()] ?? 'application/octet-stream'
-      sink({ name, mimeType, data: readFileSync(abs).toString('base64') })
+      sink({ name, mimeType, data })
       return `Delivered "${name}" (${mimeType}) to the user.`
     },
   }

@@ -115,8 +115,8 @@ bazilion completion bash|zsh|fish          # print a shell completion script
 
 - **Profile** — a template (`SOUL.md`, `IDENTITY.md`, `AGENTS.md`, `TOOLS.md`, optional `BOOTSTRAP.md`, default model, skills mode + default skills). Profiles are agent classes. `skillsMode: 'all'` attaches every installed skill at spawn, `'selected'` uses the curated `defaultSkills` list. The auto-seeded `default` profile uses `'all'` so a fresh install ships with every skill wired up; user-created profiles default to `'selected'`. Delete `default` freely if you'd rather only keep your own.
 - **Team Template** — the only reusable Team roster. It owns revisioned stable slots and a directed communication policy; each slot references an Agent Profile and may override its name, model, or reasoning level. Spawning a reviewed revision materializes the roster atomically into a Team while retaining template/slot lineage. Manage it with `bazilion team-template …` or `/templates/teams`.
-- **Pi agent engine** — Bazilion is based on [pi-coding-agent](https://www.npmjs.com/package/@earendil-works/pi-coding-agent). Pi runs each turn, stores the canonical JSONL transcript under the agent's `sessions/` directory, handles replay and compaction, executes the provider/tool loop, and supplies the coding tools. Bazilion contributes the multi-agent shell around that engine: profiles, teams, USER.md, memory, mailbox, scheduler, browser/MCP integrations, and clients.
-- **Team** — a live collaboration context: one filesystem root, one USER.md, one Agent roster, one shared memory, and exactly one effective revisioned communication policy. Every Agent belongs to exactly one Team. The agent's coding tools (`read`/`bash`/`edit`/`write`/`grep`/`find`/`ls`, supplied by [pi-coding-agent](https://www.npmjs.com/package/@earendil-works/pi-coding-agent)) are rooted at the Team directory. USER.md is read-only to Agents — edit it via `bazilion team user-md set` or the web UI. First-run setup seeds a `default` Team at `~/.bazilion/teams/default/`. Teams always live under `~/.bazilion/teams/<slug>/`; pass `--link <existing-path>` to `bazilion team add` to materialize the slot as a symlink to your existing project tree instead of as a fresh directory.
+- **Pi agent engine** — Bazilion is based on [pi-coding-agent](https://www.npmjs.com/package/@earendil-works/pi-coding-agent). Pi runs each turn, stores the canonical JSONL transcript under the agent's `sessions/` directory, handles replay and compaction, executes the provider/tool loop, and supplies the host coding tools when shell isolation is off. Bazilion contributes the multi-agent shell around that engine: profiles, teams, USER.md, memory, mailbox, scheduler, browser/MCP integrations, optional Docker shell isolation, and clients.
+- **Team** — a live collaboration context: one filesystem root, one USER.md, one Agent roster, one shared memory, and exactly one effective revisioned communication policy. Every Agent belongs to exactly one Team. With shell isolation off, Pi's coding tools (`read`/`bash`/`edit`/`write`/`grep`/`find`/`ls`) use the Team directory as their working directory; this is a default, not filesystem confinement. With Docker isolation on, only containerized `bash` remains and the Team directory is its sole writable bind mount. USER.md is read-only to Agents — edit it via `bazilion team user-md set` or the web UI. First-run setup seeds a `default` Team at `~/.bazilion/teams/default/`. Teams always live under `~/.bazilion/teams/<slug>/`; pass `--link <existing-path>` to `bazilion team add` to materialize the slot as a symlink to your existing project tree instead of as a fresh directory.
 - **Agent** — an instance spawned from a profile into a team. Has a private home (`~/.bazilion/agents/<id>/` — its copy of the templates, plus pi's append-only session JSONL under `sessions/`) reachable via the `home_*` tools, and one team membership reachable via the coding tools. UUIDs as ids.
 - **Skill** — a directory under `~/.bazilion/skills/<name>/` with a `SKILL.md` (standard OpenClaw / Anthropic agent-skill format). Imported via `bazilion skill import --from openclaw` (or any path). The body is injected into the system prompt of every agent the skill is attached to; helper scripts shipped alongside the markdown are invoked by the agent via its generic `bash` tool (no framework-level entrypoint and no trust gate — see AGENTS.md for why we removed both).
 - **Memory** — **Team-shared** BM25 index rooted at `<team.path>/memory/`. Every Agent in the Team reads and writes the same store. The current backend is `qmdBackend` (BM25 over markdown via [@tobilu/qmd](https://github.com/tobi/qmd)). Use it for project knowledge—codebase notes, decisions, and work context; for personal Agent notes, use `home_write` on `IDENTITY.md` instead.
@@ -228,9 +228,49 @@ Caddy handles the TLS cert via Let's Encrypt automatically. For Tailscale, point
 
 If you *do* want the daemon to bind a non-loopback address directly (dev/test only), pass `--host 0.0.0.0` to `bazilion serve`. Anyone who can reach that port can try tokens, so do not ship it without a proxy.
 
+## Agent shell security
+
+Both controls are off by default. To require one-shot approval for commands classified as risky:
+
+```sh
+bazilion config set BAZILION_BASH_APPROVAL dangerous
+bazilion doctor
+```
+
+Safe commands continue without interruption. Risky commands pause inline in browser chat or ask
+on stdin in a TTY CLI chat; Allow applies to that tool call once. Denial, expiry, cancellation,
+scheduled/inbox/Telegram turns, and non-TTY CLI callers all fail closed without executing the
+command. This ephemeral shell gate is separate from durable Team Policy communication approvals.
+Approval alone is a host-execution tripwire, not a filesystem sandbox.
+
+To opt independently into a hard shell boundary, first make the configured image available
+locally, then enable Docker mode:
+
+```sh
+docker pull debian:bookworm-slim
+bazilion config set BAZILION_BASH_SANDBOX docker
+bazilion doctor
+```
+
+The same settings are available on `/config` under **Agent Runtime → Agent Shell Security**.
+`BAZILION_BASH_SANDBOX_IMAGE` selects another pre-pulled image (it must provide
+`/bin/bash` and `/usr/bin/env` and must not declare Docker `VOLUME`s), and
+`BAZILION_BASH_SANDBOX_ENV_ALLOWLIST` copies explicitly named variables into the container.
+
+Each command gets a fresh container with no network, a read-only root, dropped capabilities,
+the host uid/gid, and the Team directory mounted read/write at `/workspace`. Team memory,
+uploaded documents, and attached skill assets are over-mounted read-only; recursive bind
+propagation is disabled so nested host mounts are not inherited. Provider credentials and the
+rest of the worker environment are absent unless explicitly allowlisted, and image-defined
+environment variables are discarded before the requested command. Pi's host-backed
+`read`/`edit`/`write`/`grep`/`find`/`ls` tools are hidden in this mode, because their absolute-path
+support would otherwise bypass the container. Bazilion requires a local Unix-socket Docker
+context, rejects images with implicit writable volumes, and never falls back to host execution.
+The default image is intentionally small, so use a compatible prebuilt custom image when agents
+need additional compilers or utilities.
+
 ## What's deferred
 
-- **Hard skill sandboxing** — skills run with the user's full FS access (no seccomp / bubblewrap / containers). Bazilion is single-user local; skills under `~/.bazilion/skills/` are user-owned by definition. Revisit if a marketplace or multi-user install ever happens.
 - **qmd vector/hybrid search** — BM25 is wired; the semantic path (embeddings + LLM rerank) is disabled to avoid the multi-GB GGUF model download. Enable opt-in later.
 - **Mempalace memory backend** — out of scope for v1.
 - **`generate_image` / vision input** — the chat pane already renders markdown images, but agent-invokable image generation and user image uploads aren't wired.

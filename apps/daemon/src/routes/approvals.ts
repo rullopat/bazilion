@@ -6,10 +6,13 @@ import {
   communicationApprovalRepo,
   messageRepo,
   openSecrets,
+  triggerDispatchRepo,
+  triggerRepo,
 } from '../core/index.ts'
 import { runAgentTurn } from '../lib/agent-turn.ts'
 import { getCtx } from '../lib/ctx.ts'
 import { downloadMediaBytes, type MediaRef } from '../lib/telegram/media.ts'
+import { turnFrameFailure } from '../lib/turn-outcome.ts'
 
 export const approvalsRouter = new Hono()
 
@@ -83,6 +86,41 @@ approvalsRouter.post('/:id/approve', async (c) => {
   const { db } = getCtx()
   const id = c.req.param('id')
   try {
+    const pending = communicationApprovalRepo.get(
+      db,
+      id,
+      true,
+    ) as CommunicationApprovalDetail | null
+    if (!pending) return c.json({ error: `approval_not_found: ${id}` }, 404)
+    if (pending.operation === 'scheduler_trigger' || pending.payloadKind === 'scheduler_trigger') {
+      const granted = communicationApprovalRepo.grantSchedulerTrigger(
+        db,
+        id,
+        'authenticated_operator',
+        (approval) =>
+          authorizeInSnapshot(db, {
+            source: approval.source,
+            target: approval.target,
+            origin: approval.origin,
+            attemptKind: approval.attemptKind,
+            attemptId: approval.attemptId,
+          }),
+        (approval) => validateSchedulerGrant(db, approval),
+      )
+      if (!granted.granted) {
+        return c.json(
+          {
+            error:
+              granted.failureKind === 'revalidation'
+                ? 'approval revalidation failed'
+                : 'approval delivery failed',
+            detail: granted.error,
+          },
+          409,
+        )
+      }
+      return c.json(granted.approval)
+    }
     const claimed = communicationApprovalRepo.claimDelivery(
       db,
       id,
@@ -111,6 +149,45 @@ approvalsRouter.post('/:id/approve', async (c) => {
   }
 })
 
+function validateSchedulerGrant(
+  db: ReturnType<typeof getCtx>['db'],
+  approval: CommunicationApprovalDetail,
+): string | null {
+  const payload = approval.payload as {
+    dispatchId?: unknown
+    triggerId?: unknown
+    occurrence?: unknown
+    agentId?: unknown
+    message?: unknown
+  }
+  if (
+    typeof payload.dispatchId !== 'string' ||
+    typeof payload.triggerId !== 'string' ||
+    typeof payload.occurrence !== 'number' ||
+    typeof payload.agentId !== 'string' ||
+    typeof payload.message !== 'string'
+  ) {
+    return 'scheduler approval payload is incomplete'
+  }
+  const trigger = triggerRepo.get(db, payload.triggerId)
+  if (!trigger?.enabled) return 'scheduled trigger is disabled or deleted'
+  if (trigger.agentId !== payload.agentId) return 'scheduled trigger target changed'
+  if (trigger.message !== payload.message) return 'scheduled trigger message changed'
+  const dispatch = triggerDispatchRepo.get(db, payload.dispatchId)
+  if (!dispatch) return 'scheduled dispatch no longer exists'
+  if (
+    dispatch.triggerId !== payload.triggerId ||
+    dispatch.agentId !== payload.agentId ||
+    dispatch.scheduledAt !== payload.occurrence
+  ) {
+    return 'scheduled dispatch no longer matches the approved occurrence'
+  }
+  if (['succeeded', 'failed', 'cancelled'].includes(dispatch.status)) {
+    return `scheduled dispatch is already ${dispatch.status}`
+  }
+  return null
+}
+
 async function deliver(approval: CommunicationApprovalDetail): Promise<void> {
   if (approval.payloadKind === 'agent_message') {
     const payload = approval.payload as {
@@ -122,19 +199,27 @@ async function deliver(approval: CommunicationApprovalDetail): Promise<void> {
     messageRepo.send(getCtx().db, payload)
     return
   }
+  if (approval.payloadKind === 'scheduler_trigger') {
+    // Scheduler approvals are durable grants only. The pending dispatch is
+    // executed by the scheduler so leases, retries, and restart recovery stay
+    // in one state machine.
+    return
+  }
   if (approval.payloadKind === 'agent_turn') {
     const payload = approval.payload as {
       agentId: string
       message: string
       attachments?: Array<{ name?: string; mimeType: string; data: string }>
     }
-    for await (const _frame of runAgentTurn(payload.agentId, payload.message, {
+    let failure: string | null = null
+    for await (const frame of runAgentTurn(payload.agentId, payload.message, {
       attachments: payload.attachments ?? [],
       skipUserIngress: true,
+      bashApprovalMode: 'auto_deny',
     })) {
-      // The approved turn persists its transcript. The original non-interactive caller
-      // observes final state by polling this approval; no disconnected response is replayed.
+      failure ??= turnFrameFailure(frame)
     }
+    if (failure) throw new Error(failure)
     return
   }
   if (approval.payloadKind === 'http_chat_frame') {
@@ -178,12 +263,15 @@ async function deliver(approval: CommunicationApprovalDetail): Promise<void> {
         transport.threadId ? { message_thread_id: transport.threadId } : {},
       )
     }
-    for await (const _frame of runAgentTurn(payload.agentId, text, {
+    let failure: string | null = null
+    for await (const frame of runAgentTurn(payload.agentId, text, {
       attachments,
       skipUserIngress: true,
+      bashApprovalMode: 'auto_deny',
     })) {
-      // Telegram mirror observes the persisted turn and independently applies egress policy.
+      failure ??= turnFrameFailure(frame)
     }
+    if (failure) throw new Error(failure)
     return
   }
   if (approval.payloadKind.startsWith('telegram_')) {

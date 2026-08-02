@@ -52,7 +52,7 @@ maps each item to where it lands below (numbered by the size order).
 **Noise / visibility controls**
 | Item | Source | Phase |
 |---|---|---|
-| Per-trigger silence toggle (heartbeats always mirror today) | step-2 decision | 4 |
+| Per-trigger silence toggle (scheduled turns always mirror today) | step-2 decision | 4 |
 | Per-message visibility controls (hide a turn) | deferred | 4 |
 | Streaming modes (partial via `editMessage`) | deferred | 9 |
 
@@ -169,14 +169,14 @@ Nothing. Smallest phase — good warm-up.
 > bot, and Telegram **never redelivers a bot's own messages** to itself — so the
 > two-bots-echoing loop (and single-agent self-echo) **cannot occur** via
 > Telegram. The actually-dangerous runaway (two agents replying forever) is
-> driven by the **internal `send_message` / heartbeat machinery**, not Telegram;
+> driven by the **internal `send_message` / scheduled-trigger machinery**, not Telegram;
 > those turns merely *mirror* out. A Telegram-ingress window can't stop it, so it
 > is explicitly **out of scope here** (candidate for its own non-Telegram phase).
 > This phase implements the guards that *are* correct + useful for a single bot.
 
 ### User story
 Another bot in the supergroup (or a human/script hammering a topic) drives an agent
-into a flood; or a heartbeat-heavy agent spams its topic with verbose tool-line
+into a flood; or a frequently scheduled Agent spams its topic with verbose tool-line
 noise that eats the shared per-supergroup send quota. The user wants safe, automatic
 backstops that never lose the agent's actual replies.
 
@@ -214,7 +214,7 @@ backstops that never lose the agent's actual replies.
 Nothing. Self-contained.
 
 ### Deliberately deferred to a separate (non-Telegram) item
-- **Internal agent-to-agent loop guard** — a budget at the `send_message` / heartbeat
+- **Internal agent-to-agent loop guard** — a budget at the `send_message` / scheduled-trigger
   seam in the messaging/scheduler layer. This is the one that actually prevents
   cost-runaway; it belongs outside the Telegram roadmap.
 - **Pausing triggers on trip** (vs just dropping traffic) — bigger blast radius;
@@ -270,13 +270,13 @@ Nothing. Quick, visible win.
 > silence + per-message `[[no-telegram]]` judged not useful). Spec kept for the record.
 
 ### User story
-Heartbeat-driven turns flood a topic with routine status pings the user doesn't want
+Scheduled-trigger turns flood a topic with routine status pings the user doesn't want
 to see, and occasionally an agent does internal bookkeeping it shouldn't surface at
 all. The user wants to silence specific triggers and let an agent mark a turn as
 not-for-Telegram.
 
 ### Design decisions
-- **Per-trigger silence** (`agent_triggers.silent_in_telegram`): a heartbeat/cron
+- **Per-trigger silence** (`agent_triggers.silent_in_telegram`): an interval/cron
   trigger flagged silent runs the turn normally but skips the outbound mirror. Today
   *every* trigger mirrors (v1 step-2 decision); this is the opt-out.
 - **Per-message visibility**: a lightweight marker the agent can emit to suppress

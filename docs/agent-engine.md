@@ -42,7 +42,7 @@ Stdio is `['pipe','pipe','inherit','ipc']`:
   - `{kind:'done', messages}` — exactly once on clean exit
   - `{kind:'fatal', error}` — exceptional exits
 - **stderr** — inherited to the daemon console.
-- **fd 3 (IPC)** — bidirectional JSON RPC. Worker → daemon: `{type:'rpc', id, method, args}` for the messaging tools. Daemon → worker: `{type:'rpc-reply', id, ok, result|error}`.
+- **fd 3 (IPC)** — bidirectional JSON RPC. Worker → daemon: `{type:'rpc', id, method, args}` for daemon-owned tools and shell approval. Daemon → worker: `{type:'rpc-reply', id, ok, result|error}`.
 
 Cancellation is keyed by **agentId** (not runId — there are no runIds anymore, since the runs table is gone). The agent-cancel registry is pinned to `globalThis[Symbol.for('bazilion.agent-cancel.registry')]` so module reloads don't replace it. `POST /api/agents/:id/cancel` looks up the controller and aborts it; the parent's abort handler calls `child.kill('SIGTERM')`, arms a 3s timer, and SIGKILLs if the child doesn't exit.
 
@@ -53,17 +53,19 @@ The worker has **no DB handle**. Everything DB-shaped came in over stdin:
 ```
 process.on('SIGTERM' / 'SIGINT', onSignal)            // installed FIRST so a signal during boot
                                                       // emits a synthetic 'cancelled' event + exits 0
-const {agent, message, enabledProviders, apiKey} = await readInput()
+const {agent, message, enabledProviders, apiKey, turnId, bashApprovalMode} = await readInput()
 paths = resolvePaths()                                // BAZILION_HOME from env, no DB access
 memory = qmdBackend(join(agent.team.path, 'memory')) // Team-shared store, not per-agent
                                                       // BM25 index via @tobilu/qmd
 messagingHost = createIpcMessagingHost()              // process.send/on('message') wrapper
+bashApprovalHost = createIpcBashApprovalHost()        // risky bash → daemon decision RPC
 session = createBazilionSession({
   agent, paths,
   env: process.env,                                   // already merged by daemon, passed via spawn env
   memory,
   enabledProviders: new Set(enabledProviders),
   messagingHost,
+  bashApprovalHost,
   apiKey,                                             // pre-fetched OAuth token if openai-codex
 })
 abortSession = () => void session.abort()
@@ -71,9 +73,31 @@ abortSession = () => void session.abort()
 
 `createBazilionSession` (in `apps/daemon/src/runtime/pi/session.ts`) is the integration seam where Bazilion hands control to Pi's agent engine. It instantiates pi-coding-agent's `AgentSession` with:
 - A `SessionManager` rooted at `~/.bazilion/agents/<id>/sessions/` — pi owns the JSONL transcript, compaction, and replay. Resume-or-create: the worker walks the session dir for the newest `.jsonl`, opens it if found, otherwise creates a fresh session.
-- Pi's own `createCodingTools(cwd)` where `cwd = team.path` — that's where `read`/`bash`/`edit`/`write`/`grep`/`find`/`ls` come from.
+- A shell-policy-selected coding surface. With both controls off, Pi's original `read`/`bash`/`edit`/`write`/`grep`/`find`/`ls` surface remains unchanged. `BAZILION_BASH_APPROVAL=dangerous` replaces only `bash` with a same-name local wrapper that classifies before execution and asks the daemon for a one-shot decision. With `BAZILION_BASH_SANDBOX=docker`, none of the host-backed coding tools are enabled; Bazilion registers only a same-name custom `bash` backed by an ephemeral Docker container, optionally with the same approval wrapper.
 - Bazilion's custom tool list via `createBazilionCustomTools` (memory_*, home_*, web_*, bootstrap_done, optional messaging via the `messagingHost`) — see `apps/daemon/src/runtime/pi/tools.ts`.
 - The provider/model pair from the registry, with `apiKey` (caller-supplied for OAuth providers, env-derived for API-key ones), plus the agent's `reasoning_level`.
+
+Docker mode is an opt-in confinement boundary, not just a different process launcher. The Team
+workspace is mounted read/write at `/workspace`, but its `memory/` subtree is over-mounted
+read-only to `bash` (the scoped `memory_*` tools still own memory writes). Non-image attachments
+saved under the Agent's private `uploads/` directory are exposed read-only at `/inputs`, and the
+message's generated file note uses those container paths. Each attached skill directory is exposed
+read-only at the runtime path printed beside that skill in the prompt. Recursive bind propagation
+is disabled, so nested host mounts do not expand those capabilities. The container otherwise has
+a read-only root, a temporary `/tmp`, no network, no capabilities, and only Bazilion's scrubbed
+allowlist environment; image-defined environment values are discarded before the requested
+command. It runs an immutable id resolved from the configured local image with `--pull never`.
+Only a local Unix-socket Docker context is accepted. Images declaring Docker `VOLUME`s are rejected
+because those would create implicit writable filesystems. Missing Docker, a missing/incompatible
+local image, or a mount failure returns a tool error and never falls back to host execution.
+
+Dangerous-command approval is independent of Docker isolation. The wrapper intercepts Pi's bash
+tool definition (where the stable tool-call id exists), classifies the complete command, and sends
+an IPC request before either local or Docker operations run. Interactive browser and TTY CLI turns
+receive `command_approval` stream events and answer through `/api/shell-approvals`; every other
+caller is marked `auto_deny`. Pending entries live only in daemon memory, expire after two minutes,
+and are removed on turn cancellation or worker disconnect. Allow invokes the selected backend once;
+all other outcomes become a model-visible bash tool error without invoking it.
 
 Provider gate: `enabledProviders.size > 0 && !enabledProviders.has(providerName)` → throws "provider is disabled — enable it on /config". The set is pre-computed by the daemon so the worker doesn't have to read `provider_state`.
 
@@ -91,10 +115,10 @@ Those were copied out of the profile at spawn time (`core/agent/spawn.ts`) so an
 Then three team-related blocks are appended (when applicable):
 
 - **`# Agent Home`** — describes the agent's private home (`agents/<id>/`) and points the model at `home_read` / `home_write` / `home_list` for self-edits and at `memory_write` for things-to-remember-later. Frames the distinction between "who I am" (home) and "what I produce" (team dir).
-- **`# Team`** — `- <id> (<name>): <path>`. Reminds the model that its `read`/`bash`/`edit`/`write`/`grep`/`find`/`ls` tools are rooted at the team directory, that the team may be shared with other agents, and that it must use `home_*` (not these tools) to edit its own identity files.
+- **`# Team`** — `- <id> (<name>): <path>`. Reminds the model that the currently exposed workspace tools operate on team work product, that the team may be shared with other agents, and that it must use `home_*` (not workspace tools) to edit its own identity files. In Docker mode the only coding tool is the containerized `bash`, so the prompt does not claim that host file tools remain available.
 - **`# About the User`** — only when `teams.user_md` is non-empty. Read-only context block about the human; the agent is told it can't edit it directly.
 
-Finally appends: the list of attached skills (each skill's SKILL.md body is injected into the prompt), and a memory blurb explaining the **team-shared** scope: "You share a persistent memory backend with every other agent in this team. Use `memory_write` for project knowledge — codebase notes, decisions, things the user told you about the work. For personal notes about yourself (preferences, persona quirks), use `home_write` on IDENTITY.md instead."
+Finally appends: the list of attached skills (each skill's SKILL.md body is injected into the prompt), and a memory blurb explaining the **team-shared** scope: "You share a persistent memory backend with every other agent in this team. Use `memory_write` for project knowledge — codebase notes, decisions, things the user told you about the work. For personal notes about yourself (preferences, persona quirks), use `home_write` on IDENTITY.md instead." Each injected skill also names its runtime directory so relative helper scripts/assets resolve correctly: the installed host directory when sandboxing is off, or that skill's matching read-only `/skills/...` mount when Docker mode is on.
 
 ## 4. The turn loop
 
@@ -180,9 +204,27 @@ Message conversion: `system` is passed separately (pi keeps it out of the messag
   }
   ```
 
-  Worker-side (`createIpcMessagingHost` in `worker/entry.ts`): each method serializes args, sends `process.send({type:'rpc', id, method, args})`, awaits the matching `rpc-reply` (correlation by `id`). Daemon-side (`createDbMessagingHost` in `daemon/src/lib/messaging-host.ts`): passes through to `messageRepo` / `agentRepo`. The daemon's `spawnWorkerTurn` wires the dispatcher: `child.on('message')` → match the request to a `MessagingHost` method → reply.
+  Worker-side IPC hosts in `worker/entry.ts` serialize args, send `process.send({type:'rpc', id, method, args})`, and await the matching `rpc-reply` (correlation by `id`). Daemon-side messaging passes through `createDbMessagingHost`; shell approval is owned by the daemon's ephemeral command-approval registry. `spawnWorkerTurn` wires both dispatch paths and injects approval state into the streamed turn frames.
 
-File-IO tools — `read`, `bash`, `edit`, `write`, `grep`, `find`, `ls` — come from pi-coding-agent's own `createCodingTools(cwd, …)`. The `cwd` is the agent's team directory; that's how the model gets a single rooted view of work product without the legacy workspace-mount juggling.
+The coding-tool surface is mode-dependent:
+
+- **Off (default):** `read`, `bash`, `edit`, `write`, `grep`, `find`, and `ls` come from
+  pi-coding-agent's `createCodingTools(cwd, …)`, with the Team directory as `cwd`. This preserves
+  existing host behavior.
+- **Docker:** every host-backed Pi coding tool is removed. A custom tool still named `bash` runs
+  each command in a fresh container with `/workspace` read/write, `/workspace/memory` read-only,
+  optional `/inputs` and attached `/skills/...` mounts read-only, recursive bind propagation
+  disabled, a scrubbed environment, a read-only root plus tmpfs `/tmp`, and network disabled.
+  The image must already exist locally (`--pull never`), provide `/bin/bash` and `/usr/bin/env`,
+  and declare no Docker `VOLUME`s; non-local Docker contexts and Docker/image/mount errors fail
+  closed.
+
+BAZ-006 adds both controls for the next release. `BAZILION_BASH_SANDBOX=docker` selects the hard
+container boundary. Independently, `BAZILION_BASH_APPROVAL=dangerous` wraps either host or Docker
+`bash`: safe commands continue immediately, while classified commands emit one turn-scoped
+approval event. Web and TTY CLI turns can allow once or deny; scheduled, Telegram, background, and
+non-TTY turns auto-deny without waiting. Timeout, cancellation, and disconnect all clear pending
+state before the command can execute.
 
 ## 7. Cancellation end-to-end
 
@@ -206,9 +248,28 @@ Not strictly the engine, but it's the other caller of `runAgentTurn`. A `setInte
 - `interval`: due when `now - (lastFiredAt ?? createdAt) ≥ intervalSec*1000`.
 - `cron`: a 5-field parser (`apps/daemon/src/lib/cron.ts`) matched at minute resolution, with OR semantics on DOM/DOW. Guard: don't refire within the same minute-floor as `lastFiredAt`.
 
+For a due trigger, the scheduler idempotently materializes a row in `trigger_dispatches` keyed
+by `(trigger_id, scheduled_at)`, then advances `last_fired_at` to that scheduled occurrence.
+That field is a scheduling watermark, not an execution-success flag. If the trigger already
+has pending, running, or retrying work, later interval occurrences coalesce instead of creating
+an unbounded queue.
+
+Claimable dispatches are pending/retrying rows whose retry time has arrived plus running rows
+whose lease expired after an interrupted daemon. A transactional claim creates a running
+lease. A busy Agent causes the dispatch to be deferred without consuming an attempt; otherwise
+the scheduler revalidates authorization and drains `runAgentTurn`. An approval-required result
+keeps the dispatch pending; operator approval records a durable grant, and a later scheduler tick
+still owns the turn, lease, retries, and final status. Worker `fatal` frames and Pi provider
+`event:error` frames are both dispatch failures. Success is recorded as `succeeded`; failures use
+bounded exponential retry and eventually become terminal `failed`.
+The in-memory `firing` guard only prevents duplicate work inside one process—the dispatch row,
+unique occurrence key, and lease are the durable recovery mechanism. Recent status is visible
+through the trigger-history HTTP, CLI, and web surfaces.
+
 The scheduler also runs an **inbox auto-deliver loop** each tick: `messageRepo.listRecipientsWithUnread(db)` returns idle agents with unread mail; for each, the scheduler drains the inbox into the agent's wake-up prompt and fires `runAgentTurn`. The agent-cancel registry's `isActiveAgent(agentId)` check prevents double-firing while a turn is in flight.
 
-On fire: dedupe by triggerId/agentId (in-memory `firing` Set), `markFired` first, then drain `runAgentTurn` discarding frames. The turn's transcript lands in pi's session JSONL identically to HTTP chats.
+The turn's transcript lands in pi's session JSONL identically to HTTP chats;
+`trigger_dispatches` stores delivery metadata only and does not duplicate conversation content.
 
 ## The shape that matters
 

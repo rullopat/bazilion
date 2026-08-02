@@ -4,14 +4,14 @@
 // the pre-resolved agent record, enabled-provider set, and message text.
 // The daemon does all DB-backed lookups before spawning us.
 //
-// Live messaging (the `send_message` / `read_inbox` / `wait_for_reply` tools)
-// is delegated back to the daemon over Node IPC: each tool invocation sends
-// a `{type: 'rpc', ...}` message and awaits the matching reply. The parent
-// dispatches the request through its own DB-backed `MessagingHost`.
+// Daemon-owned tools and dangerous-command approval are delegated back over
+// Node IPC: each invocation sends a `{type: 'rpc', ...}` message and awaits
+// the matching reply. The parent dispatches the request through the matching
+// host and owns ephemeral approval state.
 //
 // Ownership split now reads:
 //   - daemon: SQLite handle, agent resolution, secrets envelope, scheduler,
-//     run-cancel registry, messaging RPC dispatch.
+//     run-cancel registry, tool RPC dispatch, command-approval registry.
 //   - pi: conversation transcript, compaction entries, tool execution,
 //     provider retries.
 //   - this worker: glue between the two — runs `session.prompt(message)`,
@@ -25,12 +25,14 @@
 
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
-import type { Attachment, ChatFrame, ResolvedAgent } from '@bazilion/api-types'
+import type { Attachment, BashApprovalMode, ChatFrame, ResolvedAgent } from '@bazilion/api-types'
 import { resolvePaths } from '../../core/index.ts'
 import { qmdBackend } from '../memory/qmd.ts'
 import { piMessagesToProviderView, translatePiEvent } from '../pi/events.ts'
 import { createBazilionSession } from '../pi/session.ts'
+import type { BashApprovalHost as ShellBashApprovalHost } from '../shell/approval.ts'
 import type {
+  BashApprovalResult,
   BrowserHost,
   InjectedMcpTool,
   IpcReply,
@@ -55,6 +57,8 @@ interface WorkerInput {
   mcpTools?: InjectedMcpTool[]
   /** Image attachments — passed to pi's prompt (vision). Pre-classified by the daemon. */
   images?: Attachment[]
+  turnId: string
+  bashApprovalMode: BashApprovalMode
 }
 
 function emit(frame: ChatFrame): void {
@@ -70,9 +74,13 @@ async function readInput(): Promise<WorkerInput> {
   if (
     !parsed.agent ||
     typeof parsed.message !== 'string' ||
-    !Array.isArray(parsed.enabledProviders)
+    !Array.isArray(parsed.enabledProviders) ||
+    typeof parsed.turnId !== 'string' ||
+    (parsed.bashApprovalMode !== 'interactive' && parsed.bashApprovalMode !== 'auto_deny')
   ) {
-    throw new Error('worker: stdin must be {agent, message, enabledProviders}')
+    throw new Error(
+      'worker: stdin must include {agent, message, enabledProviders, turnId, bashApprovalMode}',
+    )
   }
   return parsed
 }
@@ -163,6 +171,27 @@ function createIpcMcpHost(call: IpcCall): McpHost {
   }
 }
 
+function createIpcBashApprovalHost(
+  call: IpcCall,
+  input: Pick<WorkerInput, 'agent' | 'turnId' | 'bashApprovalMode'>,
+): ShellBashApprovalHost {
+  return {
+    async requestApproval(request) {
+      const result = await call<BashApprovalResult>('bashApproval', {
+        id: randomUUID(),
+        turnId: input.turnId,
+        toolCallId: request.toolCallId,
+        agentId: input.agent.agent.id,
+        teamId: input.agent.team.id,
+        command: request.command,
+        risks: [...request.risks],
+        mode: input.bashApprovalMode,
+      })
+      return result.decision === 'allow' ? 'approved' : 'denied'
+    },
+  }
+}
+
 function isIpcReply(msg: unknown): msg is IpcReply {
   if (!msg || typeof msg !== 'object') return false
   const m = msg as Record<string, unknown>
@@ -191,8 +220,17 @@ async function main(): Promise<void> {
   process.on('SIGTERM', onSignal)
   process.on('SIGINT', onSignal)
 
-  const { agent, message, enabledProviders, apiKey, browserEnabled, mcpTools, images } =
-    await readInput()
+  const {
+    agent,
+    message,
+    enabledProviders,
+    apiKey,
+    browserEnabled,
+    mcpTools,
+    images,
+    turnId,
+    bashApprovalMode,
+  } = await readInput()
 
   // Path resolution still happens in the worker — `resolvePaths()` only reads
   // the `BAZILION_HOME` env var the daemon hands down. No DB, no filesystem
@@ -207,6 +245,11 @@ async function main(): Promise<void> {
   const userMdHost = createIpcUserMdHost(ipcCall)
   const browserHost = browserEnabled ? createIpcBrowserHost(ipcCall) : undefined
   const mcpHost = mcpTools && mcpTools.length > 0 ? createIpcMcpHost(ipcCall) : undefined
+  const bashApprovalHost = createIpcBashApprovalHost(ipcCall, {
+    agent,
+    turnId,
+    bashApprovalMode,
+  })
 
   const { session, dispose } = await createBazilionSession({
     agent,
@@ -220,6 +263,7 @@ async function main(): Promise<void> {
     browserHost,
     mcpHost,
     mcpTools,
+    bashApprovalHost,
     // deliver_file emits a `file` event straight onto our stdout frame stream.
     fileSink: (f) => emit({ kind: 'event', event: { type: 'file', ...f } }),
   })

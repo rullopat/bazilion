@@ -4,9 +4,10 @@
 // calling `session.prompt(text)` / `session.compact(instructions)` / etc.
 //
 // What we take ownership of (and hand to pi):
-//   - cwd: the agent's default workspace path (or agent.dir as a degenerate
-//     fallback when no workspace is mounted). Pi's built-in `read/bash/edit/
-//     write/grep/find/ls` tools are rooted here.
+//   - cwd: the agent's team workspace path. With shell security off, Pi's
+//     built-in coding tools use it as their working directory. With Docker
+//     isolation on, Bazilion exposes only a same-name containerized `bash`
+//     replacement and hides every host-backed coding file tool.
 //   - agentDir: `<bazilion-home>/pi` — pi writes transient state here
 //     (settings overrides, resource caches). We don't share it with the
 //     user's global `~/.pi/agent` so a Bazilion install never clobbers an
@@ -54,7 +55,9 @@ import { providerStateRepo } from '../../core/index.ts'
 import type { MemoryBackend } from '../memory/types.ts'
 import { resolveModel as resolvePiModel } from '../providers/pi-adapter.ts'
 import { createProviderRegistry, loadProviderConfigFromEnv } from '../providers/registry.ts'
-import { buildSystemPrompt } from '../session/prompt.ts'
+import { buildSystemPrompt, loadPromptSkills } from '../session/prompt.ts'
+import type { BashApprovalHost } from '../shell/approval.ts'
+import { createSessionShellTools } from '../shell/tooling.ts'
 import type {
   BrowserHost,
   InjectedMcpTool,
@@ -63,8 +66,6 @@ import type {
   UserMdHost,
 } from '../worker/ipc-protocol.ts'
 import { createBazilionCustomTools } from './tools.ts'
-
-const BUILTIN_TOOL_NAMES = ['read', 'bash', 'edit', 'write', 'grep', 'find', 'ls'] as const
 
 export interface CreateBazilionSessionOptions {
   agent: ResolvedAgent
@@ -108,6 +109,8 @@ export interface CreateBazilionSessionOptions {
   mcpTools?: InjectedMcpTool[]
   /** If provided, enables the `deliver_file` tool — the agent's outbound file channel. */
   fileSink?: import('../tools/deliver-file.ts').FileSink
+  /** Turn-scoped bridge for dangerous bash commands. Omit to fail closed. */
+  bashApprovalHost?: BashApprovalHost
   /**
    * Optional explicit API key for the agent's provider. Wins over any value
    * derived from `env`. Required for OAuth-backed providers (`openai-codex`)
@@ -158,6 +161,7 @@ export async function createBazilionSession(
     mcpHost,
     mcpTools,
     fileSink,
+    bashApprovalHost,
     refreshApiKey,
   } = opts
 
@@ -210,13 +214,25 @@ export async function createBazilionSession(
     })
   }
 
-  // cwd for pi's coding tools is the agent's team directory. Every agent
-  // belongs to exactly one team; the team's filesystem root is where work
-  // product lives and where the agent's `read`/`bash`/`edit`/`write` are
-  // rooted. Private identity/soul files live in `agent.dir` and are reached
-  // through the scoped `home_*` tools, not via cwd.
+  // cwd is the agent's team directory. Every agent belongs to exactly one
+  // team; the team's filesystem root is where work product lives. In host
+  // mode Pi uses this as the coding tools' working directory (not a security
+  // boundary). In Docker mode only the containerized bash is exposed and the
+  // directory is its sole read/write bind mount. Private identity/soul files
+  // live in `agent.dir` and are reached through scoped `home_*` tools.
   const cwd = agent.team.path
   if (!existsSync(cwd)) mkdirSync(cwd, { recursive: true })
+
+  const promptSkills = loadPromptSkills(paths.skillsDir, agent.skills)
+  const uploadsDir = join(agent.agent.dir, 'uploads')
+  const shellTools = createSessionShellTools(cwd, env, {
+    ...(existsSync(uploadsDir) ? { inputsDir: uploadsDir } : {}),
+    skillMounts: promptSkills.map((skill) => ({
+      source: skill.hostDir,
+      target: skill.sandboxDir,
+    })),
+    approvalHost: bashApprovalHost,
+  })
 
   // Session file under the agent's own directory. Keeping it under
   // `agents/<id>/sessions/` makes `bazilion uninstall` (data tier) already
@@ -251,17 +267,20 @@ export async function createBazilionSession(
   // Pi keeps its default base (which lists built-in tools + guidelines), our
   // profile content (SOUL.md / IDENTITY.md / workspaces / memory hint) is
   // concatenated after it. This is the same injection hook pi extensions use.
-  const bazilionPrompt = buildSystemPrompt(agent)
+  const bazilionPrompt = buildSystemPrompt(agent, {
+    skills: promptSkills,
+    sandboxMode: shellTools.config.sandboxMode,
+  })
   const resourceLoader = createBazilionResourceLoader(bazilionPrompt)
   await resourceLoader.reload()
 
   // Tool allowlist: pi's `tools` option is exclusive when provided — only
   // the listed names are enabled, regardless of what's in `customTools`.
-  // So we have to enumerate both pi's built-in coding tools *and* every
-  // Bazilion custom tool we want the LLM to see. Missing the custom names
-  // from the allowlist would silently drop memory/messaging/web/bootstrap
-  // tools from the agent's surface.
-  const customTools = createBazilionCustomTools({
+  // So we enumerate the host-backed Pi tools allowed by the shell policy and
+  // every Bazilion custom tool we want the LLM to see. Docker mode contributes
+  // a custom same-name `bash` and zero host tools; missing its name (or any
+  // memory/messaging/web/bootstrap name) would silently drop it.
+  const bazilionTools = createBazilionCustomTools({
     agent,
     memory,
     messagingHost,
@@ -272,7 +291,10 @@ export async function createBazilionSession(
     fileSink,
     env,
   })
-  const allowedTools = [...BUILTIN_TOOL_NAMES, ...customTools.map((t) => t.name)]
+  const customTools = shellTools.customBash
+    ? [...bazilionTools, shellTools.customBash]
+    : bazilionTools
+  const allowedTools = [...shellTools.hostToolNames, ...customTools.map((t) => t.name)]
 
   const { session } = await createAgentSession({
     cwd,

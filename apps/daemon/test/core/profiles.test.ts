@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test } from 'vitest'
 import { createProfile } from '../../src/core/profile/create.ts'
@@ -27,6 +27,7 @@ test('createProfile scaffolds dir, files, and DB row', () => {
   expect(existsSync(join(profile.dir, 'SOUL.md'))).toBe(true)
   expect(existsSync(join(profile.dir, 'IDENTITY.md'))).toBe(true)
   expect(existsSync(join(profile.dir, 'BOOTSTRAP.md'))).toBe(true)
+  expect(existsSync(join(profile.dir, 'HEARTBEAT.md'))).toBe(false)
   expect(existsSync(join(profile.dir, 'profile.json'))).toBe(true)
 
   const fromDb = profileRepo.get(env.db, 'researcher')
@@ -35,6 +36,19 @@ test('createProfile scaffolds dir, files, and DB row', () => {
 
   const skills = profileRepo.getDefaultSkills(env.db, 'researcher')
   expect(skills).toEqual(['note-taking', 'web-search'])
+})
+
+test('loadProfile ignores a legacy HEARTBEAT.md left on disk', () => {
+  const profile = createProfile(env.db, env.paths, {
+    id: 'legacy-heartbeat',
+    defaultModel: 'm',
+  })
+  writeFileSync(join(profile.dir, 'HEARTBEAT.md'), '# legacy scheduled instructions\n')
+
+  const loaded = loadProfile(env.db, profile.id)
+
+  expect(loaded.files).not.toHaveProperty('heartbeat')
+  expect(Object.values(loaded.files)).not.toContain('# legacy scheduled instructions\n')
 })
 
 test('createProfile rejects invalid slug', () => {

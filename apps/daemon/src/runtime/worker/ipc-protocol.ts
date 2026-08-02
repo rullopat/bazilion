@@ -8,11 +8,17 @@
 //
 // Wire format: one JSON object per `send`, with a stable `type` discriminator
 // and a correlation `id` for matching replies. The shape stays narrow on
-// purpose — only the messaging tools talk over IPC. Agent resolution,
-// provider gate, and merged env are pre-computed in the daemon and handed to
-// the worker on stdin (see `WorkerInput` in `worker/entry.ts`).
+// purpose — daemon-owned tools and command approval talk over IPC. Agent
+// resolution, provider gate, and merged env are pre-computed in the daemon and
+// handed to the worker on stdin (see `WorkerInput` in `worker/entry.ts`).
 
-import type { CommunicationApproval, Message } from '@bazilion/api-types'
+import type {
+  BashApprovalMode,
+  CommandApproval,
+  CommandRisk,
+  CommunicationApproval,
+  Message,
+} from '@bazilion/api-types'
 import type { ToolResultPart } from '../tools/types.ts'
 
 export type RpcMethod =
@@ -26,6 +32,7 @@ export type RpcMethod =
   | 'userMdWrite'
   | 'browserInvoke'
   | 'mcpInvoke'
+  | 'bashApproval'
 
 export interface AgentExistsArgs {
   agentId: string
@@ -92,6 +99,24 @@ export interface McpInvokeArgs {
   args: Record<string, unknown>
 }
 
+export interface BashApprovalArgs {
+  id: string
+  turnId: string
+  toolCallId: string
+  agentId: string
+  teamId: string
+  command: string
+  risks: CommandRisk[]
+  mode: BashApprovalMode
+}
+
+export type BashApprovalDecisionReason = 'user' | 'auto_deny' | 'timeout' | 'cancelled'
+
+export interface BashApprovalResult {
+  decision: 'allow' | 'deny'
+  reason: BashApprovalDecisionReason
+}
+
 /**
  * An MCP tool discovered daemon-side and shipped to the worker on stdin so it
  * can build a proxy tool for it. The worker never connects to MCP servers — it
@@ -118,6 +143,7 @@ export type RpcArgs =
   | { method: 'userMdWrite'; args: UserMdWriteArgs }
   | { method: 'browserInvoke'; args: BrowserInvokeArgs }
   | { method: 'mcpInvoke'; args: McpInvokeArgs }
+  | { method: 'bashApproval'; args: BashApprovalArgs }
 
 export type RpcResult =
   | { method: 'agentExists'; value: boolean }
@@ -130,6 +156,7 @@ export type RpcResult =
   | { method: 'userMdWrite'; value: UserMdWriteResult }
   | { method: 'browserInvoke'; value: ToolResultPart[] }
   | { method: 'mcpInvoke'; value: ToolResultPart[] }
+  | { method: 'bashApproval'; value: BashApprovalResult }
 
 export type IpcRequest = { type: 'rpc'; id: string } & RpcArgs
 
@@ -192,4 +219,18 @@ export interface McpHost {
     toolName: string,
     args: Record<string, unknown>,
   ): Promise<ToolResultPart[]>
+}
+
+export interface BashApprovalHandle {
+  /** Pending for interactive requests; auto_denied for non-interactive requests. */
+  approval: CommandApproval
+  decision: Promise<BashApprovalResult>
+}
+
+/**
+ * Ephemeral daemon-side command approval surface. Unlike communication
+ * approvals this never touches SQLite: its lifetime is exactly one worker turn.
+ */
+export interface BashApprovalHost {
+  begin(input: BashApprovalArgs, signal?: AbortSignal): BashApprovalHandle
 }

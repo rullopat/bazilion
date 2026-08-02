@@ -15,6 +15,7 @@ import {
   type ChatCompactRequest,
   type ChatCompactResponse,
   type ChatContextResponse,
+  type ChatRequest,
   type ContextFileEntry,
   type ContextGroupEntry,
   type ContextSkillEntry,
@@ -79,10 +80,12 @@ import {
   buildSystemPrompt,
   createBazilionSession,
   loadInitialMessages,
+  loadPromptSkills,
   loadSessionHead,
   piMessagesToProviderView,
   qmdBackend,
 } from '../runtime/index.ts'
+import { resolveShellSecurityConfig } from '../runtime/shell/security.ts'
 
 export const agentsRouter = new Hono()
 
@@ -867,15 +870,22 @@ agentsRouter.post('/:id/chat', async (c) => {
   const { db, paths, authToken } = getCtx()
   const id = resolveAgentIdParam(db, c.req.param('id'))
 
-  let body: { message?: string; attachments?: Attachment[] }
+  let body: Partial<ChatRequest>
   try {
-    body = (await c.req.json()) as { message?: string; attachments?: Attachment[] }
+    body = (await c.req.json()) as Partial<ChatRequest>
   } catch {
     return c.json({ error: 'invalid JSON body' }, 400)
   }
   const message = body.message
   if (typeof message !== 'string') {
     return c.json({ error: 'message is required' }, 400)
+  }
+  if (
+    body.bashApprovalMode !== undefined &&
+    body.bashApprovalMode !== 'interactive' &&
+    body.bashApprovalMode !== 'auto_deny'
+  ) {
+    return c.json({ error: 'bashApprovalMode must be "interactive" or "auto_deny"' }, 400)
   }
   const attachments = sanitizeAttachments(body.attachments)
   // A turn needs *something* — text or at least one attachment.
@@ -935,6 +945,7 @@ agentsRouter.post('/:id/chat', async (c) => {
             attemptKind: 'http_chat_ingress',
             attemptId: requestAttemptId,
           },
+          bashApprovalMode: body.bashApprovalMode ?? 'auto_deny',
         })) {
           authorizeHttpChatFrame(db, id, requestAttemptId, frameIndex, frame)
           frameIndex++
@@ -997,9 +1008,9 @@ agentsRouter.post('/:id/chat/compact', async (c) => {
   if (!agentRepo.get(db, id)) return c.json({ error: 'agent not found' }, 404)
 
   const resolved = resolveAgent(db, paths, id)
+  const env = mergeSecretsIntoEnv(db, authToken)
   const memory = qmdBackend(join(resolved.team.path, 'memory'))
   await memory.init()
-  const env = mergeSecretsIntoEnv(db, authToken)
 
   const apiKeyResolution = await resolveAgentApiKey(db, authToken, resolved, {
     withRefresher: true,
@@ -1050,6 +1061,9 @@ agentsRouter.get('/:id/chat/context', async (c) => {
   if (!agentRepo.get(db, id)) return c.json({ error: 'agent not found' }, 404)
 
   const resolved = resolveAgent(db, paths, id)
+  const env = mergeSecretsIntoEnv(db, authToken)
+  const shellSecurity = resolveShellSecurityConfig(env)
+  const promptSkills = loadPromptSkills(paths.skillsDir, resolved.skills)
 
   const files: ContextFileEntry[] = []
   for (const file of CONTEXT_FILE_ORDER) {
@@ -1060,20 +1074,22 @@ agentsRouter.get('/:id/chat/context', async (c) => {
     const chars = content.length + file.length + 6
     files.push({ name: file, chars, tokens: estimateTokens(chars) })
   }
-  const systemPromptText = buildSystemPrompt(resolved)
+  const systemPromptText = buildSystemPrompt(resolved, {
+    skills: promptSkills,
+    sandboxMode: shellSecurity.sandboxMode,
+  })
   const systemPromptChars = systemPromptText.length
 
-  const skillsListChars =
-    resolved.skills.length > 0
-      ? `# Available Skills\n\nYou have access to the following skills: ${resolved.skills.join(', ')}.`
-          .length
-      : 0
+  const skillsListChars = promptSkills.reduce(
+    (total, skill) => total + skill.name.length + skill.description.length + skill.body.length,
+    0,
+  )
   const teamLines = [
     '# Team',
     '',
     `- ${resolved.team.id} (${resolved.team.name}): ${resolved.team.path}`,
     '',
-    'Your team is where work product lives — code, docs, artefacts, shared scratch. It may be shared with other agents in the same team. Your coding tools (`read`, `bash`, `edit`, `write`, `grep`, `find`, `ls`) are rooted at the team directory. Never use these tools to edit your identity/soul/behaviour files — those live in your home and are reached via `home_write` / `home_read`.',
+    'Your team is where work product lives — code, docs, artefacts, shared scratch. It may be shared with other agents in the same team. Use the workspace tools currently exposed to work there. Never use workspace tools to edit your identity/soul/behaviour files — those live in your private home and are reached via `home_write` / `home_read`.',
   ]
   const teamListChars = teamLines.join('\n').length
   const userMdChars = resolved.team.userMd.trim()
@@ -1086,7 +1102,6 @@ agentsRouter.get('/:id/chat/context', async (c) => {
 
   const memory = qmdBackend(join(resolved.team.path, 'memory'))
   await memory.init()
-  const env = mergeSecretsIntoEnv(db, authToken)
   const apiKeyResolution = await resolveAgentApiKey(db, authToken, resolved, {
     withRefresher: true,
   })
