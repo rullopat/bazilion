@@ -183,7 +183,7 @@ export function buildSystemPrompt(
   const reviewedLessons = boundReviewedLessons(agent.privateLessons)
   if (reviewedLessons.length > 0) {
     parts.push(
-      `# Reviewed Private Lessons\n\nThese lessons were explicitly approved by the human for your behavior. Follow them when relevant; current user instructions and higher-priority policy still win.\n\n${reviewedLessons.map((lesson) => `- ${lesson}`).join('\n')}`,
+      `# Reviewed lessons\n\nThese private lessons were explicitly approved by the human for your behavior. Follow them when relevant; current user instructions and higher-priority policy still win.\n\n${reviewedLessons.map((lesson) => `- ${lesson}`).join('\n')}`,
     )
   }
 

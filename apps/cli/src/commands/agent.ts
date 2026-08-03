@@ -940,23 +940,29 @@ const reviewCmd = defineCommand({
 
 const reviewsCmd = defineCommand({
   meta: { name: 'reviews', description: 'List reviewed-learning history' },
-  args: { id: { type: 'positional', required: true, description: 'Agent id or prefix' } },
+  args: {
+    id: { type: 'positional', required: true, description: 'Agent id or prefix' },
+    status: { type: 'string', description: 'pending|running|retrying|completed|failed|cancelled' },
+  },
   async run({ args }) {
     const response = await createClient().get<ListAgentReviewsResponse>(
       `/api/agents/${args.id}/reviews`,
     )
-    if (response.reviews.length === 0) return console.log('(no reviews)')
-    console.log(
-      columnize(
-        response.reviews.map((review) => [
-          review.id,
-          review.status,
-          review.trigger,
-          `${review.proposalCount} proposal(s)`,
-          new Date(review.createdAt).toISOString(),
-        ]),
-      ),
-    )
+    const reviews = args.status
+      ? response.reviews.filter((review) => review.status === args.status)
+      : response.reviews
+    if (reviews.length === 0) return console.log('(no reviews)')
+    for (const line of columnize(
+      reviews.map((review) => [
+        review.id,
+        review.status,
+        review.trigger,
+        `${review.proposalCount} proposal(s)`,
+        new Date(review.createdAt).toISOString(),
+      ]),
+    )) {
+      console.log(line)
+    }
   },
 })
 
@@ -973,16 +979,16 @@ const lessonsCmd = defineCommand({
       `/api/agents/${args.id}/lesson-proposals${query}`,
     )
     if (response.proposals.length === 0) return console.log('(no lesson proposals)')
-    console.log(
-      columnize(
-        response.proposals.map((proposal) => [
-          proposal.id,
-          proposal.status,
-          proposal.scope,
-          proposal.text,
-        ]),
-      ),
-    )
+    for (const line of columnize(
+      response.proposals.map((proposal) => [
+        proposal.id,
+        proposal.status,
+        proposal.scope,
+        proposal.text,
+      ]),
+    )) {
+      console.log(line)
+    }
   },
 })
 

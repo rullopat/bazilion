@@ -1,12 +1,13 @@
 ---
 id: BAZ-003
 title: Reviewed learning loop — transcript digest to durable lessons
-status: in_progress
+status: done
 size: M
 created: 2026-05-23
 refined: 2026-08-03
+shipped: 2026-08-03
 priority: high
-note: Research refreshed against Hermes Agent v0.20.0 at a991dfc (2026-08-03). Opt-in, proposal-only, reversible MVP.
+note: Shipped implementation and real-provider calibration completed 2026-08-03. Opt-in, proposal-only, reversible MVP.
 ---
 
 # BAZ-003 — Reviewed learning loop — transcript digest to durable lessons
@@ -307,3 +308,35 @@ and see an approved private lesson in the next prompt or an approved shared less
 Before moving to Done, run one real 8-turn transcript through the configured production provider and
 record proposal counts plus operator decisions in the As-built section. This is product calibration,
 not a pass-rate gate; the human approval boundary remains mandatory regardless of initial quality.
+
+## As-built
+
+Implemented on `main` in four checkpoints:
+
+- canonical review configuration, leased review/proposal records, backup schema coverage, and a
+  bounded redacting transcript digest;
+- an isolated review worker with only `propose_lesson`, one schema-repair allowance, provider/OAuth
+  reuse, scheduler dispatch, Agent lifecycle exclusion, bounded retries, and cancellation;
+- optimistic proposal decisions, deterministic Team-memory application, bounded private-prompt
+  projection, evidence excerpts resolved and redacted from canonical sessions, and backup/restore
+  receipts;
+- authenticated HTTP endpoints, exact CLI commands, and the Agent Learning web tab with explicit
+  disabled, empty, running/failure, stale-conflict, and decision states.
+
+Real-provider calibration (2026-08-03): ran eight successful user-facing turns in a disposable,
+current-schema home against the configured `openai-codex:gpt-5.5` production provider. The source
+home was not migrated or modified; its OAuth credential was decrypted from a temporary DB copy and
+re-encrypted under the disposable home's bootstrap token.
+
+- Review result: `completed`, 8 turns, 3 proposals, no retry or failure.
+- Private proposal: verify relevant tests before completion claims and cite the commands actually
+  run; approved.
+- Shared proposal: run `pnpm test` plus root and web typechecks before shipping; approved.
+- Shared proposal: edit `0001_init.sql` and clean-bootstrap for alpha schema changes; approved.
+- Correctly omitted: the stable coffee preference, transient service outage, unresolved workaround,
+  and one-off status text.
+
+All three approvals succeeded through `bazilion agent lesson approve <id> --yes`. The private
+proposal became the sole approved private prompt projection and both shared proposals received
+distinct deterministic `lessons/<proposal-id>.md` application receipts. The disposable calibration
+home was then removed.

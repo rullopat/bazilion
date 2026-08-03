@@ -90,7 +90,7 @@ test('only approved private reviewed lessons reach the agent prompt', () => {
   agentLessonProposalRepo.approve(env.db, sharedProposal.id, 1, `lessons/${sharedProposal.id}.md`)
 
   const prompt = buildSystemPrompt(resolveAgent(env.db, env.paths, agent.id))
-  expect(prompt).toContain('# Reviewed Private Lessons')
+  expect(prompt).toContain('# Reviewed lessons')
   expect(prompt).toContain('PRIVATE_APPROVED_LESSON')
   expect(prompt).not.toContain('SHARED_LESSON_NOT_IN_PRIVATE_PROMPT')
 })

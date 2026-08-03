@@ -37,16 +37,16 @@ docs/backlog/
 
 _None right now._
 
-## In Progress (1)
+## In Progress (0)
 
 | ID | Title | Size | Notes |
 |----|-------|------|-------|
-| [BAZ-003](in_progress/BAZ-003-hermes-self-learning.md) | Reviewed learning loop — transcript digest to durable lessons | M | Checkpoint 1: durable learning foundation |
 
-## Done (19)
+## Done (20)
 
 | ID | Title | Size | Shipped | Release | Notes |
 |----|-------|------|---------|---------|-------|
+| [BAZ-003](done/BAZ-003-hermes-self-learning.md) | Reviewed learning loop — transcript digest to durable lessons | M | 2026-08-03 | unreleased | Opt-in restricted review worker, evidence-backed human approval, private prompt lessons, and shared Team-memory lessons |
 | [BAZ-002](done/BAZ-002-profile-groups.md) | Profile Groups — preconfigured team templates (historical) | M | 2026-05-25 | [v0.2.0](https://github.com/rullopat/bazilion/releases/tag/v0.2.0) | Superseded by the canonical Team Template model in BAZ-018 |
 | [BAZ-005](done/BAZ-005-agent-templates-refresh.md) | Agent templates refresh — two-sided bootstrap, USER.md seed, workspace doc | M | 2026-05-29 | v0.5.0 | Two-phase bootstrap, USER.md seed + backfill, creature/avatar, default-on AGENTS/TOOLS (HEARTBEAT opt-in) — see As-built for deltas |
 | [BAZ-006](done/BAZ-006-skill-execution-security.md) | Skill execution security - sandbox and command approval | L | 2026-08-02 | unreleased | Independent default-off Docker shell isolation and one-shot dangerous-command approval; non-interactive turns fail closed |
