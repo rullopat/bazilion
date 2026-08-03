@@ -122,8 +122,8 @@ export interface CreateBazilionSessionOptions {
    * Optional callback for OAuth-backed providers whose access tokens may
    * expire mid-turn. When provided, pi calls it to refresh the JWT during
    * long tool-execution loops. Daemon-side callers (compact/context/truncate)
-   * wire this directly against the secrets repo; worker turns currently
-   * skip it (the initial token from `apiKey` carries the whole turn).
+   * wire this directly against the secrets repo; worker turns call the same
+   * daemon-owned refresher through their private, turn-scoped IPC channel.
    */
   refreshApiKey?: (providerName: string) => Promise<string>
   /**

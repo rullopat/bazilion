@@ -9,7 +9,7 @@
 //   - stdout (NDJSON): the worker emits `ChatFrame`s; we line-parse and
 //     yield each one to the caller.
 //   - IPC (Node `stdio: 'ipc'`): the worker calls back into the parent for
-//     daemon-owned tools and dangerous-command approval. We dispatch each
+//     daemon-owned tools, OAuth refresh, and dangerous-command approval. We dispatch each
 //     `IpcRequest` through the corresponding injected host and reply with
 //     `child.send`; approval state is also merged into the stdout frame stream.
 //
@@ -24,7 +24,9 @@ import { existsSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import type { Attachment, BashApprovalMode, ChatFrame, ResolvedAgent } from '@bazilion/api-types'
+import { type ApiKeyRefreshTurnContext, refreshApiKeyForTurn } from './api-key-refresh.ts'
 import type {
+  ApiKeyRefreshHost,
   BashApprovalHost,
   BashApprovalResult,
   BrowserHost,
@@ -46,7 +48,6 @@ const DEFAULT_KILL_GRACE_MS = 3_000
 const sourceEntryPath = fileURLToPath(new URL('./entry.ts', import.meta.url))
 const bundledEntryPath = fileURLToPath(new URL('./worker.js', import.meta.url))
 const entryPath = existsSync(sourceEntryPath) ? sourceEntryPath : bundledEntryPath
-const entryIsTs = entryPath.endsWith('.ts')
 
 // .ts dev entry: Node 24+ runs TS directly via native type-stripping (no
 // `--experimental-strip-types` flag needed in stable 24, but we still pass
@@ -55,13 +56,14 @@ const entryIsTs = entryPath.endsWith('.ts')
 // banner that older Node versions emit on every child start.
 //
 // .js bundled entry: plain `node entry.js` — no type stripping, no tsx.
-function workerSpawnArgs(): string[] {
-  if (!entryIsTs) return [entryPath]
+function workerSpawnArgs(workerEntryPath = entryPath): string[] {
+  const workerEntryIsTs = workerEntryPath.endsWith('.ts')
+  if (!workerEntryIsTs) return [workerEntryPath]
   const tsFeature = (process.features as unknown as Record<string, unknown>).typescript
   if (typeof tsFeature === 'string' || tsFeature === true) {
-    return ['--experimental-strip-types', '--no-warnings', entryPath]
+    return ['--experimental-strip-types', '--no-warnings', workerEntryPath]
   }
-  return ['--import', tsxImportSpecifier(), entryPath]
+  return ['--import', tsxImportSpecifier(), workerEntryPath]
 }
 
 let cachedTsxImport: string | null = null
@@ -137,13 +139,17 @@ export interface SpawnWorkerOpts {
   mcpHost?: McpHost
   /** Turn-scoped dangerous-command approval registry owned by the daemon. */
   bashApprovalHost?: BashApprovalHost
+  /** Daemon-side OAuth refresh callback; present only for `openai-codex` turns. */
+  apiKeyRefreshHost?: ApiKeyRefreshHost
+  /** Internal integration-test override. Never populate from user-controlled input. */
+  workerEntryPath?: string
 }
 
 export async function* spawnWorkerTurn(
   spec: WorkerTurnSpec,
   opts: SpawnWorkerOpts = {},
 ): AsyncGenerator<ChatFrame, void, void> {
-  const child = spawn(process.execPath, workerSpawnArgs(), {
+  const child = spawn(process.execPath, workerSpawnArgs(opts.workerEntryPath), {
     env: opts.env ?? process.env,
     stdio: ['pipe', 'pipe', 'inherit', 'ipc'],
   })
@@ -156,7 +162,8 @@ export async function* spawnWorkerTurn(
     opts.userMdHost ||
     opts.browserHost ||
     opts.mcpHost ||
-    opts.bashApprovalHost
+    opts.bashApprovalHost ||
+    opts.apiKeyRefreshHost
   ) {
     attachIpcHandler(child, {
       messagingHost: opts.messagingHost,
@@ -164,14 +171,25 @@ export async function* spawnWorkerTurn(
       browserHost: opts.browserHost,
       mcpHost: opts.mcpHost,
       bashApprovalHost: opts.bashApprovalHost,
-      bashApprovalSignal: ipcLifetime.signal,
+      apiKeyRefreshHost: opts.apiKeyRefreshHost,
+      apiKeyRefreshContext: {
+        providerName: spec.agent.model.split(':', 1)[0] ?? '',
+        agentId: spec.agent.agent.id,
+        turnId: spec.turnId,
+      },
+      ipcSignal: ipcLifetime.signal,
       onBashApproval: (approval) => {
         frames.push({ kind: 'event', event: { type: 'command_approval', approval } })
       },
     })
   }
 
-  child.stdin?.write(JSON.stringify(spec))
+  child.stdin?.write(
+    JSON.stringify({
+      ...spec,
+      apiKeyRefreshEnabled: opts.apiKeyRefreshHost !== undefined,
+    }),
+  )
   child.stdin?.end()
 
   const grace = opts.killGraceMs ?? DEFAULT_KILL_GRACE_MS
@@ -256,7 +274,9 @@ interface IpcHosts {
   browserHost?: BrowserHost
   mcpHost?: McpHost
   bashApprovalHost?: BashApprovalHost
-  bashApprovalSignal?: AbortSignal
+  apiKeyRefreshHost?: ApiKeyRefreshHost
+  apiKeyRefreshContext?: ApiKeyRefreshTurnContext
+  ipcSignal?: AbortSignal
   onBashApproval?: (approval: import('@bazilion/api-types').CommandApproval) => void
 }
 
@@ -342,10 +362,18 @@ async function dispatch(req: IpcRequest, hosts: IpcHosts): Promise<IpcReply> {
           req.args.args,
         )
         break
+      case 'refreshApiKey':
+        result = await refreshApiKeyForTurn(
+          req.args,
+          require(hosts.apiKeyRefreshContext, 'apiKeyRefreshContext', req.method),
+          hosts.apiKeyRefreshHost,
+          hosts.ipcSignal,
+        )
+        break
       case 'bashApproval': {
         const handle = require(hosts.bashApprovalHost, 'bashApproval', req.method).begin(
           req.args,
-          hosts.bashApprovalSignal,
+          hosts.ipcSignal,
         )
         hosts.onBashApproval?.(handle.approval)
         const decision = await handle.decision

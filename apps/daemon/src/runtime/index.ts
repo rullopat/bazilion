@@ -71,6 +71,7 @@ export type { ToolHandler, ToolRegistry } from './tools/types.ts'
 export { webTools } from './tools/web.ts'
 
 export type {
+  ApiKeyRefreshHost,
   BrowserHost,
   InjectedMcpTool,
   McpHost,

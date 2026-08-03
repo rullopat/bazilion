@@ -12,10 +12,9 @@ export interface AgentApiKey {
   apiKey?: string
   /**
    * Optional refresher pi calls during long tool-execution loops to swap an
-   * expired JWT for a fresh one. Only set for OAuth providers — daemon-side
-   * sessions wire this; worker turns currently rely on the initial token
-   * carrying the whole turn (subsecond-to-minutes) since they have no DB
-   * handle to refresh against.
+   * expired JWT for a fresh one. Only set for OAuth providers. Daemon-side
+   * sessions call it directly; worker turns reach the same callback through
+   * their turn-scoped IPC channel and remain DB-free.
    */
   refreshApiKey?: (providerName: string) => Promise<string>
 }

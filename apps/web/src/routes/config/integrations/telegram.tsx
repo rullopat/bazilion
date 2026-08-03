@@ -113,8 +113,6 @@ function TelegramIntegrationPage() {
       description="Connect one forum-supergroup bot with one topic per agent, so conversations stay reachable from your phone."
       size="narrow"
     >
-      <Step2Banner />
-
       {initial.migratedChatId && <MigrationBanner toChatId={initial.migratedChatId} />}
 
       <section className="rounded-lg border bg-card p-5">
@@ -369,20 +367,6 @@ function MigrationBanner({ toChatId }: { toChatId: string }) {
         {busy ? 'reconnecting…' : `Reconnect to ${toChatId}`}
       </Button>
       {err && <span className="ml-3 text-xs text-danger">{err}</span>}
-    </div>
-  )
-}
-
-function Step2Banner() {
-  return (
-    <div className="rounded-md border-2 border-warning/25 bg-warning/10 px-4 py-3 text-sm">
-      <div className="font-semibold text-warning mb-1">Step 2 of the rollout</div>
-      <p className="text-warning">
-        The bot polls Telegram and creates the <code className="font-mono">⚙ bazilion</code>{' '}
-        service chat on first start. Inbound messages are logged but not yet routed to agents —{' '}
-        slash commands and per-agent topics ship in the next release. Outbound from agents ships
-        after that.
-      </p>
     </div>
   )
 }

@@ -1,4 +1,4 @@
-import { DatabaseSync, type SQLInputValue } from 'node:sqlite'
+import { backup, DatabaseSync, type SQLInputValue } from 'node:sqlite'
 
 export interface QueryStmt<RowType, ParamsType extends unknown[]> {
   get(...params: ParamsType): RowType | null
@@ -15,6 +15,12 @@ export interface QueryableDatabase {
 
 export interface BazilionDb {
   raw: QueryableDatabase
+  /**
+   * Copy a transactionally-consistent image of the live database to `path`.
+   * SQLite's online-backup API includes committed WAL contents without
+   * requiring the daemon to close its connection or checkpoint the WAL.
+   */
+  backupTo(path: string): Promise<number>
   close(): void
 }
 
@@ -104,6 +110,9 @@ export function openDb(path: string): BazilionDb {
   applyPragmas(raw, true)
   return {
     raw: wrap(raw),
+    backupTo(path) {
+      return backup(raw, path)
+    },
     close() {
       raw.close()
     },
@@ -115,6 +124,9 @@ export function openInMemoryDb(): BazilionDb {
   applyPragmas(raw, false)
   return {
     raw: wrap(raw),
+    backupTo(path) {
+      return backup(raw, path)
+    },
     close() {
       raw.close()
     },

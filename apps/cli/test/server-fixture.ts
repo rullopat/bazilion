@@ -109,7 +109,7 @@ export interface TestServer {
    * web_tokens row so the CLI's bearer keeps working across tests.
    */
   reset(): void
-  stop(): Promise<void>
+  stop(options?: { keepHome?: boolean; signal?: NodeJS.Signals }): Promise<void>
 }
 
 const WIPE_SQL = `
@@ -206,16 +206,16 @@ export async function startTestServer(extraServerEnv: NodeJS.ProcessEnv = {}): P
     reset() {
       resetHome(home)
     },
-    async stop() {
+    async stop(options = {}) {
       await new Promise<void>((resolve) => {
         proc.on('close', () => resolve())
-        proc.kill('SIGTERM')
+        proc.kill(options.signal ?? 'SIGTERM')
         // Failsafe: if the process hasn't exited in 5s, force it.
         setTimeout(() => {
           if (proc.exitCode === null) proc.kill('SIGKILL')
         }, 5_000)
       })
-      rmSync(home, { recursive: true, force: true })
+      if (!options.keepHome) rmSync(home, { recursive: true, force: true })
     },
   }
 }

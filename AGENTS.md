@@ -118,7 +118,7 @@ Every chat turn runs in its own Node subprocess (`apps/daemon/src/runtime/worker
 3. Spawns the worker with `stdio: ['pipe', 'pipe', 'inherit', 'ipc']` — the IPC channel is what makes messaging tools work without a worker DB handle.
 4. Sends `{agent, message, enabledProviders, apiKey?}` on stdin.
 5. Line-parses NDJSON `ChatFrame`s from worker stdout and yields them.
-6. Services worker `process.send({type:'rpc', method, args, id})` calls (the messaging-tool RPCs) by dispatching to `apps/daemon/src/lib/messaging-host.ts:createDbMessagingHost(db)` and replying with `child.send({type:'rpc-reply', id, ok, result|error})`.
+6. Services worker `process.send({type:'rpc', method, args, id})` calls (daemon-owned tools, shell approval, and OAuth refresh) by dispatching to turn-scoped hosts and replying with `child.send({type:'rpc-reply', id, ok, result|error})`.
 
 `SessionEvent` types: `user_message` / `assistant_message` / `assistant_delta` / `tool_call` / `tool_result` / `tool_error` / `error`. `ChatFrame` shapes: `{kind:'event', event}` / `{kind:'done', messages}` / `{kind:'fatal', error}`. **There is no `runId`, no `runs` table, no `events` table** — those were dropped along with the per-run audit metadata layer; pi's session JSONL files are the canonical transcript and the only persistent record of what an agent has said.
 
@@ -130,7 +130,7 @@ See `docs/agent-engine.md` for the full turn-loop walkthrough.
 
 Model strings are `provider:model` (e.g. `lmstudio:my-loaded-model`, `anthropic:claude-opus-4-6`, `gemini:gemini-2.0-flash-exp`, `openai-codex:gpt-5.3-codex`). `createProviderRegistry` + `loadProviderConfigFromEnv` in `apps/daemon/src/runtime/providers/registry.ts` resolve strings to `{ provider, model }`. Credentials come from env vars (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `LMSTUDIO_URL`/`LMSTUDIO_API_KEY`, `OLLAMA_URL`); plain API-key providers never touch the DB. The daemon's `mergeSecretsIntoEnv(db, authToken)` layers DB-stored secrets + plaintext config over `process.env` — this happens **server-side** per API request (chat, provider test, health) and again per worker spawn (the merged env is passed via `child_process.spawn`'s `env` option).
 
-**`openai-codex`** is the OAuth exception: credentials live as a JSON `{refresh, access, expires}` blob under the `OPENAI_CODEX_OAUTH` row of the `secrets` table. The provider registry's `apiKey` field is invoked as an async supplier so refreshes happen lazily on each chat() without rebuilding the cached Provider instance. Pass `{db, authToken}` as the second arg to `loadProviderConfigFromEnv(env, oauth?)` to enable it. For the worker subprocess specifically, `runAgentTurn` pre-fetches the initial access token via `resolveAgentApiKey` and passes it through `WorkerInput.apiKey` → `createBazilionSession({apiKey})`. The worker doesn't have a refresher wired — long turns that exceed the JWT lifetime fail; the daemon-side compact/context paths get full lazy refresh because they pass `withRefresher: true`.
+**`openai-codex`** is the OAuth exception: credentials live as a JSON `{refresh, access, expires}` blob under the `OPENAI_CODEX_OAUTH` row of the `secrets` table. The provider registry's `apiKey` field is invoked as an async supplier so refreshes happen lazily on each chat() without rebuilding the cached Provider instance. Pass `{db, authToken}` as the second arg to `loadProviderConfigFromEnv(env, oauth?)` to enable it. For the worker subprocess specifically, `runAgentTurn` pre-fetches the initial access token via `resolveAgentApiKey` and passes it through `WorkerInput.apiKey` → `createBazilionSession({apiKey})`; the session's mid-turn refresher calls back through a private IPC request bound to the worker's provider, Agent, and turn. The daemon alone reads/writes the OAuth secrets row, and only the refreshed access token returns over IPC.
 
 ### Secrets and config
 
@@ -154,7 +154,7 @@ API in `apps/daemon/src/core/`: `openSecrets(db, password)` and `openConfig(db)`
 
 ## Implemented for the next release (don't re-implement)
 
-- **BAZ-006 Slice A: opt-in Docker shell isolation.** The default remains
+- **BAZ-006: opt-in Docker shell isolation and dangerous-command approval.** The default remains
   `BAZILION_BASH_SANDBOX=off`, which keeps Pi's host-backed
   `read`/`bash`/`edit`/`write`/`grep`/`find`/`ls` surface unchanged. In `docker` mode,
   Bazilion removes every host-backed coding tool and replaces only `bash` with a fresh,
@@ -168,9 +168,10 @@ API in `apps/daemon/src/core/`: `openSecrets(db, password)` and `openConfig(db)`
   it uses the configured local image (`debian:bookworm-slim` by default) with `--pull never`.
   Only a local Unix-socket Docker context is accepted, and images declaring `VOLUME`s are rejected
   because those would create implicit writable filesystems. Missing Docker, a missing/incompatible
-  local image, or a mount failure fails closed without falling back to host execution. Slice B
-  dangerous-command approval is not implemented yet;
-  do not confuse its classifier foundation with an enforced approval boundary.
+  local image, or a mount failure fails closed without falling back to host execution. The
+  independent `BAZILION_BASH_APPROVAL=dangerous` control pauses classified commands in interactive
+  web and TTY CLI turns and auto-denies them in non-interactive turns. Shell approval is ephemeral
+  and remains separate from durable Team Policy communication approvals.
 
 ## Already-shipped invariants (don't re-implement)
 
@@ -205,7 +206,7 @@ API in `apps/daemon/src/core/`: `openSecrets(db, password)` and `openConfig(db)`
 - **Scheduled interval / cron triggers** (`agent_triggers` + `trigger_dispatches` tables; `apps/daemon/src/lib/scheduler.ts`) — an in-process tick loop (default 5s, `BAZILION_SCHEDULER_TICK_MS`; disable with `BAZILION_SCHEDULER=off`) is pinned to `globalThis[Symbol.for('bazilion.scheduler')]`. Interval kind uses `last_fired_at + every ≤ now` with `created_at` as baseline; cron kind parses 5-field expressions via `apps/daemon/src/lib/cron.ts`. A due occurrence is idempotently materialized in `trigger_dispatches`; while one dispatch is open, later interval occurrences coalesce. `last_fired_at` is the materialization watermark, not proof that the Agent turn succeeded. Claims are transactional and leased, busy Agents defer without losing work, expired running leases are recoverable after restart, and failures retry to a bounded terminal state. Firing reuses `runAgentTurn`; inspect delivery with `bazilion trigger history <id>`. CLI: `bazilion trigger add|list|rm|enable|disable|history`.
 - **Inbox / messaging surfaces** — the `send_message` / `read_inbox` / `wait_for_reply` tools (`apps/daemon/src/runtime/tools/messaging.ts`) are wired with `MessagingHost` injection: in the daemon (compact/context routes) the host is `createDbMessagingHost(db)`; in the worker the host is `createIpcMessagingHost()` which proxies every method through Node IPC. Outside-the-loop surfaces: `GET /api/agents/:id/messages?unread=1` (list), `POST /api/agents/:id/messages` (now accepts `replyTo`), `GET|PATCH /api/messages/:id` (detail + mark-read). CLI: `bazilion inbox list <agent> [--unread]`, `inbox show <id>`, `inbox read <id>`. Web: `/agents/:id/inbox`.
 - **`web_fetch` hardening: Readability + markdown + cache + SSRF guard** — `@mozilla/readability` over `linkedom`, output as markdown (or text via `extract_mode`). SSRF guard at `apps/daemon/src/runtime/tools/web-ssrf.ts` blocks loopback/private/link-local + DNS rebinding (re-validates resolved IPs, pins them into undici's `Agent.connect.lookup`). 15-min in-memory LRU per `${mode}|${url}` (100-entry cap). UA spoofs desktop Safari. 20s default timeout, 3 max redirects.
-- **ChatGPT OAuth / `openai-codex` provider** — credentials in `secrets:OPENAI_CODEX_OAUTH`. CLI runs the loopback flow (port 1455) client-side and PUTs credentials to `/api/auth/openai`; web `/config` has a "Connect ChatGPT" card. `apps/daemon/src/lib/api-key.ts:resolveAgentApiKey` is the single helper every session-creating call site uses to pre-fetch the access token; for daemon-side sessions it also wires a refresher for mid-turn JWT swaps. Worker turns don't get the refresher today (they'd need a new IPC method).
+- **ChatGPT OAuth / `openai-codex` provider** — credentials in `secrets:OPENAI_CODEX_OAUTH`. CLI runs the loopback flow (port 1455) client-side and PUTs credentials to `/api/auth/openai`; web `/config` has a "Connect ChatGPT" card. `apps/daemon/src/lib/api-key.ts:resolveAgentApiKey` is the single helper every session-creating call site uses to pre-fetch the access token and its optional mid-turn refresher. Daemon-side sessions call the refresher directly; worker turns call it over the private `refreshApiKey` IPC method without opening the DB or receiving the stored refresh credential.
 - **Team Templates are the only reusable Team roster.** `team_templates` owns revisioned
   stable slots and policy edges. HTTP uses `/api/team-templates`, CLI uses
   `bazilion team-template`, and web uses `/templates/teams`. Do not add a second roster model

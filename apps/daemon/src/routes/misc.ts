@@ -1,6 +1,5 @@
 // Single-route resources: /api/health, /api/backup, /api/tokens.
 
-import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
@@ -21,8 +20,10 @@ import {
   teamRepo,
   webTokenRepo,
 } from '../core/index.ts'
+import { createBackupArchive, createBackupSnapshot } from '../lib/backup.ts'
 import { communicationDecisionMetrics } from '../lib/communication.ts'
 import { getCtx } from '../lib/ctx.ts'
+import { getDaemonInstanceId } from '../lib/daemon-liveness.ts'
 import {
   TEAM_POLICY_MANAGEMENT_CONTRACT_VERSION,
   teamPolicyEnforcementRequested,
@@ -35,6 +36,8 @@ export const miscRouter = new Hono()
 // /api/health — install diagnostics. Public (auth middleware whitelists it)
 // so the doctor command and external probes can run without a token.
 miscRouter.get('/health', (c) => {
+  const instanceId = getDaemonInstanceId()
+  if (instanceId) c.header('x-bazilion-daemon-instance', instanceId)
   const paths = resolvePaths()
 
   const pathChecks = {
@@ -186,40 +189,53 @@ miscRouter.get('/health', (c) => {
   return c.json(report)
 })
 
-// /api/backup — streams a tar.gz of $BAZILION_HOME
-miscRouter.get('/backup', (c) => {
-  const paths = resolvePaths()
+// /api/backup — streams a tar.gz containing a consistent live SQLite snapshot
+// plus the non-transient contents of $BAZILION_HOME.
+miscRouter.get('/backup', async (c) => {
+  const { db, paths } = getCtx()
   if (!existsSync(paths.home)) {
     return c.json({ error: `bazilion home not found at ${paths.home}` }, 404)
   }
 
-  const proc = spawn('tar', ['-czf', '-', '-C', paths.home, '.'], {
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
+  let snapshot: Awaited<ReturnType<typeof createBackupSnapshot>>
+  try {
+    snapshot = await createBackupSnapshot(db)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    return c.json({ error: `could not create database snapshot: ${message}` }, 500)
+  }
+
+  let archive: ReturnType<typeof createBackupArchive>
+  try {
+    archive = createBackupArchive(paths, snapshot)
+  } catch (error) {
+    snapshot.cleanup()
+    const message = error instanceof Error ? error.message : String(error)
+    return c.json({ error: `could not start backup archive: ${message}` }, 500)
+  }
+  const iterator = archive[Symbol.asyncIterator]()
 
   const stream = new ReadableStream({
-    start(controller) {
-      proc.stdout.on('data', (chunk: Buffer) => controller.enqueue(chunk))
-      proc.stdout.on('end', () => {
-        try {
-          controller.close()
-        } catch {}
-      })
-      proc.on('error', (err) => {
-        try {
-          controller.error(err)
-        } catch {}
-      })
-      proc.on('exit', (code) => {
-        if (code !== 0) {
-          try {
-            controller.error(new Error(`tar exited with code ${code}`))
-          } catch {}
+    async pull(controller) {
+      try {
+        const next = await iterator.next()
+        if (!next.done) {
+          controller.enqueue(Buffer.isBuffer(next.value) ? next.value : Buffer.from(next.value))
+          return
         }
-      })
+        snapshot.cleanup()
+        controller.close()
+      } catch (error) {
+        snapshot.cleanup()
+        controller.error(error)
+      }
     },
-    cancel() {
-      proc.kill('SIGTERM')
+    async cancel() {
+      await iterator.return?.()
+      // Destroy without an Error: iterator.return() removes its error listener,
+      // so emitting a cancellation error here could become an unhandled event.
+      archive.destroy()
+      snapshot.cleanup()
     },
   })
 
@@ -228,6 +244,7 @@ miscRouter.get('/backup', (c) => {
     headers: {
       'content-type': 'application/gzip',
       'content-disposition': `attachment; filename="bazilion-backup-${date}.tar.gz"`,
+      'cache-control': 'no-store',
     },
   })
 })

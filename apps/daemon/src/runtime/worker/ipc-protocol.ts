@@ -32,6 +32,7 @@ export type RpcMethod =
   | 'userMdWrite'
   | 'browserInvoke'
   | 'mcpInvoke'
+  | 'refreshApiKey'
   | 'bashApproval'
 
 export interface AgentExistsArgs {
@@ -99,6 +100,12 @@ export interface McpInvokeArgs {
   args: Record<string, unknown>
 }
 
+export interface ApiKeyRefreshArgs {
+  providerName: string
+  agentId: string
+  turnId: string
+}
+
 export interface BashApprovalArgs {
   id: string
   turnId: string
@@ -143,6 +150,7 @@ export type RpcArgs =
   | { method: 'userMdWrite'; args: UserMdWriteArgs }
   | { method: 'browserInvoke'; args: BrowserInvokeArgs }
   | { method: 'mcpInvoke'; args: McpInvokeArgs }
+  | { method: 'refreshApiKey'; args: ApiKeyRefreshArgs }
   | { method: 'bashApproval'; args: BashApprovalArgs }
 
 export type RpcResult =
@@ -156,6 +164,7 @@ export type RpcResult =
   | { method: 'userMdWrite'; value: UserMdWriteResult }
   | { method: 'browserInvoke'; value: ToolResultPart[] }
   | { method: 'mcpInvoke'; value: ToolResultPart[] }
+  | { method: 'refreshApiKey'; value: string }
   | { method: 'bashApproval'; value: BashApprovalResult }
 
 export type IpcRequest = { type: 'rpc'; id: string } & RpcArgs
@@ -219,6 +228,16 @@ export interface McpHost {
     toolName: string,
     args: Record<string, unknown>,
   ): Promise<ToolResultPart[]>
+}
+
+/**
+ * Daemon-owned OAuth token refresh surface. The worker supplies its turn
+ * identity with every request; the parent validates it against the child it
+ * spawned before this host is invoked. Tokens only travel in the private IPC
+ * reply and are never emitted as chat frames.
+ */
+export interface ApiKeyRefreshHost {
+  refresh(providerName: string, signal?: AbortSignal): Promise<string>
 }
 
 export interface BashApprovalHandle {

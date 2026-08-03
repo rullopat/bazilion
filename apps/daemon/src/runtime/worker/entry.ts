@@ -4,14 +4,14 @@
 // the pre-resolved agent record, enabled-provider set, and message text.
 // The daemon does all DB-backed lookups before spawning us.
 //
-// Daemon-owned tools and dangerous-command approval are delegated back over
+// Daemon-owned tools, OAuth refresh, and dangerous-command approval are delegated back over
 // Node IPC: each invocation sends a `{type: 'rpc', ...}` message and awaits
 // the matching reply. The parent dispatches the request through the matching
 // host and owns ephemeral approval state.
 //
 // Ownership split now reads:
 //   - daemon: SQLite handle, agent resolution, secrets envelope, scheduler,
-//     run-cancel registry, tool RPC dispatch, command-approval registry.
+//     run-cancel registry, tool/refresh RPC dispatch, command-approval registry.
 //   - pi: conversation transcript, compaction entries, tool execution,
 //     provider retries.
 //   - this worker: glue between the two — runs `session.prompt(message)`,
@@ -31,15 +31,14 @@ import { qmdBackend } from '../memory/qmd.ts'
 import { piMessagesToProviderView, translatePiEvent } from '../pi/events.ts'
 import { createBazilionSession } from '../pi/session.ts'
 import type { BashApprovalHost as ShellBashApprovalHost } from '../shell/approval.ts'
+import { createIpcApiKeyRefresher } from './api-key-refresh.ts'
+import { createIpcClient, type WorkerIpcCall } from './ipc-client.ts'
 import type {
   BashApprovalResult,
   BrowserHost,
   InjectedMcpTool,
-  IpcReply,
-  IpcRequest,
   McpHost,
   MessagingHost,
-  RpcMethod,
   UserMdGetResult,
   UserMdHost,
   UserMdWriteResult,
@@ -51,6 +50,8 @@ interface WorkerInput {
   enabledProviders: string[]
   /** Pre-fetched API key for OAuth providers; undefined for env-key ones. */
   apiKey?: string
+  /** Parent has installed the turn-scoped OAuth refresh IPC host. */
+  apiKeyRefreshEnabled?: boolean
   /** When true, expose the `browser_*` tools (proxied to the daemon pool). */
   browserEnabled?: boolean
   /** MCP tools discovered daemon-side, exposed as IPC-proxied proxy tools. */
@@ -76,69 +77,25 @@ async function readInput(): Promise<WorkerInput> {
     typeof parsed.message !== 'string' ||
     !Array.isArray(parsed.enabledProviders) ||
     typeof parsed.turnId !== 'string' ||
+    (parsed.apiKeyRefreshEnabled !== undefined &&
+      typeof parsed.apiKeyRefreshEnabled !== 'boolean') ||
     (parsed.bashApprovalMode !== 'interactive' && parsed.bashApprovalMode !== 'auto_deny')
   ) {
     throw new Error(
       'worker: stdin must include {agent, message, enabledProviders, turnId, bashApprovalMode}',
     )
   }
+  const providerName = parsed.agent.model.split(':', 1)[0] ?? ''
+  if (
+    parsed.apiKeyRefreshEnabled &&
+    (providerName !== 'openai-codex' || typeof parsed.apiKey !== 'string')
+  ) {
+    throw new Error('worker: API key refresh requires an openai-codex turn with an initial token')
+  }
   return parsed
 }
 
-/**
- * Single shared IPC client. Both `MessagingHost` and `UserMdHost` route
- * through this — the `id` correlation id disambiguates replies, so multiple
- * concurrent tool calls (e.g. read_inbox + user_md_append on the same turn)
- * each get their own promise resolved without crosstalk. The promise
- * rejects when the channel disconnects mid-request; that path only fires
- * during shutdown, where the LLM loop has already been aborted, so the
- * unresolved tool call doesn't matter.
- */
-type IpcCall = <T>(method: RpcMethod, args: unknown) => Promise<T>
-
-function createIpcClient(): IpcCall {
-  type Pending = { resolve: (value: unknown) => void; reject: (err: Error) => void }
-  const pending = new Map<string, Pending>()
-
-  process.on('message', (msg: unknown) => {
-    if (!isIpcReply(msg)) return
-    const entry = pending.get(msg.id)
-    if (!entry) return
-    pending.delete(msg.id)
-    if (msg.ok) entry.resolve(msg.result)
-    else entry.reject(new Error(msg.error))
-  })
-
-  process.on('disconnect', () => {
-    for (const [, entry] of pending) entry.reject(new Error('worker IPC channel disconnected'))
-    pending.clear()
-  })
-
-  return <T>(method: RpcMethod, args: unknown): Promise<T> => {
-    if (!process.send) {
-      return Promise.reject(new Error('worker: no IPC channel — daemon must spawn with stdio:ipc'))
-    }
-    const id = randomUUID()
-    // The wire format is uniform "method + args"; the parent's dispatcher
-    // re-narrows on `method`. TS can't follow that union construction here,
-    // so we cast through unknown rather than push the discrimination through
-    // every call site.
-    const message = { type: 'rpc', id, method, args } as unknown as IpcRequest
-    return new Promise<T>((resolve, reject) => {
-      pending.set(id, { resolve: (v) => resolve(v as T), reject })
-      // process.send is fire-and-forget; the callback only signals serialization
-      // failure. Treat it as a reject to surface the bug rather than hang.
-      process.send?.(message, undefined, undefined, (err) => {
-        if (err) {
-          pending.delete(id)
-          reject(err)
-        }
-      })
-    })
-  }
-}
-
-function createIpcMessagingHost(call: IpcCall): MessagingHost {
+function createIpcMessagingHost(call: WorkerIpcCall): MessagingHost {
   return {
     agentExists: (agentId) => call<boolean>('agentExists', { agentId }),
     sendMessage: (input) => call<{ messageId: string }>('sendMessage', input),
@@ -151,7 +108,7 @@ function createIpcMessagingHost(call: IpcCall): MessagingHost {
   }
 }
 
-function createIpcUserMdHost(call: IpcCall): UserMdHost {
+function createIpcUserMdHost(call: WorkerIpcCall): UserMdHost {
   return {
     get: (teamId) => call<UserMdGetResult>('userMdGet', { teamId }),
     write: (teamId, content, ifMatch) =>
@@ -159,20 +116,20 @@ function createIpcUserMdHost(call: IpcCall): UserMdHost {
   }
 }
 
-function createIpcBrowserHost(call: IpcCall): BrowserHost {
+function createIpcBrowserHost(call: WorkerIpcCall): BrowserHost {
   return {
     invoke: (agentId, action, args) => call('browserInvoke', { agentId, action, args }),
   }
 }
 
-function createIpcMcpHost(call: IpcCall): McpHost {
+function createIpcMcpHost(call: WorkerIpcCall): McpHost {
   return {
     invoke: (serverId, toolName, args) => call('mcpInvoke', { serverId, toolName, args }),
   }
 }
 
 function createIpcBashApprovalHost(
-  call: IpcCall,
+  call: WorkerIpcCall,
   input: Pick<WorkerInput, 'agent' | 'turnId' | 'bashApprovalMode'>,
 ): ShellBashApprovalHost {
   return {
@@ -190,12 +147,6 @@ function createIpcBashApprovalHost(
       return result.decision === 'allow' ? 'approved' : 'denied'
     },
   }
-}
-
-function isIpcReply(msg: unknown): msg is IpcReply {
-  if (!msg || typeof msg !== 'object') return false
-  const m = msg as Record<string, unknown>
-  return m.type === 'rpc-reply' && typeof m.id === 'string' && typeof m.ok === 'boolean'
 }
 
 async function main(): Promise<void> {
@@ -225,6 +176,7 @@ async function main(): Promise<void> {
     message,
     enabledProviders,
     apiKey,
+    apiKeyRefreshEnabled,
     browserEnabled,
     mcpTools,
     images,
@@ -240,7 +192,22 @@ async function main(): Promise<void> {
   const memory = qmdBackend(join(agent.team.path, 'memory'))
   await memory.init()
 
-  const ipcCall = createIpcClient()
+  const ipcCall = createIpcClient({
+    send: process.send
+      ? (ipcMessage, done) => {
+          process.send?.(ipcMessage, undefined, undefined, done)
+        }
+      : undefined,
+    onMessage: (listener) => process.on('message', listener),
+    onDisconnect: (listener) => process.on('disconnect', listener),
+  })
+  const refreshApiKey = apiKeyRefreshEnabled
+    ? createIpcApiKeyRefresher(ipcCall, {
+        providerName: agent.model.split(':', 1)[0] ?? '',
+        agentId: agent.agent.id,
+        turnId,
+      })
+    : undefined
   const messagingHost = createIpcMessagingHost(ipcCall)
   const userMdHost = createIpcUserMdHost(ipcCall)
   const browserHost = browserEnabled ? createIpcBrowserHost(ipcCall) : undefined
@@ -260,6 +227,7 @@ async function main(): Promise<void> {
     messagingHost,
     userMdHost,
     apiKey,
+    refreshApiKey,
     browserHost,
     mcpHost,
     mcpTools,

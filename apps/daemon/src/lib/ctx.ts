@@ -90,3 +90,15 @@ export function getCtx(): DaemonCtx {
   }
   return { db: _db, paths: _paths, authToken: _authToken }
 }
+
+/**
+ * Synchronously close the process-owned SQLite handle during final daemon
+ * shutdown. Callers must exit immediately afterward; background services keep
+ * references to this process-lifetime context and are not restartable in situ.
+ */
+export function closeCtxForShutdown(): void {
+  if (!_db) return
+  _db.close()
+  _db = null
+  _authToken = null
+}

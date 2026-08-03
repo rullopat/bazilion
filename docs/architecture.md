@@ -118,7 +118,7 @@ Uses Node 22's built-in `node:sqlite` (`DatabaseSync`). No `better-sqlite3`, no 
 
 **`QueryableDatabase`** wraps `DatabaseSync` with a **prepared-statement cache** keyed by SQL string, and exposes a typed `QueryStmt<Row, Params>` with `get() / all() / run()`. The wrapper also implements manual `BEGIN / COMMIT / ROLLBACK` in a `transaction()` method because `node:sqlite` has no callable transaction wrapper.
 
-**`BazilionDb`** is the public type: `{ raw: QueryableDatabase; close(): void }`. Everything downstream (repos, runtime helpers) takes `BazilionDb`, not the raw sqlite handle.
+**`BazilionDb`** is the public type: `{ raw: QueryableDatabase; backupTo(path): Promise<number>; close(): void }`. Everything downstream (repos, runtime helpers) takes `BazilionDb`, not the raw sqlite handle; `backupTo` is the daemon-owned SQLite online-snapshot seam.
 
 **`runMigrations(db)`** is idempotent. It creates a `schema_migrations(version, applied_at)` bookkeeping table, loads numbered `*.sql` files from `db/migrations/` in lexical order, and runs each unapplied file inside a transaction. Called from `apps/daemon/src/lib/ctx.ts:bootstrap()` at daemon startup — the daemon eagerly initializes the context so the bootstrap message + auth.json land before the HTTP port binds. A daemon started against an older schema self-heals on the next boot.
 
@@ -215,14 +215,14 @@ Higher-level than repos; they combine DB writes with filesystem operations.
 
 Flat barrel: `openDb`, `runMigrations`, `resolvePaths`, `spawnAgent`, `resolveAgent`, `agentRepo`, `messageRepo`, `profileRepo`, `triggerRepo`, `skillMetaRepo`, `webTokenRepo`, `teamRepo`, `providerStateRepo`, `providerModelRepo`, the profile/skill/team domain ops (`createProfile`, `updateProfile`, `deleteProfile`, `loadProfile`, `registerTeam`, `deleteTeam`, `discoverSkills`, `importSkills`, `resolveAgentSkills`, …), `mergeSecretsIntoEnv`, `readAuthFile`, `openSecrets`, `openConfig`, `isSetupComplete`, `SERVICES`, `findFieldByEnvVar`.
 
-`apps/daemon/src/lib` (HTTP routes, middleware, lifecycle glue) and `apps/daemon/src/runtime` (LLM/tool stack) import from this flat namespace. `apps/cli` keeps a tiny local copy of just the path/auth helpers it needs for filesystem-level commands (`uninstall`, `backup`, `login`, `token show-local`) — it never opens the daemon's DB. `apps/web` never reaches into the daemon's source at all; every data access goes through HTTP.
+`apps/daemon/src/lib` (HTTP routes, middleware, lifecycle glue) and `apps/daemon/src/runtime` (LLM/tool stack) import from this flat namespace. `apps/cli` keeps a tiny local copy of just the path/auth helpers it needs for filesystem-level commands (`uninstall`, `backup`, `login`, `token show-local`) — it never opens the live daemon DB; offline restore opens only its private staged snapshot for validation. `apps/web` never reaches into the daemon's source at all; every data access goes through HTTP.
 
 ## 3. `apps/daemon/src/runtime` — the LLM side
 
 See `agent-engine.md` for the full turn-loop walkthrough. Structural summary here:
 
-- **`worker/{entry,spawn,ipc-protocol}.ts`** — subprocess boundary. `spawn.ts:spawnWorkerTurn` is the parent-side generator. `entry.ts` is the child script — reads stdin → runs the turn → emits NDJSON on stdout → on exit calls `process.disconnect()` so the IPC handle doesn't pin the event loop. `ipc-protocol.ts` declares the host interfaces, `IpcRequest`/`IpcReply`, and RPC methods for messaging, USER.md, browser, MCP, and `bashApproval`. Stdio: `['pipe','pipe','inherit','ipc']`. The parent merges worker stdout with daemon-authored `command_approval` frames so registration always happens before a client can respond. SIGTERM cancels both the child and any pending approval; 3s grace before SIGKILL.
-- **`pi/`** — the Pi engine bridge. `session.ts:createBazilionSession` builds a pi-coding-agent `AgentSession` for an agent (loads/creates the JSONL session file, selects the shell-policy tool surface, picks a provider). This is the core engine seam: Bazilion enters Pi here and then listens to Pi's events. Takes `enabledProviders: Set<string>`, optional `messagingHost: MessagingHost`, optional `apiKey: string` (pre-fetched OAuth token), and optional `refreshApiKey: (provider) => Promise<string>` (mid-turn refresher; daemon-side only). `tools.ts:createBazilionCustomTools` adapts Bazilion's scoped `ToolHandler` shape to pi's `ToolDefinition` shape and composes memory, home, web, bootstrap, delivery, and optional IPC-backed tools. Host mode also enables Pi's coding tools; Docker mode enables none of those host-backed definitions and adds only the custom same-name `bash`. `events.ts` translates Pi session events back into Bazilion `SessionEvent`s for downstream NDJSON emission.
+- **`worker/{entry,spawn,ipc-protocol,ipc-client,api-key-refresh}.ts`** — subprocess boundary. `spawn.ts:spawnWorkerTurn` is the parent-side generator. `entry.ts` is the child script — reads stdin → runs the turn → emits NDJSON on stdout → on exit calls `process.disconnect()` so the IPC handle doesn't pin the event loop. `ipc-protocol.ts` declares the host interfaces, `IpcRequest`/`IpcReply`, and RPC methods for messaging, USER.md, browser, MCP, OAuth refresh, and `bashApproval`; `ipc-client.ts` correlates replies and rejects all pending calls on disconnect; `api-key-refresh.ts` enforces the provider/Agent/turn binding for refreshed access tokens. Stdio: `['pipe','pipe','inherit','ipc']`. The parent merges worker stdout with daemon-authored `command_approval` frames so registration always happens before a client can respond. SIGTERM cancels both the child and any pending approval or refresh wait; 3s grace before SIGKILL.
+- **`pi/`** — the Pi engine bridge. `session.ts:createBazilionSession` builds a pi-coding-agent `AgentSession` for an agent (loads/creates the JSONL session file, selects the shell-policy tool surface, picks a provider). This is the core engine seam: Bazilion enters Pi here and then listens to Pi's events. Takes `enabledProviders: Set<string>`, optional `messagingHost: MessagingHost`, optional `apiKey: string` (pre-fetched OAuth token), and optional `refreshApiKey: (provider) => Promise<string>` (mid-turn refresher, direct in daemon sessions or IPC-backed in workers). `tools.ts:createBazilionCustomTools` adapts Bazilion's scoped `ToolHandler` shape to pi's `ToolDefinition` shape and composes memory, home, web, bootstrap, delivery, and optional IPC-backed tools. Host mode also enables Pi's coding tools; Docker mode enables none of those host-backed definitions and adds only the custom same-name `bash`. `events.ts` translates Pi session events back into Bazilion `SessionEvent`s for downstream NDJSON emission.
 - **`session/`** — `prompt.ts` composes the system prompt from the Agent markdown files, Team block, USER.md, and attached skill bodies. Each skill block includes the directory from which its relative scripts/assets must resolve: the installed host directory in host mode or its matching read-only `/skills/...` mount in Docker mode. `frame.ts` owns the `ChatFrame` type.
 - **`shell/`** — BAZ-006 runtime controls. `security.ts` owns strict default-off sandbox/approval config, structured command-risk classification, and environment scrubbing. `approval.ts` wraps Pi's bash tool at its tool-call boundary and refuses risky commands until the daemon returns a one-shot allow. `tooling.ts` preserves Pi's unchanged host surface with both controls off, replaces only host bash when approval is enabled, or selects the containerized bash in Docker mode; Docker never keeps host `read`/`edit`/`write`/`grep`/`find`/`ls`. `docker.ts` runs one `--rm` container per command with `/workspace` read/write, bounded read-only mounts, a read-only root plus tmpfs `/tmp`, dropped capabilities, the host uid/gid, and `--network none`. The runner rejects remote Docker contexts and image `VOLUME`s, discards image `ENV`, pins a local image id, and never falls back to host execution.
 - **`providers/`** — `pi-adapter.ts` (pi-ai → Bazilion `Provider` adapter), `registry.ts` (provider registration + `enabledSet` gate + model-string parser, takes optional `oauth: {db, authToken}` to pick up `openai-codex` credentials), `retry.ts` (uniform transient-error retry with "no retry once streamed" invariant), `types.ts` (`Provider`, `ProviderRequest`, `ProviderResponse`, `ToolCall`, `ReasoningLevel`, `StopReason`).
@@ -273,7 +273,7 @@ app.route('/api', authRouter)           // /auth/openai*, /providers/test, /logi
 
 **`src/lib/messaging-host.ts`** — `createDbMessagingHost(db)` returns a `MessagingHost` backed by repos. Used by both the in-process compact/context routes and the worker IPC handler in `worker/spawn.ts`.
 
-**`src/lib/api-key.ts`** — `resolveAgentApiKey(db, authToken, agent, opts?)` — the helper every session-creating call site uses to pre-fetch an `apiKey` (and optionally a `refreshApiKey`) for the agent's provider. For env-key providers it returns `{}` (pi pulls from the merged env). For `openai-codex` it fetches the OAuth access token from the secrets table; daemon-side callers pass `withRefresher: true` so pi can swap an expired JWT mid-turn, worker callers omit the refresher and live with the initial token's lifetime.
+**`src/lib/api-key.ts`** — `resolveAgentApiKey(db, authToken, agent, opts?)` — the helper every session-creating call site uses to pre-fetch an `apiKey` (and optionally a `refreshApiKey`) for the agent's provider. For env-key providers it returns `{}` (pi pulls from the merged env). For `openai-codex` it fetches the OAuth access token from the secrets table; callers pass `withRefresher: true` so pi can swap an expired JWT mid-turn. In-process sessions invoke the callback directly, while worker sessions reach it through a provider- and turn-bound IPC request.
 
 ### 4.3 Middleware — `src/lib/middleware-auth.ts`
 
@@ -333,7 +333,7 @@ Grouped by resource. Request/response shapes all live in `@bazilion/api-types`. 
 
 **Auth** (`routes/auth-login.ts`): `POST /api/login` (token exchange, sets `bz_token` cookie), `GET / PUT / DELETE /api/auth/openai` (Codex OAuth credentials in the secrets table), `POST /api/auth/openai/login` (server-side browser kickoff), `POST /api/providers/test`, `GET /api/auth/me` (auth+setup probe used by web middleware).
 
-**Misc** (`routes/misc.ts`): `GET /api/health` (`HealthReport`), `GET /api/backup` (tar.gz of `~/.bazilion`), `GET / POST / DELETE /api/tokens[/:id]`. **`DELETE /api/tokens/:id` refuses to revoke the bootstrap row** by hashing `getCtx().authToken` and rejecting the matching id with 409 — locking the operator out of their own daemon would be a footgun.
+**Misc** (`routes/misc.ts`): `GET /api/health` (`HealthReport`), `GET /api/backup` (streamed tar.gz with a verified SQLite online-backup snapshot; excludes live journals and qmd indexes), `GET / POST / DELETE /api/tokens[/:id]`. **`DELETE /api/tokens/:id` refuses to revoke the bootstrap row** by hashing `getCtx().authToken` and rejecting the matching id with 409 — locking the operator out of their own daemon would be a footgun.
 
 ### 4.5 Chat streaming path in detail
 
@@ -425,8 +425,8 @@ Routes (under `src/routes/`):
 
 Citty-based. Two "modes":
 
-- **Direct mode** (no HTTP): `uninstall`, `serve`, `dashboard`, `login`, `backup`, `token show-local`. These operate on the filesystem directly so they work when the daemon isn't running. The CLI never opens `bazilion.db`.
-- **Client mode** (HTTP): everything else. Talks to the daemon via `src/client.ts` (which wraps `@bazilion/client`).
+- **Direct mode** (no HTTP): `uninstall`, `serve`, `dashboard`, `login`, `backup restore`, `token show-local`. These operate on the filesystem directly so they work when the daemon isn't running. Restore opens only its extracted staging DB, never the live source DB, and holds the same realpath-keyed sibling ownership record that the daemon acquires before opening SQLite.
+- **Client mode** (HTTP): everything else, including `backup create`. Talks to the daemon via `src/client.ts` (which wraps `@bazilion/client`).
 
 ### 5.1 Entry — `src/index.ts`
 
@@ -465,7 +465,7 @@ The result is wrapped with `createClient({serverUrl, token})` from `@bazilion/cl
 | `inbox.ts` | `list / show / read` | `/api/agents/:id/messages`, `/api/messages/:id`. |
 | `trigger.ts` | `add / list / rm / enable / disable / update` | `/api/agents/:id/triggers`, `/api/triggers/:id`. |
 | `memory.ts` | `list / read / write / search / rm` | `/api/agents/:id/memory*` (writes to the team's shared store). |
-| `backup.ts` | `create / restore` | `/api/backup` (download) and tar -xzf into `--home` (restore is direct, refuses while a daemon is reachable). |
+| `backup.ts` | `create / restore` | `/api/backup` (online SQLite snapshot download); restore validates a private archive copy, auth/DB pairing, complete canonical schema, SQLite integrity/FKs, then swaps staged state into `--home` with rollback under exclusive per-home ownership (offline target only). |
 | `doctor.ts` | `doctor` | `/api/health` + local checks. |
 | `completion.ts` | `completion <shell>` | (direct) — prints bash/zsh/fish completion script. |
 
@@ -635,7 +635,7 @@ bazilion send <from> <to> "text"
 
 ## 7. Invariants you can rely on
 
-- **Daemon is sole owner of `~/.bazilion`**: workers don't open `bazilion.db`. The CLI never opens it at all — its handful of direct-mode commands (`uninstall`, `backup` restore, `login`, `token show-local`) touch only the filesystem. The web UI never touches the DB either.
+- **Daemon is sole live owner of `~/.bazilion`**: workers don't open `bazilion.db`. Before opening SQLite, the daemon acquires a hashed, realpath-keyed ownership record beside the home. CLI restore acquires that same stable sibling for its full validation/install/rollback window and opens only the extracted staging DB read-only for integrity, foreign-key, complete-schema, and auth-token checks. Restore persists `swapping` before its first rename and `installed` after the new home is durable; a dead `swapping`/`recovery-required` record blocks startup with the retained recovery path. Graceful daemon shutdown closes SQLite before removing ownership. The web UI never touches the DB directly.
 - **One owner of LLM traffic**: the worker subprocess. The daemon never calls `provider.chat` in its own event loop.
 - **One agent, one team**: enforced by `agents.team_id NOT NULL REFERENCES teams(id) ON DELETE RESTRICT`. To delete a team with members, move them first.
 - **Memory is team-shared**: every agent in the team reads + writes the same qmd index at `<team.path>/memory/`.

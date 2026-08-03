@@ -20,10 +20,10 @@ A chat turn starts at `POST /api/agents/:id/chat` (the daemon at `apps/daemon`).
 1. Resolves the agent (`resolveAgent(db, paths, id)`) — joins agent + profile + team + skills.
 2. Reads the enabled-provider set (`providerStateRepo.listEnabled(db)`).
 3. Computes the merged env (`mergeSecretsIntoEnv(db, authToken)` — `process.env > secrets table > config table`).
-4. Pre-fetches the API key via `apps/daemon/src/lib/api-key.ts:resolveAgentApiKey(db, authToken, agent)` — a no-op for env-key providers; for `openai-codex` it pulls the OAuth access token out of the secrets table. Throws a friendly "not connected" error here if the user hasn't done the OAuth flow.
+4. Resolves the API key via `apps/daemon/src/lib/api-key.ts:resolveAgentApiKey(db, authToken, agent, {withRefresher:true})` — a no-op for env-key providers; for `openai-codex` it pulls the initial OAuth access token out of the secrets table and creates a daemon-owned refresher. Throws a friendly "not connected" error here if the user hasn't done the OAuth flow.
 5. Builds a `MessagingHost` backed by repos (`apps/daemon/src/lib/messaging-host.ts:createDbMessagingHost(db)`).
 6. Registers an `AbortController` keyed by `agentId` (`apps/daemon/src/lib/agent-cancel.ts:registerAgent`).
-7. Calls `spawnWorkerTurn({agent, message, enabledProviders, apiKey}, {signal, env, messagingHost})`.
+7. Calls `spawnWorkerTurn({agent, message, enabledProviders, apiKey}, {signal, env, messagingHost, apiKeyRefreshHost})`.
 
 **No LLM work happens in the daemon process.** The worker runs in its own Node child.
 
@@ -42,7 +42,7 @@ Stdio is `['pipe','pipe','inherit','ipc']`:
   - `{kind:'done', messages}` — exactly once on clean exit
   - `{kind:'fatal', error}` — exceptional exits
 - **stderr** — inherited to the daemon console.
-- **fd 3 (IPC)** — bidirectional JSON RPC. Worker → daemon: `{type:'rpc', id, method, args}` for daemon-owned tools and shell approval. Daemon → worker: `{type:'rpc-reply', id, ok, result|error}`.
+- **fd 3 (IPC)** — bidirectional JSON RPC. Worker → daemon: `{type:'rpc', id, method, args}` for daemon-owned tools, shell approval, and OAuth access-token refresh. Daemon → worker: `{type:'rpc-reply', id, ok, result|error}`. Refreshed tokens travel only in this private reply channel, never in stdout chat frames.
 
 Cancellation is keyed by **agentId** (not runId — there are no runIds anymore, since the runs table is gone). The agent-cancel registry is pinned to `globalThis[Symbol.for('bazilion.agent-cancel.registry')]` so module reloads don't replace it. `POST /api/agents/:id/cancel` looks up the controller and aborts it; the parent's abort handler calls `child.kill('SIGTERM')`, arms a 3s timer, and SIGKILLs if the child doesn't exit.
 
@@ -53,11 +53,13 @@ The worker has **no DB handle**. Everything DB-shaped came in over stdin:
 ```
 process.on('SIGTERM' / 'SIGINT', onSignal)            // installed FIRST so a signal during boot
                                                       // emits a synthetic 'cancelled' event + exits 0
-const {agent, message, enabledProviders, apiKey, turnId, bashApprovalMode} = await readInput()
+const {agent, message, enabledProviders, apiKey, apiKeyRefreshEnabled, turnId,
+       bashApprovalMode} = await readInput()
 paths = resolvePaths()                                // BAZILION_HOME from env, no DB access
 memory = qmdBackend(join(agent.team.path, 'memory')) // Team-shared store, not per-agent
                                                       // BM25 index via @tobilu/qmd
 messagingHost = createIpcMessagingHost()              // process.send/on('message') wrapper
+refreshApiKey = createIpcApiKeyRefresher()             // turn-bound OAuth refresh RPC
 bashApprovalHost = createIpcBashApprovalHost()        // risky bash → daemon decision RPC
 session = createBazilionSession({
   agent, paths,
@@ -67,6 +69,7 @@ session = createBazilionSession({
   messagingHost,
   bashApprovalHost,
   apiKey,                                             // pre-fetched OAuth token if openai-codex
+  refreshApiKey,                                      // daemon-owned refresh over private IPC
 })
 abortSession = () => void session.abort()
 ```
@@ -101,7 +104,7 @@ all other outcomes become a model-visible bash tool error without invoking it.
 
 Provider gate: `enabledProviders.size > 0 && !enabledProviders.has(providerName)` → throws "provider is disabled — enable it on /config". The set is pre-computed by the daemon so the worker doesn't have to read `provider_state`.
 
-For `openai-codex` agents specifically, the worker doesn't get a refresher callback (it has no DB to refresh against). The initial token is expected to last the turn; turns that exceed the JWT lifetime fail. Daemon-side compact/context routes use `resolveAgentApiKey(..., {withRefresher:true})` to wire pi's mid-turn refresh hook.
+For `openai-codex` agents, pi's mid-turn refresh callback sends the logical provider name plus the Agent and turn IDs over IPC. The parent verifies all three against the child it spawned, rejects requests after turn cancellation, and invokes the daemon-owned refresher against the secrets table. The worker remains DB-free and never receives the stored refresh credential; only the refreshed access token returns over IPC.
 
 After the turn finishes (or aborts), the worker calls `process.disconnect()` in its `finally` so the IPC channel doesn't pin the event loop alive after the turn settles.
 

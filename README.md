@@ -100,16 +100,30 @@ bazilion skill list|import|rm              # skill library (import --from opencl
 bazilion memory write|read|search|list|rm <team>   # Team-shared memory
 bazilion send <from> <to> <message>        # mailbox send
 bazilion inbox list|show|read              # inspect agent inboxes
-bazilion trigger add|list|rm|enable|disable  # interval / cron triggers
+bazilion trigger add|list|rm|enable|disable|history  # scheduled triggers + delivery diagnostics
 bazilion mcp add|list|show|rm|enable|disable|test    # MCP servers (stdio / http / sse)
 bazilion provider list|enable|disable|models|test    # provider config + smoke test
 bazilion config list|set|rm                # service config (URLs, IDs, secrets)
 bazilion login --server URL --token T      # save a remote daemon's coordinates
 bazilion token create|list|revoke|show-local         # web tokens for API/CLI clients
-bazilion backup create [output.tar.gz]     # tar ~/.bazilion to a file
-bazilion backup restore <file.tar.gz>      # extract a backup (stop the daemon first)
+bazilion backup create [output.tar.gz]     # online backup with a consistent SQLite snapshot
+bazilion backup restore <file.tar.gz>      # validate + restore atomically (stop daemon first)
 bazilion completion bash|zsh|fish          # print a shell completion script
 ```
+
+`backup create` is safe while the daemon is active: it uses SQLite's online-backup API and omits
+WAL/SHM files and rebuildable qmd indexes. The downloaded archive is installed only after it parses
+successfully and is written with owner-only permissions because it contains `auth.json`. Restore is
+offline: it validates archive paths, links, the auth/DB pair, SQLite integrity, and foreign keys in a
+staging directory, then rebases stored Profile and Agent directories to the requested home before
+replacing it. Restore and the daemon contend on one per-home ownership record outside the directory
+being swapped, so a custom-port daemon or a daemon starting mid-restore cannot open the database.
+If restore is interrupted between swap renames, the record stays fail-closed and reports the
+retained recovery path. Contained relative links in ordinary work product are preserved; absolute
+links are limited to canonical Team slot paths, whose external targets are not included in the archive.
+The CLI rejects backup output paths inside `BAZILION_HOME` so a later backup cannot accidentally
+nest prior archives. Ordinary profile, Agent, Team, skill, and session files are captured as the
+archive walks them; only the SQLite snapshot is point-in-time consistent.
 
 ## Concepts
 
@@ -273,5 +287,4 @@ need additional compilers or utilities.
 
 - **qmd vector/hybrid search** — BM25 is wired; the semantic path (embeddings + LLM rerank) is disabled to avoid the multi-GB GGUF model download. Enable opt-in later.
 - **Mempalace memory backend** — out of scope for v1.
-- **`generate_image` / vision input** — the chat pane already renders markdown images, but agent-invokable image generation and user image uploads aren't wired.
-- **Worker-side OAuth refresh** — long worker turns that exceed the openai-codex JWT lifetime fail on refresh. The daemon-side compact/context paths still get lazy refresh; only the worker subprocess relies on the initial token carrying the whole turn. See `apps/daemon/src/lib/api-key.ts`.
+- **Agent-invokable image generation** — vision input and tool-produced images are wired, but Bazilion does not yet expose a `generate_image` tool.

@@ -21,6 +21,14 @@ export const OPENAI_CODEX_SECRET_KEY = 'OPENAI_CODEX_OAUTH'
 /** Refresh when the access token has less than this much life left. */
 const REFRESH_MARGIN_MS = 60_000
 
+/**
+ * One refresh flight per daemon DB/auth context. Multiple Agents can reach the
+ * expiry margin at the same time; without single-flight they would all submit
+ * the same (potentially rotating) refresh token and race the credentials write.
+ * The WeakMap lets closed DB handles and their nested maps be collected.
+ */
+const refreshFlights = new WeakMap<BazilionDb, Map<string, Promise<string>>>()
+
 export interface StoredCredentials {
   refresh: string
   access: string
@@ -89,10 +97,38 @@ export function getStatus(db: BazilionDb, authToken: string): OpenAICodexStatus 
 export async function loadAccessToken(db: BazilionDb, authToken: string): Promise<string> {
   const creds = readCredentials(db, authToken)
   if (!creds) {
-    throw new Error(
-      'OpenAI ChatGPT OAuth not configured — run `bazilion auth openai login` (or use the Connect button on /config)',
-    )
+    throw credentialsMissingError()
   }
+  if (creds.expires > Date.now() + REFRESH_MARGIN_MS) return creds.access
+
+  let dbFlights = refreshFlights.get(db)
+  if (!dbFlights) {
+    dbFlights = new Map()
+    refreshFlights.set(db, dbFlights)
+  }
+
+  const existing = dbFlights.get(authToken)
+  if (existing) return existing
+
+  // Publish the flight before starting it. The microtask boundary makes the
+  // credential re-read below happen after publication, so every concurrent
+  // caller observes this same Promise instead of starting a second refresh.
+  const pending = Promise.resolve().then(() => refreshExpiredAccessToken(db, authToken))
+  dbFlights.set(authToken, pending)
+  try {
+    return await pending
+  } finally {
+    if (dbFlights.get(authToken) === pending) dbFlights.delete(authToken)
+    if (dbFlights.size === 0) refreshFlights.delete(db)
+  }
+}
+
+async function refreshExpiredAccessToken(db: BazilionDb, authToken: string): Promise<string> {
+  // Credentials may have been refreshed or replaced between the caller's
+  // initial expiry check and this flight acquiring ownership. Re-read after
+  // publishing the flight and skip the network call when another path won.
+  const creds = readCredentials(db, authToken)
+  if (!creds) throw credentialsMissingError()
   if (creds.expires > Date.now() + REFRESH_MARGIN_MS) return creds.access
 
   const refreshed = (await refreshOpenAICodexToken(creds.refresh)) as OAuthCredentials
@@ -101,8 +137,30 @@ export async function loadAccessToken(db: BazilionDb, authToken: string): Promis
     access: refreshed.access,
     expires: refreshed.expires,
   }
+
+  // A logout or a new login can happen while the network request is pending.
+  // Never resurrect cleared credentials or overwrite a newer credential set.
+  const current = readCredentials(db, authToken)
+  if (!current) throw credentialsMissingError()
+  if (!sameCredentials(current, creds)) {
+    if (current.expires > Date.now() + REFRESH_MARGIN_MS) return current.access
+    throw new Error('OpenAI ChatGPT OAuth credentials changed while refresh was in progress')
+  }
+
   writeCredentials(db, authToken, next)
   return next.access
+}
+
+function credentialsMissingError(): Error {
+  return new Error(
+    'OpenAI ChatGPT OAuth not configured — run `bazilion auth openai login` (or use the Connect button on /config)',
+  )
+}
+
+function sameCredentials(left: StoredCredentials, right: StoredCredentials): boolean {
+  return (
+    left.refresh === right.refresh && left.access === right.access && left.expires === right.expires
+  )
 }
 
 /** Persist credentials fetched by pi-ai's `loginOpenAICodex`. */

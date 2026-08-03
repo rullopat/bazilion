@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, expect, test } from 'vitest'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import {
   type BazilionDb,
   openDb,
@@ -19,16 +19,24 @@ import {
   saveLoginCredentials,
 } from '../../src/runtime/auth/openai-codex.ts'
 
+const oauthMocks = vi.hoisted(() => ({
+  loginOpenAICodex: vi.fn(),
+  refreshOpenAICodexToken: vi.fn(),
+}))
+
+vi.mock('@earendil-works/pi-ai/oauth', () => oauthMocks)
+
 // These tests exercise the storage + expiry logic directly. Pi-ai's network
-// calls (login flow + token refresh) are out of scope and not hit — the
-// refresh path is driven by a shimmed stored refresh token so we can assert
-// behaviour before expiry without the wire.
+// calls are mocked: refresh tests control the rotating-credential response and
+// concurrency gates deterministically without touching the wire.
 
 let home: string
 let db: BazilionDb
 let authToken: string
 
 beforeEach(() => {
+  oauthMocks.loginOpenAICodex.mockReset()
+  oauthMocks.refreshOpenAICodexToken.mockReset()
   home = mkdtempSync(join(tmpdir(), 'bazilion-oauth-test-'))
   const paths = resolvePaths(home)
   mkdirSync(paths.home, { recursive: true })
@@ -81,6 +89,103 @@ test('loadAccessToken returns the stored access when still fresh', async () => {
     expires: Date.now() + 30 * 60_000,
   })
   await expect(loadAccessToken(db, authToken)).resolves.toBe(access)
+})
+
+test('loadAccessToken single-flights concurrent refreshes and persists rotated credentials', async () => {
+  const access = fakeAccessJwt('acct-refreshed')
+  saveLoginCredentials(db, authToken, {
+    refresh: 'refresh-before-rotation',
+    access: fakeAccessJwt('acct-expired'),
+    expires: Date.now() - 1,
+  })
+
+  let releaseRefresh: (() => void) | undefined
+  const refreshGate = new Promise<void>((resolve) => {
+    releaseRefresh = resolve
+  })
+  oauthMocks.refreshOpenAICodexToken.mockImplementation(async (refreshToken: string) => {
+    expect(refreshToken).toBe('refresh-before-rotation')
+    await refreshGate
+    return {
+      refresh: 'refresh-after-rotation',
+      access,
+      expires: Date.now() + 30 * 60_000,
+      accountId: 'acct-refreshed',
+    }
+  })
+
+  const first = loadAccessToken(db, authToken)
+  const second = loadAccessToken(db, authToken)
+  await vi.waitFor(() => expect(oauthMocks.refreshOpenAICodexToken).toHaveBeenCalledOnce())
+  releaseRefresh?.()
+
+  await expect(Promise.all([first, second])).resolves.toEqual([access, access])
+  expect(oauthMocks.refreshOpenAICodexToken).toHaveBeenCalledOnce()
+  const stored = JSON.parse(openSecrets(db, authToken).get(OPENAI_CODEX_SECRET_KEY) as string)
+  expect(stored).toMatchObject({ refresh: 'refresh-after-rotation', access })
+})
+
+test('refresh flight re-reads credentials before using the expired refresh token', async () => {
+  saveLoginCredentials(db, authToken, {
+    refresh: 'stale-refresh',
+    access: fakeAccessJwt('acct-expired'),
+    expires: Date.now() - 1,
+  })
+
+  const pending = loadAccessToken(db, authToken)
+  const replacementAccess = fakeAccessJwt('acct-reconnected')
+  saveLoginCredentials(db, authToken, {
+    refresh: 'replacement-refresh',
+    access: replacementAccess,
+    expires: Date.now() + 30 * 60_000,
+  })
+
+  await expect(pending).resolves.toBe(replacementAccess)
+  expect(oauthMocks.refreshOpenAICodexToken).not.toHaveBeenCalled()
+})
+
+test('in-flight refresh does not overwrite a same-refresh credential replacement', async () => {
+  const originalAccess = fakeAccessJwt('acct-original')
+  saveLoginCredentials(db, authToken, {
+    refresh: 'shared-refresh-value',
+    access: originalAccess,
+    expires: Date.now() - 1,
+  })
+
+  let releaseRefresh: (() => void) | undefined
+  const refreshGate = new Promise<void>((resolve) => {
+    releaseRefresh = resolve
+  })
+  oauthMocks.refreshOpenAICodexToken.mockImplementation(async () => {
+    await refreshGate
+    return {
+      refresh: 'network-rotated-refresh',
+      access: fakeAccessJwt('acct-network-result'),
+      expires: Date.now() + 30 * 60_000,
+      accountId: 'acct-network-result',
+    }
+  })
+
+  const pending = loadAccessToken(db, authToken)
+  await vi.waitFor(() => expect(oauthMocks.refreshOpenAICodexToken).toHaveBeenCalledOnce())
+
+  const replacementAccess = fakeAccessJwt('acct-reconnected')
+  const replacementExpires = Date.now() + 45 * 60_000
+  saveLoginCredentials(db, authToken, {
+    // Some providers can retain the refresh value while replacing access and
+    // expiry, so the overwrite guard must compare the complete tuple.
+    refresh: 'shared-refresh-value',
+    access: replacementAccess,
+    expires: replacementExpires,
+  })
+  releaseRefresh?.()
+
+  await expect(pending).resolves.toBe(replacementAccess)
+  expect(JSON.parse(openSecrets(db, authToken).get(OPENAI_CODEX_SECRET_KEY) as string)).toEqual({
+    refresh: 'shared-refresh-value',
+    access: replacementAccess,
+    expires: replacementExpires,
+  })
 })
 
 test('loadAccessToken throws a helpful error when not configured', async () => {

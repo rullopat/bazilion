@@ -47,7 +47,7 @@ interface RunAgentTurnOpts {
  *   - resolves the agent + provider gate + secrets envelope here in the
  *     daemon (the worker no longer holds a SQLite handle of its own),
  *   - spawns the worker with an IPC channel for daemon-owned messaging tools
- *     and turn-scoped shell approvals,
+ *     OAuth refresh, and turn-scoped shell approvals,
  *   - forwards stdout frames to the caller and wires cancellation through
  *     the agent-cancel registry.
  */
@@ -112,10 +112,12 @@ export async function* runAgentTurn(
     // Pre-fetch the API key for OAuth providers (`openai-codex`) before the
     // worker spawns — the worker has no DB handle, so it can't reach the
     // secrets table itself. For env-key providers this is a no-op (`{}`).
-    // Refresher is intentionally skipped: the worker has no IPC channel for
-    // OAuth refresh today, and the initial token comfortably outlives a
-    // single turn for ChatGPT-backed sessions.
-    const { apiKey } = await resolveAgentApiKey(db, authToken, agent)
+    // OAuth refresh stays daemon-owned: the worker gets the initial token on
+    // stdin and a turn-scoped IPC callback for later refreshes, never a DB
+    // handle or the stored refresh credential.
+    const { apiKey, refreshApiKey } = await resolveAgentApiKey(db, authToken, agent, {
+      withRefresher: true,
+    })
 
     // Browser automation: expose the browser_* tools (gated by config). The
     // Playwright session is lazy — Chromium only launches on first browser call.
@@ -150,6 +152,7 @@ export async function* runAgentTurn(
         browserHost,
         mcpHost: mcp?.host,
         bashApprovalHost: commandApprovalRegistry,
+        apiKeyRefreshHost: refreshApiKey ? { refresh: refreshApiKey } : undefined,
       },
     )) {
       // Fire-and-forget Telegram mirror. Mirror failures (bot down, topic
