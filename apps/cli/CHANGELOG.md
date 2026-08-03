@@ -1,5 +1,35 @@
 # bazilion
 
+## 0.11.0
+
+### Minor Changes
+
+- [`e63f48a`](https://github.com/rullopat/bazilion/commit/e63f48a9c15e12f3dc7e5f204fc060abb0f2aa7e) Thanks [@rullopat](https://github.com/rullopat)! - Add opt-in Docker isolation and dangerous-command approval for agent shell commands. Docker mode runs a same-name Pi
+  `bash` replacement with scrubbed image and worker environments, no network, a read-only root, one
+  writable team workspace, and non-recursive bounded read-only memory, skill, and attachment mounts;
+  host-backed coding tools are hidden so absolute paths cannot bypass the container boundary. Reject
+  remote Docker contexts and implicit image volumes, surface the posture through shared service
+  configuration and `bazilion doctor`, and harden host-side memory and file delivery against symlink
+  escapes. Dangerous mode gates classified commands through turn-scoped daemon IPC, inline web and
+  TTY CLI decisions, timeout/cancellation cleanup, and non-interactive auto-denial.
+
+- [`675200b`](https://github.com/rullopat/bazilion/commit/675200b019957f3406820aa47976f6b3633c3777) Thanks [@rullopat](https://github.com/rullopat)! - Make scheduled triggers durable across agent contention, retries, and daemon restarts. Add
+  coalesced dispatch persistence, bounded retry with lease recovery, API and CLI diagnostics, and
+  recent dispatch status in the web UI. Provider errors now enter the retry state machine, while
+  approval-gated occurrences remain pending until a durable grant is executed by the scheduler.
+
+- [`1dc56d0`](https://github.com/rullopat/bazilion/commit/1dc56d01522bbacb5212a0d9f30fa00403667552) Thanks [@rullopat](https://github.com/rullopat)! - Make online backups use a verified SQLite snapshot instead of archiving live WAL state, and harden
+  restore with archive/link validation, auth-to-database checks, offline-daemon detection, staged
+  atomic installation, exact-schema verification, destination path rebasing, exclusive
+  daemon/restore ownership, crash-phase recovery markers, rollback, and failed-download cleanup.
+  Contained relative symlinks in work product are preserved while escaping targets remain rejected.
+
+### Patch Changes
+
+- [`1dc56d0`](https://github.com/rullopat/bazilion/commit/1dc56d01522bbacb5212a0d9f30fa00403667552) Thanks [@rullopat](https://github.com/rullopat)! - Refresh expiring ChatGPT OAuth access tokens during worker turns through provider-, Agent-, and
+  turn-bound daemon IPC. Keep refresh credentials DB-owned, redact upstream failures, clean pending
+  IPC calls on cancellation or disconnect, and single-flight concurrent rotating-token refreshes.
+
 ## 0.10.0
 
 ### Minor Changes
