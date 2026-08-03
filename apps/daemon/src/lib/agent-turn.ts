@@ -37,6 +37,8 @@ interface RunAgentTurnOpts {
   alreadyRegistered?: boolean
   /** Missing/internal callers fail closed instead of opening a human wait. */
   bashApprovalMode?: BashApprovalMode
+  /** Message whose causal chain this synthetic inbox wake continues. */
+  causalParentMessageId?: string | null
 }
 
 /**
@@ -107,7 +109,9 @@ export async function* runAgentTurn(
     const message = fileNote ? (rawMessage ? `${rawMessage}\n\n${fileNote}` : fileNote) : rawMessage
 
     const enabledProviders = Array.from(providerStateRepo.listEnabled(db))
-    const messagingHost = createDbMessagingHost(db)
+    const messagingHost = createDbMessagingHost(db, {
+      causalParentMessageId: opts.causalParentMessageId,
+    })
     const userMdHost = createDbUserMdHost(db, paths)
     // Pre-fetch the API key for OAuth providers (`openai-codex`) before the
     // worker spawns — the worker has no DB handle, so it can't reach the

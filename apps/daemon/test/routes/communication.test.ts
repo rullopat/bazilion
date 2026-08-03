@@ -7,11 +7,13 @@ let home: string
 let oldHome: string | undefined
 let oldScheduler: string | undefined
 let oldGate: string | undefined
+let oldLoopLimit: string | undefined
 
 beforeEach(() => {
   oldHome = process.env.BAZILION_HOME
   oldScheduler = process.env.BAZILION_SCHEDULER
   oldGate = process.env.BAZILION_TEAM_POLICY_ENFORCEMENT
+  oldLoopLimit = process.env.BAZILION_AGENT_LOOP_MAX_HOPS
   home = mkdtempSync(join(tmpdir(), 'bazilion-communication-route-'))
   process.env.BAZILION_HOME = home
   process.env.BAZILION_SCHEDULER = 'off'
@@ -29,8 +31,63 @@ afterEach(async () => {
   else process.env.BAZILION_SCHEDULER = oldScheduler
   if (oldGate === undefined) delete process.env.BAZILION_TEAM_POLICY_ENFORCEMENT
   else process.env.BAZILION_TEAM_POLICY_ENFORCEMENT = oldGate
+  if (oldLoopLimit === undefined) delete process.env.BAZILION_AGENT_LOOP_MAX_HOPS
+  else process.env.BAZILION_AGENT_LOOP_MAX_HOPS = oldLoopLimit
   rmSync(home, { recursive: true, force: true })
   vi.resetModules()
+})
+
+test('agent message endpoint stops over-budget causal chains and exposes payload-free diagnostics', async () => {
+  const { createApp } = await import('../../src/app.ts')
+  const { createProfile, providerModelRepo, providerStateRepo, registerTeam, spawnAgent } =
+    await import('../../src/core/index.ts')
+  const { getCtx } = await import('../../src/lib/ctx.ts')
+  const ctx = getCtx()
+  process.env.BAZILION_AGENT_LOOP_MAX_HOPS = '0'
+  providerStateRepo.setEnabled(ctx.db, 'lmstudio', true)
+  providerModelRepo.replace(ctx.db, 'lmstudio', ['model'])
+  createProfile(ctx.db, ctx.paths, { id: 'p', defaultModel: 'm' })
+  registerTeam(ctx.db, { id: 'default' }, ctx.paths)
+  const a = spawnAgent(ctx.db, ctx.paths, { profileId: 'p', teamId: 'default' })
+  const b = spawnAgent(ctx.db, ctx.paths, { profileId: 'p', teamId: 'default' })
+  const app = createApp()
+  const auth = { authorization: `Bearer ${ctx.authToken}`, 'content-type': 'application/json' }
+
+  const first = await app.request(`/api/agents/${b.id}/messages`, {
+    method: 'POST',
+    headers: auth,
+    body: JSON.stringify({ from: a.id, payload: { text: 'first payload' } }),
+  })
+  expect(first.status).toBe(201)
+  const firstMessage = (await first.json()) as {
+    id: string
+    causalChainId: string
+    causalHop: number
+  }
+  expect(firstMessage).toMatchObject({ causalChainId: firstMessage.id, causalHop: 0 })
+
+  const blocked = await app.request(`/api/agents/${a.id}/messages`, {
+    method: 'POST',
+    headers: auth,
+    body: JSON.stringify({
+      from: b.id,
+      replyTo: firstMessage.id,
+      payload: { text: 'secret blocked payload' },
+    }),
+  })
+  expect(blocked.status).toBe(429)
+  expect(await blocked.json()).toMatchObject({
+    code: 'agent_loop_limit',
+    event: { causalChainId: firstMessage.id, attemptedHop: 1, maxHops: 0 },
+  })
+
+  const diagnostics = await app.request(`/api/agents/${a.id}/loop-breaks`, { headers: auth })
+  expect(diagnostics.status).toBe(200)
+  const text = await diagnostics.text()
+  expect(text).not.toContain('secret blocked payload')
+  expect(JSON.parse(text)).toMatchObject({
+    events: [{ causalChainId: firstMessage.id, fromAgentId: b.id, toAgentId: a.id }],
+  })
 })
 
 test('authenticated evaluator is side-effect free and block history is filtered and cursor paginated', async () => {

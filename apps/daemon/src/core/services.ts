@@ -481,6 +481,14 @@ export const SERVICES: ServiceDef[] = [
         description:
           'Optional comma-separated variable names copied into the container. Provider credentials remain excluded unless explicitly named.',
       },
+      {
+        envVar: 'BAZILION_AGENT_LOOP_MAX_HOPS',
+        kind: 'config',
+        label: 'Agent-message hop limit',
+        placeholder: '8',
+        description:
+          'Maximum causal hops in an agent-to-agent message chain before the daemon stops it. Default 8.',
+      },
     ],
   },
   {

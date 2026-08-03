@@ -1,4 +1,4 @@
-import type { ListInboxResponse, Message } from '@bazilion/api-types'
+import type { ListAgentLoopBreaksResponse, ListInboxResponse, Message } from '@bazilion/api-types'
 import { defineCommand } from 'citty'
 import { createClient } from '../client.ts'
 import { columnize } from '../columnize.ts'
@@ -72,11 +72,41 @@ const readCmd = defineCommand({
   },
 })
 
+const loopBreaksCmd = defineCommand({
+  meta: { name: 'loop-breaks', description: 'List stopped agent-message chains' },
+  args: {
+    agent: { type: 'positional', required: true, description: 'Agent id' },
+    limit: { type: 'string', description: 'Maximum events to show (default 25)' },
+  },
+  async run({ args }) {
+    const client = createClient()
+    const limit = args.limit ? `?limit=${encodeURIComponent(args.limit)}` : ''
+    const { events } = await client.get<ListAgentLoopBreaksResponse>(
+      `/api/agents/${args.agent}/loop-breaks${limit}`,
+    )
+    if (events.length === 0) {
+      console.log('(no agent-message chains stopped)')
+      return
+    }
+    for (const line of columnize(
+      events.map((event) => [
+        new Date(event.createdAt).toISOString(),
+        `chain:${event.causalChainId.slice(0, 8)}`,
+        `${event.fromAgentId.slice(0, 8)}→${event.toAgentId.slice(0, 8)}`,
+        `hop:${event.attemptedHop}/${event.maxHops}`,
+        event.reason,
+      ]),
+    ))
+      console.log(line)
+  },
+})
+
 export const inboxCommand = defineCommand({
   meta: { name: 'inbox', description: 'Inspect agent inboxes' },
   subCommands: {
     list: listCmd,
     show: showCmd,
     read: readCmd,
+    'loop-breaks': loopBreaksCmd,
   },
 })

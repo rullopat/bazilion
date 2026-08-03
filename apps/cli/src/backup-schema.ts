@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import type { DatabaseSync } from 'node:sqlite'
 
 const CANONICAL_MIGRATION = '0001_init'
-const CANONICAL_SCHEMA_HASH = 'f2da105d21bdea7bedff3ba601243c22d0a7b2d023b954c714940642152b227f'
+const CANONICAL_SCHEMA_HASH = 'b78c3de1719b683c599076438b4d86b7ef6df93b15a2de471b55189156392c59'
 
 // Explicit objects created by migrate.ts + 0001_init.sql. SQLite's implicit
 // auto-indexes have `sql = NULL` and are deliberately represented through the
@@ -10,12 +10,15 @@ const CANONICAL_SCHEMA_HASH = 'f2da105d21bdea7bedff3ba601243c22d0a7b2d023b954c71
 const CANONICAL_OBJECTS = [
   ['index', 'agent_triggers_agent'],
   ['index', 'agent_triggers_enabled'],
+  ['index', 'agent_loop_break_events_agent_time'],
+  ['index', 'agent_loop_break_events_team_time'],
   ['index', 'communication_approval_events_attempt'],
   ['index', 'communication_approvals_queue'],
   ['index', 'communication_approvals_teams'],
   ['index', 'idx_agents_telegram_topic_id'],
   ['index', 'idx_provider_models_provider'],
   ['index', 'messages_policy_delivery_queue'],
+  ['index', 'messages_causal_chain'],
   ['index', 'messages_to_unread'],
   ['index', 'team_policy_baseline_owner'],
   ['index', 'team_policy_blocks_team_time'],
@@ -24,6 +27,7 @@ const CANONICAL_OBJECTS = [
   ['index', 'trigger_dispatches_trigger_time'],
   ['index', 'web_tokens_active'],
   ['table', 'agent_skills'],
+  ['table', 'agent_loop_break_events'],
   ['table', 'agent_triggers'],
   ['table', 'agents'],
   ['table', 'communication_approval_events'],

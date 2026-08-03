@@ -18,13 +18,20 @@ import {
 import type { MessagingHost } from '../runtime/index.ts'
 import { deliverableInbox, deliverableReplies, sendAgentMessage } from './communication.ts'
 
-export function createDbMessagingHost(db: BazilionDb): MessagingHost {
+export function createDbMessagingHost(
+  db: BazilionDb,
+  opts: { causalParentMessageId?: string | null } = {},
+): MessagingHost {
   return {
     agentExists(agentId) {
       return agentRepo.get(db, agentId) !== null
     },
     sendMessage(input) {
-      const m = sendAgentMessage(db, { ...input, origin: 'agent_tool' })
+      const m = sendAgentMessage(db, {
+        ...input,
+        causalParentMessageId: opts.causalParentMessageId,
+        origin: 'agent_tool',
+      })
       return { messageId: m.id }
     },
     listInbox(agentId, opts) {

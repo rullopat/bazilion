@@ -1,6 +1,8 @@
 import { ApiClientError } from '@bazilion/client'
 import type {
   Agent,
+  AgentLoopBreakEvent,
+  ListAgentLoopBreaksResponse,
   ListInboxResponse,
   Message,
   ResolvedAgent,
@@ -17,6 +19,7 @@ interface InboxView {
   unreadCount: number
   selected: Message | null
   agentNames: Record<string, string>
+  loopBreaks: AgentLoopBreakEvent[]
 }
 
 const fetchInbox = createServerFn({ method: 'POST' })
@@ -31,7 +34,7 @@ const fetchInbox = createServerFn({ method: 'POST' })
       throw err
     }
     const inboxQs = data.unreadOnly ? '?unread=1' : ''
-    const [list, unread, allAgents] = await Promise.all([
+    const [list, unread, allAgents, loopBreaks] = await Promise.all([
       c.get<ListInboxResponse>(
         `/api/agents/${encodeURIComponent(resolved.agent.id)}/messages${inboxQs}`,
       ),
@@ -39,6 +42,9 @@ const fetchInbox = createServerFn({ method: 'POST' })
         `/api/agents/${encodeURIComponent(resolved.agent.id)}/messages?unread=1`,
       ),
       c.get<Agent[]>('/api/agents?includeArchived=true'),
+      c.get<ListAgentLoopBreaksResponse>(
+        `/api/agents/${encodeURIComponent(resolved.agent.id)}/loop-breaks?limit=10`,
+      ),
     ])
     let selected: Message | null = null
     if (data.selectedId) {
@@ -56,6 +62,7 @@ const fetchInbox = createServerFn({ method: 'POST' })
       unreadCount: unread.messages.length,
       selected,
       agentNames,
+      loopBreaks: loopBreaks.events,
     }
   })
 
@@ -85,7 +92,8 @@ function decodeText(payload: string): string {
 }
 
 function InboxPage() {
-  const { resolved, messages, unreadCount, selected, agentNames } = Route.useLoaderData()
+  const { resolved, messages, unreadCount, selected, agentNames, loopBreaks } =
+    Route.useLoaderData()
   const search = Route.useSearch()
   const unreadOnly = search.unread === '1'
   const misaddressed = Boolean(selected && selected.toAgentId !== resolved.agent.id)
@@ -201,6 +209,27 @@ function InboxPage() {
             <code className="font-mono">send_message</code> tool. An idle recipient's scheduler
             tick drains unread mail.
           </p>
+          <div className="mt-6 rounded-lg border bg-card p-4">
+            <h2 className="mb-2 font-serif text-lg text-foreground">Loop circuit breaker</h2>
+            {loopBreaks.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No agent-message chains stopped.</p>
+            ) : (
+              <div className="space-y-3">
+                {loopBreaks.map((event) => (
+                  <div key={event.id} className="border-t first:border-0 first:pt-0 pt-3 text-xs">
+                    <div className="font-mono text-foreground">
+                      {agentLabel(event.fromAgentId)} → {agentLabel(event.toAgentId)}
+                    </div>
+                    <div className="mt-1 text-muted-foreground">
+                      stopped hop {event.attemptedHop} at limit {event.maxHops} · chain{' '}
+                      <code>{event.causalChainId.slice(0, 8)}</code> ·{' '}
+                      {new Date(event.createdAt).toLocaleString()}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </PageShell>

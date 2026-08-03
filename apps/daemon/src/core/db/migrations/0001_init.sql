@@ -76,12 +76,33 @@ CREATE TABLE messages (
   from_agent_id TEXT NOT NULL REFERENCES agents(id),
   to_agent_id   TEXT NOT NULL REFERENCES agents(id),
   reply_to      TEXT REFERENCES messages(id),
+  causal_chain_id TEXT NOT NULL,
+  causal_hop    INTEGER NOT NULL DEFAULT 0 CHECK (causal_hop >= 0),
   payload       TEXT NOT NULL,
   created_at    INTEGER NOT NULL,
   read_at       INTEGER
 , policy_disposition TEXT NOT NULL DEFAULT 'deliverable'
   CHECK (policy_disposition IN ('deliverable', 'policy_blocked')), policy_blocked_at INTEGER, policy_claimed_at INTEGER, policy_delivered_at INTEGER);
 CREATE INDEX messages_to_unread ON messages(to_agent_id) WHERE read_at IS NULL;
+CREATE INDEX messages_causal_chain ON messages(causal_chain_id, causal_hop);
+CREATE TABLE agent_loop_break_events (
+  id                TEXT PRIMARY KEY,
+  causal_chain_id   TEXT NOT NULL,
+  parent_message_id TEXT REFERENCES messages(id) ON DELETE SET NULL,
+  from_agent_id     TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+  to_agent_id       TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+  source_team_id    TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  target_team_id    TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  attempted_hop     INTEGER NOT NULL CHECK (attempted_hop >= 0),
+  max_hops          INTEGER NOT NULL CHECK (max_hops >= 0),
+  reason            TEXT NOT NULL,
+  origin            TEXT NOT NULL,
+  created_at        INTEGER NOT NULL
+);
+CREATE INDEX agent_loop_break_events_agent_time
+  ON agent_loop_break_events(from_agent_id, to_agent_id, created_at DESC);
+CREATE INDEX agent_loop_break_events_team_time
+  ON agent_loop_break_events(source_team_id, target_team_id, created_at DESC);
 CREATE TABLE skill_meta (
   name         TEXT PRIMARY KEY,
   source       TEXT,

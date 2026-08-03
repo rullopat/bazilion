@@ -147,6 +147,7 @@ test('shell sandbox settings are configurable through the shared CLI and web ser
     'BAZILION_BASH_SANDBOX',
     'BAZILION_BASH_SANDBOX_IMAGE',
     'BAZILION_BASH_SANDBOX_ENV_ALLOWLIST',
+    'BAZILION_AGENT_LOOP_MAX_HOPS',
   ])
 
   const set = await server.cli(['config', 'set', 'BAZILION_BASH_SANDBOX', 'docker'])

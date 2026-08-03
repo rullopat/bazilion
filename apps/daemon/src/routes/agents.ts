@@ -59,6 +59,7 @@ import {
 import { cancelAgent } from '../lib/agent-cancel.ts'
 import { resolveAgentIdParam } from '../lib/agent-id.ts'
 import { runAgentLifecycleMutation } from '../lib/agent-lifecycle-lease.ts'
+import { AgentLoopLimitError, listAgentLoopBreaks } from '../lib/agent-loop-guard.ts'
 import { runAgentTurn } from '../lib/agent-turn.ts'
 import { resolveAgentApiKey } from '../lib/api-key.ts'
 import { closeBrowserSession } from '../lib/browser/pool.ts'
@@ -760,6 +761,14 @@ agentsRouter.get('/:id/messages', (c) => {
   return c.json(body)
 })
 
+agentsRouter.get('/:id/loop-breaks', (c) => {
+  const { db } = getCtx()
+  const agent = agentRepo.get(db, c.req.param('id'))
+  if (!agent) return c.json({ error: `agent not found: ${c.req.param('id')}` }, 404)
+  const limit = Math.min(Math.max(Number(c.req.query('limit')) || 25, 1), 100)
+  return c.json({ events: listAgentLoopBreaks(db, agent.id, limit) })
+})
+
 agentsRouter.post('/:id/messages', async (c) => {
   const body = (await c.req.json().catch(() => null)) as SendMessageRequest | null
   if (
@@ -791,6 +800,9 @@ agentsRouter.post('/:id/messages', async (c) => {
     })
     return c.json(msg, 201)
   } catch (error) {
+    if (error instanceof AgentLoopLimitError) {
+      return c.json({ error: error.message, code: 'agent_loop_limit', event: error.event }, 429)
+    }
     if (error instanceof CommunicationDeniedError) {
       return c.json(
         { ...error.result, attemptKind: error.attemptKind, attemptId: error.attemptId },

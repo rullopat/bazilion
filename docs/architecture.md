@@ -306,6 +306,7 @@ Grouped by resource. Request/response shapes all live in `@bazilion/api-types`. 
 | POST | `/api/agents/:id/archive` / `unarchive` | Status flip. |
 | DELETE | `/api/agents/:id` | Hard delete (via `agent/delete.ts`). |
 | GET / POST | `/api/agents/:id/messages` | Inbox list / send (accepts `replyTo`). |
+| GET | `/api/agents/:id/loop-breaks` | Recent payload-free causal-chain stops involving this Agent. |
 | GET / POST | `/api/agents/:id/skills` | List attached / attach. |
 | DELETE | `/api/agents/:id/skills/:name` | Detach. |
 | GET / POST | `/api/agents/:id/triggers` | List / create. |
@@ -316,6 +317,13 @@ Grouped by resource. Request/response shapes all live in `@bazilion/api-types`. 
 **Teams** (`routes/teams.ts`): `GET / POST /api/teams`, `GET / DELETE /api/teams/:id`, `PUT /api/teams/:id/user-md`. POST body is `{id (slug), name?, link?}` — no `path` field; the daemon picks `paths.teamDir(id)`.
 
 **Messages** (`routes/messages.ts`): `GET / PATCH /api/messages/:id` — detail + mark-read.
+
+Agent messages retain durable causal ancestry (`causal_chain_id`, `causal_hop`).
+`sendAgentMessage` enforces `BAZILION_AGENT_LOOP_MAX_HOPS` before insertion,
+independently of Team Policy. Inbox-wake turns pass a causal parent into their
+turn-scoped `MessagingHost`, preventing a model from resetting the budget by
+omitting `reply_to`. Stops are stored without payloads in
+`agent_loop_break_events` and exposed through the Agent API, CLI, and inbox UI.
 
 **Profiles** (`routes/profiles.ts`): list, create (POST, seeds markdown files), get, update (PATCH: name, default_model, skills_mode, default_skills), delete. Profile-file editing: `GET / PUT /api/profiles/:id/files/:file` where `:file` is whitelisted to `PROFILE_FILES`. `GET /api/profiles/_/templates` returns the default SOUL/IDENTITY/BOOTSTRAP/AGENTS/TOOLS strings.
 

@@ -113,6 +113,7 @@ export interface TestServer {
 }
 
 const WIPE_SQL = `
+  DELETE FROM agent_loop_break_events;
   DELETE FROM team_policy_block_events;
   DELETE FROM source_slot_bindings;
   DELETE FROM template_instantiations;

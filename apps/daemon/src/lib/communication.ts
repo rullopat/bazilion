@@ -16,6 +16,11 @@ import {
   recordDenial,
   triggerRepo,
 } from '../core/index.ts'
+import {
+  AgentLoopLimitError,
+  enforceMessageCausality,
+  resolveMessageCausality,
+} from './agent-loop-guard.ts'
 import { teamPolicyEnforcementRequested } from './team-policy-contract.ts'
 
 export const communicationDecisionMetrics = { allowed: 0, denied: 0 }
@@ -70,6 +75,7 @@ export interface SendAgentMessageInput {
   to: string
   payload: string
   replyTo?: string | null
+  causalParentMessageId?: string | null
   origin: string
   attemptKind?: string
   attemptId?: string
@@ -198,15 +204,31 @@ function isUserFacingFrame(frame: ChatFrame): boolean {
 }
 
 export function sendAgentMessage(db: BazilionDb, input: SendAgentMessageInput): Message {
-  if (!teamPolicyEnforcementEnabled()) return messageRepo.send(db, input)
   const attemptKind = input.attemptKind ?? 'agent_tool'
   const attemptId = input.attemptId ?? randomUUID()
   const outcome = db.raw.transaction(
     (): {
       message?: Message
       denial?: AuthorizationResult
+      loopBreak?: import('@bazilion/api-types').AgentLoopBreakEvent
       approval?: { authorization: AuthorizationResult; input: AuthorizationInput }
     } => {
+      const causality = resolveMessageCausality(db, input)
+      const loopBreak = enforceMessageCausality(db, {
+        from: input.from,
+        to: input.to,
+        origin: input.origin,
+        causality,
+      })
+      if (loopBreak) return { loopBreak }
+      const messageInput = {
+        ...input,
+        causalChainId: causality.causalChainId,
+        causalHop: causality.causalHop,
+      }
+      if (!teamPolicyEnforcementEnabled()) {
+        return { message: messageRepo.send(db, messageInput) }
+      }
       const authorization: AuthorizationInput = {
         source: { kind: 'agent', id: input.from },
         target: { kind: 'agent', id: input.to },
@@ -222,9 +244,10 @@ export function sendAgentMessage(db: BazilionDb, input: SendAgentMessageInput): 
       if (result.decision === 'approval_required') {
         return { approval: { authorization: result, input: authorization } }
       }
-      return { message: messageRepo.send(db, input) }
+      return { message: messageRepo.send(db, messageInput) }
     },
   )()
+  if (outcome.loopBreak) throw new AgentLoopLimitError(outcome.loopBreak)
   if (outcome.denial) {
     observeDenial(outcome.denial, { origin: input.origin, attemptKind, attemptId })
     throw new CommunicationDeniedError(outcome.denial, attemptKind, attemptId)
@@ -241,6 +264,7 @@ export function sendAgentMessage(db: BazilionDb, input: SendAgentMessageInput): 
         to: input.to,
         payload: input.payload,
         replyTo: input.replyTo ?? null,
+        causalParentMessageId: input.causalParentMessageId ?? null,
       },
       { requester: input.from },
     )

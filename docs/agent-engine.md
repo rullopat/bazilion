@@ -269,7 +269,9 @@ The in-memory `firing` guard only prevents duplicate work inside one process—t
 unique occurrence key, and lease are the durable recovery mechanism. Recent status is visible
 through the trigger-history HTTP, CLI, and web surfaces.
 
-The scheduler also runs an **inbox auto-deliver loop** each tick: `messageRepo.listRecipientsWithUnread(db)` returns idle agents with unread mail; for each, the scheduler drains the inbox into the agent's wake-up prompt and fires `runAgentTurn`. The agent-cancel registry's `isActiveAgent(agentId)` check prevents double-firing while a turn is in flight.
+  The scheduler also runs an **inbox auto-deliver loop** each tick: `messageRepo.listRecipientsWithUnread(db)` returns idle agents with unread mail; for each, the scheduler drains the inbox into the agent's wake-up prompt and fires `runAgentTurn`. The agent-cancel registry's `isActiveAgent(agentId)` check prevents double-firing while a turn is in flight.
+
+  Every Agent message also carries a durable `causal_chain_id` and `causal_hop`. Explicit replies inherit from `reply_to`; an inbox wake passes its highest-hop claimed message into the turn-scoped `MessagingHost`, so a tool send inherits the chain even if the model omits `reply_to`. Before inserting a message, the daemon rejects hops beyond `BAZILION_AGENT_LOOP_MAX_HOPS` (default 8) and records a payload-free `agent_loop_break_events` row. This is the hard cost-loop boundary; the prompt's reply etiquette is only a usability layer.
 
 The turn's transcript lands in pi's session JSONL identically to HTTP chats;
 `trigger_dispatches` stores delivery metadata only and does not duplicate conversation content.

@@ -362,9 +362,26 @@ export interface Message {
   fromAgentId: string
   toAgentId: string
   replyTo: string | null
+  causalChainId: string
+  causalHop: number
   payload: string
   createdAt: Timestamp
   readAt: Timestamp | null
+}
+
+export interface AgentLoopBreakEvent {
+  id: string
+  causalChainId: string
+  parentMessageId: string | null
+  fromAgentId: string
+  toAgentId: string
+  sourceTeamId: string
+  targetTeamId: string
+  attemptedHop: number
+  maxHops: number
+  reason: string
+  origin: string
+  createdAt: Timestamp
 }
 
 export interface WebToken {

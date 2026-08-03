@@ -7,6 +7,8 @@ interface RawMessage {
   from_agent_id: string
   to_agent_id: string
   reply_to: string | null
+  causal_chain_id: string
+  causal_hop: number
   payload: string
   created_at: number
   read_at: number | null
@@ -22,6 +24,8 @@ function toMessage(r: RawMessage): Message {
     fromAgentId: r.from_agent_id,
     toAgentId: r.to_agent_id,
     replyTo: r.reply_to,
+    causalChainId: r.causal_chain_id,
+    causalHop: r.causal_hop,
     payload: r.payload,
     createdAt: r.created_at,
     readAt: r.read_at,
@@ -30,20 +34,32 @@ function toMessage(r: RawMessage): Message {
 
 export function send(
   db: BazilionDb,
-  input: { from: string; to: string; payload: string; replyTo?: string | null },
+  input: {
+    from: string
+    to: string
+    payload: string
+    replyTo?: string | null
+    causalChainId?: string
+    causalHop?: number
+  },
 ): Message {
   const id = randomUUID()
   const now = Date.now()
+  const causalChainId = input.causalChainId ?? id
+  const causalHop = input.causalHop ?? 0
   db.raw.run(
-    `INSERT INTO messages (id, from_agent_id, to_agent_id, reply_to, payload, created_at, read_at)
-     VALUES (?, ?, ?, ?, ?, ?, NULL)`,
-    [id, input.from, input.to, input.replyTo ?? null, input.payload, now],
+    `INSERT INTO messages
+       (id, from_agent_id, to_agent_id, reply_to, causal_chain_id, causal_hop, payload, created_at, read_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+    [id, input.from, input.to, input.replyTo ?? null, causalChainId, causalHop, input.payload, now],
   )
   return {
     id,
     fromAgentId: input.from,
     toAgentId: input.to,
     replyTo: input.replyTo ?? null,
+    causalChainId,
+    causalHop,
     payload: input.payload,
     createdAt: now,
     readAt: null,

@@ -9,6 +9,11 @@ import {
   triggerDispatchRepo,
   triggerRepo,
 } from '../core/index.ts'
+import {
+  AgentLoopLimitError,
+  enforceMessageCausality,
+  resolveMessageCausality,
+} from '../lib/agent-loop-guard.ts'
 import { runAgentTurn } from '../lib/agent-turn.ts'
 import { getCtx } from '../lib/ctx.ts'
 import { downloadMediaBytes, type MediaRef } from '../lib/telegram/media.ts'
@@ -195,8 +200,21 @@ async function deliver(approval: CommunicationApprovalDetail): Promise<void> {
       to: string
       payload: string
       replyTo?: string | null
+      causalParentMessageId?: string | null
     }
-    messageRepo.send(getCtx().db, payload)
+    const causality = resolveMessageCausality(getCtx().db, payload)
+    const loopBreak = enforceMessageCausality(getCtx().db, {
+      from: payload.from,
+      to: payload.to,
+      origin: 'communication_approval_delivery',
+      causality,
+    })
+    if (loopBreak) throw new AgentLoopLimitError(loopBreak)
+    messageRepo.send(getCtx().db, {
+      ...payload,
+      causalChainId: causality.causalChainId,
+      causalHop: causality.causalHop,
+    })
     return
   }
   if (approval.payloadKind === 'scheduler_trigger') {

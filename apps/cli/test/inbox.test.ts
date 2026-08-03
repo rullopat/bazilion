@@ -145,3 +145,31 @@ test('POST replyTo to missing message is rejected', async () => {
   const err = (await res.json()) as { error: string }
   expect(err.error).toContain('reply target not found')
 })
+
+test('inbox loop-breaks shows daemon-stopped causal chains', async () => {
+  const { a, b } = await spawnTwoAgents()
+  await server.cli(['config', 'set', 'BAZILION_AGENT_LOOP_MAX_HOPS', '0'])
+  const first = await server.cli(['send', a, b, 'start chain'])
+  const firstId = firstIdFromSend(first.stdout)
+
+  const blocked = await fetch(`${server.url}/api/agents/${a}/messages`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      cookie: `bz_token=${server.token}`,
+    },
+    body: JSON.stringify({
+      from: b,
+      payload: { text: 'payload must not appear in diagnostics' },
+      replyTo: firstId,
+    }),
+  })
+  expect(blocked.status).toBe(429)
+
+  const result = await server.cli(['inbox', 'loop-breaks', a])
+  expect(result.exitCode).toBe(0)
+  expect(result.stdout).toContain(`chain:${firstId.slice(0, 8)}`)
+  expect(result.stdout).toContain('hop:1/0')
+  expect(result.stdout).toContain('causal_hop_limit_exceeded')
+  expect(result.stdout).not.toContain('payload must not appear')
+})

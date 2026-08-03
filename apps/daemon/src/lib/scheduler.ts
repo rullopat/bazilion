@@ -39,6 +39,7 @@ import {
 } from '../core/index.ts'
 import { isActiveAgent, registerAgent, unregisterAgent } from './agent-cancel.ts'
 import { acquireAgentLifecycleLease } from './agent-lifecycle-lease.ts'
+import { selectCausalParent } from './agent-loop-guard.ts'
 import { runAgentTurn } from './agent-turn.ts'
 import {
   CommunicationDeniedError,
@@ -340,6 +341,7 @@ async function fireInboxWake(agentId: string): Promise<void> {
         controller,
         alreadyRegistered: true,
         bashApprovalMode: 'auto_deny',
+        causalParentMessageId: selectCausalParent(msgs),
       })) {
         if (frame.kind === 'fatal') {
           console.error(`[scheduler] inbox wake ${agentId} fatal:`, frame.error)

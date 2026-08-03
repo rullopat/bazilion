@@ -7,6 +7,7 @@
 export type {
   Agent,
   AgentIdentityFile,
+  AgentLoopBreakEvent,
   AgentSkillAttachment,
   AgentStatus,
   AgentTrigger,
@@ -265,6 +266,10 @@ export interface ListInboxQuery {
 
 export interface ListInboxResponse {
   messages: Message[]
+}
+
+export interface ListAgentLoopBreaksResponse {
+  events: import('./entities.ts').AgentLoopBreakEvent[]
 }
 
 export interface UpdateMessageRequest {
