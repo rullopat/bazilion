@@ -619,10 +619,7 @@ test('backup restore canonicalizes and refuses a relative path resolving to file
   const rootFromCwd = relative(process.cwd(), parse(process.cwd()).root)
   expect(rootFromCwd).not.toBe('')
 
-  const restored = await runCli(
-    ['backup', 'restore', archive, '--home', rootFromCwd],
-    target.home,
-  )
+  const restored = await runCli(['backup', 'restore', archive, '--home', rootFromCwd], target.home)
   expect(restored.exitCode).not.toBe(0)
   expect(restored.stderr + restored.stdout).toMatch(/refusing to restore over filesystem root/)
 
@@ -631,7 +628,10 @@ test('backup restore canonicalizes and refuses a relative path resolving to file
 })
 
 test('parallel online backups stay transactionally consistent during concurrent WAL writes', async () => {
-  const liveDb = new DatabaseSync(join(server.home, 'bazilion.db'))
+  // The online-backup API may briefly hold a source lock between steps.
+  // A real WAL writer waits for that lock; DatabaseSync otherwise defaults
+  // to a zero-millisecond busy timeout and makes this race spuriously fatal.
+  const liveDb = new DatabaseSync(join(server.home, 'bazilion.db'), { timeout: 5_000 })
   liveDb.exec(`
     PRAGMA journal_mode = WAL;
     DELETE FROM config WHERE key LIKE 'backup_probe_left_%';
@@ -666,8 +666,8 @@ test('parallel online backups stay transactionally consistent during concurrent 
     writer,
   ])
   liveDb.close()
-  expect(firstResult.exitCode).toBe(0)
-  expect(secondResult.exitCode).toBe(0)
+  expect(firstResult.exitCode, firstResult.stderr + firstResult.stdout).toBe(0)
+  expect(secondResult.exitCode, secondResult.stderr + secondResult.stdout).toBe(0)
 
   for (const archive of [first, second]) {
     const target = makeHome()

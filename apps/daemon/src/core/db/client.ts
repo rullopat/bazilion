@@ -106,7 +106,11 @@ function applyPragmas(rawDb: DatabaseSync, includeWal: boolean): void {
 }
 
 export function openDb(path: string): BazilionDb {
-  const raw = new DatabaseSync(path)
+  // Bazilion is the normal sole writer, but online backups and operator-side
+  // diagnostics can briefly overlap another WAL connection. Wait for those
+  // transient locks instead of turning unrelated reads/writes (including
+  // token usage telemetry) into immediate SQLITE_BUSY failures.
+  const raw = new DatabaseSync(path, { timeout: 5_000 })
   applyPragmas(raw, true)
   return {
     raw: wrap(raw),
