@@ -298,6 +298,11 @@ export interface Agent {
   name: string
   modelOverride: string | null
   reasoningLevel: ReasoningLevel
+  reviewEnabled: boolean
+  reviewEveryNTurns: number
+  reviewModel: string | null
+  reviewReasoningLevel: ReasoningLevel
+  reviewTurnsSinceLast: number
   status: AgentStatus
   dir: string
   /** The team this agent belongs to. Every agent has exactly one. */
@@ -328,6 +333,60 @@ export interface Agent {
    * round-trip.
    */
   identity?: AgentIdentityFile | null
+}
+
+export type AgentReviewStatus =
+  | 'pending'
+  | 'running'
+  | 'retrying'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+export type AgentReviewTrigger = 'cadence' | 'manual'
+
+export interface AgentReview {
+  id: string
+  agentId: string
+  status: AgentReviewStatus
+  trigger: AgentReviewTrigger
+  sourceSessionId: string | null
+  sourceStartOrdinal: number | null
+  sourceEndOrdinal: number | null
+  inputCharacters: number
+  turnsReviewed: number
+  proposalCount: number
+  attemptCount: number
+  nextAttemptAt: Timestamp
+  leaseExpiresAt: Timestamp | null
+  startedAt: Timestamp | null
+  finishedAt: Timestamp | null
+  lastError: string | null
+  createdAt: Timestamp
+  updatedAt: Timestamp
+}
+
+export type AgentLessonScope = 'private' | 'shared'
+export type AgentLessonStatus = 'pending' | 'approved' | 'rejected' | 'revoked'
+
+export interface AgentLessonEvidence {
+  sessionId: string
+  entryOrdinal: number
+}
+
+export interface AgentLessonProposal {
+  id: string
+  reviewId: string
+  agentId: string
+  scope: AgentLessonScope
+  text: string
+  evidence: AgentLessonEvidence[]
+  status: AgentLessonStatus
+  version: number
+  decidedAt: Timestamp | null
+  revokedAt: Timestamp | null
+  appliedKey: string | null
+  createdAt: Timestamp
+  updatedAt: Timestamp
 }
 
 export interface AgentSkillAttachment {

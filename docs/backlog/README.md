@@ -33,15 +33,15 @@ docs/backlog/
 |----|-------|------|-------|
 | [BAZ-001](draft/BAZ-001-a2a-federation-spike.md) | Spike — federated multi-employee Bazilion via A2A | S | Investigation only; output is a follow-up implementation BAZ |
 
-## Todo (1)
+## Todo (0)
+
+_None right now._
+
+## In Progress (1)
 
 | ID | Title | Size | Notes |
 |----|-------|------|-------|
-| [BAZ-003](todo/BAZ-003-hermes-self-learning.md) | Reviewed learning loop — transcript digest to durable lessons | M | Opt-in, reversible proposal-only MVP; restricted reviewer + human approval |
-
-## In Progress (0)
-
-_None right now._
+| [BAZ-003](in_progress/BAZ-003-hermes-self-learning.md) | Reviewed learning loop — transcript digest to durable lessons | M | Checkpoint 1: durable learning foundation |
 
 ## Done (19)
 

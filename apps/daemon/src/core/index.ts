@@ -43,6 +43,8 @@ export {
 } from './profile/templates.ts'
 export type { UpdateProfileInput } from './profile/update.ts'
 export { updateProfile } from './profile/update.ts'
+export * as agentLessonProposalRepo from './repos/agentLessonProposals.ts'
+export * as agentReviewRepo from './repos/agentReviews.ts'
 export * as agentRepo from './repos/agents.ts'
 export * as communicationApprovalRepo from './repos/communicationApprovals.ts'
 export type { ConfigStore } from './repos/config.ts'

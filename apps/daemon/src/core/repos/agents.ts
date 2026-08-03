@@ -13,6 +13,11 @@ interface RawAgent {
   name: string
   model_override: string | null
   reasoning_level: string
+  review_enabled: number
+  review_every_n_turns: number
+  review_model: string | null
+  review_reasoning_level: string
+  review_turns_since_last: number
   status: string
   dir: string
   team_id: string
@@ -30,6 +35,11 @@ function toAgent(r: RawAgent): Agent {
     name: r.name,
     modelOverride: r.model_override,
     reasoningLevel: r.reasoning_level as ReasoningLevel,
+    reviewEnabled: r.review_enabled === 1,
+    reviewEveryNTurns: r.review_every_n_turns,
+    reviewModel: r.review_model,
+    reviewReasoningLevel: r.review_reasoning_level as ReasoningLevel,
+    reviewTurnsSinceLast: r.review_turns_since_last,
     status: r.status as AgentStatus,
     dir: r.dir,
     teamId: r.team_id,
@@ -52,7 +62,16 @@ export function insert(
   db: BazilionDb,
   a: Omit<
     Agent,
-    'createdAt' | 'archivedAt' | 'telegramTopicId' | 'telegramMirrorMode' | 'telegramIconEmoji'
+    | 'createdAt'
+    | 'archivedAt'
+    | 'telegramTopicId'
+    | 'telegramMirrorMode'
+    | 'telegramIconEmoji'
+    | 'reviewEnabled'
+    | 'reviewEveryNTurns'
+    | 'reviewModel'
+    | 'reviewReasoningLevel'
+    | 'reviewTurnsSinceLast'
   > & {
     telegramMirrorMode?: Agent['telegramMirrorMode']
   },
@@ -80,6 +99,11 @@ export function insert(
     telegramTopicId: null,
     telegramMirrorMode: mirrorMode,
     telegramIconEmoji: null,
+    reviewEnabled: false,
+    reviewEveryNTurns: 8,
+    reviewModel: null,
+    reviewReasoningLevel: 'low',
+    reviewTurnsSinceLast: 0,
     createdAt: now,
     archivedAt: null,
   }
@@ -91,6 +115,23 @@ export function setReasoningLevel(db: BazilionDb, id: string, level: ReasoningLe
 
 export function setModelOverride(db: BazilionDb, id: string, model: string | null): void {
   db.raw.run('UPDATE agents SET model_override = ? WHERE id = ?', [model, id])
+}
+
+export function setReviewConfig(
+  db: BazilionDb,
+  id: string,
+  config: {
+    enabled: boolean
+    everyNTurns: number
+    model: string | null
+    reasoningLevel: ReasoningLevel
+  },
+): void {
+  db.raw.run(
+    `UPDATE agents SET review_enabled = ?, review_every_n_turns = ?, review_model = ?,
+     review_reasoning_level = ? WHERE id = ?`,
+    [config.enabled ? 1 : 0, config.everyNTurns, config.model, config.reasoningLevel, id],
+  )
 }
 
 export function setName(db: BazilionDb, id: string, name: string): void {

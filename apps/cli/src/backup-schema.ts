@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import type { DatabaseSync } from 'node:sqlite'
 
 const CANONICAL_MIGRATION = '0001_init'
-const CANONICAL_SCHEMA_HASH = 'b78c3de1719b683c599076438b4d86b7ef6df93b15a2de471b55189156392c59'
+const CANONICAL_SCHEMA_HASH = '8fb57db31949fa908804a714ff1a970e4328b7b8254d2bda4e2555e2bd41504f'
 
 // Explicit objects created by migrate.ts + 0001_init.sql. SQLite's implicit
 // auto-indexes have `sql = NULL` and are deliberately represented through the
@@ -12,6 +12,11 @@ const CANONICAL_OBJECTS = [
   ['index', 'agent_triggers_enabled'],
   ['index', 'agent_loop_break_events_agent_time'],
   ['index', 'agent_loop_break_events_team_time'],
+  ['index', 'agent_lesson_proposals_agent_status_time'],
+  ['index', 'agent_lesson_proposals_review'],
+  ['index', 'agent_reviews_agent_time'],
+  ['index', 'agent_reviews_claimable'],
+  ['index', 'agent_reviews_one_open_per_agent'],
   ['index', 'communication_approval_events_attempt'],
   ['index', 'communication_approvals_queue'],
   ['index', 'communication_approvals_teams'],
@@ -28,6 +33,8 @@ const CANONICAL_OBJECTS = [
   ['index', 'web_tokens_active'],
   ['table', 'agent_skills'],
   ['table', 'agent_loop_break_events'],
+  ['table', 'agent_lesson_proposals'],
+  ['table', 'agent_reviews'],
   ['table', 'agent_triggers'],
   ['table', 'agents'],
   ['table', 'communication_approval_events'],

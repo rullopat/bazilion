@@ -27,6 +27,13 @@ CREATE TABLE agents (
   status          TEXT NOT NULL CHECK (status IN ('idle','running','archived')),
   dir             TEXT NOT NULL,
   reasoning_level TEXT NOT NULL DEFAULT 'medium',
+  review_enabled INTEGER NOT NULL DEFAULT 0 CHECK (review_enabled IN (0, 1)),
+  review_every_n_turns INTEGER NOT NULL DEFAULT 8
+    CHECK (review_every_n_turns BETWEEN 1 AND 100),
+  review_model TEXT,
+  review_reasoning_level TEXT NOT NULL DEFAULT 'low'
+    CHECK (review_reasoning_level IN ('off','minimal','low','medium','high','xhigh')),
+  review_turns_since_last INTEGER NOT NULL DEFAULT 0 CHECK (review_turns_since_last >= 0),
   team_id        TEXT NOT NULL REFERENCES teams(id) ON DELETE RESTRICT,
   created_at      INTEGER NOT NULL,
   archived_at     INTEGER
@@ -103,6 +110,53 @@ CREATE INDEX agent_loop_break_events_agent_time
   ON agent_loop_break_events(from_agent_id, to_agent_id, created_at DESC);
 CREATE INDEX agent_loop_break_events_team_time
   ON agent_loop_break_events(source_team_id, target_team_id, created_at DESC);
+CREATE TABLE agent_reviews (
+  id                    TEXT PRIMARY KEY,
+  agent_id              TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+  status                TEXT NOT NULL
+    CHECK (status IN ('pending','running','retrying','completed','failed','cancelled')),
+  trigger_kind          TEXT NOT NULL CHECK (trigger_kind IN ('cadence','manual')),
+  source_session_id     TEXT,
+  source_start_ordinal  INTEGER CHECK (source_start_ordinal IS NULL OR source_start_ordinal >= 0),
+  source_end_ordinal    INTEGER CHECK (source_end_ordinal IS NULL OR source_end_ordinal >= 0),
+  input_characters      INTEGER NOT NULL DEFAULT 0 CHECK (input_characters >= 0),
+  turns_reviewed        INTEGER NOT NULL DEFAULT 0 CHECK (turns_reviewed >= 0),
+  proposal_count        INTEGER NOT NULL DEFAULT 0 CHECK (proposal_count BETWEEN 0 AND 5),
+  attempt_count         INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
+  next_attempt_at       INTEGER NOT NULL,
+  lease_expires_at      INTEGER,
+  started_at            INTEGER,
+  finished_at           INTEGER,
+  last_error            TEXT,
+  created_at            INTEGER NOT NULL,
+  updated_at            INTEGER NOT NULL
+);
+CREATE UNIQUE INDEX agent_reviews_one_open_per_agent
+  ON agent_reviews(agent_id)
+  WHERE status IN ('pending','running','retrying');
+CREATE INDEX agent_reviews_claimable
+  ON agent_reviews(status, next_attempt_at, created_at);
+CREATE INDEX agent_reviews_agent_time
+  ON agent_reviews(agent_id, created_at DESC);
+CREATE TABLE agent_lesson_proposals (
+  id                TEXT PRIMARY KEY,
+  review_id         TEXT NOT NULL REFERENCES agent_reviews(id) ON DELETE CASCADE,
+  agent_id          TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+  scope             TEXT NOT NULL CHECK (scope IN ('private','shared')),
+  text              TEXT NOT NULL CHECK (length(text) BETWEEN 1 AND 500),
+  evidence_json     TEXT NOT NULL,
+  status            TEXT NOT NULL CHECK (status IN ('pending','approved','rejected','revoked')),
+  version           INTEGER NOT NULL DEFAULT 1 CHECK (version >= 1),
+  decided_at        INTEGER,
+  revoked_at        INTEGER,
+  applied_key       TEXT,
+  created_at        INTEGER NOT NULL,
+  updated_at        INTEGER NOT NULL
+);
+CREATE INDEX agent_lesson_proposals_agent_status_time
+  ON agent_lesson_proposals(agent_id, status, created_at DESC);
+CREATE INDEX agent_lesson_proposals_review
+  ON agent_lesson_proposals(review_id, created_at ASC);
 CREATE TABLE skill_meta (
   name         TEXT PRIMARY KEY,
   source       TEXT,

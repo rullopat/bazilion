@@ -1,7 +1,7 @@
 ---
 id: BAZ-003
 title: Reviewed learning loop — transcript digest to durable lessons
-status: todo
+status: in_progress
 size: M
 created: 2026-05-23
 refined: 2026-08-03

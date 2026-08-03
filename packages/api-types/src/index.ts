@@ -7,7 +7,14 @@
 export type {
   Agent,
   AgentIdentityFile,
+  AgentLessonEvidence,
+  AgentLessonProposal,
+  AgentLessonScope,
+  AgentLessonStatus,
   AgentLoopBreakEvent,
+  AgentReview,
+  AgentReviewStatus,
+  AgentReviewTrigger,
   AgentSkillAttachment,
   AgentStatus,
   AgentTrigger,
@@ -84,6 +91,9 @@ export type { MemoryEntry, MemoryHit } from './memory.ts'
 
 import type {
   Agent,
+  AgentLessonProposal,
+  AgentLessonStatus,
+  AgentReview,
   AgentTrigger,
   CommunicationEdgePosture,
   LiveEndpointKind,
@@ -134,6 +144,42 @@ export interface UpdateAgentRequest {
    * clears it (falls back to the profile default, then color-only).
    */
   telegramIconEmoji?: string | null
+}
+
+export interface AgentReviewConfig {
+  enabled: boolean
+  everyNTurns: number
+  model: string | null
+  reasoningLevel: ReasoningLevel
+  turnsSinceLast: number
+}
+
+export interface UpdateAgentReviewConfigRequest {
+  enabled?: boolean
+  everyNTurns?: number
+  model?: string | null
+  reasoningLevel?: ReasoningLevel
+}
+
+export interface EnqueueAgentReviewResponse {
+  review: AgentReview
+}
+
+export interface ListAgentReviewsResponse {
+  reviews: AgentReview[]
+}
+
+export interface ListAgentLessonProposalsQuery {
+  status?: AgentLessonStatus
+}
+
+export interface ListAgentLessonProposalsResponse {
+  proposals: AgentLessonProposal[]
+}
+
+export interface AgentReviewDetailResponse {
+  review: AgentReview
+  proposals: AgentLessonProposal[]
 }
 
 export interface AttachSkillRequest {
