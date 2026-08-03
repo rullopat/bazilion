@@ -146,6 +146,26 @@ export function claim(
   })()
 }
 
+export function defer(db: BazilionDb, id: string, nextAttemptAt = Date.now() + 1_000): void {
+  db.raw.run(
+    `UPDATE agent_reviews SET status = 'pending',
+     attempt_count = CASE WHEN attempt_count > 0 THEN attempt_count - 1 ELSE 0 END,
+     next_attempt_at = ?, lease_expires_at = NULL, started_at = NULL, updated_at = ?
+     WHERE id = ? AND status = 'running'`,
+    [nextAttemptAt, Date.now(), id],
+  )
+}
+
+export function getLatestCompleted(db: BazilionDb, agentId: string): AgentReview | null {
+  const row = db.raw
+    .query<RawReview, [string]>(
+      `SELECT * FROM agent_reviews WHERE agent_id = ? AND status = 'completed'
+       ORDER BY finished_at DESC LIMIT 1`,
+    )
+    .get(agentId)
+  return row ? toReview(row) : null
+}
+
 export function setSource(
   db: BazilionDb,
   id: string,

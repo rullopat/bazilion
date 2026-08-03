@@ -80,6 +80,7 @@ function tsxImportSpecifier(): string {
 }
 
 export interface WorkerTurnSpec {
+  mode?: 'chat' | 'review'
   /** Pre-resolved agent record — the worker never queries the DB itself. */
   agent: ResolvedAgent
   /** First user-message text for this turn. */
@@ -106,6 +107,30 @@ export interface WorkerTurnSpec {
   turnId: string
   /** Whether this turn's caller can answer an approval request. */
   bashApprovalMode: BashApprovalMode
+  review?: {
+    reviewId: string
+    evidence: Array<{ sessionId: string; entryOrdinal: number }>
+  }
+}
+
+export interface ReviewWorkerProposal {
+  scope: 'private' | 'shared'
+  text: string
+  evidenceEntryIds: Array<{ sessionId: string; entryOrdinal: number }>
+}
+
+export async function spawnReviewWorker(
+  spec: WorkerTurnSpec & { mode: 'review'; review: NonNullable<WorkerTurnSpec['review']> },
+  opts: SpawnWorkerOpts = {},
+): Promise<ReviewWorkerProposal[]> {
+  for await (const rawFrame of spawnWorkerTurn(spec, opts)) {
+    const frame = rawFrame as
+      | ChatFrame
+      | { kind: 'review_result'; proposals: ReviewWorkerProposal[] }
+    if (frame.kind === 'review_result') return frame.proposals
+    if (frame.kind === 'fatal') throw new Error(frame.error)
+  }
+  throw new Error('review worker exited without a result')
 }
 
 export interface SpawnWorkerOpts {

@@ -80,5 +80,5 @@ export type {
   UserMdHost,
   UserMdWriteResult,
 } from './worker/ipc-protocol.ts'
-export type { SpawnWorkerOpts } from './worker/spawn.ts'
-export { spawnWorkerTurn } from './worker/spawn.ts'
+export type { ReviewWorkerProposal, SpawnWorkerOpts } from './worker/spawn.ts'
+export { spawnReviewWorker, spawnWorkerTurn } from './worker/spawn.ts'

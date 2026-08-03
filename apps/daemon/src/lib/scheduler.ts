@@ -48,6 +48,7 @@ import {
 } from './communication.ts'
 import { matchesCron, type ParsedCron, parseCron } from './cron.ts'
 import { getCtx } from './ctx.ts'
+import { dispatchClaimableReviews } from './review-dispatcher.ts'
 import { turnFrameFailure } from './turn-outcome.ts'
 
 const SCHEDULER_KEY = Symbol.for('bazilion.scheduler')
@@ -397,6 +398,7 @@ async function tick(): Promise<void> {
     // dedup-gates and bails if the agent already has an active run.
     work.push(fireInboxWake(agentId))
   }
+  work.push(dispatchClaimableReviews(now))
   await Promise.allSettled(work)
 }
 

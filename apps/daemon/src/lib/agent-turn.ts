@@ -1,6 +1,11 @@
 import { randomUUID } from 'node:crypto'
 import type { Attachment, BashApprovalMode, ChatFrame } from '@bazilion/api-types'
-import { mergeSecretsIntoEnv, providerStateRepo, resolveAgent } from '../core/index.ts'
+import {
+  agentReviewRepo,
+  mergeSecretsIntoEnv,
+  providerStateRepo,
+  resolveAgent,
+} from '../core/index.ts'
 import { spawnWorkerTurn } from '../runtime/index.ts'
 import { resolveShellSecurityConfig } from '../runtime/shell/security.ts'
 import { SANDBOX_INPUTS_DIR } from '../runtime/shell/tooling.ts'
@@ -136,6 +141,7 @@ export async function* runAgentTurn(
     // when the agent has no bound topic — mirror.ts checks before firing.
     mirrorTypingStart(agentId, `${authorization.attemptKind}:${authorization.attemptId}:typing`)
     let mirrorFrameIndex = 0
+    let completed = false
     for await (const frame of spawnWorkerTurn(
       {
         agent,
@@ -173,7 +179,14 @@ export async function* runAgentTurn(
           e instanceof Error ? e.message : String(e),
         )
       })
+      if (frame.kind === 'done') completed = true
       yield frame
+    }
+    if (
+      completed &&
+      (authorization.origin === 'http_chat' || authorization.origin.startsWith('telegram'))
+    ) {
+      agentReviewRepo.recordSuccessfulUserTurn(db, agentId)
     }
   } finally {
     mirrorTypingStop(agentId)

@@ -49,6 +49,7 @@ import {
   type ResourceLoader,
   SessionManager,
   SettingsManager,
+  type ToolDefinition,
 } from '@earendil-works/pi-coding-agent'
 import type { BazilionDb, Paths } from '../../core/index.ts'
 import { providerStateRepo } from '../../core/index.ts'
@@ -134,6 +135,13 @@ export interface CreateBazilionSessionOptions {
    * session file, which pi's SessionManager locates automatically).
    */
   sessionId?: string
+  /** Internal restricted mode used by the learning reviewer. */
+  restricted?: {
+    systemPrompt: string
+    tools: ToolDefinition[]
+    sessionDir: string
+    reasoningLevel: ResolvedAgent['reasoningLevel']
+  }
 }
 
 export interface BazilionSessionHandle {
@@ -163,6 +171,7 @@ export async function createBazilionSession(
     fileSink,
     bashApprovalHost,
     refreshApiKey,
+    restricted,
   } = opts
 
   const { providerName, modelId } = splitModelString(agent.model)
@@ -223,16 +232,18 @@ export async function createBazilionSession(
   const cwd = agent.team.path
   if (!existsSync(cwd)) mkdirSync(cwd, { recursive: true })
 
-  const promptSkills = loadPromptSkills(paths.skillsDir, agent.skills)
+  const promptSkills = restricted ? [] : loadPromptSkills(paths.skillsDir, agent.skills)
   const uploadsDir = join(agent.agent.dir, 'uploads')
-  const shellTools = createSessionShellTools(cwd, env, {
-    ...(existsSync(uploadsDir) ? { inputsDir: uploadsDir } : {}),
-    skillMounts: promptSkills.map((skill) => ({
-      source: skill.hostDir,
-      target: skill.sandboxDir,
-    })),
-    approvalHost: bashApprovalHost,
-  })
+  const shellTools = restricted
+    ? null
+    : createSessionShellTools(cwd, env, {
+        ...(existsSync(uploadsDir) ? { inputsDir: uploadsDir } : {}),
+        skillMounts: promptSkills.map((skill) => ({
+          source: skill.hostDir,
+          target: skill.sandboxDir,
+        })),
+        approvalHost: bashApprovalHost,
+      })
 
   // Session file under the agent's own directory. Keeping it under
   // `agents/<id>/sessions/` makes `bazilion uninstall` (data tier) already
@@ -243,9 +254,9 @@ export async function createBazilionSession(
   // fall back to `create()` when none exists (fresh agent or post-/reset).
   // This is what makes turn-to-turn continuity work: each worker turn picks
   // up where the last one left off.
-  const sessionDir = join(paths.agentDir(agent.agent.id), 'sessions')
+  const sessionDir = restricted?.sessionDir ?? join(paths.agentDir(agent.agent.id), 'sessions')
   mkdirSync(sessionDir, { recursive: true })
-  const existing = findMostRecent(sessionDir)
+  const existing = restricted ? null : findMostRecent(sessionDir)
   const sessionManager = existing
     ? SessionManager.open(existing, sessionDir, cwd)
     : SessionManager.create(cwd, sessionDir)
@@ -267,10 +278,12 @@ export async function createBazilionSession(
   // Pi keeps its default base (which lists built-in tools + guidelines), our
   // profile content (SOUL.md / IDENTITY.md / workspaces / memory hint) is
   // concatenated after it. This is the same injection hook pi extensions use.
-  const bazilionPrompt = buildSystemPrompt(agent, {
-    skills: promptSkills,
-    sandboxMode: shellTools.config.sandboxMode,
-  })
+  const bazilionPrompt =
+    restricted?.systemPrompt ??
+    buildSystemPrompt(agent, {
+      skills: promptSkills,
+      sandboxMode: shellTools?.config.sandboxMode ?? 'off',
+    })
   const resourceLoader = createBazilionResourceLoader(bazilionPrompt)
   await resourceLoader.reload()
 
@@ -280,27 +293,29 @@ export async function createBazilionSession(
   // every Bazilion custom tool we want the LLM to see. Docker mode contributes
   // a custom same-name `bash` and zero host tools; missing its name (or any
   // memory/messaging/web/bootstrap name) would silently drop it.
-  const bazilionTools = createBazilionCustomTools({
-    agent,
-    memory,
-    messagingHost,
-    userMdHost,
-    browserHost,
-    mcpHost,
-    mcpTools,
-    fileSink,
-    env,
-  })
-  const customTools = shellTools.customBash
+  const bazilionTools = restricted
+    ? restricted.tools
+    : createBazilionCustomTools({
+        agent,
+        memory,
+        messagingHost,
+        userMdHost,
+        browserHost,
+        mcpHost,
+        mcpTools,
+        fileSink,
+        env,
+      })
+  const customTools = shellTools?.customBash
     ? [...bazilionTools, shellTools.customBash]
     : bazilionTools
-  const allowedTools = [...shellTools.hostToolNames, ...customTools.map((t) => t.name)]
+  const allowedTools = [...(shellTools?.hostToolNames ?? []), ...customTools.map((t) => t.name)]
 
   const { session } = await createAgentSession({
     cwd,
     agentDir: join(paths.home, 'pi'),
     model,
-    thinkingLevel: toPiThinkingLevel(agent.reasoningLevel),
+    thinkingLevel: toPiThinkingLevel(restricted?.reasoningLevel ?? agent.reasoningLevel),
     tools: allowedTools,
     customTools,
     sessionManager,

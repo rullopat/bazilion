@@ -24,8 +24,11 @@
 // failures.
 
 import { randomUUID } from 'node:crypto'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Attachment, BashApprovalMode, ChatFrame, ResolvedAgent } from '@bazilion/api-types'
+import type { ToolDefinition } from '@earendil-works/pi-coding-agent'
+import { Type } from 'typebox'
 import { resolvePaths } from '../../core/index.ts'
 import { qmdBackend } from '../memory/qmd.ts'
 import { piMessagesToProviderView, translatePiEvent } from '../pi/events.ts'
@@ -45,6 +48,7 @@ import type {
 } from './ipc-protocol.ts'
 
 interface WorkerInput {
+  mode?: 'chat' | 'review'
   agent: ResolvedAgent
   message: string
   enabledProviders: string[]
@@ -60,9 +64,21 @@ interface WorkerInput {
   images?: Attachment[]
   turnId: string
   bashApprovalMode: BashApprovalMode
+  review?: {
+    reviewId: string
+    evidence: Array<{ sessionId: string; entryOrdinal: number }>
+  }
 }
 
-function emit(frame: ChatFrame): void {
+interface ReviewWorkerProposal {
+  scope: 'private' | 'shared'
+  text: string
+  evidenceEntryIds: Array<{ sessionId: string; entryOrdinal: number }>
+}
+
+type WorkerFrame = ChatFrame | { kind: 'review_result'; proposals: ReviewWorkerProposal[] }
+
+function emit(frame: WorkerFrame): void {
   process.stdout.write(`${JSON.stringify(frame)}\n`)
 }
 
@@ -84,6 +100,9 @@ async function readInput(): Promise<WorkerInput> {
     throw new Error(
       'worker: stdin must include {agent, message, enabledProviders, turnId, bashApprovalMode}',
     )
+  }
+  if (parsed.mode === 'review' && !parsed.review?.reviewId) {
+    throw new Error('worker: review mode requires review metadata')
   }
   const providerName = parsed.agent.model.split(':', 1)[0] ?? ''
   if (
@@ -182,6 +201,8 @@ async function main(): Promise<void> {
     images,
     turnId,
     bashApprovalMode,
+    mode = 'chat',
+    review,
   } = await readInput()
 
   // Path resolution still happens in the worker — `resolvePaths()` only reads
@@ -218,6 +239,59 @@ async function main(): Promise<void> {
     bashApprovalMode,
   })
 
+  const reviewSessionDir =
+    mode === 'review' ? mkdtempSync(join(paths.logsDir, 'review-session-')) : null
+  const proposals: ReviewWorkerProposal[] = []
+  const allowedEvidence = new Set(
+    (review?.evidence ?? []).map((item) => `${item.sessionId}:${item.entryOrdinal}`),
+  )
+  const reviewTools: ToolDefinition[] = [
+    {
+      name: 'propose_lesson',
+      label: 'propose_lesson',
+      description:
+        'Submit zero to five evidence-backed lesson proposals in one final batch. This is the only available action.',
+      parameters: Type.Object({
+        proposals: Type.Array(
+          Type.Object({
+            scope: Type.Union([Type.Literal('private'), Type.Literal('shared')]),
+            text: Type.String({ minLength: 1, maxLength: 500 }),
+            evidenceEntryIds: Type.Array(
+              Type.Object({ sessionId: Type.String(), entryOrdinal: Type.Integer({ minimum: 0 }) }),
+              { minItems: 1 },
+            ),
+          }),
+          { maxItems: 5 },
+        ),
+      }),
+      async execute(_toolCallId, params) {
+        const input = params as {
+          proposals: Array<{
+            scope: 'private' | 'shared'
+            text: string
+            evidenceEntryIds: Array<{ sessionId: string; entryOrdinal: number }>
+          }>
+        }
+        if (proposals.length > 0) throw new Error('propose_lesson may be called only once')
+        for (const candidate of input.proposals) {
+          const text = candidate.text.trim()
+          if (!text || text.length > 500) throw new Error('proposal text must be 1-500 characters')
+          for (const evidence of candidate.evidenceEntryIds) {
+            if (!allowedEvidence.has(`${evidence.sessionId}:${evidence.entryOrdinal}`)) {
+              throw new Error('proposal cites evidence outside the supplied digest')
+            }
+          }
+          proposals.push({ ...candidate, text })
+        }
+        return {
+          content: [{ type: 'text', text: `accepted ${proposals.length} proposals` }],
+          details: {},
+          terminate: true,
+        }
+      },
+    },
+  ]
+
   const { session, dispose } = await createBazilionSession({
     agent,
     paths,
@@ -234,6 +308,16 @@ async function main(): Promise<void> {
     bashApprovalHost,
     // deliver_file emits a `file` event straight onto our stdout frame stream.
     fileSink: (f) => emit({ kind: 'event', event: { type: 'file', ...f } }),
+    ...(mode === 'review' && reviewSessionDir
+      ? {
+          restricted: {
+            systemPrompt: REVIEW_SYSTEM_PROMPT,
+            tools: reviewTools,
+            sessionDir: reviewSessionDir,
+            reasoningLevel: agent.agent.reviewReasoningLevel,
+          },
+        }
+      : {}),
   })
 
   abortSession = (): void => {
@@ -257,10 +341,13 @@ async function main(): Promise<void> {
     await session.prompt(message, promptImages.length > 0 ? { images: promptImages } : undefined)
     await session.agent.waitForIdle()
 
-    emit({
-      kind: 'done',
-      messages: piMessagesToProviderView(session.agent.state.messages),
-    })
+    if (mode === 'review') emit({ kind: 'review_result', proposals })
+    else {
+      emit({
+        kind: 'done',
+        messages: piMessagesToProviderView(session.agent.state.messages),
+      })
+    }
   } catch (err) {
     if (!aborted) {
       emit({ kind: 'event', event: { type: 'error', error: (err as Error).message } })
@@ -272,6 +359,7 @@ async function main(): Promise<void> {
     process.off('SIGTERM', onSignal)
     process.off('SIGINT', onSignal)
     dispose()
+    if (reviewSessionDir) rmSync(reviewSessionDir, { recursive: true, force: true })
     // Detach from the parent's IPC channel so the worker's event loop can
     // exit. `process.on('message', …)` registered above otherwise keeps
     // the loop alive even after the turn finishes — Node treats an open
@@ -290,3 +378,18 @@ main().catch((err) => {
   } catch {}
   process.exit(1)
 })
+
+const REVIEW_SYSTEM_PROMPT = `You are a restricted learning reviewer. Analyze only the supplied
+transcript digest and approved-lesson index. You cannot act on the world. Call propose_lesson once
+with zero to five proposals, then stop.
+
+Classify before proposing:
+1. Stable human preference or biography belongs to USER.md: do not propose it.
+2. Agent-specific verified behavior or strategy is private.
+3. Reusable verified Team project knowledge, decisions, or procedures are shared.
+4. Everything else produces no proposal.
+
+Zero proposals is a successful result. Never save transient or environment-dependent failures,
+unresolved attempts, guesses, contradicted claims, one-off narratives, status updates, secrets,
+credentials, sensitive personal data, raw logs, copied text, or duplicates. Each proposal must cite
+at least one supplied evidence entry and one observation may appear in only one proposal.`
