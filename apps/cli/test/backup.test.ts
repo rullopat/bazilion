@@ -17,7 +17,7 @@ import {
 import { createServer as createHttpServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
-import { basename, dirname, join, resolve } from 'node:path'
+import { basename, dirname, join, parse, relative, resolve } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { setTimeout as delay } from 'node:timers/promises'
 import { gunzipSync, gzipSync } from 'node:zlib'
@@ -616,9 +616,11 @@ test('backup restore canonicalizes and refuses a relative path resolving to file
   const archive = join(tmpdir(), `bz-root-refusal-${randomUUID()}.tar.gz`)
   await server.cli(['backup', 'create', archive])
   const target = makeHome()
+  const rootFromCwd = relative(process.cwd(), parse(process.cwd()).root)
+  expect(rootFromCwd).not.toBe('')
 
   const restored = await runCli(
-    ['backup', 'restore', archive, '--home', '../../../..'],
+    ['backup', 'restore', archive, '--home', rootFromCwd],
     target.home,
   )
   expect(restored.exitCode).not.toBe(0)
