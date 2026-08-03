@@ -1,6 +1,6 @@
 {
   "name": "bazilion",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "description": "Multi-agent runtime CLI — spawn LLM agents, manage profiles/teams/skills, and run the local daemon.",
   "license": "MIT",
   "repository": {
