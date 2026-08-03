@@ -111,3 +111,68 @@ export function listForAgent(
         .all(agentId, limit)
   return rows.map(toProposal)
 }
+
+function changedProposal(db: BazilionDb, id: string, changes: number): AgentLessonProposal | null {
+  return changes === 1 ? get(db, id) : null
+}
+
+export function updatePending(
+  db: BazilionDb,
+  id: string,
+  version: number,
+  input: { text: string; scope: AgentLessonScope },
+  now = Date.now(),
+): AgentLessonProposal | null {
+  const result = db.raw.run(
+    `UPDATE agent_lesson_proposals SET text = ?, scope = ?, version = version + 1, updated_at = ?
+     WHERE id = ? AND version = ? AND status = 'pending'`,
+    [input.text.trim(), input.scope, now, id, version],
+  )
+  return changedProposal(db, id, Number(result.changes))
+}
+
+export function approve(
+  db: BazilionDb,
+  id: string,
+  version: number,
+  appliedKey: string | null,
+  now = Date.now(),
+): AgentLessonProposal | null {
+  const result = db.raw.run(
+    `UPDATE agent_lesson_proposals SET status = 'approved', applied_key = ?, decided_at = ?,
+     version = version + 1, updated_at = ?
+     WHERE id = ? AND version = ? AND status = 'pending'`,
+    [appliedKey, now, now, id, version],
+  )
+  return changedProposal(db, id, Number(result.changes))
+}
+
+export function reject(
+  db: BazilionDb,
+  id: string,
+  version: number,
+  now = Date.now(),
+): AgentLessonProposal | null {
+  const result = db.raw.run(
+    `UPDATE agent_lesson_proposals SET status = 'rejected', decided_at = ?,
+     version = version + 1, updated_at = ?
+     WHERE id = ? AND version = ? AND status = 'pending'`,
+    [now, now, id, version],
+  )
+  return changedProposal(db, id, Number(result.changes))
+}
+
+export function revoke(
+  db: BazilionDb,
+  id: string,
+  version: number,
+  now = Date.now(),
+): AgentLessonProposal | null {
+  const result = db.raw.run(
+    `UPDATE agent_lesson_proposals SET status = 'revoked', revoked_at = ?,
+     version = version + 1, updated_at = ?
+     WHERE id = ? AND version = ? AND status = 'approved'`,
+    [now, now, id, version],
+  )
+  return changedProposal(db, id, Number(result.changes))
+}

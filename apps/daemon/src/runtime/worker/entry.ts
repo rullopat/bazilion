@@ -242,6 +242,7 @@ async function main(): Promise<void> {
   const reviewSessionDir =
     mode === 'review' ? mkdtempSync(join(paths.logsDir, 'review-session-')) : null
   const proposals: ReviewWorkerProposal[] = []
+  let proposalBatchSubmitted = false
   const allowedEvidence = new Set(
     (review?.evidence ?? []).map((item) => `${item.sessionId}:${item.entryOrdinal}`),
   )
@@ -265,6 +266,8 @@ async function main(): Promise<void> {
         ),
       }),
       async execute(_toolCallId, params) {
+        if (proposalBatchSubmitted) throw new Error('propose_lesson may be called only once')
+        proposalBatchSubmitted = true
         const input = params as {
           proposals: Array<{
             scope: 'private' | 'shared'
@@ -272,7 +275,6 @@ async function main(): Promise<void> {
             evidenceEntryIds: Array<{ sessionId: string; entryOrdinal: number }>
           }>
         }
-        if (proposals.length > 0) throw new Error('propose_lesson may be called only once')
         for (const candidate of input.proposals) {
           const text = candidate.text.trim()
           if (!text || text.length > 500) throw new Error('proposal text must be 1-500 characters')
@@ -324,7 +326,17 @@ async function main(): Promise<void> {
     void session.abort()
   }
 
+  let reviewValidationFailures = 0
   const unsubscribe = session.subscribe((piEvent) => {
+    if (
+      mode === 'review' &&
+      piEvent.type === 'tool_execution_end' &&
+      piEvent.toolName === 'propose_lesson' &&
+      piEvent.isError
+    ) {
+      reviewValidationFailures += 1
+      if (reviewValidationFailures >= 2) void session.abort()
+    }
     for (const ev of translatePiEvent(piEvent)) {
       emit({ kind: 'event', event: ev })
     }
@@ -340,6 +352,13 @@ async function main(): Promise<void> {
     }))
     await session.prompt(message, promptImages.length > 0 ? { images: promptImages } : undefined)
     await session.agent.waitForIdle()
+
+    if (mode === 'review' && reviewValidationFailures >= 2) {
+      throw new Error('review output remained invalid after one schema-repair attempt')
+    }
+    if (mode === 'review' && !proposalBatchSubmitted) {
+      throw new Error('review output did not submit a proposal batch')
+    }
 
     if (mode === 'review') emit({ kind: 'review_result', proposals })
     else {
@@ -382,6 +401,9 @@ main().catch((err) => {
 const REVIEW_SYSTEM_PROMPT = `You are a restricted learning reviewer. Analyze only the supplied
 transcript digest and approved-lesson index. You cannot act on the world. Call propose_lesson once
 with zero to five proposals, then stop.
+
+If propose_lesson rejects malformed output, correct the schema exactly once. If that repair is also
+rejected, stop; the review will fail.
 
 Classify before proposing:
 1. Stable human preference or biography belongs to USER.md: do not propose it.

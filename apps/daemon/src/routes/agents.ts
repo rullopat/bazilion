@@ -10,6 +10,11 @@ import { randomUUID } from 'node:crypto'
 import { existsSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import {
+  type AgentLessonProposalResponse,
+  type AgentLessonScope,
+  type AgentLessonStatus,
+  type AgentReviewConfig,
+  type AgentReviewDetailResponse,
   type Attachment,
   type AttachSkillRequest,
   type ChatCompactRequest,
@@ -21,6 +26,10 @@ import {
   type ContextSkillEntry,
   type ContextToolEntry,
   type CreateTriggerRequest,
+  type DecideAgentLessonProposalRequest,
+  type EnqueueAgentReviewResponse,
+  type ListAgentLessonProposalsResponse,
+  type ListAgentReviewsResponse,
   type ListInboxResponse,
   type MoveAgentRequest,
   REASONING_LEVELS,
@@ -31,10 +40,14 @@ import {
   type SpawnAgentRequest,
   type TruncateChatRequest,
   type TruncateChatResponse,
+  type UpdateAgentLessonProposalRequest,
+  type UpdateAgentReviewConfigRequest,
 } from '@bazilion/api-types'
 import { Hono } from 'hono'
 import {
+  agentLessonProposalRepo,
   agentRepo,
+  agentReviewRepo,
   archiveAgent,
   deleteAgent,
   discoverSkills,
@@ -72,7 +85,14 @@ import {
 } from '../lib/communication.ts'
 import { validateCron } from '../lib/cron.ts'
 import { getCtx } from '../lib/ctx.ts'
+import {
+  approveLessonProposal,
+  LessonProposalConflictError,
+  rejectLessonProposal,
+  revokeLessonProposal,
+} from '../lib/lesson-decisions.ts'
 import { createDbMessagingHost } from '../lib/messaging-host.ts'
+import { redactReviewText } from '../lib/review-digest.ts'
 import { getTelegramBotApi } from '../lib/telegram/bot.ts'
 import { notifyDirectoryDirty } from '../lib/telegram/directory.ts'
 import { ensureAgentTopic } from '../lib/telegram/topic-autocreate.ts'
@@ -83,6 +103,7 @@ import {
   loadInitialMessages,
   loadPromptSkills,
   loadSessionHead,
+  loadSessionMessages,
   piMessagesToProviderView,
   qmdBackend,
 } from '../runtime/index.ts'
@@ -684,6 +705,161 @@ agentsRouter.delete('/:id/skills/:name', (c) => {
   agentRepo.detachSkill(db, id, c.req.param('name'))
   return c.body(null, 204)
 })
+
+// ─── Reviewed learning ──────────────────────────────────────────────────
+
+agentsRouter.get('/:id/review-config', (c) => {
+  const { db } = getCtx()
+  const agent = agentRepo.get(db, c.req.param('id'))
+  if (!agent) return c.json({ error: `agent not found: ${c.req.param('id')}` }, 404)
+  return c.json({
+    enabled: agent.reviewEnabled,
+    everyNTurns: agent.reviewEveryNTurns,
+    model: agent.reviewModel,
+    reasoningLevel: agent.reviewReasoningLevel,
+    turnsSinceLast: agent.reviewTurnsSinceLast,
+  } satisfies AgentReviewConfig)
+})
+
+agentsRouter.patch('/:id/review-config', async (c) => {
+  const body = (await c.req.json().catch(() => null)) as UpdateAgentReviewConfigRequest | null
+  if (!body) return c.json({ error: 'invalid JSON body' }, 400)
+  const { db } = getCtx()
+  const agent = agentRepo.get(db, c.req.param('id'))
+  if (!agent) return c.json({ error: `agent not found: ${c.req.param('id')}` }, 404)
+  const everyNTurns = body.everyNTurns ?? agent.reviewEveryNTurns
+  const reasoningLevel = body.reasoningLevel ?? agent.reviewReasoningLevel
+  if (!Number.isInteger(everyNTurns) || everyNTurns < 1 || everyNTurns > 100) {
+    return c.json({ error: 'everyNTurns must be an integer from 1 to 100' }, 400)
+  }
+  if (!REASONING_LEVELS.includes(reasoningLevel)) {
+    return c.json({ error: `invalid reasoningLevel: ${reasoningLevel}` }, 400)
+  }
+  if (body.model !== undefined && body.model !== null && !body.model.includes(':')) {
+    return c.json({ error: 'model must use provider:model format' }, 400)
+  }
+  agentRepo.setReviewConfig(db, agent.id, {
+    enabled: body.enabled ?? agent.reviewEnabled,
+    everyNTurns,
+    model: body.model === undefined ? agent.reviewModel : body.model,
+    reasoningLevel,
+  })
+  const updated = agentRepo.get(db, agent.id)
+  if (!updated) return c.json({ error: 'agent disappeared' }, 500)
+  return c.json({
+    enabled: updated.reviewEnabled,
+    everyNTurns: updated.reviewEveryNTurns,
+    model: updated.reviewModel,
+    reasoningLevel: updated.reviewReasoningLevel,
+    turnsSinceLast: updated.reviewTurnsSinceLast,
+  } satisfies AgentReviewConfig)
+})
+
+agentsRouter.post('/:id/reviews', (c) => {
+  const { db } = getCtx()
+  const agent = agentRepo.get(db, c.req.param('id'))
+  if (!agent) return c.json({ error: `agent not found: ${c.req.param('id')}` }, 404)
+  return c.json(
+    { review: agentReviewRepo.enqueueManual(db, agent.id) } satisfies EnqueueAgentReviewResponse,
+    202,
+  )
+})
+
+agentsRouter.get('/:id/reviews', (c) => {
+  const { db } = getCtx()
+  const agent = agentRepo.get(db, c.req.param('id'))
+  if (!agent) return c.json({ error: `agent not found: ${c.req.param('id')}` }, 404)
+  return c.json({
+    reviews: agentReviewRepo.listForAgent(db, agent.id),
+  } satisfies ListAgentReviewsResponse)
+})
+
+agentsRouter.get('/:id/reviews/:reviewId', (c) => {
+  const { db, paths } = getCtx()
+  const agent = agentRepo.get(db, c.req.param('id'))
+  const review = agentReviewRepo.get(db, c.req.param('reviewId'))
+  if (!agent || !review || review.agentId !== agent.id)
+    return c.json({ error: 'review not found' }, 404)
+  return c.json({
+    review,
+    proposals: enrichProposalEvidence(
+      agentLessonProposalRepo.listForReview(db, review.id),
+      resolveAgent(db, paths, agent.id),
+      paths,
+    ),
+  } satisfies AgentReviewDetailResponse)
+})
+
+agentsRouter.get('/:id/lesson-proposals', (c) => {
+  const { db, paths } = getCtx()
+  const agent = agentRepo.get(db, c.req.param('id'))
+  if (!agent) return c.json({ error: `agent not found: ${c.req.param('id')}` }, 404)
+  const rawStatus = c.req.query('status')
+  const statuses: AgentLessonStatus[] = ['pending', 'approved', 'rejected', 'revoked']
+  if (rawStatus && !statuses.includes(rawStatus as AgentLessonStatus)) {
+    return c.json({ error: `invalid status: ${rawStatus}` }, 400)
+  }
+  return c.json({
+    proposals: enrichProposalEvidence(
+      agentLessonProposalRepo.listForAgent(db, agent.id, {
+        status: rawStatus as AgentLessonStatus | undefined,
+      }),
+      resolveAgent(db, paths, agent.id),
+      paths,
+    ),
+  } satisfies ListAgentLessonProposalsResponse)
+})
+
+agentsRouter.patch('/:id/lesson-proposals/:proposalId', async (c) => {
+  const body = (await c.req.json().catch(() => null)) as UpdateAgentLessonProposalRequest | null
+  if (!body || !Number.isInteger(body.version)) return c.json({ error: 'version is required' }, 400)
+  const { db } = getCtx()
+  const agent = agentRepo.get(db, c.req.param('id'))
+  const current = agentLessonProposalRepo.get(db, c.req.param('proposalId'))
+  if (!agent || !current || current.agentId !== agent.id)
+    return c.json({ error: 'proposal not found' }, 404)
+  const text = body.text?.trim() ?? current.text
+  const scope = body.scope ?? current.scope
+  if (!text || text.length > 500) return c.json({ error: 'text must be 1-500 characters' }, 400)
+  if (!(['private', 'shared'] satisfies AgentLessonScope[]).includes(scope)) {
+    return c.json({ error: `invalid scope: ${scope}` }, 400)
+  }
+  const proposal = agentLessonProposalRepo.updatePending(db, current.id, body.version, {
+    text,
+    scope,
+  })
+  return proposal
+    ? c.json({ proposal } satisfies AgentLessonProposalResponse)
+    : c.json({ error: 'proposal changed or is no longer pending' }, 409)
+})
+
+for (const decision of ['approve', 'reject', 'revoke'] as const) {
+  agentsRouter.post(`/:id/lesson-proposals/:proposalId/${decision}`, async (c) => {
+    const body = (await c.req.json().catch(() => null)) as DecideAgentLessonProposalRequest | null
+    if (!body || !Number.isInteger(body.version))
+      return c.json({ error: 'version is required' }, 400)
+    const { db, paths } = getCtx()
+    const agent = agentRepo.get(db, c.req.param('id'))
+    const current = agentLessonProposalRepo.get(db, c.req.param('proposalId'))
+    if (!agent || !current || current.agentId !== agent.id)
+      return c.json({ error: 'proposal not found' }, 404)
+    const team = teamRepo.get(db, agent.teamId, paths)
+    if (!team) return c.json({ error: `team not found: ${agent.teamId}` }, 404)
+    try {
+      const proposal = await runAgentLifecycleMutation(agent.id, async () => {
+        const memory = qmdBackend(join(team.path, 'memory'))
+        if (decision === 'approve')
+          return approveLessonProposal(db, memory, current.id, body.version)
+        if (decision === 'reject') return rejectLessonProposal(db, current.id, body.version)
+        return revokeLessonProposal(db, memory, current.id, body.version)
+      })
+      return c.json({ proposal } satisfies AgentLessonProposalResponse)
+    } catch (error) {
+      if (error instanceof LessonProposalConflictError) return c.json({ error: error.message }, 409)
+      throw error
+    }
+  })
+}
 
 // ─── Triggers ────────────────────────────────────────────────────────────
 
@@ -1322,4 +1498,33 @@ function countProperties(schema: unknown): number | null {
   const props = (schema as { properties?: unknown }).properties
   if (!props || typeof props !== 'object') return null
   return Object.keys(props as Record<string, unknown>).length
+}
+
+function enrichProposalEvidence(
+  proposals: import('@bazilion/api-types').AgentLessonProposal[],
+  agent: import('@bazilion/api-types').ResolvedAgent,
+  paths: import('../core/index.ts').Paths,
+): import('@bazilion/api-types').AgentLessonProposal[] {
+  const sessions = new Map<string, ReturnType<typeof piMessagesToProviderView>>()
+  return proposals.map((proposal) => ({
+    ...proposal,
+    evidence: proposal.evidence.map((evidence) => {
+      let messages = sessions.get(evidence.sessionId)
+      if (!messages) {
+        messages = piMessagesToProviderView(loadSessionMessages(agent, paths, evidence.sessionId))
+        sessions.set(evidence.sessionId, messages)
+      }
+      const message = messages[evidence.entryOrdinal]
+      const excerpt = message
+        ? redactReviewText(
+            message.role === 'tool'
+              ? `[tool:${message.toolName ?? 'unknown'}] completed`
+              : message.content,
+          )
+            .replace(/\s+/g, ' ')
+            .slice(0, 240)
+        : undefined
+      return { ...evidence, ...(excerpt ? { excerpt } : {}) }
+    }),
+  }))
 }

@@ -92,6 +92,7 @@ export type { MemoryEntry, MemoryHit } from './memory.ts'
 import type {
   Agent,
   AgentLessonProposal,
+  AgentLessonScope,
   AgentLessonStatus,
   AgentReview,
   AgentTrigger,
@@ -180,6 +181,20 @@ export interface ListAgentLessonProposalsResponse {
 export interface AgentReviewDetailResponse {
   review: AgentReview
   proposals: AgentLessonProposal[]
+}
+
+export interface UpdateAgentLessonProposalRequest {
+  version: number
+  text?: string
+  scope?: AgentLessonScope
+}
+
+export interface DecideAgentLessonProposalRequest {
+  version: number
+}
+
+export interface AgentLessonProposalResponse {
+  proposal: AgentLessonProposal
 }
 
 export interface AttachSkillRequest {

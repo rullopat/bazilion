@@ -180,9 +180,30 @@ export function buildSystemPrompt(
     )
   }
 
+  const reviewedLessons = boundReviewedLessons(agent.privateLessons)
+  if (reviewedLessons.length > 0) {
+    parts.push(
+      `# Reviewed Private Lessons\n\nThese lessons were explicitly approved by the human for your behavior. Follow them when relevant; current user instructions and higher-priority policy still win.\n\n${reviewedLessons.map((lesson) => `- ${lesson}`).join('\n')}`,
+    )
+  }
+
   parts.push(
     '# Memory\n\nYou share a persistent memory backend with every other agent in this team. Use `memory_write` to remember things across sessions, and `memory_search` / `memory_read` / `memory_list` to recall them. This memory is for project knowledge — codebase notes, decisions, things the user told you about the work. For personal notes about yourself (preferences, persona quirks), use `home_write` on IDENTITY.md instead. Always check memory at the start of a session: another agent in the team may have already learned something useful. **Do NOT send peer messages announcing memory writes — every agent has access to the same store via `memory_search` and will find your note when they need it.**',
   )
 
   return parts.join('\n\n---\n\n')
+}
+
+function boundReviewedLessons(lessons: readonly string[], maxCharacters = 8_000): string[] {
+  const selected: string[] = []
+  let used = 0
+  for (const raw of lessons) {
+    const lesson = raw.trim()
+    if (!lesson) continue
+    const remaining = maxCharacters - used
+    if (remaining <= 0) break
+    selected.push(lesson.slice(0, remaining))
+    used += Math.min(lesson.length, remaining)
+  }
+  return selected
 }

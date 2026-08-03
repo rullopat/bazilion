@@ -525,6 +525,23 @@ export function loadInitialMessages(agent: ResolvedAgent, paths: Paths): AgentMe
   }
 }
 
+/** Read one named canonical session for evidence display without creating a live session. */
+export function loadSessionMessages(
+  agent: ResolvedAgent,
+  paths: Paths,
+  sessionId: string,
+): AgentMessage[] {
+  if (!/^[A-Za-z0-9._-]+$/.test(sessionId)) return []
+  const sessionDir = join(paths.agentDir(agent.agent.id), 'sessions')
+  const file = join(sessionDir, `${sessionId}.jsonl`)
+  if (!existsSync(file) || !existsSync(agent.team.path)) return []
+  try {
+    return SessionManager.open(file, sessionDir).buildSessionContext().messages
+  } catch {
+    return []
+  }
+}
+
 /**
  * Cheap "has the session changed?" probe for polling clients (the web chat
  * stale-tab banner). Returns the most recent session file's basename plus

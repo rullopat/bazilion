@@ -4,6 +4,10 @@ import { stdin, stdout } from 'node:process'
 import { createInterface } from 'node:readline/promises'
 import type {
   Agent,
+  AgentLessonProposal,
+  AgentLessonProposalResponse,
+  AgentLessonStatus,
+  AgentReviewConfig,
   Attachment,
   AttachSkillRequest,
   BashApprovalMode,
@@ -14,6 +18,9 @@ import type {
   ChatRequest,
   CommandApproval,
   CommandApprovalDecisionRequest,
+  EnqueueAgentReviewResponse,
+  ListAgentLessonProposalsResponse,
+  ListAgentReviewsResponse,
   MoveAgentRequest,
   ResolvedAgent,
   ResolvedTeamPolicy,
@@ -23,6 +30,7 @@ import type {
   SpawnAgentRequest,
   TruncateChatRequest,
   TruncateChatResponse,
+  UpdateAgentReviewConfigRequest,
 } from '@bazilion/api-types'
 import { defineCommand } from 'citty'
 import { ApiClientError, createClient } from '../client.ts'
@@ -881,6 +889,167 @@ const cancelCmd = defineCommand({
   },
 })
 
+const reviewConfigCmd = defineCommand({
+  meta: { name: 'review-config', description: 'Inspect or configure reviewed learning' },
+  args: {
+    id: { type: 'positional', required: true, description: 'Agent id or prefix' },
+    enable: { type: 'boolean', description: 'Enable periodic reviews' },
+    disable: { type: 'boolean', description: 'Disable periodic reviews' },
+    every: { type: 'string', description: 'Successful user turns between reviews (1-100)' },
+    model: { type: 'string', description: "Review model, or 'agent' to use the Agent model" },
+    reasoning: { type: 'string', description: 'Review reasoning level' },
+  },
+  async run({ args }) {
+    if (args.enable && args.disable) throw new Error('choose either --enable or --disable')
+    const client = createClient()
+    const body: UpdateAgentReviewConfigRequest = {}
+    if (args.enable || args.disable) body.enabled = Boolean(args.enable)
+    if (args.every !== undefined) {
+      const value = Number(args.every)
+      if (!Number.isInteger(value) || value < 1 || value > 100) {
+        throw new Error('--every must be an integer from 1 to 100')
+      }
+      body.everyNTurns = value
+    }
+    if (args.model !== undefined) body.model = args.model === 'agent' ? null : args.model
+    if (args.reasoning !== undefined) {
+      body.reasoningLevel = args.reasoning as UpdateAgentReviewConfigRequest['reasoningLevel']
+    }
+    const hasChanges = Object.keys(body).length > 0
+    const config = hasChanges
+      ? await client.patch<AgentReviewConfig>(`/api/agents/${args.id}/review-config`, body)
+      : await client.get<AgentReviewConfig>(`/api/agents/${args.id}/review-config`)
+    console.log(`review: ${config.enabled ? 'enabled' : 'disabled'}`)
+    console.log(`cadence: every ${config.everyNTurns} successful user turns`)
+    console.log(`model: ${config.model ?? 'agent model'}`)
+    console.log(`reasoning: ${config.reasoningLevel}`)
+    console.log(`turns since last review: ${config.turnsSinceLast}`)
+  },
+})
+
+const reviewCmd = defineCommand({
+  meta: { name: 'review', description: 'Enqueue a reviewed-learning pass' },
+  args: { id: { type: 'positional', required: true, description: 'Agent id or prefix' } },
+  async run({ args }) {
+    const response = await createClient().post<EnqueueAgentReviewResponse>(
+      `/api/agents/${args.id}/reviews`,
+    )
+    console.log(`review ${response.review.id} ${response.review.status}`)
+  },
+})
+
+const reviewsCmd = defineCommand({
+  meta: { name: 'reviews', description: 'List reviewed-learning history' },
+  args: { id: { type: 'positional', required: true, description: 'Agent id or prefix' } },
+  async run({ args }) {
+    const response = await createClient().get<ListAgentReviewsResponse>(
+      `/api/agents/${args.id}/reviews`,
+    )
+    if (response.reviews.length === 0) return console.log('(no reviews)')
+    console.log(
+      columnize(
+        response.reviews.map((review) => [
+          review.id,
+          review.status,
+          review.trigger,
+          `${review.proposalCount} proposal(s)`,
+          new Date(review.createdAt).toISOString(),
+        ]),
+      ),
+    )
+  },
+})
+
+const lessonsCmd = defineCommand({
+  meta: { name: 'lessons', description: 'List reviewed lesson proposals' },
+  args: {
+    id: { type: 'positional', required: true, description: 'Agent id or prefix' },
+    status: { type: 'string', description: 'pending|approved|rejected|revoked' },
+  },
+  async run({ args }) {
+    const status = args.status as AgentLessonStatus | undefined
+    const query = status ? `?status=${encodeURIComponent(status)}` : ''
+    const response = await createClient().get<ListAgentLessonProposalsResponse>(
+      `/api/agents/${args.id}/lesson-proposals${query}`,
+    )
+    if (response.proposals.length === 0) return console.log('(no lesson proposals)')
+    console.log(
+      columnize(
+        response.proposals.map((proposal) => [
+          proposal.id,
+          proposal.status,
+          proposal.scope,
+          proposal.text,
+        ]),
+      ),
+    )
+  },
+})
+
+async function locateProposal(
+  id: string,
+): Promise<{ agent: Agent; proposal: AgentLessonProposal }> {
+  const client = createClient()
+  const agents = await client.get<Agent[]>('/api/agents?includeArchived=true')
+  for (const agent of agents) {
+    const response = await client.get<ListAgentLessonProposalsResponse>(
+      `/api/agents/${agent.id}/lesson-proposals`,
+    )
+    const proposal = response.proposals.find((item) => item.id === id || item.id.startsWith(id))
+    if (proposal) return { agent, proposal }
+  }
+  throw new Error(`lesson proposal not found: ${id}`)
+}
+
+function lessonDecisionCmd(decision: 'approve' | 'reject' | 'revoke') {
+  return defineCommand({
+    meta: { name: decision, description: `${decision} a reviewed lesson proposal` },
+    args: {
+      id: { type: 'positional', required: true, description: 'Proposal id or prefix' },
+      yes: { type: 'boolean', description: `Confirm ${decision}` },
+    },
+    async run({ args }) {
+      if (!args.yes) throw new Error(`${decision} requires --yes`)
+      const { agent, proposal } = await locateProposal(args.id)
+      const response = await createClient().post<AgentLessonProposalResponse>(
+        `/api/agents/${agent.id}/lesson-proposals/${proposal.id}/${decision}`,
+        { version: proposal.version },
+      )
+      console.log(`${response.proposal.status} ${response.proposal.id}`)
+    },
+  })
+}
+
+const lessonEditCmd = defineCommand({
+  meta: { name: 'edit', description: 'Edit a pending reviewed lesson proposal' },
+  args: {
+    id: { type: 'positional', required: true, description: 'Proposal id or prefix' },
+    text: { type: 'string', description: 'Replacement lesson text' },
+    scope: { type: 'string', description: 'private|shared' },
+  },
+  async run({ args }) {
+    if (args.text === undefined && args.scope === undefined) {
+      throw new Error('lesson edit requires --text or --scope')
+    }
+    const { agent, proposal } = await locateProposal(args.id)
+    const response = await createClient().patch<AgentLessonProposalResponse>(
+      `/api/agents/${agent.id}/lesson-proposals/${proposal.id}`,
+      { version: proposal.version, text: args.text, scope: args.scope },
+    )
+    console.log(`updated ${response.proposal.id} v${response.proposal.version}`)
+  },
+})
+
+const lessonCmd = defineCommand({
+  meta: { name: 'lesson', description: 'Edit or decide a reviewed lesson proposal' },
+  subCommands: {
+    edit: lessonEditCmd,
+    approve: lessonDecisionCmd('approve'),
+    reject: lessonDecisionCmd('reject'),
+    revoke: lessonDecisionCmd('revoke'),
+  },
+})
+
 export const agentCommand = defineCommand({
   meta: { name: 'agent', description: 'Manage agent instances' },
   subCommands: {
@@ -897,6 +1066,11 @@ export const agentCommand = defineCommand({
     'chat-context': chatContextCmd,
     'chat-compact': chatCompactCmd,
     cancel: cancelCmd,
+    'review-config': reviewConfigCmd,
+    review: reviewCmd,
+    reviews: reviewsCmd,
+    lessons: lessonsCmd,
+    lesson: lessonCmd,
     skill: skillCmd,
     move: moveCmd,
     'session-head': sessionHeadCmd,

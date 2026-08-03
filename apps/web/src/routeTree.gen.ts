@@ -33,6 +33,7 @@ import { Route as TeamsIdContextRouteImport } from './routes/teams/$id/context'
 import { Route as TeamsIdActivityRouteImport } from './routes/teams/$id/activity'
 import { Route as ConfigIntegrationsTelegramRouteImport } from './routes/config/integrations/telegram'
 import { Route as AgentsIdTriggersRouteImport } from './routes/agents/$id/triggers'
+import { Route as AgentsIdLearningRouteImport } from './routes/agents/$id/learning'
 import { Route as AgentsIdInboxRouteImport } from './routes/agents/$id/inbox'
 import { Route as TemplatesTeamsIdIndexRouteImport } from './routes/templates/teams/$id/index'
 import { Route as TemplatesAgentsIdIndexRouteImport } from './routes/templates/agents/$id/index'
@@ -158,6 +159,11 @@ const AgentsIdTriggersRoute = AgentsIdTriggersRouteImport.update({
   path: '/agents/$id/triggers',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AgentsIdLearningRoute = AgentsIdLearningRouteImport.update({
+  id: '/agents/$id/learning',
+  path: '/agents/$id/learning',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AgentsIdInboxRoute = AgentsIdInboxRouteImport.update({
   id: '/agents/$id/inbox',
   path: '/agents/$id/inbox',
@@ -189,6 +195,7 @@ export interface FileRoutesByFullPath {
   '/teams/': typeof TeamsIndexRoute
   '/templates/': typeof TemplatesIndexRoute
   '/agents/$id/inbox': typeof AgentsIdInboxRoute
+  '/agents/$id/learning': typeof AgentsIdLearningRoute
   '/agents/$id/triggers': typeof AgentsIdTriggersRoute
   '/config/integrations/telegram': typeof ConfigIntegrationsTelegramRoute
   '/teams/$id/activity': typeof TeamsIdActivityRoute
@@ -218,6 +225,7 @@ export interface FileRoutesByTo {
   '/teams': typeof TeamsIndexRoute
   '/templates': typeof TemplatesIndexRoute
   '/agents/$id/inbox': typeof AgentsIdInboxRoute
+  '/agents/$id/learning': typeof AgentsIdLearningRoute
   '/agents/$id/triggers': typeof AgentsIdTriggersRoute
   '/config/integrations/telegram': typeof ConfigIntegrationsTelegramRoute
   '/teams/$id/activity': typeof TeamsIdActivityRoute
@@ -248,6 +256,7 @@ export interface FileRoutesById {
   '/teams/': typeof TeamsIndexRoute
   '/templates/': typeof TemplatesIndexRoute
   '/agents/$id/inbox': typeof AgentsIdInboxRoute
+  '/agents/$id/learning': typeof AgentsIdLearningRoute
   '/agents/$id/triggers': typeof AgentsIdTriggersRoute
   '/config/integrations/telegram': typeof ConfigIntegrationsTelegramRoute
   '/teams/$id/activity': typeof TeamsIdActivityRoute
@@ -279,6 +288,7 @@ export interface FileRouteTypes {
     | '/teams/'
     | '/templates/'
     | '/agents/$id/inbox'
+    | '/agents/$id/learning'
     | '/agents/$id/triggers'
     | '/config/integrations/telegram'
     | '/teams/$id/activity'
@@ -308,6 +318,7 @@ export interface FileRouteTypes {
     | '/teams'
     | '/templates'
     | '/agents/$id/inbox'
+    | '/agents/$id/learning'
     | '/agents/$id/triggers'
     | '/config/integrations/telegram'
     | '/teams/$id/activity'
@@ -337,6 +348,7 @@ export interface FileRouteTypes {
     | '/teams/'
     | '/templates/'
     | '/agents/$id/inbox'
+    | '/agents/$id/learning'
     | '/agents/$id/triggers'
     | '/config/integrations/telegram'
     | '/teams/$id/activity'
@@ -367,6 +379,7 @@ export interface RootRouteChildren {
   TeamsIndexRoute: typeof TeamsIndexRoute
   TemplatesIndexRoute: typeof TemplatesIndexRoute
   AgentsIdInboxRoute: typeof AgentsIdInboxRoute
+  AgentsIdLearningRoute: typeof AgentsIdLearningRoute
   AgentsIdTriggersRoute: typeof AgentsIdTriggersRoute
   ConfigIntegrationsTelegramRoute: typeof ConfigIntegrationsTelegramRoute
   TeamsIdActivityRoute: typeof TeamsIdActivityRoute
@@ -552,6 +565,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AgentsIdTriggersRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/agents/$id/learning': {
+      id: '/agents/$id/learning'
+      path: '/agents/$id/learning'
+      fullPath: '/agents/$id/learning'
+      preLoaderRoute: typeof AgentsIdLearningRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/agents/$id/inbox': {
       id: '/agents/$id/inbox'
       path: '/agents/$id/inbox'
@@ -591,6 +611,7 @@ const rootRouteChildren: RootRouteChildren = {
   TeamsIndexRoute: TeamsIndexRoute,
   TemplatesIndexRoute: TemplatesIndexRoute,
   AgentsIdInboxRoute: AgentsIdInboxRoute,
+  AgentsIdLearningRoute: AgentsIdLearningRoute,
   AgentsIdTriggersRoute: AgentsIdTriggersRoute,
   ConfigIntegrationsTelegramRoute: ConfigIntegrationsTelegramRoute,
   TeamsIdActivityRoute: TeamsIdActivityRoute,

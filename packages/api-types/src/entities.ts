@@ -371,6 +371,8 @@ export type AgentLessonStatus = 'pending' | 'approved' | 'rejected' | 'revoked'
 export interface AgentLessonEvidence {
   sessionId: string
   entryOrdinal: number
+  /** Redacted canonical-session excerpt, populated on read and never stored with the proposal. */
+  excerpt?: string
 }
 
 export interface AgentLessonProposal {
@@ -513,6 +515,8 @@ export interface ResolvedAgent {
   reasoningLevel: ReasoningLevel
   team: Team
   skills: string[]
+  /** Human-approved, agent-private reviewed lessons injected on every normal turn. */
+  privateLessons: string[]
 }
 
 export type McpTransport = 'stdio' | 'http' | 'sse'

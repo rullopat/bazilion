@@ -8,7 +8,7 @@
 import { SECTION_TABS_CLASS, sectionTabClass } from './SectionTabs'
 import { StatusBadge } from './Page'
 
-type Tab = 'chat' | 'inbox' | 'triggers'
+type Tab = 'chat' | 'inbox' | 'triggers' | 'learning'
 
 interface Props {
   agentId: string
@@ -20,6 +20,7 @@ const TABS: { key: Tab; href: (id: string) => string; label: string }[] = [
   { key: 'chat', href: (id) => `/agents/${id}`, label: 'Chat' },
   { key: 'inbox', href: (id) => `/agents/${id}/inbox`, label: 'Inbox' },
   { key: 'triggers', href: (id) => `/agents/${id}/triggers`, label: 'Triggers' },
+  { key: 'learning', href: (id) => `/agents/${id}/learning`, label: 'Learning' },
 ]
 
 export function AgentTabs({ agentId, active, archived }: Props) {

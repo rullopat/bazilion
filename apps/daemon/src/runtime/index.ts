@@ -28,6 +28,7 @@ export {
   loadEnabledRegistry,
   loadInitialMessages,
   loadSessionHead,
+  loadSessionMessages,
   seedSessionForTest,
 } from './pi/session.ts'
 // Pi-coding-agent integration surface. The worker runs inside a

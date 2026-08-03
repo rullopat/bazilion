@@ -3,6 +3,7 @@ import type { ResolvedAgent } from '@bazilion/api-types'
 import type { BazilionDb } from '../db/client.ts'
 import type { Paths } from '../paths.ts'
 import { loadIdentityFromFile } from '../profile/identity.ts'
+import * as agentLessonProposalRepo from '../repos/agentLessonProposals.ts'
 import * as agentRepo from '../repos/agents.ts'
 import * as profileRepo from '../repos/profiles.ts'
 import * as teamRepo from '../repos/teams.ts'
@@ -34,5 +35,9 @@ export function resolveAgent(db: BazilionDb, paths: Paths, agentId: string): Res
     reasoningLevel: agent.reasoningLevel,
     team,
     skills: agentRepo.listAttachedSkills(db, agentId),
+    privateLessons: agentLessonProposalRepo
+      .listForAgent(db, agent.id, { status: 'approved', limit: 100 })
+      .filter((proposal) => proposal.scope === 'private')
+      .map((proposal) => proposal.text),
   }
 }

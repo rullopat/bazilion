@@ -305,6 +305,7 @@ test('Bazilion session gives pi the IPC-backed refresher for openai-codex', asyn
       createdAt: 0,
     },
     skills: [],
+    privateLessons: [],
   } satisfies ResolvedAgent
   const memory: MemoryBackend = {
     init: async () => {},
@@ -387,5 +388,6 @@ function resolvedOpenAICodexAgent(paths: ReturnType<typeof resolvePaths>): Resol
       createdAt: 0,
     },
     skills: [],
+    privateLessons: [],
   }
 }

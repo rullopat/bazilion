@@ -196,6 +196,44 @@ test('backup restore extracts the tar.gz into a fresh home', async () => {
   ])
   expect(spawned.exitCode).toBe(0)
   const agentId = extractAgentId(spawned.stdout)
+  expect(
+    (
+      await server.cli([
+        'agent',
+        'review-config',
+        agentId,
+        '--enable',
+        '--every',
+        '8',
+        '--reasoning',
+        'low',
+      ])
+    ).exitCode,
+  ).toBe(0)
+  expect((await server.cli(['agent', 'review', agentId])).exitCode).toBe(0)
+  const sourceDb = openDb(join(server.home, 'bazilion.db'))
+  const review = sourceDb.raw
+    .query<{ id: string }, [string]>('SELECT id FROM agent_reviews WHERE agent_id = ?')
+    .get(agentId)
+  expect(review).toBeDefined()
+  const proposalId = randomUUID()
+  sourceDb.raw.run(
+    `INSERT INTO agent_lesson_proposals
+       (id, review_id, agent_id, scope, text, evidence_json, status, version, decided_at,
+        applied_key, created_at, updated_at)
+     VALUES (?, ?, ?, 'shared', 'Restored reviewed lesson', ?, 'approved', 2, ?, ?, ?, ?)`,
+    [
+      proposalId,
+      review?.id ?? '',
+      agentId,
+      JSON.stringify([{ sessionId: 'proof', entryOrdinal: 1 }]),
+      Date.now(),
+      `lessons/${proposalId}.md`,
+      Date.now(),
+      Date.now(),
+    ],
+  )
+  sourceDb.close()
   await server.cli(['config', 'set', 'LMSTUDIO_URL', 'http://backup-config.example/v1'])
   await server.cli(['config', 'set', 'OPENAI_API_KEY', 'backup-secret-value'])
   writeFileSync(join(server.home, 'agents', agentId, 'sessions', 'proof.jsonl'), '{"ok":true}\n')
@@ -255,6 +293,18 @@ test('backup restore extracts the tar.gz into a fresh home', async () => {
   expect(openSecrets(restoredDb, restoredAuth.token).get('OPENAI_API_KEY')).toBe(
     'backup-secret-value',
   )
+  expect(
+    restoredDb.raw
+      .query<{ review_enabled: number }, [string]>('SELECT review_enabled FROM agents WHERE id = ?')
+      .get(agentId),
+  ).toEqual({ review_enabled: 1 })
+  expect(
+    restoredDb.raw
+      .query<{ text: string; applied_key: string }, [string]>(
+        'SELECT text, applied_key FROM agent_lesson_proposals WHERE id = ?',
+      )
+      .get(proposalId),
+  ).toEqual({ text: 'Restored reviewed lesson', applied_key: `lessons/${proposalId}.md` })
 
   // A portable restore must remain operational after the source tree goes
   // away. Hide the source profile/Agent directories and exercise the same

@@ -3,6 +3,12 @@ import * as agentLessonProposalRepo from '../../src/core/repos/agentLessonPropos
 import * as agentReviewRepo from '../../src/core/repos/agentReviews.ts'
 import * as agentRepo from '../../src/core/repos/agents.ts'
 import * as profileRepo from '../../src/core/repos/profiles.ts'
+import {
+  approveLessonProposal,
+  rejectLessonProposal,
+  revokeLessonProposal,
+} from '../../src/lib/lesson-decisions.ts'
+import type { MemoryBackend } from '../../src/runtime/memory/types.ts'
 import { makeTestEnv, type TestEnv } from './helpers.ts'
 
 let env: TestEnv
@@ -108,4 +114,68 @@ test('proposal rows preserve typed evidence without copying transcript text', ()
     evidence: [{ sessionId: 'session-a', entryOrdinal: 7 }],
   })
   expect(agentLessonProposalRepo.listForReview(env.db, review.id)).toEqual([proposal])
+})
+
+test('shared approval and revocation apply a deterministic memory entry', async () => {
+  const review = agentReviewRepo.enqueueManual(env.db, 'a1', 1_000)
+  const proposal = agentLessonProposalRepo.insert(env.db, {
+    reviewId: review.id,
+    agentId: 'a1',
+    scope: 'shared',
+    text: 'Run the focused test before the full suite.',
+    evidence: [{ sessionId: 'session-a', entryOrdinal: 2 }],
+  })
+  const entries = new Map<string, string>()
+  const memory: MemoryBackend = {
+    async init() {},
+    async write(key, content) {
+      entries.set(key, content)
+      return { key, content, updatedAt: Date.now() }
+    },
+    async remove(key) {
+      entries.delete(key)
+    },
+    async read() {
+      throw new Error('unused')
+    },
+    async search() {
+      return []
+    },
+    async list() {
+      return []
+    },
+  }
+
+  const approved = await approveLessonProposal(env.db, memory, proposal.id, proposal.version)
+  expect(approved).toMatchObject({ status: 'approved', version: 2 })
+  expect(entries.get(`lessons/${proposal.id}.md`)).toContain(proposal.text)
+  const revoked = await revokeLessonProposal(env.db, memory, proposal.id, approved.version)
+  expect(revoked).toMatchObject({ status: 'revoked', version: 3 })
+  expect(entries.size).toBe(0)
+})
+
+test('pending proposals can be edited or rejected only at the expected version', () => {
+  const review = agentReviewRepo.enqueueManual(env.db, 'a1', 1_000)
+  const proposal = agentLessonProposalRepo.insert(env.db, {
+    reviewId: review.id,
+    agentId: 'a1',
+    scope: 'private',
+    text: 'Old text',
+    evidence: [{ sessionId: 'session-a', entryOrdinal: 1 }],
+  })
+  const edited = agentLessonProposalRepo.updatePending(env.db, proposal.id, 1, {
+    text: 'New text',
+    scope: 'shared',
+  })
+  expect(edited).toMatchObject({ text: 'New text', scope: 'shared', version: 2 })
+  expect(
+    agentLessonProposalRepo.updatePending(env.db, proposal.id, 1, {
+      text: 'stale',
+      scope: 'private',
+    }),
+  ).toBeNull()
+  expect(rejectLessonProposal(env.db, proposal.id, 2)).toMatchObject({
+    status: 'rejected',
+    version: 3,
+  })
 })
