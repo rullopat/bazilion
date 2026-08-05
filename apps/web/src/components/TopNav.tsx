@@ -2,6 +2,7 @@ import { Link, useRouterState } from '@tanstack/react-router'
 import {
   Bot,
   LayoutTemplate,
+  BellRing,
   Settings2,
   ShieldCheck,
   Sparkles,
@@ -9,18 +10,28 @@ import {
 } from 'lucide-react'
 import { BaziuLogo } from './BaziuLogo'
 import { ThemeToggle } from './ThemeToggle'
+import { useEffect, useState } from 'react'
 
 const NAV_LINKS = [
   { to: '/templates', label: 'templates', icon: LayoutTemplate },
   { to: '/agents', label: 'agents', icon: Bot },
   { to: '/teams', label: 'teams', icon: UsersRound },
   { to: '/approvals', label: 'approvals', icon: ShieldCheck },
+  { to: '/attention', label: 'attention', icon: BellRing },
   { to: '/skills', label: 'skills', icon: Sparkles },
   { to: '/config', label: 'config', icon: Settings2 },
 ] as const
 
 export function TopNav() {
   const pathname = useRouterState({ select: (state) => state.location.pathname })
+  const [attentionCount, setAttentionCount] = useState(0)
+  useEffect(() => {
+    if (pathname === '/login' || pathname === '/welcome') return
+    fetch('/api/attention/summary')
+      .then((response) => (response.ok ? response.json() : null))
+      .then((body) => setAttentionCount(body?.openTotal ?? 0))
+      .catch(() => {})
+  }, [pathname])
 
   return (
     <nav
@@ -57,6 +68,11 @@ export function TopNav() {
             >
               <Icon className="h-[1.05rem] w-[1.05rem] shrink-0" aria-hidden="true" />
               <span className="hidden lg:inline">{link.label}</span>
+              {link.to === '/attention' && attentionCount > 0 && (
+                <span className="min-w-5 rounded-full bg-coral px-1.5 text-center text-xs text-white" aria-label={`${attentionCount} open attention items`}>
+                  {attentionCount > 99 ? '99+' : attentionCount}
+                </span>
+              )}
             </Link>
           )
         })}

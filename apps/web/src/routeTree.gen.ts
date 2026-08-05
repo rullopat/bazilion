@@ -16,6 +16,7 @@ import { Route as TemplatesIndexRouteImport } from './routes/templates/index'
 import { Route as TeamsIndexRouteImport } from './routes/teams/index'
 import { Route as SkillsIndexRouteImport } from './routes/skills/index'
 import { Route as ConfigIndexRouteImport } from './routes/config/index'
+import { Route as AttentionIndexRouteImport } from './routes/attention/index'
 import { Route as ApprovalsIndexRouteImport } from './routes/approvals/index'
 import { Route as AgentsIndexRouteImport } from './routes/agents/index'
 import { Route as ConfigTokensRouteImport } from './routes/config/tokens'
@@ -71,6 +72,11 @@ const SkillsIndexRoute = SkillsIndexRouteImport.update({
 const ConfigIndexRoute = ConfigIndexRouteImport.update({
   id: '/config/',
   path: '/config/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AttentionIndexRoute = AttentionIndexRouteImport.update({
+  id: '/attention/',
+  path: '/attention/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApprovalsIndexRoute = ApprovalsIndexRouteImport.update({
@@ -190,6 +196,7 @@ export interface FileRoutesByFullPath {
   '/config/tokens': typeof ConfigTokensRoute
   '/agents/': typeof AgentsIndexRoute
   '/approvals/': typeof ApprovalsIndexRoute
+  '/attention/': typeof AttentionIndexRoute
   '/config/': typeof ConfigIndexRoute
   '/skills/': typeof SkillsIndexRoute
   '/teams/': typeof TeamsIndexRoute
@@ -220,6 +227,7 @@ export interface FileRoutesByTo {
   '/config/tokens': typeof ConfigTokensRoute
   '/agents': typeof AgentsIndexRoute
   '/approvals': typeof ApprovalsIndexRoute
+  '/attention': typeof AttentionIndexRoute
   '/config': typeof ConfigIndexRoute
   '/skills': typeof SkillsIndexRoute
   '/teams': typeof TeamsIndexRoute
@@ -251,6 +259,7 @@ export interface FileRoutesById {
   '/config/tokens': typeof ConfigTokensRoute
   '/agents/': typeof AgentsIndexRoute
   '/approvals/': typeof ApprovalsIndexRoute
+  '/attention/': typeof AttentionIndexRoute
   '/config/': typeof ConfigIndexRoute
   '/skills/': typeof SkillsIndexRoute
   '/teams/': typeof TeamsIndexRoute
@@ -283,6 +292,7 @@ export interface FileRouteTypes {
     | '/config/tokens'
     | '/agents/'
     | '/approvals/'
+    | '/attention/'
     | '/config/'
     | '/skills/'
     | '/teams/'
@@ -313,6 +323,7 @@ export interface FileRouteTypes {
     | '/config/tokens'
     | '/agents'
     | '/approvals'
+    | '/attention'
     | '/config'
     | '/skills'
     | '/teams'
@@ -343,6 +354,7 @@ export interface FileRouteTypes {
     | '/config/tokens'
     | '/agents/'
     | '/approvals/'
+    | '/attention/'
     | '/config/'
     | '/skills/'
     | '/teams/'
@@ -374,6 +386,7 @@ export interface RootRouteChildren {
   ConfigTokensRoute: typeof ConfigTokensRoute
   AgentsIndexRoute: typeof AgentsIndexRoute
   ApprovalsIndexRoute: typeof ApprovalsIndexRoute
+  AttentionIndexRoute: typeof AttentionIndexRoute
   ConfigIndexRoute: typeof ConfigIndexRoute
   SkillsIndexRoute: typeof SkillsIndexRoute
   TeamsIndexRoute: typeof TeamsIndexRoute
@@ -444,6 +457,13 @@ declare module '@tanstack/react-router' {
       path: '/config'
       fullPath: '/config/'
       preLoaderRoute: typeof ConfigIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/attention/': {
+      id: '/attention/'
+      path: '/attention'
+      fullPath: '/attention/'
+      preLoaderRoute: typeof AttentionIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/approvals/': {
@@ -606,6 +626,7 @@ const rootRouteChildren: RootRouteChildren = {
   ConfigTokensRoute: ConfigTokensRoute,
   AgentsIndexRoute: AgentsIndexRoute,
   ApprovalsIndexRoute: ApprovalsIndexRoute,
+  AttentionIndexRoute: AttentionIndexRoute,
   ConfigIndexRoute: ConfigIndexRoute,
   SkillsIndexRoute: SkillsIndexRoute,
   TeamsIndexRoute: TeamsIndexRoute,

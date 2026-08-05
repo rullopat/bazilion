@@ -27,25 +27,26 @@ docs/backlog/
 
 ---
 
-## Draft (1)
+## Draft (0)
 
 | ID | Title | Size | Notes |
 |----|-------|------|-------|
-| [BAZ-001](draft/BAZ-001-a2a-federation-spike.md) | Spike — federated multi-employee Bazilion via A2A | S | Investigation only; output is a follow-up implementation BAZ |
 
 ## Todo (0)
 
-_None right now._
+| ID | Title | Size | Notes |
+|----|-------|------|-------|
 
 ## In Progress (0)
 
 | ID | Title | Size | Notes |
 |----|-------|------|-------|
 
-## Done (20)
+## Done (21)
 
 | ID | Title | Size | Shipped | Release | Notes |
 |----|-------|------|---------|---------|-------|
+| [BAZ-026](done/BAZ-026-operator-attention-center.md) | Operator Attention Center — one queue for actionable runtime signals | M | 2026-08-05 | unreleased | Unified source-owned queue, informational acknowledgement state, CLI parity, responsive web UI, and navigation badge |
 | [BAZ-003](done/BAZ-003-hermes-self-learning.md) | Reviewed learning loop — transcript digest to durable lessons | M | 2026-08-03 | unreleased | Opt-in restricted review worker, evidence-backed human approval, private prompt lessons, and shared Team-memory lessons |
 | [BAZ-002](done/BAZ-002-profile-groups.md) | Profile Groups — preconfigured team templates (historical) | M | 2026-05-25 | [v0.2.0](https://github.com/rullopat/bazilion/releases/tag/v0.2.0) | Superseded by the canonical Team Template model in BAZ-018 |
 | [BAZ-005](done/BAZ-005-agent-templates-refresh.md) | Agent templates refresh — two-sided bootstrap, USER.md seed, workspace doc | M | 2026-05-29 | v0.5.0 | Two-phase bootstrap, USER.md seed + backfill, creature/avatar, default-on AGENTS/TOOLS (HEARTBEAT opt-in) — see As-built for deltas |

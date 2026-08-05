@@ -6,6 +6,7 @@ const VERSION = pkg.version
 
 import { agentCommand } from './commands/agent.ts'
 import { approvalCommand } from './commands/approval.ts'
+import { attentionCommand } from './commands/attention.ts'
 import { authCommand } from './commands/auth.ts'
 import { backupCommand } from './commands/backup.ts'
 import { completionCommand } from './commands/completion.ts'
@@ -41,6 +42,7 @@ const main = defineCommand({
     'team-template': teamTemplateCommand,
     agent: agentCommand,
     approval: approvalCommand,
+    attention: attentionCommand,
     skill: skillCommand,
     memory: memoryCommand,
     mcp: mcpCommand,
@@ -162,6 +164,7 @@ function printTopLevelHelp(): void {
       title: 'agents',
       items: [
         ['approval', 'Review and decide communication approval attempts'],
+        ['attention', 'See everything that needs operator attention'],
         ['agent', 'Spawn, list, chat, archive agents'],
         ['memory', "Read/write a team's shared memory"],
         ['send', 'Send a message from one agent to another'],

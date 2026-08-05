@@ -5,6 +5,17 @@
 // and wire types FROM here.
 
 export type {
+  AttentionAcknowledgeAllResponse,
+  AttentionAcknowledgementResponse,
+  AttentionDegradedSource,
+  AttentionItem,
+  AttentionKind,
+  AttentionListResponse,
+  AttentionSeverity,
+  AttentionState,
+  AttentionSummary,
+} from './attention.ts'
+export type {
   Agent,
   AgentIdentityFile,
   AgentLessonEvidence,

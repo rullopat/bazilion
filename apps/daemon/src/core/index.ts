@@ -5,6 +5,14 @@ export { resolveAgent } from './agent/resolve.ts'
 export type { SpawnAgentInput } from './agent/spawn.ts'
 export { spawnAgent } from './agent/spawn.ts'
 export { unarchiveAgent } from './agent/unarchive.ts'
+export {
+  ATTENTION_KINDS,
+  acknowledgeAllAttention,
+  acknowledgeAttention,
+  attentionSummary,
+  parseAttentionKey,
+  projectAttention,
+} from './attention.ts'
 export type { AvailableModel } from './availableModels.ts'
 export {
   groupAvailableModels,

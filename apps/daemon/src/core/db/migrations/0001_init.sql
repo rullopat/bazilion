@@ -110,6 +110,12 @@ CREATE INDEX agent_loop_break_events_agent_time
   ON agent_loop_break_events(from_agent_id, to_agent_id, created_at DESC);
 CREATE INDEX agent_loop_break_events_team_time
   ON agent_loop_break_events(source_team_id, target_team_id, created_at DESC);
+CREATE TABLE attention_acknowledgements (
+  source_kind    TEXT NOT NULL,
+  source_id      TEXT NOT NULL,
+  acknowledged_at INTEGER NOT NULL,
+  PRIMARY KEY (source_kind, source_id)
+);
 CREATE TABLE agent_reviews (
   id                    TEXT PRIMARY KEY,
   agent_id              TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
