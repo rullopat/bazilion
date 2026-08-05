@@ -90,6 +90,7 @@ if (args[0] === 'run') {
     process.stdout.write('ready\\n')
     setInterval(() => {}, 1_000)
   } else if (command === '__cleanup_hang__') {
+    process.stdout.write('ready\\n')
     setInterval(() => {}, 1_000)
   } else {
     process.stdout.write('from stdout\\n')
@@ -370,15 +371,18 @@ describe('createDockerBashOperations', () => {
   })
 
   test('bounds repeated cleanup failures below the worker kill grace', async () => {
+    const controller = new AbortController()
     const operations = createDockerBashOperations({ image: 'fake:image', env: {}, dockerPath })
     const startedAt = Date.now()
 
     await expect(
       operations.exec('__cleanup_hang__', workspace, {
-        timeout: 0.05,
-        onData: () => undefined,
+        signal: controller.signal,
+        onData: (data) => {
+          if (data.toString('utf8').includes('ready')) controller.abort()
+        },
       }),
-    ).rejects.toThrow(/^timeout:0\.05$/)
+    ).rejects.toThrow(/^aborted$/)
 
     expect(Date.now() - startedAt).toBeLessThan(2_900)
     expect(

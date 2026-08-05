@@ -1,5 +1,12 @@
 # bazilion
 
+## 0.12.1
+
+### Patch Changes
+
+- Pin the Pi dependency family to the tested 0.80.6 release so clean npm installs cannot resolve a
+  newer incompatible OAuth API and crash the Bazilion CLI at startup.
+
 ## 0.12.0
 
 ### Minor Changes
