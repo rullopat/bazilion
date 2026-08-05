@@ -244,7 +244,7 @@ type ProfilePeerDefault = 'inherit_team_policy' | 'allow_all' | 'deny_all'
 - Human approval gates, pending queues, expiry, assignment, or retry semantics.
 - Automatic workflow execution, stages, conditions, payload routing, retries, or state
   machines. Edges authorize communication only.
-- Federated/cross-install actors from BAZ-001 or multi-team agent membership.
+- Federated/cross-install actors (deferred by [ADR 0002](../../adr/0002-defer-a2a-federation.md)) or multi-team agent membership.
 - Replacing or deleting current Profile Teams and Teams screens.
 - Production CLI import/export commands.
 - Security sandboxing or command approval from BAZ-006.

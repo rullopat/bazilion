@@ -41,7 +41,7 @@ Two pressures converge:
 1. **Operator workflow friction** — every project starts with the same handful of agents (planner + implementer + reviewer + sometimes a dedicated docs-writer), assembled by hand each time. The team is stable; the spawn ritual is not.
 2. **Setup-flow alignment** — `ensureSetupSeeded` ([apps/daemon/src/lib/ctx.ts](../../../apps/daemon/src/lib/ctx.ts)) already creates a `default` profile + `default` team at first run. A "default team" profile team is the natural next step in the first-run setup story and gives new operators something to spawn into immediately instead of a single bare agent.
 
-Doing this now also locks in a clean answer to "what does it mean to spawn multiple agents" *before* heavier multi-agent features (cross-agent triggers, role-based handoffs, A2A federation per [BAZ-001](../draft/BAZ-001-a2a-federation-spike.md)) ossify a different shape.
+Doing this now also locks in a clean answer to "what does it mean to spawn multiple agents" *before* heavier multi-agent features (cross-agent triggers, role-based handoffs, or external federation) ossify a different shape.
 
 ## Scope
 
