@@ -86,7 +86,10 @@ if (args[0] === 'run') {
   if (command === '__hang__') {
     process.stdout.write('ready\\n')
     setInterval(() => {}, 1_000)
-  } else if (command === '__startup_race__' || command === '__cleanup_hang__') {
+  } else if (command === '__startup_race__') {
+    process.stdout.write('ready\\n')
+    setInterval(() => {}, 1_000)
+  } else if (command === '__cleanup_hang__') {
     setInterval(() => {}, 1_000)
   } else {
     process.stdout.write('from stdout\\n')
@@ -342,14 +345,17 @@ describe('createDockerBashOperations', () => {
   })
 
   test('rechecks after an initial missing-container cleanup race', async () => {
+    const controller = new AbortController()
     const operations = createDockerBashOperations({ image: 'fake:image', env: {}, dockerPath })
 
     await expect(
       operations.exec('__startup_race__', workspace, {
-        timeout: 0.05,
-        onData: () => undefined,
+        signal: controller.signal,
+        onData: (data) => {
+          if (data.toString('utf8').includes('ready')) controller.abort()
+        },
       }),
-    ).rejects.toThrow(/^timeout:0\.05$/)
+    ).rejects.toThrow(/^aborted$/)
 
     const calls = invocations()
     const run = calls.find((entry) => entry.args[0] === 'run')

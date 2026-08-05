@@ -1,5 +1,29 @@
 # bazilion
 
+## 0.12.0
+
+### Minor Changes
+
+- Add the Operator Attention Center: one source-owned queue and navigation badge for pending
+  communication approvals, reviewed-learning proposals, terminal review and trigger failures, and
+  Agent message loop breaks. Operators can filter the queue, navigate to canonical decision screens,
+  and acknowledge or restore informational failures through authenticated HTTP, CLI, and responsive
+  web surfaces without copying payloads into a second audit store.
+
+- [`6991fde`](https://github.com/rullopat/bazilion/commit/6991fdebd44cca2b7bd82079dd418fa75c20d2aa) Thanks [@rullopat](https://github.com/rullopat)! - Add an opt-in reviewed learning loop for long-lived Agents. Successful user turns can enqueue
+  durable, restricted background reviews that produce evidence-backed private or shared lesson
+  proposals. Operators can configure cadence/model/reasoning, inspect and edit proposals, approve or
+  reject them, and later revoke approved lessons through authenticated HTTP, CLI, and the Agent
+  Learning web tab. Approved private lessons enter only that Agent's prompt; shared lessons become
+  deterministic Team-memory notes.
+
+- [`f0395a7`](https://github.com/rullopat/bazilion/commit/f0395a7df7388ef8ca19ebda51053c0fc90e11ad) Thanks [@rullopat](https://github.com/rullopat)! - Add a durable agent-message loop circuit breaker. Messages now retain causal
+  chain and hop metadata, inbox wake turns propagate that ancestry even when an
+  Agent omits `reply_to`, and the daemon rejects over-budget sends before they can
+  wake another LLM turn. Configure the ceiling with
+  `BAZILION_AGENT_LOOP_MAX_HOPS`; inspect payload-free stop events through the
+  Agent API, `bazilion inbox loop-breaks`, or the web inbox.
+
 ## 0.11.0
 
 ### Minor Changes

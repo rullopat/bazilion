@@ -1,5 +1,21 @@
 # @bazilion/client
 
+## 0.12.0
+
+### Minor Changes
+
+- [`f0395a7`](https://github.com/rullopat/bazilion/commit/f0395a7df7388ef8ca19ebda51053c0fc90e11ad) Thanks [@rullopat](https://github.com/rullopat)! - Add a durable agent-message loop circuit breaker. Messages now retain causal
+  chain and hop metadata, inbox wake turns propagate that ancestry even when an
+  Agent omits `reply_to`, and the daemon rejects over-budget sends before they can
+  wake another LLM turn. Configure the ceiling with
+  `BAZILION_AGENT_LOOP_MAX_HOPS`; inspect payload-free stop events through the
+  Agent API, `bazilion inbox loop-breaks`, or the web inbox.
+
+### Patch Changes
+
+- Updated dependencies [[`6991fde`](https://github.com/rullopat/bazilion/commit/6991fdebd44cca2b7bd82079dd418fa75c20d2aa), [`f0395a7`](https://github.com/rullopat/bazilion/commit/f0395a7df7388ef8ca19ebda51053c0fc90e11ad)]:
+  - @bazilion/api-types@0.12.0
+
 ## 0.11.0
 
 ### Patch Changes
