@@ -1,19 +1,19 @@
 // OpenAI ChatGPT / Codex OAuth — token storage + refresh on top of pi-ai.
 //
-// Pi-ai ships a complete OAuth flow for the ChatGPT backend (`@earendil-works/pi-ai`
-// exports `loginOpenAICodex` + `refreshOpenAICodexToken`), so this module is
+// Pi-ai ships a complete OAuth flow for the ChatGPT backend through its
+// `openai-codex` provider, so this module is
 // thin: it adapts the credential I/O to Bazilion's encrypted secrets store
 // and exposes a single `loadAccessToken(db, authToken)` call that refreshes
 // when the token is about to expire.
 //
-// Storage: the JSON blob `{refresh, access, expires}` lives under the
+// Storage: Pi's complete OAuth credential blob lives under the
 // secrets key `OPENAI_CODEX_OAUTH` in the `secrets` table. The blob is
 // never copied into the env (unlike plain-API-key providers) — refresh is
 // stateful, so every call reads and writes through the live secrets store.
 
 import type { OpenAICodexStatus } from '@bazilion/api-types'
-import type { OAuthCredentials } from '@earendil-works/pi-ai'
-import { loginOpenAICodex, refreshOpenAICodexToken } from '@earendil-works/pi-ai/oauth'
+import type { AuthInteraction, OAuthCredential, OAuthCredentials } from '@earendil-works/pi-ai'
+import { openaiCodexProvider } from '@earendil-works/pi-ai/providers/openai-codex'
 import { type BazilionDb, openSecrets } from '../../core/index.ts'
 
 export const OPENAI_CODEX_SECRET_KEY = 'OPENAI_CODEX_OAUTH'
@@ -29,11 +29,23 @@ const REFRESH_MARGIN_MS = 60_000
  */
 const refreshFlights = new WeakMap<BazilionDb, Map<string, Promise<string>>>()
 
-export interface StoredCredentials {
-  refresh: string
-  access: string
-  expires: number
+function openAICodexOAuth() {
+  const oauth = openaiCodexProvider().auth.oauth
+  if (!oauth) throw new Error('Pi openai-codex provider does not expose OAuth')
+  return oauth
 }
+
+export async function loginOpenAICodex(interaction: AuthInteraction): Promise<OAuthCredential> {
+  return openAICodexOAuth().login(interaction)
+}
+
+export async function refreshOpenAICodexToken(
+  credential: OAuthCredential,
+): Promise<OAuthCredential> {
+  return openAICodexOAuth().refresh(credential)
+}
+
+export type StoredCredentials = OAuthCredential
 
 function readCredentials(db: BazilionDb, authToken: string): StoredCredentials | null {
   const raw = openSecrets(db, authToken).get(OPENAI_CODEX_SECRET_KEY)
@@ -45,7 +57,9 @@ function readCredentials(db: BazilionDb, authToken: string): StoredCredentials |
       typeof parsed.access === 'string' &&
       typeof parsed.expires === 'number'
     ) {
-      return { refresh: parsed.refresh, access: parsed.access, expires: parsed.expires }
+      // Older Bazilion rows predate Pi's type discriminator. Normalizing here
+      // keeps those rows readable while preserving all provider-specific fields.
+      return { ...parsed, type: 'oauth' } as StoredCredentials
     }
     return null
   } catch {
@@ -131,12 +145,7 @@ async function refreshExpiredAccessToken(db: BazilionDb, authToken: string): Pro
   if (!creds) throw credentialsMissingError()
   if (creds.expires > Date.now() + REFRESH_MARGIN_MS) return creds.access
 
-  const refreshed = (await refreshOpenAICodexToken(creds.refresh)) as OAuthCredentials
-  const next: StoredCredentials = {
-    refresh: refreshed.refresh,
-    access: refreshed.access,
-    expires: refreshed.expires,
-  }
+  const next = await refreshOpenAICodexToken(creds)
 
   // A logout or a new login can happen while the network request is pending.
   // Never resurrect cleared credentials or overwrite a newer credential set.
@@ -169,11 +178,5 @@ export function saveLoginCredentials(
   authToken: string,
   creds: OAuthCredentials,
 ): void {
-  writeCredentials(db, authToken, {
-    refresh: creds.refresh,
-    access: creds.access,
-    expires: creds.expires,
-  })
+  writeCredentials(db, authToken, { ...creds, type: 'oauth' })
 }
-
-export { loginOpenAICodex, refreshOpenAICodexToken }

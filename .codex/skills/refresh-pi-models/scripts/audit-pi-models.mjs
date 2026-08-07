@@ -1,19 +1,16 @@
 #!/usr/bin/env node
 
-import { existsSync, readFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 
 const piDist = new URL(
   '../../../../apps/daemon/node_modules/@earendil-works/pi-ai/dist/',
   import.meta.url,
 )
-const compat = new URL('compat.js', piDist)
-const pi = await import(existsSync(compat) ? compat.href : new URL('index.js', piDist).href)
-const { getModels, getProviders } = pi
-if (typeof getModels !== 'function' || typeof getProviders !== 'function') {
-  throw new Error('installed pi-ai exposes neither the compat nor legacy catalog helpers')
-}
+const pi = await import(new URL('providers/all.js', piDist).href)
+const { getBuiltinModels, getBuiltinProviders } = pi
 
 const source = readFileSync('apps/web/src/routes/config/index.tsx', 'utf8')
+const servicesSource = readFileSync('apps/daemon/src/core/services.ts', 'utf8')
 const examples = new Map()
 for (const match of source.matchAll(/case '([^']+)':\s+return '([^']+)'/g)) {
   examples.set(match[1], match[2])
@@ -23,20 +20,33 @@ const aliases = new Map([
   ['bedrock', 'amazon-bedrock'],
   ['azure-openai', 'azure-openai-responses'],
 ])
-const providers = getProviders()
+const providers = getBuiltinProviders()
 const report = []
 const full = process.argv.includes('--full')
 
 for (const provider of providers) {
-  const models = (getModels(provider) ?? []).map((model) => model.id)
+  const models = getBuiltinModels(provider).map((model) => model.id)
   report.push({ provider, count: models.length, models })
 }
 
 const failures = []
+const bazilionProviders = [
+  ...servicesSource.matchAll(/id: '([^']+)'[\s\S]{0,160}?category: 'provider'/g),
+].map((match) => match[1])
+const piToBazilion = new Map([
+  ['amazon-bedrock', 'bedrock'],
+  ['azure-openai-responses', 'azure-openai'],
+])
+for (const provider of providers) {
+  const bazilionProvider = piToBazilion.get(provider) ?? provider
+  if (!bazilionProviders.includes(bazilionProvider)) {
+    failures.push(`Pi provider '${provider}' has no Bazilion provider surface`)
+  }
+}
 for (const [provider, example] of examples) {
   const piProvider = aliases.get(provider) ?? provider
   if (!providers.includes(piProvider)) continue // dynamic/local Bazilion provider
-  const models = (getModels(piProvider) ?? []).map((model) => model.id)
+  const models = getBuiltinModels(piProvider).map((model) => model.id)
   if (models.length > 0 && !models.includes(example)) {
     failures.push(`${provider}: example '${example}' is absent from Pi provider '${piProvider}'`)
   }
@@ -53,7 +63,7 @@ const newOpenAI = report
 console.log(`\nRecent OpenAI families: ${(newOpenAI ?? []).slice(-12).join(', ')}`)
 
 if (failures.length > 0) {
-  console.error('\nStale catalog-backed examples:')
+  console.error('\nProvider/catalog reconciliation failures:')
   for (const failure of failures) console.error(`- ${failure}`)
   process.exitCode = 1
 } else {

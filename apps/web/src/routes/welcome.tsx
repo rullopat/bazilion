@@ -40,7 +40,7 @@ function WelcomePage() {
           <Step n={2}>
             <strong>Enable it and save a model.</strong> Flip the provider's toggle on, then click
             a catalog chip or type one exact model id (for example{' '}
-            <code>claude-opus-4-8</code>, <code>gpt-5.6-luna</code>, or <code>llama3.3</code>) and
+            <code>claude-opus-5</code>, <code>gpt-5.6-sol</code>, or <code>llama3.3</code>) and
             press <em>save models</em>.
           </Step>
           <Step n={3}>

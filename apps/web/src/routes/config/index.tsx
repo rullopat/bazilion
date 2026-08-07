@@ -269,7 +269,7 @@ function ProviderCard({
   )
 }
 
-// Examples mirror pi-ai 0.80's current catalog. Refresh with the repository
+// Examples mirror pi-ai 0.83's current catalog. Refresh with the repository
 // `refresh-pi-models` skill whenever Pi's catalog changes.
 function exampleModelFor(providerId: string): string {
   switch (providerId) {
@@ -278,13 +278,13 @@ function exampleModelFor(providerId: string): string {
     case 'openai':
       return 'gpt-5.6-luna'
     case 'anthropic':
-      return 'claude-opus-4-8'
+      return 'claude-opus-5'
     case 'google':
-      return 'gemini-3-pro-preview'
+      return 'gemini-3.6-flash'
     case 'google-vertex':
-      return 'gemini-3.1-pro-preview'
+      return 'gemini-3.6-flash'
     case 'xai':
-      return 'grok-4.3'
+      return 'grok-4.5'
     case 'groq':
       return 'llama-3.3-70b-versatile'
     case 'cerebras':
@@ -296,25 +296,28 @@ function exampleModelFor(providerId: string): string {
     case 'huggingface':
       return 'Qwen/Qwen3.5-397B-A17B'
     case 'openrouter':
-      return 'anthropic/claude-opus-4.8'
+      return 'anthropic/claude-opus-5'
     case 'vercel-ai-gateway':
-      return 'anthropic/claude-opus-4.8'
+      return 'anthropic/claude-opus-5'
     case 'deepseek':
       return 'deepseek-v4-pro'
     case 'fireworks':
-      return 'accounts/fireworks/models/kimi-k2p7-code'
+      return 'accounts/fireworks/models/kimi-k3'
     case 'together':
-      return 'Qwen/Qwen3.7-Max'
+      return 'moonshotai/Kimi-K3'
     case 'moonshotai':
-      return 'kimi-k2.7-code'
+      return 'kimi-k3'
     case 'moonshotai-cn':
-      return 'kimi-k2.7-code'
+      return 'kimi-k3'
     case 'kimi-coding':
       return 'kimi-for-coding'
     case 'minimax':
       return 'MiniMax-M2.7'
     case 'minimax-cn':
       return 'MiniMax-M3'
+    case 'qwen-token-plan':
+    case 'qwen-token-plan-cn':
+      return 'qwen3.8-max-preview'
     case 'ant-ling':
       return 'Ling-2.6-1T'
     case 'nvidia':
@@ -322,9 +325,9 @@ function exampleModelFor(providerId: string): string {
     case 'cloudflare-workers-ai':
       return '@cf/moonshotai/kimi-k2.6'
     case 'cloudflare-ai-gateway':
-      return 'claude-opus-4-7'
+      return 'claude-opus-5'
     case 'github-copilot':
-      return 'claude-opus-4.7'
+      return 'claude-opus-5'
     case 'xiaomi':
       return 'mimo-v2.5'
     case 'xiaomi-token-plan-ams':
@@ -332,7 +335,7 @@ function exampleModelFor(providerId: string): string {
     case 'xiaomi-token-plan-sgp':
       return 'mimo-v2.5-pro'
     case 'opencode':
-      return 'claude-opus-4-8'
+      return 'claude-opus-5'
     case 'opencode-go':
       return 'kimi-k2.7-code'
     case 'zai-coding-cn':
@@ -340,7 +343,7 @@ function exampleModelFor(providerId: string): string {
     case 'azure-openai':
       return 'gpt-5.6-luna'
     case 'bedrock':
-      return 'anthropic.claude-opus-4-8'
+      return 'global.anthropic.claude-opus-5'
     case 'ollama':
       return 'llama3.3'
     case 'lmstudio':

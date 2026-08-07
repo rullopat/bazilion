@@ -1,5 +1,12 @@
 # bazilion
 
+## 0.12.2
+
+### Patch Changes
+
+- Update the bundled Pi agent engine to 0.83.0, adapt OAuth and session runtime integration to its
+  public provider APIs, add Qwen Token Plan providers, and refresh curated model examples.
+
 ## 0.12.1
 
 ### Patch Changes

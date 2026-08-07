@@ -1,6 +1,6 @@
 {
   "name": "bazilion",
-  "version": "0.12.1",
+  "version": "0.12.2",
   "description": "Multi-agent runtime CLI — spawn LLM agents, manage profiles/teams/skills, and run the local daemon.",
   "license": "MIT",
   "repository": {
@@ -43,9 +43,9 @@
     "access": "public"
   },
   "dependencies": {
-    "@earendil-works/pi-agent-core": "0.80.6",
-    "@earendil-works/pi-ai": "0.80.6",
-    "@earendil-works/pi-coding-agent": "0.80.6",
+    "@earendil-works/pi-agent-core": "0.83.0",
+    "@earendil-works/pi-ai": "0.83.0",
+    "@earendil-works/pi-coding-agent": "0.83.0",
     "@hono/node-server": "^2.0.6",
     "@mozilla/readability": "^0.6.0",
     "@playwright/browser-chromium": "^1.61.0",

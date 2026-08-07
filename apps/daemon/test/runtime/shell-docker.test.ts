@@ -317,7 +317,10 @@ describe('createDockerBashOperations', () => {
 
   test.each([
     { kind: 'abort' as const, timeout: undefined },
-    { kind: 'timeout' as const, timeout: 0.05 },
+    // Keep enough headroom for the Docker preflight subprocesses when the
+    // whole Vitest tree is saturating the host; the timeout still exercises
+    // the same cleanup path without racing before `docker run` starts.
+    { kind: 'timeout' as const, timeout: 0.5 },
   ])('kills the Docker CLI and force-removes the exact container on $kind', async (scenario) => {
     const controller = new AbortController()
     const operations = createDockerBashOperations({ image: 'fake:image', env: {}, dockerPath })
@@ -332,7 +335,7 @@ describe('createDockerBashOperations', () => {
     })
 
     await expect(execution).rejects.toThrow(
-      scenario.kind === 'abort' ? /^aborted$/ : /^timeout:0\.05$/,
+      scenario.kind === 'abort' ? /^aborted$/ : /^timeout:0\.5$/,
     )
 
     const calls = invocations()

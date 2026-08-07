@@ -8,6 +8,8 @@ import { type RetryOptions, withRetry } from './retry.ts'
 import type { Provider } from './types.ts'
 
 export interface ProviderConfig {
+  /** Full merged daemon environment for providers with multi-field/ambient auth. */
+  env?: NodeJS.ProcessEnv
   anthropic?: { apiKey: string; baseURL?: string }
   openai?: { apiKey: string; baseURL?: string }
   /** ChatGPT/Codex OAuth. The apiKey is fetched+refreshed lazily from secrets. */
@@ -33,6 +35,8 @@ export interface ProviderConfig {
   kimiCoding?: { apiKey: string; baseURL?: string }
   minimax?: { apiKey: string; baseURL?: string }
   minimaxCn?: { apiKey: string; baseURL?: string }
+  qwenTokenPlan?: { apiKey: string; baseURL?: string }
+  qwenTokenPlanCn?: { apiKey: string; baseURL?: string }
   xiaomi?: { apiKey: string; baseURL?: string }
   xiaomiTokenPlanAms?: { apiKey: string; baseURL?: string }
   xiaomiTokenPlanCn?: { apiKey: string; baseURL?: string }
@@ -68,6 +72,7 @@ export function loadProviderConfigFromEnv(
   oauth?: { db: BazilionDb; authToken: string },
 ): ProviderConfig {
   const config: ProviderConfig = {
+    env,
     lmstudio: {
       ...(env.LMSTUDIO_URL !== undefined ? { baseURL: env.LMSTUDIO_URL } : {}),
       ...(env.LMSTUDIO_API_KEY !== undefined ? { apiKey: env.LMSTUDIO_API_KEY } : {}),
@@ -113,6 +118,12 @@ export function loadProviderConfigFromEnv(
   if (env.KIMI_API_KEY) config.kimiCoding = { apiKey: env.KIMI_API_KEY }
   if (env.MINIMAX_API_KEY) config.minimax = { apiKey: env.MINIMAX_API_KEY }
   if (env.MINIMAX_CN_API_KEY) config.minimaxCn = { apiKey: env.MINIMAX_CN_API_KEY }
+  if (env.QWEN_TOKEN_PLAN_API_KEY) {
+    config.qwenTokenPlan = { apiKey: env.QWEN_TOKEN_PLAN_API_KEY }
+  }
+  if (env.QWEN_TOKEN_PLAN_CN_API_KEY) {
+    config.qwenTokenPlanCn = { apiKey: env.QWEN_TOKEN_PLAN_CN_API_KEY }
+  }
   if (env.XIAOMI_API_KEY) config.xiaomi = { apiKey: env.XIAOMI_API_KEY }
   if (env.XIAOMI_TOKEN_PLAN_AMS_API_KEY) {
     config.xiaomiTokenPlanAms = { apiKey: env.XIAOMI_TOKEN_PLAN_AMS_API_KEY }
@@ -173,7 +184,6 @@ const PROVIDERS: Record<string, ProviderEntry> = {
     build: (c) =>
       piProvider({
         providerName: 'anthropic',
-        fallbackApi: 'anthropic-messages',
         apiKey: c.anthropic?.apiKey,
         baseUrl: c.anthropic?.baseURL,
       }),
@@ -184,7 +194,6 @@ const PROVIDERS: Record<string, ProviderEntry> = {
     build: (c) =>
       piProvider({
         providerName: 'openai',
-        fallbackApi: 'openai-completions',
         apiKey: c.openai?.apiKey,
         baseUrl: c.openai?.baseURL,
       }),
@@ -202,7 +211,6 @@ const PROVIDERS: Record<string, ProviderEntry> = {
       if (!openaiCodex) throw new Error('openai-codex not configured')
       return piProvider({
         providerName: 'openai-codex',
-        fallbackApi: 'openai-codex-responses',
         apiKey: () => loadOpenAICodexAccessToken(openaiCodex.db, openaiCodex.authToken),
       })
     },
@@ -213,7 +221,6 @@ const PROVIDERS: Record<string, ProviderEntry> = {
     build: (c) =>
       piProvider({
         providerName: 'google',
-        fallbackApi: 'google-generative-ai',
         apiKey: c.google?.apiKey,
         baseUrl: c.google?.baseURL,
       }),
@@ -221,7 +228,7 @@ const PROVIDERS: Record<string, ProviderEntry> = {
   },
   'google-vertex': {
     configured: (c) => !!c.googleVertex,
-    build: () => piProvider({ providerName: 'google-vertex', fallbackApi: 'google-vertex' }),
+    build: (c) => piProvider({ providerName: 'google-vertex', env: c.env }),
     hint: 'GOOGLE_CLOUD_PROJECT + GOOGLE_CLOUD_LOCATION + ADC (gcloud auth)',
   },
   'azure-openai': {
@@ -229,7 +236,6 @@ const PROVIDERS: Record<string, ProviderEntry> = {
     build: (c) =>
       piProvider({
         providerName: 'azure-openai',
-        fallbackApi: 'azure-openai-responses',
         apiKey: c.azureOpenai?.apiKey,
         baseUrl: c.azureOpenai?.baseURL,
       }),
@@ -237,11 +243,10 @@ const PROVIDERS: Record<string, ProviderEntry> = {
   },
   bedrock: {
     configured: (c) => !!c.bedrock,
-    build: () =>
+    build: (c) =>
       piProvider({
         providerName: 'bedrock',
-        piProviderName: 'amazon-bedrock',
-        fallbackApi: 'bedrock-converse-stream',
+        env: c.env,
       }),
     hint: 'AWS_PROFILE or AWS_ACCESS_KEY_ID+AWS_SECRET_ACCESS_KEY',
   },
@@ -250,7 +255,6 @@ const PROVIDERS: Record<string, ProviderEntry> = {
     build: (c) =>
       piProvider({
         providerName: 'mistral',
-        fallbackApi: 'openai-completions',
         apiKey: c.mistral?.apiKey,
         baseUrl: c.mistral?.baseURL,
       }),
@@ -261,7 +265,6 @@ const PROVIDERS: Record<string, ProviderEntry> = {
     build: (c) =>
       piProvider({
         providerName: 'groq',
-        fallbackApi: 'openai-completions',
         apiKey: c.groq?.apiKey,
         baseUrl: c.groq?.baseURL,
       }),
@@ -272,7 +275,6 @@ const PROVIDERS: Record<string, ProviderEntry> = {
     build: (c) =>
       piProvider({
         providerName: 'cerebras',
-        fallbackApi: 'openai-completions',
         apiKey: c.cerebras?.apiKey,
         baseUrl: c.cerebras?.baseURL,
       }),
@@ -283,7 +285,6 @@ const PROVIDERS: Record<string, ProviderEntry> = {
     build: (c) =>
       piProvider({
         providerName: 'xai',
-        fallbackApi: 'openai-completions',
         apiKey: c.xai?.apiKey,
         baseUrl: c.xai?.baseURL,
       }),
@@ -294,7 +295,6 @@ const PROVIDERS: Record<string, ProviderEntry> = {
     build: (c) =>
       piProvider({
         providerName: 'zai',
-        fallbackApi: 'openai-completions',
         apiKey: c.zai?.apiKey,
         baseUrl: c.zai?.baseURL,
       }),
@@ -305,7 +305,6 @@ const PROVIDERS: Record<string, ProviderEntry> = {
     build: (c) =>
       piProvider({
         providerName: 'huggingface',
-        fallbackApi: 'openai-completions',
         apiKey: c.huggingface?.apiKey,
         baseUrl: c.huggingface?.baseURL,
       }),
@@ -316,7 +315,6 @@ const PROVIDERS: Record<string, ProviderEntry> = {
     build: (c) =>
       piProvider({
         providerName: 'openrouter',
-        fallbackApi: 'openai-completions',
         apiKey: c.openrouter?.apiKey,
         baseUrl: c.openrouter?.baseURL,
       }),
@@ -327,7 +325,6 @@ const PROVIDERS: Record<string, ProviderEntry> = {
     build: (c) =>
       piProvider({
         providerName: 'vercel-ai-gateway',
-        fallbackApi: 'openai-completions',
         apiKey: c.vercelAiGateway?.apiKey,
         baseUrl: c.vercelAiGateway?.baseURL,
       }),
@@ -338,7 +335,6 @@ const PROVIDERS: Record<string, ProviderEntry> = {
     build: (c) =>
       piProvider({
         providerName: 'deepseek',
-        fallbackApi: 'openai-completions',
         apiKey: c.deepseek?.apiKey,
         baseUrl: c.deepseek?.baseURL,
       }),
@@ -349,7 +345,6 @@ const PROVIDERS: Record<string, ProviderEntry> = {
     build: (c) =>
       piProvider({
         providerName: 'fireworks',
-        fallbackApi: 'anthropic-messages',
         apiKey: c.fireworks?.apiKey,
         baseUrl: c.fireworks?.baseURL,
       }),
@@ -360,7 +355,6 @@ const PROVIDERS: Record<string, ProviderEntry> = {
     build: (c) =>
       piProvider({
         providerName: 'together',
-        fallbackApi: 'openai-completions',
         apiKey: c.together?.apiKey,
         baseUrl: c.together?.baseURL,
       }),
@@ -371,7 +365,6 @@ const PROVIDERS: Record<string, ProviderEntry> = {
     build: (c) =>
       piProvider({
         providerName: 'moonshotai',
-        fallbackApi: 'openai-completions',
         apiKey: c.moonshotai?.apiKey,
         baseUrl: c.moonshotai?.baseURL,
       }),
@@ -382,7 +375,6 @@ const PROVIDERS: Record<string, ProviderEntry> = {
     build: (c) =>
       piProvider({
         providerName: 'moonshotai-cn',
-        fallbackApi: 'openai-completions',
         apiKey: c.moonshotaiCn?.apiKey,
         baseUrl: c.moonshotaiCn?.baseURL,
       }),
@@ -393,7 +385,6 @@ const PROVIDERS: Record<string, ProviderEntry> = {
     build: (c) =>
       piProvider({
         providerName: 'kimi-coding',
-        fallbackApi: 'anthropic-messages',
         apiKey: c.kimiCoding?.apiKey,
         baseUrl: c.kimiCoding?.baseURL,
       }),
@@ -404,7 +395,6 @@ const PROVIDERS: Record<string, ProviderEntry> = {
     build: (c) =>
       piProvider({
         providerName: 'minimax',
-        fallbackApi: 'anthropic-messages',
         apiKey: c.minimax?.apiKey,
         baseUrl: c.minimax?.baseURL,
       }),
@@ -415,18 +405,36 @@ const PROVIDERS: Record<string, ProviderEntry> = {
     build: (c) =>
       piProvider({
         providerName: 'minimax-cn',
-        fallbackApi: 'anthropic-messages',
         apiKey: c.minimaxCn?.apiKey,
         baseUrl: c.minimaxCn?.baseURL,
       }),
     hint: 'MINIMAX_CN_API_KEY',
+  },
+  'qwen-token-plan': {
+    configured: (c) => !!c.qwenTokenPlan,
+    build: (c) =>
+      piProvider({
+        providerName: 'qwen-token-plan',
+        apiKey: c.qwenTokenPlan?.apiKey,
+        baseUrl: c.qwenTokenPlan?.baseURL,
+      }),
+    hint: 'QWEN_TOKEN_PLAN_API_KEY',
+  },
+  'qwen-token-plan-cn': {
+    configured: (c) => !!c.qwenTokenPlanCn,
+    build: (c) =>
+      piProvider({
+        providerName: 'qwen-token-plan-cn',
+        apiKey: c.qwenTokenPlanCn?.apiKey,
+        baseUrl: c.qwenTokenPlanCn?.baseURL,
+      }),
+    hint: 'QWEN_TOKEN_PLAN_CN_API_KEY',
   },
   xiaomi: {
     configured: (c) => !!c.xiaomi,
     build: (c) =>
       piProvider({
         providerName: 'xiaomi',
-        fallbackApi: 'openai-completions',
         apiKey: c.xiaomi?.apiKey,
         baseUrl: c.xiaomi?.baseURL,
       }),
@@ -437,7 +445,6 @@ const PROVIDERS: Record<string, ProviderEntry> = {
     build: (c) =>
       piProvider({
         providerName: 'xiaomi-token-plan-ams',
-        fallbackApi: 'openai-completions',
         apiKey: c.xiaomiTokenPlanAms?.apiKey,
         baseUrl: c.xiaomiTokenPlanAms?.baseURL,
       }),
@@ -448,7 +455,6 @@ const PROVIDERS: Record<string, ProviderEntry> = {
     build: (c) =>
       piProvider({
         providerName: 'xiaomi-token-plan-cn',
-        fallbackApi: 'openai-completions',
         apiKey: c.xiaomiTokenPlanCn?.apiKey,
         baseUrl: c.xiaomiTokenPlanCn?.baseURL,
       }),
@@ -459,7 +465,6 @@ const PROVIDERS: Record<string, ProviderEntry> = {
     build: (c) =>
       piProvider({
         providerName: 'xiaomi-token-plan-sgp',
-        fallbackApi: 'openai-completions',
         apiKey: c.xiaomiTokenPlanSgp?.apiKey,
         baseUrl: c.xiaomiTokenPlanSgp?.baseURL,
       }),
@@ -470,7 +475,6 @@ const PROVIDERS: Record<string, ProviderEntry> = {
     build: (c) =>
       piProvider({
         providerName: 'ant-ling',
-        fallbackApi: 'openai-completions',
         apiKey: c.antLing?.apiKey,
         baseUrl: c.antLing?.baseURL,
       }),
@@ -481,7 +485,6 @@ const PROVIDERS: Record<string, ProviderEntry> = {
     build: (c) =>
       piProvider({
         providerName: 'nvidia',
-        fallbackApi: 'openai-completions',
         apiKey: c.nvidia?.apiKey,
         baseUrl: c.nvidia?.baseURL,
       }),
@@ -492,7 +495,6 @@ const PROVIDERS: Record<string, ProviderEntry> = {
     build: (c) =>
       piProvider({
         providerName: 'opencode',
-        fallbackApi: 'openai-completions',
         apiKey: c.opencode?.apiKey,
         baseUrl: c.opencode?.baseURL,
       }),
@@ -503,7 +505,6 @@ const PROVIDERS: Record<string, ProviderEntry> = {
     build: (c) =>
       piProvider({
         providerName: 'opencode-go',
-        fallbackApi: 'openai-completions',
         apiKey: c.opencodeGo?.apiKey,
         baseUrl: c.opencodeGo?.baseURL,
       }),
@@ -514,7 +515,6 @@ const PROVIDERS: Record<string, ProviderEntry> = {
     build: (c) =>
       piProvider({
         providerName: 'zai-coding-cn',
-        fallbackApi: 'openai-completions',
         apiKey: c.zaiCodingCn?.apiKey,
         baseUrl: c.zaiCodingCn?.baseURL,
       }),
@@ -525,7 +525,6 @@ const PROVIDERS: Record<string, ProviderEntry> = {
     build: (c) =>
       piProvider({
         providerName: 'github-copilot',
-        fallbackApi: 'anthropic-messages',
         apiKey: c.githubCopilot?.apiKey,
       }),
     hint: 'COPILOT_GITHUB_TOKEN (generic GH_TOKEN/GITHUB_TOKEN are ignored)',
@@ -535,7 +534,7 @@ const PROVIDERS: Record<string, ProviderEntry> = {
     build: (c) =>
       piProvider({
         providerName: 'cloudflare-ai-gateway',
-        fallbackApi: 'anthropic-messages',
+        env: c.env,
         apiKey: c.cloudflareAiGateway?.apiKey,
       }),
     hint: 'CLOUDFLARE_API_KEY + CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_GATEWAY_ID',
@@ -545,7 +544,7 @@ const PROVIDERS: Record<string, ProviderEntry> = {
     build: (c) =>
       piProvider({
         providerName: 'cloudflare-workers-ai',
-        fallbackApi: 'openai-completions',
+        env: c.env,
         apiKey: c.cloudflareWorkersAi?.apiKey,
       }),
     hint: 'CLOUDFLARE_API_KEY + CLOUDFLARE_ACCOUNT_ID',
@@ -555,7 +554,6 @@ const PROVIDERS: Record<string, ProviderEntry> = {
     build: (c) =>
       piProvider({
         providerName: 'lmstudio',
-        fallbackApi: 'openai-completions',
         apiKey: c.lmstudio?.apiKey ?? 'lm-studio',
         baseUrl: c.lmstudio?.baseURL ?? 'http://127.0.0.1:1234/v1',
       }),
@@ -566,7 +564,6 @@ const PROVIDERS: Record<string, ProviderEntry> = {
     build: (c) =>
       piProvider({
         providerName: 'ollama',
-        fallbackApi: 'openai-completions',
         apiKey: c.ollama?.apiKey ?? 'ollama',
         baseUrl: c.ollama?.baseURL ?? 'http://127.0.0.1:11434/v1',
       }),
@@ -581,7 +578,6 @@ const PROVIDERS: Record<string, ProviderEntry> = {
     build: (c) =>
       piProvider({
         providerName: 'llamacpp',
-        fallbackApi: 'openai-completions',
         apiKey: c.llamacpp?.apiKey ?? 'no-key',
         baseUrl: c.llamacpp?.baseURL ?? 'http://127.0.0.1:8080/v1',
       }),

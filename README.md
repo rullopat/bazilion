@@ -42,7 +42,7 @@ Then, in another terminal:
 # Configure a provider — env var works, or persist via `bazilion config set`.
 export ANTHROPIC_API_KEY=sk-ant-...
 bazilion provider enable anthropic
-bazilion provider models-set anthropic claude-opus-4-8
+bazilion provider models-set anthropic claude-opus-5
 
 # Spawn an agent from the auto-created `default` profile.
 bazilion agent spawn --profile default --name first
@@ -210,7 +210,7 @@ Two tiers: the **data tier** (`bazilion.db*`, `profiles/`, `agents/`, `teams/`) 
 - **Native modules**: qmd pulls `better-sqlite3` and a handful of tree-sitter grammars (small native compiles on install). `node-llama-cpp` is a qmd transitive dep but intentionally excluded from build in `pnpm.onlyBuiltDependencies` — qmd's BM25 search doesn't need it, and enabling it would require downloading multi-GB GGUF models.
 - **Skills format**: standard agent-skill `SKILL.md` (YAML frontmatter with `name` / `description`, free-form body). OpenClaw skills drop in unchanged via `bazilion skill import --from openclaw`.
 - **Core agent engine**: [pi-coding-agent](https://www.npmjs.com/package/@earendil-works/pi-coding-agent) is the engine Bazilion is based on. It owns the per-turn agent loop, transcript storage (JSONL session files under `~/.bazilion/agents/<id>/sessions/`), replay, compaction, provider/tool execution, and the file-IO toolset (`read`/`bash`/`edit`/`write`/`grep`/`find`/`ls`).
-- **LLM providers**: routed through [pi-ai](https://www.npmjs.com/package/@earendil-works/pi-ai) — Anthropic, OpenAI, OpenAI Codex (ChatGPT OAuth), Google AI Studio, Google Vertex, Azure OpenAI, AWS Bedrock, Mistral, Groq, Cerebras, xAI, Z.AI, Hugging Face, OpenRouter, Vercel AI Gateway, LM Studio, Ollama. Model strings are `provider:model`.
+- **LLM providers**: routed through [pi-ai](https://www.npmjs.com/package/@earendil-works/pi-ai) — Anthropic, OpenAI, OpenAI Codex (ChatGPT OAuth), Google AI Studio/Vertex, Azure OpenAI, AWS Bedrock, GitHub Copilot, DeepSeek, Mistral, Groq, Cerebras, xAI, Z.AI, Hugging Face, Fireworks, Together, Moonshot/Kimi, MiniMax, Qwen Token Plan, Xiaomi MiMo, Ant Ling, NVIDIA NIM, OpenCode, OpenRouter, Vercel AI Gateway, Cloudflare, LM Studio, Ollama, and llama.cpp. Model strings are `provider:model`.
 
 ## Exposing beyond loopback
 

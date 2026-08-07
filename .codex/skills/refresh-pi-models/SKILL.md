@@ -19,14 +19,17 @@ ids or update examples merely because a model was announced elsewhere.
 4. Update both the daemon and published CLI workspace dependencies with pnpm. Never hand-edit the
    lockfile.
 5. Inspect upstream release/API changes. Fix Bazilion imports and adapters instead of pinning an
-   old release. In particular, verify whether catalog helpers still live at the root or require
-   `@earendil-works/pi-ai/compat`/the provider collection API.
-6. Run `node .codex/skills/refresh-pi-models/scripts/audit-pi-models.mjs`. Use its exact catalog
-   output to update:
+   old release. Use the public `@earendil-works/pi-ai/providers/all` catalog and
+   `ModelRuntime` APIs; treat a new `/compat` dependency as a regression.
+6. Run `node .codex/skills/refresh-pi-models/scripts/audit-pi-models.mjs`. It must fail when an
+   upstream catalog provider has no Bazilion service surface or a curated example is stale. Use
+   its exact catalog output to update:
    - `apps/web/src/routes/config/index.tsx` examples and its Pi-version comment;
    - first-run examples in `apps/web/src/routes/welcome.tsx`;
    - root and CLI README model examples/provider text;
    - current AGENTS.md model examples when stale.
+   Add new upstream providers across `services.ts`, registry config/build logic, session API-key
+   resolution, catalog aliases/live endpoints when applicable, web examples, and focused tests.
 7. Prefer a current generally useful tool-capable model per provider. Do not rewrite historical
    changelogs or tests whose ids are deliberate fixtures. For OAuth `openai-codex`, confirm the
    model exists in that provider's catalog rather than copying an `openai` API model id.

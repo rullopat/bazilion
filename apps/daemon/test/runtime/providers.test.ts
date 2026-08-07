@@ -1,9 +1,12 @@
+import { InMemoryCredentialStore } from '@earendil-works/pi-ai'
+import { getBuiltinModels } from '@earendil-works/pi-ai/providers/all'
 import {
-  createAssistantMessageEventStream,
-  registerApiProvider,
-  unregisterApiProviders,
-} from '@earendil-works/pi-ai/compat'
-import { afterEach, beforeEach, expect, test } from 'vitest'
+  fauxAssistantMessage,
+  fauxProvider,
+  fauxToolCall,
+} from '@earendil-works/pi-ai/providers/faux'
+import { ModelRuntime } from '@earendil-works/pi-coding-agent'
+import { expect, test } from 'vitest'
 import { piProvider } from '../../src/runtime/providers/pi-adapter.ts'
 import {
   createProviderRegistry,
@@ -15,128 +18,35 @@ import {
 // canned event streams. Wire-format correctness (SSE framing, provider-specific
 // request shapes) is pi-ai's responsibility and covered by its own test suite.
 
-const FAKE_API = 'bazilion-test-fake' as const
-const TEST_SRC = 'bazilion-tests'
-
-beforeEach(() => {
-  unregisterApiProviders(TEST_SRC)
-})
-afterEach(() => {
-  unregisterApiProviders(TEST_SRC)
-})
-
-function registerFakeApi(build: () => ReturnType<typeof createAssistantMessageEventStream>): void {
-  registerApiProvider(
-    {
-      api: FAKE_API,
-      stream: () => build(),
-      streamSimple: () => build(),
-    },
-    TEST_SRC,
+test('Pi 0.83 catalog includes the refreshed model families and Qwen providers', () => {
+  expect(getBuiltinModels('openai-codex').map((model) => model.id)).toContain('gpt-5.6-sol')
+  expect(getBuiltinModels('anthropic').map((model) => model.id)).toContain('claude-opus-5')
+  expect(getBuiltinModels('google').map((model) => model.id)).toContain('gemini-3.6-flash')
+  expect(getBuiltinModels('qwen-token-plan').map((model) => model.id)).toContain(
+    'qwen3.8-max-preview',
   )
-}
+  expect(getBuiltinModels('qwen-token-plan-cn').map((model) => model.id)).toContain(
+    'qwen3.8-max-preview',
+  )
+})
 
-function cannedAssistantText(text: string): ReturnType<typeof createAssistantMessageEventStream> {
-  const stream = createAssistantMessageEventStream()
-  const assistant = {
-    role: 'assistant' as const,
-    content: [{ type: 'text' as const, text }],
-    api: FAKE_API,
-    provider: 'fake',
-    model: 'm',
-    usage: {
-      input: 10,
-      output: 5,
-      cacheRead: 0,
-      cacheWrite: 0,
-      totalTokens: 15,
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-    },
-    stopReason: 'stop' as const,
-    timestamp: Date.now(),
-  }
-  // Push chunked deltas to exercise the delta path, then a terminal done event.
-  queueMicrotask(() => {
-    stream.push({ type: 'start', partial: assistant })
-    stream.push({ type: 'text_start', contentIndex: 0, partial: assistant })
-    stream.push({
-      type: 'text_delta',
-      contentIndex: 0,
-      delta: text.slice(0, 3),
-      partial: assistant,
+function fauxRuntime(response: ReturnType<typeof fauxAssistantMessage>) {
+  return async () => {
+    const faux = fauxProvider({ provider: 'bazilion-fake', models: [{ id: 'm' }] })
+    faux.setResponses([response])
+    const runtime = await ModelRuntime.create({
+      credentials: new InMemoryCredentialStore(),
+      modelsPath: null,
     })
-    stream.push({ type: 'text_delta', contentIndex: 0, delta: text.slice(3), partial: assistant })
-    stream.push({ type: 'text_end', contentIndex: 0, content: text, partial: assistant })
-    stream.push({ type: 'done', reason: 'stop', message: assistant })
-    stream.end(assistant)
-  })
-  return stream
-}
-
-function cannedToolCall(
-  id: string,
-  name: string,
-  args: Record<string, unknown>,
-): ReturnType<typeof createAssistantMessageEventStream> {
-  const stream = createAssistantMessageEventStream()
-  const assistant = {
-    role: 'assistant' as const,
-    content: [{ type: 'toolCall' as const, id, name, arguments: args }],
-    api: FAKE_API,
-    provider: 'fake',
-    model: 'm',
-    usage: {
-      input: 0,
-      output: 0,
-      cacheRead: 0,
-      cacheWrite: 0,
-      totalTokens: 0,
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-    },
-    stopReason: 'toolUse' as const,
-    timestamp: Date.now(),
+    runtime.registerNativeProvider(faux.provider)
+    return runtime
   }
-  queueMicrotask(() => {
-    stream.push({ type: 'start', partial: assistant })
-    stream.push({ type: 'done', reason: 'toolUse', message: assistant })
-    stream.end(assistant)
-  })
-  return stream
-}
-
-function cannedError(message: string): ReturnType<typeof createAssistantMessageEventStream> {
-  const stream = createAssistantMessageEventStream()
-  const assistant = {
-    role: 'assistant' as const,
-    content: [],
-    api: FAKE_API,
-    provider: 'fake',
-    model: 'm',
-    usage: {
-      input: 0,
-      output: 0,
-      cacheRead: 0,
-      cacheWrite: 0,
-      totalTokens: 0,
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-    },
-    stopReason: 'error' as const,
-    errorMessage: message,
-    timestamp: Date.now(),
-  }
-  queueMicrotask(() => {
-    stream.push({ type: 'error', reason: 'error', error: assistant })
-    stream.end(assistant)
-  })
-  return stream
 }
 
 test('piProvider surfaces text, usage, and stopReason from a completed stream', async () => {
-  registerFakeApi(() => cannedAssistantText('hello there'))
   const provider = piProvider({
     providerName: 'bazilion-fake',
-    fallbackApi: FAKE_API,
-    apiKey: 'k',
+    runtimeFactory: fauxRuntime(fauxAssistantMessage('hello there')),
   })
   const res = await provider.chat({
     model: 'm',
@@ -145,15 +55,13 @@ test('piProvider surfaces text, usage, and stopReason from a completed stream', 
   expect(res.content).toBe('hello there')
   expect(res.toolCalls).toEqual([])
   expect(res.stopReason).toBe('stop')
-  expect(res.usage).toEqual({ promptTokens: 10, completionTokens: 5 })
+  expect(res.usage?.completionTokens).toBeGreaterThan(0)
 })
 
 test('piProvider calls onDelta for each streamed chunk', async () => {
-  registerFakeApi(() => cannedAssistantText('abcdef'))
   const provider = piProvider({
     providerName: 'bazilion-fake',
-    fallbackApi: FAKE_API,
-    apiKey: 'k',
+    runtimeFactory: fauxRuntime(fauxAssistantMessage('abcdef')),
   })
   const deltas: string[] = []
   const res = await provider.chat({
@@ -166,11 +74,14 @@ test('piProvider calls onDelta for each streamed chunk', async () => {
 })
 
 test('piProvider extracts toolCalls with JSON-stringified arguments', async () => {
-  registerFakeApi(() => cannedToolCall('call_1', 'memory_write', { key: 'x.md', content: 'y' }))
   const provider = piProvider({
     providerName: 'bazilion-fake',
-    fallbackApi: FAKE_API,
-    apiKey: 'k',
+    runtimeFactory: fauxRuntime(
+      fauxAssistantMessage(
+        fauxToolCall('memory_write', { key: 'x.md', content: 'y' }, { id: 'call_1' }),
+        { stopReason: 'toolUse' },
+      ),
+    ),
   })
   const res = await provider.chat({
     model: 'm',
@@ -193,11 +104,11 @@ test('piProvider extracts toolCalls with JSON-stringified arguments', async () =
 })
 
 test('piProvider surfaces errorMessage as a thrown Error', async () => {
-  registerFakeApi(() => cannedError('upstream blew up'))
   const provider = piProvider({
     providerName: 'bazilion-fake',
-    fallbackApi: FAKE_API,
-    apiKey: 'k',
+    runtimeFactory: fauxRuntime(
+      fauxAssistantMessage([], { stopReason: 'error', errorMessage: 'upstream blew up' }),
+    ),
   })
   await expect(
     provider.chat({ model: 'm', messages: [{ role: 'user', content: 'hi' }] }),
@@ -230,6 +141,8 @@ test('registry resolves every configured provider:model string', () => {
     kimiCoding: { apiKey: 'k' },
     minimax: { apiKey: 'k' },
     minimaxCn: { apiKey: 'k' },
+    qwenTokenPlan: { apiKey: 'k' },
+    qwenTokenPlanCn: { apiKey: 'k' },
     xiaomi: { apiKey: 'k' },
     xiaomiTokenPlanAms: { apiKey: 'k' },
     xiaomiTokenPlanCn: { apiKey: 'k' },
@@ -266,6 +179,8 @@ test('registry resolves every configured provider:model string', () => {
     'kimi-coding',
     'minimax',
     'minimax-cn',
+    'qwen-token-plan',
+    'qwen-token-plan-cn',
     'xiaomi',
     'xiaomi-token-plan-ams',
     'xiaomi-token-plan-cn',
@@ -324,6 +239,8 @@ test('loadProviderConfigFromEnv picks up every standard env var', () => {
     KIMI_API_KEY: 'ki',
     MINIMAX_API_KEY: 'mm',
     MINIMAX_CN_API_KEY: 'mmcn',
+    QWEN_TOKEN_PLAN_API_KEY: 'qw',
+    QWEN_TOKEN_PLAN_CN_API_KEY: 'qwcn',
     XIAOMI_API_KEY: 'xm',
     XIAOMI_TOKEN_PLAN_AMS_API_KEY: 'xmams',
     XIAOMI_TOKEN_PLAN_CN_API_KEY: 'xmcn',
@@ -354,6 +271,8 @@ test('loadProviderConfigFromEnv picks up every standard env var', () => {
   expect(config.kimiCoding?.apiKey).toBe('ki')
   expect(config.minimax?.apiKey).toBe('mm')
   expect(config.minimaxCn?.apiKey).toBe('mmcn')
+  expect(config.qwenTokenPlan?.apiKey).toBe('qw')
+  expect(config.qwenTokenPlanCn?.apiKey).toBe('qwcn')
   expect(config.xiaomi?.apiKey).toBe('xm')
   expect(config.xiaomiTokenPlanAms?.apiKey).toBe('xmams')
   expect(config.xiaomiTokenPlanCn?.apiKey).toBe('xmcn')

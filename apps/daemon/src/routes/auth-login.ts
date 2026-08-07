@@ -79,16 +79,17 @@ authRouter.post('/auth/openai/login', async (c) => {
   const { db, authToken } = getCtx()
   try {
     const creds = await loginOpenAICodex({
-      onAuth: ({ url }) => openBrowser(url),
-      onPrompt: () =>
-        Promise.reject(
-          new Error(
-            'interactive paste not supported in the web flow — cancel and try again, or use `bazilion auth openai login`',
-          ),
-        ),
-      onProgress: () => {
-        // single blocking POST keeps the UI simple
+      notify: (event) => {
+        if (event.type === 'auth_url') openBrowser(event.url)
       },
+      prompt: (prompt) =>
+        prompt.type === 'select'
+          ? Promise.resolve(prompt.options[0]?.id ?? '')
+          : Promise.reject(
+              new Error(
+                'interactive paste not supported in the web flow — cancel and try again, or use `bazilion auth openai login`',
+              ),
+            ),
     })
     saveOpenAICodexLoginCredentials(db, authToken, creds)
     return c.json(getOpenAICodexStatus(db, authToken))
@@ -105,7 +106,7 @@ authRouter.post('/providers/test', async (c) => {
     return c.json({ error: 'model is required' }, 400)
   }
   const message = typeof body.message === 'string' && body.message ? body.message : 'say hi briefly'
-  const { db, paths, authToken } = getCtx()
+  const { db, authToken } = getCtx()
   const env = mergeSecretsIntoEnv(db, authToken)
   const reg = createProviderRegistry(loadProviderConfigFromEnv(env, { db, authToken }), {
     enabledSet: providerStateRepo.listEnabled(db),

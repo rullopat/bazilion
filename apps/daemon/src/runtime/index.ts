@@ -39,7 +39,8 @@ export { createBazilionCustomTools, ourToolToPiTool } from './pi/tools.ts'
 export type { CatalogResult, LiveFetchResult } from './providers/catalog.ts'
 export { listCatalogModels, listCatalogModelsSync } from './providers/catalog.ts'
 export type { PiProviderConfig } from './providers/pi-adapter.ts'
-export { piProvider, resolveModel as resolvePiModel } from './providers/pi-adapter.ts'
+export { piProvider } from './providers/pi-adapter.ts'
+export { resolvePiModel } from './providers/pi-runtime.ts'
 export type {
   ProviderConfig,
   ProviderMeta,

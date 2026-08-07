@@ -24,7 +24,17 @@ const oauthMocks = vi.hoisted(() => ({
   refreshOpenAICodexToken: vi.fn(),
 }))
 
-vi.mock('@earendil-works/pi-ai/oauth', () => oauthMocks)
+vi.mock('@earendil-works/pi-ai/providers/openai-codex', () => ({
+  openaiCodexProvider: () => ({
+    auth: {
+      oauth: {
+        login: oauthMocks.loginOpenAICodex,
+        refresh: (credential: { refresh: string }) =>
+          oauthMocks.refreshOpenAICodexToken(credential),
+      },
+    },
+  }),
+}))
 
 // These tests exercise the storage + expiry logic directly. Pi-ai's network
 // calls are mocked: refresh tests control the rotating-credential response and
@@ -103,16 +113,18 @@ test('loadAccessToken single-flights concurrent refreshes and persists rotated c
   const refreshGate = new Promise<void>((resolve) => {
     releaseRefresh = resolve
   })
-  oauthMocks.refreshOpenAICodexToken.mockImplementation(async (refreshToken: string) => {
-    expect(refreshToken).toBe('refresh-before-rotation')
-    await refreshGate
-    return {
-      refresh: 'refresh-after-rotation',
-      access,
-      expires: Date.now() + 30 * 60_000,
-      accountId: 'acct-refreshed',
-    }
-  })
+  oauthMocks.refreshOpenAICodexToken.mockImplementation(
+    async (credential: { refresh: string; type: string }) => {
+      expect(credential).toMatchObject({ refresh: 'refresh-before-rotation', type: 'oauth' })
+      await refreshGate
+      return {
+        refresh: 'refresh-after-rotation',
+        access,
+        expires: Date.now() + 30 * 60_000,
+        accountId: 'acct-refreshed',
+      }
+    },
+  )
 
   const first = loadAccessToken(db, authToken)
   const second = loadAccessToken(db, authToken)
@@ -185,6 +197,7 @@ test('in-flight refresh does not overwrite a same-refresh credential replacement
     refresh: 'shared-refresh-value',
     access: replacementAccess,
     expires: replacementExpires,
+    type: 'oauth',
   })
 })
 
@@ -210,7 +223,7 @@ test('credential blob is stored under OPENAI_CODEX_SECRET_KEY and decrypts to JS
   const raw = secrets.get(OPENAI_CODEX_SECRET_KEY)
   expect(raw).toBeTruthy()
   const parsed = JSON.parse(raw as string)
-  expect(parsed).toEqual({ refresh: 'r1', access, expires: 1000 })
+  expect(parsed).toEqual({ refresh: 'r1', access, expires: 1000, type: 'oauth' })
 })
 
 test('malformed blob is treated as disconnected', () => {

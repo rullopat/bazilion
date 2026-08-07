@@ -22,6 +22,14 @@ function fakeBashBackend() {
   return { exec, operations: { exec } satisfies BashOperations }
 }
 
+const toolContext = {
+  sessionManager: {
+    getSessionId: () => 'test-session',
+    getSessionFile: () => '/tmp/test-session.jsonl',
+    getCwd: () => '/tmp/team',
+  },
+} as never
+
 test('shell security off preserves the complete existing host coding-tool surface', () => {
   const result = createSessionShellTools('/tmp/team', {})
 
@@ -88,7 +96,7 @@ test('safe commands bypass the approval host and execute the selected backend', 
     host,
   )
 
-  await tool.execute('call-safe', { command: 'pwd' }, undefined, undefined, {} as never)
+  await tool.execute('call-safe', { command: 'pwd' }, undefined, undefined, toolContext)
 
   expect(requestApproval).not.toHaveBeenCalled()
   expect(exec).toHaveBeenCalledTimes(1)
@@ -110,7 +118,7 @@ test('approval receives tool identity, risks, and cancellation before backend ex
     { command: 'sudo true', timeout: 7 },
     controller.signal,
     undefined,
-    {} as never,
+    toolContext,
   )
 
   expect(requestApproval).toHaveBeenCalledTimes(1)
@@ -144,7 +152,7 @@ test('denial fails before the backend is invoked', async () => {
   )
 
   await expect(
-    tool.execute('call-denied', { command: 'sudo true' }, undefined, undefined, {} as never),
+    tool.execute('call-denied', { command: 'sudo true' }, undefined, undefined, toolContext),
   ).rejects.toBeInstanceOf(BashApprovalDeniedError)
   expect(exec).not.toHaveBeenCalled()
 })
@@ -154,11 +162,11 @@ test('missing approval host auto-denies risky commands but not safe ones', async
   const tool = createApprovalGatedBashTool(createBashToolDefinition('/tmp/team', { operations }))
 
   await expect(
-    tool.execute('call-risky', { command: 'sudo true' }, undefined, undefined, {} as never),
+    tool.execute('call-risky', { command: 'sudo true' }, undefined, undefined, toolContext),
   ).rejects.toThrow(/dangerous bash command denied/i)
   expect(exec).not.toHaveBeenCalled()
 
-  await tool.execute('call-safe', { command: 'pwd' }, undefined, undefined, {} as never)
+  await tool.execute('call-safe', { command: 'pwd' }, undefined, undefined, toolContext)
   expect(exec).toHaveBeenCalledTimes(1)
 })
 

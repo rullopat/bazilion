@@ -216,6 +216,20 @@ export const SERVICES: ServiceDef[] = [
     fields: [{ envVar: 'MINIMAX_CN_API_KEY', kind: 'secret', label: 'API key' }],
   },
   {
+    id: 'qwen-token-plan',
+    displayName: 'Qwen Token Plan',
+    category: 'provider',
+    hint: 'Coding-model subscription endpoint in Singapore',
+    fields: [{ envVar: 'QWEN_TOKEN_PLAN_API_KEY', kind: 'secret', label: 'API key' }],
+  },
+  {
+    id: 'qwen-token-plan-cn',
+    displayName: 'Qwen Token Plan (CN)',
+    category: 'provider',
+    hint: 'Coding-model subscription endpoint in China',
+    fields: [{ envVar: 'QWEN_TOKEN_PLAN_CN_API_KEY', kind: 'secret', label: 'API key' }],
+  },
+  {
     id: 'xiaomi',
     displayName: 'Xiaomi MiMo',
     category: 'provider',

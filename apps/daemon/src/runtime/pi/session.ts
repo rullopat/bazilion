@@ -42,11 +42,8 @@ import type { ResolvedAgent } from '@bazilion/api-types'
 import type { AgentMessage, ThinkingLevel } from '@earendil-works/pi-agent-core'
 import {
   type AgentSession,
-  AuthStorage,
   createAgentSession,
-  createExtensionRuntime,
-  ModelRegistry,
-  type ResourceLoader,
+  DefaultResourceLoader,
   SessionManager,
   SettingsManager,
   type ToolDefinition,
@@ -54,7 +51,13 @@ import {
 import type { BazilionDb, Paths } from '../../core/index.ts'
 import { providerStateRepo } from '../../core/index.ts'
 import type { MemoryBackend } from '../memory/types.ts'
-import { resolveModel as resolvePiModel } from '../providers/pi-adapter.ts'
+import {
+  createBazilionPiRuntime,
+  piProviderName,
+  providerApiKey,
+  providerBaseUrl,
+  resolvePiModel,
+} from '../providers/pi-runtime.ts'
 import { createProviderRegistry, loadProviderConfigFromEnv } from '../providers/registry.ts'
 import { buildSystemPrompt, loadPromptSkills } from '../session/prompt.ts'
 import type { BashApprovalHost } from '../shell/approval.ts'
@@ -185,43 +188,19 @@ export async function createBazilionSession(
     throw new Error(`${providerName} provider is disabled — enable it on the /config page`)
   }
 
-  // Build the pi Model<Api>. This reuses the same catalog-lookup + literal-
-  // fallback that the pi-adapter uses for Provider.chat today, so `lmstudio:
-  // any-model` / unreleased OpenAI models / etc. keep working.
-  const piProviderName = mapProviderName(providerName)
-  const model = resolvePiModel(
-    {
-      providerName,
-      piProviderName,
-      fallbackApi: pickFallbackApi(providerName),
-      baseUrl: resolveBaseUrl(providerName, env),
-    },
+  // One public Pi runtime owns provider aliases, credentials, catalog lookup,
+  // local-provider registration and arbitrary-model fallback for both direct
+  // Provider.chat calls and full coding-agent sessions.
+  const apiKey = opts.apiKey ?? providerApiKey(providerName, env)
+  const baseUrl = providerBaseUrl(providerName, env)
+  const modelRuntime = await createBazilionPiRuntime({
+    providerName,
+    env,
+    ...(apiKey ? { apiKey } : {}),
+    ...(baseUrl ? { baseUrl } : {}),
     modelId,
-  )
-
-  // Resolve the API key. Caller-supplied `opts.apiKey` wins (the daemon
-  // passes pre-fetched OAuth tokens for `openai-codex` here); otherwise
-  // fall back to the env-derived key. Pi's AuthStorage is in-memory only —
-  // we never write `auth.json`. `setRuntimeApiKey` is the process-scoped
-  // override hook AuthStorage exposes for exactly this.
-  const apiKey = opts.apiKey ?? resolveApiKey(providerName, env)
-
-  const authStorage = AuthStorage.inMemory()
-  if (apiKey) {
-    authStorage.setRuntimeApiKey(piProviderName, apiKey)
-  }
-
-  const modelRegistry = ModelRegistry.inMemory(authStorage)
-  // Bazilion-only providers aren't in pi's bundled catalog; register them
-  // dynamically so ModelRegistry accepts the Model<> object + resolves auth.
-  if (providerName === 'lmstudio' || providerName === 'ollama') {
-    modelRegistry.registerProvider(piProviderName, {
-      baseUrl: model.baseUrl,
-      api: 'openai-completions',
-      authHeader: false,
-      apiKey: apiKey ?? 'dummy',
-    })
-  }
+  })
+  const model = resolvePiModel(modelRuntime, providerName, modelId, baseUrl)
 
   // cwd is the agent's team directory. Every agent belongs to exactly one
   // team; the team's filesystem root is where work product lives. In host
@@ -284,7 +263,17 @@ export async function createBazilionSession(
       skills: promptSkills,
       sandboxMode: shellTools?.config.sandboxMode ?? 'off',
     })
-  const resourceLoader = createBazilionResourceLoader(bazilionPrompt)
+  const resourceLoader = new DefaultResourceLoader({
+    cwd,
+    agentDir: join(paths.home, 'pi'),
+    settingsManager,
+    noExtensions: true,
+    noSkills: true,
+    noPromptTemplates: true,
+    noThemes: true,
+    noContextFiles: true,
+    appendSystemPrompt: bazilionPrompt ? [bazilionPrompt] : undefined,
+  })
   await resourceLoader.reload()
 
   // Tool allowlist: pi's `tools` option is exclusive when provided — only
@@ -320,8 +309,7 @@ export async function createBazilionSession(
     customTools,
     sessionManager,
     settingsManager,
-    authStorage,
-    modelRegistry,
+    modelRuntime,
     resourceLoader,
   })
 
@@ -333,7 +321,7 @@ export async function createBazilionSession(
   // refresher because only they have access to the secrets table.
   if (refreshApiKey) {
     session.agent.getApiKey = async (requestedProvider) => {
-      if (requestedProvider !== piProviderName) return undefined
+      if (requestedProvider !== piProviderName(providerName)) return undefined
       try {
         return await refreshApiKey(providerName)
       } catch {
@@ -363,78 +351,6 @@ function splitModelString(s: string): { providerName: string; modelId: string } 
   return { providerName: s.slice(0, idx), modelId: s.slice(idx + 1) }
 }
 
-/**
- * Map Bazilion provider names to pi's canonical `piProviderName` for catalog
- * lookups. The split exists because Bazilion was registering e.g. `bedrock`
- * but pi catalogs it as `amazon-bedrock`.
- */
-function mapProviderName(name: string): string {
-  if (name === 'bedrock') return 'amazon-bedrock'
-  return name
-}
-
-function pickFallbackApi(providerName: string): string {
-  switch (providerName) {
-    case 'anthropic':
-      return 'anthropic-messages'
-    case 'google':
-      return 'google-generative-ai'
-    case 'google-vertex':
-      return 'google-vertex'
-    case 'azure-openai':
-      return 'azure-openai-responses'
-    case 'bedrock':
-      return 'bedrock-converse-stream'
-    case 'openai-codex':
-      return 'openai-codex-responses'
-    default:
-      return 'openai-completions'
-  }
-}
-
-function resolveBaseUrl(providerName: string, env: NodeJS.ProcessEnv): string | undefined {
-  if (providerName === 'lmstudio') return env.LMSTUDIO_URL ?? 'http://127.0.0.1:1234/v1'
-  if (providerName === 'ollama') return env.OLLAMA_URL ?? 'http://127.0.0.1:11434/v1'
-  return undefined
-}
-
-function resolveApiKey(providerName: string, env: NodeJS.ProcessEnv): string | undefined {
-  // Hand-written table mirroring loadProviderConfigFromEnv — cheaper than
-  // spinning up a whole ProviderRegistry just to pluck one field.
-  switch (providerName) {
-    case 'anthropic':
-      return env.ANTHROPIC_OAUTH_TOKEN ?? env.ANTHROPIC_API_KEY
-    case 'openai':
-      return env.OPENAI_API_KEY
-    case 'google':
-      return env.GEMINI_API_KEY
-    case 'mistral':
-      return env.MISTRAL_API_KEY
-    case 'groq':
-      return env.GROQ_API_KEY
-    case 'cerebras':
-      return env.CEREBRAS_API_KEY
-    case 'xai':
-      return env.XAI_API_KEY
-    case 'zai':
-      return env.ZAI_API_KEY
-    case 'huggingface':
-      return env.HF_TOKEN
-    case 'openrouter':
-      return env.OPENROUTER_API_KEY
-    case 'vercel-ai-gateway':
-      return env.AI_GATEWAY_API_KEY
-    case 'azure-openai':
-      return env.AZURE_OPENAI_API_KEY
-    case 'lmstudio':
-      return env.LMSTUDIO_API_KEY ?? 'lm-studio'
-    case 'ollama':
-      return env.OLLAMA_API_KEY ?? 'ollama'
-    default:
-      return undefined
-  }
-}
-
 function toPiThinkingLevel(level: string): ThinkingLevel {
   switch (level) {
     case 'off':
@@ -446,28 +362,6 @@ function toPiThinkingLevel(level: string): ThinkingLevel {
       return level
     default:
       return 'medium'
-  }
-}
-
-/**
- * Minimal `ResourceLoader` implementation — feeds pi our Bazilion-authored
- * system prompt block via `getAppendSystemPrompt` and returns empty collections
- * for everything else. Pi's default loader reads skill/prompt/theme markdown
- * from the workspace cwd; we intentionally opt out because Bazilion owns skill
- * discovery at the platform level (see `apps/daemon/src/core/skills`).
- */
-function createBazilionResourceLoader(appendSystemPrompt: string): ResourceLoader {
-  const extensions = { extensions: [], errors: [], runtime: createExtensionRuntime() }
-  return {
-    getExtensions: () => extensions,
-    getSkills: () => ({ skills: [], diagnostics: [] }),
-    getPrompts: () => ({ prompts: [], diagnostics: [] }),
-    getThemes: () => ({ themes: [], diagnostics: [] }),
-    getAgentsFiles: () => ({ agentsFiles: [] }),
-    getSystemPrompt: () => undefined,
-    getAppendSystemPrompt: () => (appendSystemPrompt ? [appendSystemPrompt] : []),
-    extendResources: () => {},
-    async reload() {},
   }
 }
 

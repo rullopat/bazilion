@@ -1,9 +1,8 @@
-// Import pi-ai directly so the CLI bundle stays slim. `loginOpenAICodex` is
-// exposed at pi-ai's `/oauth` subpath; types come from pi-ai's main export
-// and `OpenAICodexStatus` (the wire shape) from api-types.
+// Import pi-ai's provider directly so the CLI bundle stays slim. The provider
+// owns its OAuth interaction; Bazilion persists the returned credential in the daemon.
 import type { OpenAICodexStatus } from '@bazilion/api-types'
-import type { OAuthAuthInfo, OAuthPrompt } from '@earendil-works/pi-ai'
-import { loginOpenAICodex } from '@earendil-works/pi-ai/oauth'
+import type { AuthPrompt } from '@earendil-works/pi-ai'
+import { openaiCodexProvider } from '@earendil-works/pi-ai/providers/openai-codex'
 import { defineCommand } from 'citty'
 import { createClient } from '../client.ts'
 
@@ -26,20 +25,26 @@ const openaiLoginCmd = defineCommand({
     // in the daemon-owned `secrets` table (encrypted with the bootstrap token).
     console.log('opening your browser for OpenAI sign-in...')
     console.log("(if it doesn't open automatically, paste the URL shown below)")
-    const creds = await loginOpenAICodex({
-      onAuth: ({ url }: OAuthAuthInfo) => {
-        console.log('')
-        console.log(`  → ${url}`)
-        console.log('')
+    const oauth = openaiCodexProvider().auth.oauth
+    if (!oauth) throw new Error('Pi openai-codex provider does not expose OAuth')
+    const creds = await oauth.login({
+      notify: (event) => {
+        if (event.type === 'auth_url') {
+          console.log('')
+          console.log(`  → ${event.url}`)
+          console.log('')
+        } else if (event.type === 'progress' || event.type === 'info') {
+          console.log(`  ${event.message}`)
+        } else if (event.type === 'device_code') {
+          console.log(`  open ${event.verificationUri} and enter ${event.userCode}`)
+        }
       },
-      onPrompt: async (prompt: OAuthPrompt): Promise<string> => {
+      prompt: async (prompt: AuthPrompt): Promise<string> => {
+        if (prompt.type === 'select') return prompt.options[0]?.id ?? ''
         process.stdout.write(`${prompt.message}: `)
         return new Promise<string>((resolve) => {
           process.stdin.once('data', (d) => resolve(String(d).trim()))
         })
-      },
-      onProgress: (msg: string) => {
-        console.log(`  ${msg}`)
       },
     })
     const status = await client.put<OpenAICodexStatus>('/api/auth/openai', {

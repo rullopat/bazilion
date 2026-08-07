@@ -14,7 +14,7 @@
 // fetches are surfaced so callers can show "couldn't reach lmstudio" rather
 // than a silent empty list.
 
-import { getModels as piGetModels } from '@earendil-works/pi-ai/compat'
+import { getBuiltinModels } from '@earendil-works/pi-ai/providers/all'
 import { fetch as undiciFetch } from 'undici'
 
 // piProviderName: what pi-ai's catalog indexes by. For bedrock we use the
@@ -74,7 +74,9 @@ function liveEndpointFor(providerName: string, env: NodeJS.ProcessEnv): string |
 function piModels(providerName: string): string[] {
   const piName = REGISTRY_TO_PI[providerName] ?? providerName
   try {
-    const models = (piGetModels as unknown as (p: string) => { id: string }[] | undefined)(piName)
+    const models = (
+      getBuiltinModels as unknown as (provider: string) => { id: string }[] | undefined
+    )(piName)
     if (!models) return []
     return models.map((m) => m.id)
   } catch {

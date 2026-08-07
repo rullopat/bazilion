@@ -1,100 +1,45 @@
 // Adapter from Bazilion's Provider interface → pi-ai's streamSimple.
 //
 // Pi-ai (`@earendil-works/pi-ai`) is Mario Zechner's unified LLM SDK — 15+
-// providers behind one event-stream API. This file is the only place in the
-// codebase that touches pi-ai directly; everything else downstream
+// providers behind one event-stream API. This adapter is the boundary where
+// Pi messages become Bazilion's provider contract; everything downstream
 // (`runTurnStream`, `persistRun`, the worker entry, CLI, web) sees the same
 // `Provider.chat(ProviderRequest): Promise<ProviderResponse>` contract it
 // always has. That keeps the wire format, DB schema, and chat UI stable while
 // giving us cost/usage, thinking levels, prompt caching, and every provider
 // pi supports — for free.
 //
-// Model resolution: we prefer pi's typed catalog via `getModel(provider, id)`
-// which carries cost + context-window metadata; for anything outside the
-// catalog (local models, newly-released models, custom OpenAI-compat
-// endpoints) we construct a `Model<>` literal with sensible defaults. This
-// preserves Bazilion's "any model string" flexibility.
+// Model/auth/stream resolution is delegated to Bazilion's Pi runtime factory,
+// which uses Pi's public ModelRuntime API and preserves arbitrary model ids.
 
 import type { ProviderMessage, ReasoningLevel, ToolCall, ToolDef } from '@bazilion/api-types'
 import {
   type AssistantMessage,
-  getModel,
-  type Model,
   type Message as PiMessage,
   type Tool as PiTool,
   type ToolCall as PiToolCall,
-  streamSimple,
   type TextContent,
   Type,
-} from '@earendil-works/pi-ai/compat'
+} from '@earendil-works/pi-ai'
+import type { ModelRuntime } from '@earendil-works/pi-coding-agent'
+import { createBazilionPiRuntime, resolvePiModel } from './pi-runtime.ts'
 import type { Provider, ProviderRequest, ProviderResponse, StopReason } from './types.ts'
 
 export interface PiProviderConfig {
   /** Display name on the returned Provider; also the registry key (e.g. 'bedrock', 'azure-openai'). */
   providerName: string
-  /** Pi's canonical provider name for catalog lookup (e.g. 'amazon-bedrock', 'azure-openai-responses'). Defaults to providerName. */
-  piProviderName?: string
   /** Override baseUrl for openai-compat endpoints (lmstudio, ollama, custom). */
   baseUrl?: string
+  /** Merged daemon environment used for provider-specific ambient configuration. */
+  env?: NodeJS.ProcessEnv
   /**
    * Static key or an async supplier. Suppliers are called at the top of each
    * chat() so OAuth-backed providers can refresh expiring tokens without
    * rebuilding the Provider instance (which the registry caches).
    */
   apiKey?: string | (() => string | Promise<string>)
-  /** Which pi `Api` to use when the model isn't in pi's catalog. */
-  fallbackApi: string
-}
-
-function defaultBaseUrlFor(providerName: string): string {
-  switch (providerName) {
-    case 'lmstudio':
-      return process.env.LMSTUDIO_URL ?? 'http://127.0.0.1:1234/v1'
-    case 'ollama':
-      return process.env.OLLAMA_URL ?? 'http://127.0.0.1:11434/v1'
-    default:
-      return ''
-  }
-}
-
-function buildModelLiteral(cfg: PiProviderConfig, modelId: string): Model<string> {
-  return {
-    id: modelId,
-    name: modelId,
-    api: cfg.fallbackApi,
-    provider: cfg.providerName,
-    baseUrl: cfg.baseUrl ?? defaultBaseUrlFor(cfg.providerName),
-    reasoning: false,
-    input: ['text'],
-    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    contextWindow: 32_768,
-    maxTokens: 4_096,
-  }
-}
-
-export function resolveModel(cfg: PiProviderConfig, modelId: string): Model<string> {
-  const lookupName = cfg.piProviderName ?? cfg.providerName
-  // Try pi's typed catalog first — gets us cost, context window, reasoning flags
-  // for free on the known providers' known models.
-  try {
-    // getModel's type signature is catalog-constrained, but at runtime it just
-    // indexes MODELS[provider][id]. Cast through unknown so unknown ids fall
-    // through to the literal builder instead of tripping the compiler.
-    const known = (getModel as unknown as (p: string, m: string) => Model<string> | undefined)(
-      lookupName,
-      modelId,
-    )
-    if (known && typeof known === 'object' && 'api' in known) {
-      // Override baseUrl + provider for local / compat endpoints — pi's catalog
-      // doesn't know about lmstudio/ollama but if a user types
-      // `openai:gpt-4o` with a custom OPENAI_BASE_URL, honor that here.
-      if (cfg.baseUrl) return { ...known, baseUrl: cfg.baseUrl }
-      return known
-    }
-  } catch {
-    // Fall through.
-  }
-  return buildModelLiteral(cfg, modelId)
+  /** Test seam for a public-API ModelRuntime with a native faux provider. */
+  runtimeFactory?: () => Promise<ModelRuntime>
 }
 
 function convertMessages(messages: ProviderMessage[]): PiMessage[] {
@@ -230,10 +175,19 @@ export function piProvider(cfg: PiProviderConfig): Provider {
   return {
     name: cfg.providerName,
     async chat(req: ProviderRequest): Promise<ProviderResponse> {
-      const model = resolveModel(cfg, req.model)
       const apiKey = await resolveApiKey(cfg)
+      const runtime = cfg.runtimeFactory
+        ? await cfg.runtimeFactory()
+        : await createBazilionPiRuntime({
+            providerName: cfg.providerName,
+            env: cfg.env ?? {},
+            ...(apiKey ? { apiKey } : {}),
+            ...(cfg.baseUrl ? { baseUrl: cfg.baseUrl } : {}),
+            modelId: req.model,
+          })
+      const model = resolvePiModel(runtime, cfg.providerName, req.model, cfg.baseUrl)
 
-      const stream = streamSimple(
+      const stream = runtime.streamSimple(
         model,
         {
           systemPrompt: req.system ?? '',
