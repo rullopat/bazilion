@@ -1,11 +1,15 @@
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test } from 'vitest'
 import { resolveAgent } from '../../src/core/agent/resolve.ts'
 import { spawnAgent } from '../../src/core/agent/spawn.ts'
 import { agentLessonProposalRepo, agentRepo, agentReviewRepo } from '../../src/core/index.ts'
 import { createProfile } from '../../src/core/profile/create.ts'
-import { buildSystemPrompt, loadPromptSkills } from '../../src/runtime/session/prompt.ts'
+import {
+  buildSystemPrompt,
+  loadPromptSkills,
+  loadProtectedHomeDocuments,
+} from '../../src/runtime/session/prompt.ts'
 import { makeTestEnv, type TestEnv } from '../core/helpers.ts'
 
 let env: TestEnv
@@ -63,6 +67,8 @@ test('attached SKILL.md instructions and runtime sidecar path reach the prompt',
   const dockerPrompt = buildSystemPrompt(resolved, { skills, sandboxMode: 'docker' })
   expect(dockerPrompt).toContain('REPORTING_SKILL_INSTRUCTION')
   expect(dockerPrompt).toContain('Runtime directory: `/skills/0-reporting`')
+  expect(dockerPrompt).toContain(`- ${resolved.team.id} (${resolved.team.name}): /workspace`)
+  expect(dockerPrompt).not.toContain(resolved.team.path)
 })
 
 test('only approved private reviewed lessons reach the agent prompt', () => {
@@ -93,4 +99,33 @@ test('only approved private reviewed lessons reach the agent prompt', () => {
   expect(prompt).toContain('# Reviewed lessons')
   expect(prompt).toContain('PRIVATE_APPROVED_LESSON')
   expect(prompt).not.toContain('SHARED_LESSON_NOT_IN_PRIVATE_PROMPT')
+})
+
+test('Agent prompt documents never follow fixed-name symbolic links', () => {
+  createProfile(env.db, env.paths, { id: 'profile', defaultModel: 'm' })
+  const agent = spawnAgent(env.db, env.paths, {
+    profileId: 'profile',
+    teamId: env.teamId,
+  })
+  const resolved = resolveAgent(env.db, env.paths, agent.id)
+  const original = loadProtectedHomeDocuments(agent.dir)
+  const secretPath = join(env.paths.home, 'auth-sentinel')
+  writeFileSync(secretPath, 'BOOTSTRAP_TOKEN_SENTINEL', 'utf8')
+  unlinkSync(join(agent.dir, 'SOUL.md'))
+  symlinkSync(secretPath, join(agent.dir, 'SOUL.md'))
+
+  expect(() => buildSystemPrompt(resolved)).toThrow('private Agent home is unsafe at SOUL.md')
+  const protectedPrompt = buildSystemPrompt(resolved, { homeDocuments: original })
+  expect(protectedPrompt).not.toContain('BOOTSTRAP_TOKEN_SENTINEL')
+  expect(protectedPrompt).toContain(original['SOUL.md']?.trim() ?? '')
+})
+
+test('attached skill prompt loading refuses a symlinked SKILL.md', () => {
+  const skillDir = join(env.paths.skillsDir, 'unsafe')
+  mkdirSync(skillDir, { recursive: true })
+  const secretPath = join(env.paths.home, 'skill-secret')
+  writeFileSync(secretPath, '---\nname: stolen\ndescription: SECRET_SENTINEL\n---\nSECRET', 'utf8')
+  symlinkSync(secretPath, join(skillDir, 'SKILL.md'))
+
+  expect(loadPromptSkills(env.paths.skillsDir, ['unsafe'])).toEqual([])
 })

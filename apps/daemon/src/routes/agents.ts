@@ -73,12 +73,11 @@ import { cancelAgent } from '../lib/agent-cancel.ts'
 import { resolveAgentIdParam } from '../lib/agent-id.ts'
 import { runAgentLifecycleMutation } from '../lib/agent-lifecycle-lease.ts'
 import { AgentLoopLimitError, listAgentLoopBreaks } from '../lib/agent-loop-guard.ts'
-import { runAgentTurn } from '../lib/agent-turn.ts'
+import { prepareAgentTurn, runAgentTurn } from '../lib/agent-turn.ts'
 import { resolveAgentApiKey } from '../lib/api-key.ts'
 import { closeBrowserSession } from '../lib/browser/pool.ts'
 import {
   authorizeHttpChatFrame,
-  authorizeUserIngress,
   CommunicationDeniedError,
   CommunicationPendingError,
   sendAgentMessage,
@@ -97,6 +96,7 @@ import { getTelegramBotApi } from '../lib/telegram/bot.ts'
 import { notifyDirectoryDirty } from '../lib/telegram/directory.ts'
 import { ensureAgentTopic } from '../lib/telegram/topic-autocreate.ts'
 import { syncAgentTopicIcon } from '../lib/telegram/topic-rename.ts'
+import { createTrustedTurnInvocation } from '../lib/turn-invocation.ts'
 import {
   buildSystemPrompt,
   createBazilionSession,
@@ -1055,7 +1055,7 @@ agentsRouter.get('/:id/sessions/messages', (c) => {
  * only `{ message }`. Response is NDJSON-encoded `ChatFrame`s.
  */
 agentsRouter.post('/:id/chat', async (c) => {
-  const { db, paths, authToken } = getCtx()
+  const { db } = getCtx()
   const id = resolveAgentIdParam(db, c.req.param('id'))
 
   let body: Partial<ChatRequest>
@@ -1082,14 +1082,21 @@ agentsRouter.post('/:id/chat', async (c) => {
   }
 
   const requestAttemptId = c.req.header('x-request-id') ?? randomUUID()
+  let preparedTurn: Awaited<ReturnType<typeof prepareAgentTurn>>
   try {
-    authorizeUserIngress(db, id, {
-      origin: 'http_chat',
-      attemptKind: 'http_chat_ingress',
-      attemptId: requestAttemptId,
-      approvalPayloadKind: 'agent_turn',
-      approvalPayload: { agentId: id, message, attachments },
-      requester: 'user',
+    preparedTurn = await prepareAgentTurn({
+      invocation: createTrustedTurnInvocation({
+        kind: 'operator_http',
+        authorization: {
+          origin: 'http_chat',
+          attemptKind: 'http_chat_ingress',
+          attemptId: requestAttemptId,
+          requester: 'user',
+          agentId: id,
+        },
+        turn: { agentId: id, message, attachments },
+        bashApprovalMode: body.bashApprovalMode ?? 'auto_deny',
+      }),
     })
   } catch (error) {
     if (error instanceof CommunicationPendingError) {
@@ -1126,15 +1133,7 @@ agentsRouter.post('/:id/chat', async (c) => {
       const encoder = new TextEncoder()
       let frameIndex = 0
       try {
-        for await (const frame of runAgentTurn(id, message, {
-          attachments,
-          authorization: {
-            origin: 'http_chat',
-            attemptKind: 'http_chat_ingress',
-            attemptId: requestAttemptId,
-          },
-          bashApprovalMode: body.bashApprovalMode ?? 'auto_deny',
-        })) {
+        for await (const frame of runAgentTurn(preparedTurn)) {
           authorizeHttpChatFrame(db, id, requestAttemptId, frameIndex, frame)
           frameIndex++
           try {

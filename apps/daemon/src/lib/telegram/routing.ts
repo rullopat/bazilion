@@ -28,6 +28,7 @@ import { namePrompt, SPAWN_PROFILE_CALLBACK_PREFIX, spawnAndBind } from './comma
 import { SPAWN_TEAM_CALLBACK_PREFIX, spawnTeamAndBind } from './commands/spawn-team.ts'
 import type { CommandApi, CommandResult } from './commands/types.ts'
 import { enqueueAgentMessage } from './inbound-queue.ts'
+import { type TelegramIngressAttempt, telegramMediaFailureTurnText } from './ingress-attempt.ts'
 import {
   _resetLoopGuardForTest,
   allowTelegramInbound,
@@ -238,9 +239,8 @@ export async function routeUpdate(deps: RouterDeps, update: Update): Promise<Rou
     // Step 6: plain text in a bound agent topic queues into the agent's
     // inbound queue. The queue's drain loop owns runAgentTurn calls — it
     // serializes them so concurrent worker spawns don't corrupt agent
-    // state. Messages that arrive while a turn is in flight are
-    // concatenated and processed together when the current turn ends, so
-    // the agent gets one combined reply addressing everything.
+    // state. Messages that arrive while a turn is in flight remain distinct
+    // FIFO items, each with its own Telegram attempt identity and turn.
     // Resolve text + any media attachment (Phase 11). Media is downloaded to
     // the agent's private home and referenced by path in the turn message, so
     // an agent with file/bash tools can open it. Native provider multimodal
@@ -250,7 +250,7 @@ export async function routeUpdate(deps: RouterDeps, update: Update): Promise<Rou
     // path-referenced for the agent to open with its tools).
     const caption = m.text ?? m.caption ?? ''
     const media = extractMedia(m)
-    const ingressAttempt = {
+    const ingressAttempt: TelegramIngressAttempt = {
       origin: 'telegram_agent_topic',
       attemptKind: 'telegram_ingress',
       attemptId: `${deps.chatId}:${m.message_id}`,
@@ -296,12 +296,13 @@ export async function routeUpdate(deps: RouterDeps, update: Update): Promise<Rou
             ...(result.name ? { name: result.name } : {}),
           })
         } else {
-          const note = `[Telegram ${media.kind} attachment could not be downloaded: ${result.reason}]`
-          userText = caption ? `${caption}\n\n${note}` : note
+          userText = telegramMediaFailureTurnText(ingressAttempt.approvalPayload, 'download_failed')
         }
       } else {
-        const note = `[Telegram ${media.kind} attachment received (download unavailable)]`
-        userText = caption ? `${caption}\n\n${note}` : note
+        userText = telegramMediaFailureTurnText(
+          ingressAttempt.approvalPayload,
+          'download_unavailable',
+        )
       }
     }
     if (!userText && attachments.length === 0) {
@@ -322,26 +323,9 @@ export async function routeUpdate(deps: RouterDeps, update: Update): Promise<Rou
       }
       return { kind: 'rate_limited', agentId: agent.id, topicId: threadId }
     }
-    try {
-      authorizeUserIngress(deps.db, agent.id, ingressAttempt)
-    } catch (error) {
-      if (error instanceof CommunicationPendingError) {
-        await deps.api.sendMessage(
-          deps.chatId,
-          `Communication is pending approval (${error.approval.id}).`,
-          { message_thread_id: threadId },
-        )
-        return { kind: 'agent_topic', agentId: agent.id, topicId: threadId, queued: false }
-      }
-      if (!(error instanceof CommunicationDeniedError)) throw error
-      await deps.api.sendMessage(
-        deps.chatId,
-        `Communication blocked by Team policy (${error.result.reasonCode}).`,
-        { message_thread_id: threadId },
-      )
-      return { kind: 'agent_topic', agentId: agent.id, topicId: threadId, queued: false }
-    }
-    enqueueAgentMessage(agent.id, userText, attachments, ingressAttempt)
+    enqueueAgentMessage(agent.id, userText, attachments, ingressAttempt, async (text) => {
+      await deps.api.sendMessage(deps.chatId, text, { message_thread_id: threadId })
+    })
     // 👀 "I see this" indicator on the user's message. Cleared by the
     // mirror when the agent's reply lands.
     reactSeen(agent.id, deps.chatId, m.message_id)

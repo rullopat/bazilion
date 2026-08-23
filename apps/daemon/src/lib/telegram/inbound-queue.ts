@@ -6,25 +6,26 @@
 // versions of Step 6 dropped the second message silently — which lost the
 // content and gave the user no signal.
 //
-// The fix: a per-agent FIFO queue + a single drain loop. enqueueAgentMessage
-// always succeeds; the loop reads, concatenates, runs runAgentTurn, then
-// re-checks the queue. At most one loop per agent exists at any time. If
-// the user types three messages in rapid succession during a long turn,
-// the next turn input is `msg2\n\nmsg3\n\nmsg4` — the agent sees all of
-// them and can address them in one combined reply.
+// The fix: a per-agent FIFO queue + a single drain loop. Every Telegram
+// update remains one exact authorization attempt and one Agent turn. Items
+// are never concatenated under the first update's attempt identity.
 //
 // Failures inside runAgentTurn are caught + logged; the loop continues so
 // later queue items still get a chance. Unbounded growth isn't a real
 // concern in practice (a human can only type so fast), so we don't cap.
 
 import type { Attachment } from '@bazilion/api-types'
-import { runAgentTurn } from '../agent-turn.ts'
-import type { CommunicationAttempt } from '../communication.ts'
+import { isActiveAgent, isAgentTurnActiveError, waitForAgentIdle } from '../agent-cancel.ts'
+import { prepareAgentTurn, runAgentTurn } from '../agent-turn.ts'
+import { CommunicationDeniedError, CommunicationPendingError } from '../communication.ts'
+import { createTrustedTurnInvocation, type TrustedTurnInvocation } from '../turn-invocation.ts'
+import { isTelegramIngressAttempt, type TelegramIngressAttempt } from './ingress-attempt.ts'
+
+export type TelegramIngressNotifier = (text: string) => Promise<void>
 
 interface QueueItem {
-  text: string
-  attachments: Attachment[]
-  authorization: CommunicationAttempt
+  invocation: Extract<TrustedTurnInvocation, { kind: 'telegram' }>
+  notify: TelegramIngressNotifier
 }
 
 const _queues = new Map<string, QueueItem[]>()
@@ -38,15 +39,21 @@ const _running = new Map<string, Promise<void>>()
 export function enqueueAgentMessage(
   agentId: string,
   text: string,
-  attachments: Attachment[] = [],
-  authorization: CommunicationAttempt = {
-    origin: 'telegram_agent_topic',
-    attemptKind: 'telegram_ingress',
-    attemptId: `legacy:${agentId}:${Date.now()}`,
-  },
+  attachments: Attachment[],
+  authorization: TelegramIngressAttempt,
+  notify: TelegramIngressNotifier,
 ): void {
+  if (!isTelegramIngressAttempt(authorization, agentId)) {
+    throw new Error('telegram_ingress_invalid: authorization does not match queue item')
+  }
   const q = _queues.get(agentId) ?? []
-  q.push({ text, attachments, authorization })
+  const invocation = createTrustedTurnInvocation({
+    kind: 'telegram',
+    authorization,
+    turn: { agentId, message: text, attachments },
+    bashApprovalMode: 'auto_deny',
+  }) as Extract<TrustedTurnInvocation, { kind: 'telegram' }>
+  q.push({ invocation, notify })
   _queues.set(agentId, q)
   ensureDrainStarted(agentId)
 }
@@ -77,31 +84,85 @@ async function drainLoop(agentId: string): Promise<void> {
   while (true) {
     const q = _queues.get(agentId)
     if (!q || q.length === 0) return
-    const message = q
-      .map((i) => i.text)
-      .filter(Boolean)
-      .join('\n\n')
-    const attachments = q.flatMap((i) => i.attachments)
-    _queues.set(agentId, [])
+    const item = q[0]
+    if (!item) return
+
+    // A web, scheduler, inbox, approval, or review turn may already own the
+    // Agent even though this Telegram queue has only one drain of its own.
+    // Keep the exact FIFO head in place and sleep on the registry transition;
+    // polling or immediately restarting the drain would hot-loop.
+    if (isActiveAgent(agentId)) {
+      await waitForAgentIdle(agentId)
+      continue
+    }
+
+    let preparedTurn: Awaited<ReturnType<typeof prepareAgentTurn>>
     try {
-      const batchAttempt = q[0]?.authorization
-      for await (const _frame of runAgentTurn(agentId, message, {
-        attachments,
-        bashApprovalMode: 'auto_deny',
-        ...(batchAttempt ? { authorization: batchAttempt } : {}),
-      })) {
+      preparedTurn = await prepareAgentTurn({
+        invocation: item.invocation,
+      })
+    } catch (error) {
+      if (isAgentTurnActiveError(error, agentId)) {
+        await waitForAgentIdle(agentId)
+        continue
+      }
+      removeHead(agentId, q, item)
+      await reportTurnFailure(agentId, item, error)
+      continue
+    }
+
+    try {
+      for await (const _frame of runAgentTurn(preparedTurn)) {
         // Mirror handles the assistant's reply via the runAgentTurn frame
         // hook; we just need to drain the iterator so the worker doesn't
         // back up.
         void _frame
       }
-    } catch (e) {
-      console.warn(
-        `telegram inbound-queue: turn for agent=${agentId} failed —`,
-        e instanceof Error ? e.message : String(e),
-      )
-      // Loop continues so newly-queued messages still get a chance.
+    } catch (error) {
+      removeHead(agentId, q, item)
+      await reportTurnFailure(agentId, item, error)
+      continue
     }
+    removeHead(agentId, q, item)
+  }
+}
+
+function removeHead(agentId: string, q: QueueItem[], item: QueueItem): void {
+  if (q[0] !== item) throw new Error('telegram inbound FIFO head changed during drain')
+  q.shift()
+  if (q.length === 0) _queues.delete(agentId)
+}
+
+async function reportTurnFailure(agentId: string, item: QueueItem, error: unknown): Promise<void> {
+  await notifyTurnFailure(item, error)
+  console.warn(
+    JSON.stringify({
+      event: 'telegram_inbound_turn_failed',
+      agentId,
+      attemptKind: item.invocation.authorization.attemptKind,
+      attemptId: item.invocation.authorization.attemptId,
+      errorName: error instanceof Error ? error.name : 'unknown',
+      failure:
+        error instanceof CommunicationPendingError
+          ? 'approval_pending'
+          : error instanceof CommunicationDeniedError
+            ? 'policy_denied'
+            : 'turn_unavailable',
+    }),
+  )
+}
+
+async function notifyTurnFailure(item: QueueItem, error: unknown): Promise<void> {
+  const text =
+    error instanceof CommunicationPendingError
+      ? `Communication is pending approval (${error.approval.id}).`
+      : error instanceof CommunicationDeniedError
+        ? `Communication blocked by Team policy (${error.result.reasonCode}).`
+        : 'This protected turn could not start. Check Bazilion Config or bazilion doctor.'
+  try {
+    await item.notify(text)
+  } catch {
+    // The policy decision / turn failure remains authoritative if Telegram is unavailable.
   }
 }
 

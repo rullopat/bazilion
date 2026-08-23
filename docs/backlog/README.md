@@ -36,21 +36,21 @@ docs/backlog/
 | [BAZ-030](draft/BAZ-030-encrypted-backups-credential-recovery.md) | Encrypted backups and single-operator credential recovery | L | Encrypt the complete credential-bearing backup and define bounded local plus external incident recovery |
 | [BAZ-031](draft/BAZ-031-protected-runtime-provider-expansion.md) | Protected-runtime provider and credentialed web-tool expansion | L | Deferred until current usage needs something beyond BAZ-027's OpenAI Codex and guarded uncredentialed web fetch |
 
-## Todo (1)
+## Todo (0)
 
 | ID | Title | Size | Notes |
 |----|-------|------|-------|
-| [BAZ-027](todo/BAZ-027-credential-minimal-protected-agent-execution.md) | Credential-minimal protected Agent execution | L | Protect current OpenAI Codex Telegram/background work with minimal credentials, mandatory Docker, and no browser/MCP |
 
 ## In Progress (0)
 
 | ID | Title | Size | Notes |
 |----|-------|------|-------|
 
-## Done (21)
+## Done (22)
 
 | ID | Title | Size | Shipped | Release | Notes |
 |----|-------|------|---------|---------|-------|
+| [BAZ-027](done/BAZ-027-credential-minimal-protected-agent-execution.md) | Credential-minimal protected Agent execution | L | 2026-08-23 | unreleased | Minimal OpenAI Codex credentials, mandatory protected Docker, exact unattended-turn identity, no browser/MCP, and operator readiness visibility |
 | [BAZ-026](done/BAZ-026-operator-attention-center.md) | Operator Attention Center — one queue for actionable runtime signals | M | 2026-08-05 | unreleased | Unified source-owned queue, informational acknowledgement state, CLI parity, responsive web UI, and navigation badge |
 | [BAZ-003](done/BAZ-003-hermes-self-learning.md) | Reviewed learning loop — transcript digest to durable lessons | M | 2026-08-03 | unreleased | Opt-in restricted review worker, evidence-backed human approval, private prompt lessons, and shared Team-memory lessons |
 | [BAZ-002](done/BAZ-002-profile-groups.md) | Profile Groups — preconfigured team templates (historical) | M | 2026-05-25 | [v0.2.0](https://github.com/rullopat/bazilion/releases/tag/v0.2.0) | Superseded by the canonical Team Template model in BAZ-018 |

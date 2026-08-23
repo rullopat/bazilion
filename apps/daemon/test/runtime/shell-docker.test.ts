@@ -4,41 +4,59 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  renameSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs'
+import { createServer, type Server } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
-import { buildDockerRunSpec, createDockerBashOperations } from '../../src/runtime/shell/docker.ts'
+import {
+  buildDockerRunSpec,
+  checkProtectedDockerReadiness,
+  createDockerBashOperations,
+  createPreparedDockerBashOperations,
+  preflightProtectedDockerRuntime,
+} from '../../src/runtime/shell/docker.ts'
 
 interface FakeDockerInvocation {
   args: string[]
   pid: number
+  env: Record<string, string>
 }
 
 let testDir: string
 let workspace: string
 let dockerPath: string
 let logPath: string
+let imageIdPath: string
+let dockerSocketPath: string
+let containerStatePath: string
+let dockerSocketServer: Server | null = null
 
 beforeEach(() => {
   testDir = mkdtempSync(join(tmpdir(), 'bazilion-shell-docker-'))
   workspace = join(testDir, 'workspace')
   dockerPath = join(testDir, 'fake-docker.cjs')
   logPath = join(testDir, 'docker.log')
+  imageIdPath = join(testDir, 'image-id')
+  dockerSocketPath = join(testDir, 'docker.sock')
+  containerStatePath = join(testDir, 'preflight-container')
+  writeFileSync(imageIdPath, `sha256:${'a'.repeat(64)}`)
 
   writeFileSync(
     dockerPath,
     `#!${process.execPath}
-const { appendFileSync, readFileSync } = require('node:fs')
+const { appendFileSync, readFileSync, rmSync, writeFileSync } = require('node:fs')
 const args = process.argv.slice(2)
-appendFileSync(${JSON.stringify(logPath)}, JSON.stringify({ args, pid: process.pid }) + '\\n')
+appendFileSync(${JSON.stringify(logPath)}, JSON.stringify({ args, pid: process.pid, env: process.env }) + '\\n')
 
 if (args[0] === 'context' && args[1] === 'inspect') {
   const endpoint = process.env.DOCKER_CONTEXT === 'remote-test'
     ? 'ssh://remote.example.test'
-    : 'unix:///var/run/docker.sock'
+    : ${JSON.stringify(`unix://${dockerSocketPath}`)}
   process.stdout.write(JSON.stringify(endpoint) + '\\n')
   process.exit(0)
 }
@@ -50,8 +68,40 @@ if (args[0] === 'image' && args[1] === 'inspect') {
     process.exit(1)
   }
   const volumes = image === 'volume:image' ? { '/var/lib/example': {} } : null
-  process.stdout.write(JSON.stringify('sha256:${'a'.repeat(64)}') + '\\t' + JSON.stringify(volumes) + '\\n')
+  const imageId = image === 'missing-tools:image'
+    ? ${JSON.stringify(`sha256:${'c'.repeat(64)}`)}
+    : readFileSync(${JSON.stringify(imageIdPath)}, 'utf8').trim()
+  process.stdout.write(JSON.stringify(imageId) + '\\t' + JSON.stringify(volumes) + '\\n')
   process.exit(0)
+}
+
+if (args[0] === 'container' && args[1] === 'create') {
+  if (args.some((arg) => arg.includes('reject-create'))) {
+    process.stderr.write('Error response from daemon: invalid mount config for type "bind"\\n')
+    process.exit(125)
+  }
+  const name = args[args.indexOf('--name') + 1]
+  writeFileSync(${JSON.stringify(containerStatePath)}, name)
+  process.stdout.write('preflight-container-id\\n')
+  process.exit(0)
+}
+
+if (args[0] === 'container' && args[1] === 'start') {
+  const calls = readFileSync(${JSON.stringify(logPath)}, 'utf8')
+    .trim()
+    .split('\\n')
+    .filter(Boolean)
+    .map((line) => JSON.parse(line).args)
+  const createCommand = calls.find((call) => call[0] === 'container' && call[1] === 'create')
+  if (createCommand?.includes(${JSON.stringify(`sha256:${'c'.repeat(64)}`)})) {
+    process.stderr.write('exec: "/bin/bash": stat /bin/bash: no such file or directory\\n')
+    process.exit(1)
+  }
+  if (createCommand?.some((arg) => arg.includes('probe-start-hang'))) {
+    setInterval(() => {}, 1_000)
+  } else {
+    process.exit(0)
+  }
 }
 
 if (args[0] === 'container' && args[1] === 'rm') {
@@ -61,14 +111,16 @@ if (args[0] === 'container' && args[1] === 'rm') {
     .filter(Boolean)
     .map((line) => JSON.parse(line).args)
   const runCommand = calls.find((call) => call[0] === 'run')?.at(-1)
+  const createCommand = calls.find((call) => call[0] === 'container' && call[1] === 'create')
   const removeCount = calls.filter((call) => call[0] === 'container' && call[1] === 'rm').length
   if (runCommand === '__startup_race__' && removeCount === 1) {
     process.stderr.write('Error response from daemon: No such container\\n')
     process.exit(1)
   }
-  if (runCommand === '__cleanup_hang__') {
+  if (runCommand === '__cleanup_hang__' || createCommand?.some((arg) => arg.includes('cleanup-hang-preflight'))) {
     setInterval(() => {}, 1_000)
   } else {
+    rmSync(${JSON.stringify(containerStatePath)}, { force: true })
     process.exit(0)
   }
 }
@@ -105,9 +157,22 @@ if (args[0] === 'run') {
   mkdirSync(workspace)
 })
 
-afterEach(() => {
+afterEach(async () => {
+  if (dockerSocketServer) {
+    const server = dockerSocketServer
+    dockerSocketServer = null
+    await new Promise<void>((resolve) => server.close(() => resolve()))
+  }
   rmSync(testDir, { recursive: true, force: true })
 })
+
+async function startDockerSocket(): Promise<void> {
+  dockerSocketServer = createServer()
+  await new Promise<void>((resolve, reject) => {
+    dockerSocketServer?.once('error', reject)
+    dockerSocketServer?.listen(dockerSocketPath, resolve)
+  })
+}
 
 function invocations(): FakeDockerInvocation[] {
   if (!existsSync(logPath)) return []
@@ -203,6 +268,295 @@ describe('buildDockerRunSpec', () => {
     expect(() =>
       buildDockerRunSpec({ ...base, image: 'bash:5', env: { DOCKER_HOST: 'tcp://attacker' } }),
     ).toThrow(/cannot pass Docker client control variable/)
+  })
+})
+
+describe('protected Docker preflight and pinned execution', () => {
+  test('returns a secret-free readiness result and executes only the pinned local facts', async () => {
+    await startDockerSocket()
+    const memory = join(workspace, 'memory')
+    mkdirSync(memory)
+    const hostEnv = { PATH: testDir, HOME: testDir }
+
+    await expect(
+      checkProtectedDockerReadiness({ image: 'fake:image', dockerPath, hostEnv }),
+    ).resolves.toEqual({ ready: true, image: 'fake:image' })
+    const runtime = await preflightProtectedDockerRuntime({
+      image: 'fake:image',
+      dockerPath,
+      hostEnv,
+      workspaceDir: workspace,
+      workspaceRoot: workspace,
+      readOnlyMounts: [{ source: memory, sourceRoot: workspace, target: '/workspace/memory' }],
+    })
+    expect(runtime.dockerPath).toBe(dockerPath)
+    expect(runtime.executableIdentity).toMatchObject({
+      device: expect.stringMatching(/^\d+$/),
+      inode: expect.stringMatching(/^\d+$/),
+    })
+    expect(runtime.endpoint).toBe(`unix://${dockerSocketPath}`)
+    expect(runtime.imageId).toBe(`sha256:${'a'.repeat(64)}`)
+
+    const preflightCalls = invocations()
+    const workspaceMount = `type=bind,source=${workspace},target=/workspace,bind-recursive=disabled`
+    const create = preflightCalls.find(
+      (entry) =>
+        entry.args[0] === 'container' &&
+        entry.args[1] === 'create' &&
+        flagValues(entry.args, '--mount').includes(workspaceMount),
+    )
+    expect(create).toBeDefined()
+    expect(flagValues(create?.args ?? [], '--network')).toEqual(['none'])
+    expect(flagValues(create?.args ?? [], '--pull')).toEqual(['never'])
+    expect(flagValues(create?.args ?? [], '--mount')).toEqual([
+      workspaceMount,
+      `type=bind,source=${memory},target=/workspace/memory,readonly,bind-recursive=disabled`,
+    ])
+    expect(create?.args).toContain(runtime.imageId)
+    expect(create?.args).not.toContain(runtime.image)
+    const preflightName = flagValues(create?.args ?? [], '--name')[0]
+    expect(preflightName).toMatch(/^bazilion-preflight-\d+-[a-f0-9]{32}$/)
+    expect(preflightCalls.map((entry) => entry.args)).toContainEqual([
+      'container',
+      'start',
+      '--attach',
+      preflightName,
+    ])
+    expect(preflightCalls.map((entry) => entry.args)).toContainEqual([
+      'container',
+      'rm',
+      '--force',
+      preflightName,
+    ])
+    expect(existsSync(containerStatePath)).toBe(false)
+    expect(preflightCalls.some((entry) => entry.args[0] === 'run')).toBe(false)
+
+    const output: string[] = []
+    const operations = createPreparedDockerBashOperations(runtime)
+    await expect(
+      operations.exec('true', workspace, {
+        onData: (data) => output.push(data.toString('utf8')),
+        env: { HOST_SECRET: 'must-not-pass' },
+      }),
+    ).resolves.toEqual({ exitCode: 0 })
+    expect(output.join('')).toContain('from stdout')
+
+    const run = invocations()
+      .reverse()
+      .find((entry) => entry.args[0] === 'run')
+    expect(run?.args).toContain(runtime.imageId)
+    expect(run?.args).not.toContain(runtime.image)
+    expect(run?.env).toEqual({ DOCKER_HOST: `unix://${dockerSocketPath}` })
+    expect(run?.args.join('\0')).not.toContain('HOST_SECRET')
+  })
+
+  test('rejects a daemon mount/create failure during preflight and removes the exact probe', async () => {
+    await startDockerSocket()
+    const rejectedWorkspace = join(testDir, 'reject-create-workspace')
+    mkdirSync(rejectedWorkspace)
+
+    await expect(
+      preflightProtectedDockerRuntime({
+        image: 'fake:image',
+        dockerPath,
+        hostEnv: { PATH: testDir, HOME: testDir },
+        workspaceDir: rejectedWorkspace,
+        workspaceRoot: rejectedWorkspace,
+      }),
+    ).rejects.toThrow(/preflight mount failed/)
+
+    const calls = invocations()
+    const create = calls.find(
+      (entry) => entry.args[0] === 'container' && entry.args[1] === 'create',
+    )
+    expect(create).toBeDefined()
+    const name = flagValues(create?.args ?? [], '--name')[0]
+    expect(calls.map((entry) => entry.args)).toContainEqual(['container', 'rm', '--force', name])
+    expect(existsSync(containerStatePath)).toBe(false)
+    expect(calls.some((entry) => entry.args[0] === 'run')).toBe(false)
+  })
+
+  test('reports an image missing required shell executables as not protected-ready', async () => {
+    await startDockerSocket()
+
+    const result = await checkProtectedDockerReadiness({
+      image: 'missing-tools:image',
+      dockerPath,
+      hostEnv: { PATH: testDir, HOME: testDir },
+    })
+
+    expect(result).toEqual({
+      ready: false,
+      image: 'missing-tools:image',
+      reason: 'Docker preflight failed',
+    })
+    expect(JSON.stringify(result)).not.toContain(testDir)
+    expect(JSON.stringify(result)).not.toContain(dockerSocketPath)
+    expect(
+      invocations().some((entry) => entry.args[0] === 'container' && entry.args[1] === 'start'),
+    ).toBe(true)
+    expect(existsSync(containerStatePath)).toBe(false)
+  })
+
+  test('rejects an image missing the required shell executables before returning runtime', async () => {
+    await startDockerSocket()
+
+    await expect(
+      preflightProtectedDockerRuntime({
+        image: 'missing-tools:image',
+        dockerPath,
+        hostEnv: { PATH: testDir, HOME: testDir },
+        workspaceDir: workspace,
+        workspaceRoot: workspace,
+      }),
+    ).rejects.toThrow(/required \/bin\/bash and \/usr\/bin\/env probe/)
+
+    const calls = invocations()
+    const create = calls.find(
+      (entry) => entry.args[0] === 'container' && entry.args[1] === 'create',
+    )
+    const name = flagValues(create?.args ?? [], '--name')[0]
+    expect(calls.map((entry) => entry.args)).toContainEqual([
+      'container',
+      'start',
+      '--attach',
+      name,
+    ])
+    expect(calls.map((entry) => entry.args)).toContainEqual(['container', 'rm', '--force', name])
+    expect(existsSync(containerStatePath)).toBe(false)
+    expect(calls.some((entry) => entry.args[0] === 'run')).toBe(false)
+  })
+
+  test('bounds an unresponsive executable probe and force-removes its exact container', async () => {
+    await startDockerSocket()
+    const hangingWorkspace = join(testDir, 'probe-start-hang-workspace')
+    mkdirSync(hangingWorkspace)
+    const startedAt = Date.now()
+
+    await expect(
+      preflightProtectedDockerRuntime({
+        image: 'fake:image',
+        dockerPath,
+        hostEnv: { PATH: testDir, HOME: testDir },
+        workspaceDir: hangingWorkspace,
+        workspaceRoot: hangingWorkspace,
+      }),
+    ).rejects.toThrow(/could not start its protected preflight container within 2000ms/)
+
+    expect(Date.now() - startedAt).toBeLessThan(3_000)
+    const calls = invocations()
+    const create = calls.find(
+      (entry) => entry.args[0] === 'container' && entry.args[1] === 'create',
+    )
+    const name = flagValues(create?.args ?? [], '--name')[0]
+    expect(calls.map((entry) => entry.args)).toContainEqual(['container', 'rm', '--force', name])
+    expect(existsSync(containerStatePath)).toBe(false)
+  }, 4_000)
+
+  test('bounds preflight cleanup failures and never returns a protected runtime', async () => {
+    await startDockerSocket()
+    const cleanupHangWorkspace = join(testDir, 'cleanup-hang-preflight-workspace')
+    mkdirSync(cleanupHangWorkspace)
+    const startedAt = Date.now()
+
+    await expect(
+      preflightProtectedDockerRuntime({
+        image: 'fake:image',
+        dockerPath,
+        hostEnv: { PATH: testDir, HOME: testDir },
+        workspaceDir: cleanupHangWorkspace,
+        workspaceRoot: cleanupHangWorkspace,
+      }),
+    ).rejects.toThrow(/could not confirm cleanup of its preflight container/)
+
+    expect(Date.now() - startedAt).toBeLessThan(2_900)
+    expect(
+      invocations().filter((entry) => entry.args[0] === 'container' && entry.args[1] === 'rm'),
+    ).toHaveLength(3)
+    expect(invocations().some((entry) => entry.args[0] === 'run')).toBe(false)
+  }, 5_000)
+
+  test('readiness failures expose a bounded reason without endpoint or executable paths', async () => {
+    await startDockerSocket()
+    const result = await checkProtectedDockerReadiness({
+      image: 'volume:image',
+      dockerPath,
+      hostEnv: { PATH: testDir, HOME: testDir },
+    })
+    expect(result).toEqual({
+      ready: false,
+      image: 'volume:image',
+      reason: 'Docker image declares writable volumes',
+    })
+    expect(JSON.stringify(result)).not.toContain(testDir)
+    expect(JSON.stringify(result)).not.toContain(dockerSocketPath)
+  })
+
+  test('rejects an image-tag change between preflight and execution without host fallback', async () => {
+    await startDockerSocket()
+    const runtime = await preflightProtectedDockerRuntime({
+      image: 'fake:image',
+      dockerPath,
+      hostEnv: { PATH: testDir, HOME: testDir },
+      workspaceDir: workspace,
+      workspaceRoot: workspace,
+    })
+    writeFileSync(imageIdPath, `sha256:${'b'.repeat(64)}`)
+
+    await expect(
+      createPreparedDockerBashOperations(runtime).exec('true', workspace, {
+        onData: () => undefined,
+      }),
+    ).rejects.toThrow(/image no longer matches.*immutable id/)
+    expect(invocations().some((entry) => entry.args[0] === 'run')).toBe(false)
+  })
+
+  test('rejects Docker executable replacement before any worker-side Docker call', async () => {
+    await startDockerSocket()
+    const runtime = await preflightProtectedDockerRuntime({
+      image: 'fake:image',
+      dockerPath,
+      hostEnv: { PATH: testDir, HOME: testDir },
+      workspaceDir: workspace,
+      workspaceRoot: workspace,
+    })
+    const callsBeforeReplacement = invocations().length
+    const replacement = join(testDir, 'replacement-docker.cjs')
+    writeFileSync(replacement, readFileSync(dockerPath))
+    chmodSync(replacement, 0o755)
+    renameSync(replacement, dockerPath)
+
+    await expect(
+      createPreparedDockerBashOperations(runtime).exec('true', workspace, {
+        onData: () => undefined,
+      }),
+    ).rejects.toThrow(/executable no longer matches.*preflighted identity/)
+    expect(invocations()).toHaveLength(callsBeforeReplacement)
+    expect(invocations().some((entry) => entry.args[0] === 'run')).toBe(false)
+  })
+
+  test('rejects a read-only mount replaced by a symlink after preflight', async () => {
+    await startDockerSocket()
+    const memory = join(workspace, 'memory')
+    const replacement = join(workspace, 'memory-real')
+    mkdirSync(memory)
+    const runtime = await preflightProtectedDockerRuntime({
+      image: 'fake:image',
+      dockerPath,
+      hostEnv: { PATH: testDir, HOME: testDir },
+      workspaceDir: workspace,
+      workspaceRoot: workspace,
+      readOnlyMounts: [{ source: memory, sourceRoot: workspace, target: '/workspace/memory' }],
+    })
+    renameSync(memory, replacement)
+    symlinkSync(replacement, memory, 'dir')
+
+    await expect(
+      createPreparedDockerBashOperations(runtime).exec('true', workspace, {
+        onData: () => undefined,
+      }),
+    ).rejects.toThrow(/mount no longer matches preflight/)
+    expect(invocations().some((entry) => entry.args[0] === 'run')).toBe(false)
   })
 })
 

@@ -1,23 +1,18 @@
 import type { ProviderMessage, ResolvedAgent } from '@bazilion/api-types'
-import {
-  agentLessonProposalRepo,
-  agentReviewRepo,
-  mergeSecretsIntoEnv,
-  providerStateRepo,
-  resolveAgent,
-} from '../core/index.ts'
+import { agentLessonProposalRepo, agentReviewRepo, resolveAgent } from '../core/index.ts'
 import {
   loadInitialMessages,
   loadSessionHead,
   piMessagesToProviderView,
   qmdBackend,
-  spawnReviewWorker,
 } from '../runtime/index.ts'
 import { isActiveAgent, registerAgent, unregisterAgent } from './agent-cancel.ts'
 import { acquireAgentLifecycleLease } from './agent-lifecycle-lease.ts'
-import { resolveAgentApiKey } from './api-key.ts'
 import { getCtx } from './ctx.ts'
+import { protectedFailureMessage } from './protected-failure.ts'
 import { buildReviewDigest, type ReviewTranscriptEntry } from './review-digest.ts'
+import { prepareReviewInput } from './review-input.ts'
+import { executePreparedReview, prepareRestrictedReview } from './review-preparation.ts'
 
 function messageText(message: ProviderMessage): string {
   if (message.role === 'tool') return message.toolName ?? 'unknown'
@@ -42,25 +37,8 @@ function transcriptEntries(
   })
 }
 
-function renderReviewInput(
-  digest: NonNullable<ReturnType<typeof buildReviewDigest>>,
-  privateLessons: string[],
-  sharedLessonKeys: string[],
-): string {
-  const entries = digest.entries
-    .map(
-      (entry) => `[${entry.sessionId}:${entry.ordinal}] ${entry.role.toUpperCase()}: ${entry.text}`,
-    )
-    .join('\n\n')
-  return `# Transcript digest\n\n${entries}\n\n# Existing private lessons\n${
-    privateLessons.length ? privateLessons.map((text) => `- ${text}`).join('\n') : '(none)'
-  }\n\n# Existing shared lesson keys\n${
-    sharedLessonKeys.length ? sharedLessonKeys.map((key) => `- ${key}`).join('\n') : '(none)'
-  }`
-}
-
 export async function dispatchAgentReview(reviewId: string): Promise<void> {
-  const { db, paths, authToken } = getCtx()
+  const { db, paths } = getCtx()
   const claimed = agentReviewRepo.claim(db, reviewId)
   if (!claimed) return
   if (isActiveAgent(claimed.agentId)) {
@@ -110,6 +88,7 @@ export async function dispatchAgentReview(reviewId: string): Promise<void> {
     const sharedLessonKeys = (await memory.list())
       .map((entry) => entry.key)
       .filter((key) => key.startsWith('lessons/'))
+    const reviewInput = prepareReviewInput(digest, privateLessons, sharedLessonKeys)
 
     const reviewAgent: ResolvedAgent = {
       ...resolved,
@@ -121,33 +100,13 @@ export async function dispatchAgentReview(reviewId: string): Promise<void> {
       model: resolved.agent.reviewModel ?? resolved.model,
       reasoningLevel: resolved.agent.reviewReasoningLevel,
     }
-    const { apiKey, refreshApiKey } = await resolveAgentApiKey(db, authToken, reviewAgent, {
-      withRefresher: true,
+    const preparedReview = await prepareRestrictedReview({
+      review: claimed,
+      agent: reviewAgent,
+      message: reviewInput.message,
+      evidence: reviewInput.evidence,
     })
-    const env = mergeSecretsIntoEnv(db, authToken)
-    const proposals = await spawnReviewWorker(
-      {
-        mode: 'review',
-        review: {
-          reviewId: claimed.id,
-          evidence: digest.entries.map((entry) => ({
-            sessionId: entry.sessionId,
-            entryOrdinal: entry.ordinal,
-          })),
-        },
-        agent: reviewAgent,
-        message: renderReviewInput(digest, privateLessons, sharedLessonKeys),
-        enabledProviders: [...providerStateRepo.listEnabled(db)],
-        apiKey,
-        turnId: claimed.id,
-        bashApprovalMode: 'auto_deny',
-      },
-      {
-        signal: controller.signal,
-        env,
-        apiKeyRefreshHost: refreshApiKey ? { refresh: refreshApiKey } : undefined,
-      },
-    )
+    const proposals = await executePreparedReview(preparedReview, controller.signal)
     db.raw.transaction(() => {
       for (const proposal of proposals) {
         agentLessonProposalRepo.insert(db, {
@@ -164,7 +123,7 @@ export async function dispatchAgentReview(reviewId: string): Promise<void> {
     if (controller.signal.aborted) {
       agentReviewRepo.cancel(db, claimed.id, 'cancelled')
     } else {
-      agentReviewRepo.fail(db, claimed.id, error instanceof Error ? error.message : String(error))
+      agentReviewRepo.fail(db, claimed.id, protectedFailureMessage(error, 'Restricted review'))
     }
   } finally {
     if (registered) unregisterAgent(claimed.agentId)

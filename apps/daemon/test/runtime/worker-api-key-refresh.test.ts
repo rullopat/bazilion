@@ -149,6 +149,7 @@ test('spawned worker refreshes end-to-end without putting either token in ChatFr
   try {
     for await (const frame of spawnWorkerTurn(
       {
+        kind: 'configured_operator_http',
         agent,
         message: 'exercise refresh IPC',
         enabledProviders: ['openai-codex'],
@@ -157,6 +158,7 @@ test('spawned worker refreshes end-to-end without putting either token in ChatFr
         bashApprovalMode: 'auto_deny',
       },
       {
+        env: process.env,
         apiKeyRefreshHost: { refresh },
         workerEntryPath: fileURLToPath(
           new URL('../fixtures/worker-api-key-refresh-entry.ts', import.meta.url),

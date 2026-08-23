@@ -396,3 +396,286 @@ test('approval-required chat holds text and attachment before persistence or tur
       .get()?.count,
   ).toBe(1)
 })
+
+test('HTTP and Telegram approval replays preserve identity while failures stay source-owned', async () => {
+  const turns: Array<Record<string, unknown>> = []
+  let protectedFailureAttemptId: string | null = null
+  const downloadedMedia = {
+    ok: true as const,
+    data: 'bWVkaWEtYnl0ZXM=',
+    mimeType: 'text/plain',
+    name: 'approved.txt',
+  }
+  const downloadMediaBytes = vi.fn(async () => downloadedMedia)
+  const sendTelegramMessage = vi.fn(async () => ({ message_id: 1 }))
+  vi.doMock('../../src/lib/telegram/media.ts', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('../../src/lib/telegram/media.ts')>()
+    return { ...actual, downloadMediaBytes }
+  })
+  vi.doMock('grammy', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('grammy')>()
+    return {
+      ...actual,
+      Bot: class {
+        readonly api = { sendMessage: sendTelegramMessage }
+      },
+    }
+  })
+  vi.doMock('../../src/lib/agent-turn.ts', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('../../src/lib/agent-turn.ts')>()
+    return {
+      ...actual,
+      prepareAgentTurn: async (turn: Parameters<typeof actual.prepareAgentTurn>[0]) => {
+        if (turn.invocation.kind === 'operator_http') return actual.prepareAgentTurn(turn)
+        if (turn.invocation.authorization.attemptId === protectedFailureAttemptId) {
+          throw new Error('preflight leaked APPROVAL_SECRET_SENTINEL')
+        }
+        turns.push(turn as unknown as Record<string, unknown>)
+        return turn as never
+      },
+      runAgentTurn: () =>
+        (async function* () {
+          if (false as boolean) yield undefined
+        })(),
+    }
+  })
+  const { createApp } = await import('../../src/app.ts')
+  const {
+    authorizeInSnapshot,
+    communicationApprovalRepo,
+    createProfile,
+    openSecrets,
+    providerModelRepo,
+    providerStateRepo,
+    registerTeam,
+    spawnAgent,
+  } = await import('../../src/core/index.ts')
+  const { getCtx } = await import('../../src/lib/ctx.ts')
+  const ctx = getCtx()
+  process.env.BAZILION_TEAM_POLICY_ENFORCEMENT = 'on'
+  providerStateRepo.setEnabled(ctx.db, 'lmstudio', true)
+  providerModelRepo.replace(ctx.db, 'lmstudio', ['model'])
+  createProfile(ctx.db, ctx.paths, { id: 'p', defaultModel: 'lmstudio:model' })
+  registerTeam(ctx.db, { id: 'default' }, ctx.paths)
+  const agent = spawnAgent(ctx.db, ctx.paths, { profileId: 'p', teamId: 'default' })
+  openSecrets(ctx.db, ctx.authToken).set('TELEGRAM_BOT_TOKEN', 'telegram-test-token')
+  ctx.db.raw.run('DELETE FROM team_policy_edges WHERE team_id = ?', ['default'])
+  ctx.db.raw.run(
+    `INSERT INTO team_policy_edges
+       (team_id, source_kind, source_id, target_kind, target_id, posture)
+     VALUES ('default', 'user', '', 'agent', ?, 'approval_required')`,
+    [agent.id],
+  )
+  const app = createApp()
+  const headers = {
+    authorization: `Bearer ${ctx.authToken}`,
+    'content-type': 'application/json',
+  }
+  const attachments = [{ name: 'secret.txt', mimeType: 'text/plain', data: 'c2VjcmV0' }]
+  const held = await app.request(`/api/agents/${agent.id}/chat`, {
+    method: 'POST',
+    headers: { ...headers, 'x-request-id': 'stored-http-attempt' },
+    body: JSON.stringify({ message: 'approved prompt', attachments }),
+  })
+  const heldBody = (await held.json()) as { approvalId: string }
+
+  const approved = await app.request(`/api/approvals/${heldBody.approvalId}/approve`, {
+    method: 'POST',
+    headers,
+    body: '{}',
+  })
+  expect(approved.status).toBe(200)
+  expect(turns).toHaveLength(1)
+  expect(turns[0]).toMatchObject({
+    invocation: {
+      kind: 'approval_delivery',
+      bashApprovalMode: 'auto_deny',
+      authorization: {
+        origin: 'http_chat',
+        attemptKind: 'http_chat_ingress',
+        attemptId: 'stored-http-attempt',
+        approvalId: heldBody.approvalId,
+        agentId: agent.id,
+      },
+      turn: { agentId: agent.id, message: 'approved prompt', attachments },
+    },
+  })
+
+  const telegramAttempt = {
+    source: { kind: 'user' as const, teamId: 'default' },
+    target: { kind: 'agent' as const, id: agent.id },
+    origin: 'telegram_agent_topic',
+    attemptKind: 'telegram_ingress',
+    attemptId: '-100:77',
+  }
+  const telegramAuthorization = authorizeInSnapshot(ctx.db, telegramAttempt)
+  expect(telegramAuthorization.decision).toBe('approval_required')
+  const telegramMedia = {
+    kind: 'document' as const,
+    fileId: 'telegram-file-ref',
+    fileName: 'original.txt',
+    mimeType: 'text/plain',
+    fileSize: 11,
+  }
+  const telegramApproval = communicationApprovalRepo.request(
+    ctx.db,
+    telegramAttempt,
+    'user_to_agent',
+    telegramAuthorization,
+    'telegram_ingress',
+    {
+      agentId: agent.id,
+      text: 'approved Telegram prompt',
+      media: telegramMedia,
+      chatId: -100,
+      threadId: 42,
+      messageId: 77,
+    },
+    { requester: 'telegram:11' },
+  )
+  expect(downloadMediaBytes).not.toHaveBeenCalled()
+  expect(
+    JSON.stringify(communicationApprovalRepo.get(ctx.db, telegramApproval.id, true)),
+  ).not.toContain(downloadedMedia.data)
+  let statusAtDownload: string | undefined
+  downloadMediaBytes.mockImplementation(async () => {
+    statusAtDownload = communicationApprovalRepo.get(ctx.db, telegramApproval.id)?.status
+    return downloadedMedia
+  })
+  const telegramApproved = await app.request(`/api/approvals/${telegramApproval.id}/approve`, {
+    method: 'POST',
+    headers,
+    body: '{}',
+  })
+  expect(telegramApproved.status).toBe(200)
+  expect(statusAtDownload).toBe('delivering')
+  expect(downloadMediaBytes).toHaveBeenCalledTimes(1)
+  expect(sendTelegramMessage).toHaveBeenCalledWith(
+    -100,
+    'Communication approved. Processing now.',
+    { message_thread_id: 42 },
+  )
+  expect(turns).toHaveLength(2)
+  expect(turns[1]).toMatchObject({
+    invocation: {
+      kind: 'approval_delivery',
+      bashApprovalMode: 'auto_deny',
+      authorization: {
+        origin: 'telegram_agent_topic',
+        attemptKind: 'telegram_ingress',
+        attemptId: '-100:77',
+        approvalId: telegramApproval.id,
+        agentId: agent.id,
+      },
+      turn: {
+        agentId: agent.id,
+        message: 'approved Telegram prompt',
+        attachments: [
+          {
+            name: downloadedMedia.name,
+            mimeType: downloadedMedia.mimeType,
+            data: downloadedMedia.data,
+          },
+        ],
+      },
+    },
+  })
+
+  const corruptAttempt = {
+    ...telegramAttempt,
+    attemptId: '-100:78',
+  }
+  const corruptAuthorization = authorizeInSnapshot(ctx.db, corruptAttempt)
+  const corruptApproval = communicationApprovalRepo.request(
+    ctx.db,
+    corruptAttempt,
+    'user_to_agent',
+    corruptAuthorization,
+    'telegram_ingress',
+    {
+      agentId: agent.id,
+      text: 'must not leave the Agent topic',
+      media: null,
+      chatId: -100,
+      threadId: 42,
+      messageId: 78,
+    },
+    { requester: 'telegram:11' },
+  )
+  ctx.db.raw.run('UPDATE communication_approvals SET payload_json = ? WHERE id = ?', [
+    JSON.stringify({
+      agentId: agent.id,
+      text: 'must not leave the Agent topic',
+      media: null,
+      chatId: -100,
+      messageId: 78,
+    }),
+    corruptApproval.id,
+  ])
+  const corruptReplay = await app.request(`/api/approvals/${corruptApproval.id}/approve`, {
+    method: 'POST',
+    headers,
+    body: '{}',
+  })
+  expect(corruptReplay.status).toBe(500)
+  expect(await corruptReplay.json()).toMatchObject({
+    error: 'approval delivery failed',
+    detail: 'approval_delivery_invalid: telegram_ingress_payload',
+  })
+  expect(communicationApprovalRepo.get(ctx.db, corruptApproval.id)).toMatchObject({
+    status: 'delivery_failed',
+    deliveryError: 'approval_delivery_invalid: telegram_ingress_payload',
+  })
+  expect(turns).toHaveLength(2)
+  expect(downloadMediaBytes).toHaveBeenCalledTimes(1)
+
+  const failedHeld = await app.request(`/api/agents/${agent.id}/chat`, {
+    method: 'POST',
+    headers: { ...headers, 'x-request-id': 'protected-preflight-failure' },
+    body: JSON.stringify({ message: 'must fail safely' }),
+  })
+  const failedBody = (await failedHeld.json()) as { approvalId: string }
+  protectedFailureAttemptId = 'protected-preflight-failure'
+  const failedDelivery = await app.request(`/api/approvals/${failedBody.approvalId}/approve`, {
+    method: 'POST',
+    headers,
+    body: '{}',
+  })
+  expect(failedDelivery.status).toBe(500)
+  const failedText = await failedDelivery.text()
+  expect(failedText).not.toContain('APPROVAL_SECRET_SENTINEL')
+  expect(JSON.parse(failedText)).toEqual({
+    error: 'approval delivery failed',
+    detail: 'Approval delivery failed. Check Bazilion Config or bazilion doctor.',
+  })
+  expect(communicationApprovalRepo.get(ctx.db, failedBody.approvalId)).toMatchObject({
+    status: 'delivery_failed',
+    deliveryError: 'Approval delivery failed. Check Bazilion Config or bazilion doctor.',
+  })
+
+  const invalidHeld = await app.request(`/api/agents/${agent.id}/chat`, {
+    method: 'POST',
+    headers: { ...headers, 'x-request-id': 'invalid-stored-tuple' },
+    body: JSON.stringify({ message: 'must not run' }),
+  })
+  const invalidBody = (await invalidHeld.json()) as { approvalId: string }
+  ctx.db.raw.run('UPDATE communication_approvals SET payload_kind = ? WHERE id = ?', [
+    'telegram_file',
+    invalidBody.approvalId,
+  ])
+  const rejected = await app.request(`/api/approvals/${invalidBody.approvalId}/approve`, {
+    method: 'POST',
+    headers,
+    body: '{}',
+  })
+  expect(rejected.status).toBe(500)
+  expect(await rejected.json()).toMatchObject({
+    error: 'approval delivery failed',
+    detail: 'approval_delivery_invalid: tuple_not_allowed',
+  })
+  expect(communicationApprovalRepo.get(ctx.db, invalidBody.approvalId)).toMatchObject({
+    status: 'delivery_failed',
+    deliveryError: 'approval_delivery_invalid: tuple_not_allowed',
+  })
+  expect(turns).toHaveLength(2)
+})

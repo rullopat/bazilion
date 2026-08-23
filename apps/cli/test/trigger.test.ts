@@ -183,7 +183,7 @@ test('trigger rm deletes the trigger', async () => {
   expect(list.stdout).toContain('(no triggers)')
 })
 
-test('enabled interval trigger fires and updates last_fired_at', async () => {
+test('configured-only interval trigger materializes but fails closed before provider use', async () => {
   const agentId = await spawnAgent()
 
   // intervalSec=1 → first fire happens ~1s after creation, scheduler ticks every 200ms.
@@ -211,10 +211,18 @@ test('enabled interval trigger fires and updates last_fired_at', async () => {
     await new Promise((r) => setTimeout(r, 100))
   }
   expect(fired).toBe(true)
-  const history = await server.cli(['trigger', 'history', triggerId])
+  let history = await server.cli(['trigger', 'history', triggerId])
+  for (let i = 0; i < 50 && !history.stdout.includes('retrying'); i++) {
+    await new Promise((r) => setTimeout(r, 50))
+    history = await server.cli(['trigger', 'history', triggerId])
+  }
   expect(history.exitCode).toBe(0)
-  expect(history.stdout).toMatch(/(running|succeeded)/)
+  expect(history.stdout).toContain('retrying')
   expect(history.stdout).toContain('attempts: 1')
+  expect(history.stdout).toContain(
+    'Protected unattended turns currently require an OpenAI Codex model.',
+  )
+  expect(mock.callCount()).toBe(0)
 })
 
 test('cron trigger with invalid expression is rejected', async () => {

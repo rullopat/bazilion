@@ -54,7 +54,9 @@ function readCredentials(db: BazilionDb, authToken: string): StoredCredentials |
     const parsed = JSON.parse(raw) as Partial<StoredCredentials>
     if (
       typeof parsed.refresh === 'string' &&
+      parsed.refresh.length > 0 &&
       typeof parsed.access === 'string' &&
+      parsed.access.length > 0 &&
       typeof parsed.expires === 'number'
     ) {
       // Older Bazilion rows predate Pi's type discriminator. Normalizing here

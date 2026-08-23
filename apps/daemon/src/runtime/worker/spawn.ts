@@ -22,23 +22,40 @@
 import { type ChildProcess, spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { createRequire } from 'node:module'
+import { isAbsolute } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import type { Attachment, BashApprovalMode, ChatFrame, ResolvedAgent } from '@bazilion/api-types'
+import type { ChatFrame } from '@bazilion/api-types'
 import { type ApiKeyRefreshTurnContext, refreshApiKeyForTurn } from './api-key-refresh.ts'
 import type {
   ApiKeyRefreshHost,
   BashApprovalHost,
   BashApprovalResult,
   BrowserHost,
-  InjectedMcpTool,
   IpcReply,
   IpcRequest,
   McpHost,
   MessagingHost,
   UserMdHost,
 } from './ipc-protocol.ts'
+import {
+  type ConfiguredOperatorHttpWorkerSpec,
+  cleanupMinimalWorkerScratch,
+  createMinimalWorkerScratch,
+  ExactValueStreamRedactor,
+  minimalWorkerProcessEnv,
+  type ProtectedWorkerSpec,
+  parseWorkerInput,
+  type RestrictedReviewWorkerSpec,
+  redactExactValue,
+  redactJsonValue,
+  type WorkerInput,
+  type WorkerTurnSpec,
+} from './runtime.ts'
 
 const DEFAULT_KILL_GRACE_MS = 3_000
+const MAX_WORKER_STDERR_CHARS = 16 * 1024
+const MAX_WORKER_FRAME_CHARS = 40 * 1024 * 1024
+const MAX_MINIMAL_WORKER_INPUT_BYTES = 64 * 1024 * 1024
 
 // In dev, this file is at apps/daemon/src/runtime/worker/spawn.ts and the
 // worker entry is its `entry.ts` sibling. In the published bundle, all of
@@ -79,51 +96,19 @@ function tsxImportSpecifier(): string {
   return cachedTsxImport
 }
 
-export interface WorkerTurnSpec {
-  mode?: 'chat' | 'review'
-  /** Pre-resolved agent record — the worker never queries the DB itself. */
-  agent: ResolvedAgent
-  /** First user-message text for this turn. */
-  message: string
-  /**
-   * Names of providers the user has enabled in /config. Empty array means
-   * no per-provider gating configured (all providers pass).
-   */
-  enabledProviders: string[]
-  /**
-   * Pre-fetched API key for the agent's provider. Required for OAuth-backed
-   * providers (`openai-codex`) — the worker has no DB handle to read the
-   * secrets table itself. Omit for env-key providers; `pi/session.ts` then
-   * derives the key from `process.env`.
-   */
-  apiKey?: string
-  /** When true, expose the `browser_*` tools (proxied to the daemon browser pool). */
-  browserEnabled?: boolean
-  /** MCP tools discovered daemon-side, exposed as IPC-proxied proxy tools. */
-  mcpTools?: InjectedMcpTool[]
-  /** Image attachments — passed to pi's prompt (vision). Pre-classified by the daemon. */
-  images?: Attachment[]
-  /** Stable identity used to scope ephemeral command approvals. */
-  turnId: string
-  /** Whether this turn's caller can answer an approval request. */
-  bashApprovalMode: BashApprovalMode
-  review?: {
-    reviewId: string
-    evidence: Array<{ sessionId: string; entryOrdinal: number }>
-  }
-}
-
 export interface ReviewWorkerProposal {
   scope: 'private' | 'shared'
   text: string
   evidenceEntryIds: Array<{ sessionId: string; entryOrdinal: number }>
 }
 
+type WorkerOutputFrame = ChatFrame | { kind: 'review_result'; proposals: ReviewWorkerProposal[] }
+
 export async function spawnReviewWorker(
-  spec: WorkerTurnSpec & { mode: 'review'; review: NonNullable<WorkerTurnSpec['review']> },
-  opts: SpawnWorkerOpts = {},
+  spec: RestrictedReviewWorkerSpec,
+  opts: RestrictedReviewSpawnWorkerOpts,
 ): Promise<ReviewWorkerProposal[]> {
-  for await (const rawFrame of spawnWorkerTurn(spec, opts)) {
+  for await (const rawFrame of spawnWorker(spec, opts)) {
     const frame = rawFrame as
       | ChatFrame
       | { kind: 'review_result'; proposals: ReviewWorkerProposal[] }
@@ -133,13 +118,26 @@ export async function spawnReviewWorker(
   throw new Error('review worker exited without a result')
 }
 
-export interface SpawnWorkerOpts {
+interface CommonSpawnWorkerOpts {
   /** Abort to kill the in-flight worker. */
   signal?: AbortSignal
   /** ms between SIGTERM and fallback SIGKILL (default 3000). */
   killGraceMs?: number
-  /** Override env passed to the child. Defaults to `process.env`. */
-  env?: NodeJS.ProcessEnv
+  /** Receives one bounded, already-redacted diagnostic after the child exits. */
+  diagnosticSink?: (message: string) => void
+  /** Internal integration-test override. Must be absolute. */
+  workerEntryPath?: string
+  /** Internal integration-test override for observing scratch cleanup. */
+  scratchParentDir?: string
+  /** Internal integration-test override for the per-NDJSON-frame bound. */
+  maxFrameChars?: number
+  /** Internal integration-test override for the protected/review stdin byte bound. */
+  maxInputBytes?: number
+}
+
+export interface ConfiguredSpawnWorkerOpts extends CommonSpawnWorkerOpts {
+  /** Explicit legacy configured environment. There is intentionally no default. */
+  env: NodeJS.ProcessEnv
   /**
    * Daemon-side implementation of the messaging tools the worker calls back
    * into via IPC. Omit only when the caller knows the agent will not invoke
@@ -166,57 +164,168 @@ export interface SpawnWorkerOpts {
   bashApprovalHost?: BashApprovalHost
   /** Daemon-side OAuth refresh callback; present only for `openai-codex` turns. */
   apiKeyRefreshHost?: ApiKeyRefreshHost
-  /** Internal integration-test override. Never populate from user-controlled input. */
-  workerEntryPath?: string
 }
 
-export async function* spawnWorkerTurn(
+export interface ProtectedSpawnWorkerOpts extends CommonSpawnWorkerOpts {
+  messagingHost: MessagingHost
+  userMdHost: UserMdHost
+  bashApprovalHost: BashApprovalHost
+  apiKeyRefreshHost: ApiKeyRefreshHost
+}
+
+export interface RestrictedReviewSpawnWorkerOpts extends CommonSpawnWorkerOpts {
+  apiKeyRefreshHost: ApiKeyRefreshHost
+}
+
+export type SpawnWorkerOpts =
+  | ConfiguredSpawnWorkerOpts
+  | ProtectedSpawnWorkerOpts
+  | RestrictedReviewSpawnWorkerOpts
+
+export function spawnWorkerTurn(
+  spec: ConfiguredOperatorHttpWorkerSpec,
+  opts: ConfiguredSpawnWorkerOpts,
+): AsyncGenerator<ChatFrame, void, void>
+export function spawnWorkerTurn(
+  spec: ProtectedWorkerSpec,
+  opts: ProtectedSpawnWorkerOpts,
+): AsyncGenerator<ChatFrame, void, void>
+export function spawnWorkerTurn(
   spec: WorkerTurnSpec,
-  opts: SpawnWorkerOpts = {},
+  opts: ConfiguredSpawnWorkerOpts | ProtectedSpawnWorkerOpts,
 ): AsyncGenerator<ChatFrame, void, void> {
-  const child = spawn(process.execPath, workerSpawnArgs(opts.workerEntryPath), {
-    env: opts.env ?? process.env,
-    stdio: ['pipe', 'pipe', 'inherit', 'ipc'],
-  })
+  return spawnWorker(spec, opts) as AsyncGenerator<ChatFrame, void, void>
+}
 
-  const frames = new AsyncFrameQueue()
-  const ipcLifetime = new AbortController()
+async function* spawnWorker(
+  spec: WorkerTurnSpec | RestrictedReviewWorkerSpec,
+  opts: SpawnWorkerOpts,
+): AsyncGenerator<WorkerOutputFrame, void, void> {
+  assertSpawnCombination(spec, opts)
+  const requestedEntry = opts.workerEntryPath ?? entryPath
+  if (!isAbsolute(requestedEntry)) throw new Error('worker entry path must be absolute')
 
+  if (opts.scratchParentDir !== undefined && !isAbsolute(opts.scratchParentDir)) {
+    throw new Error('worker scratch parent path must be absolute')
+  }
   if (
-    opts.messagingHost ||
-    opts.userMdHost ||
-    opts.browserHost ||
-    opts.mcpHost ||
-    opts.bashApprovalHost ||
-    opts.apiKeyRefreshHost
+    opts.maxFrameChars !== undefined &&
+    (!Number.isSafeInteger(opts.maxFrameChars) || opts.maxFrameChars < 1)
   ) {
-    attachIpcHandler(child, {
-      messagingHost: opts.messagingHost,
-      userMdHost: opts.userMdHost,
-      browserHost: opts.browserHost,
-      mcpHost: opts.mcpHost,
-      bashApprovalHost: opts.bashApprovalHost,
-      apiKeyRefreshHost: opts.apiKeyRefreshHost,
-      apiKeyRefreshContext: {
-        providerName: spec.agent.model.split(':', 1)[0] ?? '',
-        agentId: spec.agent.agent.id,
-        turnId: spec.turnId,
-      },
-      ipcSignal: ipcLifetime.signal,
-      onBashApproval: (approval) => {
-        frames.push({ kind: 'event', event: { type: 'command_approval', approval } })
-      },
+    throw new Error('worker frame bound must be a positive safe integer')
+  }
+  if (
+    opts.maxInputBytes !== undefined &&
+    (!Number.isSafeInteger(opts.maxInputBytes) || opts.maxInputBytes < 1)
+  ) {
+    throw new Error('worker input bound must be a positive safe integer')
+  }
+  const scratch =
+    spec.kind === 'configured_operator_http'
+      ? undefined
+      : createMinimalWorkerScratch(opts.scratchParentDir)
+  let env: NodeJS.ProcessEnv
+  let input: WorkerInput
+  let serializedInput: string
+  try {
+    env =
+      spec.kind === 'configured_operator_http'
+        ? (opts as ConfiguredSpawnWorkerOpts).env
+        : minimalWorkerProcessEnv(scratch as NonNullable<typeof scratch>)
+    input =
+      spec.kind === 'configured_operator_http'
+        ? {
+            ...spec,
+            apiKeyRefreshEnabled:
+              (opts as ConfiguredSpawnWorkerOpts).apiKeyRefreshHost !== undefined,
+          }
+        : { ...spec, apiKeyRefreshEnabled: true, scratch: scratch as NonNullable<typeof scratch> }
+    parseWorkerInput(input)
+    const validatedJson = JSON.stringify(input)
+    if (input.kind !== 'configured_operator_http') {
+      // The selected access token is allowed on this private wire only in the
+      // closed runtime field. Exact-redact an accidental duplicate from all
+      // other per-turn material before restoring that one designated value.
+      const accessToken = input.runtime.accessToken
+      const scrubbed = redactJsonValue(JSON.parse(validatedJson) as typeof input, accessToken)
+      input = {
+        ...scrubbed,
+        runtime: { ...scrubbed.runtime, accessToken },
+      }
+      parseWorkerInput(input)
+    }
+    serializedInput =
+      input.kind === 'configured_operator_http' ? validatedJson : JSON.stringify(input)
+    if (
+      input.kind !== 'configured_operator_http' &&
+      Buffer.byteLength(serializedInput, 'utf8') >
+        (opts.maxInputBytes ?? MAX_MINIMAL_WORKER_INPUT_BYTES)
+    ) {
+      throw new Error('minimal worker input exceeded the maximum size')
+    }
+  } catch (error) {
+    if (scratch) cleanupMinimalWorkerScratch(scratch)
+    throw error
+  }
+  const accessToken =
+    spec.kind === 'configured_operator_http' ? spec.apiKey : spec.runtime.accessToken
+  const accessTokens = accessToken ? [accessToken] : []
+  const stderrRedactor = accessToken ? new ExactValueStreamRedactor(accessToken) : undefined
+
+  let child: ChildProcess
+  try {
+    child = spawn(process.execPath, workerSpawnArgs(requestedEntry), {
+      env,
+      stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
     })
+  } catch (error) {
+    if (scratch) cleanupMinimalWorkerScratch(scratch)
+    throw error
   }
 
-  child.stdin?.write(
-    JSON.stringify({
-      ...spec,
-      apiKeyRefreshEnabled: opts.apiKeyRefreshHost !== undefined,
-    }),
+  const frames = new AsyncFrameQueue<WorkerOutputFrame>()
+  const ipcLifetime = new AbortController()
+  const hosts = spawnHosts(
+    spec,
+    opts,
+    ipcLifetime.signal,
+    (approval) => {
+      frames.push(
+        redactJsonValue(
+          { kind: 'event', event: { type: 'command_approval', approval } } as ChatFrame,
+          accessTokens,
+        ),
+      )
+    },
+    (token) => {
+      if (!accessTokens.includes(token)) accessTokens.push(token)
+      stderrRedactor?.add(token)
+    },
   )
-  child.stdin?.end()
+  attachIpcHandler(child, hosts, () => accessTokens)
+  child.once('error', (error) => {
+    frames.push({
+      kind: 'fatal',
+      error: `worker process failed: ${accessTokens.reduce(redactExactValue, error.message)}`,
+    })
+  })
 
+  child.stdin?.on('error', (error) => {
+    frames.push({
+      kind: 'fatal',
+      error: `worker stdin failed: ${accessTokens.reduce(redactExactValue, error.message)}`,
+    })
+  })
+
+  const stderrCapture = new BoundedTextCapture(MAX_WORKER_STDERR_CHARS)
+  const stderrTask = child.stderr
+    ? pumpWorkerStderr(child.stderr, stderrCapture, stderrRedactor).catch((error) => {
+        const message = error instanceof Error ? error.message : String(error)
+        stderrCapture.append(
+          `worker stderr failed: ${accessTokens.reduce(redactExactValue, message)}`,
+        )
+      })
+    : Promise.resolve()
   const grace = opts.killGraceMs ?? DEFAULT_KILL_GRACE_MS
   let killTimer: NodeJS.Timeout | null = null
   const onAbort = (): void => {
@@ -224,9 +333,7 @@ export async function* spawnWorkerTurn(
     if (child.exitCode !== null || child.signalCode !== null) return
     try {
       child.kill('SIGTERM')
-    } catch {
-      // process may have already exited between our check and the kill
-    }
+    } catch {}
     killTimer = setTimeout(() => {
       if (child.exitCode === null && child.signalCode === null) {
         try {
@@ -248,48 +355,168 @@ export async function* spawnWorkerTurn(
       child.once('close', (code, signal) => resolve({ code, signal }))
     },
   )
-
   let emittedFatal = false
+  let diagnosticReported = false
 
   try {
     if (!child.stdout) throw new Error('worker spawn: stdout pipe missing')
-    const stdoutTask = pumpWorkerFrames(child.stdout, frames)
+    child.stdin?.write(serializedInput)
+    child.stdin?.end()
+    const stdoutTask = pumpWorkerFrames(
+      child.stdout,
+      frames,
+      () => accessTokens,
+      opts.maxFrameChars ?? MAX_WORKER_FRAME_CHARS,
+      onAbort,
+    )
     for await (const frame of frames) {
       if (frame.kind === 'fatal') emittedFatal = true
       yield frame
     }
     await stdoutTask
-
     const exit = await waitForExit
-    // Child exited without emitting a fatal frame but with non-zero status —
-    // surface that so the caller doesn't silently swallow a crash. Cancelled
-    // turns produce an `error` SessionEvent via the worker's signal handler
-    // and exit cleanly with code 0; only truly unexpected exits hit this.
+    await stderrTask
+    const diagnostic = stderrCapture.value().trim()
+    if (diagnostic) {
+      opts.diagnosticSink?.(diagnostic)
+      diagnosticReported = true
+    }
+
     if (!emittedFatal && exit.code !== 0 && exit.code !== null) {
       yield {
         kind: 'fatal',
-        error: `worker exited with code ${exit.code}${exit.signal ? ` (${exit.signal})` : ''}`,
+        error: appendDiagnostic(
+          `worker exited with code ${exit.code}${exit.signal ? ` (${exit.signal})` : ''}`,
+          diagnostic,
+        ),
       }
     } else if (!emittedFatal && exit.signal && exit.code === null) {
-      yield { kind: 'fatal', error: `worker killed by ${exit.signal}` }
+      yield {
+        kind: 'fatal',
+        error: appendDiagnostic(`worker killed by ${exit.signal}`, diagnostic),
+      }
     }
   } finally {
     ipcLifetime.abort()
     opts.signal?.removeEventListener('abort', onAbort)
+    // Async-generator consumers may stop after any frame. Do not remove the
+    // child's scratch tree out from under a still-running process: terminate
+    // it first, wait for descriptor closure, then erase the per-turn tree.
+    if (child.exitCode === null && child.signalCode === null) onAbort()
+    try {
+      await waitForExit
+    } catch {}
+    try {
+      await stderrTask
+    } catch {}
     if (killTimer) clearTimeout(killTimer)
+    if (!diagnosticReported) {
+      const diagnostic = stderrCapture.value().trim()
+      if (diagnostic) opts.diagnosticSink?.(diagnostic)
+    }
     try {
       child.disconnect()
-    } catch {
-      // already disconnected (child closed first) — fine
+    } catch {}
+    if (scratch) cleanupMinimalWorkerScratch(scratch)
+  }
+}
+
+function assertSpawnCombination(
+  spec: WorkerTurnSpec | RestrictedReviewWorkerSpec,
+  opts: SpawnWorkerOpts,
+): void {
+  const record = opts as unknown as Record<string, unknown>
+  if (spec.kind === 'configured_operator_http') {
+    if (!('env' in record) || !record.env || typeof record.env !== 'object') {
+      throw new Error('configured operator worker requires an explicit environment')
+    }
+    return
+  }
+  if ('env' in record) throw new Error(`${spec.kind} worker rejects a configured environment`)
+  if (!hostHasMethods(opts.apiKeyRefreshHost, ['refresh'])) {
+    throw new Error(`${spec.kind} worker requires bound API key refresh`)
+  }
+  if (spec.kind === 'protected') {
+    const protectedOptions = opts as ProtectedSpawnWorkerOpts
+    if (
+      !hostHasMethods(protectedOptions.messagingHost, [
+        'agentExists',
+        'sendMessage',
+        'listInbox',
+        'markRead',
+        'findReplies',
+        'approvalStatus',
+      ]) ||
+      !hostHasMethods(protectedOptions.userMdHost, ['get', 'write']) ||
+      !hostHasMethods(protectedOptions.bashApprovalHost, ['begin'])
+    ) {
+      throw new Error('protected worker requires its scoped IPC capabilities')
+    }
+    if ('browserHost' in record || 'mcpHost' in record) {
+      throw new Error('protected worker rejects browser and MCP capabilities')
+    }
+  } else {
+    for (const forbidden of [
+      'messagingHost',
+      'userMdHost',
+      'bashApprovalHost',
+      'browserHost',
+      'mcpHost',
+    ]) {
+      if (forbidden in record) throw new Error(`restricted review rejects ${forbidden}`)
     }
   }
 }
 
-function parseFrame(line: string): ChatFrame {
+function hostHasMethods(value: unknown, methods: readonly string[]): boolean {
+  if (!value || typeof value !== 'object') return false
+  const record = value as Record<string, unknown>
+  return methods.every((method) => typeof record[method] === 'function')
+}
+
+function spawnHosts(
+  spec: WorkerTurnSpec | RestrictedReviewWorkerSpec,
+  opts: SpawnWorkerOpts,
+  signal: AbortSignal,
+  onBashApproval: NonNullable<IpcHosts['onBashApproval']>,
+  onApiKeyRefreshed: NonNullable<IpcHosts['onApiKeyRefreshed']>,
+): IpcHosts {
+  const configured = spec.kind === 'configured_operator_http'
+  const protectedTurn = spec.kind === 'protected'
+  const configuredOpts = configured ? (opts as ConfiguredSpawnWorkerOpts) : undefined
+  const protectedOpts = protectedTurn ? (opts as ProtectedSpawnWorkerOpts) : undefined
+  return {
+    messagingHost: configuredOpts?.messagingHost ?? protectedOpts?.messagingHost,
+    userMdHost: configuredOpts?.userMdHost ?? protectedOpts?.userMdHost,
+    browserHost: configuredOpts?.browserHost,
+    mcpHost: configuredOpts?.mcpHost,
+    bashApprovalHost: configuredOpts?.bashApprovalHost ?? protectedOpts?.bashApprovalHost,
+    apiKeyRefreshHost: opts.apiKeyRefreshHost,
+    apiKeyRefreshContext: {
+      providerName:
+        spec.kind === 'configured_operator_http'
+          ? (spec.agent.model.split(':', 1)[0] ?? '')
+          : spec.runtime.providerName,
+      agentId:
+        spec.kind === 'configured_operator_http' || spec.kind === 'protected'
+          ? spec.agent.agent.id
+          : spec.agentId,
+      turnId: spec.turnId,
+    },
+    ipcSignal: signal,
+    onBashApproval,
+    onApiKeyRefreshed,
+  }
+}
+
+function parseFrame(line: string, accessTokens: readonly string[]): ChatFrame {
   try {
-    return JSON.parse(line) as ChatFrame
+    return redactJsonValue(JSON.parse(line) as ChatFrame, accessTokens)
   } catch {
-    return { kind: 'fatal', error: `worker emitted malformed frame: ${line.slice(0, 200)}` }
+    return {
+      kind: 'fatal',
+      error: `worker emitted malformed frame: ${accessTokens.reduce(redactExactValue, line).slice(0, 200)}`,
+    }
   }
 }
 
@@ -303,14 +530,26 @@ interface IpcHosts {
   apiKeyRefreshContext?: ApiKeyRefreshTurnContext
   ipcSignal?: AbortSignal
   onBashApproval?: (approval: import('@bazilion/api-types').CommandApproval) => void
+  onApiKeyRefreshed?: (accessToken: string) => void
 }
 
-function attachIpcHandler(child: ChildProcess, hosts: IpcHosts): void {
+function attachIpcHandler(
+  child: ChildProcess,
+  hosts: IpcHosts,
+  accessTokens: () => readonly string[],
+): void {
   child.on('message', (msg: unknown) => {
     if (!isIpcRequest(msg)) return
     void dispatch(msg, hosts).then((reply) => {
       try {
-        child.send?.(reply)
+        // A successful refresh is the one IPC payload explicitly allowed to
+        // carry the new token. Every other daemon reply is sanitized before it
+        // enters the worker, including bounded refresh failures.
+        const safeReply =
+          msg.method === 'refreshApiKey' && reply.ok
+            ? reply
+            : redactJsonValue(reply, accessTokens())
+        child.send?.(safeReply)
       } catch {
         // child may have exited between request and reply — drop silently
       }
@@ -394,6 +633,7 @@ async function dispatch(req: IpcRequest, hosts: IpcHosts): Promise<IpcReply> {
           hosts.apiKeyRefreshHost,
           hosts.ipcSignal,
         )
+        if (typeof result === 'string') hosts.onApiKeyRefreshed?.(result)
         break
       case 'bashApproval': {
         const handle = require(hosts.bashApprovalHost, 'bashApproval', req.method).begin(
@@ -427,12 +667,12 @@ function approvalStatusForDecision(
   return result.decision === 'allow' ? 'allowed' : 'denied'
 }
 
-class AsyncFrameQueue implements AsyncIterable<ChatFrame> {
-  readonly #frames: ChatFrame[] = []
-  readonly #waiters: Array<(item: IteratorResult<ChatFrame>) => void> = []
+class AsyncFrameQueue<T> implements AsyncIterable<T> {
+  readonly #frames: T[] = []
+  readonly #waiters: Array<(item: IteratorResult<T>) => void> = []
   #ended = false
 
-  push(frame: ChatFrame): void {
+  push(frame: T): void {
     if (this.#ended) return
     const waiter = this.#waiters.shift()
     if (waiter) waiter({ done: false, value: frame })
@@ -445,7 +685,7 @@ class AsyncFrameQueue implements AsyncIterable<ChatFrame> {
     for (const waiter of this.#waiters.splice(0)) waiter({ done: true, value: undefined })
   }
 
-  [Symbol.asyncIterator](): AsyncIterator<ChatFrame> {
+  [Symbol.asyncIterator](): AsyncIterator<T> {
     return {
       next: () => {
         const frame = this.#frames.shift()
@@ -459,7 +699,10 @@ class AsyncFrameQueue implements AsyncIterable<ChatFrame> {
 
 async function pumpWorkerFrames(
   stdout: NonNullable<ChildProcess['stdout']>,
-  frames: AsyncFrameQueue,
+  frames: AsyncFrameQueue<WorkerOutputFrame>,
+  accessTokens: () => readonly string[],
+  maxFrameChars: number,
+  onProtocolViolation: () => void,
 ): Promise<void> {
   let buf = ''
   try {
@@ -469,14 +712,63 @@ async function pumpWorkerFrames(
       while (idx !== -1) {
         const line = buf.slice(0, idx)
         buf = buf.slice(idx + 1)
-        if (line.trim()) frames.push(parseFrame(line))
+        if (line.length > maxFrameChars) {
+          frames.push({ kind: 'fatal', error: 'worker frame exceeded the maximum size' })
+          onProtocolViolation()
+          return
+        }
+        if (line.trim()) frames.push(parseFrame(line, accessTokens()))
         idx = buf.indexOf('\n')
       }
+      if (buf.length > maxFrameChars) {
+        frames.push({ kind: 'fatal', error: 'worker frame exceeded the maximum size' })
+        onProtocolViolation()
+        return
+      }
     }
-    if (buf.trim()) frames.push(parseFrame(buf))
+    if (buf.length > maxFrameChars) {
+      frames.push({ kind: 'fatal', error: 'worker frame exceeded the maximum size' })
+      onProtocolViolation()
+    } else if (buf.trim()) frames.push(parseFrame(buf, accessTokens()))
   } catch (error) {
-    frames.push({ kind: 'fatal', error: `worker stdout failed: ${(error as Error).message}` })
+    const message = error instanceof Error ? error.message : String(error)
+    frames.push({
+      kind: 'fatal',
+      error: `worker stdout failed: ${accessTokens().reduce(redactExactValue, message)}`,
+    })
   } finally {
     frames.end()
   }
+}
+
+class BoundedTextCapture {
+  #value = ''
+
+  constructor(readonly maxChars: number) {}
+
+  append(value: string): void {
+    this.#value = `${this.#value}${value}`.slice(-this.maxChars)
+  }
+
+  value(): string {
+    return this.#value
+  }
+}
+
+async function pumpWorkerStderr(
+  stderr: NonNullable<ChildProcess['stderr']>,
+  capture: BoundedTextCapture,
+  redactor?: ExactValueStreamRedactor,
+): Promise<void> {
+  if (!redactor) {
+    for await (const chunk of stderr) capture.append((chunk as Buffer).toString('utf8'))
+    return
+  }
+  for await (const chunk of stderr)
+    capture.append(redactor.push((chunk as Buffer).toString('utf8')))
+  capture.append(redactor.flush())
+}
+
+function appendDiagnostic(message: string, diagnostic: string): string {
+  return diagnostic ? `${message}: ${diagnostic}` : message
 }

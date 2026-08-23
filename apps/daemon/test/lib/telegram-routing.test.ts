@@ -10,7 +10,7 @@ import { createProfile } from '../../src/core/profile/create.ts'
 import * as agentRepo from '../../src/core/repos/agents.ts'
 import { openConfig } from '../../src/core/repos/config.ts'
 import * as telegramAclRepo from '../../src/core/repos/telegram-acl.ts'
-import { pendingMessageCount } from '../../src/lib/telegram/inbound-queue.ts'
+import * as inboundQueue from '../../src/lib/telegram/inbound-queue.ts'
 import {
   _resetRouterStateForTest,
   type ReplyApi,
@@ -146,7 +146,7 @@ describe('routeUpdate classification', () => {
       )
       expect(outcome).toMatchObject({ kind: 'agent_topic', queued: false })
       expect(lookups).toBe(0)
-      expect(pendingMessageCount(agent.id)).toBe(0)
+      expect(inboundQueue.pendingMessageCount(agent.id)).toBe(0)
       expect(sends.at(-1)?.text).toMatch(/pending approval/)
       expect(
         env.db.raw
@@ -186,7 +186,7 @@ describe('routeUpdate classification', () => {
       )
       expect(outcome).toMatchObject({ kind: 'agent_topic', queued: false })
       expect(lookups).toBe(0)
-      expect(pendingMessageCount(agent.id)).toBe(0)
+      expect(inboundQueue.pendingMessageCount(agent.id)).toBe(0)
       expect(sends.at(-1)?.text).toMatch(/blocked by Team policy/)
     } finally {
       if (previous === undefined) delete process.env.BAZILION_TEAM_POLICY_ENFORCEMENT
@@ -194,12 +194,16 @@ describe('routeUpdate classification', () => {
     }
   })
 
-  test('policy revocation during Telegram media fetch discards bytes before enqueue', async () => {
+  test('policy changes during media fetch preserve the exact queued attempt for final revalidation', async () => {
     const agent = spawnAgent(env.db, env.paths, { profileId: 'base', teamId: env.teamId })
     agentRepo.setTelegramTopicId(env.db, agent.id, 42)
     const previous = process.env.BAZILION_TEAM_POLICY_ENFORCEMENT
     process.env.BAZILION_TEAM_POLICY_ENFORCEMENT = 'on'
     const { api } = makeReplyApi()
+    const queued: unknown[][] = []
+    vi.spyOn(inboundQueue, 'enqueueAgentMessage').mockImplementation((...args) => {
+      queued.push(args)
+    })
     api.getFile = async () => ({ file_path: 'secret.jpg' })
     vi.stubGlobal('fetch', async () => {
       env.db.raw.run("DELETE FROM team_policy_edges WHERE team_id = ? AND source_kind = 'user'", [
@@ -218,13 +222,38 @@ describe('routeUpdate classification', () => {
         { db: env.db, paths: env.paths, authToken: 'token', botToken: 'bot', api, chatId: CHAT_ID },
         update,
       )
-      expect(outcome).toMatchObject({ kind: 'agent_topic', queued: false })
-      expect(pendingMessageCount(agent.id)).toBe(0)
+      expect(outcome).toMatchObject({ kind: 'agent_topic', queued: true })
+      expect(queued).toHaveLength(1)
+      expect(queued[0]?.[0]).toBe(agent.id)
+      expect(queued[0]?.[1]).toBe('')
+      expect(queued[0]?.[2]).toEqual([{ mimeType: 'image/jpeg', data: 'AQID' }])
+      expect(queued[0]?.[3]).toMatchObject({
+        origin: 'telegram_agent_topic',
+        attemptKind: 'telegram_ingress',
+        attemptId: `${CHAT_ID}:1`,
+        approvalPayloadKind: 'telegram_ingress',
+        requester: 'telegram:11',
+        approvalPayload: {
+          agentId: agent.id,
+          text: '',
+          media: {
+            kind: 'photo',
+            fileId: 'secret',
+            fileName: null,
+            mimeType: 'image/jpeg',
+            fileSize: 3,
+          },
+          chatId: CHAT_ID,
+          threadId: 42,
+          messageId: 1,
+        },
+      })
+      expect(queued[0]?.[4]).toEqual(expect.any(Function))
       expect(
         env.db.raw
           .query<{ count: number }, []>('SELECT COUNT(*) count FROM team_policy_block_events')
           .get()?.count,
-      ).toBe(1)
+      ).toBe(0)
     } finally {
       vi.unstubAllGlobals()
       if (previous === undefined) delete process.env.BAZILION_TEAM_POLICY_ENFORCEMENT

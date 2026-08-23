@@ -2,6 +2,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   symlinkSync,
@@ -55,6 +56,16 @@ test('saveInputFiles can expose a Docker mount path without changing private sto
 test('saveInputFiles returns empty string when there are no files', () => {
   expect(saveInputFiles(dir, undefined)).toBe('')
   expect(saveInputFiles(dir, [])).toBe('')
+})
+
+test('saveInputFiles refuses a symlinked private uploads directory', () => {
+  symlinkSync(outsideDir, join(dir, 'uploads'), 'dir')
+  expect(() =>
+    saveInputFiles(dir, [
+      { name: 'secret.txt', mimeType: 'text/plain', data: b64('must stay private') },
+    ]),
+  ).toThrow(/expected a real directory/)
+  expect(readdirSync(outsideDir)).toEqual([])
 })
 
 test('saveInputFiles skips oversized files with a note instead of storing', () => {

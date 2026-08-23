@@ -1,30 +1,32 @@
-import type { ProviderConfigEntry, ProviderConfigResponse } from '@bazilion/api-types'
+import type {
+  HealthReport,
+  OpenAICodexStatus,
+  ProviderConfigEntry,
+  ProviderConfigResponse,
+} from '@bazilion/api-types'
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { useState } from 'react'
 import { ConfigPage } from '../../components/ConfigPage'
+import { ExecutionSecurityCard } from '../../components/ExecutionSecurityCard'
 import { FieldRow } from '../../components/FieldRow'
 import { daemonClient } from '../../lib/daemon-client'
-
-interface OpenAICodexStatus {
-  connected: boolean
-  expiresAt: number | null
-  accountId: string | null
-}
 
 interface ProvidersData {
   providers: ProviderConfigEntry[]
   openaiCodex: OpenAICodexStatus
+  executionSecurity: HealthReport['executionSecurity']
 }
 
 const fetchProvidersData = createServerFn({ method: 'GET' }).handler(
   async (): Promise<ProvidersData> => {
     const c = daemonClient()
-    const [{ providers }, openaiCodex] = await Promise.all([
+    const [{ providers }, openaiCodex, health] = await Promise.all([
       c.get<ProviderConfigResponse>('/api/config/providers'),
       c.get<OpenAICodexStatus>('/api/auth/openai'),
+      c.get<HealthReport>('/api/health'),
     ])
-    return { providers, openaiCodex }
+    return { providers, openaiCodex, executionSecurity: health.executionSecurity }
   },
 )
 
@@ -34,7 +36,7 @@ export const Route = createFileRoute('/config/')({
 })
 
 function ProvidersPage() {
-  const { providers, openaiCodex } = Route.useLoaderData()
+  const { providers, openaiCodex, executionSecurity } = Route.useLoaderData()
   const setupComplete = providers.some((p) => p.enabled && p.curated.length > 0)
   return (
     <ConfigPage
@@ -48,6 +50,7 @@ function ProvidersPage() {
         </>
       }
     >
+      <ExecutionSecurityCard status={executionSecurity} />
       {!setupComplete && <SetupBlockerBanner providers={providers} openaiCodex={openaiCodex} />}
       <div className="space-y-3">
         {providers.map((p) => (

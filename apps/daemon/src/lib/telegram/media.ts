@@ -101,8 +101,10 @@ export async function downloadMediaBytes(
   let file: { file_path?: string; file_size?: number }
   try {
     file = await api.getFile(ref.fileId)
-  } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : String(e) }
+  } catch {
+    // Grammy errors can include the Bot API URL, whose path embeds the bot
+    // token. Never promote adapter diagnostics into the Agent prompt.
+    return { ok: false, reason: 'Telegram file lookup failed' }
   }
   if (!file.file_path) return { ok: false, reason: 'no file_path from Telegram' }
   if (file.file_size && file.file_size > MAX_BYTES) {
@@ -121,8 +123,8 @@ export async function downloadMediaBytes(
       mimeType: ref.mimeType ?? 'application/octet-stream',
       name: ref.fileName,
     }
-  } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : String(e) }
+  } catch {
+    return { ok: false, reason: 'Telegram media download failed' }
   }
 }
 

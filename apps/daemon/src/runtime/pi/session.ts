@@ -41,6 +41,11 @@ import { basename, join } from 'node:path'
 import type { ResolvedAgent } from '@bazilion/api-types'
 import type { AgentMessage, ThinkingLevel } from '@earendil-works/pi-agent-core'
 import {
+  type AssistantMessage,
+  type AssistantMessageEvent,
+  createAssistantMessageEventStream,
+} from '@earendil-works/pi-ai'
+import {
   type AgentSession,
   createAgentSession,
   DefaultResourceLoader,
@@ -53,6 +58,7 @@ import { providerStateRepo } from '../../core/index.ts'
 import type { MemoryBackend } from '../memory/types.ts'
 import {
   createBazilionPiRuntime,
+  createOpenAICodexPiRuntime,
   piProviderName,
   providerApiKey,
   providerBaseUrl,
@@ -61,7 +67,8 @@ import {
 import { createProviderRegistry, loadProviderConfigFromEnv } from '../providers/registry.ts'
 import { buildSystemPrompt, loadPromptSkills } from '../session/prompt.ts'
 import type { BashApprovalHost } from '../shell/approval.ts'
-import { createSessionShellTools } from '../shell/tooling.ts'
+import type { ProtectedDockerRuntime } from '../shell/docker.ts'
+import { createProtectedSessionShellTools, createSessionShellTools } from '../shell/tooling.ts'
 import type {
   BrowserHost,
   InjectedMcpTool,
@@ -69,7 +76,13 @@ import type {
   MessagingHost,
   UserMdHost,
 } from '../worker/ipc-protocol.ts'
-import { createBazilionCustomTools } from './tools.ts'
+import type {
+  MinimalWorkerScratch,
+  OpenAICodexWorkerRuntime,
+  ProtectedWorkerPaths,
+} from '../worker/runtime.ts'
+import { redactJsonValue } from '../worker/runtime.ts'
+import { createBazilionCustomTools, createProtectedBazilionCustomTools } from './tools.ts'
 
 export interface CreateBazilionSessionOptions {
   agent: ResolvedAgent
@@ -152,6 +165,35 @@ export interface BazilionSessionHandle {
   /** Call when done — disposes listeners + closes the pi session. */
   dispose(): void
 }
+
+export interface CreateProtectedBazilionSessionOptions {
+  agent: ResolvedAgent
+  runtime: OpenAICodexWorkerRuntime
+  paths: ProtectedWorkerPaths
+  scratch: MinimalWorkerScratch
+  docker: ProtectedDockerRuntime
+  memory: MemoryBackend
+  messagingHost: MessagingHost
+  userMdHost: UserMdHost
+  fileSink: import('../tools/deliver-file.ts').FileSink
+  bashApprovalHost: BashApprovalHost
+  refreshApiKey: (providerName: string) => Promise<string>
+}
+
+export interface CreateRestrictedReviewSessionOptions {
+  runtime: OpenAICodexWorkerRuntime
+  scratch: MinimalWorkerScratch
+  systemPrompt: string
+  tools: ToolDefinition[]
+  refreshApiKey: (providerName: string) => Promise<string>
+}
+
+const PROTECTED_MODEL_CWD = '/workspace'
+const REVIEW_MODEL_CWD = '/review'
+const PROTECTED_BASE_SYSTEM_PROMPT = `You are an assistant operating inside Bazilion's protected
+Agent runtime. Use only the tools exposed for this turn. Coding commands execute in an ephemeral,
+network-disabled Docker container whose Team workspace is /workspace. Host paths and host tools are
+not available. Be concise and show container paths clearly when working with files.`
 
 /**
  * Build a pi `AgentSession` using Bazilion's resolved agent + provider state.
@@ -341,7 +383,262 @@ export async function createBazilionSession(
   }
 }
 
+/** Build the closed Docker-only normal session used by protected invocations. */
+export async function createProtectedBazilionSession(
+  opts: CreateProtectedBazilionSessionOptions,
+): Promise<BazilionSessionHandle> {
+  const { providerName, modelId } = splitModelString(opts.agent.model)
+  if (
+    providerName !== 'openai-codex' ||
+    providerName !== opts.runtime.providerName ||
+    modelId !== opts.runtime.modelId
+  ) {
+    throw new Error('protected Agent model does not match the prepared OpenAI Codex runtime')
+  }
+  if (opts.agent.agent.dir !== opts.paths.agentDir || opts.agent.team.path !== opts.paths.teamDir) {
+    throw new Error('protected session paths do not match the resolved Agent')
+  }
+  if (!existsSync(opts.paths.teamDir)) {
+    throw new Error('protected Team workspace is unavailable')
+  }
+
+  const modelRuntime = await createOpenAICodexPiRuntime({
+    providerName: opts.runtime.providerName,
+    modelId: opts.runtime.modelId,
+    accessToken: opts.runtime.accessToken,
+  })
+  const model = resolvePiModel(modelRuntime, 'openai-codex', opts.runtime.modelId)
+  const shellTools = createProtectedSessionShellTools(
+    opts.paths.teamDir,
+    opts.docker,
+    opts.bashApprovalHost,
+  )
+
+  mkdirSync(opts.paths.sessionDir, { recursive: true })
+  const existing = findMostRecent(opts.paths.sessionDir)
+  const sessionManager = existing
+    ? SessionManager.open(existing, opts.paths.sessionDir, opts.paths.teamDir)
+    : SessionManager.create(opts.paths.teamDir, opts.paths.sessionDir)
+  const settingsManager = createInMemorySettingsManager()
+  const bazilionPrompt = redactJsonValue(
+    buildSystemPrompt(opts.agent, {
+      skills: opts.paths.skills,
+      sandboxMode: 'docker',
+      homeDocuments: opts.paths.homeDocuments,
+    }),
+    opts.runtime.accessToken,
+  )
+  const resourceLoader = new DefaultResourceLoader({
+    cwd: PROTECTED_MODEL_CWD,
+    agentDir: opts.scratch.piAgentDir,
+    settingsManager,
+    noExtensions: true,
+    noSkills: true,
+    noPromptTemplates: true,
+    noThemes: true,
+    noContextFiles: true,
+    systemPrompt: PROTECTED_BASE_SYSTEM_PROMPT,
+    appendSystemPrompt: bazilionPrompt ? [bazilionPrompt] : undefined,
+  })
+  await resourceLoader.reload()
+
+  const bazilionTools = createProtectedBazilionCustomTools({
+    agent: opts.agent,
+    memory: opts.memory,
+    messagingHost: opts.messagingHost,
+    userMdHost: opts.userMdHost,
+    fileSink: opts.fileSink,
+  })
+  if (!shellTools.customBash) throw new Error('protected Docker bash tool is unavailable')
+  const customTools = [...bazilionTools, shellTools.customBash]
+  const { session } = await createAgentSession({
+    cwd: PROTECTED_MODEL_CWD,
+    agentDir: opts.scratch.piAgentDir,
+    model,
+    thinkingLevel: toPiThinkingLevel(opts.runtime.reasoningLevel),
+    tools: customTools.map((tool) => tool.name),
+    customTools,
+    sessionManager,
+    settingsManager,
+    modelRuntime,
+    resourceLoader,
+  })
+  installProtectedCredentialBoundary(session, opts.runtime.accessToken, opts.refreshApiKey)
+  return sessionHandle(session)
+}
+
+/** Build a scratch-only reviewer with exactly the caller-supplied proposal tool. */
+export async function createRestrictedReviewSession(
+  opts: CreateRestrictedReviewSessionOptions,
+): Promise<BazilionSessionHandle> {
+  const modelRuntime = await createOpenAICodexPiRuntime({
+    providerName: opts.runtime.providerName,
+    modelId: opts.runtime.modelId,
+    accessToken: opts.runtime.accessToken,
+  })
+  const model = resolvePiModel(modelRuntime, 'openai-codex', opts.runtime.modelId)
+  const settingsManager = createInMemorySettingsManager()
+  const sessionManager = SessionManager.create(
+    opts.scratch.reviewCwd,
+    opts.scratch.reviewSessionDir,
+  )
+  const resourceLoader = new DefaultResourceLoader({
+    cwd: REVIEW_MODEL_CWD,
+    agentDir: opts.scratch.piAgentDir,
+    settingsManager,
+    noExtensions: true,
+    noSkills: true,
+    noPromptTemplates: true,
+    noThemes: true,
+    noContextFiles: true,
+    systemPrompt: opts.systemPrompt,
+  })
+  await resourceLoader.reload()
+
+  const { session } = await createAgentSession({
+    cwd: REVIEW_MODEL_CWD,
+    agentDir: opts.scratch.piAgentDir,
+    model,
+    thinkingLevel: toPiThinkingLevel(opts.runtime.reasoningLevel),
+    tools: opts.tools.map((tool) => tool.name),
+    customTools: opts.tools,
+    sessionManager,
+    settingsManager,
+    modelRuntime,
+    resourceLoader,
+  })
+  installProtectedCredentialBoundary(session, opts.runtime.accessToken, opts.refreshApiKey)
+  return sessionHandle(session)
+}
+
 // --- helpers ---
+
+function createInMemorySettingsManager(): SettingsManager {
+  return SettingsManager.inMemory({
+    compaction: { enabled: false },
+    retry: {
+      enabled: true,
+      maxRetries: 2,
+      baseDelayMs: 500,
+      provider: { maxRetryDelayMs: 8_000 },
+    },
+  })
+}
+
+export function installProtectedCredentialBoundary(
+  session: AgentSession,
+  initialAccessToken: string,
+  refreshApiKey: (providerName: string) => Promise<string>,
+): void {
+  const activeTokens = [initialAccessToken]
+  session.agent.state.messages = redactJsonValue(session.agent.state.messages, activeTokens)
+  const originalStream = session.agent.streamFunction
+  session.agent.streamFunction = async (model, context, options) => {
+    let upstream: Awaited<ReturnType<typeof originalStream>>
+    try {
+      upstream = await originalStream(model, context, options)
+    } catch (error) {
+      throw credentialSafeError(error, activeTokens)
+    }
+    const sanitized = createAssistantMessageEventStream()
+    void (async () => {
+      let latestPartial: AssistantMessage | undefined
+      try {
+        for await (const event of upstream) {
+          const safeEvent = redactJsonValue(event, activeTokens) as AssistantMessageEvent
+          if ('partial' in safeEvent) latestPartial = safeEvent.partial
+          sanitized.push(safeEvent)
+        }
+      } catch (error) {
+        const safeError = credentialSafeError(error, activeTokens)
+        sanitized.push({
+          type: 'error',
+          reason: 'error',
+          error: credentialSafeAssistantError(model, latestPartial, safeError, activeTokens),
+        })
+      } finally {
+        sanitized.end()
+      }
+    })()
+    return sanitized
+  }
+
+  const originalAfterToolCall = session.agent.afterToolCall
+  session.agent.afterToolCall = async (context, signal) => {
+    let prior: Awaited<ReturnType<NonNullable<typeof originalAfterToolCall>>> | undefined
+    try {
+      prior = await originalAfterToolCall?.(context, signal)
+    } catch (error) {
+      throw credentialSafeError(error, activeTokens)
+    }
+    return {
+      ...prior,
+      content: redactJsonValue(prior?.content ?? context.result.content, activeTokens),
+      details: redactJsonValue(prior?.details ?? context.result.details, activeTokens),
+    }
+  }
+
+  session.agent.getApiKey = async (requestedProvider) => {
+    if (requestedProvider !== 'openai-codex') return undefined
+    try {
+      const token = await refreshApiKey('openai-codex')
+      if (token && !activeTokens.includes(token)) activeTokens.push(token)
+      return token || undefined
+    } catch {
+      return undefined
+    }
+  }
+}
+
+function credentialSafeError(error: unknown, activeTokens: readonly string[]): Error {
+  const message = error instanceof Error ? error.message : String(error)
+  return new Error(redactJsonValue(message, activeTokens))
+}
+
+function credentialSafeAssistantError(
+  model: {
+    api: AssistantMessage['api']
+    provider: AssistantMessage['provider']
+    id: string
+  },
+  latestPartial: AssistantMessage | undefined,
+  error: Error,
+  activeTokens: readonly string[],
+): AssistantMessage {
+  const safePartial = latestPartial
+    ? redactJsonValue(latestPartial, activeTokens)
+    : {
+        role: 'assistant' as const,
+        content: [],
+        api: model.api,
+        provider: model.provider,
+        model: model.id,
+        usage: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 0,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+        },
+        timestamp: Date.now(),
+      }
+  return {
+    ...safePartial,
+    stopReason: 'error',
+    errorMessage: error.message,
+    timestamp: Date.now(),
+  }
+}
+
+function sessionHandle(session: AgentSession): BazilionSessionHandle {
+  return {
+    session,
+    dispose() {
+      session.dispose()
+    },
+  }
+}
 
 function splitModelString(s: string): { providerName: string; modelId: string } {
   const idx = s.indexOf(':')

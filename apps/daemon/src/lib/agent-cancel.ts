@@ -13,27 +13,45 @@ const REGISTRY_KEY = Symbol.for('bazilion.agent-cancel.registry')
 
 interface Registry {
   active: Map<string, AbortController>
+  idleWaiters: Map<string, Set<() => void>>
+}
+
+export class AgentTurnActiveError extends Error {
+  readonly code = 'agent_turn_active'
+
+  constructor(readonly agentId: string) {
+    super(`agent_turn_active: ${agentId}`)
+    this.name = 'AgentTurnActiveError'
+  }
 }
 
 function registry(): Registry {
   const g = globalThis as unknown as Record<symbol, Registry | undefined>
   let r = g[REGISTRY_KEY]
   if (!r) {
-    r = { active: new Map() }
+    r = { active: new Map(), idleWaiters: new Map() }
     g[REGISTRY_KEY] = r
+  } else if (!r.idleWaiters) {
+    // Keep the global singleton compatible with a module reloaded in-place by
+    // the dev server or test runner.
+    r.idleWaiters = new Map()
   }
   return r
 }
 
 export function registerAgent(agentId: string, controller: AbortController): void {
   if (registry().active.has(agentId)) {
-    throw new Error(`agent_turn_active: ${agentId}`)
+    throw new AgentTurnActiveError(agentId)
   }
   registry().active.set(agentId, controller)
 }
 
 export function unregisterAgent(agentId: string): void {
-  registry().active.delete(agentId)
+  const state = registry()
+  if (!state.active.delete(agentId)) return
+  const waiters = state.idleWaiters.get(agentId)
+  state.idleWaiters.delete(agentId)
+  for (const resolve of waiters ?? []) resolve()
 }
 
 /** Returns true if the agent had an active turn that was aborted, false otherwise. */
@@ -49,4 +67,19 @@ export function cancelAgent(agentId: string): boolean {
 
 export function isActiveAgent(agentId: string): boolean {
   return registry().active.has(agentId)
+}
+
+/** Resolve when an existing cross-source turn releases this Agent. */
+export function waitForAgentIdle(agentId: string): Promise<void> {
+  const state = registry()
+  if (!state.active.has(agentId)) return Promise.resolve()
+  return new Promise((resolve) => {
+    const waiters = state.idleWaiters.get(agentId) ?? new Set()
+    waiters.add(resolve)
+    state.idleWaiters.set(agentId, waiters)
+  })
+}
+
+export function isAgentTurnActiveError(error: unknown, agentId: string): boolean {
+  return error instanceof AgentTurnActiveError && error.agentId === agentId
 }

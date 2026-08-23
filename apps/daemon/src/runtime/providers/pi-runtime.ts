@@ -84,6 +84,12 @@ export interface BazilionPiRuntimeOptions {
   modelId?: string
 }
 
+export interface OpenAICodexPiRuntimeOptions {
+  providerName: 'openai-codex'
+  modelId: string
+  accessToken: string
+}
+
 export function piProviderName(providerName: string): string {
   return PROVIDER_ALIASES[providerName] ?? providerName
 }
@@ -171,11 +177,24 @@ export async function createBazilionPiRuntime(
   const credentialEnv = providerCredentialEnv(providerName, options.env)
 
   if (apiKey || credentialEnv) {
-    await credentials.modify(canonicalName, async () => ({
-      type: 'api_key',
-      ...(apiKey ? { key: apiKey } : {}),
-      ...(credentialEnv ? { env: credentialEnv } : {}),
-    }))
+    await credentials.modify(canonicalName, async () =>
+      canonicalName === 'openai-codex' && apiKey
+        ? {
+            type: 'oauth',
+            access: apiKey,
+            // Bazilion owns refresh outside Pi. This deliberately empty value
+            // satisfies Pi's canonical OAuth shape but is never used because
+            // the token is long-lived only inside this one-shot runtime and
+            // mid-turn replacement is supplied through Agent.getApiKey.
+            refresh: '',
+            expires: Number.MAX_SAFE_INTEGER,
+          }
+        : {
+            type: 'api_key',
+            ...(apiKey ? { key: apiKey } : {}),
+            ...(credentialEnv ? { env: credentialEnv } : {}),
+          },
+    )
   }
 
   const runtime = await ModelRuntime.create({ credentials, modelsPath: null })
@@ -197,6 +216,32 @@ export async function createBazilionPiRuntime(
   }
 
   return runtime
+}
+
+/**
+ * Closed provider runtime for protected/review workers. It cannot consult an
+ * environment record or register a non-Codex provider.
+ */
+export async function createOpenAICodexPiRuntime(
+  options: OpenAICodexPiRuntimeOptions,
+): Promise<ModelRuntime> {
+  if (options.providerName !== 'openai-codex') {
+    throw new Error('protected execution supports only openai-codex')
+  }
+  if (!options.modelId.trim()) throw new Error('openai-codex model id is required')
+  if (!options.accessToken.trim()) throw new Error('openai-codex access token is required')
+
+  const credentials = new InMemoryCredentialStore()
+  await credentials.modify('openai-codex', async () => ({
+    type: 'oauth',
+    access: options.accessToken,
+    // The daemon-owned refresh credential never enters this process. Pi only
+    // needs a non-expiring in-memory access-token projection for its startup
+    // auth gate; Agent.getApiKey performs every real mid-turn refresh over IPC.
+    refresh: '',
+    expires: Number.MAX_SAFE_INTEGER,
+  }))
+  return ModelRuntime.create({ credentials, modelsPath: null })
 }
 
 export function resolvePiModel(

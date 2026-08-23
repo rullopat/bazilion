@@ -1,5 +1,6 @@
 import { lookup as dnsLookupCb, type LookupAddress } from 'node:dns'
 import { lookup as dnsLookup } from 'node:dns/promises'
+import { isIP } from 'node:net'
 import { Agent, type Dispatcher, fetch as undiciFetch } from 'undici'
 
 export class SsrFBlockedError extends Error {
@@ -10,7 +11,6 @@ export class SsrFBlockedError extends Error {
 }
 
 const BLOCKED_HOSTNAMES = new Set(['localhost', 'metadata.google.internal'])
-const PRIVATE_IPV6_PREFIXES = ['fe80:', 'fec0:', 'fc', 'fd']
 
 function normalizeHostname(hostname: string): string {
   let h = hostname.trim().toLowerCase().replace(/\.$/, '')
@@ -20,10 +20,34 @@ function normalizeHostname(hostname: string): string {
 
 function parseIpv4(address: string): number[] | null {
   const parts = address.split('.')
-  if (parts.length !== 4) return null
-  const nums = parts.map((p) => Number.parseInt(p, 10))
+  if (parts.length !== 4 || parts.some((part) => !/^\d{1,3}$/.test(part))) return null
+  const nums = parts.map(Number)
   if (nums.some((n) => Number.isNaN(n) || n < 0 || n > 255)) return null
   return nums
+}
+
+function parseIpv6(address: string): number[] | null {
+  const zoneIndex = address.indexOf('%')
+  let source = zoneIndex === -1 ? address : address.slice(0, zoneIndex)
+  if (isIP(source) !== 6) return null
+
+  if (source.includes('.')) {
+    const separator = source.lastIndexOf(':')
+    const ipv4 = parseIpv4(source.slice(separator + 1))
+    if (separator === -1 || !ipv4) return null
+    const [a, b, c, d] = ipv4 as [number, number, number, number]
+    source = `${source.slice(0, separator)}:${((a << 8) | b).toString(16)}:${((c << 8) | d).toString(16)}`
+  }
+
+  const halves = source.split('::')
+  if (halves.length > 2) return null
+  const left = halves[0] ? halves[0].split(':') : []
+  const right = halves[1] ? halves[1].split(':') : []
+  const omitted = 8 - left.length - right.length
+  if ((halves.length === 1 && omitted !== 0) || (halves.length === 2 && omitted < 1)) return null
+  return [...left, ...Array.from({ length: omitted }, () => '0'), ...right].map((word) =>
+    Number.parseInt(word, 16),
+  )
 }
 
 function isPrivateIpv4(parts: number[]): boolean {
@@ -36,21 +60,62 @@ function isPrivateIpv4(parts: number[]): boolean {
   return false
 }
 
+function embeddedIpv4(words: number[]): number[] | null {
+  const [a, b, c, d, e, f, g, h] = words as [
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+  ]
+  const low32 = [g >> 8, g & 0xff, h >> 8, h & 0xff]
+
+  // IPv4-compatible (::/96), IPv4-mapped (::ffff:0:0/96), and the
+  // historical IPv4-translatable (::ffff:0:0:0/96) representations.
+  if (
+    (a === 0 && b === 0 && c === 0 && d === 0 && e === 0 && f === 0) ||
+    (a === 0 && b === 0 && c === 0 && d === 0 && e === 0 && f === 0xffff) ||
+    (a === 0 && b === 0 && c === 0 && d === 0 && e === 0xffff && f === 0)
+  ) {
+    return low32
+  }
+
+  // RFC 6052's well-known /96 NAT64 prefix.
+  if (a === 0x64 && b === 0xff9b && c === 0 && d === 0 && e === 0 && f === 0) {
+    return low32
+  }
+
+  // RFC 8215's local-use /48 translation prefix. With a /48 prefix, the
+  // IPv4 octets occupy bytes 6, 7, 9, and 10; byte 8 is the reserved u byte.
+  if (a === 0x64 && b === 0xff9b && c === 1 && e >> 8 === 0) {
+    return [d >> 8, d & 0xff, e & 0xff, f >> 8]
+  }
+
+  // 6to4 embeds its IPv4 relay address immediately after 2002::/16.
+  if (a === 0x2002) return [b >> 8, b & 0xff, c >> 8, c & 0xff]
+  return null
+}
+
 export function isPrivateIpAddress(address: string): boolean {
   let norm = address.trim().toLowerCase()
   if (norm.startsWith('[') && norm.endsWith(']')) norm = norm.slice(1, -1)
   if (!norm) return false
-  if (norm.startsWith('::ffff:')) {
-    const mapped = norm.slice('::ffff:'.length)
-    const ipv4 = parseIpv4(mapped)
-    if (ipv4) return isPrivateIpv4(ipv4)
-  }
-  if (norm.includes(':')) {
-    if (norm === '::' || norm === '::1') return true
-    return PRIVATE_IPV6_PREFIXES.some((p) => norm.startsWith(p))
-  }
   const ipv4 = parseIpv4(norm)
-  return ipv4 ? isPrivateIpv4(ipv4) : false
+  if (ipv4) return isPrivateIpv4(ipv4)
+  const words = parseIpv6(norm)
+  if (!words) return false
+  const [first] = words as [number, ...number[]]
+  if (words.every((word) => word === 0)) return true
+  if (words.slice(0, 7).every((word) => word === 0) && words[7] === 1) return true
+  if ((first & 0xfe00) === 0xfc00) return true // fc00::/7 unique-local
+  if ((first & 0xffc0) === 0xfe80) return true // fe80::/10 link-local
+  if ((first & 0xffc0) === 0xfec0) return true // fec0::/10 deprecated site-local
+  if ((first & 0xff00) === 0xff00) return true // ff00::/8 multicast
+  const embedded = embeddedIpv4(words)
+  return embedded ? isPrivateIpv4(embedded) : false
 }
 
 export function isBlockedHostname(hostname: string): boolean {

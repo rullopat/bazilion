@@ -1,11 +1,12 @@
 ---
 id: BAZ-027
 title: Credential-minimal protected Agent execution
-status: todo
+status: done
 size: L
 created: 2026-08-23
 refined: 2026-08-23
 priority: high
+shipped: 2026-08-23
 note: Give protected workers only their selected runtime capabilities and force that fail-closed surface for Telegram and every background turn.
 ---
 
@@ -348,64 +349,64 @@ Failure is returned through the source that owns the attempt:
 
 ## Acceptance tests
 
-- [ ] Table-driven invocation tests cover web, TTY CLI, piped CLI, mobile, queued Telegram messages,
+- [x] Table-driven invocation tests cover web, TTY CLI, piped CLI, mobile, queued Telegram messages,
   trigger, inbox, both approval replays, and manual/cadence review; request fields, Profiles, Team
   Policy, and missing/invalid metadata cannot select a weaker surface. Loose authorization/claim
   flags and duplicate HTTP/Telegram final authorization paths no longer exist.
-- [ ] An approved HTTP Agent turn becomes protected `approval_delivery` while retaining its stored
+- [x] An approved HTTP Agent turn becomes protected `approval_delivery` while retaining its stored
   origin/attempt identity; Telegram replay remains protected; unknown stored combinations fail
   closed against the complete approval allowlist. Scheduler/inbox/message approvals still reach
   their canonical protected dispatchers, and captured attachments/media survive without generic
   payload rewriting.
-- [ ] Queued Telegram messages dispatch FIFO as separate turns, retain/revalidate their own exact
+- [x] Queued Telegram messages dispatch FIFO as separate turns, retain/revalidate their own exact
   attempt identity and payload, and route denied/pending outcomes canonically without reusing the
   first queued attempt id or retaining downloaded media bytes for an approval replay.
-- [ ] Protected/review platform fixtures assert the child bootstrap environment exactly. Sentinels
+- [x] Protected/review platform fixtures assert the child bootstrap environment exactly. Sentinels
   for daemon secrets/config, unrelated providers, bootstrap exports, startup hooks, loaders,
   proxies, custom CA paths, Docker controls, and Bazilion paths are absent; scratch home/temp
   cleanup is reliable.
-- [ ] OpenAI Codex protected/review workers receive the selected provider/model identity, the exact
+- [x] OpenAI Codex protected/review workers receive the selected provider/model identity, the exact
   daemon-selected normal or review reasoning level, and only the current access token; they refresh
   through the existing bound BAZ-023 IPC path and never receive the stored refresh credential.
   A missing bound refresh capability fails preflight. Every other provider is labelled
   configured-only and fails protected preparation before spawn without a generic environment
   fallback.
-- [ ] Protected normal turns retain guarded primary `web_fetch` behavior while `web_search`, Brave,
+- [x] Protected normal turns retain guarded primary `web_fetch` behavior while `web_search`, Brave,
   Firecrawl fallback, and SearXNG are absent. No first-party web credential/config sentinel enters
   `MinimalWorkerRuntime`, and private, loopback, link-local, metadata, or DNS-rebinding targets stay
   blocked.
-- [ ] With configured global sandbox `off`, every Telegram, trigger, inbox, and approval-delivery
+- [x] With configured global sandbox `off`, every Telegram, trigger, inbox, and approval-delivery
   turn still exposes Docker `bash` only and no Pi host coding/file tools. Invalid/already-Docker
   configured states resolve deterministically without rewriting the configured value.
-- [ ] Docker preflight completes before worker spawn, provider invocation, or transcript mutation;
+- [x] Docker preflight completes before worker spawn, provider invocation, or transcript mutation;
   missing Docker/image, remote context, image `VOLUME`, unsafe mount/symlink, unsupported platform,
   or execution-time mismatch fails closed without host fallback.
-- [ ] Protected attachments use `/inputs`, attached skill prompts use `/skills/...`, memory is
+- [x] Protected attachments use `/inputs`, attached skill prompts use `/skills/...`, memory is
   read-only to Docker, the container has no network or credential-bearing allowlist values, and no
   host credential path is reachable through a model-visible coding tool.
-- [ ] Protected turns expose no browser tool schemas/host and launch no Chromium process. They
+- [x] Protected turns expose no browser tool schemas/host and launch no Chromium process. They
   perform no MCP discovery, connection creation, schema injection, or calls; unrelated attended
   pooled MCP connections may remain alive but are unreachable from the protected turn.
-- [ ] Protected scoped home, memory, USER.md, messaging, and file-delivery tools retain their
+- [x] Protected scoped home, memory, USER.md, messaging, and file-delivery tools retain their
   existing containment, Team Policy, cancellation, and error semantics.
-- [ ] Restricted review initializes only its exact scratch session, OpenAI Codex access runtime,
+- [x] Restricted review initializes only its exact scratch session, OpenAI Codex access runtime,
   prepared digest/existing-lesson input, required bound refresh IPC, and `propose_lesson`; Docker,
   normal qmd, Team/workspace, home, messaging, web, browser, MCP, file, and shell surfaces are
   absent. A missing refresh capability fails preflight, while missing Docker does not block review.
-- [ ] A protected-preflight failure sends one redacted Telegram notice, records trigger and approval
+- [x] A protected-preflight failure sends one redacted Telegram notice, records trigger and approval
   failure through their owners, leaves inbox messages unread, and preserves existing review state
   semantics without adding runs/events tables.
-- [ ] Telegram, bootstrap, OAuth-refresh, unrelated-provider, and unrelated-tool sentinels are absent
+- [x] Telegram, bootstrap, OAuth-refresh, unrelated-provider, and unrelated-tool sentinels are absent
   from every minimal worker input and output. The selected OpenAI access-token sentinel occurs only
   in the designated typed stdin field or bound refresh IPC reply and corresponding in-memory client;
   it is absent from argv, child env, captured stderr, frames, transcripts, Bazilion-authored logs
   and errors, snapshots, command approvals, and Telegram output. No unexpected descriptor is
   inherited; the bounded stdin pipe closes after delivery and refresh IPC remains turn-bound.
-- [ ] Local configured `operator_http` host/Docker behavior and web/CLI/mobile command-approval
+- [x] Local configured `operator_http` host/Docker behavior and web/CLI/mobile command-approval
   capability remain compatible through the explicit legacy variant. Protected/review origins cannot
   select that variant, while Config and doctor label it unprotected and show secret-free remediation
   for mandatory protected work.
-- [ ] Focused worker-runtime, OpenAI OAuth, tool-surface, origin, approval, Docker, browser/MCP-denial, review,
+- [x] Focused worker-runtime, OpenAI OAuth, tool-surface, origin, approval, Docker, browser/MCP-denial, review,
   failure-routing, cleanup, and redaction tests pass with root/web/mobile typechecks, lint, and the
   full test suite.
 
@@ -427,3 +428,22 @@ BAZ-027 is complete only when all three slices ship together. A credential-minim
 the protected capability policy still leaves Telegram/background work unsafe; Docker-only
 protection without the typed runtime, browser/MCP constraints, and failure visibility still leaves
 ambient escape paths.
+
+## As built
+
+- Added immutable nominal invocation, preclaim, prepared-turn, protected-runtime, and restricted-
+  review boundaries with exact-once consumption and unconditional lifecycle cleanup.
+- Forced Telegram, scheduled-trigger, inbox, approval-delivery, and reviewed-learning work through
+  OpenAI Codex access-token-only workers with fresh scratch environments and bounded private stdin.
+- Made Docker the only protected coding surface, with exact executable/image identity, local-socket
+  enforcement, hardened mounts/environment, create-and-start preflight, execution-time rechecks,
+  and no host fallback.
+- Retained guarded uncredentialed `web_fetch` while excluding browser, MCP, search, Firecrawl, host
+  coding tools, unrelated provider credentials, and OAuth refresh credentials.
+- Preserved exact Telegram FIFO attempts and media replay, including event-driven busy-Agent retry,
+  strict group/topic validation, redacted source-owned failures, and unread inbox behavior when
+  protection is unavailable.
+- Added secret-free Config, health, and `bazilion doctor` visibility; public health deep probes use
+  a keyed 60-second single-flight cache so unauthenticated requests cannot fan out Docker work.
+- Verified with 1,071 passing tests (3 skipped), root/web/mobile typechecks, lint, the production
+  build, changeset validation, and independent acceptance, code, and threat audits.
