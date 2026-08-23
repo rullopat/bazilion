@@ -27,15 +27,20 @@ docs/backlog/
 
 ---
 
-## Draft (0)
+## Draft (4)
 
 | ID | Title | Size | Notes |
 |----|-------|------|-------|
+| [BAZ-028](draft/BAZ-028-secure-personal-web-mobile-gateway.md) | Secure personal web and mobile gateway | L | Keep the daemon private while one operator reaches the complete web UI and future mobile app through a private HTTPS gateway |
+| [BAZ-029](draft/BAZ-029-single-owner-telegram-pairing.md) | Single-owner Telegram pairing and visibility hardening | M | Replace first-message TOFU with one-time owner pairing, exact ingress identity, and private-supergroup warnings |
+| [BAZ-030](draft/BAZ-030-encrypted-backups-credential-recovery.md) | Encrypted backups and single-operator credential recovery | L | Encrypt the complete credential-bearing backup and define bounded local plus external incident recovery |
+| [BAZ-031](draft/BAZ-031-protected-runtime-provider-expansion.md) | Protected-runtime provider and credentialed web-tool expansion | L | Deferred until current usage needs something beyond BAZ-027's OpenAI Codex and guarded uncredentialed web fetch |
 
-## Todo (0)
+## Todo (1)
 
 | ID | Title | Size | Notes |
 |----|-------|------|-------|
+| [BAZ-027](todo/BAZ-027-credential-minimal-protected-agent-execution.md) | Credential-minimal protected Agent execution | L | Protect current OpenAI Codex Telegram/background work with minimal credentials, mandatory Docker, and no browser/MCP |
 
 ## In Progress (0)
 
