@@ -1,7 +1,7 @@
 // Auth + first-run gate plumbing.
 //
-// `fetchAuthState` is a server fn that pings the daemon's /api/auth/me with
-// the current request's bz_token cookie. It returns a typed result the root
+// `fetchAuthState` is a server fn that pings /api/auth/whoami with the current
+// bounded session cookie. It returns a typed result the root
 // route's `beforeLoad` consumes to decide whether to redirect (`/login` for
 // unauthenticated, `/welcome` until setup is complete). Keeping the daemon
 // call in a server fn means the client bundle never ships the daemon URL or
@@ -20,10 +20,10 @@ export interface AuthState {
 export const fetchAuthState = createServerFn({ method: 'GET' }).handler(
   async (): Promise<AuthState> => {
     try {
-      const res = await daemonClient().get<{ authed: boolean; setupComplete: boolean }>(
-        '/api/auth/me',
+      const res = await daemonClient().get<{ authenticated: true; setupComplete: boolean }>(
+        '/api/auth/whoami',
       )
-      return { authed: res.authed, setupComplete: res.setupComplete }
+      return { authed: res.authenticated, setupComplete: res.setupComplete }
     } catch (err) {
       if (err instanceof ApiClientError && err.status === 401) {
         return { authed: false, setupComplete: false }

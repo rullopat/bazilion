@@ -24,7 +24,7 @@ const fetchProvidersData = createServerFn({ method: 'GET' }).handler(
     const [{ providers }, openaiCodex, health] = await Promise.all([
       c.get<ProviderConfigResponse>('/api/config/providers'),
       c.get<OpenAICodexStatus>('/api/auth/openai'),
-      c.get<HealthReport>('/api/health'),
+      c.get<HealthReport>('/api/health/details'),
     ])
     return { providers, openaiCodex, executionSecurity: health.executionSecurity }
   },

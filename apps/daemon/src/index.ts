@@ -9,6 +9,7 @@ import { createApp } from './app.ts'
 import { resolvePaths } from './core/index.ts'
 import { closeCtxForShutdown, getCtx } from './lib/ctx.ts'
 import { acquireDaemonLiveness } from './lib/daemon-liveness.ts'
+import { isLoopbackHost, resolvePublicOrigin } from './lib/public-origin.ts'
 import { shutdownResources } from './lib/resources.ts'
 import {
   isTelegramBotRunning,
@@ -19,6 +20,11 @@ import {
 
 const host = process.env.HOST ?? '127.0.0.1'
 const port = Number.parseInt(process.env.PORT ?? '4321', 10)
+const publicOrigin = resolvePublicOrigin()
+if (publicOrigin.production && !isLoopbackHost(host)) {
+  console.error('BAZILION_PUBLIC_ORIGIN requires the daemon to bind loopback only')
+  process.exit(1)
+}
 
 // Claim the home before bootstrap opens SQLite. This closes the startup race
 // where an offline restore or second daemon could otherwise begin while the

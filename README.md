@@ -228,36 +228,32 @@ Two tiers: the **data tier** (`bazilion.db*`, `profiles/`, `agents/`, `teams/`) 
 
 ## Exposing beyond loopback
 
-By default, `bazilion serve` binds `127.0.0.1:4321` — local-only. To use bazilion from another machine (Tailscale, LAN, etc.), put a TLS-terminating reverse proxy in front. Don't expose the daemon directly; it has no TLS and no rate limiting.
+The supported private-server profile publishes only the web application through tailnet-only
+Tailscale Serve HTTPS. The daemon and web listeners both remain on loopback; direct LAN, tailnet,
+or public daemon exposure and Tailscale Funnel are unsupported.
 
 ```sh
-# On the server, bind to loopback (default) and keep the proxy local.
+# Supply this exact value to both daemon and web service environments.
+export BAZILION_PUBLIC_ORIGIN=https://bazilion.example.ts.net
 bazilion serve
 
-# Mint a per-client token (plaintext shown exactly once — copy it now).
-bazilion token create "laptop"
+# Publish only the loopback web listener and verify the complete posture.
+tailscale serve --bg --https=443 http://127.0.0.1:4322
+bazilion gateway preflight
 
-# On the client machine — stores the server + token in ~/.bazilion/auth.json.
-bazilion login --server https://bazilion.example.com --token <token>
+# Mint a separate expiring credential for each client; plaintext is shown once.
+bazilion token create laptop --expires-days 90 --qr
 
-# Revoke when the client is lost or retired.
+# Revoke a lost device and every browser session derived from it.
 bazilion token list
 bazilion token revoke <id>
+bazilion session list
 ```
 
-Note: the bootstrap token (the row labelled `bootstrap`, written to `auth.json` by the daemon's first-run bootstrap) **cannot be revoked** from the API or web UI — revoking it would lock the local CLI out of its own daemon. Mint additional tokens for any other client.
-
-Minimal Caddyfile (`caddy run --config Caddyfile`):
-
-```
-bazilion.example.com {
-  reverse_proxy 127.0.0.1:4321
-}
-```
-
-Caddy handles the TLS cert via Let's Encrypt automatically. For Tailscale, point the hostname at your tailnet node and use Tailscale's MagicDNS + HTTPS certs. The `web_tokens` table + cookie check runs behind the proxy, so every request still needs a valid token — the proxy only adds transport security.
-
-If you *do* want the daemon to bind a non-loopback address directly (dev/test only), pass `--host 0.0.0.0` to `bazilion serve`. Anyone who can reach that port can try tokens, so do not ship it without a proxy.
+The local bootstrap token cannot expire or be revoked because it seeds secrets encryption, and
+browser login rejects it. Device bearers are exchanged for hashed, bounded browser sessions with
+session-bound CSRF protection. See [the private gateway guide](docs/private-gateway.md) for service
+environment, verification, recovery, and remote CLI/mobile details.
 
 ## Agent shell security
 

@@ -26,7 +26,7 @@ const fetchTeamsData = createServerFn({ method: 'GET' }).handler(
     const [teams, agents, health] = await Promise.all([
       c.get<Team[]>('/api/teams'),
       c.get<Agent[]>('/api/agents?includeArchived=true'),
-      c.get<HealthReport>('/api/health'),
+      c.get<HealthReport>('/api/health/details'),
     ])
     const memberCounts: Record<string, number> = {}
     for (const a of agents) memberCounts[a.teamId] = (memberCounts[a.teamId] ?? 0) + 1

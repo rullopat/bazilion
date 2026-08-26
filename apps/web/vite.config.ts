@@ -4,6 +4,11 @@ import { tanstackStart } from '@tanstack/react-start/plugin/vite'
 import viteReact from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 
+const webHost = process.env.WEB_HOST ?? '127.0.0.1'
+if (process.env.BAZILION_PUBLIC_ORIGIN && !['127.0.0.1', 'localhost', '::1'].includes(webHost)) {
+  throw new Error('BAZILION_PUBLIC_ORIGIN requires the web dev server to bind loopback only')
+}
+
 // Plugin order matters: tailwindcss → tanstackStart → viteReact. The Start
 // plugin auto-includes the router file-based codegen, so no separate
 // `@tanstack/react-router/plugin/vite` import.
@@ -11,7 +16,7 @@ export default defineConfig({
   server: {
     // The daemon owns 4321; web2 binds 4322 by default. WEB_HOST/WEB_PORT
     // override at boot — kept symmetric with apps/web's config.
-    host: process.env.WEB_HOST ?? '127.0.0.1',
+    host: webHost,
     port: Number(process.env.WEB_PORT ?? 4322),
   },
   resolve: {

@@ -1,9 +1,11 @@
 ---
 id: BAZ-028
 title: Secure personal web and mobile gateway
-status: draft
+status: done
 size: L
 created: 2026-08-23
+refined: 2026-08-26
+shipped: 2026-08-26
 priority: high
 note: Single-operator private deployment; expose the web gateway only and keep the daemon loopback-only.
 ---
@@ -71,7 +73,8 @@ boundary at the web gateway before it rewrites requests for the loopback daemon.
   does not grow a second auth database.
 - **The bootstrap token stays local:** the non-revocable `bootstrap` row and plaintext in
   `auth.json` remain the daemon's PBKDF2 seed and local CLI credential. Normal browser and mobile
-  setup mints a separate device credential instead of copying the bootstrap token to a device.
+  setup mints a separate device credential locally over CLI/SSH instead of copying the bootstrap
+  token to a device. Browser login accepts device credentials only, including during first-run.
 - **Sessions, not bearer cookies:** browser login accepts a device credential once and returns an
   opaque session secret. Only its hash is stored by the daemon. The browser cookie contains the
   session secret, never the source device or bootstrap bearer.
@@ -84,6 +87,10 @@ boundary at the web gateway before it rewrites requests for the loopback daemon.
 - **Exact private origin:** one configured external HTTPS origin is canonical for production. The
   gateway validates the incoming `Host` and browser `Origin` before proxying and then performs the
   existing internal origin rewrite for the daemon.
+- **One deployment source of truth:** production requires `BAZILION_PUBLIC_ORIGIN` as an exact
+  origin (`https` scheme, host, optional port, no path/query/fragment/userinfo). The service manager
+  supplies the same value to the web gateway and daemon; authenticated config/QR surfaces report
+  that validated value rather than deriving a public address from request headers.
 - **Isolated hosted turns:** the personal-server profile depends on BAZ-027 and refuses readiness
   unless every normal Agent turn, including authenticated web/API chat, receives BAZ-027's
   credential-minimal worker boundary and mandatory Docker coding surface.
@@ -103,19 +110,30 @@ Extend the canonical `web_tokens` contract for device credentials with:
 
 Add daemon-owned `web_sessions` containing only server-side session metadata:
 
-- random session id and a hash of a separately generated high-entropy session secret;
+- random session id plus a hash of a separately generated 256-bit session secret; the cookie is
+  `<id>.<secret>` so lookup is indexed without storing or scanning plaintext;
 - source device-token id;
+- hash of the independently generated 256-bit CSRF value;
 - created, last-seen, absolute-expiry, idle-expiry, and revoked timestamps;
 - no copied bearer, bootstrap token, device secret, user profile, role, or scope.
 
 Revoking or expiring a device credential invalidates all sessions derived from it. Logout revokes
-the current session only. Session rotation replaces the cookie secret without extending the
-absolute lifetime. Expired and revoked rows may be retained for bounded diagnostics until a later
-explicit prune policy is chosen.
+the current session only. Device credentials default to 90 days, accept a shorter explicit expiry,
+and cannot exceed 365 days; only the bootstrap credential is non-expiring. Expired and revoked rows
+may be retained for bounded diagnostics until a later explicit prune policy is chosen.
+
+Browser sessions use a 12-hour idle limit and a seven-day absolute limit. Successful authenticated
+activity advances the idle deadline up to, but never beyond, the fixed absolute deadline. The first
+release does not rotate a live session secret: login always creates a fresh secret, and logout,
+expiry, or revocation requires a new login. This avoids cross-tab races while retaining bounded
+credential lifetime.
 
 The production browser cookie uses a host-only name such as `__Host-bz_session` with `Path=/`, no
-`Domain`, `HttpOnly`, `Secure`, and `SameSite=Strict`. Login, logout, expiry, and session rotation
-must produce explicit browser behavior rather than silently falling back to the long-lived bearer.
+`Domain`, `HttpOnly`, `Secure`, and `SameSite=Strict`. Login, logout, expiry, and revocation must
+produce explicit browser behavior rather than silently falling back to the long-lived bearer.
+Cookie-authenticated unsafe requests also carry `X-Bazilion-CSRF`. A separate readable
+`__Host-bz_csrf` cookie holds a random per-session value whose hash is stored in `web_sessions`;
+the gateway requires an exact cookie/header/hash match before proxying.
 
 ## HTTP and wire contract
 
@@ -124,22 +142,26 @@ authenticated-owner response, and typed login/logout errors.
 
 Authentication surfaces:
 
-- `POST /api/login` validates a bootstrap/device bearer supplied in the request body, creates a
+- `POST /api/login` validates a device bearer supplied in the request body, creates a
   bounded browser session, and sets the session cookie. It never reflects or persists the bearer
-  in the response or cookie.
+  in the response or cookie. Bootstrap credentials are rejected on this route.
 - `POST /api/logout` revokes the current browser session and expires its cookie.
 - `GET /api/auth/whoami` is protected and returns bounded credential/session metadata. Mobile and
   CLI use this endpoint to prove that their supplied bearer was authenticated.
+- Remove the alpha `/api/auth/me` route; web SSR consumes `/api/auth/whoami` and no compatibility
+  alias remains.
 - Existing token create/list/revoke endpoints expose kind, optional expiry, last use, and active
   state. Token revocation cascades logically to derived sessions.
-- Browser-session list/revoke endpoints are available to the authenticated owner so a lost browser
-  can be signed out without revoking unrelated devices.
+- `GET /api/sessions` lists bounded metadata and `DELETE /api/sessions/:id` revokes one browser
+  session. A stale/already-revoked id is an explicit conflict, and no endpoint returns a hash or
+  secret.
 
 Health surfaces:
 
 - `GET /api/health` becomes a minimal unauthenticated liveness response without filesystem paths,
   entity counts, provider state, policy state, token counts, or configuration diagnostics.
-- Detailed installation and runtime health moves behind authentication under one canonical route.
+- Detailed installation and runtime health moves behind authentication to
+  `GET /api/health/details`.
   The web diagnostics and `bazilion doctor` consume that protected contract.
 - No client treats public liveness as authentication evidence.
 
@@ -162,18 +184,29 @@ broad prefix exemption by accident.
 - Send a production security-header baseline: HSTS on the HTTPS origin, CSP, `frame-ancestors
   'none'`, `X-Content-Type-Options: nosniff`, a restrictive referrer policy, and an explicit
   permissions policy. The CSP must retain only resources the current web UI actually needs.
+- Self-host the current Google font files before enabling the production CSP. The initial policy is
+  same-origin by default, allows the existing `data:` SVG texture for images, permits only the
+  framework-required inline style behavior proven by the production build, and has no remote font,
+  script, frame, object, or connection origin.
 - Return generic unauthenticated errors and redact secrets, token material, internal paths, and
   detailed failures from gateway logs.
 - Add a deployment preflight that reports the daemon bind address, web bind address, canonical
   origin, HTTPS status, cookie mode, and whether the configured Tailscale route is private Serve
   rather than Funnel. Unsafe posture fails closed in the production server profile.
 
+Setting `BAZILION_PUBLIC_ORIGIN` activates the strict private-server profile; there is no separate
+mode flag that can drift from the security settings. Daemon and web startup validate the origin and
+their loopback listeners. `bazilion gateway preflight` performs the remaining read-only listener,
+Tailscale Serve/Funnel, secure-cookie, and BAZ-027 protected-turn checks before the deployment is
+reported ready.
+
 ## CLI and web parity
 
 - Extend `bazilion token create|list|revoke` for device kind, expiry, last use, and session
   invalidation. Human output never prints a token after its one-time creation response; JSON uses
   the canonical wire envelope.
-- Add CLI session list/revoke/logout diagnostics matching the web Config security surface.
+- Add `bazilion session list|revoke` matching the web Config security surface. Browser logout
+  remains `POST /api/logout` and has no misleading native-CLI equivalent.
 - Update remote `bazilion login` to validate against the protected owner endpoint, not public
   health, while preserving the Node-local `auth.json` helper boundary.
 - Add a web security page/card for device credentials and browser sessions, including current
@@ -205,22 +238,22 @@ Document and verify one reproducible small-server setup:
 6. Mint one named device credential locally, use it for the first browser login or mobile pairing,
    and verify login/logout/revocation remotely.
 
-Deployment support must not edit the operator's tailnet policy or replace an existing Serve
-configuration without an explicit command and confirmation. A read-only inspection and exact
-copy/paste commands are sufficient for the first slice if safe automatic reconciliation is not.
+Deployment support is read-only in this story: it inspects listeners plus `tailscale serve status
+--json`, rejects an observed Funnel/public route or ambiguous state, and prints exact copy/paste
+commands. It must not edit tailnet policy, firewall state, or Serve configuration.
 
 ## Scope
 
 - Daemon-owned device-token expiry/kind and revocable browser-session persistence.
-- Browser login exchange, logout, session expiry/rotation, and session/device management.
+- Browser login exchange, logout, bounded session expiry, and session/device management.
 - Protected owner-identity and detailed-health contracts; minimal public liveness.
 - Exact Host/Origin validation, browser CSRF protection, secure cookies, security headers, header
   sanitization, and bounded request bodies at the web gateway.
 - Loopback-only daemon enforcement and a supported Tailscale Serve reference deployment.
 - CLI and web management parity for every new auth endpoint.
 - Mobile pairing/verification changes needed to consume the protected gateway correctly.
-- Backup/restore schema inventory updates required for the new auth tables and columns; sessions
-  themselves may be deliberately excluded if the chosen restore policy revokes them all.
+- Backup/restore schema inventory updates required for the new auth tables and columns. Device
+  credentials are preserved; every browser session is revoked during restore before installation.
 
 ## Out of scope
 
@@ -241,7 +274,7 @@ copy/paste commands are sufficient for the first slice if safe automatic reconci
 
 - A browser login with an active device credential returns a host-only secure session cookie; the
   source bearer is absent from the cookie, response, session row, and logs.
-- Browser sessions are stored only by hash, obey idle and absolute expiry, rotate safely, and are
+- Browser sessions are stored only by hash, obey idle and absolute expiry, and are
   invalid immediately after logout, explicit session revocation, source-device revocation, or
   source-device expiry.
 - The bootstrap credential remains paired with `auth.json`, non-revocable, and usable locally, but
@@ -284,29 +317,45 @@ Each slice must leave the existing local-only workflow usable. The story is comp
 remote browser and mobile authentication paths use the web gateway and the daemon has no remotely
 reachable listener.
 
-## Open questions
+## Refined implementation decisions
 
-- What are the default browser idle and absolute session lifetimes? Suggested starting point: a
-  12-hour idle limit and seven-day absolute limit, with no silent absolute-lifetime extension.
-- Should device credentials require expiry, or default to a long but finite lifetime such as 90
-  days? The bootstrap credential remains non-expiring because it is also the local encryption seed.
-- Should session rotation happen on a fixed interval, after privileged mutations, or only at login?
-- Should authenticated detailed health remain `/api/health` with public liveness moved to
-  `/api/health/live`, or should the current public path become minimal and details move to a new
-  route? Choose one canonical contract before refinement.
-- Should browser sessions survive backup/restore, or should restore intentionally revoke all
-  sessions while preserving device credentials? Default recommendation: revoke sessions on restore.
-- Should the canonical external origin live in Bazilion's config table, a service-manager
-  environment value, or a generated server-profile file? There must be one source of truth shared
-  by Host, Origin, cookie, QR, and mobile-pairing checks.
-- Should remote browser login ever accept the bootstrap credential, or must the initial device
-  credential always be minted locally over SSH/TTY? The preferred personal-server posture keeps
-  the bootstrap credential local.
-- How should secure cookies work during loopback-only HTTP development? The production path must
-  fail closed; a clearly marked loopback development exception may use a non-`__Host-` cookie.
-- Is the first private-deployment slice documentation plus read-only preflight, or should Bazilion
-  also offer an opt-in command that installs a Tailscale Serve rule after showing the exact diff?
-- Can preflight reliably distinguish Tailscale Serve from Funnel on every supported platform, or
-  must it require operator-supplied evidence plus an external reachability check?
-- Which current external web resources are essential enough to retain in the initial CSP, and which
-  should be self-hosted before this story moves to `todo`?
+- Browser sessions have a 12-hour idle lifetime and immutable seven-day absolute lifetime. There is
+  no mid-session secret rotation in the first release; every login mints a fresh session.
+- Device credentials default to 90 days and have a 365-day maximum. The bootstrap remains the only
+  non-expiring credential because it is also the local secrets-encryption seed.
+- Public `GET /api/health` is liveness-only. Authenticated operational diagnostics live at the new
+  canonical `GET /api/health/details`; `GET /api/auth/whoami` is the credential proof endpoint.
+- Restore preserves active device credentials but revokes all browser sessions before installing
+  the restored home.
+- `BAZILION_PUBLIC_ORIGIN` is the production source of truth shared by daemon and web gateway.
+  Request and forwarding headers never define it.
+- Browser login never accepts the bootstrap token. The operator mints the first named device token
+  locally with the CLI before logging in from either a local or remote browser.
+- Loopback HTTP development uses `bz_session_dev` and `bz_csrf_dev` without `Secure`, only when both
+  listener and request host are loopback and `BAZILION_PUBLIC_ORIGIN` is unset. Production requires
+  the `__Host-` secure cookies and has no automatic downgrade.
+- Private-deployment support is a read-only preflight plus exact Tailscale Serve commands. Ambiguous
+  or unavailable Serve/Funnel evidence fails the production preflight; Bazilion does not mutate
+  Tailscale or firewall state.
+- The web fonts are self-hosted. Production CSP has no third-party origins and is tightened against
+  the built application rather than preserving the current Google Fonts dependency.
+
+## As built
+
+- Added explicit bootstrap/device credential kinds, 90-day default and 365-day maximum device
+  expiry, active-state diagnostics, and immediate derived-session invalidation on revocation or
+  expiry. The bootstrap remains local, non-expiring, non-revocable, and rejected by browser login.
+- Browser login now exchanges a device secret for separately random session and CSRF values. Only
+  hashes are persisted; sessions enforce 12-hour idle and seven-day absolute deadlines and support
+  logout, list, and independent revocation across HTTP, CLI, and web Config.
+- Public health is liveness-only. Protected identity and detailed-health endpoints are canonical,
+  and CLI/mobile verification no longer mistakes reachability for authentication.
+- `BAZILION_PUBLIC_ORIGIN` activates exact HTTPS Host/Origin checks, production `__Host-` cookies,
+  session-bound CSRF, forwarding/hop-header stripping, bounded bodies, response hardening, local
+  fonts, and a same-origin CSP. Hosted operator HTTP turns select BAZ-027's protected surface.
+- Added exact-origin QR/mobile pairing, read-only listener and Tailscale Serve/Funnel preflight,
+  loopback-only startup enforcement, and the reproducible private-gateway guide.
+- Backup schema validation includes the session table. Restore preserves device credentials while
+  revoking all restored browser sessions; bootstrap rotation revokes devices and sessions.
+- Verified 1094 passing tests with 3 intentional skips, root/web/mobile typechecks, lint (existing
+  warnings only), and the production web build.

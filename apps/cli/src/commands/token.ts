@@ -1,4 +1,3 @@
-import { networkInterfaces } from 'node:os'
 import type {
   CreateTokenRequest,
   CreateTokenResponse,
@@ -14,52 +13,31 @@ import { resolveCliPaths } from '../paths.ts'
 
 function tokenRow(t: WebToken): string[] {
   const last = t.lastUsedAt ? new Date(t.lastUsedAt).toISOString() : '(never)'
-  const state = t.revokedAt ? 'revoked' : 'active'
-  return [t.id, state, t.label, `last: ${last}`]
-}
-
-/**
- * Best-effort LAN host detection for QR pairing. A phone can't reach
- * `127.0.0.1`, so when the server URL is loopback we swap in a routable
- * interface address. Multi-NIC machines get a warning listing every
- * candidate — the user can override with --server.
- */
-function detectLanOrigin(port: string): { origin: string; warning?: string } | null {
-  const candidates: string[] = []
-  for (const ifs of Object.values(networkInterfaces())) {
-    for (const i of ifs ?? []) {
-      if (i.family === 'IPv4' && !i.internal) candidates.push(i.address)
-    }
-  }
-  const [first, ...rest] = candidates
-  if (!first) return null
-  const origin = `http://${first}:${port}`
-  return rest.length > 0
-    ? { origin, warning: `multiple LAN IPs found (${candidates.join(', ')}) — using ${first}` }
-    : { origin }
+  const expired = t.expiresAt !== null && t.expiresAt <= Date.now()
+  const state = t.revokedAt ? 'revoked' : expired ? 'expired' : 'active'
+  const expires = t.expiresAt ? new Date(t.expiresAt).toISOString() : '(never)'
+  return [t.id, t.kind, state, t.label, `expires: ${expires}`, `last: ${last}`]
 }
 
 function resolveQrServer(override: string | undefined): string {
-  if (override) return override.replace(/\/$/, '')
-
-  const cfg = loadClientConfig()
-  const current = new URL(cfg.serverUrl)
-  const isLoopback =
-    current.hostname === '127.0.0.1' ||
-    current.hostname === 'localhost' ||
-    current.hostname === '::1'
-
-  if (!isLoopback) return cfg.serverUrl.replace(/\/$/, '')
-
-  const detected = detectLanOrigin(current.port || '4321')
-  if (!detected) {
+  const raw = override ?? loadClientConfig().serverUrl
+  const url = new URL(raw)
+  const loopback = ['127.0.0.1', 'localhost', '[::1]', '::1'].includes(url.hostname)
+  if (url.protocol !== 'https:' && !(url.protocol === 'http:' && loopback)) {
+    throw new Error('pairing server must use HTTPS (HTTP is allowed only for loopback development)')
+  }
+  if (url.username || url.password || url.pathname !== '/' || url.search || url.hash) {
     throw new Error(
-      'server URL is loopback-only and no LAN interface was found. ' +
-        'Pass --server http://<host>:<port> so the mobile client knows where to connect.',
+      'pairing server must be an exact origin without credentials, path, query, or fragment',
     )
   }
-  if (detected.warning) console.warn(`⚠ ${detected.warning}`)
-  return detected.origin
+  const cfg = loadClientConfig()
+  if (loopback && !override && new URL(cfg.serverUrl).hostname === url.hostname) {
+    throw new Error(
+      'server URL is loopback-only. Pass --server https://<private-tailnet-host> for mobile pairing.',
+    )
+  }
+  return url.origin
 }
 
 const createCmd = defineCommand({
@@ -75,13 +53,25 @@ const createCmd = defineCommand({
       description:
         'Server URL to embed in the pairing QR (default: detect LAN IP; ignored without --qr)',
     },
+    expiresDays: {
+      type: 'string',
+      description: 'Device lifetime in days (default 90, maximum 365)',
+    },
   },
   async run({ args }) {
     const client = createClient()
-    const body: CreateTokenRequest = { label: args.label }
+    const expiresInDays = args.expiresDays === undefined ? undefined : Number(args.expiresDays)
+    if (expiresInDays !== undefined && !Number.isInteger(expiresInDays)) {
+      throw new Error('--expires-days must be an integer')
+    }
+    const body: CreateTokenRequest = { label: args.label, expiresInDays }
     const res = await client.post<CreateTokenResponse>('/api/tokens', body)
     console.log(`id:    ${res.meta.id}`)
     console.log(`label: ${res.meta.label}`)
+    console.log(`kind:  ${res.meta.kind}`)
+    console.log(
+      `expires: ${res.meta.expiresAt ? new Date(res.meta.expiresAt).toISOString() : '(never)'}`,
+    )
     console.log(`token: ${res.token}`)
     console.log('')
     console.log('store the token now — it is not recoverable later.')

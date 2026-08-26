@@ -72,7 +72,7 @@ test('PUT /api/profiles/:id/files/:file edits SOUL.md post-creation', async () =
     method: 'PUT',
     headers: {
       'content-type': 'application/json',
-      cookie: `bz_token=${server.token}`,
+      authorization: `Bearer ${server.token}`,
       origin: server.url,
     },
     body: JSON.stringify({ content: '# edited post-creation\nnew rules' }),

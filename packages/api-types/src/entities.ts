@@ -448,9 +448,23 @@ export interface AgentLoopBreakEvent {
 export interface WebToken {
   id: string
   label: string
+  kind: 'bootstrap' | 'device'
   createdAt: Timestamp
   lastUsedAt: Timestamp | null
+  expiresAt: Timestamp | null
   revokedAt: Timestamp | null
+}
+
+export interface WebSession {
+  id: string
+  deviceTokenId: string
+  deviceLabel: string
+  createdAt: Timestamp
+  lastSeenAt: Timestamp
+  idleExpiresAt: Timestamp
+  absoluteExpiresAt: Timestamp
+  revokedAt: Timestamp | null
+  current: boolean
 }
 
 export type TriggerKind = 'interval' | 'cron'

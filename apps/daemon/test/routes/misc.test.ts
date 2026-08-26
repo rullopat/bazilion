@@ -40,7 +40,7 @@ afterEach(() => {
 
 test('health exposes the release-ready teamPolicy management contract with enforcement off', async () => {
   delete process.env.BAZILION_TEAM_POLICY_ENFORCEMENT
-  const response = await miscRouter.request('/health')
+  const response = await miscRouter.request('/health/details')
   expect(response.status).toBe(200)
   const report = (await response.json()) as {
     teamPolicyManagement: {
@@ -61,7 +61,7 @@ test('health exposes the release-ready teamPolicy management contract with enfor
 
 test('health reports active enforcement when requested by a release-ready build', async () => {
   process.env.BAZILION_TEAM_POLICY_ENFORCEMENT = 'on'
-  const response = await miscRouter.request('/health')
+  const response = await miscRouter.request('/health/details')
   const report = (await response.json()) as {
     teamPolicyManagement: { enforcementRequested: boolean; releaseReady: boolean }
   }
@@ -75,7 +75,7 @@ test('health reports active enforcement when requested by a release-ready build'
 
 test('health reports the default-off host shell posture', async () => {
   process.env.BAZILION_BASH_SANDBOX = 'off'
-  const response = await miscRouter.request('/health')
+  const response = await miscRouter.request('/health/details')
   const report = (await response.json()) as {
     shellSecurity: unknown
   }
@@ -93,7 +93,7 @@ test('health reports the default-off host shell posture', async () => {
 test('health reports the opt-in Docker confinement posture', async () => {
   process.env.BAZILION_BASH_SANDBOX = 'docker'
   process.env.BAZILION_BASH_SANDBOX_IMAGE = 'example.test/bazilion-shell:v1'
-  const response = await miscRouter.request('/health')
+  const response = await miscRouter.request('/health/details')
   const report = (await response.json()) as {
     shellSecurity: unknown
   }
@@ -111,7 +111,7 @@ test('health reports the opt-in Docker confinement posture', async () => {
 test('health reports dangerous-command approval independently from sandboxing', async () => {
   process.env.BAZILION_BASH_SANDBOX = 'off'
   process.env.BAZILION_BASH_APPROVAL = 'dangerous'
-  const response = await miscRouter.request('/health')
+  const response = await miscRouter.request('/health/details')
   const report = (await response.json()) as { shellSecurity: unknown }
 
   expect(report.shellSecurity).toMatchObject({
@@ -125,7 +125,7 @@ test('health reports dangerous-command approval independently from sandboxing', 
 
 test('health separates configured operator HTTP from protected unattended execution', async () => {
   process.env.BAZILION_BASH_SANDBOX = 'off'
-  const response = await miscRouter.request('/health')
+  const response = await miscRouter.request('/health/details')
   const report = (await response.json()) as {
     protectedWorkBaselineReady: boolean
     executionSecurity: {
@@ -185,7 +185,7 @@ test('health separates configured operator HTTP from protected unattended execut
 
 test('health fails closed on an invalid shell-security mode', async () => {
   process.env.BAZILION_BASH_SANDBOX = 'raw-shell-mode-sentinel'
-  const response = await miscRouter.request('/health')
+  const response = await miscRouter.request('/health/details')
   const report = (await response.json()) as {
     ok: boolean
     shellSecurity: { ok: boolean; error: string }
@@ -200,7 +200,7 @@ test('health fails closed on an invalid shell-security mode', async () => {
 test('health fails closed on an invalid dangerous-command approval policy', async () => {
   process.env.BAZILION_BASH_SANDBOX = 'off'
   process.env.BAZILION_BASH_APPROVAL = 'raw-approval-sentinel'
-  const response = await miscRouter.request('/health')
+  const response = await miscRouter.request('/health/details')
   const report = (await response.json()) as {
     ok: boolean
     shellSecurity: { ok: boolean; error: string }
@@ -217,7 +217,7 @@ test('health fails closed on an invalid dangerous-command approval policy', asyn
 test('health keeps structural ok separate from protected-work baseline readiness', async () => {
   process.env.BAZILION_BASH_SANDBOX = 'off'
   process.env.BAZILION_BASH_SANDBOX_IMAGE = 'bazilion-health-definitely-missing:v0'
-  const response = await miscRouter.request('/health')
+  const response = await miscRouter.request('/health/details')
   const report = (await response.json()) as {
     ok: boolean
     protectedWorkBaselineReady: boolean
@@ -258,7 +258,7 @@ test('public health exposes only booleans and fixed diagnostics for configured s
   process.env.OPENAI_API_KEY = sentinels[5]
   process.env.BAZILION_BASH_SANDBOX = sentinels[6]
 
-  const response = await miscRouter.request('/health')
+  const response = await miscRouter.request('/health/details')
   const report = (await response.json()) as {
     providers: {
       configured: string[]
@@ -287,14 +287,14 @@ test('public health exposes only booleans and fixed diagnostics for configured s
 test('health replaces invalid image and allowlist values with fixed diagnostics', async () => {
   process.env.BAZILION_BASH_SANDBOX = 'off'
   process.env.BAZILION_BASH_SANDBOX_IMAGE = 'raw image sentinel'
-  let response = await miscRouter.request('/health')
+  let response = await miscRouter.request('/health/details')
   let report = (await response.json()) as { shellSecurity: { ok: false; error: string } }
   expect(report.shellSecurity.error).toBe('Docker image must use a valid local image reference.')
   expect(JSON.stringify(report)).not.toContain('raw image sentinel')
 
   process.env.BAZILION_BASH_SANDBOX_IMAGE = 'debian:bookworm-slim'
   process.env.BAZILION_BASH_SANDBOX_ENV_ALLOWLIST = 'raw-allowlist-sentinel!'
-  response = await miscRouter.request('/health')
+  response = await miscRouter.request('/health/details')
   report = (await response.json()) as { shellSecurity: { ok: false; error: string } }
   expect(report.shellSecurity.error).toBe(
     'Shell environment allowlist contains an invalid or unsafe variable name.',

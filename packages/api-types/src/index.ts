@@ -80,6 +80,7 @@ export type {
   TriggerDispatch,
   TriggerDispatchStatus,
   TriggerKind,
+  WebSession,
   WebToken,
 } from './entities.ts'
 export { REASONING_LEVELS } from './entities.ts'
@@ -117,6 +118,7 @@ import type {
   TelegramMirrorMode,
   TemplateEndpointKind,
   TriggerDispatch,
+  WebSession,
   WebToken,
 } from './entities.ts'
 import type { BashApprovalMode, CommandApproval } from './events.ts'
@@ -771,6 +773,8 @@ export interface SetProviderEnabledResponse {
 
 export interface CreateTokenRequest {
   label: string
+  /** Device lifetime in days. Defaults to 90 and must be between 1 and 365. */
+  expiresInDays?: number
 }
 
 export interface CreateTokenResponse {
@@ -781,6 +785,26 @@ export interface CreateTokenResponse {
 
 export interface ListTokensResponse {
   tokens: WebToken[]
+}
+
+export interface ListSessionsResponse {
+  sessions: WebSession[]
+}
+
+export interface AuthenticatedOwnerResponse {
+  authenticated: true
+  setupComplete: boolean
+  publicOrigin: string | null
+  principal: {
+    kind: 'bootstrap' | 'device' | 'session'
+    tokenId: string
+    label: string
+    sessionId: string | null
+  }
+}
+
+export interface PublicHealthResponse {
+  ok: true
 }
 
 // --- health (doctor) ---

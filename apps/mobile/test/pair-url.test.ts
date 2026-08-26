@@ -3,14 +3,14 @@ import { PairUrlError, parsePairingUrl } from '../src/pair-url.ts'
 
 describe('parsePairingUrl', () => {
   it('extracts server and token from a well-formed URL', () => {
-    const r = parsePairingUrl('bazilion://pair?server=http%3A%2F%2F192.168.1.10%3A4321&token=abc123')
-    expect(r.server).toBe('http://192.168.1.10:4321')
+    const r = parsePairingUrl('bazilion://pair?server=https%3A%2F%2Fserver.tailnet.ts.net&token=abc123')
+    expect(r.server).toBe('https://server.tailnet.ts.net')
     expect(r.token).toBe('abc123')
   })
 
   it('strips a trailing slash on the server URL', () => {
-    const r = parsePairingUrl('bazilion://pair?server=http%3A%2F%2Fhost%3A4321%2F&token=t')
-    expect(r.server).toBe('http://host:4321')
+    const r = parsePairingUrl('bazilion://pair?server=https%3A%2F%2Fhost%2F&token=t')
+    expect(r.server).toBe('https://host')
   })
 
   it('accepts https servers', () => {
@@ -36,8 +36,23 @@ describe('parsePairingUrl', () => {
 
   it('rejects when the server URL uses a non-http(s) scheme', () => {
     expect(() => parsePairingUrl('bazilion://pair?server=ftp%3A%2F%2Fh&token=t')).toThrow(
-      /must be http/,
+      /HTTPS/,
     )
+  })
+
+  it('rejects insecure non-loopback and non-origin server URLs', () => {
+    expect(() => parsePairingUrl('bazilion://pair?server=http%3A%2F%2F192.168.1.10&token=t')).toThrow(
+      /HTTPS/,
+    )
+    expect(() => parsePairingUrl('bazilion://pair?server=https%3A%2F%2Fhost%2Fapi&token=t')).toThrow(
+      /exact origin/,
+    )
+  })
+
+  it('permits loopback HTTP development only', () => {
+    expect(
+      parsePairingUrl('bazilion://pair?server=http%3A%2F%2F127.0.0.1%3A4322&token=t').server,
+    ).toBe('http://127.0.0.1:4322')
   })
 
   it('rejects a completely malformed input', () => {

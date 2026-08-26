@@ -251,6 +251,17 @@ test.each([
   expect(executionSurfaceForInvocation(invocation)).toBe('configured_operator_http')
 })
 
+test('the hosted profile makes operator HTTP turns protected', () => {
+  const previous = process.env.BAZILION_PUBLIC_ORIGIN
+  process.env.BAZILION_PUBLIC_ORIGIN = 'https://bazilion.example.ts.net'
+  try {
+    expect(executionSurfaceForInvocation(invocations[0]!.invocation)).toBe('protected')
+  } finally {
+    if (previous === undefined) delete process.env.BAZILION_PUBLIC_ORIGIN
+    else process.env.BAZILION_PUBLIC_ORIGIN = previous
+  }
+})
+
 test.each([
   'manual',
   'cadence',

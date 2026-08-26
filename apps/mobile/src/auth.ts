@@ -42,15 +42,25 @@ export async function verifyCredentials(creds: Credentials): Promise<void> {
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), 5000)
   try {
-    const res = await fetch(`${creds.server}/api/health`, {
+    const res = await fetch(`${creds.server}/api/auth/whoami`, {
       headers: {
         authorization: `Bearer ${creds.token}`,
         origin: creds.server,
       },
       signal: ctrl.signal,
     })
-    if (res.status === 401) throw new Error('server rejected the token')
-    if (!res.ok) throw new Error(`server returned ${res.status} from /api/health`)
+    if (res.status === 401) {
+      const body = (await res.json().catch(() => ({}))) as { code?: string }
+      if (body.code === 'credential_expired') throw new Error('device credential expired')
+      if (body.code === 'credential_revoked') throw new Error('device credential was revoked')
+      throw new Error('server rejected the device credential')
+    }
+    if (res.status === 403) throw new Error('server rejected the configured private origin')
+    if (!res.ok) throw new Error(`server returned ${res.status} from /api/auth/whoami`)
+    const owner = (await res.json()) as { publicOrigin?: string | null }
+    if (owner.publicOrigin && owner.publicOrigin !== new URL(creds.server).origin) {
+      throw new Error('pairing URL does not match the server canonical private origin')
+    }
   } catch (err) {
     if (err instanceof Error && err.name === 'AbortError') {
       throw new Error(`could not reach ${creds.server} within 5s`)

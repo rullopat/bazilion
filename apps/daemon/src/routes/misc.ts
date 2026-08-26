@@ -8,6 +8,7 @@ import type {
   CreateTokenResponse,
   HealthReport,
   ListTokensResponse,
+  PublicHealthResponse,
 } from '@bazilion/api-types'
 import { Hono } from 'hono'
 import {
@@ -20,6 +21,7 @@ import {
   providerStateRepo,
   resolvePaths,
   teamRepo,
+  webSessionRepo,
   webTokenRepo,
 } from '../core/index.ts'
 import { createBackupArchive, createBackupSnapshot } from '../lib/backup.ts'
@@ -43,11 +45,15 @@ import {
 export const miscRouter = new Hono()
 const protectedDockerReadiness = createProtectedDockerReadinessCache()
 
-// /api/health — install diagnostics. Public (auth middleware whitelists it)
-// so the doctor command and external probes can run without a token.
-miscRouter.get('/health', async (c) => {
+// Minimal unauthenticated liveness. The opaque instance header remains for
+// the local home-ownership protocol; all operator diagnostics are protected.
+miscRouter.get('/health', (c) => {
   const instanceId = getDaemonInstanceId()
   if (instanceId) c.header('x-bazilion-daemon-instance', instanceId)
+  return c.json({ ok: true } satisfies PublicHealthResponse)
+})
+
+miscRouter.get('/health/details', async (c) => {
   const paths = resolvePaths()
 
   const pathChecks = {
@@ -340,13 +346,20 @@ miscRouter.post('/tokens', async (c) => {
   if (!body || typeof body.label !== 'string' || !body.label.trim()) {
     return c.json({ error: 'label is required' }, 400)
   }
+  const expiresInDays = body.expiresInDays ?? 90
+  if (!Number.isInteger(expiresInDays) || expiresInDays < 1 || expiresInDays > 365) {
+    return c.json({ error: 'expiresInDays must be an integer from 1 to 365' }, 400)
+  }
   const { db } = getCtx()
-  const created = webTokenRepo.create(db, body.label.trim())
+  const created = webTokenRepo.create(db, body.label.trim(), {
+    kind: 'device',
+    expiresAt: Date.now() + expiresInDays * 86_400_000,
+  })
   return c.json({ token: created.token, meta: created.meta } satisfies CreateTokenResponse, 201)
 })
 
 miscRouter.delete('/tokens/:id', (c) => {
-  const { db, authToken } = getCtx()
+  const { db } = getCtx()
   const id = c.req.param('id')
   const existing = webTokenRepo.get(db, id)
   if (!existing) return c.json({ error: `token not found: ${id}` }, 404)
@@ -354,8 +367,7 @@ miscRouter.delete('/tokens/:id', (c) => {
   // Refuse to revoke the bootstrap token — that's the plaintext in auth.json
   // the local CLI uses for loopback. Revoking it would lock the operator out
   // of their own daemon. Match by hash (label is editable, hash isn't).
-  const bootstrap = webTokenRepo.findActiveByToken(db, authToken)
-  if (bootstrap && bootstrap.id === id) {
+  if (existing.kind === 'bootstrap') {
     return c.json(
       {
         error:
@@ -365,5 +377,6 @@ miscRouter.delete('/tokens/:id', (c) => {
     )
   }
   webTokenRepo.revoke(db, id)
+  webSessionRepo.revokeForDevice(db, id)
   return c.body(null, 204)
 })

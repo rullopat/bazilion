@@ -11,7 +11,11 @@ export interface ClientConfig {
    * requests. Pass a function to support token rotation (OAuth refresh,
    * mobile keychain reads) — it is invoked on every request.
    */
-  token: TokenSource
+  token: TokenSource | null
+  /** Additional request headers for trusted adapters such as the web SSR session bridge. */
+  headers?:
+    | Record<string, string>
+    | (() => Record<string, string> | Promise<Record<string, string>>)
 }
 
 export class ApiClientError extends Error {
@@ -30,15 +34,17 @@ async function resolveToken(src: TokenSource): Promise<string> {
 
 export function createClient(cfg: ClientConfig) {
   async function authHeaders(): Promise<Record<string, string>> {
-    const token = await resolveToken(cfg.token)
+    const token = cfg.token === null ? null : await resolveToken(cfg.token)
+    const extra = typeof cfg.headers === 'function' ? await cfg.headers() : (cfg.headers ?? {})
     return {
-      authorization: `Bearer ${token}`,
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
       // Astro 6 enabled `security.checkOrigin` by default for server mode:
       // any state-changing request without an `Origin` matching the server
       // host is rejected with 403. Browsers set this automatically; `fetch`
       // in Node / React Native does not. Stamping the server's own URL is
       // always valid for a legitimate client.
       origin: cfg.serverUrl,
+      ...extra,
     }
   }
 

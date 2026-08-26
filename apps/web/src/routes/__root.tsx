@@ -7,9 +7,17 @@ import {
   redirect,
   useRouterState,
 } from '@tanstack/react-router'
+import '@fontsource/dm-sans/latin-400.css'
+import '@fontsource/dm-sans/latin-500.css'
+import '@fontsource/dm-sans/latin-600.css'
+import '@fontsource/dm-sans/latin-700.css'
+import '@fontsource/dm-serif-display/latin-400.css'
+import '@fontsource/jetbrains-mono/latin-400.css'
+import '@fontsource/jetbrains-mono/latin-500.css'
 import { Footer } from '../components/Footer'
 import { TopNav } from '../components/TopNav'
 import { PUBLIC_PATHS, fetchAuthState, isSetupOpen } from '../lib/auth'
+import { installCsrfFetch } from '../lib/csrf-fetch'
 import appCss from '../styles.css?url'
 
 // Sync, runs in <head> before paint. Reads 'baziu-theme' from localStorage
@@ -19,6 +27,8 @@ import appCss from '../styles.css?url'
 // same key. Wrapped in try/catch so a denied localStorage (private mode,
 // disabled storage) just falls through to light.
 const THEME_INIT_SCRIPT = `(function(){try{var t=localStorage.getItem('baziu-theme');var sd=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches;var d=t==='dark'||((t===null||t==='system')&&sd);document.documentElement.classList.toggle('dark',d);}catch(e){}})();`
+
+installCsrfFetch()
 
 export const Route = createRootRoute({
   beforeLoad: async ({ location }) => {
@@ -44,12 +54,6 @@ export const Route = createRootRoute({
     ],
     links: [
       { rel: 'icon', type: 'image/svg+xml', href: '/baziu.svg' },
-      { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
-      { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossOrigin: '' },
-      {
-        rel: 'stylesheet',
-        href: 'https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:ital,opsz,wght@0,9..40,300..700;1,9..40,300..700&family=JetBrains+Mono:wght@400;500&display=swap',
-      },
       { rel: 'stylesheet', href: appCss },
     ],
   }),

@@ -80,7 +80,7 @@ The HTTP API lives in a standalone Hono daemon (`apps/daemon`, port 4321); the w
 Three processes during a chat: the **web UI** (long-lived Vite/Node), the **daemon** (long-lived Hono, sole DB owner), and the **worker** (short-lived, one per turn — no DB handle, talks back via IPC). The CLI is a fourth process that talks straight to the daemon over HTTP.
 
 Wire boundaries:
-- **CLI ↔ daemon, web UI ↔ daemon**: HTTP with bearer auth (CLI) or cookie translated to bearer by web's `/api/$` reverse proxy (browser). Streaming endpoints emit NDJSON.
+- **CLI/mobile ↔ gateway/daemon, web UI ↔ gateway ↔ daemon**: native clients use expiring device bearers; browsers use daemon-owned session cookies forwarded unchanged by the web proxy. Streaming endpoints emit NDJSON.
 - **Daemon ↔ worker**: stdin (one JSON line: `{agent, message, enabledProviders, apiKey?, turnId, bashApprovalMode}`), stdout NDJSON `ChatFrame`, plus a Node IPC channel (fd 3) for DB-backed tools and turn-scoped shell approval (`process.send({type:'rpc', method, args, id})` ↔ `child.send({type:'rpc-reply', id, ok, result|error})`).
 
 The `ChatFrame` shape is the same across the worker→daemon boundary and the daemon→client boundary — no translation. Worker stdout → daemon HTTP body → CLI stdout / browser parser.
@@ -279,7 +279,7 @@ app.route('/api', authRouter)           // /auth/openai*, /providers/test, /logi
 
 Two sequential gates on every request:
 
-1. **Auth gate** — reads `Authorization: Bearer <t>` first, falls back to the `bz_token` cookie via `hono/cookie`. Both routes through `isValidToken(t)` in `src/lib/auth.ts`, which queries `web_tokens.findActiveByToken(t)` and bumps `last_used_at` on a hit. The bootstrap token (auth.json) is just one row in `web_tokens` with label `bootstrap` — same lookup path. Public paths (`/api/login`, `/api/health`) skip auth.
+1. **Auth gate** — reads `Authorization: Bearer <t>` for native clients or a daemon-owned browser-session cookie. Device tokens are hashed, expiring credentials; browser sessions store only hashes, have 12-hour idle and seven-day absolute limits, and require a session-bound CSRF header on unsafe methods. The bootstrap token in `auth.json` is explicitly typed, non-expiring, and rejected by browser login. Public paths are exactly `/api/login` and minimal `/api/health`.
 2. **First-run gate** — `isSetupComplete(db)` (see §2.7). Before setup is done, allow only the setup-open prefixes: `/api/config`, `/api/auth`, plus the public paths above. Everything else returns `409 setup incomplete`.
 
 The web UI also enforces a setup gate client-side (its `__root.tsx` `beforeLoad` redirects to `/welcome` until setup is done) but the daemon's gate is the load-bearing one.
@@ -339,9 +339,9 @@ omitting `reply_to`. Stops are stored without payloads in
 - `PUT /api/config/providers/:name/enabled` — set `provider_state.enabled`.
 - `PUT /api/config/providers/:name/models` — replace the curated list. **Both this and the enabled toggle call `ensureSetupSeeded(db, paths)` after the write** — that's what fires the 0→1 seed.
 
-**Auth** (`routes/auth-login.ts`): `POST /api/login` (token exchange, sets `bz_token` cookie), `GET / PUT / DELETE /api/auth/openai` (Codex OAuth credentials in the secrets table), `POST /api/auth/openai/login` (server-side browser kickoff), `POST /api/providers/test`, `GET /api/auth/me` (auth+setup probe used by web middleware).
+**Auth** (`routes/auth-login.ts`): `POST /api/login` exchanges a device credential for secure session and CSRF cookies; `POST /api/logout` revokes that session; `GET /api/auth/whoami` proves the authenticated principal; `GET / DELETE /api/sessions[/:id]` manages browser sessions. OAuth and provider-test routes remain daemon-owned.
 
-**Misc** (`routes/misc.ts`): `GET /api/health` (`HealthReport`), `GET /api/backup` (streamed tar.gz with a verified SQLite online-backup snapshot; excludes live journals and qmd indexes), `GET / POST / DELETE /api/tokens[/:id]`. **`DELETE /api/tokens/:id` refuses to revoke the bootstrap row** by hashing `getCtx().authToken` and rejecting the matching id with 409 — locking the operator out of their own daemon would be a footgun.
+**Misc** (`routes/misc.ts`): public `GET /api/health` returns liveness only; protected `GET /api/health/details` returns `HealthReport`. Backup remains a verified SQLite snapshot. Token endpoints create expiring device credentials and expose bounded metadata; revocation invalidates derived sessions. The explicit bootstrap kind cannot be revoked.
 
 ### 4.5 Chat streaming path in detail
 
@@ -406,11 +406,14 @@ Cancellation: `POST /api/agents/:id/cancel` → `cancelAgent(id)` → the stored
 
 React 19 + Vite 8 + Tailwind v4 + shadcn/ui. File-based routes via `@tanstack/react-router`; `src/router.tsx` exports `getRouter`. Server fns use `.inputValidator()`. Bound to `127.0.0.1:4322` by default (`WEB_HOST` / `WEB_PORT`).
 
-**Daemon-only client** — `apps/web` never reaches into daemon source; the only daemon-facing types it imports are wire shapes from `@bazilion/api-types`. Every loader is a `createServerFn` handler that calls `apps/web/src/lib/daemon-client.ts`, which reads the request's `bz_token` cookie via `getCookie` from `@tanstack/react-start/server` and forwards it as `Authorization: Bearer …` to the daemon (`http://127.0.0.1:4321`, overridable via `BAZILION_DAEMON`).
+**Daemon-only client** — `apps/web` never reaches into daemon source. Loaders forward the host-only session and CSRF cookies to the loopback daemon; they never translate browser credentials into bearer tokens. Native clients continue to send device bearers through `@bazilion/client`.
 
 **`daemon-client.ts` is server-only** — Vite's import-protection rejects `@tanstack/react-start/server` in any module that ends up in the client bundle. Client-safe wire constants live in `apps/web/src/lib/wire-constants.ts` (`DEFAULT_TEAM_ID`, `DEFAULT_PROFILE_ID`, `REASONING_LEVELS`).
 
-Browser fetches hit relative `/api/*` URLs. The `/api/$` catch-all (`src/routes/api/$.ts`, using `createFileRoute` with `server.handlers`) is a streaming-capable reverse proxy: it pulls the cookie, stamps it as a bearer header, forwards to the daemon, and streams the response back. That's how the chat NDJSON stream survives the trip browser → web server → daemon → worker.
+Browser fetches hit relative `/api/*`. The `/api/$` catch-all validates the canonical origin,
+enforces session-bound CSRF on unsafe requests, strips forwarding and hop-by-hop headers, bounds
+bodies, forwards only the session cookies, and streams daemon responses back. This preserves chat
+NDJSON without turning a browser session into a bearer.
 
 **Markdown rendering**: chat output goes through `marked` + DOMPurify (`apps/web/src/lib/md.ts`); the rendered HTML lands in divs with class `md-content`. Typography rules for that class live in `apps/web/src/styles.css` (headings, lists, code, pre, blockquote, table). Without those rules, Tailwind preflight strips list markers + header sizes etc., so chat reads as flat plain text.
 
@@ -427,7 +430,7 @@ Routes (under `src/routes/`):
 | `teams/{index,$id}.tsx` | Team list (slug + optional `--link` target form) + per-team USER.md editor + member roster. |
 | `skills/index.tsx` | Skill library (import card + installed list). |
 | `config/{index,services,tokens}.tsx` | Provider config / service config / token management. The bootstrap row in `tokens.tsx` is badged `auth.json` and has its revoke button hidden. |
-| `api/$.ts` | The cookie→bearer reverse proxy. |
+| `api/$.ts` | Hardened same-origin session-cookie reverse proxy. |
 
 ## 5. `apps/cli` — the command-line client
 
@@ -510,7 +513,7 @@ The web UI is **not** booted by `serve`. Published installs use `bazilion dashbo
 
 **Remote**: `bazilion login --server https://host --token <token>` writes `{remote:{server,token}}` to `auth.json`, or the user exports `$BAZILION_SERVER` + `$BAZILION_TOKEN`. `client.ts` picks those up.
 
-**Browser**: user POSTs `/api/login` (via the web's catch-all proxy) with the token (from terminal output or `/config`). On success, the daemon sets `bz_token=<t>; HttpOnly; SameSite=Lax`. The cookie auto-attaches to every relative `/api/*` fetch; the proxy translates it to a bearer header before talking to the daemon.
+**Browser**: user POSTs a separately minted device token to `/api/login`. The daemon returns an opaque bounded session cookie plus a readable, independently random CSRF cookie. Production uses Secure, Strict, host-only `__Host-` cookies. The gateway validates exact Host and Origin, adds no client identity, strips forwarding headers, and proxies the cookies only to the loopback daemon.
 
 **Mobile**: pairing via `bazilion token create <label> --qr` mints a token + emits `bazilion://pair?server=<url>&token=<t>` as a QR code. The mobile app stores the credentials in `expo-secure-store` and uses `@bazilion/client` directly with the bearer.
 

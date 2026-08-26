@@ -28,7 +28,7 @@ interface ProviderEntry {
 
 async function fetchProviders(): Promise<ProviderEntry[]> {
   const res = await fetch(`${server.url}/api/config/providers`, {
-    headers: { cookie: `bz_token=${server.token}` },
+    headers: { authorization: `Bearer ${server.token}` },
   })
   expect(res.ok).toBe(true)
   const body = (await res.json()) as { providers: ProviderEntry[] }
@@ -52,7 +52,7 @@ async function findService(id: string): Promise<{
   }>
 }> {
   const res = await fetch(`${server.url}/api/config/services`, {
-    headers: { cookie: `bz_token=${server.token}` },
+    headers: { authorization: `Bearer ${server.token}` },
   })
   expect(res.ok).toBe(true)
   const body = (await res.json()) as {
@@ -101,7 +101,7 @@ test('provider enable via API accepts {enabled: boolean} and round-trips state',
   const res = await fetch(`${server.url}/api/config/providers/anthropic/enabled`, {
     method: 'PUT',
     headers: {
-      cookie: `bz_token=${server.token}`,
+      authorization: `Bearer ${server.token}`,
       origin: server.url,
       'content-type': 'application/json',
     },
@@ -118,7 +118,7 @@ test('toggling an unknown provider returns 404', async () => {
   const res = await fetch(`${server.url}/api/config/providers/martian/enabled`, {
     method: 'PUT',
     headers: {
-      cookie: `bz_token=${server.token}`,
+      authorization: `Bearer ${server.token}`,
       origin: server.url,
       'content-type': 'application/json',
     },

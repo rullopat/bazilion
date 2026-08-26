@@ -7,9 +7,10 @@
 
 import type { Context, Next } from 'hono'
 import { getCookie } from 'hono/cookie'
-import { isSetupComplete } from '../core/index.ts'
-import { extractBearer, isValidToken } from './auth.ts'
+import { isSetupComplete, webSessionRepo, webTokenRepo } from '../core/index.ts'
+import { authenticateToken, extractBearer } from './auth.ts'
 import { getCtx } from './ctx.ts'
+import { resolvePublicOrigin } from './public-origin.ts'
 
 /** Reachable without a token. The login route mints them; health is a probe. */
 const PUBLIC_PATHS = new Set(['/api/login', '/api/health'])
@@ -37,12 +38,43 @@ export async function authMiddleware(c: Context, next: Next): Promise<Response |
   }
 
   const bearer = extractBearer(c.req.header('authorization'))
-  const cookie = getCookie(c, 'bz_token')
-  const token = bearer ?? cookie
+  const origin = resolvePublicOrigin()
+  const sessionCookie = getCookie(c, origin.sessionCookie)
+  const bearerPrincipal = bearer ? authenticateToken(bearer) : null
+  const session =
+    !bearer && sessionCookie ? webSessionRepo.authenticate(getCtx().db, sessionCookie) : null
+  const principal =
+    bearerPrincipal ??
+    (session
+      ? {
+          kind: 'session' as const,
+          tokenId: session.deviceTokenId,
+          label: session.deviceLabel,
+          sessionId: session.id,
+        }
+      : null)
 
-  if (!token || !isValidToken(token)) {
+  if (!principal) {
+    if (bearer) {
+      const reason = webTokenRepo.rejectionReason(getCtx().db, bearer)
+      return c.json({ error: `credential ${reason}`, code: `credential_${reason}` }, 401)
+    }
     return c.json({ error: 'unauthorized' }, 401)
   }
+  if (session && !['GET', 'HEAD', 'OPTIONS'].includes(c.req.method)) {
+    const csrfCookie = getCookie(c, origin.csrfCookie)
+    const csrfHeader = c.req.header('x-bazilion-csrf')
+    if (
+      !csrfCookie ||
+      !csrfHeader ||
+      csrfCookie !== csrfHeader ||
+      !webSessionRepo.csrfMatches(session, csrfHeader)
+    ) {
+      return c.json({ error: 'csrf validation failed' }, 403)
+    }
+  }
+  c.set('authPrincipal', principal)
+  if (session) c.set('authSession', session)
 
   if (!isSetupOpen(path) && !isSetupComplete(getCtx().db)) {
     return c.json({ error: 'setup incomplete' }, 409)

@@ -1,4 +1,4 @@
-import type { ListTokensResponse } from '@bazilion/api-types'
+import type { ListSessionsResponse, ListTokensResponse } from '@bazilion/api-types'
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { useState } from 'react'
@@ -7,11 +7,14 @@ import { daemonClient } from '../../lib/daemon-client'
 
 const fetchTokens = createServerFn({ method: 'POST' })
   .validator((d: { all: boolean }) => d)
-  .handler(({ data }) =>
-    daemonClient().get<ListTokensResponse>(
-      `/api/tokens${data.all ? '?includeRevoked=1' : ''}`,
-    ),
-  )
+  .handler(async ({ data }) => {
+    const client = daemonClient()
+    const [tokenResult, sessionResult] = await Promise.all([
+      client.get<ListTokensResponse>(`/api/tokens${data.all ? '?includeRevoked=1' : ''}`),
+      client.get<ListSessionsResponse>('/api/sessions'),
+    ])
+    return { ...tokenResult, ...sessionResult }
+  })
 
 export const Route = createFileRoute('/config/tokens')({
   validateSearch: (s: Record<string, unknown>): { all?: '1' } => ({
@@ -27,12 +30,13 @@ function fmtTs(ts: number): string {
 }
 
 function TokensPage() {
-  const { tokens } = Route.useLoaderData()
+  const { tokens, sessions } = Route.useLoaderData()
   const { all } = Route.useSearch()
   const includeRevoked = all === '1'
   const router = useRouter()
   const [label, setLabel] = useState('')
   const [created, setCreated] = useState<string | null>(null)
+  const [expiresDays, setExpiresDays] = useState('90')
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -44,7 +48,7 @@ function TokensPage() {
       const res = await fetch('/api/tokens', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ label }),
+        body: JSON.stringify({ label, expiresInDays: Number(expiresDays) }),
       })
       if (!res.ok) {
         const j = (await res.json().catch(() => ({}))) as { error?: string }
@@ -63,6 +67,16 @@ function TokensPage() {
 
   async function revoke(id: string) {
     await fetch(`/api/tokens/${id}`, { method: 'DELETE' })
+    await router.invalidate()
+  }
+
+  async function revokeSession(id: string) {
+    const response = await fetch(`/api/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' })
+    if (!response.ok) {
+      const body = (await response.json().catch(() => ({}))) as { error?: string }
+      setErr(body.error ?? 'Could not revoke browser session')
+      return
+    }
     await router.invalidate()
   }
 
@@ -95,6 +109,18 @@ function TokensPage() {
               placeholder="e.g. laptop-tailscale"
               autoComplete="off"
               className="mt-1 block w-full rounded-md border bg-background px-3 py-2 text-sm sm:w-72"
+            />
+          </label>
+          <label className="w-full text-sm sm:w-auto">
+            Expires in days
+            <input
+              type="number"
+              min={1}
+              max={365}
+              value={expiresDays}
+              onChange={(e) => setExpiresDays(e.target.value)}
+              required
+              className="mt-1 block w-full rounded-md border bg-background px-3 py-2 text-sm sm:w-36"
             />
           </label>
           <button
@@ -134,23 +160,25 @@ function TokensPage() {
           <thead className="text-left text-muted-foreground border-b">
             <tr>
               <th className="py-2">label</th>
+              <th>kind</th>
               <th>id</th>
               <th>state</th>
               <th>created</th>
               <th>last used</th>
+              <th>expires</th>
               <th />
             </tr>
           </thead>
           <tbody>
             {tokens.length === 0 && (
               <tr>
-                <td colSpan={6} className="py-6 text-center text-muted-foreground italic">
+                <td colSpan={8} className="py-6 text-center text-muted-foreground italic">
                   no tokens yet — mint one above
                 </td>
               </tr>
             )}
             {tokens.map((t) => {
-              const isBootstrap = t.label === 'bootstrap'
+              const isBootstrap = t.kind === 'bootstrap'
               return (
                 <tr key={t.id} className="border-b last:border-0 hover:bg-accent/30">
                   <td className="py-2">
@@ -161,6 +189,7 @@ function TokensPage() {
                       </span>
                     )}
                   </td>
+                  <td>{t.kind}</td>
                   <td>
                     <code className="font-mono text-xs">{t.id}</code>
                   </td>
@@ -174,6 +203,9 @@ function TokensPage() {
                   <td className="text-muted-foreground text-xs">{fmtTs(t.createdAt)}</td>
                   <td className="text-muted-foreground text-xs">
                     {t.lastUsedAt ? fmtTs(t.lastUsedAt) : '(never)'}
+                  </td>
+                  <td className="text-muted-foreground text-xs">
+                    {t.expiresAt ? fmtTs(t.expiresAt) : '(never)'}
                   </td>
                   <td>
                     {!t.revokedAt && !isBootstrap && (
@@ -192,6 +224,60 @@ function TokensPage() {
           </tbody>
         </table>
       </div>
+
+      <section className="space-y-3">
+        <div>
+          <h3 className="font-serif text-xl">Browser sessions</h3>
+          <p className="text-sm text-muted-foreground">
+            Sessions expire after 12 idle hours or seven days absolute. Revoking a device also
+            revokes every session created from it.
+          </p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[720px] text-sm">
+            <thead className="border-b text-left text-muted-foreground">
+              <tr>
+                <th className="py-2">device</th>
+                <th>session</th>
+                <th>last seen</th>
+                <th>idle expiry</th>
+                <th>absolute expiry</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {sessions.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="py-6 text-center italic text-muted-foreground">
+                    no active browser sessions
+                  </td>
+                </tr>
+              )}
+              {sessions.map((session) => (
+                <tr key={session.id} className="border-b last:border-0 hover:bg-accent/30">
+                  <td className="py-2">
+                    {session.deviceLabel}{' '}
+                    {session.current && <span className="text-xs text-success">current</span>}
+                  </td>
+                  <td><code className="font-mono text-xs">{session.id}</code></td>
+                  <td className="text-xs text-muted-foreground">{fmtTs(session.lastSeenAt)}</td>
+                  <td className="text-xs text-muted-foreground">{fmtTs(session.idleExpiresAt)}</td>
+                  <td className="text-xs text-muted-foreground">{fmtTs(session.absoluteExpiresAt)}</td>
+                  <td>
+                    <button
+                      type="button"
+                      onClick={() => revokeSession(session.id)}
+                      className="rounded-md border px-2 py-1 text-xs text-danger hover:bg-danger/10"
+                    >
+                      revoke
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
     </ConfigPage>
   )
 }

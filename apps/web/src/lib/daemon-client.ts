@@ -8,7 +8,7 @@
 //
 // Server fns and route loaders running on the server can call
 // `daemonClient()` to get a `BazilionClient` that auto-forwards the
-// current request's `bz_token` cookie as a Bearer token to the daemon.
+// current request's bounded session cookies to the daemon.
 // That keeps daemon audit logs reflecting the actual user identity end
 // to end, and lets the daemon's middleware do the auth + first-run check
 // uniformly.
@@ -23,12 +23,25 @@
 
 import { type BazilionClient, createClient } from '@bazilion/client'
 import { getCookie } from '@tanstack/react-start/server'
+import { webOriginConfig } from './public-origin'
 
 const DAEMON_URL = process.env.BAZILION_DAEMON ?? 'http://127.0.0.1:4321'
 
 export function daemonClient(): BazilionClient {
-  const token = getCookie('bz_token') ?? ''
-  return createClient({ serverUrl: DAEMON_URL, token })
+  const origin = webOriginConfig()
+  const session = getCookie(origin.sessionCookie)
+  const csrf = getCookie(origin.csrfCookie)
+  const cookies = [session ? `${origin.sessionCookie}=${session}` : null, csrf ? `${origin.csrfCookie}=${csrf}` : null]
+    .filter((value): value is string => value !== null)
+    .join('; ')
+  return createClient({
+    serverUrl: DAEMON_URL,
+    token: null,
+    headers: {
+      ...(cookies ? { cookie: cookies } : {}),
+      ...(csrf ? { 'x-bazilion-csrf': csrf } : {}),
+    },
+  })
 }
 
 export const DAEMON_BASE_URL = DAEMON_URL

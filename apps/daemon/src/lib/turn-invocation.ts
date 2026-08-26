@@ -183,7 +183,9 @@ export function createTrustedReviewInvocation(
 export function executionSurfaceForInvocation(
   invocation: TrustedTurnInvocation,
 ): TurnExecutionSurface {
-  return invocation.kind === 'operator_http' ? 'configured_operator_http' : 'protected'
+  return invocation.kind === 'operator_http' && !process.env.BAZILION_PUBLIC_ORIGIN
+    ? 'configured_operator_http'
+    : 'protected'
 }
 
 export function invocationOwnsUserAuthorization(

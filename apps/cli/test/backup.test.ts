@@ -205,7 +205,7 @@ test('offline bootstrap rotation preserves secrets and revokes other local token
   }
   const db = openDb(paths.db)
   runMigrations(db)
-  const bootstrap = webTokenRepo.create(db, 'bootstrap')
+  const bootstrap = webTokenRepo.create(db, 'bootstrap', { kind: 'bootstrap' })
   const device = webTokenRepo.create(db, 'lost-phone')
   openSecrets(db, bootstrap.token).set('TELEGRAM_BOT_TOKEN', 'secret-telegram-fixture')
   db.close()
@@ -1317,13 +1317,14 @@ test('auth token and database mismatch is rejected before replacement', async ()
   const db = new DatabaseSync(join(unpacked, 'bazilion.db'))
   db.prepare(
     `INSERT INTO web_tokens
-       (id, label, token_hash, created_at, last_used_at, revoked_at)
-     VALUES (?, ?, ?, ?, NULL, NULL)`,
+       (id, label, kind, token_hash, created_at, last_used_at, expires_at, revoked_at)
+     VALUES (?, ?, 'device', ?, ?, NULL, ?, NULL)`,
   ).run(
     randomUUID(),
     'secondary',
     createHash('sha256').update(wrongToken).digest('hex'),
     Date.now(),
+    Date.now() + 86_400_000,
   )
   db.close()
   await create({ file: mismatched, cwd: unpacked, gzip: true }, ['.'])

@@ -60,7 +60,7 @@ function LoginPage() {
           </div>
           <h2 className="font-display text-3xl text-charcoal">Welcome back</h2>
           <p className="mt-2 text-sm leading-6 text-mocha-light">
-            Use the local access token created by your Bazilion daemon.
+            Use a named device token minted locally by your Bazilion CLI.
           </p>
           {error && <div className="err mt-5">That token was not accepted.</div>}
           <form method="POST" action="/api/login" className="mt-6 text-left">
@@ -82,8 +82,8 @@ function LoginPage() {
             </button>
           </form>
           <p className="mt-5 rounded-xl bg-ivory px-3 py-2.5 text-[0.78em] leading-relaxed text-mocha-light">
-            Find it in <code>~/.bazilion/auth.json</code>, created the first time you run{' '}
-            <code>bazilion serve</code>.
+            On the server, run <code>bazilion token create browser</code>. The bootstrap token in{' '}
+            <code>auth.json</code> is intentionally rejected here.
           </p>
         </section>
       </div>

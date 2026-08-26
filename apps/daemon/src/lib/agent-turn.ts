@@ -77,7 +77,7 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
         },
       )
     } else {
-      if (invocation.kind === 'operator_http' || !turn.protectedExecution) {
+      if (!turn.protectedExecution) {
         throw new Error('protected surface requires protected preparation')
       }
       const prepared = turn.protectedExecution

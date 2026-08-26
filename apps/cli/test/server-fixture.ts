@@ -59,7 +59,7 @@ function initHome(): { home: string; token: string } {
   const db = openDb(paths.db)
   runMigrations(db)
   // Mint a bootstrap token row + write its plaintext into auth.json.
-  const created = webTokenRepo.create(db, 'bootstrap')
+  const created = webTokenRepo.create(db, 'bootstrap', { kind: 'bootstrap' })
   writeFileSync(paths.authFile, `${JSON.stringify({ token: created.token }, null, 2)}\n`)
   // Enable lmstudio + ollama by default for test setup — the integration
   // tests mount their mock server via LMSTUDIO_URL and expect model resolution
@@ -113,6 +113,8 @@ export interface TestServer {
 }
 
 const WIPE_SQL = `
+  DELETE FROM web_sessions;
+  DELETE FROM web_tokens WHERE kind != 'bootstrap';
   DELETE FROM agent_loop_break_events;
   DELETE FROM agent_lesson_proposals;
   DELETE FROM agent_reviews;

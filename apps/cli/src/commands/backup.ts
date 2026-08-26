@@ -400,7 +400,7 @@ function validateDatabase(path: string, authToken: string): void {
     const activeBootstrap = db
       .prepare(
         `SELECT 1 FROM web_tokens
-         WHERE token_hash = ? AND label = 'bootstrap' AND revoked_at IS NULL
+         WHERE token_hash = ? AND kind = 'bootstrap' AND revoked_at IS NULL
          LIMIT 1`,
       )
       .get(tokenHash)
@@ -587,6 +587,15 @@ function removeRebuildableQmdIndexes(payload: string): void {
         rmSync(resolve(memoryDir, entry.name), { force: true })
       }
     }
+  }
+}
+
+function revokeRestoredBrowserSessions(database: string): void {
+  const db = new DatabaseSync(database)
+  try {
+    db.prepare('UPDATE web_sessions SET revoked_at = ? WHERE revoked_at IS NULL').run(Date.now())
+  } finally {
+    db.close()
   }
 }
 
@@ -901,6 +910,7 @@ const restoreCmd = defineCommand({
         const authToken = validateAuthFile(authFile)
         validateDatabase(database, authToken)
         rebaseRestoredHomeDirectories(database, payload, targetHome)
+        revokeRestoredBrowserSessions(database)
         // Recheck the canonical file after the controlled mutation. This also
         // proves the auth pairing and all schema/FK invariants still hold.
         validateDatabase(database, authToken)
@@ -981,9 +991,9 @@ function credentialInventory(home: string): {
   try {
     const activeTokens = db
       .prepare(
-        "SELECT COUNT(*) AS count FROM web_tokens WHERE revoked_at IS NULL AND label != 'bootstrap'",
+        "SELECT COUNT(*) AS count FROM web_tokens WHERE revoked_at IS NULL AND kind = 'device' AND expires_at > ?",
       )
-      .get() as { count: number }
+      .get(Date.now()) as { count: number }
     const secretKeys = (
       db.prepare('SELECT key FROM secrets ORDER BY key').all() as unknown as Array<{ key: string }>
     ).map((row) => row.key)
@@ -1106,13 +1116,17 @@ const rotateBootstrapCmd = defineCommand({
           const newHash = createHash('sha256').update(newToken).digest('hex')
           const bootstrap = db
             .prepare(
-              "UPDATE web_tokens SET token_hash = ?, last_used_at = NULL, revoked_at = NULL WHERE token_hash = ? AND label = 'bootstrap' AND revoked_at IS NULL",
+              "UPDATE web_tokens SET token_hash = ?, last_used_at = NULL, revoked_at = NULL WHERE token_hash = ? AND kind = 'bootstrap' AND revoked_at IS NULL",
             )
             .run(newHash, oldHash)
           if (bootstrap.changes !== 1) throw new Error('active bootstrap token row was not unique')
+          const revokedAt = Date.now()
           db.prepare(
-            "UPDATE web_tokens SET revoked_at = ? WHERE label != 'bootstrap' AND revoked_at IS NULL",
-          ).run(Date.now())
+            "UPDATE web_tokens SET revoked_at = ? WHERE kind != 'bootstrap' AND revoked_at IS NULL",
+          ).run(revokedAt)
+          db.prepare('UPDATE web_sessions SET revoked_at = ? WHERE revoked_at IS NULL').run(
+            revokedAt,
+          )
           db.exec('COMMIT')
         } catch (error) {
           db.exec('ROLLBACK')

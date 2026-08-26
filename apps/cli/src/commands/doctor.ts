@@ -6,7 +6,7 @@ export const doctorCommand = defineCommand({
   meta: { name: 'doctor', description: 'Diagnose your bazilion install' },
   async run() {
     const client = createClient()
-    const r = await client.get<HealthReport>('/api/health')
+    const r = await client.get<HealthReport>('/api/health/details')
 
     function check(label: string, condition: boolean, hint?: string): void {
       const mark = condition ? '✓' : '✗'
