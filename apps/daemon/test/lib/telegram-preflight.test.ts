@@ -5,7 +5,7 @@ import { runPreflight } from '../../src/lib/telegram/preflight.ts'
 // Fake Bot API server — answers getMe / getChat / getChatMember from a
 // per-test scripted map. The preflight helper does one POST per method.
 
-type MethodName = 'getMe' | 'getChat' | 'getChatMember'
+type MethodName = 'getMe' | 'getChat' | 'getChatMember' | 'getChatMemberCount'
 
 interface ScriptedResult {
   ok: boolean
@@ -25,7 +25,8 @@ function fakeApi(script: Partial<Record<MethodName, ScriptedResult>>): FakeApi {
     const method = u.split('/').at(-1) as MethodName
     const body = init?.body ? JSON.parse(init.body as string) : {}
     calls.push({ method, body })
-    const scripted = script[method]
+    const scripted =
+      script[method] ?? (method === 'getChatMemberCount' ? { ok: true, result: 2 } : undefined)
     if (!scripted) {
       throw new Error(`unexpected Bot API call: ${method}`)
     }
@@ -73,8 +74,16 @@ describe('runPreflight', () => {
       isForum: true,
       hasManageTopics: true,
       privacyModeOff: true,
+      chatIsPrivate: true,
+      memberCount: 2,
+      ownerPresent: null,
     })
-    expect(api.calls.map((c) => c.method)).toEqual(['getMe', 'getChat', 'getChatMember'])
+    expect(api.calls.map((c) => c.method)).toEqual([
+      'getMe',
+      'getChat',
+      'getChatMember',
+      'getChatMemberCount',
+    ])
     expect(api.calls[1]!.body).toEqual({ chat_id: -1009999 })
     expect(api.calls[2]!.body).toEqual({ chat_id: -1009999, user_id: 42 })
   })

@@ -1,9 +1,11 @@
 ---
 id: BAZ-029
 title: Single-owner Telegram pairing and visibility hardening
-status: draft
+status: done
 size: M
 created: 2026-08-23
+refined: 2026-08-26
+shipped: 2026-08-26
 priority: high
 note: Secure the intended one-human Telegram deployment; preserve long-polling, the existing flat ACL, and shipped traffic guards.
 ---
@@ -204,16 +206,27 @@ the supergroup's visibility or membership no longer matches the one-human postur
 long-polling, ACL, rate, Team Policy, and topic behavior continues unchanged and no pairing secret
 or Telegram content is added to Bazilion logs.
 
-## Open questions
+## Refined decisions
 
-1. **Unexpected-member response:** should a public chat or member count above two remain a high-
-   severity warning in the first slice, or should Bazilion also pause outbound mirroring to prevent
-   new content disclosure? Recommendation: warn during initial rollout, then add a separately gated
-   fail-closed option after observing Bot API membership reliability.
-2. **Pairing location:** the smallest slice uses `/pair` in the configured service topic. A narrow
-   bot-DM pairing path would hide the code from group history, but would create the first exception
-   to the current foreign-chat rejection and must verify group membership with `getChatMember`.
-   Decide before refinement whether that extra surface is justified.
-3. **Recovery overlap:** when replacing a paired account, should the old owner remain active until
-   the new code is consumed, or should reset revoke it immediately? Recommendation: make the normal
-   rotation overlap-safe for availability and provide a separate confirmed emergency revoke.
+1. **Unexpected-member response:** public or unexpected membership is a high-severity health
+   warning in this release. Automatic outbound suspension remains separately gated until Bot API
+   membership reliability is established in production.
+2. **Pairing location:** `/pair <code>` is accepted only in the configured service topic. DMs and
+   callbacks without configured-chat message context remain closed.
+3. **Recovery:** the authenticated reset is the emergency fail-closed operation: it revokes the
+   current owner immediately and requires a fresh challenge. An overlap-safe rotation can follow if
+   real account-migration usage requires it.
+
+## As built
+
+- Replaced first-message TOFU with a singleton ten-minute challenge containing a SHA-256 digest
+  only; 128-bit URL-safe plaintext is returned once through authenticated HTTP, CLI, or web.
+- Added atomic consume/replay protection, explicit cancellation, confirmed owner reset, and
+  automatic invalidation when bot credentials or configured chat identity changes.
+- Applied a fail-closed ingress gate to messages, edits, and callbacks. Missing senders, bots,
+  sender-chat attribution, foreign chats, and callbacks without configured-chat context cannot
+  reach commands, media download, pending UI state, or Agent enqueue.
+- Extended preflight, CLI, and web diagnostics with private-chat, member-count, and paired-owner
+  presence checks. Membership is advisory in this release, matching the refined rollout decision.
+- Removed Telegram message previews, chat/user identity, and pairing material from daemon logs and
+  sanitize Bot API credential-bearing error text.

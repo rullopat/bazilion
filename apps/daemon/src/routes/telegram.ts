@@ -20,9 +20,11 @@ import type {
   TelegramConfigInput,
   TelegramConfigState,
   TelegramHealth,
+  TelegramPairingChallenge,
+  TelegramPairingStatus,
 } from '@bazilion/api-types'
 import { Hono } from 'hono'
-import { openConfig, openSecrets, telegramAclRepo } from '../core/index.ts'
+import { openConfig, openSecrets, telegramAclRepo, telegramPairingRepo } from '../core/index.ts'
 import { getCtx } from '../lib/ctx.ts'
 import { getTelegramBotState, restartTelegramBot, stopTelegramBot } from '../lib/telegram/bot.ts'
 import { runPreflight } from '../lib/telegram/preflight.ts'
@@ -75,6 +77,7 @@ telegramRouter.put('/', async (c) => {
     // from scratch. Stale service-topic / directory-message ids from the
     // previous bot would never resolve in the new chat anyway.
     for (const key of DERIVED_STATE_KEYS) config.remove(key)
+    telegramPairingRepo.reset(db)
   }
 
   secrets.set(BOT_TOKEN_KEY, botToken)
@@ -101,6 +104,7 @@ telegramRouter.delete('/', async (c) => {
   secrets.remove(BOT_TOKEN_KEY)
   config.remove(CHAT_ID_KEY)
   for (const key of DERIVED_STATE_KEYS) config.remove(key)
+  telegramPairingRepo.reset(db)
 
   // Tear down the bot synchronously so subsequent GETs reflect "not running".
   await stopTelegramBot().catch((e) =>
@@ -136,6 +140,38 @@ telegramRouter.post('/restart', async (c) => {
   return c.json({ restarted: true })
 })
 
+telegramRouter.get('/pairing', (c) => {
+  const { db } = getCtx()
+  return c.json(telegramPairingRepo.status(db) satisfies TelegramPairingStatus)
+})
+
+telegramRouter.post('/pairing/challenge', (c) => {
+  const { db } = getCtx()
+  try {
+    const challenge = telegramPairingRepo.create(db)
+    return c.json(
+      { ...telegramPairingRepo.status(db), ...challenge } satisfies TelegramPairingChallenge,
+      201,
+    )
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : String(error) }, 409)
+  }
+})
+
+telegramRouter.delete('/pairing/challenge', (c) => {
+  const { db } = getCtx()
+  telegramPairingRepo.cancel(db)
+  return c.body(null, 204)
+})
+
+telegramRouter.post('/pairing/reset', async (c) => {
+  const body = (await c.req.json().catch(() => null)) as { confirm?: unknown } | null
+  if (body?.confirm !== true) return c.json({ error: 'body must include {"confirm": true}' }, 400)
+  const { db } = getCtx()
+  telegramPairingRepo.reset(db)
+  return c.json(telegramPairingRepo.status(db) satisfies TelegramPairingStatus)
+})
+
 // ─── Per-user allowlist (Phase 7) ─────────────────────────────────────────
 // HTTP callers are already bearer-authed (admin-level), so these don't apply
 // the owner-role check the Telegram /allow command does — operator access is
@@ -152,11 +188,17 @@ telegramRouter.post('/acl', async (c) => {
     return c.json({ error: 'userId (integer) is required' }, 400)
   }
   const { db } = getCtx()
+  if (!telegramPairingRepo.status(db).paired) {
+    return c.json({ error: 'pair the Telegram owner before adding members' }, 409)
+  }
+  if (body.role === 'owner') {
+    return c.json({ error: 'owners are created only through the pairing flow' }, 409)
+  }
   const user = telegramAclRepo.add(db, {
     userId: body.userId,
     username: body.username ?? null,
     label: body.label ?? null,
-    role: body.role ?? 'member',
+    role: 'member',
   })
   return c.json(user, 201)
 })
@@ -187,7 +229,12 @@ telegramRouter.get('/health', async (c) => {
     return c.json(unconfigured)
   }
 
-  const preflightResult = await runPreflight({ botToken, chatId })
+  const pairing = telegramPairingRepo.status(db)
+  const preflightResult = await runPreflight({
+    botToken,
+    chatId,
+    ownerUserId: pairing.ownerUserId,
+  })
   // Layer the live polling state on top of the preflight result. Preflight
   // sets polling: null; we replace with the live state if a bot is running.
   const merged: TelegramHealth = {

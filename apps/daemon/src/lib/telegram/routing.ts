@@ -16,7 +16,13 @@
 import type { Attachment } from '@bazilion/api-types'
 import type { CallbackQuery, InlineKeyboardMarkup, Message, Update, User } from 'grammy/types'
 import type { BazilionDb } from '../../core/db/client.ts'
-import { agentRepo, openConfig, profileRepo, telegramAclRepo } from '../../core/index.ts'
+import {
+  agentRepo,
+  openConfig,
+  profileRepo,
+  telegramAclRepo,
+  telegramPairingRepo,
+} from '../../core/index.ts'
 import type { Paths } from '../../core/paths.ts'
 import {
   authorizeUserIngress,
@@ -49,26 +55,10 @@ const UNAUTHORIZED_SUPPRESS_MS = 60_000
 const _lastUnauthorizedNoticeByUser = new Map<number, number>()
 
 /**
- * Per-user ACL gate (Phase 7, TOFU + Flat). Returns:
- *   'allowed'  — user is on the allowlist (or we can't identify them);
- *   'claimed'  — allowlist was empty and this user just became owner (TOFU);
- *   'denied'   — allowlist is populated and this user isn't on it.
- * The 'claimed' write happens here as a deliberate side effect, mirroring the
- * migration stash above.
+ * One shared fail-closed identity gate for every actionable update.
  */
-function authorizeUser(db: BazilionDb, from: User | undefined): 'allowed' | 'claimed' | 'denied' {
-  // Can't identify the sender (rare service messages) → don't block.
-  if (!from) return 'allowed'
-  if (telegramAclRepo.count(db) === 0) {
-    const label = [from.first_name, from.last_name].filter(Boolean).join(' ') || null
-    telegramAclRepo.add(db, {
-      userId: from.id,
-      username: from.username ?? null,
-      label,
-      role: 'owner',
-    })
-    return 'claimed'
-  }
+function authorizeUser(db: BazilionDb, from: User | undefined): 'allowed' | 'denied' {
+  if (!from || from.is_bot) return 'denied'
   return telegramAclRepo.isAllowed(db, from.id) ? 'allowed' : 'denied'
 }
 
@@ -148,7 +138,8 @@ export type RouteOutcome =
   | { kind: 'non_message' }
   | { kind: 'ignored_bot' }
   | { kind: 'unauthorized'; userId: number }
-  | { kind: 'owner_claimed'; userId: number }
+  | { kind: 'pairing_required' }
+  | { kind: 'paired_owner'; userId: number }
   | { kind: 'chat_migrated'; toChatId: number }
   | { kind: 'foreign_chat'; chatId: number }
 
@@ -159,7 +150,27 @@ export type RouteOutcome =
 export async function routeUpdate(deps: RouterDeps, update: Update): Promise<RouteOutcome> {
   // Callback queries (from inline-keyboard taps) arrive on their own
   // dedicated field — handle them before the message-only fallthrough.
-  if (update.callback_query) return handleCallbackQuery(deps, update.callback_query)
+  if (update.callback_query) {
+    const q = update.callback_query
+    const callbackChatId = q.message?.chat.id
+    if (callbackChatId !== deps.chatId || q.from.is_bot) {
+      await deps.api
+        .answerCallbackQuery(q.id, { text: 'Not authorized.', show_alert: true })
+        .catch(() => undefined)
+      if (callbackChatId === undefined) return { kind: 'unauthorized', userId: q.from.id }
+      return { kind: 'foreign_chat', chatId: callbackChatId }
+    }
+    if (
+      !telegramPairingRepo.status(deps.db).paired ||
+      authorizeUser(deps.db, q.from) === 'denied'
+    ) {
+      await deps.api
+        .answerCallbackQuery(q.id, { text: 'Not authorized.', show_alert: true })
+        .catch(() => undefined)
+      return { kind: 'unauthorized', userId: q.from.id }
+    }
+    return handleCallbackQuery(deps, q)
+  }
 
   const m = update.message ?? update.edited_message ?? null
   if (!m) return { kind: 'non_message' }
@@ -192,7 +203,47 @@ export async function routeUpdate(deps: RouterDeps, update: Update): Promise<Rou
     return { kind: 'foreign_chat', chatId: m.chat.id }
   }
 
-  // Per-user ACL gate (Phase 7) — Flat scope: gates BOTH commands and chat.
+  // Sender identity must be explicit. Anonymous administrators and
+  // sender_chat-attributed/channel posts never reach commands, downloads, or turns.
+  if (!m.from || m.from.is_bot || m.sender_chat) {
+    return { kind: 'unauthorized', userId: m.from?.id ?? 0 }
+  }
+
+  const serviceTopicId = readServiceTopicId(deps.db)
+  const threadId = m.message_thread_id ?? null
+  if (!telegramPairingRepo.status(deps.db).paired) {
+    const parsed = parseCommand(m.text ?? undefined)
+    if (serviceTopicId !== null && threadId === serviceTopicId && parsed?.name === 'pair') {
+      const code = parsed.args.trim()
+      const label = [m.from.first_name, m.from.last_name].filter(Boolean).join(' ') || null
+      const paired =
+        code.length > 0 &&
+        telegramPairingRepo.consume(deps.db, {
+          code,
+          userId: m.from.id,
+          username: m.from.username ?? null,
+          label,
+        })
+      await deps.api.sendMessage(
+        deps.chatId,
+        paired
+          ? '🔐 Telegram owner paired. All other senders remain blocked.'
+          : 'Pairing was not accepted. Generate a fresh code in authenticated Bazilion settings.',
+        { message_thread_id: threadId },
+      )
+      return paired ? { kind: 'paired_owner', userId: m.from.id } : { kind: 'pairing_required' }
+    }
+    if (shouldNotifyUnauthorized(m.from.id)) {
+      await deps.api.sendMessage(
+        deps.chatId,
+        'Telegram is not paired. Generate a one-time owner code in authenticated Bazilion settings.',
+        { message_thread_id: threadId ?? undefined },
+      )
+    }
+    return { kind: 'pairing_required' }
+  }
+
+  // Flat ACL scope gates both commands and chat after explicit owner pairing.
   const authz = authorizeUser(deps.db, m.from)
   if (authz === 'denied') {
     if (m.from && shouldNotifyUnauthorized(m.from.id)) {
@@ -204,17 +255,6 @@ export async function routeUpdate(deps: RouterDeps, update: Update): Promise<Rou
     }
     return { kind: 'unauthorized', userId: m.from?.id ?? 0 }
   }
-  if (authz === 'claimed') {
-    await deps.api.sendMessage(
-      deps.chatId,
-      "🔐 You're now the bazilion owner — only allowlisted users can use this bot from now on. Add others with <code>/allow &lt;user_id&gt;</code> (they get their id from /whoami). Send your command again to continue.",
-      { message_thread_id: m.message_thread_id ?? undefined, parse_mode: 'HTML' },
-    )
-    return { kind: 'owner_claimed', userId: m.from?.id ?? 0 }
-  }
-
-  const serviceTopicId = readServiceTopicId(deps.db)
-  const threadId = m.message_thread_id ?? null
 
   // General topic: outbound API rejects message_thread_id=1, and inbound
   // sometimes carries phantom thread ids ≤ 1 — collapse both cases into
@@ -490,14 +530,6 @@ async function resumePendingSpawn(
  * otherwise ignored.
  */
 async function handleCallbackQuery(deps: RouterDeps, q: CallbackQuery): Promise<RouteOutcome> {
-  // ACL gate for button taps (Phase 7). A denied user gets an alert, no action.
-  if (authorizeUser(deps.db, q.from) === 'denied') {
-    await deps.api
-      .answerCallbackQuery(q.id, { text: 'Not authorized.', show_alert: true })
-      .catch(() => undefined)
-    return { kind: 'unauthorized', userId: q.from.id }
-  }
-
   // Always acknowledge so Telegram's loading spinner stops — even when we
   // don't know what the callback is for.
   const data = q.data ?? ''

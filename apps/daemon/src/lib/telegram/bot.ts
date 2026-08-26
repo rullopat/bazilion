@@ -324,16 +324,14 @@ async function pollLoop(handle: BotHandle, db: BazilionDb, initialOffset: number
  * log every update so the daemon log stays useful for debugging.
  */
 async function dispatchUpdate(handle: BotHandle, db: BazilionDb, u: Update): Promise<void> {
-  const m = u.message ?? u.edited_message ?? u.channel_post ?? null
-  if (m) {
-    const preview = (m.text ?? m.caption ?? '').slice(0, 80)
-    const thread = m.message_thread_id ?? 'none'
-    console.log(
-      `telegram update ${u.update_id} · chat=${m.chat.id} thread=${thread} · "${preview}"`,
-    )
-  } else {
-    console.log(`telegram update ${u.update_id} · non-message: ${Object.keys(u).join(',')}`)
-  }
+  const kind = u.message
+    ? 'message'
+    : u.edited_message
+      ? 'edited_message'
+      : u.callback_query
+        ? 'callback_query'
+        : 'non_actionable'
+  console.log(`telegram: update received id=${u.update_id} kind=${kind}`)
 
   // Route chat messages + callback_query taps. Member/poll/etc. flow past
   // the router untouched.
@@ -373,10 +371,12 @@ async function dispatchUpdate(handle: BotHandle, db: BazilionDb, u: Update): Pro
     console.warn(
       `telegram: supergroup migrated to chat id ${outcome.toChatId} — reconnect via /api/config/telegram/reconnect`,
     )
-  } else if (outcome.kind === 'unauthorized') {
-    console.log(`telegram: ignored unauthorized user ${outcome.userId}`)
-  } else if (outcome.kind === 'owner_claimed') {
-    console.log(`telegram: user ${outcome.userId} claimed owner (TOFU bootstrap)`)
+  } else if (outcome.kind === 'unauthorized' || outcome.kind === 'foreign_chat') {
+    console.log('telegram: ingress denied reason=identity')
+  } else if (outcome.kind === 'pairing_required') {
+    console.log('telegram: ingress denied reason=pairing_required')
+  } else if (outcome.kind === 'paired_owner') {
+    console.log('telegram: owner pairing completed')
   }
 }
 
@@ -413,7 +413,10 @@ function readConfigNumber(db: BazilionDb, key: string): number | null {
 }
 
 function errMsg(e: unknown): string {
-  return e instanceof Error ? e.message : String(e)
+  return (e instanceof Error ? e.message : String(e)).replace(
+    /bot\d+:[A-Za-z0-9_-]+/g,
+    'bot[redacted]',
+  )
 }
 
 function sleep(ms: number): Promise<void> {

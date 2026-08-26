@@ -40,6 +40,7 @@ interface GetChatResult {
   type: string
   title: string
   is_forum?: boolean
+  username?: string
 }
 
 interface GetChatMemberResult {
@@ -54,6 +55,7 @@ export interface RunPreflightArgs {
   apiBase?: string
   /** Wired through to the underlying fetch — overridable for tests. */
   fetchFn?: typeof fetch
+  ownerUserId?: number | null
 }
 
 /**
@@ -100,14 +102,14 @@ export async function runPreflight(args: RunPreflightArgs): Promise<TelegramHeal
   try {
     me = await call<GetMeResult>('getMe', {})
   } catch (e) {
-    return fail('getMe', errorMessage(e))
+    return fail('getMe', errorMessage(e, args.botToken))
   }
 
   let chat: GetChatResult
   try {
     chat = await call<GetChatResult>('getChat', { chat_id: chatId(args.chatId) })
   } catch (e) {
-    return fail('getChat', errorMessage(e))
+    return fail('getChat', errorMessage(e, args.botToken))
   }
 
   let member: GetChatMemberResult
@@ -117,13 +119,32 @@ export async function runPreflight(args: RunPreflightArgs): Promise<TelegramHeal
       user_id: me.id,
     })
   } catch (e) {
-    return fail('getChatMember', errorMessage(e))
+    return fail('getChatMember', errorMessage(e, args.botToken))
   }
 
   // Admins have can_manage_topics surfaced as a boolean; non-admins won't have
   // the field at all, so default to false. The supergroup owner ('creator')
   // implicitly has all rights — surface that as true.
   const hasManageTopics = member.status === 'creator' || member.can_manage_topics === true
+  let memberCount: number | null = null
+  try {
+    memberCount = await call<number>('getChatMemberCount', { chat_id: chatId(args.chatId) })
+  } catch {
+    // Visibility checks are advisory because Telegram may temporarily deny
+    // them while the core bot preflight remains usable.
+  }
+  let ownerPresent: boolean | null = null
+  if (args.ownerUserId !== null && args.ownerUserId !== undefined) {
+    try {
+      const owner = await call<GetChatMemberResult>('getChatMember', {
+        chat_id: chatId(args.chatId),
+        user_id: args.ownerUserId,
+      })
+      ownerPresent = owner.status !== 'left' && owner.status !== 'kicked'
+    } catch {
+      ownerPresent = false
+    }
+  }
 
   const preflight: TelegramPreflight = {
     botUsername: me.username,
@@ -131,6 +152,9 @@ export async function runPreflight(args: RunPreflightArgs): Promise<TelegramHeal
     isForum: chat.is_forum === true,
     hasManageTopics,
     privacyModeOff: me.can_read_all_group_messages === true,
+    chatIsPrivate: !chat.username,
+    memberCount,
+    ownerPresent,
   }
 
   return {
@@ -150,10 +174,14 @@ function chatId(raw: string): number | string {
   return trimmed
 }
 
-function errorMessage(e: unknown): string {
+function errorMessage(e: unknown, botToken: string): string {
   if (e instanceof Error) {
     if (e.name === 'AbortError') return 'request timed out after 10s'
     return e.message
+      .replaceAll(botToken, '[redacted]')
+      .replace(/bot\d+:[A-Za-z0-9_-]+/g, 'bot[redacted]')
   }
   return String(e)
+    .replaceAll(botToken, '[redacted]')
+    .replace(/bot\d+:[A-Za-z0-9_-]+/g, 'bot[redacted]')
 }

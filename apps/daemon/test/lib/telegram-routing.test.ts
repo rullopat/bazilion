@@ -110,7 +110,7 @@ beforeEach(() => {
   _resetSpawnStateForTest()
   // Seed the default sender (user 11) as an allowlisted owner so the Phase 7
   // ACL gate doesn't claim/deny in tests that pre-date it. ACL-specific tests
-  // start from a fresh env (no seed) to exercise TOFU + deny.
+  // start from a fresh env (no seed) to exercise pairing + deny.
   telegramAclRepo.add(env.db, { userId: 11, role: 'owner', label: 'P' })
 })
 afterEach(() => env.cleanup())
@@ -290,7 +290,7 @@ describe('routeUpdate classification', () => {
     expect(sends.length).toBe(0)
   })
 
-  test('ACL: first message on an empty allowlist claims owner (TOFU)', async () => {
+  test('ACL: an empty allowlist remains closed until a one-time code is paired', async () => {
     env.db.raw.run('DELETE FROM telegram_allowed_users')
     const { api, sends } = makeReplyApi()
     const u = messageUpdate({ threadId: SERVICE_TOPIC, text: '/help', fromUserId: 7 })
@@ -298,9 +298,18 @@ describe('routeUpdate classification', () => {
       { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID },
       u,
     )
-    expect(outcome.kind).toBe('owner_claimed')
+    expect(outcome.kind).toBe('pairing_required')
+    expect(telegramAclRepo.get(env.db, 7)).toBeNull()
+    expect(sends[0]?.text).toMatch(/not paired/i)
+
+    const { telegramPairingRepo } = await import('../../src/core/index.ts')
+    const challenge = telegramPairingRepo.create(env.db)
+    const paired = await routeUpdate(
+      { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID },
+      messageUpdate({ threadId: SERVICE_TOPIC, text: `/pair ${challenge.code}`, fromUserId: 7 }),
+    )
+    expect(paired.kind).toBe('paired_owner')
     expect(telegramAclRepo.get(env.db, 7)?.role).toBe('owner')
-    expect(sends[0]?.text).toMatch(/owner/i)
   })
 
   test('ACL: a non-allowlisted user is denied once enforcement is active', async () => {
@@ -559,7 +568,7 @@ describe('routeUpdate classification', () => {
     expect(created).toBeDefined()
   })
 
-  test('callback_query with unknown prefix is acked but ignored', async () => {
+  test('callback_query without configured-chat message context is denied', async () => {
     const { api, acks, edits, sends } = makeReplyApi()
     const u: Update = {
       update_id: 1,
@@ -574,7 +583,7 @@ describe('routeUpdate classification', () => {
       { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID },
       u,
     )
-    expect(outcome.kind).toBe('callback_unknown')
+    expect(outcome.kind).toBe('unauthorized')
     expect(acks.length).toBe(1)
     expect(edits.length).toBe(0)
     expect(sends.length).toBe(0)

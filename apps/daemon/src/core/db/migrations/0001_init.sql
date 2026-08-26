@@ -209,6 +209,12 @@ CREATE TABLE telegram_allowed_users (
   role      TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('owner','member')),
   added_at  INTEGER NOT NULL
 );
+CREATE TABLE telegram_pairing_challenge (
+  singleton  INTEGER PRIMARY KEY CHECK (singleton = 1),
+  digest     TEXT    NOT NULL,
+  expires_at INTEGER NOT NULL,
+  created_at INTEGER NOT NULL
+);
 CREATE TABLE mcp_servers (
   id          TEXT PRIMARY KEY,
   name        TEXT NOT NULL UNIQUE,

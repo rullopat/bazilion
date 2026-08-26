@@ -27,12 +27,11 @@ docs/backlog/
 
 ---
 
-## Draft (4)
+## Draft (3)
 
 | ID | Title | Size | Notes |
 |----|-------|------|-------|
 | [BAZ-028](draft/BAZ-028-secure-personal-web-mobile-gateway.md) | Secure personal web and mobile gateway | L | Keep the daemon private while one operator reaches the complete web UI and future mobile app through a private HTTPS gateway |
-| [BAZ-029](draft/BAZ-029-single-owner-telegram-pairing.md) | Single-owner Telegram pairing and visibility hardening | M | Replace first-message TOFU with one-time owner pairing, exact ingress identity, and private-supergroup warnings |
 | [BAZ-030](draft/BAZ-030-encrypted-backups-credential-recovery.md) | Encrypted backups and single-operator credential recovery | L | Encrypt the complete credential-bearing backup and define bounded local plus external incident recovery |
 | [BAZ-031](draft/BAZ-031-protected-runtime-provider-expansion.md) | Protected-runtime provider and credentialed web-tool expansion | L | Deferred until current usage needs something beyond BAZ-027's OpenAI Codex and guarded uncredentialed web fetch |
 
@@ -46,10 +45,11 @@ docs/backlog/
 | ID | Title | Size | Notes |
 |----|-------|------|-------|
 
-## Done (22)
+## Done (23)
 
 | ID | Title | Size | Shipped | Release | Notes |
 |----|-------|------|---------|---------|-------|
+| [BAZ-029](done/BAZ-029-single-owner-telegram-pairing.md) | Single-owner Telegram pairing and visibility hardening | M | 2026-08-26 | unreleased | One-time owner pairing, fail-closed ingress identity, private-supergroup warnings, and secret-safe diagnostics |
 | [BAZ-027](done/BAZ-027-credential-minimal-protected-agent-execution.md) | Credential-minimal protected Agent execution | L | 2026-08-23 | unreleased | Minimal OpenAI Codex credentials, mandatory protected Docker, exact unattended-turn identity, no browser/MCP, and operator readiness visibility |
 | [BAZ-026](done/BAZ-026-operator-attention-center.md) | Operator Attention Center — one queue for actionable runtime signals | M | 2026-08-05 | unreleased | Unified source-owned queue, informational acknowledgement state, CLI parity, responsive web UI, and navigation badge |
 | [BAZ-003](done/BAZ-003-hermes-self-learning.md) | Reviewed learning loop — transcript digest to durable lessons | M | 2026-08-03 | unreleased | Opt-in restricted review worker, evidence-backed human approval, private prompt lessons, and shared Team-memory lessons |

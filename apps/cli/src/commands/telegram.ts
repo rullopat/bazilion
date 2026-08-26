@@ -8,6 +8,8 @@ import type {
   TelegramBindResponse,
   TelegramConfigState,
   TelegramHealth,
+  TelegramPairingChallenge,
+  TelegramPairingStatus,
 } from '@bazilion/api-types'
 import { defineCommand } from 'citty'
 import { createClient } from '../client.ts'
@@ -120,12 +122,20 @@ const healthCmd = defineCommand({
     console.log(line(p.isForum, 'forum topics enabled', String(p.isForum)))
     console.log(line(p.hasManageTopics, 'can_manage_topics', String(p.hasManageTopics)))
     console.log(line(p.privacyModeOff, 'Privacy Mode is OFF', String(p.privacyModeOff)))
+    console.log(line(p.chatIsPrivate, 'supergroup is private', String(p.chatIsPrivate)))
+    console.log(line(p.memberCount === 2, 'one owner + bot', String(p.memberCount ?? 'unknown')))
+    if (p.ownerPresent !== null) {
+      console.log(line(p.ownerPresent, 'paired owner is present', String(p.ownerPresent)))
+    }
     const allOk =
       p.botUsername.length > 0 &&
       p.chatTitle.length > 0 &&
       p.isForum &&
       p.hasManageTopics &&
-      p.privacyModeOff
+      p.privacyModeOff &&
+      p.chatIsPrivate &&
+      p.memberCount === 2 &&
+      p.ownerPresent !== false
     if (!allOk) process.exitCode = 1
   },
 })
@@ -249,14 +259,13 @@ const allowCmd = defineCommand({
   args: {
     userId: { type: 'positional', required: true, description: 'Numeric Telegram user id' },
     label: { type: 'string', description: 'Optional human label' },
-    owner: { type: 'boolean', description: 'Grant owner role (can manage the allowlist)' },
   },
   async run({ args }) {
     const client = createClient()
     const u = await client.post<TelegramAllowedUser>('/api/config/telegram/acl', {
       userId: Number(args.userId),
       label: args.label ?? null,
-      role: args.owner ? 'owner' : 'member',
+      role: 'member',
     })
     console.log(`allowed ${u.userId} (${u.role})`)
   },
@@ -278,13 +287,67 @@ const allowedCmd = defineCommand({
     const client = createClient()
     const users = await client.get<TelegramAllowedUser[]>('/api/config/telegram/acl')
     if (users.length === 0) {
-      console.log('(allowlist empty — open; first user to message becomes owner)')
+      console.log('(allowlist empty — unpaired and closed)')
       return
     }
     for (const u of users) {
       const who = u.label ?? (u.username ? `@${u.username}` : '—')
       console.log(`${u.userId}\t${u.role}\t${who}`)
     }
+  },
+})
+
+const pairingCreateCmd = defineCommand({
+  meta: { name: 'create', description: 'Generate a one-time Telegram owner pairing code' },
+  async run() {
+    const result = await createClient().post<TelegramPairingChallenge>(
+      '/api/config/telegram/pairing/challenge',
+    )
+    console.log(`pairing code: ${result.code}`)
+    console.log(`expires: ${new Date(result.expiresAt).toISOString()}`)
+    console.log('send `/pair <code>` in the configured ⚙ bazilion service topic')
+  },
+})
+
+const pairingStatusCmd = defineCommand({
+  meta: { name: 'status', description: 'Show Telegram owner pairing status' },
+  async run() {
+    const result = await createClient().get<TelegramPairingStatus>('/api/config/telegram/pairing')
+    console.log(`paired: ${result.paired}`)
+    console.log(`owner: ${result.ownerUserId ?? '(none)'}`)
+    console.log(`challenge active: ${result.challengeActive}`)
+    if (result.challengeExpiresAt)
+      console.log(`expires: ${new Date(result.challengeExpiresAt).toISOString()}`)
+  },
+})
+
+const pairingCancelCmd = defineCommand({
+  meta: { name: 'cancel', description: 'Cancel the active Telegram pairing code' },
+  async run() {
+    await createClient().del('/api/config/telegram/pairing/challenge')
+    console.log('pairing challenge cancelled')
+  },
+})
+
+const pairingResetCmd = defineCommand({
+  meta: { name: 'reset', description: 'Revoke the Telegram owner and require re-pairing' },
+  args: {
+    yes: { type: 'boolean', description: 'Confirm destructive owner reset', required: true },
+  },
+  async run({ args }) {
+    if (!args.yes) throw new Error('--yes is required')
+    await createClient().post('/api/config/telegram/pairing/reset', { confirm: true })
+    console.log('Telegram owner reset; ingress is closed until re-paired')
+  },
+})
+
+const pairingCmd = defineCommand({
+  meta: { name: 'pairing', description: 'Manage single-owner Telegram pairing' },
+  subCommands: {
+    create: pairingCreateCmd,
+    status: pairingStatusCmd,
+    cancel: pairingCancelCmd,
+    reset: pairingResetCmd,
   },
 })
 
@@ -304,5 +367,6 @@ export const telegramCommand = defineCommand({
     allow: allowCmd,
     deny: denyCmd,
     allowed: allowedCmd,
+    pairing: pairingCmd,
   },
 })

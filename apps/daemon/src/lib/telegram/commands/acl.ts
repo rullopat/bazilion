@@ -53,7 +53,7 @@ export const handleDeny: CommandHandler = async (ctx) => {
 export const handleAllowed: CommandHandler = async (ctx) => {
   const users = telegramAclRepo.list(ctx.db)
   if (users.length === 0) {
-    return { text: 'Allowlist is empty (open — first user to message becomes owner).' }
+    return { text: 'Telegram is unpaired and closed. Generate an owner pairing code in Bazilion.' }
   }
   const lines = users.map((u) => {
     const who = u.label ? htmlEscape(u.label) : u.username ? `@${htmlEscape(u.username)}` : '—'

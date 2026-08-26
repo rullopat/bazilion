@@ -919,6 +919,12 @@ export interface TelegramPreflight {
   hasManageTopics: boolean
   /** True iff Privacy Mode is OFF (getMe.can_read_all_group_messages). */
   privacyModeOff: boolean
+  /** True when getChat reports no public @username. */
+  chatIsPrivate: boolean
+  /** Telegram's current member count, used as a visibility warning only. */
+  memberCount: number | null
+  /** Paired owner is currently reported as a chat member. Null while unpaired. */
+  ownerPresent: boolean | null
 }
 
 /**
@@ -986,6 +992,19 @@ export interface TelegramConfigState {
    * is pending.
    */
   migratedChatId: string | null
+}
+
+export interface TelegramPairingStatus {
+  paired: boolean
+  challengeActive: boolean
+  challengeExpiresAt: number | null
+  ownerUserId: number | null
+}
+
+export interface TelegramPairingChallenge extends TelegramPairingStatus {
+  /** One-time plaintext. Returned only by challenge creation. */
+  code: string
+  expiresAt: number
 }
 
 /**
