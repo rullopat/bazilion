@@ -23,7 +23,7 @@ interface InboxView {
 }
 
 const fetchInbox = createServerFn({ method: 'POST' })
-  .inputValidator((d: { id: string; unreadOnly: boolean; selectedId: string }) => d)
+  .validator((d: { id: string; unreadOnly: boolean; selectedId: string }) => d)
   .handler(async ({ data }): Promise<InboxView | null> => {
     const c = daemonClient()
     let resolved: ResolvedAgent

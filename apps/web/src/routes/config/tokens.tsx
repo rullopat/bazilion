@@ -6,7 +6,7 @@ import { ConfigPage } from '../../components/ConfigPage'
 import { daemonClient } from '../../lib/daemon-client'
 
 const fetchTokens = createServerFn({ method: 'POST' })
-  .inputValidator((d: { all: boolean }) => d)
+  .validator((d: { all: boolean }) => d)
   .handler(({ data }) =>
     daemonClient().get<ListTokensResponse>(
       `/api/tokens${data.all ? '?includeRevoked=1' : ''}`,

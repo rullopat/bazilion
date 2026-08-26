@@ -50,10 +50,10 @@ function parseOpenGroupsCookie(raw: string | undefined | null): Record<string, b
   return {}
 }
 
-// POST so we can pass a typed input via `.inputValidator()`. The call site
+// POST so we can pass typed input through the server-function validator. The call site
 // is server-internal so the HTTP verb is invisible to the user.
 const fetchHomeData = createServerFn({ method: 'POST' })
-  .inputValidator((d: { agentId?: string }) => d)
+  .validator((d: { agentId?: string }) => d)
   .handler(async ({ data }): Promise<HomeData> => {
     const client = daemonClient()
     const [agents, profiles, profileGroups, teams] = await Promise.all([

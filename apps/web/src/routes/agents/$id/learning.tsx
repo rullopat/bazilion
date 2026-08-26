@@ -23,7 +23,7 @@ interface LearningView {
 }
 
 const fetchLearning = createServerFn({ method: 'POST' })
-  .inputValidator((data: { id: string }) => data)
+  .validator((data: { id: string }) => data)
   .handler(async ({ data }): Promise<LearningView | null> => {
     const client = daemonClient()
     let resolved: ResolvedAgent
