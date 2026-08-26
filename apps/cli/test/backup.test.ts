@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process'
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import {
+  chmodSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -21,6 +22,7 @@ import { basename, dirname, join, parse, relative, resolve } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { setTimeout as delay } from 'node:timers/promises'
 import { gunzipSync, gzipSync } from 'node:zlib'
+import { generateIdentity, identityToRecipient } from 'age-encryption'
 import { create, extract, Header, list } from 'tar'
 import { afterAll, beforeAll, beforeEach, expect, test } from 'vitest'
 import {
@@ -30,6 +32,8 @@ import {
   openSecrets,
   resolveAgent,
   resolvePaths,
+  runMigrations,
+  webTokenRepo,
 } from '../../daemon/src/core/index.ts'
 import { installValidatedPayload, RestoreRecoveryRequiredError } from '../src/commands/backup.ts'
 import { acquireHomeRestoreLock, daemonLivenessPath } from '../src/daemon-liveness.ts'
@@ -140,7 +144,7 @@ test('backup create downloads a tar.gz with the home contents', async () => {
   expect(existsSync(join(server.home, 'bazilion.db-wal'))).toBe(true)
   const out = join(tmpdir(), `bz-backup-${Date.now()}.tar.gz`)
 
-  const res = await server.cli(['backup', 'create', out])
+  const res = await server.cli(['backup', 'create', out, '--plaintext'])
   expect(res.exitCode).toBe(0)
   expect(res.stdout).toContain('done')
   expect(existsSync(out)).toBe(true)
@@ -155,6 +159,118 @@ test('backup create downloads a tar.gz with the home contents', async () => {
   expect(members).not.toContain('teams/default/memory/.qmd-index.sqlite')
 
   rmSync(out, { force: true })
+})
+
+test('encrypted backup round-trips through an owner-only age identity', async () => {
+  const marker = `encrypted-marker-${randomUUID()}`
+  writeFileSync(join(server.home, 'encrypted-proof.txt'), marker)
+  const identity = await generateIdentity()
+  const recipient = await identityToRecipient(identity)
+  const encrypted = join(tmpdir(), `bz-backup-${Date.now()}.tar.gz.age`)
+  const identityFile = join(tmpdir(), `bz-identity-${Date.now()}.txt`)
+  writeFileSync(identityFile, `${identity}\n`, { mode: 0o600 })
+  chmodSync(identityFile, 0o600)
+
+  const created = await server.cli(['backup', 'create', encrypted, '--recipient', recipient])
+  expect(created.exitCode, created.stderr + created.stdout).toBe(0)
+  const ciphertext = readFileSync(encrypted)
+  expect(ciphertext.subarray(0, 22).toString('ascii')).toBe('age-encryption.org/v1\n')
+  expect(ciphertext.includes(Buffer.from(marker))).toBe(false)
+  expect(ciphertext.includes(Buffer.from('SQLite format 3'))).toBe(false)
+
+  const target = join(tmpdir(), `bz-encrypted-restore-${Date.now()}`)
+  const restored = await runCli(
+    ['backup', 'restore', encrypted, '--identity', identityFile, '--home', target],
+    target,
+  )
+  expect(restored.exitCode, restored.stderr + restored.stdout).toBe(0)
+  expect(readFileSync(join(target, 'encrypted-proof.txt'), 'utf8')).toBe(marker)
+
+  rmSync(encrypted, { force: true })
+  rmSync(identityFile, { force: true })
+  rmSync(target, { recursive: true, force: true })
+})
+
+test('offline bootstrap rotation preserves secrets and revokes other local tokens', async () => {
+  const home = makeHome()
+  const paths = resolvePaths(home.home)
+  for (const dir of [
+    paths.profilesDir,
+    paths.agentsDir,
+    paths.skillsDir,
+    paths.teamsDir,
+    paths.logsDir,
+  ]) {
+    mkdirSync(dir, { recursive: true })
+  }
+  const db = openDb(paths.db)
+  runMigrations(db)
+  const bootstrap = webTokenRepo.create(db, 'bootstrap')
+  const device = webTokenRepo.create(db, 'lost-phone')
+  openSecrets(db, bootstrap.token).set('TELEGRAM_BOT_TOKEN', 'secret-telegram-fixture')
+  db.close()
+  writeFileSync(paths.authFile, `${JSON.stringify({ token: bootstrap.token }, null, 2)}\n`, {
+    mode: 0o600,
+  })
+
+  const inventory = await runCli(['backup', 'inventory', '--home', home.home], home.home)
+  expect(inventory.exitCode, inventory.stderr + inventory.stdout).toBe(0)
+  expect(inventory.stdout).toContain('TELEGRAM_BOT_TOKEN')
+  expect(inventory.stdout).not.toContain('secret-telegram-fixture')
+
+  const rotated = await runCli(
+    ['backup', 'rotate-bootstrap', '--home', home.home, '--yes'],
+    home.home,
+  )
+  expect(rotated.exitCode, rotated.stderr + rotated.stdout).toBe(0)
+  const nextToken = (JSON.parse(readFileSync(paths.authFile, 'utf8')) as { token: string }).token
+  expect(nextToken).not.toBe(bootstrap.token)
+  const after = openDb(paths.db)
+  expect(webTokenRepo.findActiveByToken(after, bootstrap.token)).toBeNull()
+  expect(webTokenRepo.findActiveByToken(after, nextToken)?.label).toBe('bootstrap')
+  expect(webTokenRepo.get(after, device.meta.id)?.revokedAt).not.toBeNull()
+  expect(openSecrets(after, nextToken).get('TELEGRAM_BOT_TOKEN')).toBe('secret-telegram-fixture')
+  after.close()
+  home.cleanup()
+})
+
+test('wrong identity and modified ciphertext leave the target home untouched', async () => {
+  const identity = await generateIdentity()
+  const recipient = await identityToRecipient(identity)
+  const wrongIdentity = await generateIdentity()
+  const encrypted = join(tmpdir(), `bz-backup-${Date.now()}.tar.gz.age`)
+  const identityFile = join(tmpdir(), `bz-identity-${Date.now()}.txt`)
+  const wrongIdentityFile = join(tmpdir(), `bz-wrong-identity-${Date.now()}.txt`)
+  writeFileSync(identityFile, `${identity}\n`, { mode: 0o600 })
+  writeFileSync(wrongIdentityFile, `${wrongIdentity}\n`, { mode: 0o600 })
+  const created = await server.cli(['backup', 'create', encrypted, '--recipient', recipient])
+  expect(created.exitCode, created.stderr + created.stdout).toBe(0)
+
+  const target = join(tmpdir(), `bz-encrypted-preserve-${Date.now()}`)
+  mkdirSync(target)
+  writeFileSync(join(target, 'keep.txt'), 'original')
+  const wrong = await runCli(
+    ['backup', 'restore', encrypted, '--identity', wrongIdentityFile, '--home', target, '--force'],
+    target,
+  )
+  expect(wrong.exitCode).not.toBe(0)
+  expect(wrong.stderr).not.toContain(wrongIdentity)
+  expect(readFileSync(join(target, 'keep.txt'), 'utf8')).toBe('original')
+
+  const tampered = readFileSync(encrypted)
+  tampered[tampered.length - 1] = (tampered[tampered.length - 1] ?? 0) ^ 1
+  writeFileSync(encrypted, tampered)
+  const modified = await runCli(
+    ['backup', 'restore', encrypted, '--identity', identityFile, '--home', target, '--force'],
+    target,
+  )
+  expect(modified.exitCode).not.toBe(0)
+  expect(readFileSync(join(target, 'keep.txt'), 'utf8')).toBe('original')
+
+  rmSync(encrypted, { force: true })
+  rmSync(identityFile, { force: true })
+  rmSync(wrongIdentityFile, { force: true })
+  rmSync(target, { recursive: true, force: true })
 })
 
 test('cancelled backup download releases its online snapshot', async () => {
@@ -245,7 +361,7 @@ test('backup restore extracts the tar.gz into a fresh home', async () => {
     token: string
   }
   const archive = join(tmpdir(), `bz-backup-${Date.now()}.tar.gz`)
-  await server.cli(['backup', 'create', archive])
+  await server.cli(['backup', 'create', archive, '--plaintext'])
 
   // Restore into an empty dir. `runCli` doesn't need a server for this — the
   // restore path is pure-offline — but we pass a valid home so the `--home`
@@ -340,7 +456,7 @@ test('cross-home restore preserves an external linked-Team target without follow
   expect(added.exitCode, added.stderr + added.stdout).toBe(0)
 
   const archive = join(tmpdir(), `bz-linked-team-${randomUUID()}.tar.gz`)
-  const created = await server.cli(['backup', 'create', archive])
+  const created = await server.cli(['backup', 'create', archive, '--plaintext'])
   expect(created.exitCode, created.stderr + created.stdout).toBe(0)
   const target = makeHome()
   const restored = await runCli(['backup', 'restore', archive, '--home', target.home], target.home)
@@ -363,7 +479,7 @@ test('cross-home restore preserves contained relative symlinks in Team work prod
   symlinkSync('current.md', join(sourceDir, 'latest.md'), 'file')
 
   const archive = join(tmpdir(), `bz-relative-link-${randomUUID()}.tar.gz`)
-  const created = await server.cli(['backup', 'create', archive])
+  const created = await server.cli(['backup', 'create', archive, '--plaintext'])
   expect(created.exitCode, created.stderr + created.stdout).toBe(0)
 
   const target = makeHome()
@@ -381,7 +497,7 @@ test('cross-home restore preserves contained relative symlinks in Team work prod
 
 test('backup output inside BAZILION_HOME is rejected to prevent nested backups', async () => {
   const output = join(server.home, 'local-backup.tar.gz')
-  const result = await server.cli(['backup', 'create', output])
+  const result = await server.cli(['backup', 'create', output, '--plaintext'])
   expect(result.exitCode).not.toBe(0)
   expect(result.stderr + result.stdout).toMatch(/output must be outside BAZILION_HOME/)
   expect(existsSync(output)).toBe(false)
@@ -408,7 +524,7 @@ test('failed download preserves an existing output and removes temporary files',
   const address = brokenHttp.address() as AddressInfo
 
   try {
-    const result = await server.cli(['backup', 'create', output], {
+    const result = await server.cli(['backup', 'create', output, '--plaintext'], {
       BAZILION_SERVER: `http://127.0.0.1:${address.port}`,
       BAZILION_TOKEN: 'test-token',
     })
@@ -429,7 +545,7 @@ test('failed download preserves an existing output and removes temporary files',
 
 test('backup restore refuses a non-empty target without --force', async () => {
   const archive = join(tmpdir(), `bz-backup-${Date.now()}.tar.gz`)
-  await server.cli(['backup', 'create', archive])
+  await server.cli(['backup', 'create', archive, '--plaintext'])
 
   const target = makeHome()
   // `makeHome` returns an empty dir; drop a file so restore sees non-empty.
@@ -447,7 +563,7 @@ test('backup restore refuses a non-empty target without --force', async () => {
 test('backup restore --force overwrites a non-empty target', async () => {
   writeFileSync(join(server.home, 'fresh.txt'), 'from-backup')
   const archive = join(tmpdir(), `bz-backup-${Date.now()}.tar.gz`)
-  await server.cli(['backup', 'create', archive])
+  await server.cli(['backup', 'create', archive, '--plaintext'])
 
   const target = makeHome()
   writeFileSync(join(target.home, 'stray.txt'), 'old data')
@@ -477,7 +593,7 @@ test('backup restore errors clearly on a missing file', async () => {
 
 test('backup restore refuses the configured home when a custom-port daemon is reachable', async () => {
   const archive = join(tmpdir(), `bz-custom-port-${randomUUID()}.tar.gz`)
-  await server.cli(['backup', 'create', archive])
+  await server.cli(['backup', 'create', archive, '--plaintext'])
   const target = makeHome()
   writeFileSync(join(target.home, 'keep.txt'), 'original-data')
 
@@ -508,7 +624,7 @@ test('backup restore refuses the configured home when a custom-port daemon is re
 
 test('restore discovers the real daemon custom port from a separate CLI invocation', async () => {
   const archive = join(tmpdir(), `bz-real-custom-port-${randomUUID()}.tar.gz`)
-  await server.cli(['backup', 'create', archive])
+  await server.cli(['backup', 'create', archive, '--plaintext'])
   const runtimePath = daemonLivenessPath(server.home)
   const runtime = JSON.parse(readFileSync(runtimePath, 'utf8')) as {
     instanceId: string
@@ -587,7 +703,7 @@ test('malformed ownership records fail closed for both restore and daemon startu
 
 test('a crashed daemon record is reclaimed only after its PID is dead', async () => {
   const archive = join(tmpdir(), `bz-crash-recovery-${randomUUID()}.tar.gz`)
-  await server.cli(['backup', 'create', archive])
+  await server.cli(['backup', 'create', archive, '--plaintext'])
   const crashed = await startTestServer()
   const runtimePath = daemonLivenessPath(crashed.home)
   expect(existsSync(runtimePath)).toBe(true)
@@ -664,7 +780,7 @@ test('concurrent contenders cannot replace the winner after reclaiming one dead 
 
 test('backup restore canonicalizes and refuses a relative path resolving to filesystem root', async () => {
   const archive = join(tmpdir(), `bz-root-refusal-${randomUUID()}.tar.gz`)
-  await server.cli(['backup', 'create', archive])
+  await server.cli(['backup', 'create', archive, '--plaintext'])
   const target = makeHome()
   const rootFromCwd = relative(process.cwd(), parse(process.cwd()).root)
   expect(rootFromCwd).not.toBe('')
@@ -711,8 +827,8 @@ test('parallel online backups stay transactionally consistent during concurrent 
   })()
 
   const [firstResult, secondResult] = await Promise.all([
-    server.cli(['backup', 'create', first]),
-    server.cli(['backup', 'create', second]),
+    server.cli(['backup', 'create', first, '--plaintext']),
+    server.cli(['backup', 'create', second, '--plaintext']),
     writer,
   ])
   liveDb.close()
@@ -747,7 +863,7 @@ test('corrupt database is rejected before an existing home is replaced', async (
   const corrupt = join(tmpdir(), `bz-corrupt-${randomUUID()}.tar.gz`)
   const unpacked = join(tmpdir(), `bz-corrupt-source-${randomUUID()}`)
   mkdirSync(unpacked)
-  await server.cli(['backup', 'create', valid])
+  await server.cli(['backup', 'create', valid, '--plaintext'])
   await extract({ file: valid, cwd: unpacked })
   writeFileSync(join(unpacked, 'bazilion.db'), 'this is not a SQLite database')
   await create({ file: corrupt, cwd: unpacked, gzip: true }, ['.'])
@@ -773,7 +889,7 @@ test('database missing a current canonical schema object is rejected before repl
   const incomplete = join(tmpdir(), `bz-incomplete-schema-${randomUUID()}.tar.gz`)
   const unpacked = join(tmpdir(), `bz-incomplete-schema-source-${randomUUID()}`)
   mkdirSync(unpacked)
-  await server.cli(['backup', 'create', valid])
+  await server.cli(['backup', 'create', valid, '--plaintext'])
   await extract({ file: valid, cwd: unpacked })
   const db = new DatabaseSync(join(unpacked, 'bazilion.db'))
   db.exec('DROP TRIGGER validate_team_policy_edge_insert')
@@ -805,7 +921,7 @@ test('database with an extra trigger is rejected before path rebasing or replace
   const malicious = join(tmpdir(), `bz-extra-trigger-${randomUUID()}.tar.gz`)
   const unpacked = join(tmpdir(), `bz-extra-trigger-source-${randomUUID()}`)
   mkdirSync(unpacked)
-  await server.cli(['backup', 'create', valid])
+  await server.cli(['backup', 'create', valid, '--plaintext'])
   await extract({ file: valid, cwd: unpacked })
   const db = new DatabaseSync(join(unpacked, 'bazilion.db'))
   db.exec(`
@@ -838,7 +954,7 @@ test('database with an extra trigger is rejected before path rebasing or replace
 
 test('database path entity ids must match their canonical portable forms', async () => {
   const valid = join(tmpdir(), `bz-valid-${randomUUID()}.tar.gz`)
-  await server.cli(['backup', 'create', valid])
+  await server.cli(['backup', 'create', valid, '--plaintext'])
 
   for (const entity of ['profile', 'agent', 'team'] as const) {
     const escapeName = `bz-${entity}-id-escape-${randomUUID()}`
@@ -920,7 +1036,7 @@ test('database entities missing their archived canonical directory are rejected'
   const incomplete = join(tmpdir(), `bz-missing-entity-dir-${randomUUID()}.tar.gz`)
   const unpacked = join(tmpdir(), `bz-missing-entity-dir-source-${randomUUID()}`)
   mkdirSync(unpacked)
-  await server.cli(['backup', 'create', valid])
+  await server.cli(['backup', 'create', valid, '--plaintext'])
   await extract({ file: valid, cwd: unpacked })
   rmSync(join(unpacked, 'profiles', 'missing-dir-profile'), { recursive: true, force: true })
   await create({ file: incomplete, cwd: unpacked, gzip: true }, ['.'])
@@ -948,7 +1064,7 @@ test('database Teams missing their archived canonical slot are rejected', async 
   const incomplete = join(tmpdir(), `bz-missing-team-slot-${randomUUID()}.tar.gz`)
   const unpacked = join(tmpdir(), `bz-missing-team-slot-source-${randomUUID()}`)
   mkdirSync(unpacked)
-  await server.cli(['backup', 'create', valid])
+  await server.cli(['backup', 'create', valid, '--plaintext'])
   await extract({ file: valid, cwd: unpacked })
   rmSync(join(unpacked, 'teams', 'default'), { recursive: true, force: true })
   await create({ file: incomplete, cwd: unpacked, gzip: true }, ['.'])
@@ -976,7 +1092,7 @@ test('foreign-key-invalid database is rejected before an existing home is replac
   const invalid = join(tmpdir(), `bz-invalid-fk-${randomUUID()}.tar.gz`)
   const unpacked = join(tmpdir(), `bz-invalid-fk-source-${randomUUID()}`)
   mkdirSync(unpacked)
-  await server.cli(['backup', 'create', valid])
+  await server.cli(['backup', 'create', valid, '--plaintext'])
   await extract({ file: valid, cwd: unpacked })
   const db = new DatabaseSync(join(unpacked, 'bazilion.db'))
   db.exec('PRAGMA foreign_keys = OFF')
@@ -1009,7 +1125,7 @@ test('path-traversing archive is rejected without writing outside or replacing t
   const malicious = join(tmpdir(), `bz-traversal-${randomUUID()}.tar.gz`)
   const escapedName = `bazilion-escaped-${randomUUID()}`
   const escapedPath = join(tmpdir(), escapedName)
-  await server.cli(['backup', 'create', valid])
+  await server.cli(['backup', 'create', valid, '--plaintext'])
   appendTarEntries(valid, malicious, [{ path: `../${escapedName}`, body: 'must-not-escape' }])
 
   const target = makeHome()
@@ -1032,7 +1148,7 @@ test('path-traversing archive is rejected without writing outside or replacing t
 test('archive-supplied daemon runtime state is rejected before replacement', async () => {
   const valid = join(tmpdir(), `bz-valid-${randomUUID()}.tar.gz`)
   const unsafe = join(tmpdir(), `bz-runtime-state-${randomUUID()}.tar.gz`)
-  await server.cli(['backup', 'create', valid])
+  await server.cli(['backup', 'create', valid, '--plaintext'])
   appendTarEntries(valid, unsafe, [
     {
       path: 'daemon-runtime.json',
@@ -1061,7 +1177,7 @@ test('archive-supplied daemon runtime state is rejected before replacement', asy
 test('archive with an absolute symbolic link outside Team slots is rejected before replacement', async () => {
   const valid = join(tmpdir(), `bz-valid-${randomUUID()}.tar.gz`)
   const malicious = join(tmpdir(), `bz-unsafe-link-${randomUUID()}.tar.gz`)
-  await server.cli(['backup', 'create', valid])
+  await server.cli(['backup', 'create', valid, '--plaintext'])
   appendTarEntries(valid, malicious, [
     { path: 'logs/unsafe-link', type: 'SymbolicLink', linkpath: tmpdir() },
   ])
@@ -1086,7 +1202,7 @@ test('archive with an absolute symbolic link outside Team slots is rejected befo
 test('archive with an escaping relative symbolic link is rejected before replacement', async () => {
   const valid = join(tmpdir(), `bz-valid-${randomUUID()}.tar.gz`)
   const malicious = join(tmpdir(), `bz-escaping-relative-link-${randomUUID()}.tar.gz`)
-  await server.cli(['backup', 'create', valid])
+  await server.cli(['backup', 'create', valid, '--plaintext'])
   appendTarEntries(valid, malicious, [
     {
       path: 'teams/default/escape',
@@ -1113,7 +1229,7 @@ test('archive with an escaping relative symbolic link is rejected before replace
 test('archive cannot place entries beneath an allowed linked Team slot', async () => {
   const valid = join(tmpdir(), `bz-valid-${randomUUID()}.tar.gz`)
   const malicious = join(tmpdir(), `bz-link-descendant-${randomUUID()}.tar.gz`)
-  await server.cli(['backup', 'create', valid])
+  await server.cli(['backup', 'create', valid, '--plaintext'])
   appendTarEntries(valid, malicious, [
     { path: 'teams/linked', type: 'SymbolicLink', linkpath: tmpdir() },
     { path: 'teams/linked/escaped.txt', body: 'must-not-follow-link' },
@@ -1136,7 +1252,7 @@ test('archive cannot place entries beneath an allowed linked Team slot', async (
 
 test('linked Team entry requires a valid slug and an absolute target', async () => {
   const valid = join(tmpdir(), `bz-valid-${randomUUID()}.tar.gz`)
-  await server.cli(['backup', 'create', valid])
+  await server.cli(['backup', 'create', valid, '--plaintext'])
 
   for (const [name, entry, expected] of [
     [
@@ -1170,7 +1286,7 @@ test('linked Team entry requires a valid slug and an absolute target', async () 
 
 test('truncated archive is rejected before an existing home is replaced', async () => {
   const truncated = join(tmpdir(), `bz-truncated-${randomUUID()}.tar.gz`)
-  await server.cli(['backup', 'create', truncated])
+  await server.cli(['backup', 'create', truncated, '--plaintext'])
   truncateSync(truncated, Math.max(1, Math.floor(statSync(truncated).size / 2)))
 
   const target = makeHome()
@@ -1191,7 +1307,7 @@ test('auth token and database mismatch is rejected before replacement', async ()
   const mismatched = join(tmpdir(), `bz-auth-mismatch-${randomUUID()}.tar.gz`)
   const unpacked = join(tmpdir(), `bz-auth-mismatch-source-${randomUUID()}`)
   mkdirSync(unpacked)
-  await server.cli(['backup', 'create', valid])
+  await server.cli(['backup', 'create', valid, '--plaintext'])
   await extract({ file: valid, cwd: unpacked })
   const wrongToken = 'wrong-token'
   writeFileSync(join(unpacked, 'auth.json'), `${JSON.stringify({ token: wrongToken })}\n`)

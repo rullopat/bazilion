@@ -178,7 +178,7 @@ function printTopLevelHelp(): void {
     },
     {
       title: 'ops',
-      items: [['backup', 'Download a tar.gz backup of ~/.bazilion']],
+      items: [['backup', 'Encrypted backup, restore, and credential recovery']],
     },
     {
       title: 'remote',

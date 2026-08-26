@@ -52,6 +52,7 @@
     "@tanstack/react-router": "1.170.16",
     "@tobilu/qmd": "^2.5.3",
     "adm-zip": "^0.5.17",
+    "age-encryption": "0.3.0",
     "citty": "^0.2.2",
     "dompurify": "^3.4.11",
     "grammy": "^1.44.0",

@@ -107,24 +107,38 @@ bazilion provider list|enable|disable|models|test    # provider config + smoke t
 bazilion config list|set|rm                # service config (URLs, IDs, secrets)
 bazilion login --server URL --token T      # save a remote daemon's coordinates
 bazilion token create|list|revoke|show-local         # web tokens for API/CLI clients
-bazilion backup create [output.tar.gz]     # online backup with a consistent SQLite snapshot
-bazilion backup restore <file.tar.gz>      # validate + restore atomically (stop daemon first)
+bazilion backup create [output.tar.gz.age] --recipient age1…  # encrypted online backup
+bazilion backup create [output.tar.gz] --plaintext            # explicit unsafe compatibility mode
+bazilion backup restore <file> [--identity identity.txt]      # validate + restore atomically
+bazilion backup inventory                  # credential names/counts, never credential values
+bazilion backup rotate-bootstrap --yes     # offline local-token rotation and secret re-encryption
+bazilion backup recovery-guide             # external-credential incident checklist
 bazilion completion bash|zsh|fish          # print a shell completion script
 ```
 
 `backup create` is safe while the daemon is active: it uses SQLite's online-backup API and omits
-WAL/SHM files and rebuildable qmd indexes. The downloaded archive is installed only after it parses
-successfully and is written with owner-only permissions because it contains `auth.json`. Restore is
-offline: it validates archive paths, links, the auth/DB pair, SQLite integrity, and foreign keys in a
-staging directory, then rebases stored Profile and Agent directories to the requested home before
-replacing it. Restore and the daemon contend on one per-home ownership record outside the directory
-being swapped, so a custom-port daemon or a daemon starting mid-restore cannot open the database.
+WAL/SHM files and rebuildable qmd indexes. Recipient mode streams the response through the standard
+age envelope without writing a complete plaintext archive; plaintext output requires the explicit
+`--plaintext` warning path. Generate and custody an age identity separately, pass only its public
+`age1…` recipient to create, and provide the owner-only identity file to restore. Completed output is
+installed atomically and never overwrites an existing file. Restore is offline: it authenticates and
+decrypts into private staging, validates archive paths, links, the auth/DB pair, SQLite integrity, and
+foreign keys, then rebases stored Profile and Agent directories before replacing the target home.
+Restore and the daemon contend on one per-home ownership record outside the directory being swapped,
+so a custom-port daemon or a daemon starting mid-restore cannot open the database.
 If restore is interrupted between swap renames, the record stays fail-closed and reports the
 retained recovery path. Contained relative links in ordinary work product are preserved; absolute
 links are limited to canonical Team slot paths, whose external targets are not included in the archive.
 The CLI rejects backup output paths inside `BAZILION_HOME` so a later backup cannot accidentally
 nest prior archives. Ordinary profile, Agent, Team, skill, and session files are captured as the
 archive walks them; only the SQLite snapshot is point-in-time consistent.
+
+If a credential-bearing backup may have escaped, `backup inventory` reports only credential names
+and active-token counts. With the daemon stopped, `backup rotate-bootstrap --yes` atomically replaces
+the local bootstrap token, re-encrypts every stored secret, and revokes all other Bazilion web/mobile
+tokens. It cannot revoke credentials already copied from the archive: follow `backup recovery-guide`
+to regenerate Telegram, revoke and reconnect OpenAI, rotate provider/MCP credentials, and only then
+create a fresh encrypted backup.
 
 ## Concepts
 

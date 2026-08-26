@@ -1,9 +1,11 @@
 ---
 id: BAZ-030
 title: Encrypted backups and single-operator credential recovery
-status: draft
+status: done
 size: L
 created: 2026-08-23
+refined: 2026-08-26
+shipped: 2026-08-26
 priority: medium
 note: Protect the complete auth.json plus database credential bundle produced by BAZ-024 and define bounded recovery for a personal Telegram, web, and mobile server.
 ---
@@ -161,17 +163,29 @@ BAZ-024 validator and proving atomic failure behavior. Bootstrap rotation and th
 external-credential recovery checklist may follow as the second slice without weakening or delaying
 encrypted backup protection.
 
-## Open questions
+## Refined decisions
 
-- Which standard envelope and maintained library provide the best cross-platform recipient support
-  without making a shell-installed binary a hidden runtime dependency? `age` compatibility is the
-  preferred direction, but refinement must validate Node 24, Windows, macOS, and Linux behavior.
-- Should encrypted creation become the immediate default, or should one release require an explicit
-  recipient while warning on plaintext creation? A default cannot strand operators who have not yet
-  created a recovery identity.
-- Is passphrase mode necessary for the first release, or does recipient-only encryption provide a
-  safer, automation-friendly contract with fewer secret-input paths?
-- Should bootstrap rotation always revoke every non-bootstrap token, or may an explicitly named
-  local token survive? The secure default is revoke all.
-- Does bootstrap rotation belong in this story's second slice or in a separately refined story once
-  the DB/file crash-consistency proof is written in detail?
+- Use the standard age envelope through the maintained pure-TypeScript `age-encryption` library;
+  there is no hidden shell binary dependency.
+- Require an explicit public recipient for encrypted creation, or an explicit `--plaintext` opt-in
+  with a warning. There is no unsafe implicit default.
+- Ship recipient-key mode only. Passphrase input would add secret-input paths without helping the
+  unattended single-operator backup contract.
+- Always revoke every non-bootstrap Bazilion token during bootstrap rotation.
+- Deliver rotation and the external recovery checklist in this story because a copied complete
+  backup requires both local and external credential response.
+
+## As built
+
+- `backup create --recipient age1…` validates the daemon stream while encrypting it directly into an
+  owner-only temporary age artifact, then atomically installs it without overwriting existing output.
+- `backup restore --identity <file>` requires a regular owner-only age identity file, authenticates
+  the complete ciphertext into private staging, then reuses BAZ-024's archive, schema, auth-pair,
+  ownership, rollback, and whole-home installation contract.
+- `backup inventory` validates the local auth/database pair and reports only active token counts and
+  stored secret names. `backup recovery-guide` separates local rotation from the Telegram, OpenAI,
+  provider, and MCP actions only the operator can perform.
+- `backup rotate-bootstrap --yes` runs offline under the home ownership lock. It snapshots into
+  sibling staging, decrypts and re-encrypts all stored secrets, replaces the bootstrap row and
+  `auth.json`, revokes all other tokens, validates and syncs the new pair, then performs BAZ-024's
+  recoverable atomic home swap.

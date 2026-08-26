@@ -433,8 +433,8 @@ Routes (under `src/routes/`):
 
 Citty-based. Two "modes":
 
-- **Direct mode** (no HTTP): `uninstall`, `serve`, `dashboard`, `login`, `backup restore`, `token show-local`. These operate on the filesystem directly so they work when the daemon isn't running. Restore opens only its extracted staging DB, never the live source DB, and holds the same realpath-keyed sibling ownership record that the daemon acquires before opening SQLite.
-- **Client mode** (HTTP): everything else, including `backup create`. Talks to the daemon via `src/client.ts` (which wraps `@bazilion/client`).
+- **Direct mode** (no HTTP): `uninstall`, `serve`, `dashboard`, `login`, `backup restore`, `backup inventory`, `backup rotate-bootstrap`, `backup recovery-guide`, `token show-local`. These operate on the filesystem directly so they work when the daemon isn't running. Restore opens only its decrypted/extracted staging DB, never the live source DB, and holds the same realpath-keyed sibling ownership record that the daemon acquires before opening SQLite. Bootstrap rotation copies and snapshots the home into private sibling staging, re-encrypts every secret under a new bootstrap, revokes non-bootstrap tokens, validates and syncs the pair, then uses the same recoverable whole-home swap.
+- **Client mode** (HTTP): everything else, including `backup create`. The daemon returns the existing authenticated plaintext tar stream; the trusted CLI validates it while streaming it through an age recipient envelope and never sends the recovery identity to the daemon. Talks to the daemon via `src/client.ts` (which wraps `@bazilion/client`).
 
 ### 5.1 Entry — `src/index.ts`
 
