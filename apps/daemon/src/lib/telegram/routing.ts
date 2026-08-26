@@ -137,6 +137,7 @@ export type RouteOutcome =
   | { kind: 'callback_unknown' }
   | { kind: 'non_message' }
   | { kind: 'ignored_bot' }
+  | { kind: 'ignored_edit' }
   | { kind: 'unauthorized'; userId: number }
   | { kind: 'pairing_required' }
   | { kind: 'paired_owner'; userId: number }
@@ -172,7 +173,11 @@ export async function routeUpdate(deps: RouterDeps, update: Update): Promise<Rou
     return handleCallbackQuery(deps, q)
   }
 
-  const m = update.message ?? update.edited_message ?? null
+  // An edit reuses an old message identity with new content. Treating it as
+  // fresh ingress would bypass the one-update/one-attempt replay binding.
+  if (update.edited_message) return { kind: 'ignored_edit' }
+
+  const m = update.message ?? null
   if (!m) return { kind: 'non_message' }
 
   // Drop anything authored by a bot. bazilion never sees its OWN messages

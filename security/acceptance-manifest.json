@@ -1,0 +1,323 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "GATEWAY-AUTHORITY-CSRF",
+      "owner": "BAZ-028",
+      "file": "apps/web/test/security-gateway.integration.test.ts",
+      "test": "production gateway rejects hostile authority before side effects and enforces bound browser sessions"
+    },
+    {
+      "id": "GATEWAY-HEADERS-LIMITS-DOWNLOAD",
+      "owner": "BAZ-028",
+      "file": "apps/web/test/security-gateway.integration.test.ts",
+      "test": "production gateway applies security headers and bounds request bodies"
+    },
+    {
+      "id": "GATEWAY-REVOCATION-DEADLINES",
+      "owner": "BAZ-028",
+      "file": "apps/web/test/security-gateway.integration.test.ts",
+      "test": "production gateway enforces device revocation and both session deadlines without cross-device fallout"
+    },
+    {
+      "id": "GATEWAY-STREAM-UPLOAD-SANITIZE",
+      "owner": "BAZ-028",
+      "file": "apps/web/test/security-gateway.integration.test.ts",
+      "test": "production gateway preserves streaming, downloads, and uploads while stripping client forwarding identity"
+    },
+    {
+      "id": "AUTH-SESSION-HASH-EXPIRY",
+      "owner": "BAZ-028",
+      "file": "apps/daemon/test/core/web-sessions.test.ts",
+      "test": "webSessionRepo > stores only hashes and authenticates an indexed id.secret cookie"
+    },
+    {
+      "id": "AUTH-SESSION-DEADLINES",
+      "owner": "BAZ-028",
+      "file": "apps/daemon/test/core/web-sessions.test.ts",
+      "test": "webSessionRepo > idle and absolute expiry fail closed"
+    },
+    {
+      "id": "AUTH-DEVICE-ISOLATION",
+      "owner": "BAZ-028",
+      "file": "apps/daemon/test/core/web-sessions.test.ts",
+      "test": "webSessionRepo > device revocation invalidates its sessions without affecting another device"
+    },
+    {
+      "id": "AUTH-CSRF-BOUND",
+      "owner": "BAZ-028",
+      "file": "apps/daemon/test/core/web-sessions.test.ts",
+      "test": "webSessionRepo > CSRF matches only the session-bound value and list never exposes hashes"
+    },
+    {
+      "id": "RECOVERY-ENCRYPTED-ROUNDTRIP",
+      "owner": "BAZ-030",
+      "file": "apps/cli/test/backup.test.ts",
+      "test": "encrypted backup round-trips through an owner-only age identity"
+    },
+    {
+      "id": "RECOVERY-BOOTSTRAP-ROTATION",
+      "owner": "BAZ-030",
+      "file": "apps/cli/test/backup.test.ts",
+      "test": "offline bootstrap rotation preserves secrets and revokes other local tokens"
+    },
+    {
+      "id": "RECOVERY-CIPHERTEXT-TAMPER",
+      "owner": "BAZ-030",
+      "file": "apps/cli/test/backup.test.ts",
+      "test": "wrong identity and modified ciphertext leave the target home untouched"
+    },
+    {
+      "id": "RECOVERY-PATH-TRAVERSAL",
+      "owner": "BAZ-024",
+      "file": "apps/cli/test/backup.test.ts",
+      "test": "path-traversing archive is rejected without writing outside or replacing the target"
+    },
+    {
+      "id": "RECOVERY-SCHEMA-MISMATCH",
+      "owner": "BAZ-030",
+      "file": "apps/cli/test/backup.test.ts",
+      "test": "database missing a current canonical schema object is rejected before replacement"
+    },
+    {
+      "id": "RECOVERY-SYMLINK-ESCAPE",
+      "owner": "BAZ-030",
+      "file": "apps/cli/test/backup.test.ts",
+      "test": "archive with an escaping relative symbolic link is rejected before replacement"
+    },
+    {
+      "id": "RECOVERY-TRUNCATED",
+      "owner": "BAZ-030",
+      "file": "apps/cli/test/backup.test.ts",
+      "test": "truncated archive is rejected before an existing home is replaced"
+    },
+    {
+      "id": "RECOVERY-AUTH-DB-MISMATCH",
+      "owner": "BAZ-030",
+      "file": "apps/cli/test/backup.test.ts",
+      "test": "auth token and database mismatch is rejected before replacement"
+    },
+    {
+      "id": "TELEGRAM-BOT-SPOOF",
+      "owner": "BAZ-029",
+      "file": "apps/daemon/test/lib/telegram-routing.test.ts",
+      "test": "routeUpdate classification > inbound from a bot account is dropped before any classification"
+    },
+    {
+      "id": "TELEGRAM-EDIT-ANONYMOUS",
+      "owner": "BAZ-029",
+      "file": "apps/daemon/test/lib/telegram-routing.test.ts",
+      "test": "routeUpdate classification > edited and anonymous messages cannot enqueue an Agent turn"
+    },
+    {
+      "id": "TELEGRAM-OWNER-CLOSED",
+      "owner": "BAZ-029",
+      "file": "apps/daemon/test/lib/telegram-routing.test.ts",
+      "test": "routeUpdate classification > ACL: an empty allowlist remains closed until a one-time code is paired"
+    },
+    {
+      "id": "TELEGRAM-FOREIGN-CHAT",
+      "owner": "BAZ-029",
+      "file": "apps/daemon/test/lib/telegram-routing.test.ts",
+      "test": "routeUpdate classification > foreign chat (private DM with the bot) is recognized but ignored"
+    },
+    {
+      "id": "TELEGRAM-ATTEMPT-REPLAY",
+      "owner": "BAZ-027",
+      "file": "apps/daemon/test/lib/telegram-inbound-queue.test.ts",
+      "test": "inbound-queue > rejects a queue item whose attempt identity does not match its Telegram update"
+    },
+    {
+      "id": "TELEGRAM-PAIR-ONCE",
+      "owner": "BAZ-029",
+      "file": "apps/daemon/test/core/telegram-pairing.test.ts",
+      "test": "stores only a digest and consumes a challenge exactly once"
+    },
+    {
+      "id": "TELEGRAM-PAIR-EXPIRED",
+      "owner": "BAZ-029",
+      "file": "apps/daemon/test/core/telegram-pairing.test.ts",
+      "test": "expired challenges fail closed and are removed"
+    },
+    {
+      "id": "PROTECTED-OPERATOR-HTTP",
+      "owner": "BAZ-027",
+      "file": "apps/daemon/test/lib/turn-invocation.test.ts",
+      "test": "'operator_http' derives one non-downgradable execution and authorization posture"
+    },
+    {
+      "id": "PROTECTED-TELEGRAM",
+      "owner": "BAZ-027",
+      "file": "apps/daemon/test/lib/turn-invocation.test.ts",
+      "test": "'telegram' derives one non-downgradable execution and authorization posture"
+    },
+    {
+      "id": "PROTECTED-SCHEDULE",
+      "owner": "BAZ-027",
+      "file": "apps/daemon/test/lib/turn-invocation.test.ts",
+      "test": "'scheduled_trigger' derives one non-downgradable execution and authorization posture"
+    },
+    {
+      "id": "PROTECTED-INBOX",
+      "owner": "BAZ-027",
+      "file": "apps/daemon/test/lib/turn-invocation.test.ts",
+      "test": "'inbox_wake' derives one non-downgradable execution and authorization posture"
+    },
+    {
+      "id": "PROTECTED-APPROVAL-DELIVERY",
+      "owner": "BAZ-027",
+      "file": "apps/daemon/test/lib/turn-invocation.test.ts",
+      "test": "'approval_delivery' derives one non-downgradable execution and authorization posture"
+    },
+    {
+      "id": "PROTECTED-REVIEW-MANUAL",
+      "owner": "BAZ-027",
+      "file": "apps/daemon/test/lib/turn-invocation.test.ts",
+      "test": "manual reviews use the same nominal restricted-review policy"
+    },
+    {
+      "id": "PROTECTED-REVIEW-CADENCE",
+      "owner": "BAZ-027",
+      "file": "apps/daemon/test/lib/turn-invocation.test.ts",
+      "test": "cadence reviews use the same nominal restricted-review policy"
+    },
+    {
+      "id": "PROTECTED-HOSTED-HTTP",
+      "owner": "BAZ-028",
+      "file": "apps/daemon/test/lib/turn-invocation.test.ts",
+      "test": "the hosted profile makes operator HTTP turns protected"
+    },
+    {
+      "id": "PROTECTED-DOWNGRADE-DENIED",
+      "owner": "BAZ-027",
+      "file": "apps/daemon/test/lib/turn-invocation.test.ts",
+      "test": "raw, cloned, contradictory, and downgrade-shaped metadata is never trusted"
+    },
+    {
+      "id": "PROTECTED-MINIMAL-ENV",
+      "owner": "BAZ-027",
+      "file": "apps/daemon/test/runtime/worker-runtime.test.ts",
+      "test": "minimal worker runtime > spawns with exact minimal env, closes stdin, redacts rotated diagnostics, and cleans scratch"
+    },
+    {
+      "id": "PROTECTED-PERSISTENCE-REDACTION",
+      "owner": "BAZ-027",
+      "file": "apps/daemon/test/runtime/protected-session-redaction.test.ts",
+      "test": "protected Pi persistence credential boundary > sanitizes initial and rotated provider errors before session persistence"
+    },
+    {
+      "id": "PROTECTED-CAPABILITY-CLOSURE",
+      "owner": "BAZ-027",
+      "file": "apps/daemon/test/runtime/worker-runtime.test.ts",
+      "test": "minimal worker runtime > builds the closed protected custom-tool projection without search, browser, MCP, or review"
+    },
+    {
+      "id": "PROTECTED-FAILURE-OUTCOME",
+      "owner": "BAZ-027",
+      "file": "apps/daemon/test/lib/telegram-inbound-queue.test.ts",
+      "test": "inbound-queue > protected preflight failure sends one bounded secret-free owning-topic notice"
+    },
+    {
+      "id": "PROTECTED-INVALID-REFRESH",
+      "owner": "BAZ-027",
+      "file": "apps/daemon/test/runtime/worker-api-key-refresh.test.ts",
+      "test": "daemon redacts host errors and rejects empty host results"
+    },
+    {
+      "id": "PROTECTED-CANCELLED-REFRESH",
+      "owner": "BAZ-027",
+      "file": "apps/daemon/test/runtime/worker-api-key-refresh.test.ts",
+      "test": "daemon stops waiting when cancellation happens during refresh"
+    },
+    {
+      "id": "PROTECTED-WORKER-CRASH",
+      "owner": "BAZ-027",
+      "file": "apps/daemon/test/runtime/worker-runtime.test.ts",
+      "test": "minimal worker runtime > bounds an unterminated stdout frame and fails closed"
+    },
+    {
+      "id": "APPROVAL-REPLAY",
+      "owner": "BAZ-019",
+      "file": "apps/daemon/test/core/communication-approvals.test.ts",
+      "test": "pending Agent message is idempotent, private in lists, and delivered at most once"
+    },
+    {
+      "id": "NETWORK-SSRF-PRIVATE",
+      "owner": "BAZ-027",
+      "file": "apps/daemon/test/lib/browser-proxy.test.ts",
+      "test": "resolveSafeIp blocks private IP literals + loopback names"
+    },
+    {
+      "id": "NETWORK-MAPPED-METADATA",
+      "owner": "BAZ-027",
+      "file": "apps/daemon/test/runtime/tools-web.test.ts",
+      "test": "web_fetch blocks WHATWG-normalized IPv6 mapped metadata literals"
+    },
+    {
+      "id": "NETWORK-NAT64-METADATA",
+      "owner": "BAZ-027",
+      "file": "apps/daemon/test/runtime/tools-web.test.ts",
+      "test": "web_fetch blocks WHATWG-normalized IPv6 NAT64 translated metadata literals"
+    },
+    {
+      "id": "NETWORK-BOUNDED-CONTENT",
+      "owner": "BAZ-027",
+      "file": "apps/daemon/test/runtime/tools-web.test.ts",
+      "test": "web_fetch caps oversized bodies before extraction and flags truncation"
+    },
+    {
+      "id": "NETWORK-CACHE-MODE-SEPARATION",
+      "owner": "BAZ-027",
+      "file": "apps/daemon/test/runtime/tools-web.test.ts",
+      "test": "web_fetch caches results per (url, extract_mode)"
+    },
+    {
+      "id": "NETWORK-PROTECTED-SURFACE",
+      "owner": "BAZ-027",
+      "file": "apps/daemon/test/runtime/tools-web.test.ts",
+      "test": "protected web surface exposes fetch only and cannot re-enable private or credentialed backends"
+    },
+    {
+      "id": "NETWORK-DNS-REBIND",
+      "owner": "BAZ-027",
+      "file": "apps/daemon/test/runtime/web-ssrf-adversarial.test.ts",
+      "test": "guardedFetch revalidates every redirect and blocks a deterministic DNS-rebinding answer"
+    },
+    {
+      "id": "NETWORK-METADATA-REDIRECT",
+      "owner": "BAZ-027",
+      "file": "apps/daemon/test/runtime/web-ssrf-adversarial.test.ts",
+      "test": "guardedFetch rejects a redirect to metadata before issuing the redirected request"
+    },
+    {
+      "id": "NETWORK-CROSS-ORIGIN-CREDENTIALS",
+      "owner": "BAZ-027",
+      "file": "apps/daemon/test/runtime/web-ssrf-adversarial.test.ts",
+      "test": "guardedFetch strips credentials on cross-origin redirects while retaining benign headers"
+    },
+    {
+      "id": "SHELL-TERMINAL-CONTROL",
+      "owner": "BAZ-006",
+      "file": "apps/cli/test/command-approval.test.ts",
+      "test": "CLI shell-command approval > escapes terminal control characters in the approval display"
+    },
+    {
+      "id": "DOCKER-REMOTE-CONTEXT",
+      "owner": "BAZ-027",
+      "file": "apps/daemon/test/runtime/shell-docker.test.ts",
+      "test": "createDockerBashOperations > fails closed when the active Docker context is remote"
+    },
+    {
+      "id": "DOCKER-NARROW-RUN-SPEC",
+      "owner": "BAZ-027",
+      "file": "apps/daemon/test/runtime/shell-docker.test.ts",
+      "test": "buildDockerRunSpec > builds one narrow, hardened, exact-name container invocation"
+    },
+    {
+      "id": "DOCKER-IMPLICIT-VOLUME",
+      "owner": "BAZ-027",
+      "file": "apps/daemon/test/runtime/shell-docker.test.ts",
+      "test": "createDockerBashOperations > rejects images that declare implicit writable volumes"
+    }
+  ]
+}

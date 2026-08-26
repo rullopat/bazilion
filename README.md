@@ -181,6 +181,7 @@ The daemon's data layer (`apps/daemon/src/core/`: DB, repos, profile/agent/team 
 
 ```sh
 pnpm test             # vitest across the whole tree
+pnpm security:acceptance # deterministic personal-server security release gate
 pnpm typecheck        # tsc --noEmit on the non-web tree
 pnpm lint             # biome
 pnpm format           # biome --write

@@ -20,7 +20,7 @@ import { type CliResult, runCli } from './helpers.ts'
 // invocation matching `bazilion serve`.
 const daemonEntry = join(import.meta.dirname, '..', '..', 'daemon', 'src', 'index.ts')
 
-function findFreePort(): Promise<number> {
+export function findFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const srv = createServer()
     srv.listen(0, () => {

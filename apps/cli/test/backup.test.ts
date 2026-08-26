@@ -33,6 +33,7 @@ import {
   resolveAgent,
   resolvePaths,
   runMigrations,
+  webSessionRepo,
   webTokenRepo,
 } from '../../daemon/src/core/index.ts'
 import { installValidatedPayload, RestoreRecoveryRequiredError } from '../src/commands/backup.ts'
@@ -164,6 +165,10 @@ test('backup create downloads a tar.gz with the home contents', async () => {
 test('encrypted backup round-trips through an owner-only age identity', async () => {
   const marker = `encrypted-marker-${randomUUID()}`
   writeFileSync(join(server.home, 'encrypted-proof.txt'), marker)
+  const sourceDb = openDb(resolvePaths(server.home).db)
+  const sourceDevice = webTokenRepo.create(sourceDb, 'preserved-device')
+  const sourceSession = webSessionRepo.create(sourceDb, sourceDevice.meta.id)
+  sourceDb.close()
   const identity = await generateIdentity()
   const recipient = await identityToRecipient(identity)
   const encrypted = join(tmpdir(), `bz-backup-${Date.now()}.tar.gz.age`)
@@ -185,6 +190,22 @@ test('encrypted backup round-trips through an owner-only age identity', async ()
   )
   expect(restored.exitCode, restored.stderr + restored.stdout).toBe(0)
   expect(readFileSync(join(target, 'encrypted-proof.txt'), 'utf8')).toBe(marker)
+  expect(restored.stdout + restored.stderr).not.toContain(sourceDevice.token)
+  expect(restored.stdout + restored.stderr).not.toContain(sourceSession.cookieValue)
+  expect(restored.stdout + restored.stderr).not.toContain(sourceSession.csrfToken)
+  const restoredDb = openDb(resolvePaths(target).db)
+  expect(webTokenRepo.findActiveByToken(restoredDb, sourceDevice.token)?.label).toBe(
+    'preserved-device',
+  )
+  expect(webSessionRepo.authenticate(restoredDb, sourceSession.cookieValue)).toBeNull()
+  expect(
+    restoredDb.raw
+      .query<{ revoked_at: number | null }, [string]>(
+        'SELECT revoked_at FROM web_sessions WHERE id = ?',
+      )
+      .get(sourceSession.session.id)?.revoked_at,
+  ).not.toBeNull()
+  restoredDb.close()
 
   rmSync(encrypted, { force: true })
   rmSync(identityFile, { force: true })
@@ -207,6 +228,7 @@ test('offline bootstrap rotation preserves secrets and revokes other local token
   runMigrations(db)
   const bootstrap = webTokenRepo.create(db, 'bootstrap', { kind: 'bootstrap' })
   const device = webTokenRepo.create(db, 'lost-phone')
+  const browserSession = webSessionRepo.create(db, device.meta.id)
   openSecrets(db, bootstrap.token).set('TELEGRAM_BOT_TOKEN', 'secret-telegram-fixture')
   db.close()
   writeFileSync(paths.authFile, `${JSON.stringify({ token: bootstrap.token }, null, 2)}\n`, {
@@ -229,6 +251,14 @@ test('offline bootstrap rotation preserves secrets and revokes other local token
   expect(webTokenRepo.findActiveByToken(after, bootstrap.token)).toBeNull()
   expect(webTokenRepo.findActiveByToken(after, nextToken)?.label).toBe('bootstrap')
   expect(webTokenRepo.get(after, device.meta.id)?.revokedAt).not.toBeNull()
+  expect(webSessionRepo.authenticate(after, browserSession.cookieValue)).toBeNull()
+  expect(
+    after.raw
+      .query<{ revoked_at: number | null }, [string]>(
+        'SELECT revoked_at FROM web_sessions WHERE id = ?',
+      )
+      .get(browserSession.session.id)?.revoked_at,
+  ).not.toBeNull()
   expect(openSecrets(after, nextToken).get('TELEGRAM_BOT_TOKEN')).toBe('secret-telegram-fixture')
   after.close()
   home.cleanup()

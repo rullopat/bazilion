@@ -290,6 +290,50 @@ describe('routeUpdate classification', () => {
     expect(sends.length).toBe(0)
   })
 
+  test('edited and anonymous messages cannot enqueue an Agent turn', async () => {
+    const agent = spawnAgent(env.db, env.paths, {
+      profileId: 'base',
+      teamId: env.teamId,
+      name: 'identity-bound',
+    })
+    agentRepo.setTelegramTopicId(env.db, agent.id, 42)
+    const enqueue = vi.spyOn(inboundQueue, 'enqueueAgentMessage')
+    enqueue.mockClear()
+    const { api, sends } = makeReplyApi()
+
+    const edited = messageUpdate({ threadId: 42, text: 'changed after delivery' }) as Update
+    if (!edited.message) throw new Error('fixture did not create a message')
+    edited.edited_message = {
+      ...edited.message,
+      edit_date: Math.floor(Date.now() / 1000),
+    }
+    delete edited.message
+    expect(
+      await routeUpdate(
+        { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID },
+        edited,
+      ),
+    ).toEqual({ kind: 'ignored_edit' })
+
+    const anonymous = messageUpdate({ threadId: 42, text: 'anonymous admin' }) as Update
+    const anonymousMessage = anonymous.message as unknown as {
+      from?: unknown
+      sender_chat?: unknown
+      chat: unknown
+    }
+    anonymousMessage.from = undefined
+    anonymousMessage.sender_chat = anonymousMessage.chat
+    expect(
+      await routeUpdate(
+        { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID },
+        anonymous,
+      ),
+    ).toEqual({ kind: 'unauthorized', userId: 0 })
+
+    expect(enqueue).not.toHaveBeenCalled()
+    expect(sends).toEqual([])
+  })
+
   test('ACL: an empty allowlist remains closed until a one-time code is paired', async () => {
     env.db.raw.run('DELETE FROM telegram_allowed_users')
     const { api, sends } = makeReplyApi()

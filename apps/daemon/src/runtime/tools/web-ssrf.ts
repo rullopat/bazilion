@@ -207,6 +207,17 @@ function isRedirectStatus(s: number): boolean {
   return s === 301 || s === 302 || s === 303 || s === 307 || s === 308
 }
 
+function withoutCrossOriginCredentials(
+  headersInit: ConstructorParameters<typeof Headers>[0] | undefined,
+): Headers | undefined {
+  if (!headersInit) return undefined
+  const headers = new Headers(headersInit)
+  headers.delete('authorization')
+  headers.delete('cookie')
+  headers.delete('proxy-authorization')
+  return headers
+}
+
 async function closeDispatcher(d: Dispatcher | null): Promise<void> {
   if (!d) return
   try {
@@ -238,6 +249,7 @@ export async function guardedFetch(opts: GuardedFetchOptions): Promise<GuardedFe
   }
 
   let current = opts.url
+  let requestInit = { ...(opts.init ?? {}) }
   const visited = new Set<string>()
   let redirects = 0
   let dispatcher: Dispatcher | null = null
@@ -272,7 +284,7 @@ export async function guardedFetch(opts: GuardedFetchOptions): Promise<GuardedFe
     }
 
     const init: RequestInit = {
-      ...(opts.init ?? {}),
+      ...requestInit,
       redirect: 'manual',
       signal: abortController.signal,
     }
@@ -307,6 +319,12 @@ export async function guardedFetch(opts: GuardedFetchOptions): Promise<GuardedFe
       }
       visited.add(next)
       void res.body?.cancel()
+      if (new URL(next).origin !== parsed.origin) {
+        requestInit = {
+          ...requestInit,
+          headers: withoutCrossOriginCredentials(requestInit.headers),
+        }
+      }
       current = next
       continue
     }

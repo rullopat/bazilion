@@ -11,6 +11,7 @@ is the package manager. Everything runs via `tsx`, pinned as a root dev-dependen
 ```sh
 pnpm install
 pnpm test              # vitest run across the whole tree
+pnpm security:acceptance # deterministic 0.13 adversarial security release gate
 pnpm typecheck         # tsc --noEmit (excludes apps/web — see below)
 pnpm lint              # biome check
 pnpm format            # biome check --write

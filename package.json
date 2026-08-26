@@ -11,6 +11,7 @@
     "format": "biome check --write .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "security:acceptance": "node scripts/security-acceptance.mjs",
     "build": "pnpm -r --filter='./packages/*' --filter='./apps/cli' run build",
     "changeset": "changeset",
     "version-packages": "changeset version",

@@ -43,10 +43,11 @@ docs/backlog/
 | ID | Title | Size | Notes |
 |----|-------|------|-------|
 
-## Done (25)
+## Done (26)
 
 | ID | Title | Size | Shipped | Release | Notes |
 |----|-------|------|---------|---------|-------|
+| [BAZ-032](done/BAZ-032-personal-server-security-acceptance.md) | Personal-server adversarial security acceptance gate | M | 2026-08-26 | unreleased | 53-case deterministic cross-boundary release gate for BAZ-027 through BAZ-030, with live posture evidence kept separate |
 | [BAZ-028](done/BAZ-028-secure-personal-web-mobile-gateway.md) | Secure personal web and mobile gateway | L | 2026-08-26 | unreleased | Expiring device credentials, hashed browser sessions, hardened private HTTPS gateway, and loopback-only Tailscale Serve preflight |
 | [BAZ-030](done/BAZ-030-encrypted-backups-credential-recovery.md) | Encrypted backups and single-operator credential recovery | L | 2026-08-26 | unreleased | Standard age recipient encryption, authenticated staged restore, secret-safe inventory, local token rotation, and external recovery guidance |
 | [BAZ-029](done/BAZ-029-single-owner-telegram-pairing.md) | Single-owner Telegram pairing and visibility hardening | M | 2026-08-26 | unreleased | One-time owner pairing, fail-closed ingress identity, private-supergroup warnings, and secret-safe diagnostics |

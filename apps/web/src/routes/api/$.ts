@@ -37,6 +37,15 @@ function isLoopback(hostname: string): boolean {
   return ['127.0.0.1', 'localhost', '[::1]', '::1'].includes(hostname)
 }
 
+function hasDuplicateCookie(header: string | null, name: string): boolean {
+  if (!header) return false
+  return header
+    .split(';')
+    .map((part) => part.trim())
+    .map((part) => part.slice(0, part.indexOf('=')))
+    .filter((cookieName) => cookieName === name).length > 1
+}
+
 function boundedBody(body: ReadableStream<Uint8Array>, limit: number): ReadableStream<Uint8Array> {
   let seen = 0
   return body.pipeThrough(
@@ -95,6 +104,13 @@ async function proxy(request: Request): Promise<Response> {
   }
 
   const unsafe = !['GET', 'HEAD', 'OPTIONS'].includes(request.method)
+  const incomingCookies = request.headers.get('cookie')
+  if (
+    hasDuplicateCookie(incomingCookies, originConfig.sessionCookie) ||
+    hasDuplicateCookie(incomingCookies, originConfig.csrfCookie)
+  ) {
+    return new Response('ambiguous cookies', { status: 400 })
+  }
   const session = getCookie(originConfig.sessionCookie)
   const csrf = getCookie(originConfig.csrfCookie)
   if (unsafe && (session || incoming.pathname === '/api/login')) {
