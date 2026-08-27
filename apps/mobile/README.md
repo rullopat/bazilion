@@ -1,6 +1,8 @@
 # @bazilion/mobile
 
-Expo (SDK 54) + Expo Router 6 + React 19 + RN 0.81 + new architecture. Pairs to a running `bazilion` daemon over LAN/Tailscale/VPN via a QR code minted on the server.
+Expo (SDK 54) + Expo Router 6 + React 19 + RN 0.81 + new architecture. Pairs to the
+private HTTPS Bazilion web gateway via a QR code minted on the server; the daemon remains on
+loopback.
 
 ## First run
 
@@ -22,7 +24,9 @@ Expo (SDK 54) + Expo Router 6 + React 19 + RN 0.81 + new architecture. Pairs to 
    pnpm --filter @bazilion/mobile start
    ```
    Scan the QR the Expo CLI prints with Expo Go → the app loads → grant camera access → point the camera at the **pairing** QR from step 2.
-5. The app verifies the token against `/api/health`, saves `server` + `token` into `expo-secure-store`, and lands on the agents list.
+5. The app verifies the device token against protected `/api/auth/whoami`, checks that the returned
+   canonical public origin matches, saves `server` + `token` into `expo-secure-store`, and lands on
+   the agents list.
 
 ## Manual pairing
 

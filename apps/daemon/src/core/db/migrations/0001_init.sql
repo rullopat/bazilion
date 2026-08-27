@@ -171,12 +171,27 @@ CREATE TABLE skill_meta (
 CREATE TABLE web_tokens (
   id            TEXT PRIMARY KEY,
   label         TEXT NOT NULL,
+  kind          TEXT NOT NULL CHECK (kind IN ('bootstrap','device')),
   token_hash    TEXT NOT NULL UNIQUE,
   created_at    INTEGER NOT NULL,
   last_used_at  INTEGER,
+  expires_at    INTEGER,
   revoked_at    INTEGER
 );
 CREATE INDEX web_tokens_active ON web_tokens(token_hash) WHERE revoked_at IS NULL;
+CREATE TABLE web_sessions (
+  id                   TEXT PRIMARY KEY,
+  secret_hash          TEXT NOT NULL UNIQUE,
+  csrf_hash            TEXT NOT NULL,
+  device_token_id      TEXT NOT NULL REFERENCES web_tokens(id) ON DELETE CASCADE,
+  created_at           INTEGER NOT NULL,
+  last_seen_at         INTEGER NOT NULL,
+  idle_expires_at      INTEGER NOT NULL,
+  absolute_expires_at  INTEGER NOT NULL,
+  revoked_at           INTEGER
+);
+CREATE INDEX web_sessions_active ON web_sessions(id) WHERE revoked_at IS NULL;
+CREATE INDEX web_sessions_device ON web_sessions(device_token_id, created_at DESC);
 CREATE TABLE provider_models (
   provider   TEXT    NOT NULL,
   model      TEXT    NOT NULL,
@@ -208,6 +223,12 @@ CREATE TABLE telegram_allowed_users (
   label     TEXT,
   role      TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('owner','member')),
   added_at  INTEGER NOT NULL
+);
+CREATE TABLE telegram_pairing_challenge (
+  singleton  INTEGER PRIMARY KEY CHECK (singleton = 1),
+  digest     TEXT    NOT NULL,
+  expires_at INTEGER NOT NULL,
+  created_at INTEGER NOT NULL
 );
 CREATE TABLE mcp_servers (
   id          TEXT PRIMARY KEY,

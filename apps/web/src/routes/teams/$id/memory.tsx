@@ -18,7 +18,7 @@ interface MemoryView {
 }
 
 const fetchMemory = createServerFn({ method: 'POST' })
-  .inputValidator((d: { id: string }) => d)
+  .validator((d: { id: string }) => d)
   .handler(async ({ data }): Promise<MemoryView | null> => {
     const c = daemonClient()
     let team: Team

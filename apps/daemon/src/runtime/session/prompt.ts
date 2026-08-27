@@ -3,10 +3,11 @@
 // stacked on top of pi's built-in base prompt (which lists coding tools and
 // general guidelines). Pure filesystem read — no LLM, no DB.
 
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import type { ResolvedAgent } from '@bazilion/api-types'
-import { parseSkillFile } from '../../core/skills/parse.ts'
+import { parseSkillContent } from '../../core/skills/parse.ts'
+import { readRegularFileNoFollow, resolveRealDirectory } from '../safe-files.ts'
 import type { BashSandboxMode } from '../shell/security.ts'
 
 export const SANDBOX_SKILLS_DIR = '/skills'
@@ -22,6 +23,16 @@ export interface PromptSkill {
 export interface BuildSystemPromptOptions {
   skills?: readonly PromptSkill[]
   sandboxMode?: BashSandboxMode
+  /** Daemon-prepared fixed document bytes; protected workers must supply this. */
+  homeDocuments?: ProtectedHomeDocuments
+}
+
+export interface ProtectedHomeDocuments {
+  'AGENTS.md': string | null
+  'SOUL.md': string | null
+  'TOOLS.md': string | null
+  'IDENTITY.md': string | null
+  'BOOTSTRAP.md': string | null
 }
 
 /** Load only direct, installed skill directories attached to this agent. */
@@ -39,7 +50,7 @@ export function loadPromptSkills(
   for (const entry of discovered) {
     const hostDir = join(skillsDir, entry.name)
     try {
-      const parsed = parseSkillFile(join(hostDir, 'SKILL.md'))
+      const parsed = parseSkillContent(readRegularFileNoFollow(join(hostDir, 'SKILL.md')))
       const safeLabel = entry.name.replace(/[^A-Za-z0-9._-]/g, '_') || 'skill'
       loaded.push({
         name: entry.name,
@@ -68,17 +79,36 @@ export function loadPromptSkills(
 // JSONL forever and replay on every future turn).
 const CONTEXT_FILE_ORDER = ['AGENTS.md', 'SOUL.md', 'TOOLS.md', 'IDENTITY.md'] as const
 
+/** Snapshot the exact Agent-home prompt inputs without following fixed-name links. */
+export function loadProtectedHomeDocuments(agentDir: string): ProtectedHomeDocuments {
+  const root = resolveRealDirectory(agentDir)
+  const read = (file: keyof ProtectedHomeDocuments): string | null => {
+    try {
+      return readRegularFileNoFollow(join(root, file))
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
+      throw new Error(`private Agent home is unsafe at ${file}`)
+    }
+  }
+  return {
+    'AGENTS.md': read('AGENTS.md'),
+    'SOUL.md': read('SOUL.md'),
+    'TOOLS.md': read('TOOLS.md'),
+    'IDENTITY.md': read('IDENTITY.md'),
+    'BOOTSTRAP.md': read('BOOTSTRAP.md'),
+  }
+}
+
 export function buildSystemPrompt(
   agent: ResolvedAgent,
   options: BuildSystemPromptOptions = {},
 ): string {
   const parts: string[] = []
+  const homeDocuments = options.homeDocuments ?? loadProtectedHomeDocuments(agent.agent.dir)
 
   const contextBlocks: string[] = []
   for (const file of CONTEXT_FILE_ORDER) {
-    const path = join(agent.agent.dir, file)
-    if (!existsSync(path)) continue
-    const content = readFileSync(path, 'utf8').trimEnd()
+    const content = homeDocuments[file]?.trimEnd()
     if (!content) continue
     contextBlocks.push(`## ${file}\n\n${content}`)
   }
@@ -90,27 +120,24 @@ export function buildSystemPrompt(
   // The wording deliberately frames it as "multi-turn Q&A" not "checklist"
   // and lists hard rules at the top so tool-eager models still notice them
   // even if they skim the body.
-  const bootstrapPath = join(agent.agent.dir, 'BOOTSTRAP.md')
-  if (existsSync(bootstrapPath)) {
-    const bootstrap = readFileSync(bootstrapPath, 'utf8').trimEnd()
-    if (bootstrap) {
-      parts.push(
-        [
-          '# First-Run Ritual',
-          '',
-          'This is your first session. The document below is **conversational guidance**, not a checklist to execute in one shot. It describes a multi-turn Q&A you should have with the human, one question per turn.',
-          '',
-          '## Hard rules',
-          '- Your first reply is ONLY a greeting + ONE question. No tool calls. Wait for the human to answer.',
-          '- Each subsequent turn: at most one new question. Wait between turns.',
-          '- Only after the ritual is complete (you have enough to write IDENTITY.md): call `home_write` once, then `bootstrap_done`.',
-          '',
-          '## BOOTSTRAP.md',
-          '',
-          bootstrap,
-        ].join('\n'),
-      )
-    }
+  const bootstrap = homeDocuments['BOOTSTRAP.md']?.trimEnd()
+  if (bootstrap) {
+    parts.push(
+      [
+        '# First-Run Ritual',
+        '',
+        'This is your first session. The document below is **conversational guidance**, not a checklist to execute in one shot. It describes a multi-turn Q&A you should have with the human, one question per turn.',
+        '',
+        '## Hard rules',
+        '- Your first reply is ONLY a greeting + ONE question. No tool calls. Wait for the human to answer.',
+        '- Each subsequent turn: at most one new question. Wait between turns.',
+        '- Only after the ritual is complete (you have enough to write IDENTITY.md): call `home_write` once, then `bootstrap_done`.',
+        '',
+        '## BOOTSTRAP.md',
+        '',
+        bootstrap,
+      ].join('\n'),
+    )
   }
 
   parts.push(
@@ -164,7 +191,7 @@ export function buildSystemPrompt(
   const teamLines = [
     '# Team',
     '',
-    `- ${agent.team.id} (${agent.team.name}): ${agent.team.path}`,
+    `- ${agent.team.id} (${agent.team.name}): ${options.sandboxMode === 'docker' ? '/workspace' : agent.team.path}`,
     '',
     'Your team is where work product lives — code, docs, artefacts, shared scratch. It may be shared with other agents in the same team. Use the workspace tools currently exposed to work there. Never use workspace tools to edit your identity/soul/behaviour files — those live in your private home and are reached via `home_write` / `home_read`.',
   ]

@@ -183,18 +183,12 @@ export async function mirrorAgentTurnFrame(
             }),
           )
           continue
-        } catch (e2) {
-          console.warn(
-            `telegram mirror: plain-text fallback failed for agent ${agent.id} —`,
-            e2 instanceof Error ? e2.message : String(e2),
-          )
+        } catch {
+          logMirrorAdapterFailure('telegram_mirror_text_fallback_failed', agent.id)
           continue
         }
       }
-      console.warn(
-        `telegram mirror: send failed for agent ${agent.id} —`,
-        e instanceof Error ? e.message : String(e),
-      )
+      logMirrorAdapterFailure('telegram_mirror_text_failed', agent.id)
     }
   }
 }
@@ -283,11 +277,8 @@ async function mirrorImages(
         await enqueueOutbound(deps.chatId, () =>
           deps.api.sendDocument(deps.chatId, file(), { message_thread_id: topicId, caption }),
         )
-      } catch (e2) {
-        console.warn(
-          `telegram mirror: image send failed for agent ${agentId} —`,
-          e2 instanceof Error ? e2.message : String(e2),
-        )
+      } catch {
+        logMirrorAdapterFailure('telegram_mirror_image_failed', agentId)
       }
     }
   }
@@ -324,11 +315,14 @@ async function mirrorFile(
       agentRepo.setTelegramTopicId(deps.db, agentId, null)
       return
     }
-    console.warn(
-      `telegram mirror: file send failed for agent ${agentId} —`,
-      e instanceof Error ? e.message : String(e),
-    )
+    logMirrorAdapterFailure('telegram_mirror_file_failed', agentId)
   }
+}
+
+function logMirrorAdapterFailure(event: string, agentId: string): void {
+  // Grammy errors can embed the Bot API URL, including the bot token. Keep
+  // adapter diagnostics metadata-only at this Bazilion-authored log boundary.
+  console.warn(JSON.stringify({ event, agentId, failure: 'telegram_adapter_failed' }))
 }
 
 function telegramEgressAllowed(

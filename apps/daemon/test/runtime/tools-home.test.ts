@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test } from 'vitest'
@@ -117,4 +117,21 @@ test('home tools are scoped to the provided agentDir — sibling agents do not c
   } finally {
     rmSync(other, { recursive: true, force: true })
   }
+})
+
+test('home tools never follow fixed-name symbolic links', async () => {
+  const secretPath = join(agentDir, 'outside-secret')
+  writeFileSync(secretPath, 'BOOTSTRAP_TOKEN_SENTINEL', 'utf8')
+  unlinkSync(join(agentDir, 'IDENTITY.md'))
+  symlinkSync(secretPath, join(agentDir, 'IDENTITY.md'))
+  const tools = createToolRegistry(homeTools(agentDir))
+
+  await expect(tools.invoke('home_read', JSON.stringify({ file: 'IDENTITY.md' }))).rejects.toThrow(
+    /symbolic links are not allowed/,
+  )
+  await expect(
+    tools.invoke('home_write', JSON.stringify({ file: 'IDENTITY.md', content: 'overwrite' })),
+  ).rejects.toThrow(/symbolic links are not allowed/)
+  expect(await tools.invoke('home_list', '{}')).not.toContain('IDENTITY.md')
+  expect(readFileSync(secretPath, 'utf8')).toBe('BOOTSTRAP_TOKEN_SENTINEL')
 })

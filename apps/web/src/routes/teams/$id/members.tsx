@@ -6,7 +6,7 @@ import { TeamTabs } from '../../../components/TeamTabs'
 import { daemonClient } from '../../../lib/daemon-client'
 
 const fetchMembers = createServerFn({ method: 'POST' })
-  .inputValidator((data: { id: string }) => data)
+  .validator((data: { id: string }) => data)
   .handler(({ data }) =>
     daemonClient().get<MembersProjection>(`/api/teams/${encodeURIComponent(data.id)}/policy`),
   )

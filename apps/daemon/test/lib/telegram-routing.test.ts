@@ -10,7 +10,7 @@ import { createProfile } from '../../src/core/profile/create.ts'
 import * as agentRepo from '../../src/core/repos/agents.ts'
 import { openConfig } from '../../src/core/repos/config.ts'
 import * as telegramAclRepo from '../../src/core/repos/telegram-acl.ts'
-import { pendingMessageCount } from '../../src/lib/telegram/inbound-queue.ts'
+import * as inboundQueue from '../../src/lib/telegram/inbound-queue.ts'
 import {
   _resetRouterStateForTest,
   type ReplyApi,
@@ -110,7 +110,7 @@ beforeEach(() => {
   _resetSpawnStateForTest()
   // Seed the default sender (user 11) as an allowlisted owner so the Phase 7
   // ACL gate doesn't claim/deny in tests that pre-date it. ACL-specific tests
-  // start from a fresh env (no seed) to exercise TOFU + deny.
+  // start from a fresh env (no seed) to exercise pairing + deny.
   telegramAclRepo.add(env.db, { userId: 11, role: 'owner', label: 'P' })
 })
 afterEach(() => env.cleanup())
@@ -146,7 +146,7 @@ describe('routeUpdate classification', () => {
       )
       expect(outcome).toMatchObject({ kind: 'agent_topic', queued: false })
       expect(lookups).toBe(0)
-      expect(pendingMessageCount(agent.id)).toBe(0)
+      expect(inboundQueue.pendingMessageCount(agent.id)).toBe(0)
       expect(sends.at(-1)?.text).toMatch(/pending approval/)
       expect(
         env.db.raw
@@ -186,7 +186,7 @@ describe('routeUpdate classification', () => {
       )
       expect(outcome).toMatchObject({ kind: 'agent_topic', queued: false })
       expect(lookups).toBe(0)
-      expect(pendingMessageCount(agent.id)).toBe(0)
+      expect(inboundQueue.pendingMessageCount(agent.id)).toBe(0)
       expect(sends.at(-1)?.text).toMatch(/blocked by Team policy/)
     } finally {
       if (previous === undefined) delete process.env.BAZILION_TEAM_POLICY_ENFORCEMENT
@@ -194,12 +194,16 @@ describe('routeUpdate classification', () => {
     }
   })
 
-  test('policy revocation during Telegram media fetch discards bytes before enqueue', async () => {
+  test('policy changes during media fetch preserve the exact queued attempt for final revalidation', async () => {
     const agent = spawnAgent(env.db, env.paths, { profileId: 'base', teamId: env.teamId })
     agentRepo.setTelegramTopicId(env.db, agent.id, 42)
     const previous = process.env.BAZILION_TEAM_POLICY_ENFORCEMENT
     process.env.BAZILION_TEAM_POLICY_ENFORCEMENT = 'on'
     const { api } = makeReplyApi()
+    const queued: unknown[][] = []
+    vi.spyOn(inboundQueue, 'enqueueAgentMessage').mockImplementation((...args) => {
+      queued.push(args)
+    })
     api.getFile = async () => ({ file_path: 'secret.jpg' })
     vi.stubGlobal('fetch', async () => {
       env.db.raw.run("DELETE FROM team_policy_edges WHERE team_id = ? AND source_kind = 'user'", [
@@ -218,13 +222,38 @@ describe('routeUpdate classification', () => {
         { db: env.db, paths: env.paths, authToken: 'token', botToken: 'bot', api, chatId: CHAT_ID },
         update,
       )
-      expect(outcome).toMatchObject({ kind: 'agent_topic', queued: false })
-      expect(pendingMessageCount(agent.id)).toBe(0)
+      expect(outcome).toMatchObject({ kind: 'agent_topic', queued: true })
+      expect(queued).toHaveLength(1)
+      expect(queued[0]?.[0]).toBe(agent.id)
+      expect(queued[0]?.[1]).toBe('')
+      expect(queued[0]?.[2]).toEqual([{ mimeType: 'image/jpeg', data: 'AQID' }])
+      expect(queued[0]?.[3]).toMatchObject({
+        origin: 'telegram_agent_topic',
+        attemptKind: 'telegram_ingress',
+        attemptId: `${CHAT_ID}:1`,
+        approvalPayloadKind: 'telegram_ingress',
+        requester: 'telegram:11',
+        approvalPayload: {
+          agentId: agent.id,
+          text: '',
+          media: {
+            kind: 'photo',
+            fileId: 'secret',
+            fileName: null,
+            mimeType: 'image/jpeg',
+            fileSize: 3,
+          },
+          chatId: CHAT_ID,
+          threadId: 42,
+          messageId: 1,
+        },
+      })
+      expect(queued[0]?.[4]).toEqual(expect.any(Function))
       expect(
         env.db.raw
           .query<{ count: number }, []>('SELECT COUNT(*) count FROM team_policy_block_events')
           .get()?.count,
-      ).toBe(1)
+      ).toBe(0)
     } finally {
       vi.unstubAllGlobals()
       if (previous === undefined) delete process.env.BAZILION_TEAM_POLICY_ENFORCEMENT
@@ -261,7 +290,51 @@ describe('routeUpdate classification', () => {
     expect(sends.length).toBe(0)
   })
 
-  test('ACL: first message on an empty allowlist claims owner (TOFU)', async () => {
+  test('edited and anonymous messages cannot enqueue an Agent turn', async () => {
+    const agent = spawnAgent(env.db, env.paths, {
+      profileId: 'base',
+      teamId: env.teamId,
+      name: 'identity-bound',
+    })
+    agentRepo.setTelegramTopicId(env.db, agent.id, 42)
+    const enqueue = vi.spyOn(inboundQueue, 'enqueueAgentMessage')
+    enqueue.mockClear()
+    const { api, sends } = makeReplyApi()
+
+    const edited = messageUpdate({ threadId: 42, text: 'changed after delivery' }) as Update
+    if (!edited.message) throw new Error('fixture did not create a message')
+    edited.edited_message = {
+      ...edited.message,
+      edit_date: Math.floor(Date.now() / 1000),
+    }
+    delete edited.message
+    expect(
+      await routeUpdate(
+        { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID },
+        edited,
+      ),
+    ).toEqual({ kind: 'ignored_edit' })
+
+    const anonymous = messageUpdate({ threadId: 42, text: 'anonymous admin' }) as Update
+    const anonymousMessage = anonymous.message as unknown as {
+      from?: unknown
+      sender_chat?: unknown
+      chat: unknown
+    }
+    anonymousMessage.from = undefined
+    anonymousMessage.sender_chat = anonymousMessage.chat
+    expect(
+      await routeUpdate(
+        { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID },
+        anonymous,
+      ),
+    ).toEqual({ kind: 'unauthorized', userId: 0 })
+
+    expect(enqueue).not.toHaveBeenCalled()
+    expect(sends).toEqual([])
+  })
+
+  test('ACL: an empty allowlist remains closed until a one-time code is paired', async () => {
     env.db.raw.run('DELETE FROM telegram_allowed_users')
     const { api, sends } = makeReplyApi()
     const u = messageUpdate({ threadId: SERVICE_TOPIC, text: '/help', fromUserId: 7 })
@@ -269,9 +342,18 @@ describe('routeUpdate classification', () => {
       { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID },
       u,
     )
-    expect(outcome.kind).toBe('owner_claimed')
+    expect(outcome.kind).toBe('pairing_required')
+    expect(telegramAclRepo.get(env.db, 7)).toBeNull()
+    expect(sends[0]?.text).toMatch(/not paired/i)
+
+    const { telegramPairingRepo } = await import('../../src/core/index.ts')
+    const challenge = telegramPairingRepo.create(env.db)
+    const paired = await routeUpdate(
+      { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID },
+      messageUpdate({ threadId: SERVICE_TOPIC, text: `/pair ${challenge.code}`, fromUserId: 7 }),
+    )
+    expect(paired.kind).toBe('paired_owner')
     expect(telegramAclRepo.get(env.db, 7)?.role).toBe('owner')
-    expect(sends[0]?.text).toMatch(/owner/i)
   })
 
   test('ACL: a non-allowlisted user is denied once enforcement is active', async () => {
@@ -530,7 +612,7 @@ describe('routeUpdate classification', () => {
     expect(created).toBeDefined()
   })
 
-  test('callback_query with unknown prefix is acked but ignored', async () => {
+  test('callback_query without configured-chat message context is denied', async () => {
     const { api, acks, edits, sends } = makeReplyApi()
     const u: Update = {
       update_id: 1,
@@ -545,7 +627,7 @@ describe('routeUpdate classification', () => {
       { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID },
       u,
     )
-    expect(outcome.kind).toBe('callback_unknown')
+    expect(outcome.kind).toBe('unauthorized')
     expect(acks.length).toBe(1)
     expect(edits.length).toBe(0)
     expect(sends.length).toBe(0)

@@ -1,6 +1,7 @@
 import { afterEach, expect, test } from 'vitest'
 import { createToolRegistry } from '../../src/runtime/tools/registry.ts'
-import { webTools } from '../../src/runtime/tools/web.ts'
+import { protectedWebFetchTool, webTools } from '../../src/runtime/tools/web.ts'
+import { isPrivateIpAddress } from '../../src/runtime/tools/web-ssrf.ts'
 import { type MockServer, startMockServer } from './mock-server.ts'
 
 let server: MockServer | null = null
@@ -260,6 +261,72 @@ test('web_fetch blocks private IP literals by default', async () => {
   await expect(
     tools.invoke('web_fetch', JSON.stringify({ url: 'http://127.0.0.1/' })),
   ).rejects.toThrow(/private/i)
+})
+
+test.each([
+  ['mapped loopback', 'http://[::ffff:127.0.0.1]/'],
+  ['mapped private', 'http://[::ffff:10.0.0.1]/'],
+  ['mapped link-local', 'http://[::ffff:169.254.1.1]/'],
+  ['mapped metadata', 'http://[::ffff:169.254.169.254]/'],
+  ['historical translated loopback', 'http://[::ffff:0:127.0.0.1]/'],
+  ['NAT64 translated metadata', 'http://[64:ff9b::169.254.169.254]/'],
+])('web_fetch blocks WHATWG-normalized IPv6 %s literals', async (_name, url) => {
+  const tools = createToolRegistry(webTools())
+  await expect(tools.invoke('web_fetch', JSON.stringify({ url }))).rejects.toThrow(/private/i)
+})
+
+test.each([
+  ['mapped loopback (dotted)', '::ffff:127.0.0.1'],
+  ['mapped loopback (hex)', '::ffff:7f00:1'],
+  ['mapped private', '::ffff:a00:1'],
+  ['mapped link-local', '::ffff:a9fe:101'],
+  ['mapped metadata', '::ffff:a9fe:a9fe'],
+  ['historical translated loopback', '::ffff:0:7f00:1'],
+  ['historical translated metadata', '::ffff:0:a9fe:a9fe'],
+  ['NAT64 translated loopback', '64:ff9b::7f00:1'],
+  ['NAT64 translated metadata', '64:ff9b::a9fe:a9fe'],
+  ['local-use translated loopback', '64:ff9b:1:7f00:0:100::'],
+  ['6to4 loopback', '2002:7f00:1::'],
+  ['full link-local /10 range', 'fe90::1'],
+])('classifies private resolver result: %s', (_name, address) => {
+  expect(isPrivateIpAddress(address)).toBe(true)
+})
+
+test.each([
+  ['mapped public IPv4', '::ffff:808:808'],
+  ['NAT64 public IPv4', '64:ff9b::808:808'],
+  ['public IPv6', '2001:4860:4860::8888'],
+])('does not overblock public resolver result: %s', (_name, address) => {
+  expect(isPrivateIpAddress(address)).toBe(false)
+})
+
+test('protected web surface exposes fetch only and cannot re-enable private or credentialed backends', async () => {
+  let hits = 0
+  const base = await startMock(() => {
+    hits += 1
+    return new Response('<html><body></body></html>', {
+      headers: { 'content-type': 'text/html' },
+    })
+  })
+  const maliciousOptions = {
+    fetchImpl: fetch,
+    allowPrivate: true,
+    firecrawlDisabled: false,
+    env: {
+      BRAVE_API_KEY: 'must-not-pass',
+      FIRECRAWL_API_KEY: 'must-not-pass',
+      FIRECRAWL_URL: base,
+      SEARXNG_URL: base,
+    },
+  } as unknown as Parameters<typeof protectedWebFetchTool>[0]
+  const tools = createToolRegistry([protectedWebFetchTool(maliciousOptions)])
+
+  expect(tools.list().map((tool) => tool.name)).toEqual(['web_fetch'])
+  expect(tools.list()[0]?.description).toContain('Private, loopback, link-local')
+  await expect(
+    tools.invoke('web_fetch', JSON.stringify({ url: `${base}/private` })),
+  ).rejects.toThrow(/blocked|private/i)
+  expect(hits).toBe(0)
 })
 
 test('web_fetch blocks localhost by default', async () => {

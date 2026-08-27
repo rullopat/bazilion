@@ -1,5 +1,15 @@
 # @bazilion/api-types
 
+## 0.13.0
+
+### Minor Changes
+
+- Add wire contracts for credential-minimal protected execution, trusted invocation identity,
+  protected readiness, and secret-free remediation.
+
+- Add wire contracts for the private gateway, expiring device credentials, bounded browser
+  sessions, session-bound CSRF, protected identity, detailed health, and backup/restore parity.
+
 ## 0.12.2
 
 ## 0.12.1

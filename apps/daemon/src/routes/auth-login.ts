@@ -1,14 +1,25 @@
 // /api/auth/openai/* — ChatGPT OAuth provider connection state.
 // /api/providers/test — model smoke-test.
-// /api/login — token-based browser login (sets the bz_token cookie).
+// /api/login — device-token exchange for bounded browser session cookies.
 
 import { spawn } from 'node:child_process'
-import type { ProviderTestRequest, ProviderTestResponse } from '@bazilion/api-types'
+import type {
+  AuthenticatedOwnerResponse,
+  ListSessionsResponse,
+  ProviderTestRequest,
+  ProviderTestResponse,
+} from '@bazilion/api-types'
 import { Hono } from 'hono'
-import { setCookie } from 'hono/cookie'
-import { isSetupComplete, mergeSecretsIntoEnv, providerStateRepo } from '../core/index.ts'
-import { isValidToken } from '../lib/auth.ts'
+import { deleteCookie, setCookie } from 'hono/cookie'
+import {
+  isSetupComplete,
+  mergeSecretsIntoEnv,
+  providerStateRepo,
+  webSessionRepo,
+} from '../core/index.ts'
+import { type AuthVariables, authenticateToken } from '../lib/auth.ts'
 import { getCtx } from '../lib/ctx.ts'
+import { resolvePublicOrigin } from '../lib/public-origin.ts'
 import {
   clearOpenAICodexCredentials,
   createProviderRegistry,
@@ -18,7 +29,7 @@ import {
   saveOpenAICodexLoginCredentials,
 } from '../runtime/index.ts'
 
-export const authRouter = new Hono()
+export const authRouter = new Hono<{ Variables: AuthVariables }>()
 
 // ─── Auth probe ──────────────────────────────────────────────────────────
 
@@ -31,9 +42,15 @@ export const authRouter = new Hono()
  * middleware-auth would have 401'd otherwise). The body just exposes the
  * setup-complete bit so the web layer can route accordingly.
  */
-authRouter.get('/auth/me', (c) => {
+authRouter.get('/auth/whoami', (c) => {
   const { db } = getCtx()
-  return c.json({ authed: true, setupComplete: isSetupComplete(db) })
+  const principal = c.get('authPrincipal') as AuthenticatedOwnerResponse['principal']
+  return c.json({
+    authenticated: true,
+    setupComplete: isSetupComplete(db),
+    publicOrigin: resolvePublicOrigin().origin,
+    principal,
+  } satisfies AuthenticatedOwnerResponse)
 })
 
 // ─── ChatGPT OAuth ───────────────────────────────────────────────────────
@@ -128,13 +145,11 @@ authRouter.post('/providers/test', async (c) => {
 // ─── Browser login ───────────────────────────────────────────────────────
 
 /**
- * Token-based login. Two body shapes accepted:
+ * Device-token login. Two body shapes accepted:
  *   - `application/json`: `{ token: "<value>" }` → returns `{ ok: true }` on
- *     success, sets the `bz_token` cookie. Used by clients (web pages, mobile)
- *     that prefer JSON.
+ *     success, sets bounded browser session and CSRF cookies.
  *   - `application/x-www-form-urlencoded`: `token=<value>` → 302 to `/` on
- *     success or `/login?error=1` on failure. Used by the legacy `<form>` on
- *     the Astro `/login` page; preserved for compatibility through Stage A.
+ *     success or `/login?error=1` on failure. Used by the web login form.
  */
 authRouter.post('/login', async (c) => {
   const ct = c.req.header('content-type') ?? ''
@@ -149,24 +164,61 @@ authRouter.post('/login', async (c) => {
     if (typeof v === 'string') token = v
   }
 
-  if (!token || !isValidToken(token)) {
+  const principal = token ? authenticateToken(token) : null
+  if (principal?.kind !== 'device') {
     if (ct.startsWith('application/json')) {
       return c.json({ error: 'invalid token' }, 401)
     }
     return c.redirect('/login?error=1', 302)
   }
 
-  setCookie(c, 'bz_token', token, {
+  const created = webSessionRepo.create(getCtx().db, principal.tokenId)
+  const origin = resolvePublicOrigin()
+  setCookie(c, origin.sessionCookie, created.cookieValue, {
     path: '/',
     httpOnly: true,
-    sameSite: 'Lax',
-    maxAge: 60 * 60 * 24 * 30,
+    secure: origin.production,
+    sameSite: 'Strict',
+    maxAge: 7 * 24 * 60 * 60,
+  })
+  setCookie(c, origin.csrfCookie, created.csrfToken, {
+    path: '/',
+    httpOnly: false,
+    secure: origin.production,
+    sameSite: 'Strict',
+    maxAge: 7 * 24 * 60 * 60,
   })
 
   if (ct.startsWith('application/json')) {
     return c.json({ ok: true })
   }
   return c.redirect('/', 302)
+})
+
+authRouter.post('/logout', (c) => {
+  const principal = c.get('authPrincipal') as AuthenticatedOwnerResponse['principal']
+  if (principal.kind !== 'session' || !principal.sessionId) {
+    return c.json({ error: 'browser session required' }, 400)
+  }
+  webSessionRepo.revoke(getCtx().db, principal.sessionId)
+  const origin = resolvePublicOrigin()
+  deleteCookie(c, origin.sessionCookie, { path: '/', secure: origin.production })
+  deleteCookie(c, origin.csrfCookie, { path: '/', secure: origin.production })
+  return c.json({ ok: true })
+})
+
+authRouter.get('/sessions', (c) => {
+  const principal = c.get('authPrincipal') as AuthenticatedOwnerResponse['principal']
+  return c.json({
+    sessions: webSessionRepo.list(getCtx().db, { currentId: principal.sessionId ?? undefined }),
+  } satisfies ListSessionsResponse)
+})
+
+authRouter.delete('/sessions/:id', (c) => {
+  if (!webSessionRepo.revoke(getCtx().db, c.req.param('id'))) {
+    return c.json({ error: 'session not found or already revoked' }, 409)
+  }
+  return c.body(null, 204)
 })
 
 /**

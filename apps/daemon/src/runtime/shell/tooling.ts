@@ -7,7 +7,12 @@ import {
   type ToolDefinition,
 } from '@earendil-works/pi-coding-agent'
 import { type BashApprovalHost, createApprovalGatedBashTool } from './approval.ts'
-import { createDockerBashOperations, type DockerReadOnlyMount } from './docker.ts'
+import {
+  createDockerBashOperations,
+  createPreparedDockerBashOperations,
+  type DockerReadOnlyMount,
+  type ProtectedDockerRuntime,
+} from './docker.ts'
 import {
   buildScrubbedShellEnv,
   resolveShellSecurityConfig,
@@ -36,6 +41,32 @@ export interface SessionShellTools {
   hostToolNames: readonly string[]
   /** Same-name replacement for Pi's built-in bash when isolation or approval is active. */
   customBash?: ToolDefinition
+}
+
+/** Build the mandatory Docker-only coding surface for a protected turn. */
+export function createProtectedSessionShellTools(
+  cwd: string,
+  runtime: ProtectedDockerRuntime,
+  approvalHost: BashApprovalHost,
+): SessionShellTools {
+  const base = createBashToolDefinition(cwd, {
+    operations: createPreparedDockerBashOperations(runtime),
+  })
+  const dockerBash = defineTool({
+    ...base,
+    label: 'bash (protected Docker sandbox)',
+    description: `${base.description} Runs in an ephemeral, network-disabled Docker container with the Team workspace mounted read/write plus only the preflighted read-only memory, skill, and attachment mounts. Host files, host tools, and host credentials are unavailable.`,
+  })
+  return {
+    config: {
+      sandboxMode: 'docker',
+      approvalMode: 'dangerous',
+      sandboxImage: runtime.image,
+      envAllowlist: [],
+    },
+    hostToolNames: [],
+    customBash: createApprovalGatedBashTool(dockerBash, approvalHost),
+  }
 }
 
 /**

@@ -18,16 +18,16 @@ import {
 // canned event streams. Wire-format correctness (SSE framing, provider-specific
 // request shapes) is pi-ai's responsibility and covered by its own test suite.
 
-test('Pi 0.83 catalog includes the refreshed model families and Qwen providers', () => {
+test('Pi 0.84 catalog includes the refreshed model families and provider additions', () => {
   expect(getBuiltinModels('openai-codex').map((model) => model.id)).toContain('gpt-5.6-sol')
   expect(getBuiltinModels('anthropic').map((model) => model.id)).toContain('claude-opus-5')
   expect(getBuiltinModels('google').map((model) => model.id)).toContain('gemini-3.6-flash')
-  expect(getBuiltinModels('qwen-token-plan').map((model) => model.id)).toContain(
-    'qwen3.8-max-preview',
+  expect(getBuiltinModels('qwen-token-plan').map((model) => model.id)).toContain('qwen3.8-max')
+  expect(getBuiltinModels('qwen-token-plan-cn').map((model) => model.id)).toContain('qwen3.8-max')
+  expect(getBuiltinModels('qwen-token-plan-individual').map((model) => model.id)).toContain(
+    'qwen3.8-max',
   )
-  expect(getBuiltinModels('qwen-token-plan-cn').map((model) => model.id)).toContain(
-    'qwen3.8-max-preview',
-  )
+  expect(getBuiltinModels('baseten').map((model) => model.id)).toContain('moonshotai/Kimi-K3')
 })
 
 function fauxRuntime(response: ReturnType<typeof fauxAssistantMessage>) {
@@ -136,6 +136,7 @@ test('registry resolves every configured provider:model string', () => {
     deepseek: { apiKey: 'k' },
     fireworks: { apiKey: 'k' },
     together: { apiKey: 'k' },
+    baseten: { apiKey: 'k' },
     moonshotai: { apiKey: 'k' },
     moonshotaiCn: { apiKey: 'k' },
     kimiCoding: { apiKey: 'k' },
@@ -143,6 +144,7 @@ test('registry resolves every configured provider:model string', () => {
     minimaxCn: { apiKey: 'k' },
     qwenTokenPlan: { apiKey: 'k' },
     qwenTokenPlanCn: { apiKey: 'k' },
+    qwenTokenPlanIndividual: { apiKey: 'k' },
     xiaomi: { apiKey: 'k' },
     xiaomiTokenPlanAms: { apiKey: 'k' },
     xiaomiTokenPlanCn: { apiKey: 'k' },
@@ -174,6 +176,7 @@ test('registry resolves every configured provider:model string', () => {
     'deepseek',
     'fireworks',
     'together',
+    'baseten',
     'moonshotai',
     'moonshotai-cn',
     'kimi-coding',
@@ -181,6 +184,7 @@ test('registry resolves every configured provider:model string', () => {
     'minimax-cn',
     'qwen-token-plan',
     'qwen-token-plan-cn',
+    'qwen-token-plan-individual',
     'xiaomi',
     'xiaomi-token-plan-ams',
     'xiaomi-token-plan-cn',

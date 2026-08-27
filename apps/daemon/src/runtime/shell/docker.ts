@@ -1,9 +1,9 @@
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { closeSync, constants, mkdtempSync, openSync, rmSync, writeFileSync } from 'node:fs'
-import { access, realpath, stat } from 'node:fs/promises'
+import { access, lstat, realpath, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { isAbsolute, join, relative, sep } from 'node:path'
+import { delimiter, isAbsolute, join, relative, sep } from 'node:path'
 import type { BashOperations } from '@earendil-works/pi-coding-agent'
 
 const CONTAINER_WORKDIR = '/workspace'
@@ -13,6 +13,8 @@ const CLEANUP_TIMEOUT_MS = 650
 const CLEANUP_RETRY_DELAY_MS = 100
 const CLEANUP_ATTEMPTS = 3
 const DOCKER_CONTEXT_TIMEOUT_MS = 2_000
+const DOCKER_CREATE_TIMEOUT_MS = 5_000
+const DOCKER_PROBE_START_TIMEOUT_MS = 2_000
 const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/
 const CONTAINER_NAME = /^[A-Za-z0-9][A-Za-z0-9_.-]+$/
 const DOCKER_CLIENT_ENV_KEYS = [
@@ -57,6 +59,90 @@ export interface DockerReadOnlyMount {
   target: string
   /** Canonical host root the resolved source must remain within. */
   sourceRoot?: string
+}
+
+export interface ProtectedContainerEnvironment {
+  PATH: string
+  HOME: '/tmp'
+  LANG: 'C.UTF-8'
+  LC_ALL: 'C.UTF-8'
+  SHELL: '/bin/bash'
+  TMPDIR: '/tmp'
+}
+
+export interface ProtectedDockerMount {
+  source: string
+  target: string
+  sourceRoot: string
+}
+
+export interface ProtectedDockerExecutableIdentity {
+  device: string
+  inode: string
+  mode: string
+  size: string
+  modifiedTimeNs: string
+  changedTimeNs: string
+}
+
+/** Fully inspected, serializable Docker facts carried by a protected worker. */
+export interface ProtectedDockerRuntime {
+  dockerPath: string
+  executableIdentity: ProtectedDockerExecutableIdentity
+  endpoint: string
+  image: string
+  imageId: string
+  uid: number
+  gid: number
+  workspace: ProtectedDockerMount
+  readOnlyMounts: ProtectedDockerMount[]
+  containerEnv: ProtectedContainerEnvironment
+}
+
+export interface ProtectedDockerPreflightInput {
+  image: string
+  workspaceDir: string
+  /** Canonical boundary the registered Team workspace must remain within. */
+  workspaceRoot?: string
+  readOnlyMounts?: readonly Required<DockerReadOnlyMount>[]
+  /** Absolute path or executable name resolved once in the daemon. */
+  dockerPath?: string
+  /** Daemon environment used only during preflight discovery. */
+  hostEnv?: Readonly<NodeJS.ProcessEnv>
+}
+
+export type ProtectedDockerReadiness =
+  | { ready: true; image: string }
+  | {
+      ready: false
+      image: string
+      reason:
+        | 'unsupported platform'
+        | 'Docker executable is unavailable'
+        | 'Docker must use a local Unix socket'
+        | 'Docker socket is unavailable'
+        | 'Docker image is unavailable'
+        | 'Docker image declares writable volumes'
+        | 'Docker preflight failed'
+    }
+
+interface ProtectedDockerEngineRuntime {
+  dockerPath: string
+  executableIdentity: ProtectedDockerExecutableIdentity
+  endpoint: string
+  image: string
+  imageId: string
+  uid: number
+  gid: number
+}
+
+const PROTECTED_CONTAINER_ENV: ProtectedContainerEnvironment = {
+  PATH: '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
+  HOME: '/tmp',
+  LANG: 'C.UTF-8',
+  LC_ALL: 'C.UTF-8',
+  SHELL: '/bin/bash',
+  TMPDIR: '/tmp',
 }
 
 export interface DockerRunSpecInput extends DockerBashOptions {
@@ -176,6 +262,494 @@ export function buildDockerRunSpec(input: DockerRunSpecInput): DockerRunSpec {
     mountSource: input.mountSource,
     processEnv,
     ...(envFileLines.length > 0 ? { envFileContent: `${envFileLines.join('\n')}\n` } : {}),
+  }
+}
+
+/**
+ * Secret-free readiness projection for health/config surfaces. It verifies the
+ * absolute executable, local Unix endpoint, socket access, immutable image id,
+ * and image VOLUME policy without returning any host path or endpoint.
+ */
+export async function checkProtectedDockerReadiness(
+  input: Pick<ProtectedDockerPreflightInput, 'image' | 'dockerPath' | 'hostEnv'>,
+): Promise<ProtectedDockerReadiness> {
+  try {
+    const engine = await preflightProtectedDockerEngine(input)
+    await proveProtectedImageReadiness(engine)
+    return { ready: true, image: input.image }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    let reason: Exclude<ProtectedDockerReadiness, { ready: true }>['reason']
+    if (/numeric uid\/gid|supported only on POSIX/i.test(message)) reason = 'unsupported platform'
+    else if (/required \/bin\/bash and \/usr\/bin\/env probe/i.test(message)) {
+      reason = 'Docker preflight failed'
+    } else if (/executable|ENOENT|not found|spawn/i.test(message)) {
+      reason = 'Docker executable is unavailable'
+    } else if (/local Unix-socket context/i.test(message)) {
+      reason = 'Docker must use a local Unix socket'
+    } else if (/Unix socket/i.test(message)) reason = 'Docker socket is unavailable'
+    else if (/declares writable volumes/i.test(message)) {
+      reason = 'Docker image declares writable volumes'
+    } else if (
+      /image.*unavailable|no such image|unable to find image|manifest unknown/i.test(message)
+    ) {
+      reason = 'Docker image is unavailable'
+    } else reason = 'Docker preflight failed'
+    return { ready: false, image: input.image, reason }
+  }
+}
+
+async function proveProtectedImageReadiness(engine: ProtectedDockerEngineRuntime): Promise<void> {
+  const scratchDir = mkdtempSync(join(tmpdir(), 'bazilion-docker-readiness-'))
+  try {
+    const source = await resolveMountSource(scratchDir)
+    await proveProtectedContainerCreation(
+      engine,
+      { source, sourceRoot: source, target: CONTAINER_WORKDIR },
+      [],
+    )
+  } finally {
+    rmSync(scratchDir, { recursive: true, force: true })
+  }
+}
+
+/** Resolve every protected Docker fact before a worker is spawned. */
+export async function preflightProtectedDockerRuntime(
+  input: ProtectedDockerPreflightInput,
+): Promise<ProtectedDockerRuntime> {
+  const engine = await preflightProtectedDockerEngine(input)
+  const workspaceSource = await resolveMountSource(input.workspaceDir)
+  const workspaceRoot = await resolveRequiredRoot(input.workspaceRoot ?? input.workspaceDir)
+  if (!isWithin(workspaceRoot, workspaceSource)) {
+    throw new Error('Docker sandbox workspace escaped its configured root')
+  }
+  const workspace: ProtectedDockerMount = {
+    source: workspaceSource,
+    target: CONTAINER_WORKDIR,
+    sourceRoot: workspaceRoot,
+  }
+
+  const readOnlyMounts = await Promise.all(
+    (input.readOnlyMounts ?? []).map((mount) => prepareProtectedReadOnlyMount(mount)),
+  )
+  validateReadOnlyMounts(readOnlyMounts, workspace.source)
+
+  await proveProtectedContainerCreation(engine, workspace, readOnlyMounts)
+
+  return {
+    ...engine,
+    workspace,
+    readOnlyMounts,
+    containerEnv: { ...PROTECTED_CONTAINER_ENV },
+  }
+}
+
+/**
+ * Execute against daemon-preflighted facts. Mutable paths, socket access, tag
+ * identity, and VOLUME policy are rechecked immediately before every command.
+ */
+export function createPreparedDockerBashOperations(
+  runtime: ProtectedDockerRuntime,
+): BashOperations {
+  validatePreparedDockerRuntime(runtime)
+  return {
+    async exec(command, cwd, { onData, signal, timeout }) {
+      const timeoutMs = resolveTimeoutMs(timeout)
+      if (signal?.aborted) throw new Error('aborted')
+
+      const workspace = await recheckProtectedMount(runtime.workspace)
+      const requestedCwd = await resolveMountSource(cwd)
+      if (requestedCwd !== workspace.source) {
+        throw new Error('Docker sandbox execution workspace no longer matches preflight')
+      }
+      const readOnlyMounts = await Promise.all(
+        runtime.readOnlyMounts.map((mount) => recheckProtectedMount(mount)),
+      )
+      await assertDockerExecutableIdentity(runtime.dockerPath, runtime.executableIdentity)
+      await assertLocalDockerSocket(runtime.endpoint)
+      const dockerClientEnv: NodeJS.ProcessEnv = { DOCKER_HOST: runtime.endpoint }
+      const currentImageId = await inspectSandboxImage(
+        runtime.dockerPath,
+        runtime.image,
+        dockerClientEnv,
+      )
+      if (currentImageId !== runtime.imageId) {
+        throw new Error('Docker sandbox image no longer matches its preflighted immutable id')
+      }
+      await assertDockerExecutableIdentity(runtime.dockerPath, runtime.executableIdentity)
+      if (signal?.aborted) throw new Error('aborted')
+
+      const containerName = `bazilion-bash-${process.pid}-${randomUUID().replaceAll('-', '')}`
+      const spec = buildDockerRunSpec({
+        image: runtime.image,
+        resolvedImage: runtime.imageId,
+        env: { ...runtime.containerEnv },
+        dockerPath: runtime.dockerPath,
+        hostEnv: dockerClientEnv,
+        command,
+        mountSource: workspace.source,
+        readOnlyMounts,
+        containerName,
+        uid: runtime.uid,
+        gid: runtime.gid,
+      })
+      return executeDockerRun(spec, { onData, signal, timeout, timeoutMs })
+    },
+  }
+}
+
+async function preflightProtectedDockerEngine(
+  input: Pick<ProtectedDockerPreflightInput, 'image' | 'dockerPath' | 'hostEnv'>,
+): Promise<ProtectedDockerEngineRuntime> {
+  validateImage(input.image)
+  const { uid, gid } = hostIdentity()
+  const hostEnv = input.hostEnv ?? process.env
+  const dockerPath = await resolveAbsoluteDockerPath(input.dockerPath ?? 'docker', hostEnv)
+  const executableIdentity = await inspectDockerExecutableIdentity(dockerPath)
+  const dockerClientEnv = await resolveLocalDockerClientEnv(dockerPath, hostEnv)
+  const endpoint = dockerClientEnv.DOCKER_HOST
+  if (!endpoint) throw new Error('Docker sandbox local Unix socket is unavailable')
+  await assertLocalDockerSocket(endpoint)
+  const imageId = await inspectSandboxImage(dockerPath, input.image, dockerClientEnv)
+  await assertDockerExecutableIdentity(dockerPath, executableIdentity)
+  return { dockerPath, executableIdentity, endpoint, image: input.image, imageId, uid, gid }
+}
+
+async function proveProtectedContainerCreation(
+  engine: ProtectedDockerEngineRuntime,
+  workspace: ProtectedDockerMount,
+  readOnlyMounts: ProtectedDockerMount[],
+): Promise<void> {
+  const containerName = `bazilion-preflight-${process.pid}-${randomUUID().replaceAll('-', '')}`
+  const dockerClientEnv: NodeJS.ProcessEnv = { DOCKER_HOST: engine.endpoint }
+  const spec = buildDockerRunSpec({
+    image: engine.image,
+    resolvedImage: engine.imageId,
+    env: { ...PROTECTED_CONTAINER_ENV },
+    dockerPath: engine.dockerPath,
+    hostEnv: dockerClientEnv,
+    command: 'true',
+    mountSource: workspace.source,
+    readOnlyMounts,
+    containerName,
+    uid: engine.uid,
+    gid: engine.gid,
+  })
+
+  await assertDockerExecutableIdentity(engine.dockerPath, engine.executableIdentity)
+  let preflightError: unknown
+  try {
+    await runProtectedContainerCreate(spec)
+    // `docker container create` validates the pinned image and mount/runtime
+    // configuration, but it does not resolve or execute the image entrypoint.
+    // Start the exact container as well so readiness proves both required
+    // executables (`/bin/bash` and `/usr/bin/env`) before a provider can be
+    // prompted. The known `true` command still runs with the same no-network,
+    // read-only, clean-environment policy used by protected model commands.
+    await assertDockerExecutableIdentity(engine.dockerPath, engine.executableIdentity)
+    await runProtectedContainerProbe(spec)
+  } catch (error) {
+    preflightError = error
+  }
+
+  try {
+    await assertDockerExecutableIdentity(engine.dockerPath, engine.executableIdentity)
+    await removePreflightContainer(engine.dockerPath, containerName, dockerClientEnv)
+    await assertDockerExecutableIdentity(engine.dockerPath, engine.executableIdentity)
+  } catch (cleanupError) {
+    if (preflightError) {
+      throw new Error(
+        'Docker sandbox preflight failed and probe container cleanup could not be confirmed',
+        { cause: cleanupError },
+      )
+    }
+    throw cleanupError
+  }
+
+  if (preflightError) throw preflightError
+}
+
+function runProtectedContainerCreate(spec: DockerRunSpec): Promise<void> {
+  let envFileFd: number | undefined
+  try {
+    if (spec.envFileContent !== undefined) {
+      envFileFd = openAnonymousEnvFile(spec.envFileContent)
+    }
+  } catch (error) {
+    return Promise.reject(
+      new Error(
+        `Docker sandbox could not prepare its preflight environment: ${error instanceof Error ? error.message : String(error)}`,
+      ),
+    )
+  }
+
+  return new Promise((resolve, reject) => {
+    let child: ReturnType<typeof spawn>
+    try {
+      child = spawn(spec.executable, ['container', 'create', ...spec.args.slice(1)], {
+        stdio: ['ignore', 'ignore', 'pipe', envFileFd ?? 'ignore'],
+        windowsHide: true,
+        env: spec.processEnv,
+      })
+    } catch (error) {
+      if (envFileFd !== undefined) closeSync(envFileFd)
+      reject(error instanceof Error ? formatSpawnError(spec.executable, error) : error)
+      return
+    }
+    if (envFileFd !== undefined) closeSync(envFileFd)
+
+    let settled = false
+    let stderr = ''
+    let timeoutHandle: NodeJS.Timeout | undefined
+    let killSettleHandle: NodeJS.Timeout | undefined
+    let timedOut = false
+    const finish = (error?: Error) => {
+      if (settled) return
+      settled = true
+      if (timeoutHandle) clearTimeout(timeoutHandle)
+      if (killSettleHandle) clearTimeout(killSettleHandle)
+      if (error) reject(error)
+      else resolve()
+    }
+
+    const timeoutError = () =>
+      new Error(
+        `Docker sandbox could not create its protected preflight container within ${DOCKER_CREATE_TIMEOUT_MS}ms`,
+      )
+
+    child.stderr?.on('data', (data: Buffer) => {
+      stderr = `${stderr}${data.toString('utf8')}`.slice(-MAX_STDERR_CHARS)
+    })
+    child.once('error', (error) => finish(formatSpawnError(spec.executable, error)))
+    child.once('close', (code) => {
+      if (timedOut) finish(timeoutError())
+      else if (code === 0) finish()
+      else finish(formatDockerCreateError(spec, stderr, code))
+    })
+    timeoutHandle = setTimeout(() => {
+      timedOut = true
+      child.kill('SIGKILL')
+      // SIGKILL should close promptly. Keep a separate bound so a pathological
+      // child cannot prevent the exact-name cleanup phase from running.
+      killSettleHandle = setTimeout(() => finish(timeoutError()), CLEANUP_TIMEOUT_MS)
+    }, DOCKER_CREATE_TIMEOUT_MS)
+  })
+}
+
+function runProtectedContainerProbe(spec: DockerRunSpec): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let child: ReturnType<typeof spawn>
+    try {
+      child = spawn(spec.executable, ['container', 'start', '--attach', spec.containerName], {
+        stdio: ['ignore', 'ignore', 'pipe'],
+        windowsHide: true,
+        env: spec.processEnv,
+      })
+    } catch (error) {
+      reject(error instanceof Error ? formatSpawnError(spec.executable, error) : error)
+      return
+    }
+
+    let settled = false
+    let stderr = ''
+    let timeoutHandle: NodeJS.Timeout | undefined
+    let killSettleHandle: NodeJS.Timeout | undefined
+    let timedOut = false
+    const finish = (error?: Error) => {
+      if (settled) return
+      settled = true
+      if (timeoutHandle) clearTimeout(timeoutHandle)
+      if (killSettleHandle) clearTimeout(killSettleHandle)
+      if (error) reject(error)
+      else resolve()
+    }
+
+    const timeoutError = () =>
+      new Error(
+        `Docker sandbox could not start its protected preflight container within ${DOCKER_PROBE_START_TIMEOUT_MS}ms`,
+      )
+
+    child.stderr?.on('data', (data: Buffer) => {
+      stderr = `${stderr}${data.toString('utf8')}`.slice(-MAX_STDERR_CHARS)
+    })
+    child.once('error', (error) => finish(formatSpawnError(spec.executable, error)))
+    child.once('close', (code) => {
+      if (timedOut) finish(timeoutError())
+      else if (code === 0) finish()
+      else finish(formatDockerProbeError(spec, stderr, code))
+    })
+    timeoutHandle = setTimeout(() => {
+      timedOut = true
+      child.kill('SIGKILL')
+      // Bound the handoff to exact-name force cleanup even if the Docker CLI
+      // itself does not report close promptly after termination.
+      killSettleHandle = setTimeout(() => finish(timeoutError()), CLEANUP_TIMEOUT_MS)
+    }, DOCKER_PROBE_START_TIMEOUT_MS)
+  })
+}
+
+async function removePreflightContainer(
+  dockerPath: string,
+  containerName: string,
+  processEnv: NodeJS.ProcessEnv,
+): Promise<void> {
+  const args = ['container', 'rm', '--force', containerName]
+  let last: CleanupResult | undefined
+  for (let attempt = 0; attempt < CLEANUP_ATTEMPTS; attempt += 1) {
+    last = await runCleanupCommand(dockerPath, args, processEnv)
+    if (last.ok) return
+    if (attempt < CLEANUP_ATTEMPTS - 1) {
+      await new Promise<void>((resolve) => setTimeout(resolve, CLEANUP_RETRY_DELAY_MS))
+    }
+  }
+  // Repeated exact-name misses across the retry window confirm that a failed
+  // or killed create did not materialize its container late.
+  if (last?.missing) return
+  throw new Error('Docker sandbox could not confirm cleanup of its preflight container')
+}
+
+async function prepareProtectedReadOnlyMount(
+  mount: Required<DockerReadOnlyMount>,
+): Promise<ProtectedDockerMount> {
+  const sourceInfo = await lstat(mount.source)
+  if (sourceInfo.isSymbolicLink() || !sourceInfo.isDirectory()) {
+    throw new Error(`Docker sandbox read-only mount must be a real directory: ${mount.source}`)
+  }
+  const sourceRoot = await resolveRequiredRoot(mount.sourceRoot)
+  const source = await resolveMountSource(mount.source)
+  if (!isWithin(sourceRoot, source)) {
+    throw new Error(`Docker sandbox read-only mount escaped its configured root: ${mount.source}`)
+  }
+  return { source, target: mount.target, sourceRoot }
+}
+
+async function recheckProtectedMount(mount: ProtectedDockerMount): Promise<ProtectedDockerMount> {
+  const sourceInfo = await lstat(mount.source)
+  if (sourceInfo.isSymbolicLink() || !sourceInfo.isDirectory()) {
+    throw new Error('Docker sandbox mount no longer matches preflight')
+  }
+  const sourceRoot = await resolveRequiredRoot(mount.sourceRoot)
+  const source = await resolveMountSource(mount.source)
+  if (sourceRoot !== mount.sourceRoot || source !== mount.source || !isWithin(sourceRoot, source)) {
+    throw new Error('Docker sandbox mount no longer matches preflight')
+  }
+  return { ...mount, source, sourceRoot }
+}
+
+async function resolveRequiredRoot(root: string): Promise<string> {
+  if (!isAbsolute(root)) throw new Error('Docker sandbox mount root must be absolute')
+  return resolveMountSource(root)
+}
+
+async function resolveAbsoluteDockerPath(
+  requested: string,
+  hostEnv: Readonly<NodeJS.ProcessEnv>,
+): Promise<string> {
+  validateDockerPath(requested)
+  const candidates = isAbsolute(requested)
+    ? [requested]
+    : (hostEnv.PATH ?? '')
+        .split(delimiter)
+        .filter(Boolean)
+        .map((dir) => join(dir, requested))
+  for (const candidate of candidates) {
+    try {
+      await access(candidate, constants.X_OK)
+      const info = await stat(candidate)
+      if (!info.isFile()) continue
+      const canonical = await realpath(candidate)
+      if (!isAbsolute(canonical)) continue
+      return canonical
+    } catch {
+      // Keep looking through the daemon's PATH; protected workers never inherit it.
+    }
+  }
+  throw new Error(`Docker sandbox executable is unavailable: ${requested}`)
+}
+
+async function inspectDockerExecutableIdentity(
+  dockerPath: string,
+): Promise<ProtectedDockerExecutableIdentity> {
+  try {
+    await access(dockerPath, constants.X_OK)
+    const info = await stat(dockerPath, { bigint: true })
+    if (!info.isFile()) throw new Error('not a regular file')
+    return {
+      device: info.dev.toString(),
+      inode: info.ino.toString(),
+      mode: info.mode.toString(),
+      size: info.size.toString(),
+      modifiedTimeNs: info.mtimeNs.toString(),
+      changedTimeNs: info.ctimeNs.toString(),
+    }
+  } catch {
+    throw new Error(`Docker sandbox executable is unavailable: ${dockerPath}`)
+  }
+}
+
+async function assertDockerExecutableIdentity(
+  dockerPath: string,
+  expected: ProtectedDockerExecutableIdentity,
+): Promise<void> {
+  let current: ProtectedDockerExecutableIdentity
+  try {
+    current = await inspectDockerExecutableIdentity(dockerPath)
+  } catch {
+    throw new Error('Docker sandbox executable no longer matches its preflighted identity')
+  }
+  if (JSON.stringify(current) !== JSON.stringify(expected)) {
+    throw new Error('Docker sandbox executable no longer matches its preflighted identity')
+  }
+}
+
+async function assertLocalDockerSocket(endpoint: string): Promise<void> {
+  const prefix = 'unix://'
+  if (!endpoint.startsWith(prefix) || !isAbsolute(endpoint.slice(prefix.length))) {
+    throw new Error('Docker sandbox requires a local Unix-socket context')
+  }
+  const socketPath = endpoint.slice(prefix.length)
+  try {
+    const info = await stat(socketPath)
+    if (!info.isSocket()) throw new Error('not a Unix socket')
+    await access(socketPath, constants.R_OK | constants.W_OK)
+  } catch {
+    throw new Error('Docker sandbox local Unix socket is unavailable')
+  }
+}
+
+function validatePreparedDockerRuntime(runtime: ProtectedDockerRuntime): void {
+  if (!isAbsolute(runtime.dockerPath)) {
+    throw new Error('protected Docker executable must be absolute')
+  }
+  validateDockerPath(runtime.dockerPath)
+  validateDockerExecutableIdentity(runtime.executableIdentity)
+  validateImage(runtime.image)
+  validateImage(runtime.imageId)
+  validateHostIdentity(runtime.uid, runtime.gid)
+  if (!runtime.endpoint.startsWith('unix://')) {
+    throw new Error('protected Docker endpoint must be a local Unix socket')
+  }
+  validateReadOnlyMounts(runtime.readOnlyMounts, runtime.workspace.source)
+  const expectedEnvironment = JSON.stringify(PROTECTED_CONTAINER_ENV)
+  if (JSON.stringify(runtime.containerEnv) !== expectedEnvironment) {
+    throw new Error('protected Docker container environment does not match policy')
+  }
+}
+
+function validateDockerExecutableIdentity(identity: ProtectedDockerExecutableIdentity): void {
+  if (typeof identity !== 'object' || identity === null) {
+    throw new Error('protected Docker executable identity is invalid')
+  }
+  const fields = [
+    identity.device,
+    identity.inode,
+    identity.mode,
+    identity.size,
+    identity.modifiedTimeNs,
+    identity.changedTimeNs,
+  ]
+  if (fields.some((field) => typeof field !== 'string' || !/^\d+$/.test(field))) {
+    throw new Error('protected Docker executable identity is invalid')
   }
 }
 
@@ -681,6 +1255,38 @@ function formatDockerRunError(spec: DockerRunSpec, stderr: string): Error {
     return new Error(`Docker sandbox unavailable: ${detail}`)
   }
   return new Error(`Docker sandbox failed to start container "${spec.containerName}": ${detail}`)
+}
+
+function formatDockerCreateError(
+  spec: DockerRunSpec,
+  stderr: string,
+  exitCode: number | null,
+): Error {
+  const detail =
+    stderr.trim() ||
+    `Docker exited with ${exitCode === null ? 'no status' : `status ${exitCode}`} without an error message`
+  if (
+    /mounts denied|invalid mount config|bind source path does not exist|mount.*failed/i.test(detail)
+  ) {
+    return new Error(`Docker sandbox preflight mount failed for "${spec.mountSource}": ${detail}`)
+  }
+  if (/cannot connect to the docker daemon|is the docker daemon running/i.test(detail)) {
+    return new Error(`Docker sandbox preflight could not reach the local Docker daemon: ${detail}`)
+  }
+  return new Error(`Docker sandbox preflight could not create the required container: ${detail}`)
+}
+
+function formatDockerProbeError(
+  spec: DockerRunSpec,
+  stderr: string,
+  exitCode: number | null,
+): Error {
+  const detail =
+    stderr.trim() ||
+    `Docker exited with ${exitCode === null ? 'no status' : `status ${exitCode}`} without an error message`
+  return new Error(
+    `Docker sandbox image "${spec.image}" could not run the required /bin/bash and /usr/bin/env probe: ${detail}`,
+  )
 }
 
 async function removeContainer(

@@ -2,6 +2,7 @@ import { Link, useRouterState } from '@tanstack/react-router'
 import {
   Bot,
   LayoutTemplate,
+  LogOut,
   BellRing,
   Settings2,
   ShieldCheck,
@@ -32,6 +33,11 @@ export function TopNav() {
       .then((body) => setAttentionCount(body?.openTotal ?? 0))
       .catch(() => {})
   }, [pathname])
+
+  async function logout() {
+    const response = await fetch('/api/logout', { method: 'POST' })
+    if (response.ok) window.location.assign('/login')
+  }
 
   return (
     <nav
@@ -78,8 +84,17 @@ export function TopNav() {
         })}
       </div>
 
-      <div className="col-start-2 row-start-1 md:col-auto md:row-auto md:ml-auto">
+      <div className="col-start-2 row-start-1 flex items-center gap-1 md:col-auto md:row-auto md:ml-auto">
         <ThemeToggle />
+        <button
+          type="button"
+          onClick={logout}
+          aria-label="Log out"
+          title="Log out"
+          className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-mocha hover:bg-ivory hover:text-sapphire"
+        >
+          <LogOut className="h-4 w-4" aria-hidden="true" />
+        </button>
       </div>
     </nav>
   )

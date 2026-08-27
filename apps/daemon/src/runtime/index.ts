@@ -20,10 +20,17 @@ export {
   piMessagesToProviderView,
   translatePiEvent,
 } from './pi/events.ts'
-export type { BazilionSessionHandle, CreateBazilionSessionOptions } from './pi/session.ts'
+export type {
+  BazilionSessionHandle,
+  CreateBazilionSessionOptions,
+  CreateProtectedBazilionSessionOptions,
+  CreateRestrictedReviewSessionOptions,
+} from './pi/session.ts'
 export {
   countSessionMessagesForTest,
   createBazilionSession,
+  createProtectedBazilionSession,
+  createRestrictedReviewSession,
   isProviderEnabled,
   loadEnabledRegistry,
   loadInitialMessages,
@@ -34,13 +41,22 @@ export {
 // Pi-coding-agent integration surface. The worker runs inside a
 // `BazilionSession` (pi's AgentSession wrapper) and endpoints (/compact,
 // /context, /reset) drive pi session operations directly.
-export type { BazilionCustomToolsOpts } from './pi/tools.ts'
-export { createBazilionCustomTools, ourToolToPiTool } from './pi/tools.ts'
+export type { BazilionCustomToolsOpts, ProtectedBazilionCustomToolsOpts } from './pi/tools.ts'
+export {
+  createBazilionCustomTools,
+  createProtectedBazilionCustomTools,
+  ourToolToPiTool,
+} from './pi/tools.ts'
 export type { CatalogResult, LiveFetchResult } from './providers/catalog.ts'
 export { listCatalogModels, listCatalogModelsSync } from './providers/catalog.ts'
 export type { PiProviderConfig } from './providers/pi-adapter.ts'
 export { piProvider } from './providers/pi-adapter.ts'
-export { resolvePiModel } from './providers/pi-runtime.ts'
+export type { OpenAICodexPiRuntimeOptions } from './providers/pi-runtime.ts'
+export {
+  createOpenAICodexPiRuntime,
+  createProtectedPiRuntime,
+  resolvePiModel,
+} from './providers/pi-runtime.ts'
 export type {
   ProviderConfig,
   ProviderMeta,
@@ -63,14 +79,26 @@ export type {
 export {
   buildSystemPrompt,
   loadPromptSkills,
+  loadProtectedHomeDocuments,
   type PromptSkill,
+  type ProtectedHomeDocuments,
 } from './session/prompt.ts'
+export type {
+  ProtectedDockerPreflightInput,
+  ProtectedDockerReadiness,
+  ProtectedDockerRuntime,
+} from './shell/docker.ts'
+export {
+  checkProtectedDockerReadiness,
+  preflightProtectedDockerRuntime,
+} from './shell/docker.ts'
 export { bootstrapTool } from './tools/bootstrap.ts'
 export { memoryTools } from './tools/memory.ts'
 export { messagingTools } from './tools/messaging.ts'
 export { createToolRegistry } from './tools/registry.ts'
 export type { ToolHandler, ToolRegistry } from './tools/types.ts'
-export { webTools } from './tools/web.ts'
+export type { ProtectedWebFetchOpts } from './tools/web.ts'
+export { protectedWebFetchTool, webTools } from './tools/web.ts'
 
 export type {
   ApiKeyRefreshHost,
@@ -82,5 +110,31 @@ export type {
   UserMdHost,
   UserMdWriteResult,
 } from './worker/ipc-protocol.ts'
-export type { ReviewWorkerProposal, SpawnWorkerOpts } from './worker/spawn.ts'
+export type {
+  ConfiguredOperatorHttpWorkerSpec,
+  MinimalWorkerScratch,
+  ProtectedProviderWorkerRuntime,
+  ProtectedWorkerPaths,
+  ProtectedWorkerSpec,
+  RestrictedReviewWorkerSpec,
+  WorkerInput,
+  WorkerTurnSpec,
+} from './worker/runtime.ts'
+export {
+  checkMinimalWorkerScratch,
+  cleanupMinimalWorkerScratch,
+  createMinimalWorkerScratch,
+  ExactValueStreamRedactor,
+  minimalWorkerProcessEnv,
+  parseWorkerInput,
+  redactExactValue,
+  redactExactValues,
+} from './worker/runtime.ts'
+export type {
+  ConfiguredSpawnWorkerOpts,
+  ProtectedSpawnWorkerOpts,
+  RestrictedReviewSpawnWorkerOpts,
+  ReviewWorkerProposal,
+  SpawnWorkerOpts,
+} from './worker/spawn.ts'
 export { spawnReviewWorker, spawnWorkerTurn } from './worker/spawn.ts'

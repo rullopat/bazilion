@@ -28,7 +28,7 @@ import { memoryTools } from '../tools/memory.ts'
 import { messagingTools } from '../tools/messaging.ts'
 import type { ToolHandler, ToolOutput } from '../tools/types.ts'
 import { userMdTools } from '../tools/user-md.ts'
-import { webTools } from '../tools/web.ts'
+import { protectedWebFetchTool, webTools } from '../tools/web.ts'
 import type {
   BrowserHost,
   InjectedMcpTool,
@@ -97,6 +97,14 @@ export interface BazilionCustomToolsOpts {
   env?: NodeJS.ProcessEnv
 }
 
+export interface ProtectedBazilionCustomToolsOpts {
+  agent: ResolvedAgent
+  memory: MemoryBackend
+  messagingHost: MessagingHost
+  userMdHost: UserMdHost
+  fileSink: FileSink
+}
+
 /**
  * Build the list of Bazilion-specific custom tools in the shape pi expects.
  *
@@ -129,5 +137,25 @@ export function createBazilionCustomTools(opts: BazilionCustomToolsOpts): ToolDe
   if (opts.fileSink) {
     handlers.push(deliverFileTool(opts.agent.team.path, opts.fileSink))
   }
+  return handlers.map(ourToolToPiTool)
+}
+
+/**
+ * Closed normal-turn capability set. No environment is accepted, so search,
+ * Firecrawl, browser, MCP, and provider/tool credentials cannot be restored by
+ * configuration inside a protected worker.
+ */
+export function createProtectedBazilionCustomTools(
+  opts: ProtectedBazilionCustomToolsOpts,
+): ToolDefinition[] {
+  const handlers: ToolHandler[] = [
+    ...memoryTools(opts.memory),
+    ...homeTools(opts.agent.agent.dir),
+    bootstrapTool(opts.agent.agent.dir),
+    protectedWebFetchTool(),
+    ...messagingTools(opts.messagingHost, opts.agent.agent.id),
+    ...userMdTools(opts.userMdHost, opts.agent.team.id),
+    deliverFileTool(opts.agent.team.path, opts.fileSink),
+  ]
   return handlers.map(ourToolToPiTool)
 }

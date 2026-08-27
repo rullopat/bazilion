@@ -15,7 +15,7 @@ vi.mock('@tanstack/react-router', () => ({
 
 vi.mock('@tanstack/react-start', () => ({
   createServerFn: () => ({
-    inputValidator: () => ({
+    validator: () => ({
       handler: () => vi.fn(),
     }),
   }),

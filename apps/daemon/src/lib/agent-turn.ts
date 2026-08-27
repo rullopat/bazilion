@@ -1,195 +1,136 @@
-import { randomUUID } from 'node:crypto'
-import type { Attachment, BashApprovalMode, ChatFrame } from '@bazilion/api-types'
-import {
-  agentReviewRepo,
-  mergeSecretsIntoEnv,
-  providerStateRepo,
-  resolveAgent,
-} from '../core/index.ts'
+import type { ChatFrame } from '@bazilion/api-types'
+import { agentReviewRepo, mergeSecretsIntoEnv, providerStateRepo } from '../core/index.ts'
 import { spawnWorkerTurn } from '../runtime/index.ts'
-import { resolveShellSecurityConfig } from '../runtime/shell/security.ts'
-import { SANDBOX_INPUTS_DIR } from '../runtime/shell/tooling.ts'
-import { registerAgent, unregisterAgent } from './agent-cancel.ts'
-import { acquireAgentLifecycleLease } from './agent-lifecycle-lease.ts'
 import { resolveAgentApiKey } from './api-key.ts'
-import { saveInputFiles } from './attachments.ts'
 import { commandApprovalRegistry } from './bash-approval.ts'
 import { isBrowserEnabled, resolveBrowserConfig } from './browser/config.ts'
 import { createBrowserHost } from './browser/host.ts'
-import { authorizeUserIngress, type CommunicationAttempt } from './communication.ts'
 import { getCtx } from './ctx.ts'
 import { resolveMcpForTurn } from './mcp/resolve.ts'
 import { createDbMessagingHost } from './messaging-host.ts'
 import { mirrorAgentTurnFrame, mirrorTypingStart, mirrorTypingStop } from './telegram/mirror.ts'
+import { invocationRepresentsUserTurn } from './turn-invocation.ts'
+import {
+  consumePreparedAgentTurn,
+  type PreparedAgentTurn,
+  prepareAgentTurn,
+  releasePreparedAgentTurn,
+} from './turn-preparation.ts'
 import { createDbUserMdHost } from './user-md-host.ts'
 
-interface RunAgentTurnOpts {
-  /** If omitted, a fresh AbortController is created internally. */
-  controller?: AbortController
-  /**
-   * Files attached to this turn. Classified here: `image/*` is fed to the model
-   * as vision; everything else is stored on disk and referenced by path so the
-   * agent can open/process it.
-   */
-  attachments?: Attachment[]
-  /** Semantic user-side attempt authorizing this turn before any protected side effect. */
-  authorization?: CommunicationAttempt
-  /** Inbox wake already authorizes every source path atomically while claiming rows. */
-  skipUserIngress?: boolean
-  /** Internal scheduler handoff: lease acquired before its atomic claim. */
-  acquiredLeaseRelease?: () => void
-  /** Scheduler registered the active turn atomically with its durable claim. */
-  alreadyRegistered?: boolean
-  /** Missing/internal callers fail closed instead of opening a human wait. */
-  bashApprovalMode?: BashApprovalMode
-  /** Message whose causal chain this synthetic inbox wake continues. */
-  causalParentMessageId?: string | null
-}
+export { prepareAgentTurn }
 
 /**
- * Runs one full agent turn in an isolated subprocess, streaming `ChatFrame`s
- * in NDJSON-ready order. The heavy lifting (provider calls, tool execution,
- * pi session journal append) happens inside the child; this function is a
- * thin relay that:
- *   - resolves the agent + provider gate + secrets envelope here in the
- *     daemon (the worker no longer holds a SQLite handle of its own),
- *   - spawns the worker with an IPC channel for daemon-owned messaging tools
- *     OAuth refresh, and turn-scoped shell approvals,
- *   - forwards stdout frames to the caller and wires cancellation through
- *     the agent-cancel registry.
+ * Execute a daemon-prepared turn. There is no raw Agent id, optional origin,
+ * implicit authorization, or isolation flag at this boundary: callers must
+ * first acquire the branded preparation produced by `prepareAgentTurn`.
  */
-export async function* runAgentTurn(
-  agentId: string,
-  rawMessage: string,
-  opts: RunAgentTurnOpts = {},
-): AsyncGenerator<ChatFrame> {
-  const { db, paths, authToken } = getCtx()
-  const controller = opts.controller ?? new AbortController()
-  const authorization = opts.authorization ?? {
-    origin: 'internal_turn',
-    attemptKind: 'turn',
-    attemptId: randomUUID(),
-  }
-  const releaseLease = opts.acquiredLeaseRelease ?? (await acquireAgentLifecycleLease(agentId))
-  let agent: ReturnType<typeof resolveAgent>
-  try {
-    agent = resolveAgent(db, paths, agentId)
-    if (!opts.alreadyRegistered) {
-      if (!opts.skipUserIngress) {
-        authorizeUserIngress(
-          db,
-          agentId,
-          {
-            ...authorization,
-            approvalPayloadKind: 'agent_turn',
-            approvalPayload: { agentId, message: rawMessage, attachments: [] },
-            requester: authorization.origin,
-          },
-          () => registerAgent(agentId, controller),
-        )
-      } else {
-        registerAgent(agentId, controller)
-      }
-    }
-  } catch (error) {
-    if (opts.alreadyRegistered) unregisterAgent(agentId)
-    throw error
-  } finally {
-    releaseLease()
-  }
+export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<ChatFrame> {
+  consumePreparedAgentTurn(turn)
+  const { agent, invocation } = turn
+  const turnId = invocation.authorization.attemptId
 
   try {
-    // Central attachment classifier: images → vision (passed to pi's prompt),
-    // everything else → stored on disk + a path reference appended to the message.
-    const env = mergeSecretsIntoEnv(db, authToken)
-    const shellSecurity = resolveShellSecurityConfig(env)
-    const attachments = opts.attachments ?? []
-    const images = attachments.filter((a) => a.mimeType.startsWith('image/'))
-    const docs = attachments.filter((a) => !a.mimeType.startsWith('image/'))
-    const fileNote = saveInputFiles(
-      agent.agent.dir,
-      docs,
-      shellSecurity.sandboxMode === 'docker' ? { referenceDir: SANDBOX_INPUTS_DIR } : {},
-    )
-    const message = fileNote ? (rawMessage ? `${rawMessage}\n\n${fileNote}` : fileNote) : rawMessage
-
-    const enabledProviders = Array.from(providerStateRepo.listEnabled(db))
+    const { db, paths, authToken } = getCtx()
     const messagingHost = createDbMessagingHost(db, {
-      causalParentMessageId: opts.causalParentMessageId,
+      causalParentMessageId: turn.causalParentMessageId,
     })
     const userMdHost = createDbUserMdHost(db, paths)
-    // Pre-fetch the API key for OAuth providers (`openai-codex`) before the
-    // worker spawns — the worker has no DB handle, so it can't reach the
-    // secrets table itself. For env-key providers this is a no-op (`{}`).
-    // OAuth refresh stays daemon-owned: the worker gets the initial token on
-    // stdin and a turn-scoped IPC callback for later refreshes, never a DB
-    // handle or the stored refresh credential.
-    const { apiKey, refreshApiKey } = await resolveAgentApiKey(db, authToken, agent, {
-      withRefresher: true,
-    })
+    let frames: AsyncGenerator<ChatFrame, void, void>
+    if (turn.surface === 'configured_operator_http') {
+      if (invocation.kind !== 'operator_http') {
+        throw new Error('configured operator surface requires an operator_http invocation')
+      }
+      const env = mergeSecretsIntoEnv(db, authToken)
+      const enabledProviders = Array.from(providerStateRepo.listEnabled(db))
+      const { apiKey, refreshApiKey } = await resolveAgentApiKey(db, authToken, agent, {
+        withRefresher: true,
+      })
+      const browserEnabled = isBrowserEnabled(env)
+      const browserHost = browserEnabled ? createBrowserHost(resolveBrowserConfig(env)) : undefined
+      const mcp = await resolveMcpForTurn(db, env, authToken)
+      frames = spawnWorkerTurn(
+        {
+          kind: 'configured_operator_http',
+          agent,
+          message: turn.message,
+          enabledProviders,
+          apiKey,
+          browserEnabled,
+          mcpTools: mcp?.tools,
+          images: [...turn.images],
+          turnId,
+          bashApprovalMode: invocation.bashApprovalMode,
+        },
+        {
+          env,
+          signal: turn.controller.signal,
+          messagingHost,
+          userMdHost,
+          browserHost,
+          mcpHost: mcp?.host,
+          bashApprovalHost: commandApprovalRegistry,
+          apiKeyRefreshHost: refreshApiKey ? { refresh: refreshApiKey } : undefined,
+          diagnosticSink: (diagnostic) => {
+            console.warn(`[worker ${agent.agent.id}] ${diagnostic}`)
+          },
+        },
+      )
+    } else {
+      if (!turn.protectedExecution) {
+        throw new Error('protected surface requires protected preparation')
+      }
+      const prepared = turn.protectedExecution
+      frames = spawnWorkerTurn(
+        {
+          kind: 'protected',
+          agent,
+          message: turn.message,
+          images: [...turn.images],
+          turnId,
+          bashApprovalMode: 'auto_deny',
+          runtime: prepared.runtime,
+          paths: prepared.paths,
+          docker: prepared.docker,
+          webFetchEnabled: true,
+        },
+        {
+          signal: turn.controller.signal,
+          messagingHost,
+          userMdHost,
+          bashApprovalHost: commandApprovalRegistry,
+          apiKeyRefreshHost: { refresh: prepared.refreshApiKey },
+        },
+      )
+    }
 
-    // Browser automation: expose the browser_* tools (gated by config). The
-    // Playwright session is lazy — Chromium only launches on first browser call.
-    const browserEnabled = isBrowserEnabled(env)
-    const browserHost = browserEnabled ? createBrowserHost(resolveBrowserConfig(env)) : undefined
-
-    // MCP: discover enabled servers' tools (connections pooled in the daemon) and
-    // build the proxy host. Null when no servers are enabled.
-    const mcp = await resolveMcpForTurn(db, env, authToken)
-
-    // Telegram "typing..." indicator while the turn runs. Safe to call even
-    // when the agent has no bound topic — mirror.ts checks before firing.
-    mirrorTypingStart(agentId, `${authorization.attemptKind}:${authorization.attemptId}:typing`)
+    mirrorTypingStart(agent.agent.id, `${invocation.authorization.attemptKind}:${turnId}:typing`)
     let mirrorFrameIndex = 0
     let completed = false
-    for await (const frame of spawnWorkerTurn(
-      {
-        agent,
-        message,
-        enabledProviders,
-        apiKey,
-        browserEnabled,
-        mcpTools: mcp?.tools,
-        images,
-        turnId: authorization.attemptId,
-        bashApprovalMode: opts.bashApprovalMode ?? 'auto_deny',
-      },
-      {
-        signal: controller.signal,
-        env,
-        messagingHost,
-        userMdHost,
-        browserHost,
-        mcpHost: mcp?.host,
-        bashApprovalHost: commandApprovalRegistry,
-        apiKeyRefreshHost: refreshApiKey ? { refresh: refreshApiKey } : undefined,
-      },
-    )) {
-      // Fire-and-forget Telegram mirror. Mirror failures (bot down, topic
-      // deleted, transient API errors) are logged inside but never bubble
-      // here — the turn's own consumers (web chat stream, scheduler, etc.)
-      // see every frame regardless of mirror status.
+    for await (const frame of frames) {
       void mirrorAgentTurnFrame(
-        agentId,
+        agent.agent.id,
         frame,
-        `${authorization.attemptKind}:${authorization.attemptId}:${mirrorFrameIndex++}`,
-      ).catch((e) => {
+        `${invocation.authorization.attemptKind}:${turnId}:${mirrorFrameIndex++}`,
+      ).catch((error) => {
         console.warn(
-          `telegram mirror: unexpected error (agent=${agentId}) —`,
-          e instanceof Error ? e.message : String(e),
+          JSON.stringify({
+            event: 'telegram_mirror_failed',
+            agentId: agent.agent.id,
+            attemptKind: invocation.authorization.attemptKind,
+            attemptId: turnId,
+            errorName: error instanceof Error ? error.name : 'unknown',
+          }),
         )
       })
       if (frame.kind === 'done') completed = true
       yield frame
     }
-    if (
-      completed &&
-      (authorization.origin === 'http_chat' || authorization.origin.startsWith('telegram'))
-    ) {
-      agentReviewRepo.recordSuccessfulUserTurn(db, agentId)
+    if (completed && invocationRepresentsUserTurn(invocation)) {
+      agentReviewRepo.recordSuccessfulUserTurn(db, agent.agent.id)
     }
   } finally {
-    mirrorTypingStop(agentId)
-    unregisterAgent(agentId)
+    mirrorTypingStop(agent.agent.id)
+    releasePreparedAgentTurn(turn)
   }
 }

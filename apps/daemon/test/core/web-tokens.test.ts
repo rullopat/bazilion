@@ -17,6 +17,8 @@ describe('webTokenRepo', () => {
     const out = webTokenRepo.create(db, 'laptop')
     expect(out.token).toMatch(/^[0-9a-f]{48}$/)
     expect(out.meta.label).toBe('laptop')
+    expect(out.meta.kind).toBe('device')
+    expect(out.meta.expiresAt).toBeGreaterThan(Date.now())
     expect(out.meta.revokedAt).toBe(null)
     expect(out.meta.lastUsedAt).toBe(null)
 
@@ -38,6 +40,17 @@ describe('webTokenRepo', () => {
   test('findActiveByToken returns null for unknown tokens', () => {
     webTokenRepo.create(db, 'laptop')
     expect(webTokenRepo.findActiveByToken(db, 'wrong')).toBe(null)
+  })
+
+  test('expired device tokens fail closed while bootstrap is non-expiring', () => {
+    const expired = webTokenRepo.create(db, 'old phone', {
+      kind: 'device',
+      expiresAt: Date.now() - 1,
+    })
+    const bootstrap = webTokenRepo.create(db, 'bootstrap', { kind: 'bootstrap' })
+    expect(webTokenRepo.findActiveByToken(db, expired.token)).toBeNull()
+    expect(webTokenRepo.findActiveByToken(db, bootstrap.token)?.kind).toBe('bootstrap')
+    expect(bootstrap.meta.expiresAt).toBeNull()
   })
 
   test('markUsed updates last_used_at', () => {

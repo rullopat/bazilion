@@ -13,6 +13,7 @@ import { completionCommand } from './commands/completion.ts'
 import { configCommand } from './commands/config.ts'
 import { dashboardCommand } from './commands/dashboard.ts'
 import { doctorCommand } from './commands/doctor.ts'
+import { gatewayCommand } from './commands/gateway.ts'
 import { inboxCommand } from './commands/inbox.ts'
 import { loginCommand } from './commands/login.ts'
 import { mcpCommand } from './commands/mcp.ts'
@@ -21,6 +22,7 @@ import { profileCommand } from './commands/profile.ts'
 import { providerCommand } from './commands/provider.ts'
 import { sendCommand } from './commands/send.ts'
 import { serveCommand } from './commands/serve.ts'
+import { sessionCommand } from './commands/session.ts'
 import { skillCommand } from './commands/skill.ts'
 import { teamCommand } from './commands/team.ts'
 import { teamTemplateCommand } from './commands/team-template.ts'
@@ -48,11 +50,13 @@ const main = defineCommand({
     mcp: mcpCommand,
     provider: providerCommand,
     send: sendCommand,
+    session: sessionCommand,
     inbox: inboxCommand,
     config: configCommand,
     serve: serveCommand,
     dashboard: dashboardCommand,
     doctor: doctorCommand,
+    gateway: gatewayCommand,
     backup: backupCommand,
     trigger: triggerCommand,
     token: tokenCommand,
@@ -178,7 +182,7 @@ function printTopLevelHelp(): void {
     },
     {
       title: 'ops',
-      items: [['backup', 'Download a tar.gz backup of ~/.bazilion']],
+      items: [['backup', 'Encrypted backup, restore, and credential recovery']],
     },
     {
       title: 'remote',

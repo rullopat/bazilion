@@ -30,6 +30,7 @@ export interface ProviderConfig {
   deepseek?: { apiKey: string; baseURL?: string }
   fireworks?: { apiKey: string; baseURL?: string }
   together?: { apiKey: string; baseURL?: string }
+  baseten?: { apiKey: string; baseURL?: string }
   moonshotai?: { apiKey: string; baseURL?: string }
   moonshotaiCn?: { apiKey: string; baseURL?: string }
   kimiCoding?: { apiKey: string; baseURL?: string }
@@ -37,6 +38,7 @@ export interface ProviderConfig {
   minimaxCn?: { apiKey: string; baseURL?: string }
   qwenTokenPlan?: { apiKey: string; baseURL?: string }
   qwenTokenPlanCn?: { apiKey: string; baseURL?: string }
+  qwenTokenPlanIndividual?: { apiKey: string; baseURL?: string }
   xiaomi?: { apiKey: string; baseURL?: string }
   xiaomiTokenPlanAms?: { apiKey: string; baseURL?: string }
   xiaomiTokenPlanCn?: { apiKey: string; baseURL?: string }
@@ -113,6 +115,7 @@ export function loadProviderConfigFromEnv(
   if (env.DEEPSEEK_API_KEY) config.deepseek = { apiKey: env.DEEPSEEK_API_KEY }
   if (env.FIREWORKS_API_KEY) config.fireworks = { apiKey: env.FIREWORKS_API_KEY }
   if (env.TOGETHER_API_KEY) config.together = { apiKey: env.TOGETHER_API_KEY }
+  if (env.BASETEN_API_KEY) config.baseten = { apiKey: env.BASETEN_API_KEY }
   if (env.MOONSHOT_API_KEY) config.moonshotai = { apiKey: env.MOONSHOT_API_KEY }
   if (env.MOONSHOT_CN_API_KEY) config.moonshotaiCn = { apiKey: env.MOONSHOT_CN_API_KEY }
   if (env.KIMI_API_KEY) config.kimiCoding = { apiKey: env.KIMI_API_KEY }
@@ -123,6 +126,9 @@ export function loadProviderConfigFromEnv(
   }
   if (env.QWEN_TOKEN_PLAN_CN_API_KEY) {
     config.qwenTokenPlanCn = { apiKey: env.QWEN_TOKEN_PLAN_CN_API_KEY }
+  }
+  if (env.QWEN_TOKEN_PLAN_API_KEY) {
+    config.qwenTokenPlanIndividual = { apiKey: env.QWEN_TOKEN_PLAN_API_KEY }
   }
   if (env.XIAOMI_API_KEY) config.xiaomi = { apiKey: env.XIAOMI_API_KEY }
   if (env.XIAOMI_TOKEN_PLAN_AMS_API_KEY) {
@@ -360,6 +366,16 @@ const PROVIDERS: Record<string, ProviderEntry> = {
       }),
     hint: 'TOGETHER_API_KEY',
   },
+  baseten: {
+    configured: (c) => !!c.baseten,
+    build: (c) =>
+      piProvider({
+        providerName: 'baseten',
+        apiKey: c.baseten?.apiKey,
+        baseUrl: c.baseten?.baseURL,
+      }),
+    hint: 'BASETEN_API_KEY',
+  },
   moonshotai: {
     configured: (c) => !!c.moonshotai,
     build: (c) =>
@@ -429,6 +445,16 @@ const PROVIDERS: Record<string, ProviderEntry> = {
         baseUrl: c.qwenTokenPlanCn?.baseURL,
       }),
     hint: 'QWEN_TOKEN_PLAN_CN_API_KEY',
+  },
+  'qwen-token-plan-individual': {
+    configured: (c) => !!c.qwenTokenPlanIndividual,
+    build: (c) =>
+      piProvider({
+        providerName: 'qwen-token-plan-individual',
+        apiKey: c.qwenTokenPlanIndividual?.apiKey,
+        baseUrl: c.qwenTokenPlanIndividual?.baseURL,
+      }),
+    hint: 'QWEN_TOKEN_PLAN_API_KEY',
   },
   xiaomi: {
     configured: (c) => !!c.xiaomi,
@@ -583,6 +609,11 @@ const PROVIDERS: Record<string, ProviderEntry> = {
       }),
     hint: 'LLAMACPP_URL (default http://127.0.0.1:8080/v1)',
   },
+}
+
+/** Canonical provider ids understood by Bazilion's pinned Pi adapter. */
+export function listRegisteredProviderNames(): string[] {
+  return Object.keys(PROVIDERS)
 }
 
 /**

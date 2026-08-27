@@ -59,7 +59,7 @@ function bootstrap(paths: Paths): { db: BazilionDb; authToken: string } {
   }
 
   if (!existsSync(paths.authFile)) {
-    const created = webTokenRepo.create(db, 'bootstrap')
+    const created = webTokenRepo.create(db, 'bootstrap', { kind: 'bootstrap' })
     writeFileSync(paths.authFile, `${JSON.stringify({ token: created.token }, null, 2)}\n`, {
       mode: 0o600,
     })

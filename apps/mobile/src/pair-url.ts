@@ -36,13 +36,23 @@ export function parsePairingUrl(raw: string): ParsedPairing {
   if (!token) throw new PairUrlError('missing ?token=')
   try {
     const serverUrl = new URL(server)
-    if (serverUrl.protocol !== 'http:' && serverUrl.protocol !== 'https:') {
-      throw new PairUrlError(`server must be http(s), got ${serverUrl.protocol}`)
+    const loopback = ['127.0.0.1', 'localhost', '[::1]', '::1'].includes(serverUrl.hostname)
+    if (serverUrl.protocol !== 'https:' && !(serverUrl.protocol === 'http:' && loopback)) {
+      throw new PairUrlError('server must use HTTPS (HTTP is allowed only for loopback development)')
+    }
+    if (
+      serverUrl.username ||
+      serverUrl.password ||
+      serverUrl.pathname !== '/' ||
+      serverUrl.search ||
+      serverUrl.hash
+    ) {
+      throw new PairUrlError('server must be an exact origin without credentials, path, query, or fragment')
     }
   } catch (err) {
     if (err instanceof PairUrlError) throw err
     throw new PairUrlError(`server is not a valid URL: ${server}`)
   }
   // Strip trailing slash so `${server}${path}` never produces `//`.
-  return { server: server.replace(/\/$/, ''), token }
+  return { server: new URL(server).origin, token }
 }

@@ -1,74 +1,38 @@
-// Subprocess entrypoint for whole-run isolation — no SQLite handle inside.
-//
-// Reads a `WorkerInput` JSON object from stdin describing the turn to run:
-// the pre-resolved agent record, enabled-provider set, and message text.
-// The daemon does all DB-backed lookups before spawning us.
-//
-// Daemon-owned tools, OAuth refresh, and dangerous-command approval are delegated back over
-// Node IPC: each invocation sends a `{type: 'rpc', ...}` message and awaits
-// the matching reply. The parent dispatches the request through the matching
-// host and owns ephemeral approval state.
-//
-// Ownership split now reads:
-//   - daemon: SQLite handle, agent resolution, secrets envelope, scheduler,
-//     run-cancel registry, tool/refresh RPC dispatch, command-approval registry.
-//   - pi: conversation transcript, compaction entries, tool execution,
-//     provider retries.
-//   - this worker: glue between the two — runs `session.prompt(message)`,
-//     translates `AgentSessionEvent`s into Bazilion `SessionEvent`s, emits
-//     them as NDJSON `ChatFrame`s on stdout.
-//
-// Cancellation: SIGTERM from the parent → `session.abort()` → pi aborts the
-// current prompt → `agent_end` fires with error → translator emits an
-// `error` event so the client renders "cancelled" identically to other
-// failures.
+// One-shot worker entry. Configured operator HTTP retains its legacy runtime;
+// protected normal turns and restricted reviews use closed typed inputs.
 
 import { randomUUID } from 'node:crypto'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { join } from 'node:path'
-import type { Attachment, BashApprovalMode, ChatFrame, ResolvedAgent } from '@bazilion/api-types'
-import type { ToolDefinition } from '@earendil-works/pi-coding-agent'
+import type { ChatFrame } from '@bazilion/api-types'
+import type { AgentSession, ToolDefinition } from '@earendil-works/pi-coding-agent'
 import { Type } from 'typebox'
 import { resolvePaths } from '../../core/index.ts'
 import { qmdBackend } from '../memory/qmd.ts'
 import { piMessagesToProviderView, translatePiEvent } from '../pi/events.ts'
-import { createBazilionSession } from '../pi/session.ts'
+import {
+  type BazilionSessionHandle,
+  createBazilionSession,
+  createProtectedBazilionSession,
+  createRestrictedReviewSession,
+} from '../pi/session.ts'
 import type { BashApprovalHost as ShellBashApprovalHost } from '../shell/approval.ts'
 import { createIpcApiKeyRefresher } from './api-key-refresh.ts'
 import { createIpcClient, type WorkerIpcCall } from './ipc-client.ts'
 import type {
   BashApprovalResult,
   BrowserHost,
-  InjectedMcpTool,
   McpHost,
   MessagingHost,
   UserMdGetResult,
   UserMdHost,
   UserMdWriteResult,
 } from './ipc-protocol.ts'
-
-interface WorkerInput {
-  mode?: 'chat' | 'review'
-  agent: ResolvedAgent
-  message: string
-  enabledProviders: string[]
-  /** Pre-fetched API key for OAuth providers; undefined for env-key ones. */
-  apiKey?: string
-  /** Parent has installed the turn-scoped OAuth refresh IPC host. */
-  apiKeyRefreshEnabled?: boolean
-  /** When true, expose the `browser_*` tools (proxied to the daemon pool). */
-  browserEnabled?: boolean
-  /** MCP tools discovered daemon-side, exposed as IPC-proxied proxy tools. */
-  mcpTools?: InjectedMcpTool[]
-  /** Image attachments — passed to pi's prompt (vision). Pre-classified by the daemon. */
-  images?: Attachment[]
-  turnId: string
-  bashApprovalMode: BashApprovalMode
-  review?: {
-    reviewId: string
-    evidence: Array<{ sessionId: string; entryOrdinal: number }>
-  }
-}
+import {
+  parseWorkerInput,
+  protectedRuntimeSecrets,
+  redactJsonValue,
+  validateMinimalWorkerProcessEnv,
+  type WorkerInput,
+} from './runtime.ts'
 
 interface ReviewWorkerProposal {
   scope: 'private' | 'shared'
@@ -78,40 +42,48 @@ interface ReviewWorkerProposal {
 
 type WorkerFrame = ChatFrame | { kind: 'review_result'; proposals: ReviewWorkerProposal[] }
 
+const activeAccessTokens: string[] = []
+
 function emit(frame: WorkerFrame): void {
-  process.stdout.write(`${JSON.stringify(frame)}\n`)
+  process.stdout.write(`${JSON.stringify(redactJsonValue(frame, activeAccessTokens))}\n`)
 }
 
 async function readInput(): Promise<WorkerInput> {
   const chunks: Buffer[] = []
-  for await (const c of process.stdin) chunks.push(c as Buffer)
+  for await (const chunk of process.stdin) chunks.push(chunk as Buffer)
   const raw = Buffer.concat(chunks).toString('utf8').trim()
   if (!raw) throw new Error('worker: empty stdin input')
-  const parsed = JSON.parse(raw) as WorkerInput
-  if (
-    !parsed.agent ||
-    typeof parsed.message !== 'string' ||
-    !Array.isArray(parsed.enabledProviders) ||
-    typeof parsed.turnId !== 'string' ||
-    (parsed.apiKeyRefreshEnabled !== undefined &&
-      typeof parsed.apiKeyRefreshEnabled !== 'boolean') ||
-    (parsed.bashApprovalMode !== 'interactive' && parsed.bashApprovalMode !== 'auto_deny')
-  ) {
-    throw new Error(
-      'worker: stdin must include {agent, message, enabledProviders, turnId, bashApprovalMode}',
-    )
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    throw new Error('worker: stdin is not valid JSON')
   }
-  if (parsed.mode === 'review' && !parsed.review?.reviewId) {
-    throw new Error('worker: review mode requires review metadata')
+  return parseWorkerInput(parsed)
+}
+
+function createWorkerIpcCall(): WorkerIpcCall {
+  return createIpcClient({
+    send: process.send
+      ? (ipcMessage, done) => {
+          process.send?.(ipcMessage, undefined, undefined, done)
+        }
+      : undefined,
+    onMessage: (listener) => process.on('message', listener),
+    onDisconnect: (listener) => process.on('disconnect', listener),
+  })
+}
+
+function createTrackedIpcApiKeyRefresher(
+  call: WorkerIpcCall,
+  context: { providerName: string; agentId: string; turnId: string },
+): (providerName: string) => Promise<string> {
+  const refresh = createIpcApiKeyRefresher(call, context)
+  return async (providerName) => {
+    const token = await refresh(providerName)
+    if (token && !activeAccessTokens.includes(token)) activeAccessTokens.push(token)
+    return token
   }
-  const providerName = parsed.agent.model.split(':', 1)[0] ?? ''
-  if (
-    parsed.apiKeyRefreshEnabled &&
-    (providerName !== 'openai-codex' || typeof parsed.apiKey !== 'string')
-  ) {
-    throw new Error('worker: API key refresh requires an openai-codex turn with an initial token')
-  }
-  return parsed
 }
 
 function createIpcMessagingHost(call: WorkerIpcCall): MessagingHost {
@@ -149,7 +121,12 @@ function createIpcMcpHost(call: WorkerIpcCall): McpHost {
 
 function createIpcBashApprovalHost(
   call: WorkerIpcCall,
-  input: Pick<WorkerInput, 'agent' | 'turnId' | 'bashApprovalMode'>,
+  input: {
+    agentId: string
+    teamId: string
+    turnId: string
+    mode: 'interactive' | 'auto_deny'
+  },
 ): ShellBashApprovalHost {
   return {
     async requestApproval(request) {
@@ -157,96 +134,35 @@ function createIpcBashApprovalHost(
         id: randomUUID(),
         turnId: input.turnId,
         toolCallId: request.toolCallId,
-        agentId: input.agent.agent.id,
-        teamId: input.agent.team.id,
+        agentId: input.agentId,
+        teamId: input.teamId,
         command: request.command,
         risks: [...request.risks],
-        mode: input.bashApprovalMode,
+        mode: input.mode,
       })
       return result.decision === 'allow' ? 'approved' : 'denied'
     },
   }
 }
 
-async function main(): Promise<void> {
-  // Install signal handlers FIRST so a SIGTERM that arrives during setup
-  // doesn't kill us with the Node default (exit-by-signal, no frame emitted).
-  // Pre-session, we just exit cleanly with a synthetic `cancelled` event;
-  // post-session, we delegate to `session.abort()` so pi unwinds the
-  // provider fetch and surfaces its own `error` event.
-  let aborted = false
-  let abortSession: (() => void) | null = null
-  const onSignal = (): void => {
-    aborted = true
-    if (abortSession) {
-      abortSession()
-    } else {
-      try {
-        emit({ kind: 'event', event: { type: 'error', error: 'cancelled' } })
-      } catch {}
-      process.exit(0)
-    }
-  }
-  process.on('SIGTERM', onSignal)
-  process.on('SIGINT', onSignal)
+interface ReviewState {
+  proposals: ReviewWorkerProposal[]
+  submitted(): boolean
+  validationFailures(): number
+  recordValidationFailure(): void
+  tools: ToolDefinition[]
+}
 
-  const {
-    agent,
-    message,
-    enabledProviders,
-    apiKey,
-    apiKeyRefreshEnabled,
-    browserEnabled,
-    mcpTools,
-    images,
-    turnId,
-    bashApprovalMode,
-    mode = 'chat',
-    review,
-  } = await readInput()
-
-  // Path resolution still happens in the worker — `resolvePaths()` only reads
-  // the `BAZILION_HOME` env var the daemon hands down. No DB, no filesystem
-  // probe of the live tree.
-  const paths = resolvePaths()
-
-  const memory = qmdBackend(join(agent.team.path, 'memory'))
-  await memory.init()
-
-  const ipcCall = createIpcClient({
-    send: process.send
-      ? (ipcMessage, done) => {
-          process.send?.(ipcMessage, undefined, undefined, done)
-        }
-      : undefined,
-    onMessage: (listener) => process.on('message', listener),
-    onDisconnect: (listener) => process.on('disconnect', listener),
-  })
-  const refreshApiKey = apiKeyRefreshEnabled
-    ? createIpcApiKeyRefresher(ipcCall, {
-        providerName: agent.model.split(':', 1)[0] ?? '',
-        agentId: agent.agent.id,
-        turnId,
-      })
-    : undefined
-  const messagingHost = createIpcMessagingHost(ipcCall)
-  const userMdHost = createIpcUserMdHost(ipcCall)
-  const browserHost = browserEnabled ? createIpcBrowserHost(ipcCall) : undefined
-  const mcpHost = mcpTools && mcpTools.length > 0 ? createIpcMcpHost(ipcCall) : undefined
-  const bashApprovalHost = createIpcBashApprovalHost(ipcCall, {
-    agent,
-    turnId,
-    bashApprovalMode,
-  })
-
-  const reviewSessionDir =
-    mode === 'review' ? mkdtempSync(join(paths.logsDir, 'review-session-')) : null
+function createReviewState(
+  evidenceItems: Array<{ sessionId: string; entryOrdinal: number }>,
+): ReviewState {
   const proposals: ReviewWorkerProposal[] = []
   let proposalBatchSubmitted = false
+  let reviewValidationFailures = 0
   const allowedEvidence = new Set(
-    (review?.evidence ?? []).map((item) => `${item.sessionId}:${item.entryOrdinal}`),
+    evidenceItems.map((item) => `${item.sessionId}:${item.entryOrdinal}`),
   )
-  const reviewTools: ToolDefinition[] = [
+  const tools: ToolDefinition[] = [
     {
       name: 'propose_lesson',
       label: 'propose_lesson',
@@ -267,14 +183,8 @@ async function main(): Promise<void> {
       }),
       async execute(_toolCallId, params) {
         if (proposalBatchSubmitted) throw new Error('propose_lesson may be called only once')
-        proposalBatchSubmitted = true
-        const input = params as {
-          proposals: Array<{
-            scope: 'private' | 'shared'
-            text: string
-            evidenceEntryIds: Array<{ sessionId: string; entryOrdinal: number }>
-          }>
-        }
+        const input = params as { proposals: ReviewWorkerProposal[] }
+        const validated: ReviewWorkerProposal[] = []
         for (const candidate of input.proposals) {
           const text = candidate.text.trim()
           if (!text || text.length > 500) throw new Error('proposal text must be 1-500 characters')
@@ -283,8 +193,10 @@ async function main(): Promise<void> {
               throw new Error('proposal cites evidence outside the supplied digest')
             }
           }
-          proposals.push({ ...candidate, text })
+          validated.push({ ...candidate, text })
         }
+        proposalBatchSubmitted = true
+        proposals.push(...validated)
         return {
           content: [{ type: 'text', text: `accepted ${proposals.length} proposals` }],
           details: {},
@@ -293,107 +205,196 @@ async function main(): Promise<void> {
       },
     },
   ]
+  return {
+    proposals,
+    submitted: () => proposalBatchSubmitted,
+    validationFailures: () => reviewValidationFailures,
+    recordValidationFailure: () => {
+      reviewValidationFailures += 1
+    },
+    tools,
+  }
+}
 
-  const { session, dispose } = await createBazilionSession({
-    agent,
-    paths,
-    env: process.env,
-    memory,
-    enabledProviders: new Set(enabledProviders),
-    messagingHost,
-    userMdHost,
-    apiKey,
-    refreshApiKey,
-    browserHost,
-    mcpHost,
-    mcpTools,
-    bashApprovalHost,
-    // deliver_file emits a `file` event straight onto our stdout frame stream.
-    fileSink: (f) => emit({ kind: 'event', event: { type: 'file', ...f } }),
-    ...(mode === 'review' && reviewSessionDir
-      ? {
-          restricted: {
-            systemPrompt: REVIEW_SYSTEM_PROMPT,
-            tools: reviewTools,
-            sessionDir: reviewSessionDir,
-            reasoningLevel: agent.agent.reviewReasoningLevel,
-          },
-        }
-      : {}),
-  })
-
-  abortSession = (): void => {
-    void session.abort()
+async function createSessionForInput(
+  input: WorkerInput,
+  ipcCall: WorkerIpcCall,
+): Promise<{ handle: BazilionSessionHandle; reviewState?: ReviewState }> {
+  if (input.kind === 'configured_operator_http') {
+    const paths = resolvePaths()
+    const memory = qmdBackend(`${input.agent.team.path}/memory`)
+    await memory.init()
+    const messagingHost = createIpcMessagingHost(ipcCall)
+    const userMdHost = createIpcUserMdHost(ipcCall)
+    const browserHost = input.browserEnabled ? createIpcBrowserHost(ipcCall) : undefined
+    const mcpHost = input.mcpTools?.length ? createIpcMcpHost(ipcCall) : undefined
+    const bashApprovalHost = createIpcBashApprovalHost(ipcCall, {
+      agentId: input.agent.agent.id,
+      teamId: input.agent.team.id,
+      turnId: input.turnId,
+      mode: input.bashApprovalMode,
+    })
+    const refreshApiKey = input.apiKeyRefreshEnabled
+      ? createTrackedIpcApiKeyRefresher(ipcCall, {
+          providerName: input.agent.model.split(':', 1)[0] ?? '',
+          agentId: input.agent.agent.id,
+          turnId: input.turnId,
+        })
+      : undefined
+    const handle = await createBazilionSession({
+      agent: input.agent,
+      paths,
+      env: process.env,
+      memory,
+      enabledProviders: new Set(input.enabledProviders),
+      messagingHost,
+      userMdHost,
+      apiKey: input.apiKey,
+      refreshApiKey,
+      browserHost,
+      mcpHost,
+      mcpTools: input.mcpTools,
+      bashApprovalHost,
+      fileSink: (file) => emit({ kind: 'event', event: { type: 'file', ...file } }),
+    })
+    return { handle }
   }
 
-  let reviewValidationFailures = 0
+  const refreshApiKey = createTrackedIpcApiKeyRefresher(ipcCall, {
+    providerName: input.runtime.providerName,
+    agentId: input.kind === 'protected' ? input.agent.agent.id : input.agentId,
+    turnId: input.turnId,
+  })
+  if (input.kind === 'restricted_review') {
+    const reviewState = createReviewState(input.review.evidence)
+    const handle = await createRestrictedReviewSession({
+      runtime: input.runtime,
+      scratch: input.scratch,
+      systemPrompt: REVIEW_SYSTEM_PROMPT,
+      tools: reviewState.tools,
+      refreshApiKey,
+    })
+    return { handle, reviewState }
+  }
+
+  const memory = qmdBackend(input.paths.memoryDir)
+  await memory.init()
+  const messagingHost = createIpcMessagingHost(ipcCall)
+  const userMdHost = createIpcUserMdHost(ipcCall)
+  const bashApprovalHost = createIpcBashApprovalHost(ipcCall, {
+    agentId: input.agent.agent.id,
+    teamId: input.agent.team.id,
+    turnId: input.turnId,
+    mode: 'auto_deny',
+  })
+  const handle = await createProtectedBazilionSession({
+    agent: input.agent,
+    runtime: input.runtime,
+    paths: input.paths,
+    scratch: input.scratch,
+    docker: input.docker,
+    memory,
+    messagingHost,
+    userMdHost,
+    bashApprovalHost,
+    refreshApiKey,
+    fileSink: (file) => emit({ kind: 'event', event: { type: 'file', ...file } }),
+  })
+  return { handle }
+}
+
+async function main(): Promise<void> {
+  let aborted = false
+  let session: AgentSession | null = null
+  const onSignal = (): void => {
+    aborted = true
+    if (session) void session.abort()
+    else {
+      try {
+        emit({ kind: 'event', event: { type: 'error', error: 'cancelled' } })
+      } catch {}
+      process.exit(0)
+    }
+  }
+  process.on('SIGTERM', onSignal)
+  process.on('SIGINT', onSignal)
+
+  const input = await readInput()
+  if (input.kind !== 'configured_operator_http') {
+    validateMinimalWorkerProcessEnv(process.env, input.scratch)
+  }
+  const initialAccessTokens =
+    input.kind === 'configured_operator_http'
+      ? input.apiKey
+        ? [input.apiKey]
+        : []
+      : protectedRuntimeSecrets(input.runtime)
+  activeAccessTokens.push(...initialAccessTokens.filter(Boolean))
+  const ipcCall = createWorkerIpcCall()
+  const { handle, reviewState } = await createSessionForInput(input, ipcCall)
+  session = handle.session
+
   const unsubscribe = session.subscribe((piEvent) => {
     if (
-      mode === 'review' &&
+      reviewState &&
       piEvent.type === 'tool_execution_end' &&
       piEvent.toolName === 'propose_lesson' &&
       piEvent.isError
     ) {
-      reviewValidationFailures += 1
-      if (reviewValidationFailures >= 2) void session.abort()
+      reviewState.recordValidationFailure()
+      if (reviewState.validationFailures() >= 2) void session?.abort()
     }
-    for (const ev of translatePiEvent(piEvent)) {
-      emit({ kind: 'event', event: ev })
-    }
+    for (const event of translatePiEvent(piEvent)) emit({ kind: 'event', event })
   })
 
   try {
-    // Map Bazilion image attachments to pi's ImageContent and pass them as the
-    // prompt's `images` option — the model sees them via vision.
-    const promptImages = (images ?? []).map((img) => ({
-      type: 'image' as const,
-      data: img.data,
-      mimeType: img.mimeType,
-    }))
-    await session.prompt(message, promptImages.length > 0 ? { images: promptImages } : undefined)
+    const promptMessage = redactJsonValue(input.message, activeAccessTokens)
+    const sanitizedImages =
+      input.kind === 'restricted_review'
+        ? []
+        : redactJsonValue(input.images ?? [], activeAccessTokens)
+    const promptImages =
+      input.kind === 'restricted_review'
+        ? []
+        : sanitizedImages.map((image) => ({
+            type: 'image' as const,
+            data: image.data,
+            mimeType: image.mimeType,
+          }))
+    await session.prompt(
+      promptMessage,
+      promptImages.length > 0 ? { images: promptImages } : undefined,
+    )
     await session.agent.waitForIdle()
 
-    if (mode === 'review' && reviewValidationFailures >= 2) {
-      throw new Error('review output remained invalid after one schema-repair attempt')
+    if (reviewState) {
+      if (reviewState.validationFailures() >= 2) {
+        throw new Error('review output remained invalid after one schema-repair attempt')
+      }
+      if (!reviewState.submitted()) throw new Error('review output did not submit a proposal batch')
+      emit({ kind: 'review_result', proposals: reviewState.proposals })
+    } else {
+      emit({ kind: 'done', messages: piMessagesToProviderView(session.agent.state.messages) })
     }
-    if (mode === 'review' && !proposalBatchSubmitted) {
-      throw new Error('review output did not submit a proposal batch')
-    }
-
-    if (mode === 'review') emit({ kind: 'review_result', proposals })
-    else {
-      emit({
-        kind: 'done',
-        messages: piMessagesToProviderView(session.agent.state.messages),
-      })
-    }
-  } catch (err) {
-    if (!aborted) {
-      emit({ kind: 'event', event: { type: 'error', error: (err as Error).message } })
-    }
-    emit({ kind: 'fatal', error: (err as Error).message })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    if (!aborted) emit({ kind: 'event', event: { type: 'error', error: message } })
+    emit({ kind: 'fatal', error: message })
     process.exitCode = 1
   } finally {
     unsubscribe()
     process.off('SIGTERM', onSignal)
     process.off('SIGINT', onSignal)
-    dispose()
-    if (reviewSessionDir) rmSync(reviewSessionDir, { recursive: true, force: true })
-    // Detach from the parent's IPC channel so the worker's event loop can
-    // exit. `process.on('message', …)` registered above otherwise keeps
-    // the loop alive even after the turn finishes — Node treats an open
-    // IPC handle as a live ref the same way it treats an open socket.
+    handle.dispose()
     try {
       process.disconnect?.()
-    } catch {
-      // already disconnected (parent closed first) — fine
-    }
+    } catch {}
   }
 }
 
-main().catch((err) => {
+main().catch((error) => {
   try {
-    emit({ kind: 'fatal', error: (err as Error)?.message ?? String(err) })
+    emit({ kind: 'fatal', error: error instanceof Error ? error.message : String(error) })
   } catch {}
   process.exit(1)
 })

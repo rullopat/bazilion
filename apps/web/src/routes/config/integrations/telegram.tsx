@@ -14,6 +14,8 @@ import type {
   TelegramAllowedUser,
   TelegramConfigState,
   TelegramHealth,
+  TelegramPairingChallenge,
+  TelegramPairingStatus,
 } from '@bazilion/api-types'
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
@@ -207,8 +209,81 @@ function TelegramIntegrationPage() {
         {health?.polling && <PollingState polling={health.polling} />}
       </section>
 
+      {initial.configured && <OwnerPairingCard />}
       {initial.configured && <AccessControlCard />}
     </ConfigPage>
+  )
+}
+
+function OwnerPairingCard() {
+  const [status, setStatus] = useState<TelegramPairingStatus | null>(null)
+  const [code, setCode] = useState<string | null>(null)
+  const [err, setErr] = useState<string | null>(null)
+  const load = async () => {
+    const res = await fetch('/api/config/telegram/pairing')
+    if (!res.ok) throw new Error(res.statusText)
+    setStatus((await res.json()) as TelegramPairingStatus)
+  }
+  useEffect(() => {
+    void load().catch((e) => setErr((e as Error).message))
+  }, [])
+  async function createChallenge() {
+    setErr(null)
+    const res = await fetch('/api/config/telegram/pairing/challenge', { method: 'POST' })
+    const body = (await res.json().catch(() => ({}))) as Partial<TelegramPairingChallenge> & {
+      error?: string
+    }
+    if (!res.ok || !body.code) return setErr(body.error ?? res.statusText)
+    setCode(body.code)
+    setStatus(body as TelegramPairingChallenge)
+  }
+  async function cancelChallenge() {
+    await fetch('/api/config/telegram/pairing/challenge', { method: 'DELETE' })
+    setCode(null)
+    await load()
+  }
+  async function resetOwner() {
+    if (!confirm('Revoke the Telegram owner now? Ingress will close until a new owner pairs.')) return
+    const res = await fetch('/api/config/telegram/pairing/reset', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ confirm: true }),
+    })
+    if (!res.ok) return setErr('Could not reset Telegram owner')
+    setCode(null)
+    await load()
+  }
+  return (
+    <section className="rounded-lg border bg-card p-5">
+      <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-1">
+        Owner pairing
+      </h3>
+      <p className="text-xs text-muted-foreground mb-3">
+        Telegram stays closed until one owner consumes a short-lived code in the configured{' '}
+        <code className="font-mono">⚙ bazilion</code> service topic.
+      </p>
+      {status?.paired ? (
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="text-sm text-success">✓ owner paired</span>
+          <Button variant="danger" onClick={resetOwner}>reset owner</Button>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <p className="text-sm text-warning">Unpaired — all Telegram ingress is closed.</p>
+          {code ? (
+            <div className="rounded-md border bg-muted/30 p-3 text-sm">
+              Send <code className="font-mono">/pair {code}</code> in the service topic. This code
+              is shown once and expires in ten minutes.
+            </div>
+          ) : null}
+          <div className="flex flex-wrap gap-2">
+            <Button variant="primary" onClick={createChallenge}>generate pairing code</Button>
+            {status?.challengeActive && <Button variant="ghost" onClick={cancelChallenge}>cancel code</Button>}
+          </div>
+        </div>
+      )}
+      {err && <p className="mt-2 text-xs text-danger">{err}</p>}
+    </section>
   )
 }
 
@@ -281,8 +356,8 @@ function AccessControlCard() {
         Access control
       </h3>
       <p className="text-xs text-muted-foreground mb-3">
-        Allowlisted Telegram users can use the bot (commands + chat). While the list is empty the
-        bot is open and the first person to message it becomes owner. Users find their id via{' '}
+        Allowlisted Telegram users can use the bot (commands + chat). An empty list is closed;
+        ownership begins only through the one-time pairing flow. Users find their id via{' '}
         <code className="font-mono">/whoami</code>.
       </p>
 
@@ -290,7 +365,7 @@ function AccessControlCard() {
         <p className="text-xs text-muted-foreground italic">loading…</p>
       ) : users.length === 0 ? (
         <p className="text-xs text-warning mb-3">
-          Open — no allowlist yet. The first user to message the bot claims owner.
+          Closed — no paired owner or allowlisted members.
         </p>
       ) : (
         <ul className="mb-3 space-y-1 text-sm">
@@ -438,6 +513,19 @@ function PreflightResult({ health }: { health: TelegramHealth }) {
           ? 'can_read_all_group_messages: true'
           : 'BotFather → /mybots → select bot → Bot Settings → Team Privacy → Turn off'}
       </Check>
+      <Check ok={p.chatIsPrivate} label="Supergroup is private">
+        {p.chatIsPrivate ? 'no public @username' : 'public groups expose topic content to readers'}
+      </Check>
+      <Check ok={p.memberCount === 2} label="Expected membership">
+        {p.memberCount === null
+          ? 'member count unavailable — verify one owner plus the bot manually'
+          : `${p.memberCount} members reported; secure posture is one owner plus the bot`}
+      </Check>
+      {p.ownerPresent !== null && (
+        <Check ok={p.ownerPresent} label="Paired owner is present">
+          {p.ownerPresent ? 'owner membership confirmed' : 'owner missing — Telegram ingress is degraded'}
+        </Check>
+      )}
     </ul>
   )
 }

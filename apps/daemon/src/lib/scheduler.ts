@@ -34,13 +34,14 @@ import {
   agentRepo,
   communicationApprovalRepo,
   messageRepo,
+  resolveAgent,
   triggerDispatchRepo,
   triggerRepo,
 } from '../core/index.ts'
 import { isActiveAgent, registerAgent, unregisterAgent } from './agent-cancel.ts'
 import { acquireAgentLifecycleLease } from './agent-lifecycle-lease.ts'
 import { selectCausalParent } from './agent-loop-guard.ts'
-import { runAgentTurn } from './agent-turn.ts'
+import { prepareAgentTurn, runAgentTurn } from './agent-turn.ts'
 import {
   CommunicationDeniedError,
   claimDeliverableInbox,
@@ -48,8 +49,10 @@ import {
 } from './communication.ts'
 import { matchesCron, type ParsedCron, parseCron } from './cron.ts'
 import { getCtx } from './ctx.ts'
+import { prepareProtectedExecution } from './protected-execution.ts'
+import { protectedFailureMessage, protectedFrameFailure } from './protected-failure.ts'
 import { dispatchClaimableReviews } from './review-dispatcher.ts'
-import { turnFrameFailure } from './turn-outcome.ts'
+import { createPreclaimedTurn, createTrustedTurnInvocation } from './turn-invocation.ts'
 
 const SCHEDULER_KEY = Symbol.for('bazilion.scheduler')
 const TICK_MS = Number(process.env.BAZILION_SCHEDULER_TICK_MS ?? 5_000)
@@ -115,107 +118,155 @@ async function fireTrigger(dispatch: TriggerDispatch): Promise<void> {
   const key = `trigger-dispatch:${dispatch.id}`
   if (s.firing.has(key)) return
   s.firing.add(key)
-  const ctx = getCtx()
-  const releaseLease = await acquireAgentLifecycleLease(dispatch.agentId)
-  const claimedDispatch = triggerDispatchRepo.claim(ctx.db, dispatch.id)
-  if (!claimedDispatch) {
-    releaseLease()
-    s.firing.delete(key)
-    return
+  let releaseOwnedLease: (() => void) | undefined
+  let registeredAgentId: string | undefined
+
+  const releaseOwnedLifecycle = (): void => {
+    if (registeredAgentId) {
+      const agentId = registeredAgentId
+      registeredAgentId = undefined
+      unregisterAgent(agentId)
+    }
+    if (releaseOwnedLease) {
+      const release = releaseOwnedLease
+      releaseOwnedLease = undefined
+      release()
+    }
   }
-  const t = triggerRepo.get(ctx.db, claimedDispatch.triggerId)
-  if (!t?.enabled) {
-    triggerDispatchRepo.fail(ctx.db, claimedDispatch.id, 'trigger is disabled or deleted', {
-      maxAttempts: 1,
-    })
-    releaseLease()
-    s.firing.delete(key)
-    return
-  }
-  if (isActiveAgent(t.agentId)) {
-    releaseLease()
-    triggerDispatchRepo.defer(ctx.db, claimedDispatch.id)
-    s.firing.delete(key)
-    return
-  }
-  const controller = new AbortController()
-  let registered = false
-  // Revalidate policy for every durable attempt. The occurrence watermark was
-  // advanced when this dispatch was materialized; execution outcome belongs
-  // to this dispatch row, not last_fired_at.
+
   try {
-    const claim = claimSchedulerTrigger(ctx.db, {
-      dispatchId: claimedDispatch.id,
-      triggerId: t.id,
-      agentId: t.agentId,
-      occurrence: claimedDispatch.scheduledAt,
-      materialized: true,
-      onAllowed: () => {
-        registerAgent(t.agentId, controller)
-        registered = true
-      },
-    })
-    if (claim.kind === 'already_claimed') {
-      releaseLease()
-      triggerDispatchRepo.succeed(ctx.db, claimedDispatch.id)
-      s.firing.delete(key)
+    const ctx = getCtx()
+    releaseOwnedLease = await acquireAgentLifecycleLease(dispatch.agentId)
+    const claimedDispatch = triggerDispatchRepo.claim(ctx.db, dispatch.id)
+    if (!claimedDispatch) return
+
+    const t = triggerRepo.get(ctx.db, claimedDispatch.triggerId)
+    if (!t?.enabled) {
+      triggerDispatchRepo.fail(ctx.db, claimedDispatch.id, 'trigger is disabled or deleted', {
+        maxAttempts: 1,
+      })
       return
     }
-    if (claim.kind === 'approval_pending') {
-      releaseLease()
-      triggerDispatchRepo.defer(ctx.db, claimedDispatch.id, Date.now() + TICK_MS)
-      s.firing.delete(key)
+    if (isActiveAgent(t.agentId)) {
+      triggerDispatchRepo.defer(ctx.db, claimedDispatch.id)
       return
     }
-    if (claim.kind === 'approval_terminal') {
-      releaseLease()
-      triggerDispatchRepo.fail(ctx.db, claimedDispatch.id, claim.reason, { maxAttempts: 1 })
-      s.firing.delete(key)
-      return
-    }
-  } catch (err) {
-    if (err instanceof CommunicationDeniedError) {
-      releaseLease()
-      triggerDispatchRepo.fail(ctx.db, claimedDispatch.id, err.message, { maxAttempts: 1 })
-      s.firing.delete(key)
-      return
-    }
-    releaseLease()
-    if (registered) unregisterAgent(t.agentId)
-    console.error(`[scheduler] markFired failed for ${t.id}:`, err)
-    triggerDispatchRepo.fail(ctx.db, claimedDispatch.id, (err as Error).message)
-    s.firing.delete(key)
-    return
-  }
-  let failure: string | null = null
-  try {
-    // Drain the turn; we don't stream to anyone. The dispatch row carries the
-    // operational outcome, while pi's session JSONL remains the transcript.
-    for await (const frame of runAgentTurn(t.agentId, t.message, {
-      authorization: {
-        origin: 'scheduler_trigger',
-        attemptKind: 'scheduler_trigger',
-        attemptId: `${t.id}:${claimedDispatch.scheduledAt}`,
-      },
-      acquiredLeaseRelease: releaseLease,
-      controller,
-      alreadyRegistered: true,
-      bashApprovalMode: 'auto_deny',
-    })) {
-      const frameFailure = turnFrameFailure(frame)
-      if (frameFailure) {
-        console.error(`[scheduler] trigger ${t.id} failed:`, frameFailure)
-        failure ??= frameFailure
+
+    const controller = new AbortController()
+    // Revalidate policy for every durable attempt. The occurrence watermark was
+    // advanced when this dispatch was materialized; execution outcome belongs
+    // to this dispatch row, not last_fired_at.
+    try {
+      const claim = claimSchedulerTrigger(ctx.db, {
+        dispatchId: claimedDispatch.id,
+        triggerId: t.id,
+        agentId: t.agentId,
+        occurrence: claimedDispatch.scheduledAt,
+        materialized: true,
+        onAllowed: () => {
+          registerAgent(t.agentId, controller)
+          registeredAgentId = t.agentId
+        },
+      })
+      if (claim.kind === 'already_claimed') {
+        triggerDispatchRepo.succeed(ctx.db, claimedDispatch.id)
+        return
       }
+      if (claim.kind === 'approval_pending') {
+        triggerDispatchRepo.defer(ctx.db, claimedDispatch.id, Date.now() + TICK_MS)
+        return
+      }
+      if (claim.kind === 'approval_terminal') {
+        triggerDispatchRepo.fail(ctx.db, claimedDispatch.id, claim.reason, { maxAttempts: 1 })
+        return
+      }
+    } catch (err) {
+      if (err instanceof CommunicationDeniedError) {
+        triggerDispatchRepo.fail(ctx.db, claimedDispatch.id, err.message, { maxAttempts: 1 })
+        return
+      }
+      console.warn(
+        JSON.stringify({
+          event: 'scheduled_trigger_claim_failed',
+          triggerId: t.id,
+          dispatchId: claimedDispatch.id,
+          errorName: err instanceof Error ? err.name : 'unknown',
+        }),
+      )
+      triggerDispatchRepo.fail(
+        ctx.db,
+        claimedDispatch.id,
+        protectedFailureMessage(err, 'Scheduled trigger'),
+      )
+      return
     }
-  } catch (err) {
-    console.error(`[scheduler] trigger ${t.id} unexpected throw:`, err)
-    failure = (err as Error).message
+
+    let failure: string | null = null
+    try {
+      const attemptId = `${t.id}:${claimedDispatch.scheduledAt}`
+      const ownedRelease = releaseOwnedLease
+      if (!ownedRelease || registeredAgentId !== t.agentId) {
+        throw new Error('scheduled trigger lifecycle ownership is incomplete')
+      }
+      const invocation = createTrustedTurnInvocation({
+        kind: 'scheduled_trigger',
+        authorization: {
+          origin: 'scheduler_trigger',
+          attemptKind: 'scheduler_trigger',
+          attemptId,
+          agentId: t.agentId,
+        },
+        turn: { agentId: t.agentId, message: t.message, attachments: [] },
+        claim: createPreclaimedTurn({
+          agentId: t.agentId,
+          attemptId,
+          controller,
+          releaseLease: ownedRelease,
+          registered: true,
+        }),
+        bashApprovalMode: 'auto_deny',
+      })
+      // Preparation now exclusively owns both the registration and lease.
+      // Clear local ownership before the await so the outer finally cannot
+      // unregister a newer turn after preparation/run has released this one.
+      releaseOwnedLease = undefined
+      registeredAgentId = undefined
+      const preparedTurn = await prepareAgentTurn({
+        invocation,
+      })
+      // Drain the turn; we don't stream to anyone. The dispatch row carries the
+      // operational outcome, while pi's session JSONL remains the transcript.
+      for await (const frame of runAgentTurn(preparedTurn)) {
+        const frameFailure = protectedFrameFailure(frame)
+        if (frameFailure) {
+          console.warn(
+            JSON.stringify({
+              event: 'scheduled_trigger_failed',
+              triggerId: t.id,
+              dispatchId: claimedDispatch.id,
+            }),
+          )
+          failure ??= frameFailure
+        }
+      }
+    } catch (err) {
+      console.warn(
+        JSON.stringify({
+          event: 'scheduled_trigger_unavailable',
+          triggerId: t.id,
+          dispatchId: claimedDispatch.id,
+          errorName: err instanceof Error ? err.name : 'unknown',
+        }),
+      )
+      failure = protectedFailureMessage(err)
+    } finally {
+      if (controller.signal.aborted) {
+        triggerDispatchRepo.cancelRunning(ctx.db, claimedDispatch.id, 'agent turn cancelled')
+      } else if (failure) triggerDispatchRepo.fail(ctx.db, claimedDispatch.id, failure)
+      else triggerDispatchRepo.succeed(ctx.db, claimedDispatch.id)
+    }
   } finally {
-    if (controller.signal.aborted) {
-      triggerDispatchRepo.cancelRunning(ctx.db, claimedDispatch.id, 'agent turn cancelled')
-    } else if (failure) triggerDispatchRepo.fail(ctx.db, claimedDispatch.id, failure)
-    else triggerDispatchRepo.succeed(ctx.db, claimedDispatch.id)
+    releaseOwnedLifecycle()
     s.firing.delete(key)
   }
 }
@@ -312,7 +363,15 @@ async function fireInboxWake(agentId: string): Promise<void> {
   }
   const controller = new AbortController()
   let registered = false
+  let handoffStarted = false
   try {
+    // Readiness must be established before `claimDeliverableInbox` marks the
+    // canonical messages read. The branded result is handed directly into
+    // final preparation under this same lifecycle lease.
+    const protectedExecution = await prepareProtectedExecution(
+      resolveAgent(ctx.db, ctx.paths, agentId),
+      { signal: controller.signal },
+    )
     const msgs = claimDeliverableInbox(ctx.db, agentId, () => {
       registerAgent(agentId, controller)
       registered = true
@@ -329,32 +388,54 @@ async function fireInboxWake(agentId: string): Promise<void> {
       if (sender) fromNames.set(fid, sender.name)
     }
     const prompt = buildInboxPrompt(agentId, msgs, fromNames)
-
-    try {
-      for await (const frame of runAgentTurn(agentId, prompt, {
-        skipUserIngress: true,
-        authorization: {
-          origin: 'scheduler_inbox',
-          attemptKind: 'inbox_wake',
-          attemptId: `${agentId}:${msgs.map((message) => message.id).join(',')}`,
-        },
-        acquiredLeaseRelease: releaseLease,
-        controller,
-        alreadyRegistered: true,
-        bashApprovalMode: 'auto_deny',
+    const attemptId = `${agentId}:${msgs.map((message) => message.id).join(',')}`
+    const invocation = createTrustedTurnInvocation({
+      kind: 'inbox_wake',
+      authorization: {
+        origin: 'scheduler_inbox',
+        attemptKind: 'inbox_wake',
+        attemptId,
+        agentId,
+      },
+      turn: {
+        agentId,
+        message: prompt,
+        attachments: [],
         causalParentMessageId: selectCausalParent(msgs),
-      })) {
-        if (frame.kind === 'fatal') {
-          console.error(`[scheduler] inbox wake ${agentId} fatal:`, frame.error)
-        }
+      },
+      claim: createPreclaimedTurn({
+        agentId,
+        attemptId,
+        controller,
+        releaseLease,
+        registered: true,
+      }),
+      bashApprovalMode: 'auto_deny',
+    })
+    handoffStarted = true
+    const preparedTurn = await prepareAgentTurn({
+      protectedExecution,
+      invocation,
+    })
+    for await (const frame of runAgentTurn(preparedTurn)) {
+      if (frame.kind === 'fatal') {
+        console.warn(
+          JSON.stringify({ event: 'inbox_wake_failed', agentId, failure: 'protected_turn_failed' }),
+        )
       }
-    } catch (err) {
-      console.error(`[scheduler] inbox wake ${agentId} unexpected throw:`, err)
     }
   } catch (err) {
-    releaseLease()
-    if (registered) unregisterAgent(agentId)
-    console.error(`[scheduler] inbox drain failed for ${agentId}:`, err)
+    if (!handoffStarted) {
+      releaseLease()
+      if (registered) unregisterAgent(agentId)
+    }
+    console.warn(
+      JSON.stringify({
+        event: 'inbox_wake_unavailable',
+        agentId,
+        errorName: err instanceof Error ? err.name : 'unknown',
+      }),
+    )
   } finally {
     s.firing.delete(key)
   }

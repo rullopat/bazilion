@@ -18,11 +18,15 @@ function normalizeServer(raw: string): string {
 }
 
 async function verifyToken(server: string, token: string): Promise<void> {
-  const res = await fetch(`${server}/api/health`, {
+  const res = await fetch(`${server}/api/auth/whoami`, {
     headers: { authorization: `Bearer ${token}`, origin: server },
   })
   if (res.status === 401) throw new Error('server rejected token (401)')
-  if (!res.ok) throw new Error(`server returned ${res.status} from /api/health`)
+  if (!res.ok) throw new Error(`server returned ${res.status} from /api/auth/whoami`)
+  const owner = (await res.json()) as { publicOrigin?: string | null }
+  if (owner.publicOrigin && owner.publicOrigin !== new URL(server).origin) {
+    throw new Error('server canonical private origin does not match --server')
+  }
 }
 
 export const loginCommand = defineCommand({
@@ -33,7 +37,7 @@ export const loginCommand = defineCommand({
   args: {
     server: { type: 'string', description: 'Remote server URL (http[s]://...)' },
     token: { type: 'string', description: 'Token issued by `bazilion token create`' },
-    skipVerify: { type: 'boolean', description: "Don't probe /api/health before saving" },
+    skipVerify: { type: 'boolean', description: "Don't verify /api/auth/whoami before saving" },
     clear: { type: 'boolean', description: 'Remove the stored remote instead of setting one' },
   },
   async run({ args }) {

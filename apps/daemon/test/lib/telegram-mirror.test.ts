@@ -2,7 +2,6 @@
 // modes, no-ops when the agent is unbound / bot is down, lazy-reconcile on
 // "thread not found".
 
-import type { ChatFrame } from '@bazilion/api-types'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { spawnAgent } from '../../src/core/agent/spawn.ts'
 import { createProfile } from '../../src/core/profile/create.ts'
@@ -18,7 +17,9 @@ import { makeTestEnv, type TestEnv } from '../core/helpers.ts'
 
 const CHAT_ID = -1003964430972
 
-function makeApi(opts: { failWith?: string; photoFailWith?: string } = {}): {
+function makeApi(
+  opts: { failWith?: string; photoFailWith?: string; documentFailWith?: string } = {},
+): {
   api: MirrorApi
   sends: { chatId: number; text: string; opts: unknown }[]
   typings: { chatId: number; action: string; opts: unknown }[]
@@ -45,6 +46,7 @@ function makeApi(opts: { failWith?: string; photoFailWith?: string } = {}): {
       return { message_id: 2 }
     },
     async sendDocument(chatId, _document, o) {
+      if (opts.documentFailWith) throw new Error(opts.documentFailWith)
       documents.push({ chatId, opts: o })
       return { message_id: 3 }
     },
@@ -78,10 +80,6 @@ afterEach(() => {
   _resetMirrorDepsForTest()
   _resetOutboundQueueForTest()
 })
-
-function frameEvent(event: ChatFrame & { kind: 'event' }): ChatFrame {
-  return event
-}
 
 describe('mirrorAgentTurnFrame', () => {
   test('approval-required Telegram egress captures text without transport or list leakage', async () => {
@@ -417,6 +415,52 @@ describe('mirrorAgentTurnFrame', () => {
     })
     expect(photos.length).toBe(0)
     expect(documents.length).toBe(1)
+  })
+
+  test('adapter failures never log a Telegram bot token', async () => {
+    const sentinel = '123456789:AA_TelegramBotTokenSentinel'
+    const adapterError = `request failed: https://api.telegram.org/bot${sentinel}/sendMessage`
+    const { api } = makeApi({
+      failWith: `can't parse entities; ${adapterError}`,
+      photoFailWith: adapterError,
+      documentFailWith: adapterError,
+    })
+    installMirrorDepsResolver(() => ({ db: env.db, api, chatId: CHAT_ID }))
+    const agent = spawnAgent(env.db, env.paths, {
+      profileId: 'base',
+      teamId: env.teamId,
+      name: 'r1',
+    })
+    agentRepo.setTelegramTopicId(env.db, agent.id, 42)
+
+    await mirrorAgentTurnFrame(agent.id, {
+      kind: 'event',
+      event: { type: 'assistant_message', text: '**reply**' },
+    })
+    await mirrorAgentTurnFrame(agent.id, {
+      kind: 'event',
+      event: {
+        type: 'tool_result',
+        id: '1',
+        name: 'image',
+        result: 'image',
+        images: [{ data: Buffer.from('png').toString('base64'), mimeType: 'image/png' }],
+      },
+    })
+    await mirrorAgentTurnFrame(agent.id, {
+      kind: 'event',
+      event: {
+        type: 'file',
+        name: 'report.txt',
+        mimeType: 'text/plain',
+        data: Buffer.from('report').toString('base64'),
+      },
+    })
+
+    const warnings = JSON.stringify(vi.mocked(console.warn).mock.calls)
+    expect(warnings).not.toContain(sentinel)
+    expect(warnings).not.toContain('api.telegram.org')
+    expect(warnings).toContain('telegram_adapter_failed')
   })
 
   test('verbose mode: tool_call and tool_result are rendered as summary lines', async () => {

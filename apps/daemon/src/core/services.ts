@@ -102,6 +102,13 @@ export const SERVICES: ServiceDef[] = [
         label: 'GCP region',
         placeholder: 'us-central1',
       },
+      {
+        envVar: 'GOOGLE_VERTEX_CREDENTIALS_JSON',
+        kind: 'secret',
+        label: 'Explicit credentials JSON (protected turns)',
+        description:
+          'Service-account or ADC JSON projected only into the selected protected worker; ambient ADC files remain unsupported.',
+      },
     ],
   },
   {
@@ -181,6 +188,13 @@ export const SERVICES: ServiceDef[] = [
     fields: [{ envVar: 'TOGETHER_API_KEY', kind: 'secret', label: 'API key' }],
   },
   {
+    id: 'baseten',
+    displayName: 'Baseten',
+    category: 'provider',
+    hint: 'Hosted open-weight models · baseten.co',
+    fields: [{ envVar: 'BASETEN_API_KEY', kind: 'secret', label: 'API key' }],
+  },
+  {
     id: 'moonshotai',
     displayName: 'Moonshot AI',
     category: 'provider',
@@ -228,6 +242,13 @@ export const SERVICES: ServiceDef[] = [
     category: 'provider',
     hint: 'Coding-model subscription endpoint in China',
     fields: [{ envVar: 'QWEN_TOKEN_PLAN_CN_API_KEY', kind: 'secret', label: 'API key' }],
+  },
+  {
+    id: 'qwen-token-plan-individual',
+    displayName: 'Qwen Token Plan (Individual)',
+    category: 'provider',
+    hint: 'Individual subscription models via the international endpoint',
+    fields: [{ envVar: 'QWEN_TOKEN_PLAN_API_KEY', kind: 'secret', label: 'API key' }],
   },
   {
     id: 'xiaomi',

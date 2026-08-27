@@ -2,8 +2,10 @@
 // covered by the unified attachment path (routing → central classifier).
 
 import type { Message } from 'grammy/types'
-import { describe, expect, test } from 'vitest'
-import { extractMedia } from '../../src/lib/telegram/media.ts'
+import { afterEach, describe, expect, test, vi } from 'vitest'
+import { downloadMediaBytes, extractMedia } from '../../src/lib/telegram/media.ts'
+
+afterEach(() => vi.unstubAllGlobals())
 
 function msg(extra: Partial<Message>): Message {
   return {
@@ -55,4 +57,40 @@ describe('extractMedia', () => {
     expect(extractMedia(m)?.kind).toBe('voice')
     expect(extractMedia(m)?.mimeType).toBe('audio/ogg')
   })
+})
+
+test('media adapter failures never expose the Telegram bot token', async () => {
+  const token = '123456:TELEGRAM_TOKEN_SENTINEL'
+  const ref = {
+    kind: 'document' as const,
+    fileId: 'file-1',
+    fileName: 'report.pdf',
+    mimeType: 'application/pdf',
+    fileSize: 12,
+  }
+  const lookup = await downloadMediaBytes(
+    {
+      getFile: async () => {
+        throw new Error(`request failed: https://api.telegram.org/bot${token}/getFile`)
+      },
+    },
+    token,
+    ref,
+  )
+  expect(lookup).toEqual({ ok: false, reason: 'Telegram file lookup failed' })
+  expect(JSON.stringify(lookup)).not.toContain(token)
+
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => {
+      throw new Error(`request failed: https://api.telegram.org/file/bot${token}/secret`)
+    }),
+  )
+  const download = await downloadMediaBytes(
+    { getFile: async () => ({ file_path: 'secret', file_size: 12 }) },
+    token,
+    ref,
+  )
+  expect(download).toEqual({ ok: false, reason: 'Telegram media download failed' })
+  expect(JSON.stringify(download)).not.toContain(token)
 })

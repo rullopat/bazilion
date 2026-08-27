@@ -14,7 +14,7 @@ interface TriggersView {
 }
 
 const fetchTriggers = createServerFn({ method: 'POST' })
-  .inputValidator((d: { id: string }) => d)
+  .validator((d: { id: string }) => d)
   .handler(async ({ data }): Promise<TriggersView | null> => {
     const c = daemonClient()
     let resolved: ResolvedAgent

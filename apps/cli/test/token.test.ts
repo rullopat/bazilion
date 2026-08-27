@@ -54,7 +54,7 @@ test('a minted token authenticates subsequent API calls', async () => {
   expect(token).toBeTruthy()
 
   const res = await fetch(`${server.url}/api/profiles`, {
-    headers: { cookie: `bz_token=${token}` },
+    headers: { authorization: `Bearer ${token}` },
   })
   expect(res.status).toBe(200)
 })
@@ -66,7 +66,7 @@ test('revoked tokens are rejected', async () => {
   await server.cli(['token', 'revoke', id])
 
   const res = await fetch(`${server.url}/api/profiles`, {
-    headers: { cookie: `bz_token=${token}` },
+    headers: { authorization: `Bearer ${token}` },
   })
   expect(res.status).toBe(401)
 })
@@ -106,4 +106,59 @@ test('login --clear removes the stored remote', async () => {
 
   const after = JSON.parse(readFileSync(configPath, 'utf8')) as { remote?: unknown }
   expect(after.remote).toBeUndefined()
+})
+
+test('public health is liveness-only and detailed health requires authentication', async () => {
+  const publicResponse = await fetch(`${server.url}/api/health`)
+  expect(await publicResponse.json()).toEqual({ ok: true })
+  expect(await fetch(`${server.url}/api/health/details`)).toHaveProperty('status', 401)
+  const detailed = await fetch(`${server.url}/api/health/details`, {
+    headers: { authorization: `Bearer ${server.token}` },
+  })
+  expect(detailed.status).toBe(200)
+})
+
+test('browser login rejects bootstrap and exchanges a device token for bounded session cookies', async () => {
+  const bootstrapLogin = await fetch(`${server.url}/api/login`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ token: server.token }),
+  })
+  expect(bootstrapLogin.status).toBe(401)
+
+  const create = await server.cli(['token', 'create', 'browser'])
+  const token = create.stdout.match(/token:\s+([0-9a-f]+)/)?.[1] as string
+  const login = await fetch(`${server.url}/api/login`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ token }),
+  })
+  expect(login.status).toBe(200)
+  const setCookies = login.headers.getSetCookie()
+  const session = /bz_session_dev=([^;]+)/.exec(setCookies.join('\n'))?.[1]
+  const csrf = /bz_csrf_dev=([^;]+)/.exec(setCookies.join('\n'))?.[1]
+  expect(session).toBeTruthy()
+  expect(csrf).toBeTruthy()
+  expect(setCookies.join('\n')).not.toContain(token)
+
+  const cookies = `bz_session_dev=${session}; bz_csrf_dev=${csrf}`
+  const whoami = await fetch(`${server.url}/api/auth/whoami`, { headers: { cookie: cookies } })
+  expect(whoami.status).toBe(200)
+  expect(await whoami.json()).toMatchObject({
+    authenticated: true,
+    principal: { kind: 'session', label: 'browser' },
+  })
+  const missingCsrf = await fetch(`${server.url}/api/logout`, {
+    method: 'POST',
+    headers: { cookie: cookies },
+  })
+  expect(missingCsrf.status).toBe(403)
+  const logout = await fetch(`${server.url}/api/logout`, {
+    method: 'POST',
+    headers: { cookie: cookies, 'x-bazilion-csrf': csrf as string },
+  })
+  expect(logout.status).toBe(200)
+  expect(
+    await fetch(`${server.url}/api/auth/whoami`, { headers: { cookie: cookies } }),
+  ).toHaveProperty('status', 401)
 })

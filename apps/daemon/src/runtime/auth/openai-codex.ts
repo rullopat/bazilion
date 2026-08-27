@@ -36,13 +36,16 @@ function openAICodexOAuth() {
 }
 
 export async function loginOpenAICodex(interaction: AuthInteraction): Promise<OAuthCredential> {
-  return openAICodexOAuth().login(interaction)
+  return openAICodexOAuth().login({
+    ...interaction,
+    signal: interaction.signal ?? new AbortController().signal,
+  })
 }
 
 export async function refreshOpenAICodexToken(
   credential: OAuthCredential,
 ): Promise<OAuthCredential> {
-  return openAICodexOAuth().refresh(credential)
+  return openAICodexOAuth().refresh(credential, new AbortController().signal)
 }
 
 export type StoredCredentials = OAuthCredential
@@ -54,7 +57,9 @@ function readCredentials(db: BazilionDb, authToken: string): StoredCredentials |
     const parsed = JSON.parse(raw) as Partial<StoredCredentials>
     if (
       typeof parsed.refresh === 'string' &&
+      parsed.refresh.length > 0 &&
       typeof parsed.access === 'string' &&
+      parsed.access.length > 0 &&
       typeof parsed.expires === 'number'
     ) {
       // Older Bazilion rows predate Pi's type discriminator. Normalizing here

@@ -1,4 +1,8 @@
-import type { CommunicationApprovalDetail, CommunicationApprovalStatus } from '@bazilion/api-types'
+import type {
+  Attachment,
+  CommunicationApprovalDetail,
+  CommunicationApprovalStatus,
+} from '@bazilion/api-types'
 import { Bot, InputFile } from 'grammy'
 import { Hono } from 'hono'
 import {
@@ -14,10 +18,17 @@ import {
   enforceMessageCausality,
   resolveMessageCausality,
 } from '../lib/agent-loop-guard.ts'
-import { runAgentTurn } from '../lib/agent-turn.ts'
+import { prepareAgentTurn, runAgentTurn } from '../lib/agent-turn.ts'
+import {
+  type ApprovalDeliveryPlan,
+  ApprovalDeliveryValidationError,
+  planApprovalDelivery,
+  type SchedulerTriggerApprovalPayload,
+} from '../lib/approval-delivery-plan.ts'
 import { getCtx } from '../lib/ctx.ts'
-import { downloadMediaBytes, type MediaRef } from '../lib/telegram/media.ts'
-import { turnFrameFailure } from '../lib/turn-outcome.ts'
+import { approvalDeliveryFailureMessage, protectedFrameFailure } from '../lib/protected-failure.ts'
+import { downloadMediaBytes } from '../lib/telegram/media.ts'
+import { createTrustedTurnInvocation } from '../lib/turn-invocation.ts'
 
 export const approvalsRouter = new Hono()
 
@@ -97,7 +108,33 @@ approvalsRouter.post('/:id/approve', async (c) => {
       true,
     ) as CommunicationApprovalDetail | null
     if (!pending) return c.json({ error: `approval_not_found: ${id}` }, 404)
-    if (pending.operation === 'scheduler_trigger' || pending.payloadKind === 'scheduler_trigger') {
+    let pendingPlan: ApprovalDeliveryPlan
+    try {
+      pendingPlan = approvalPlan(pending)
+    } catch (error) {
+      if (!(error instanceof ApprovalDeliveryValidationError)) throw error
+      // Invalid durable tuples are terminal delivery failures. Claiming here
+      // still performs the canonical policy/membership revalidation, but no
+      // guarded external effect is attempted.
+      communicationApprovalRepo.claimDelivery(db, id, 'authenticated_operator', (approval) =>
+        authorizeInSnapshot(db, {
+          source: approval.source,
+          target: approval.target,
+          origin: approval.origin,
+          attemptKind: approval.attemptKind,
+          attemptId: approval.attemptId,
+        }),
+      )
+      communicationApprovalRepo.finishDelivery(
+        db,
+        id,
+        false,
+        'authenticated_operator',
+        error.message,
+      )
+      return c.json({ error: 'approval delivery failed', detail: error.message }, 500)
+    }
+    if (pendingPlan.kind === 'scheduler_trigger') {
       const granted = communicationApprovalRepo.grantSchedulerTrigger(
         db,
         id,
@@ -110,7 +147,12 @@ approvalsRouter.post('/:id/approve', async (c) => {
             attemptKind: approval.attemptKind,
             attemptId: approval.attemptId,
           }),
-        (approval) => validateSchedulerGrant(db, approval),
+        (approval) => {
+          const plan = approvalPlan(approval)
+          if (plan.kind !== 'scheduler_trigger')
+            return 'approval_delivery_invalid: scheduler_trigger_plan'
+          return validateSchedulerGrant(db, plan.payload)
+        },
       )
       if (!granted.granted) {
         return c.json(
@@ -140,12 +182,12 @@ approvalsRouter.post('/:id/approve', async (c) => {
         }),
     )
     try {
-      await deliver(claimed)
+      await deliver(approvalPlan(claimed))
       return c.json(
         communicationApprovalRepo.finishDelivery(db, id, true, 'authenticated_operator'),
       )
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
+      const message = approvalDeliveryFailureMessage(error)
       communicationApprovalRepo.finishDelivery(db, id, false, 'authenticated_operator', message)
       return c.json({ error: 'approval delivery failed', detail: message }, 500)
     }
@@ -154,26 +196,16 @@ approvalsRouter.post('/:id/approve', async (c) => {
   }
 })
 
+function approvalPlan(approval: CommunicationApprovalDetail): ApprovalDeliveryPlan {
+  return planApprovalDelivery(approval, {
+    messageById: (messageId) => messageRepo.get(getCtx().db, messageId),
+  })
+}
+
 function validateSchedulerGrant(
   db: ReturnType<typeof getCtx>['db'],
-  approval: CommunicationApprovalDetail,
+  payload: SchedulerTriggerApprovalPayload,
 ): string | null {
-  const payload = approval.payload as {
-    dispatchId?: unknown
-    triggerId?: unknown
-    occurrence?: unknown
-    agentId?: unknown
-    message?: unknown
-  }
-  if (
-    typeof payload.dispatchId !== 'string' ||
-    typeof payload.triggerId !== 'string' ||
-    typeof payload.occurrence !== 'number' ||
-    typeof payload.agentId !== 'string' ||
-    typeof payload.message !== 'string'
-  ) {
-    return 'scheduler approval payload is incomplete'
-  }
   const trigger = triggerRepo.get(db, payload.triggerId)
   if (!trigger?.enabled) return 'scheduled trigger is disabled or deleted'
   if (trigger.agentId !== payload.agentId) return 'scheduled trigger target changed'
@@ -193,78 +225,80 @@ function validateSchedulerGrant(
   return null
 }
 
-async function deliver(approval: CommunicationApprovalDetail): Promise<void> {
-  if (approval.payloadKind === 'agent_message') {
-    const payload = approval.payload as {
-      from: string
-      to: string
-      payload: string
-      replyTo?: string | null
-      causalParentMessageId?: string | null
-    }
-    const causality = resolveMessageCausality(getCtx().db, payload)
+async function deliver(plan: ApprovalDeliveryPlan): Promise<void> {
+  if (plan.kind === 'agent_message') {
+    const causality = resolveMessageCausality(getCtx().db, plan.payload)
     const loopBreak = enforceMessageCausality(getCtx().db, {
-      from: payload.from,
-      to: payload.to,
+      from: plan.payload.from,
+      to: plan.payload.to,
       origin: 'communication_approval_delivery',
       causality,
     })
     if (loopBreak) throw new AgentLoopLimitError(loopBreak)
     messageRepo.send(getCtx().db, {
-      ...payload,
+      ...plan.payload,
       causalChainId: causality.causalChainId,
       causalHop: causality.causalHop,
     })
     return
   }
-  if (approval.payloadKind === 'scheduler_trigger') {
+  if (plan.kind === 'scheduler_trigger') {
     // Scheduler approvals are durable grants only. The pending dispatch is
     // executed by the scheduler so leases, retries, and restart recovery stay
     // in one state machine.
     return
   }
-  if (approval.payloadKind === 'agent_turn') {
-    const payload = approval.payload as {
-      agentId: string
-      message: string
-      attachments?: Array<{ name?: string; mimeType: string; data: string }>
-    }
+  if (plan.kind === 'agent_turn') {
+    const preparedTurn = await prepareAgentTurn({
+      invocation: createTrustedTurnInvocation({
+        kind: 'approval_delivery',
+        authorization: {
+          origin: 'http_chat',
+          attemptKind: 'http_chat_ingress',
+          attemptId: plan.approval.attemptId,
+          approvalId: plan.approval.id,
+          agentId: plan.payload.agentId,
+        },
+        turn: {
+          agentId: plan.payload.agentId,
+          message: plan.payload.message,
+          attachments: plan.payload.attachments,
+        },
+        bashApprovalMode: 'auto_deny',
+      }),
+    })
     let failure: string | null = null
-    for await (const frame of runAgentTurn(payload.agentId, payload.message, {
-      attachments: payload.attachments ?? [],
-      skipUserIngress: true,
-      bashApprovalMode: 'auto_deny',
-    })) {
-      failure ??= turnFrameFailure(frame)
+    for await (const frame of runAgentTurn(preparedTurn)) {
+      failure ??= protectedFrameFailure(frame)
     }
     if (failure) throw new Error(failure)
     return
   }
-  if (approval.payloadKind === 'http_chat_frame') {
+  if (plan.kind === 'http_chat_frame') {
     // The polling caller retrieves the captured frame from approval detail after the
     // terminal delivered status; the original NDJSON response cannot be re-opened.
     return
   }
-  if (approval.payloadKind === 'inbox_message') {
-    const payload = approval.payload as { messageId: string }
+  if (plan.kind === 'inbox_message') {
     getCtx().db.raw.run(
       `INSERT INTO communication_approval_message_grants
          (approval_id, message_id, created_at) VALUES (?, ?, ?)`,
-      [approval.id, payload.messageId, Date.now()],
+      [plan.approval.id, plan.payload.messageId, Date.now()],
     )
     return
   }
-  if (approval.payloadKind === 'telegram_ingress') {
-    const payload = approval.payload as { agentId: string; text: string; media?: MediaRef | null }
-    const attachments = []
-    const text = payload.text
-    if (payload.media) {
+  if (plan.kind === 'telegram_ingress') {
+    const attachments: Attachment[] = []
+    if (plan.payload.media) {
       const { db, authToken } = getCtx()
       const botToken = openSecrets(db, authToken).get('TELEGRAM_BOT_TOKEN') ?? ''
       if (!botToken) throw new Error('Telegram bot token is unavailable')
-      const downloaded = await downloadMediaBytes(new Bot(botToken).api, botToken, payload.media)
-      if (!downloaded.ok)
-        throw new Error(`Telegram attachment download failed: ${downloaded.reason}`)
+      const downloaded = await downloadMediaBytes(
+        new Bot(botToken).api,
+        botToken,
+        plan.payload.media,
+      )
+      if (!downloaded.ok) throw new Error('Telegram attachment download failed')
       attachments.push({
         mimeType: downloaded.mimeType,
         data: downloaded.data,
@@ -274,68 +308,67 @@ async function deliver(approval: CommunicationApprovalDetail): Promise<void> {
     const { db, authToken } = getCtx()
     const botToken = openSecrets(db, authToken).get('TELEGRAM_BOT_TOKEN') ?? ''
     if (botToken) {
-      const transport = approval.payload as { chatId: number; threadId?: number }
       await new Bot(botToken).api.sendMessage(
-        transport.chatId,
+        plan.payload.chatId,
         'Communication approved. Processing now.',
-        transport.threadId ? { message_thread_id: transport.threadId } : {},
+        { message_thread_id: plan.payload.threadId },
       )
     }
+    const preparedTurn = await prepareAgentTurn({
+      invocation: createTrustedTurnInvocation({
+        kind: 'approval_delivery',
+        authorization: {
+          origin: 'telegram_agent_topic',
+          attemptKind: 'telegram_ingress',
+          attemptId: plan.approval.attemptId,
+          approvalId: plan.approval.id,
+          agentId: plan.payload.agentId,
+        },
+        turn: {
+          agentId: plan.payload.agentId,
+          message: plan.payload.text,
+          attachments,
+        },
+        bashApprovalMode: 'auto_deny',
+      }),
+    })
     let failure: string | null = null
-    for await (const frame of runAgentTurn(payload.agentId, text, {
-      attachments,
-      skipUserIngress: true,
-      bashApprovalMode: 'auto_deny',
-    })) {
-      failure ??= turnFrameFailure(frame)
+    for await (const frame of runAgentTurn(preparedTurn)) {
+      failure ??= protectedFrameFailure(frame)
     }
     if (failure) throw new Error(failure)
     return
   }
-  if (approval.payloadKind.startsWith('telegram_')) {
-    const { db, authToken } = getCtx()
-    const botToken = openSecrets(db, authToken).get('TELEGRAM_BOT_TOKEN') ?? ''
-    if (!botToken) throw new Error('Telegram bot token is unavailable')
-    const api = new Bot(botToken).api
-    const payload = approval.payload as {
-      chatId: number
-      topicId?: number
-      text?: string
-      parseMode?: 'HTML' | null
-      data?: string
-      mimeType?: string
-      caption?: string
-      name?: string
-      asDocument?: boolean
-    }
-    const options = {
-      ...(payload.topicId ? { message_thread_id: payload.topicId } : {}),
-      ...(payload.caption ? { caption: payload.caption } : {}),
-    }
-    if (approval.payloadKind === 'telegram_text') {
-      await api.sendMessage(payload.chatId, payload.text ?? '', {
-        ...options,
-        ...(payload.parseMode ? { parse_mode: payload.parseMode } : {}),
-      })
-      return
-    }
-    if (approval.payloadKind === 'telegram_typing') {
-      await api.sendChatAction(payload.chatId, 'typing', options)
-      return
-    }
-    const bytes = Buffer.from(payload.data ?? '', 'base64')
-    if (approval.payloadKind === 'telegram_image' && !payload.asDocument) {
-      await api.sendPhoto(payload.chatId, new InputFile(bytes, 'approved-image.png'), options)
-      return
-    }
-    await api.sendDocument(
-      payload.chatId,
-      new InputFile(bytes, payload.name ?? 'approved-file'),
-      options,
-    )
+
+  const { db, authToken } = getCtx()
+  const botToken = openSecrets(db, authToken).get('TELEGRAM_BOT_TOKEN') ?? ''
+  if (!botToken) throw new Error('Telegram bot token is unavailable')
+  const api = new Bot(botToken).api
+  const options = {
+    ...(plan.payload.topicId ? { message_thread_id: plan.payload.topicId } : {}),
+    ...('caption' in plan.payload && plan.payload.caption ? { caption: plan.payload.caption } : {}),
+  }
+  if (plan.kind === 'telegram_text') {
+    await api.sendMessage(plan.payload.chatId, plan.payload.text, {
+      ...options,
+      ...(plan.payload.parseMode ? { parse_mode: plan.payload.parseMode } : {}),
+    })
     return
   }
-  throw new Error(`unsupported approval payload kind: ${approval.payloadKind}`)
+  if (plan.kind === 'telegram_typing') {
+    await api.sendChatAction(plan.payload.chatId, 'typing', options)
+    return
+  }
+  const bytes = Buffer.from(plan.payload.data, 'base64')
+  if (plan.kind === 'telegram_image' && !plan.payload.asDocument) {
+    await api.sendPhoto(plan.payload.chatId, new InputFile(bytes, 'approved-image.png'), options)
+    return
+  }
+  await api.sendDocument(
+    plan.payload.chatId,
+    new InputFile(bytes, plan.kind === 'telegram_file' ? plan.payload.name : 'approved-image.png'),
+    options,
+  )
 }
 
 async function notifyTelegram(id: string, text: string): Promise<void> {
@@ -344,17 +377,22 @@ async function notifyTelegram(id: string, text: string): Promise<void> {
     id,
     true,
   ) as CommunicationApprovalDetail | null
-  if (detail?.payloadKind !== 'telegram_ingress') return
-  const payload = detail.payload as { chatId?: number; threadId?: number }
-  if (!payload.chatId) return
+  if (!detail) return
+  let plan: ApprovalDeliveryPlan
+  try {
+    plan = approvalPlan(detail)
+  } catch {
+    return
+  }
+  if (plan.kind !== 'telegram_ingress') return
   const { db, authToken } = getCtx()
   const token = openSecrets(db, authToken).get('TELEGRAM_BOT_TOKEN') ?? ''
   if (!token) return
   try {
     await new Bot(token).api.sendMessage(
-      payload.chatId,
+      plan.payload.chatId,
       text,
-      payload.threadId ? { message_thread_id: payload.threadId } : {},
+      plan.payload.threadId ? { message_thread_id: plan.payload.threadId } : {},
     )
   } catch {
     // The durable decision remains authoritative if a best-effort status notice fails.

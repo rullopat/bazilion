@@ -1,8 +1,17 @@
-import { createHash, randomUUID } from 'node:crypto'
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHash,
+  pbkdf2Sync,
+  randomBytes,
+  randomUUID,
+} from 'node:crypto'
 import {
   chmodSync,
   closeSync,
   copyFileSync,
+  cpSync,
+  createReadStream,
   createWriteStream,
   existsSync,
   fsyncSync,
@@ -12,14 +21,17 @@ import {
   openSync,
   readdirSync,
   readFileSync,
+  readSync,
   renameSync,
   rmSync,
+  writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, dirname, isAbsolute, parse, posix, relative, resolve } from 'node:path'
-import { DatabaseSync } from 'node:sqlite'
+import { DatabaseSync, backup as sqliteBackup } from 'node:sqlite'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
+import { Decrypter, Encrypter } from 'age-encryption'
 import { defineCommand } from 'citty'
 import { extract, list, type ReadEntry } from 'tar'
 import { assertCanonicalBackupSchema } from '../backup-schema.ts'
@@ -28,18 +40,34 @@ import { acquireHomeRestoreLock, DAEMON_LIVENESS_FILENAME } from '../daemon-live
 import { resolveCliPaths } from '../paths.ts'
 
 const createCmd = defineCommand({
-  meta: { name: 'create', description: 'Download a tar.gz backup of ~/.bazilion from the server' },
+  meta: { name: 'create', description: 'Create a client-side encrypted backup of ~/.bazilion' },
   args: {
     output: {
       type: 'positional',
       required: false,
-      description: 'Output file path (default: ./bazilion-backup-YYYY-MM-DD.tar.gz)',
+      description: 'Output path (default: .tar.gz.age with --recipient, otherwise .tar.gz)',
+    },
+    recipient: {
+      type: 'string',
+      description: 'age recipient (age1… or age1pq1…); encrypts before writing output',
+    },
+    plaintext: {
+      type: 'boolean',
+      description: 'Explicitly permit a sensitive unencrypted .tar.gz backup',
     },
   },
   async run({ args }) {
+    if (args.recipient && args.plaintext) {
+      throw new Error('--recipient and --plaintext are mutually exclusive')
+    }
+    if (!args.recipient && !args.plaintext) {
+      throw new Error('choose --recipient <age1…> for encryption or explicitly pass --plaintext')
+    }
     const cfg = loadClientConfig()
     const date = new Date().toISOString().slice(0, 10)
-    const outAbs = resolve(args.output ?? `bazilion-backup-${date}.tar.gz`)
+    const defaultSuffix = args.recipient ? '.tar.gz.age' : '.tar.gz'
+    const outAbs = resolve(args.output ?? `bazilion-backup-${date}${defaultSuffix}`)
+    if (existsSync(outAbs)) throw new Error(`refusing to overwrite existing backup: ${outAbs}`)
     const configuredHome = resolve(resolveCliPaths().home)
     const outputFromHome = relative(configuredHome, outAbs)
     if (!outputFromHome || (!outputFromHome.startsWith('..') && !isAbsolute(outputFromHome))) {
@@ -48,7 +76,10 @@ const createCmd = defineCommand({
       )
     }
 
-    console.log(`downloading backup → ${outAbs}`)
+    if (!args.recipient) {
+      console.warn('warning: creating a plaintext backup containing all Bazilion credentials')
+    }
+    console.log(`${args.recipient ? 'encrypting' : 'downloading'} backup → ${outAbs}`)
     const res = await fetch(`${cfg.serverUrl}/api/backup`, {
       headers: { authorization: `Bearer ${cfg.token}`, origin: cfg.serverUrl },
     })
@@ -65,14 +96,28 @@ const createCmd = defineCommand({
     const downloadDir = mkdtempSync(resolve(tmpdir(), 'bazilion-download-'))
     const partial = resolve(downloadDir, 'backup.tar.gz')
     try {
-      await pipeline(
-        Readable.fromWeb(res.body),
-        createWriteStream(partial, { flags: 'wx', mode: 0o600 }),
-      )
+      if (args.recipient) {
+        const [encryptSource, validateSource] = res.body.tee()
+        const encrypter = new Encrypter()
+        encrypter.addRecipient(args.recipient)
+        const encrypted = await encrypter.encrypt(encryptSource)
+        await Promise.all([
+          pipeline(
+            Readable.fromWeb(encrypted),
+            createWriteStream(partial, { flags: 'wx', mode: 0o600 }),
+          ),
+          validateArchiveReadable(Readable.fromWeb(validateSource)),
+        ])
+      } else {
+        await pipeline(
+          Readable.fromWeb(res.body),
+          createWriteStream(partial, { flags: 'wx', mode: 0o600 }),
+        )
+      }
       // A server/proxy can end a response cleanly after delivering only a
       // prefix. Parse the complete download before it can replace a known-good
       // output file or be reported as usable.
-      await validateArchive(partial)
+      if (!args.recipient) await validateArchive(partial)
       try {
         renameSync(partial, outAbs)
       } catch (error) {
@@ -246,6 +291,29 @@ async function validateArchive(file: string): Promise<ArchiveEntry[]> {
     },
   })
 
+  return validateArchiveEntries(entries)
+}
+
+async function validateArchiveReadable(stream: Readable): Promise<ArchiveEntry[]> {
+  const entries: ArchiveEntry[] = []
+  const parser = list({
+    strict: true,
+    onentry(entry) {
+      if (entry.meta) return
+      const path = normalizeArchivePath(entry.path)
+      if (!path) return
+      if (!EXTRACTABLE_ENTRY_TYPES.has(entry.type)) {
+        throw new Error(`backup contains unsupported ${entry.type} entry: ${path}`)
+      }
+      if (entry.type === 'SymbolicLink') validateArchiveSymbolicLink(path, entry.linkpath)
+      entries.push({ path, type: entry.type, linkpath: entry.linkpath })
+    },
+  })
+  await pipeline(stream, parser)
+  return validateArchiveEntries(entries)
+}
+
+function validateArchiveEntries(entries: ArchiveEntry[]): ArchiveEntry[] {
   const byPath = new Map<string, ArchiveEntry>()
   for (const entry of entries) {
     if (byPath.has(entry.path)) throw new Error(`backup contains a duplicate path: ${entry.path}`)
@@ -332,7 +400,7 @@ function validateDatabase(path: string, authToken: string): void {
     const activeBootstrap = db
       .prepare(
         `SELECT 1 FROM web_tokens
-         WHERE token_hash = ? AND label = 'bootstrap' AND revoked_at IS NULL
+         WHERE token_hash = ? AND kind = 'bootstrap' AND revoked_at IS NULL
          LIMIT 1`,
       )
       .get(tokenHash)
@@ -522,6 +590,15 @@ function removeRebuildableQmdIndexes(payload: string): void {
   }
 }
 
+function revokeRestoredBrowserSessions(database: string): void {
+  const db = new DatabaseSync(database)
+  try {
+    db.prepare('UPDATE web_sessions SET revoked_at = ? WHERE revoked_at IS NULL').run(Date.now())
+  } finally {
+    db.close()
+  }
+}
+
 export function installValidatedPayload(
   payload: string,
   targetHome: string,
@@ -673,6 +750,44 @@ function fsyncDirectory(path: string): void {
   }
 }
 
+function fsyncFile(path: string): void {
+  const fd = openSync(path, 'r')
+  try {
+    fsyncSync(fd)
+  } finally {
+    closeSync(fd)
+  }
+}
+
+const AGE_HEADER = Buffer.from('age-encryption.org/v1\n', 'ascii')
+
+function isAgeEncrypted(path: string): boolean {
+  const fd = openSync(path, 'r')
+  try {
+    const header = Buffer.alloc(AGE_HEADER.length)
+    return readSync(fd, header, 0, header.length, 0) === header.length && header.equals(AGE_HEADER)
+  } finally {
+    closeSync(fd)
+  }
+}
+
+function readAgeIdentity(rawPath: string): string {
+  const path = resolve(rawPath)
+  const entry = lstatSync(path)
+  if (!entry.isFile()) throw new Error(`age identity is not a regular file: ${path}`)
+  if (process.platform !== 'win32' && (entry.mode & 0o077) !== 0) {
+    throw new Error(`age identity must be owner-only (chmod 600): ${path}`)
+  }
+  const identities = readFileSync(path, 'utf8')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith('#'))
+  if (identities.length !== 1 || !identities[0]?.startsWith('AGE-SECRET-KEY-')) {
+    throw new Error('age identity file must contain exactly one supported AGE-SECRET-KEY entry')
+  }
+  return identities[0]
+}
+
 const restoreCmd = defineCommand({
   meta: {
     name: 'restore',
@@ -688,6 +803,10 @@ const restoreCmd = defineCommand({
     force: {
       type: 'boolean',
       description: 'Overwrite existing non-empty home (destroys existing data)',
+    },
+    identity: {
+      type: 'string',
+      description: 'Path to an age identity file required for encrypted backups',
     },
   },
   async run({ args }) {
@@ -739,7 +858,36 @@ const restoreCmd = defineCommand({
       try {
         // Validate and extract a private copy so an archive replaced by another
         // process between the two passes cannot bypass path validation.
-        copyFileSync(file, stagedArchive)
+        if (isAgeEncrypted(file)) {
+          if (!args.identity) {
+            throw new Error('encrypted backup requires --identity <owner-only age identity file>')
+          }
+          const identity = readAgeIdentity(args.identity)
+          const decrypter = new Decrypter()
+          decrypter.addIdentity(identity)
+          let decrypted: ReadableStream<Uint8Array>
+          try {
+            decrypted = await decrypter.decrypt(
+              Readable.toWeb(createReadStream(file)) as ReadableStream<Uint8Array>,
+            )
+          } catch {
+            throw new Error('backup decryption failed: wrong identity or invalid encrypted header')
+          }
+          try {
+            await pipeline(
+              Readable.fromWeb(decrypted),
+              createWriteStream(stagedArchive, { flags: 'wx', mode: 0o600 }),
+            )
+          } catch {
+            throw new Error('backup decryption failed: ciphertext is truncated or modified')
+          }
+        } else {
+          if (args.identity) {
+            throw new Error('encrypted-only restore requested, but the backup is plaintext')
+          }
+          copyFileSync(file, stagedArchive)
+          chmodSync(stagedArchive, 0o600)
+        }
         await validateArchive(stagedArchive)
         mkdirSync(payload)
         await extract({
@@ -762,6 +910,7 @@ const restoreCmd = defineCommand({
         const authToken = validateAuthFile(authFile)
         validateDatabase(database, authToken)
         rebaseRestoredHomeDirectories(database, payload, targetHome)
+        revokeRestoredBrowserSessions(database)
         // Recheck the canonical file after the controlled mutation. This also
         // proves the auth pairing and all schema/FK invariants still hold.
         validateDatabase(database, authToken)
@@ -797,11 +946,234 @@ const restoreCmd = defineCommand({
   },
 })
 
+interface SecretEnvelope {
+  salt: string
+  iv: string
+  tag: string
+  data: string
+}
+
+function decryptSecretEnvelope(raw: string, password: string): string {
+  const envelope = JSON.parse(raw) as SecretEnvelope
+  const key = pbkdf2Sync(password, Buffer.from(envelope.salt, 'hex'), 100_000, 32, 'sha256')
+  const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(envelope.iv, 'hex'))
+  decipher.setAuthTag(Buffer.from(envelope.tag, 'hex'))
+  return Buffer.concat([
+    decipher.update(Buffer.from(envelope.data, 'hex')),
+    decipher.final(),
+  ]).toString('utf8')
+}
+
+function encryptSecretEnvelope(value: string, password: string): string {
+  const salt = randomBytes(16)
+  const key = pbkdf2Sync(password, salt, 100_000, 32, 'sha256')
+  const iv = randomBytes(12)
+  const cipher = createCipheriv('aes-256-gcm', key, iv)
+  const data = Buffer.concat([cipher.update(value, 'utf8'), cipher.final()])
+  return JSON.stringify({
+    salt: salt.toString('hex'),
+    iv: iv.toString('hex'),
+    tag: cipher.getAuthTag().toString('hex'),
+    data: data.toString('hex'),
+  } satisfies SecretEnvelope)
+}
+
+function credentialInventory(home: string): {
+  bootstrap: boolean
+  activeTokens: number
+  secretKeys: string[]
+} {
+  const authFile = resolve(home, 'auth.json')
+  const database = resolve(home, 'bazilion.db')
+  const token = validateAuthFile(authFile)
+  validateDatabase(database, token)
+  const db = new DatabaseSync(database, { readOnly: true })
+  try {
+    const activeTokens = db
+      .prepare(
+        "SELECT COUNT(*) AS count FROM web_tokens WHERE revoked_at IS NULL AND kind = 'device' AND expires_at > ?",
+      )
+      .get(Date.now()) as { count: number }
+    const secretKeys = (
+      db.prepare('SELECT key FROM secrets ORDER BY key').all() as unknown as Array<{ key: string }>
+    ).map((row) => row.key)
+    return { bootstrap: true, activeTokens: activeTokens.count, secretKeys }
+  } finally {
+    db.close()
+  }
+}
+
+const inventoryCmd = defineCommand({
+  meta: { name: 'inventory', description: 'List credential classes captured by a backup/home' },
+  args: { home: { type: 'string', description: 'Override BAZILION_HOME' } },
+  run({ args }) {
+    const home = resolve(resolveCliPaths(args.home).home)
+    const inventory = credentialInventory(home)
+    console.log('credential classes present (values are never shown):')
+    console.log(`  bootstrap token: ${inventory.bootstrap ? 'present' : 'missing'}`)
+    console.log(`  active device/web/mobile tokens: ${inventory.activeTokens}`)
+    for (const key of inventory.secretKeys) console.log(`  stored secret: ${key}`)
+  },
+})
+
+const recoveryGuideCmd = defineCommand({
+  meta: { name: 'recovery-guide', description: 'Print the credential-exposure recovery checklist' },
+  run() {
+    console.log('Bazilion credential exposure recovery:')
+    console.log('1. Stop the Bazilion daemon and preserve the suspected archive for investigation.')
+    console.log(
+      '2. Run `bazilion backup inventory`, then `bazilion backup rotate-bootstrap --yes`.',
+    )
+    console.log('3. Regenerate the Telegram bot token with BotFather and save the replacement.')
+    console.log(
+      '4. Disconnect/revoke the affected OpenAI session or grant, then authenticate again.',
+    )
+    console.log('5. Rotate every provider or MCP credential named by the inventory.')
+    console.log('6. Create and verify a fresh recipient-encrypted backup after external rotation.')
+    console.log(
+      'Local bootstrap rotation does not revoke copied Telegram/OpenAI/provider credentials.',
+    )
+  },
+})
+
+const rotateBootstrapCmd = defineCommand({
+  meta: {
+    name: 'rotate-bootstrap',
+    description: 'Offline crash-safe bootstrap rotation; revokes every other local token',
+  },
+  args: {
+    home: { type: 'string', description: 'Override BAZILION_HOME' },
+    yes: { type: 'boolean', required: true, description: 'Confirm token revocation and home swap' },
+  },
+  async run({ args }) {
+    if (!args.yes) throw new Error('--yes is required')
+    const paths = resolveCliPaths(args.home)
+    const targetHome = resolve(paths.home)
+    if (targetHome === parse(targetHome).root) {
+      throw new Error(`refusing to rotate filesystem root: ${targetHome}`)
+    }
+    const lock = await acquireHomeRestoreLock(targetHome)
+    const parent = dirname(targetHome)
+    const staging = mkdtempSync(resolve(parent, '.bazilion-rotate-'))
+    const payload = resolve(staging, 'payload')
+    let preserveStaging = false
+    try {
+      for (const serverUrl of configuredLoopbackUrls()) {
+        if (await probeServerRunning(serverUrl)) {
+          throw new Error(`bazilion server appears to be running at ${serverUrl} — stop it first.`)
+        }
+      }
+      const oldAuth = JSON.parse(readFileSync(paths.authFile, 'utf8')) as {
+        token?: unknown
+        remote?: unknown
+      }
+      if (typeof oldAuth.token !== 'string' || !oldAuth.token) {
+        throw new Error('auth.json is missing the bootstrap token')
+      }
+      validateDatabase(resolve(targetHome, 'bazilion.db'), oldAuth.token)
+
+      cpSync(targetHome, payload, {
+        recursive: true,
+        dereference: false,
+        verbatimSymlinks: true,
+        preserveTimestamps: true,
+      })
+      const stagedDb = resolve(payload, 'bazilion.db')
+      rmSync(stagedDb, { force: true })
+      const sourceDb = new DatabaseSync(resolve(targetHome, 'bazilion.db'), { readOnly: true })
+      try {
+        await sqliteBackup(sourceDb, stagedDb)
+      } finally {
+        sourceDb.close()
+      }
+      for (const suffix of ['-wal', '-shm', '-journal'])
+        rmSync(`${stagedDb}${suffix}`, { force: true })
+
+      const newToken = randomBytes(24).toString('hex')
+      const db = new DatabaseSync(stagedDb)
+      try {
+        db.exec('PRAGMA foreign_keys = ON; BEGIN IMMEDIATE')
+        try {
+          const rows = db
+            .prepare('SELECT key, envelope FROM secrets ORDER BY key')
+            .all() as unknown as Array<{
+            key: string
+            envelope: string
+          }>
+          const updateSecret = db.prepare(
+            'UPDATE secrets SET envelope = ?, updated_at = ? WHERE key = ?',
+          )
+          for (const row of rows) {
+            let value: string
+            try {
+              value = decryptSecretEnvelope(row.envelope, oldAuth.token)
+            } catch {
+              throw new Error(`stored secret is unreadable and rotation was aborted: ${row.key}`)
+            }
+            updateSecret.run(encryptSecretEnvelope(value, newToken), Date.now(), row.key)
+          }
+          const oldHash = createHash('sha256').update(oldAuth.token).digest('hex')
+          const newHash = createHash('sha256').update(newToken).digest('hex')
+          const bootstrap = db
+            .prepare(
+              "UPDATE web_tokens SET token_hash = ?, last_used_at = NULL, revoked_at = NULL WHERE token_hash = ? AND kind = 'bootstrap' AND revoked_at IS NULL",
+            )
+            .run(newHash, oldHash)
+          if (bootstrap.changes !== 1) throw new Error('active bootstrap token row was not unique')
+          const revokedAt = Date.now()
+          db.prepare(
+            "UPDATE web_tokens SET revoked_at = ? WHERE kind != 'bootstrap' AND revoked_at IS NULL",
+          ).run(revokedAt)
+          db.prepare('UPDATE web_sessions SET revoked_at = ? WHERE revoked_at IS NULL').run(
+            revokedAt,
+          )
+          db.exec('COMMIT')
+        } catch (error) {
+          db.exec('ROLLBACK')
+          throw error
+        }
+      } finally {
+        db.close()
+      }
+
+      const stagedAuth = resolve(payload, 'auth.json')
+      const authPartial = resolve(payload, `.auth.json.${randomUUID()}.installing`)
+      writeFileSync(authPartial, `${JSON.stringify({ ...oldAuth, token: newToken }, null, 2)}\n`, {
+        mode: 0o600,
+        flag: 'wx',
+      })
+      renameSync(authPartial, stagedAuth)
+      chmodSync(stagedAuth, 0o600)
+      validateDatabase(stagedDb, newToken)
+      const verification = credentialInventory(payload)
+      if (!verification.bootstrap) throw new Error('rotated credential inventory is invalid')
+      fsyncFile(stagedDb)
+      fsyncFile(stagedAuth)
+      fsyncDirectory(payload)
+
+      try {
+        installValidatedPayload(payload, targetHome, staging, lock)
+      } catch (error) {
+        if (error instanceof RestoreRecoveryRequiredError) preserveStaging = true
+        throw error
+      }
+      console.log('bootstrap token rotated; all non-bootstrap Bazilion tokens were revoked')
+      console.log('external Telegram, OpenAI, provider, and MCP credentials were not revoked')
+    } finally {
+      if (!preserveStaging) rmSync(staging, { recursive: true, force: true })
+      lock.release()
+    }
+  },
+})
+
 export const backupCommand = defineCommand({
-  meta: { name: 'backup', description: 'Create or restore a ~/.bazilion tar.gz backup' },
+  meta: { name: 'backup', description: 'Encrypted backup, restore, and credential recovery' },
   subCommands: {
     create: createCmd,
     restore: restoreCmd,
+    inventory: inventoryCmd,
+    'recovery-guide': recoveryGuideCmd,
+    'rotate-bootstrap': rotateBootstrapCmd,
   },
   // `bazilion backup` with no positional falls through to citty's subcommand
   // prompt ("No command specified"). The previous default (auto-download to

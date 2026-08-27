@@ -29,7 +29,7 @@ interface AgentsView {
 }
 
 const fetchAgents = createServerFn({ method: 'POST' })
-  .inputValidator((d: { all: boolean }) => d)
+  .validator((d: { all: boolean }) => d)
   .handler(async ({ data }): Promise<AgentsView> => {
     const c = daemonClient()
     const [agents, profiles, teams, models] = await Promise.all([

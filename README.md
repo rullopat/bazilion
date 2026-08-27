@@ -107,24 +107,38 @@ bazilion provider list|enable|disable|models|test    # provider config + smoke t
 bazilion config list|set|rm                # service config (URLs, IDs, secrets)
 bazilion login --server URL --token T      # save a remote daemon's coordinates
 bazilion token create|list|revoke|show-local         # web tokens for API/CLI clients
-bazilion backup create [output.tar.gz]     # online backup with a consistent SQLite snapshot
-bazilion backup restore <file.tar.gz>      # validate + restore atomically (stop daemon first)
+bazilion backup create [output.tar.gz.age] --recipient age1…  # encrypted online backup
+bazilion backup create [output.tar.gz] --plaintext            # explicit unsafe compatibility mode
+bazilion backup restore <file> [--identity identity.txt]      # validate + restore atomically
+bazilion backup inventory                  # credential names/counts, never credential values
+bazilion backup rotate-bootstrap --yes     # offline local-token rotation and secret re-encryption
+bazilion backup recovery-guide             # external-credential incident checklist
 bazilion completion bash|zsh|fish          # print a shell completion script
 ```
 
 `backup create` is safe while the daemon is active: it uses SQLite's online-backup API and omits
-WAL/SHM files and rebuildable qmd indexes. The downloaded archive is installed only after it parses
-successfully and is written with owner-only permissions because it contains `auth.json`. Restore is
-offline: it validates archive paths, links, the auth/DB pair, SQLite integrity, and foreign keys in a
-staging directory, then rebases stored Profile and Agent directories to the requested home before
-replacing it. Restore and the daemon contend on one per-home ownership record outside the directory
-being swapped, so a custom-port daemon or a daemon starting mid-restore cannot open the database.
+WAL/SHM files and rebuildable qmd indexes. Recipient mode streams the response through the standard
+age envelope without writing a complete plaintext archive; plaintext output requires the explicit
+`--plaintext` warning path. Generate and custody an age identity separately, pass only its public
+`age1…` recipient to create, and provide the owner-only identity file to restore. Completed output is
+installed atomically and never overwrites an existing file. Restore is offline: it authenticates and
+decrypts into private staging, validates archive paths, links, the auth/DB pair, SQLite integrity, and
+foreign keys, then rebases stored Profile and Agent directories before replacing the target home.
+Restore and the daemon contend on one per-home ownership record outside the directory being swapped,
+so a custom-port daemon or a daemon starting mid-restore cannot open the database.
 If restore is interrupted between swap renames, the record stays fail-closed and reports the
 retained recovery path. Contained relative links in ordinary work product are preserved; absolute
 links are limited to canonical Team slot paths, whose external targets are not included in the archive.
 The CLI rejects backup output paths inside `BAZILION_HOME` so a later backup cannot accidentally
 nest prior archives. Ordinary profile, Agent, Team, skill, and session files are captured as the
 archive walks them; only the SQLite snapshot is point-in-time consistent.
+
+If a credential-bearing backup may have escaped, `backup inventory` reports only credential names
+and active-token counts. With the daemon stopped, `backup rotate-bootstrap --yes` atomically replaces
+the local bootstrap token, re-encrypts every stored secret, and revokes all other Bazilion web/mobile
+tokens. It cannot revoke credentials already copied from the archive: follow `backup recovery-guide`
+to regenerate Telegram, revoke and reconnect OpenAI, rotate provider/MCP credentials, and only then
+create a fresh encrypted backup.
 
 ## Concepts
 
@@ -167,6 +181,7 @@ The daemon's data layer (`apps/daemon/src/core/`: DB, repos, profile/agent/team 
 
 ```sh
 pnpm test             # vitest across the whole tree
+pnpm security:acceptance # deterministic personal-server security release gate
 pnpm typecheck        # tsc --noEmit on the non-web tree
 pnpm lint             # biome
 pnpm format           # biome --write
@@ -210,40 +225,41 @@ Two tiers: the **data tier** (`bazilion.db*`, `profiles/`, `agents/`, `teams/`) 
 - **Native modules**: qmd pulls `better-sqlite3` and a handful of tree-sitter grammars (small native compiles on install). `node-llama-cpp` is a qmd transitive dep but intentionally excluded from build in `pnpm.onlyBuiltDependencies` — qmd's BM25 search doesn't need it, and enabling it would require downloading multi-GB GGUF models.
 - **Skills format**: standard agent-skill `SKILL.md` (YAML frontmatter with `name` / `description`, free-form body). OpenClaw skills drop in unchanged via `bazilion skill import --from openclaw`.
 - **Core agent engine**: [pi-coding-agent](https://www.npmjs.com/package/@earendil-works/pi-coding-agent) is the engine Bazilion is based on. It owns the per-turn agent loop, transcript storage (JSONL session files under `~/.bazilion/agents/<id>/sessions/`), replay, compaction, provider/tool execution, and the file-IO toolset (`read`/`bash`/`edit`/`write`/`grep`/`find`/`ls`).
-- **LLM providers**: routed through [pi-ai](https://www.npmjs.com/package/@earendil-works/pi-ai) — Anthropic, OpenAI, OpenAI Codex (ChatGPT OAuth), Google AI Studio/Vertex, Azure OpenAI, AWS Bedrock, GitHub Copilot, DeepSeek, Mistral, Groq, Cerebras, xAI, Z.AI, Hugging Face, Fireworks, Together, Moonshot/Kimi, MiniMax, Qwen Token Plan, Xiaomi MiMo, Ant Ling, NVIDIA NIM, OpenCode, OpenRouter, Vercel AI Gateway, Cloudflare, LM Studio, Ollama, and llama.cpp. Model strings are `provider:model`.
+- **LLM providers**: routed through [pi-ai](https://www.npmjs.com/package/@earendil-works/pi-ai) — Anthropic, OpenAI, OpenAI Codex (ChatGPT OAuth), Google AI Studio/Vertex, Azure OpenAI, AWS Bedrock, GitHub Copilot, DeepSeek, Mistral, Groq, Cerebras, xAI, Z.AI, Hugging Face, Fireworks, Together, Baseten, Moonshot/Kimi, MiniMax, Qwen Token Plan (including Individual), Xiaomi MiMo, Ant Ling, NVIDIA NIM, OpenCode, OpenRouter, Vercel AI Gateway, Cloudflare, LM Studio, Ollama, and llama.cpp. Model strings are `provider:model`.
+
+Protected Telegram/background/review turns use the same pinned provider catalog without inheriting
+the daemon environment. Bazilion projects only the selected provider credential into Pi's in-memory
+store, requires loopback endpoints for local providers, and fails closed for ambient profile or
+host credential-file discovery that cannot be safely projected.
 
 ## Exposing beyond loopback
 
-By default, `bazilion serve` binds `127.0.0.1:4321` — local-only. To use bazilion from another machine (Tailscale, LAN, etc.), put a TLS-terminating reverse proxy in front. Don't expose the daemon directly; it has no TLS and no rate limiting.
+The supported private-server profile publishes only the web application through tailnet-only
+Tailscale Serve HTTPS. The daemon and web listeners both remain on loopback; direct LAN, tailnet,
+or public daemon exposure and Tailscale Funnel are unsupported.
 
 ```sh
-# On the server, bind to loopback (default) and keep the proxy local.
+# Supply this exact value to both daemon and web service environments.
+export BAZILION_PUBLIC_ORIGIN=https://bazilion.example.ts.net
 bazilion serve
 
-# Mint a per-client token (plaintext shown exactly once — copy it now).
-bazilion token create "laptop"
+# Publish only the loopback web listener and verify the complete posture.
+tailscale serve --bg --https=443 http://127.0.0.1:4322
+bazilion gateway preflight
 
-# On the client machine — stores the server + token in ~/.bazilion/auth.json.
-bazilion login --server https://bazilion.example.com --token <token>
+# Mint a separate expiring credential for each client; plaintext is shown once.
+bazilion token create laptop --expires-days 90 --qr
 
-# Revoke when the client is lost or retired.
+# Revoke a lost device and every browser session derived from it.
 bazilion token list
 bazilion token revoke <id>
+bazilion session list
 ```
 
-Note: the bootstrap token (the row labelled `bootstrap`, written to `auth.json` by the daemon's first-run bootstrap) **cannot be revoked** from the API or web UI — revoking it would lock the local CLI out of its own daemon. Mint additional tokens for any other client.
-
-Minimal Caddyfile (`caddy run --config Caddyfile`):
-
-```
-bazilion.example.com {
-  reverse_proxy 127.0.0.1:4321
-}
-```
-
-Caddy handles the TLS cert via Let's Encrypt automatically. For Tailscale, point the hostname at your tailnet node and use Tailscale's MagicDNS + HTTPS certs. The `web_tokens` table + cookie check runs behind the proxy, so every request still needs a valid token — the proxy only adds transport security.
-
-If you *do* want the daemon to bind a non-loopback address directly (dev/test only), pass `--host 0.0.0.0` to `bazilion serve`. Anyone who can reach that port can try tokens, so do not ship it without a proxy.
+The local bootstrap token cannot expire or be revoked because it seeds secrets encryption, and
+browser login rejects it. Device bearers are exchanged for hashed, bounded browser sessions with
+session-bound CSRF protection. See [the private gateway guide](docs/private-gateway.md) for service
+environment, verification, recovery, and remote CLI/mobile details.
 
 ## Agent shell security
 

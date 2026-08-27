@@ -80,6 +80,7 @@ export type {
   TriggerDispatch,
   TriggerDispatchStatus,
   TriggerKind,
+  WebSession,
   WebToken,
 } from './entities.ts'
 export { REASONING_LEVELS } from './entities.ts'
@@ -117,6 +118,7 @@ import type {
   TelegramMirrorMode,
   TemplateEndpointKind,
   TriggerDispatch,
+  WebSession,
   WebToken,
 } from './entities.ts'
 import type { BashApprovalMode, CommandApproval } from './events.ts'
@@ -771,6 +773,8 @@ export interface SetProviderEnabledResponse {
 
 export interface CreateTokenRequest {
   label: string
+  /** Device lifetime in days. Defaults to 90 and must be between 1 and 365. */
+  expiresInDays?: number
 }
 
 export interface CreateTokenResponse {
@@ -783,10 +787,88 @@ export interface ListTokensResponse {
   tokens: WebToken[]
 }
 
+export interface ListSessionsResponse {
+  sessions: WebSession[]
+}
+
+export interface AuthenticatedOwnerResponse {
+  authenticated: true
+  setupComplete: boolean
+  publicOrigin: string | null
+  principal: {
+    kind: 'bootstrap' | 'device' | 'session'
+    tokenId: string
+    label: string
+    sessionId: string | null
+  }
+}
+
+export interface PublicHealthResponse {
+  ok: true
+}
+
 // --- health (doctor) ---
 
+export type ExecutionCodingSurface = 'host' | 'docker' | 'unavailable'
+
+/** Closed, secret-free reasons returned by the protected Docker readiness probe. */
+export type ProtectedDockerReadinessReason =
+  | 'unsupported platform'
+  | 'Docker executable is unavailable'
+  | 'Docker must use a local Unix socket'
+  | 'Docker socket is unavailable'
+  | 'Docker image is unavailable'
+  | 'Docker image declares writable volumes'
+  | 'Docker preflight failed'
+
+export interface ExecutionSecurityReport {
+  /** Explicit compatibility posture for operator-initiated web/CLI/mobile HTTP turns. */
+  configuredOperatorHttp: {
+    protected: false
+    codingSurface: ExecutionCodingSurface
+    dockerImage: string
+    browser: 'enabled' | 'disabled'
+    mcp: 'enabled' | 'disabled'
+  }
+  /** Mandatory posture for Telegram, schedules, inbox wake-ups, and approval delivery. */
+  protectedUnattendedTurns: {
+    /**
+     * Process-wide prerequisites are available. This is not whole-turn readiness: every turn
+     * separately validates its selected normal/review model, bound refresh, and mounts/paths.
+     */
+    baseRuntimeReady: boolean
+    codingSurface: 'docker'
+    docker: {
+      ready: boolean
+      image: string
+      /** Null when ready or when Docker was not probed because shell configuration was invalid. */
+      reason: ProtectedDockerReadinessReason | null
+    }
+    browser: 'denied'
+    mcp: 'denied'
+    openaiCodex: {
+      enabled: boolean
+      connected: boolean
+      /** Stored access token is locally current; every turn still revalidates/refreshes. */
+      accessCurrent: boolean
+      /** A connected credential will be refreshed by the next turn when access is near expiry. */
+      refreshOnNextTurn: boolean
+      /** Process-wide provider prerequisites are present; individual turns still bind/refresh. */
+      baselineEligible: boolean
+    }
+    /** Exactly one secret-free next action when `baseRuntimeReady` is false. */
+    remediation: string | null
+  }
+}
+
 export interface HealthReport {
+  /** Structural install health only; it does not claim that protected work can execute. */
   ok: boolean
+  /**
+   * Mandatory process-wide prerequisites for protected work. Every turn still validates its
+   * selected normal/review model, bound refresh, and mounts/paths.
+   */
+  protectedWorkBaselineReady: boolean
   home: string
   paths: {
     home: boolean
@@ -804,10 +886,10 @@ export interface HealthReport {
   providers: {
     /** Names of cloud providers with credentials configured (e.g. ['anthropic', 'groq']). */
     configured: string[]
-    lmstudio: { baseURL: string; hasKey: boolean }
-    ollama: { baseURL: string }
+    lmstudio: { customEndpointConfigured: boolean; keyConfigured: boolean }
+    ollama: { customEndpointConfigured: boolean }
   }
-  webSearch: { bravePreview: string | null; searxngUrl: string | null }
+  webSearch: { braveConfigured: boolean; searxngConfigured: boolean }
   openclaw: { path: string; exists: boolean }
   triggers: { active: number; disabled: number }
   tokens: { active: number }
@@ -825,6 +907,7 @@ export interface HealthReport {
         ok: false
         error: string
       }
+  executionSecurity: ExecutionSecurityReport
   teamPolicyManagement: {
     contractVersion: number
     enforcementRequested: boolean
@@ -860,6 +943,12 @@ export interface TelegramPreflight {
   hasManageTopics: boolean
   /** True iff Privacy Mode is OFF (getMe.can_read_all_group_messages). */
   privacyModeOff: boolean
+  /** True when getChat reports no public @username. */
+  chatIsPrivate: boolean
+  /** Telegram's current member count, used as a visibility warning only. */
+  memberCount: number | null
+  /** Paired owner is currently reported as a chat member. Null while unpaired. */
+  ownerPresent: boolean | null
 }
 
 /**
@@ -927,6 +1016,19 @@ export interface TelegramConfigState {
    * is pending.
    */
   migratedChatId: string | null
+}
+
+export interface TelegramPairingStatus {
+  paired: boolean
+  challengeActive: boolean
+  challengeExpiresAt: number | null
+  ownerUserId: number | null
+}
+
+export interface TelegramPairingChallenge extends TelegramPairingStatus {
+  /** One-time plaintext. Returned only by challenge creation. */
+  code: string
+  expiresAt: number
 }
 
 /**

@@ -292,6 +292,22 @@ export interface WebToolsOpts {
  * with per-URL in-memory cache (15 min TTL).
  */
 export function webTools(opts?: WebToolsOpts): ToolHandler[] {
+  return buildWebTools(opts, true)
+}
+
+export type ProtectedWebFetchOpts = Omit<WebToolsOpts, 'env' | 'allowPrivate' | 'firecrawlDisabled'>
+
+/** The credential-free, public-address-only web capability for protected turns. */
+export function protectedWebFetchTool(opts?: ProtectedWebFetchOpts): ToolHandler {
+  const tool = buildWebTools(
+    { ...opts, env: {}, allowPrivate: false, firecrawlDisabled: true },
+    false,
+  )[0]
+  if (!tool) throw new Error('protected web_fetch tool construction failed')
+  return tool
+}
+
+function buildWebTools(opts: WebToolsOpts | undefined, includeSearch: boolean): ToolHandler[] {
   // Default to undici 8's fetch so search-backend HTTP shares the same
   // stack as guardedFetch (and stays out of Node 24's bundled undici 7).
   const fetchFn = opts?.fetchImpl ?? (undiciFetch as unknown as typeof fetch)
@@ -304,8 +320,9 @@ export function webTools(opts?: WebToolsOpts): ToolHandler[] {
   const firecrawlDisabled = opts?.firecrawlDisabled ?? false
   const cache = new Map<string, CacheEntry>()
 
-  return [
-    {
+  const tools: ToolHandler[] = []
+  if (includeSearch) {
+    tools.push({
       def: {
         name: 'web_search',
         description:
@@ -340,105 +357,103 @@ export function webTools(opts?: WebToolsOpts): ToolHandler[] {
           'web_search: no search backend configured. Set BRAVE_API_KEY (free at https://brave.com/search/api/) or SEARXNG_URL.',
         )
       },
+    })
+  }
+  tools.push({
+    def: {
+      name: 'web_fetch',
+      description: firecrawlDisabled
+        ? 'Fetch a public HTTP or HTTPS URL and return its readable content. Private, loopback, link-local, metadata, and DNS-rebinding targets are blocked. HTML is extracted via Readability and converted to markdown. Results are cached for 15 minutes.'
+        : 'Fetch a URL and return its readable content. HTML is extracted via Readability and converted to markdown. When the primary extraction returns near-empty content from a 2xx HTML page (typical of JS-only shells), the tool automatically retries via Firecrawl if FIRECRAWL_API_KEY is configured. Results are cached for 15 minutes.',
+      parameters: {
+        type: 'object',
+        properties: {
+          url: { type: 'string', description: 'The URL to fetch (http or https)' },
+          max_length: {
+            type: 'number',
+            description: 'Max characters to return (default 20000)',
+          },
+          extract_mode: {
+            type: 'string',
+            enum: ['markdown', 'text'],
+            description: 'Output format for HTML pages. Default "markdown".',
+          },
+        },
+        required: ['url'],
+      },
     },
-    {
-      def: {
-        name: 'web_fetch',
-        description:
-          'Fetch a URL and return its readable content. HTML is extracted via Readability and converted to markdown. When the primary extraction returns near-empty content from a 2xx HTML page (typical of JS-only shells), the tool automatically retries via Firecrawl if FIRECRAWL_API_KEY is configured. Results are cached for 15 minutes.',
-        parameters: {
-          type: 'object',
-          properties: {
-            url: { type: 'string', description: 'The URL to fetch (http or https)' },
-            max_length: {
-              type: 'number',
-              description: 'Max characters to return (default 20000)',
-            },
-            extract_mode: {
-              type: 'string',
-              enum: ['markdown', 'text'],
-              description: 'Output format for HTML pages. Default "markdown".',
+    async invoke(args) {
+      const url = String(args.url ?? '')
+      if (!url) throw new Error('web_fetch: url is required')
+      const maxLen = typeof args.max_length === 'number' ? args.max_length : DEFAULT_MAX_LENGTH
+      const mode: ExtractMode = args.extract_mode === 'text' ? 'text' : 'markdown'
+      const cacheKey = `${mode}|${url}`
+
+      const cached = cacheGet(cache, cacheKey)
+      if (cached) return formatOutput(cached, maxLen)
+
+      let result: GuardedFetchResultShape | null = null
+      try {
+        result = await guardedFetch({
+          url,
+          fetchImpl: opts?.fetchImpl,
+          allowPrivate,
+          timeoutMs,
+          init: {
+            headers: {
+              'user-agent': DEFAULT_USER_AGENT,
+              accept: 'text/html,application/xhtml+xml,application/json,text/plain,*/*',
+              'accept-language': 'en-US,en;q=0.9',
             },
           },
-          required: ['url'],
-        },
-      },
-      async invoke(args) {
-        const url = String(args.url ?? '')
-        if (!url) throw new Error('web_fetch: url is required')
-        const maxLen = typeof args.max_length === 'number' ? args.max_length : DEFAULT_MAX_LENGTH
-        const mode: ExtractMode = args.extract_mode === 'text' ? 'text' : 'markdown'
-        const cacheKey = `${mode}|${url}`
-
-        const cached = cacheGet(cache, cacheKey)
-        if (cached) return formatOutput(cached, maxLen)
-
-        let result: GuardedFetchResultShape | null = null
-        try {
-          result = await guardedFetch({
-            url,
-            fetchImpl: opts?.fetchImpl,
-            allowPrivate,
-            timeoutMs,
-            init: {
-              headers: {
-                'user-agent': DEFAULT_USER_AGENT,
-                accept: 'text/html,application/xhtml+xml,application/json,text/plain,*/*',
-                'accept-language': 'en-US,en;q=0.9',
-              },
-            },
-          })
-          if (!result.response.ok) {
-            throw new Error(`${result.response.status} ${result.response.statusText}`)
-          }
-          const ct = result.response.headers.get('content-type') ?? ''
-          const isHtml = ct.includes('text/html') || ct.includes('xhtml')
-          const { text: body, truncated } = await readBodyCapped(result.response, maxBodyBytes)
-          let extracted: ExtractResult
-          if (isHtml) {
-            extracted = extractReadable(body, result.finalUrl, mode)
-          } else if (ct.includes('application/json')) {
-            try {
-              extracted = { text: JSON.stringify(JSON.parse(body), null, 2) }
-            } catch {
-              extracted = { text: body }
-            }
-          } else {
+        })
+        if (!result.response.ok) {
+          throw new Error(`${result.response.status} ${result.response.statusText}`)
+        }
+        const ct = result.response.headers.get('content-type') ?? ''
+        const isHtml = ct.includes('text/html') || ct.includes('xhtml')
+        const { text: body, truncated } = await readBodyCapped(result.response, maxBodyBytes)
+        let extracted: ExtractResult
+        if (isHtml) {
+          extracted = extractReadable(body, result.finalUrl, mode)
+        } else if (ct.includes('application/json')) {
+          try {
+            extracted = { text: JSON.stringify(JSON.parse(body), null, 2) }
+          } catch {
             extracted = { text: body }
           }
-          // Firecrawl fallback: only meaningful for HTML pages where the
-          // primary extractor collapsed. Skip JSON / plain-text bodies and
-          // skip when extraction already produced something substantial.
-          if (
-            isHtml &&
-            !firecrawlDisabled &&
-            extracted.text.length < FIRECRAWL_FALLBACK_THRESHOLD
-          ) {
-            const rescued = await firecrawlScrape(result.finalUrl, mode, env, fetchFn, timeoutMs)
-            if (rescued) {
-              extracted = {
-                ...rescued,
-                text: `${rescued.text}\n\n[content rendered via Firecrawl fallback — primary extraction returned ${extracted.text.length} chars]`,
-              }
-            }
-          }
-          if (truncated) {
-            extracted = {
-              ...extracted,
-              text: `${extracted.text}\n\n[raw body truncated at ${maxBodyBytes} bytes before extraction — page exceeded the size cap]`,
-            }
-          }
-          cacheSet(cache, cacheKey, extracted, cacheTtlMs, cacheMax)
-          return formatOutput(extracted, maxLen)
-        } catch (err) {
-          if (err instanceof SsrFBlockedError) throw new Error(`web_fetch: ${err.message}`)
-          throw new Error(`web_fetch: ${describeError(err)}`)
-        } finally {
-          if (result) await result.release()
+        } else {
+          extracted = { text: body }
         }
-      },
+        // Firecrawl fallback: only meaningful for HTML pages where the
+        // primary extractor collapsed. Skip JSON / plain-text bodies and
+        // skip when extraction already produced something substantial.
+        if (isHtml && !firecrawlDisabled && extracted.text.length < FIRECRAWL_FALLBACK_THRESHOLD) {
+          const rescued = await firecrawlScrape(result.finalUrl, mode, env, fetchFn, timeoutMs)
+          if (rescued) {
+            extracted = {
+              ...rescued,
+              text: `${rescued.text}\n\n[content rendered via Firecrawl fallback — primary extraction returned ${extracted.text.length} chars]`,
+            }
+          }
+        }
+        if (truncated) {
+          extracted = {
+            ...extracted,
+            text: `${extracted.text}\n\n[raw body truncated at ${maxBodyBytes} bytes before extraction — page exceeded the size cap]`,
+          }
+        }
+        cacheSet(cache, cacheKey, extracted, cacheTtlMs, cacheMax)
+        return formatOutput(extracted, maxLen)
+      } catch (err) {
+        if (err instanceof SsrFBlockedError) throw new Error(`web_fetch: ${err.message}`)
+        throw new Error(`web_fetch: ${describeError(err)}`)
+      } finally {
+        if (result) await result.release()
+      }
     },
-  ]
+  })
+  return tools
 }
 
 type GuardedFetchResultShape = Awaited<ReturnType<typeof guardedFetch>>

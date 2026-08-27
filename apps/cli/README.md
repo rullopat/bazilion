@@ -112,14 +112,14 @@ bazilion auth openai status    # check connection / token expiry
 ```
 
 After connecting, enable `openai-codex` and curate at least one model, for example
-`gpt-5.6-sol` (the Pi 0.83 catalog also includes `gpt-5.6-luna` and `gpt-5.6-terra`).
+`gpt-5.6-sol` (the Pi 0.84 catalog also includes `gpt-5.6-luna` and `gpt-5.6-terra`).
 Credentials are stored AES-256-GCM-encrypted in the daemon's `secrets` table.
 
 ## What's in the box
 
 - **CLI + daemon + web UI**, spawned together via `bazilion dashboard`. The daemon binds `127.0.0.1:4321`, the web UI binds `127.0.0.1:4322`, and the daemon owns `~/.bazilion/` (SQLite DB, profiles, agents, teams, skills, logs).
 - **Operator command families** include `agent`, `profile`, `team`, `team`, `skill`, `provider`, `config`, `auth`, `memory`, `send`, `inbox`, `trigger`, `serve`, `doctor`, `backup`, `token`, `login`, and `uninstall`.
-- **Provider support** via [pi-ai](https://www.npmjs.com/package/@earendil-works/pi-ai): Anthropic, OpenAI (key + ChatGPT OAuth), Google AI Studio + Vertex, Azure OpenAI, AWS Bedrock, Mistral, Groq, Cerebras, xAI, zAI, Hugging Face, OpenRouter, Vercel AI Gateway, Cloudflare, GitHub Copilot, DeepSeek, Fireworks, Together, Moonshot/Kimi, MiniMax, Qwen Token Plan, Xiaomi MiMo, Ant Ling, NVIDIA NIM, OpenCode, LM Studio, Ollama, and llama.cpp.
+- **Provider support** via [pi-ai](https://www.npmjs.com/package/@earendil-works/pi-ai): Anthropic, OpenAI (key + ChatGPT OAuth), Google AI Studio + Vertex, Azure OpenAI, AWS Bedrock, Mistral, Groq, Cerebras, xAI, zAI, Hugging Face, OpenRouter, Vercel AI Gateway, Cloudflare, GitHub Copilot, DeepSeek, Fireworks, Together, Baseten, Moonshot/Kimi, MiniMax, Qwen Token Plan (including Individual), Xiaomi MiMo, Ant Ling, NVIDIA NIM, OpenCode, LM Studio, Ollama, and llama.cpp.
 - **OpenClaw-compatible skills**: drop a `SKILL.md` into `~/.bazilion/skills/<name>/`, or import in bulk via `bazilion skill import --from openclaw`.
 
 ## Uninstall

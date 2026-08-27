@@ -111,7 +111,7 @@ test('POST with replyTo links the messages', async () => {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      cookie: `bz_token=${server.token}`,
+      authorization: `Bearer ${server.token}`,
     },
     body: JSON.stringify({
       from: b,
@@ -133,7 +133,7 @@ test('POST replyTo to missing message is rejected', async () => {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      cookie: `bz_token=${server.token}`,
+      authorization: `Bearer ${server.token}`,
     },
     body: JSON.stringify({
       from: a,
@@ -156,7 +156,7 @@ test('inbox loop-breaks shows daemon-stopped causal chains', async () => {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      cookie: `bz_token=${server.token}`,
+      authorization: `Bearer ${server.token}`,
     },
     body: JSON.stringify({
       from: b,

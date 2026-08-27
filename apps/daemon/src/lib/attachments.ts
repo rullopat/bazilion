@@ -8,9 +8,10 @@
 // Telegram inbound path handles non-image media.
 
 import { randomUUID } from 'node:crypto'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { closeSync, constants, fstatSync, openSync, writeFileSync } from 'node:fs'
 import { join, posix } from 'node:path'
 import type { Attachment } from '@bazilion/api-types'
+import { ensureContainedRealDirectory, noFollowFlag } from '../runtime/safe-files.ts'
 
 /** Per-file ceiling for stored uploads. */
 const MAX_FILE_BYTES = 25 * 1024 * 1024
@@ -34,6 +35,12 @@ function fmtBytes(n: number): string {
 export interface SaveInputFilesOptions {
   /** Alternate path shown to the model (for example the Docker /inputs mount). */
   referenceDir?: string
+  /** Exact directory already validated by protected-turn preflight. */
+  storageDir?: string
+}
+
+export function prepareInputFilesDirectory(agentDir: string): string {
+  return ensureContainedRealDirectory(join(agentDir, 'uploads'), agentDir, { create: true })
 }
 
 export function saveInputFiles(
@@ -42,8 +49,9 @@ export function saveInputFiles(
   options: SaveInputFilesOptions = {},
 ): string {
   if (!files || files.length === 0) return ''
-  const dir = join(agentDir, 'uploads')
-  mkdirSync(dir, { recursive: true })
+  const dir = options.storageDir
+    ? ensureContainedRealDirectory(options.storageDir, agentDir)
+    : prepareInputFilesDirectory(agentDir)
   const lines: string[] = []
   for (const f of files) {
     const label = f.name ?? 'file'
@@ -55,7 +63,18 @@ export function saveInputFiles(
     // Prefix a short uuid slice so same-named uploads don't clobber each other.
     const filename = `${randomUUID().slice(0, 8)}-${safeName(label)}`
     const path = join(dir, filename)
-    writeFileSync(path, buf)
+    let fd: number | undefined
+    try {
+      fd = openSync(
+        path,
+        constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | noFollowFlag(),
+        0o600,
+      )
+      if (!fstatSync(fd).isFile()) throw new Error('attachment target is not a regular file')
+      writeFileSync(fd, buf)
+    } finally {
+      if (fd !== undefined) closeSync(fd)
+    }
     const referencePath = options.referenceDir ? posix.join(options.referenceDir, filename) : path
     lines.push(
       `[file saved to ${referencePath} (${f.mimeType || 'unknown'}, ${fmtBytes(buf.byteLength)}) — open it with your tools]`,

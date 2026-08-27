@@ -6,7 +6,7 @@ export const doctorCommand = defineCommand({
   meta: { name: 'doctor', description: 'Diagnose your bazilion install' },
   async run() {
     const client = createClient()
-    const r = await client.get<HealthReport>('/api/health')
+    const r = await client.get<HealthReport>('/api/health/details')
 
     function check(label: string, condition: boolean, hint?: string): void {
       const mark = condition ? '✓' : '✗'
@@ -56,25 +56,33 @@ export const doctorCommand = defineCommand({
       }
     }
     console.log(
-      `  ✓ lmstudio: ${r.providers.lmstudio.baseURL}${
-        r.providers.lmstudio.hasKey ? ' (api key set)' : ''
+      `  ✓ lmstudio: ${
+        r.providers.lmstudio.customEndpointConfigured
+          ? 'custom endpoint configured'
+          : 'default local endpoint'
+      }${r.providers.lmstudio.keyConfigured ? ' (API key configured)' : ''}`,
+    )
+    console.log(
+      `  ✓ ollama:   ${
+        r.providers.ollama.customEndpointConfigured
+          ? 'custom endpoint configured'
+          : 'default local endpoint'
       }`,
     )
-    console.log(`  ✓ ollama:   ${r.providers.ollama.baseURL}`)
 
     console.log()
     console.log('web search (at least one needed for web_search tool)')
-    if (r.webSearch.bravePreview) {
-      console.log(`  ✓ Brave Search (BRAVE_API_KEY set, ${r.webSearch.bravePreview})`)
+    if (r.webSearch.braveConfigured) {
+      console.log('  ✓ Brave Search configured')
     } else {
       console.log('  - Brave Search (set BRAVE_API_KEY — free at https://brave.com/search/api/)')
     }
-    if (r.webSearch.searxngUrl) {
-      console.log(`  ✓ SearXNG: ${r.webSearch.searxngUrl}`)
+    if (r.webSearch.searxngConfigured) {
+      console.log('  ✓ SearXNG configured')
     } else {
       console.log('  - SearXNG (set SEARXNG_URL if you self-host one)')
     }
-    if (!r.webSearch.bravePreview && !r.webSearch.searxngUrl) {
+    if (!r.webSearch.braveConfigured && !r.webSearch.searxngConfigured) {
       console.log('  ⚠ no search backend — web_search will error until one is configured')
     }
 
@@ -96,35 +104,7 @@ export const doctorCommand = defineCommand({
     )
 
     console.log()
-    console.log('agent shell security')
-    if (!r.shellSecurity.ok) {
-      check('valid shell-security configuration', false, r.shellSecurity.error)
-    } else {
-      if (r.shellSecurity.approvalMode === 'dangerous') {
-        console.log('  - dangerous-command approval enabled')
-        console.log(
-          '    web and TTY CLI turns can allow once; background and non-TTY turns auto-deny',
-        )
-      } else {
-        console.log('  - dangerous-command approval off')
-        console.log('    set BAZILION_BASH_APPROVAL=dangerous to opt in')
-      }
-      if (r.shellSecurity.sandboxMode === 'docker') {
-        console.log(`  - Docker sandbox configured (${r.shellSecurity.sandboxImage})`)
-        console.log(
-          '    workspace-only writable mount · bounded inputs/skills/memory read-only · network disabled',
-        )
-        console.log('    host coding tools hidden')
-        console.log(
-          '    policy syntax is valid; Docker and image availability are checked on execution',
-        )
-        console.log('    commands fail closed if either is unavailable')
-      } else {
-        console.log('  - sandbox off (agent shell and coding tools run on the host)')
-        console.log('    approval is a host-execution tripwire, not a filesystem sandbox')
-        console.log('    set BAZILION_BASH_SANDBOX=docker to opt in')
-      }
-    }
+    for (const line of executionSecurityDoctorLines(r)) console.log(line)
 
     console.log()
     console.log('operational counts')
@@ -136,7 +116,7 @@ export const doctorCommand = defineCommand({
     const hasAgents = (r.database?.ok ? r.database.totalAgents : 0) > 0
 
     console.log()
-    if (!r.ok) {
+    if (doctorHasIssues(r)) {
       console.log('issues found ✗')
       process.exit(1)
     }
@@ -163,3 +143,89 @@ export const doctorCommand = defineCommand({
     }
   },
 })
+
+export function executionSecurityDoctorLines(
+  report: Pick<HealthReport, 'executionSecurity' | 'shellSecurity'>,
+): string[] {
+  const configured = report.executionSecurity.configuredOperatorHttp
+  const protectedTurns = report.executionSecurity.protectedUnattendedTurns
+  const lines = ['configured operator HTTP (legacy · unprotected)']
+
+  if (!report.shellSecurity.ok) {
+    lines.push(checkLine('valid shell-security configuration', false, report.shellSecurity.error))
+  } else {
+    if (report.shellSecurity.approvalMode === 'dangerous') {
+      lines.push(
+        '  - dangerous-command approval enabled',
+        '    web and TTY CLI turns can allow once; non-interactive operator requests auto-deny',
+      )
+    } else {
+      lines.push(
+        '  - dangerous-command approval off',
+        '    set BAZILION_BASH_APPROVAL=dangerous to opt in',
+      )
+    }
+
+    if (report.shellSecurity.sandboxMode === 'docker') {
+      lines.push(
+        `  - coding surface: Docker only (${report.shellSecurity.sandboxImage})`,
+        '    workspace-only writable mount · bounded inputs/skills/memory read-only · network disabled',
+        '    host coding tools hidden',
+        '    policy syntax is valid; Docker and image availability are checked on execution',
+        '    commands fail closed if either is unavailable',
+      )
+    } else {
+      lines.push(
+        '  - coding surface: host tools',
+        '    approval is a host-execution tripwire, not a filesystem sandbox',
+        '    set BAZILION_BASH_SANDBOX=docker to opt in',
+      )
+    }
+  }
+  lines.push(`  - browser: ${configured.browser}`, `  - MCP: ${configured.mcp}`, '')
+
+  lines.push(
+    'protected unattended turns baseline (Telegram, schedules, inbox, approvals)',
+    checkLine('protected base runtime ready', protectedTurns.baseRuntimeReady),
+    '  - coding surface: Docker only',
+    checkLine(
+      `Docker ready (${protectedTurns.docker.image})`,
+      protectedTurns.docker.ready,
+      protectedTurns.docker.reason ?? undefined,
+    ),
+    checkLine('OpenAI Codex enabled', protectedTurns.openaiCodex.enabled),
+    checkLine('ChatGPT connected', protectedTurns.openaiCodex.connected),
+    `  - OpenAI access: ${openAIAccessStatus(protectedTurns.openaiCodex)}`,
+    checkLine('OpenAI Codex baseline eligible', protectedTurns.openaiCodex.baselineEligible),
+    `  ✓ browser: ${protectedTurns.browser}`,
+    `  ✓ MCP: ${protectedTurns.mcp}`,
+    '  - every turn separately validates its selected normal/review model, bound OAuth refresh, and mounts/paths',
+  )
+  if (protectedTurns.remediation) {
+    lines.push(`  remediation: ${protectedTurns.remediation}`)
+  }
+  return lines
+}
+
+export function doctorHasIssues(
+  report: Pick<HealthReport, 'ok' | 'protectedWorkBaselineReady'>,
+): boolean {
+  return !report.ok || !report.protectedWorkBaselineReady
+}
+
+function openAIAccessStatus(
+  status: ExecutionSecurityReportOpenAIStatus,
+): 'current' | 'refresh on next turn' | 'unavailable' {
+  if (status.accessCurrent) return 'current'
+  if (status.refreshOnNextTurn) return 'refresh on next turn'
+  return 'unavailable'
+}
+
+type ExecutionSecurityReportOpenAIStatus =
+  HealthReport['executionSecurity']['protectedUnattendedTurns']['openaiCodex']
+
+function checkLine(label: string, condition: boolean, hint?: string): string {
+  const mark = condition ? '✓' : '✗'
+  const tail = !condition && hint ? ` — ${hint}` : ''
+  return `  ${mark} ${label}${tail}`
+}

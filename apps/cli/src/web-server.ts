@@ -11,6 +11,11 @@ const webDist = process.env.BAZILION_WEB_DIST ?? join(import.meta.dirname, 'web'
 const clientDir = join(webDist, 'client')
 const serverEntry = join(webDist, 'server', 'server.js')
 
+if (process.env.BAZILION_PUBLIC_ORIGIN && !['127.0.0.1', 'localhost', '::1'].includes(host)) {
+  console.error('BAZILION_PUBLIC_ORIGIN requires the web server to bind loopback only')
+  process.exit(1)
+}
+
 if (!existsSync(clientDir) || !existsSync(serverEntry)) {
   console.error('error: bundled bazilion web UI not found')
   console.error(`  expected client assets at ${clientDir}`)

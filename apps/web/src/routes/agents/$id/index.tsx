@@ -44,7 +44,7 @@ interface AgentView {
 }
 
 const fetchAgent = createServerFn({ method: 'POST' })
-  .inputValidator((d: { id: string }) => d)
+  .validator((d: { id: string }) => d)
   .handler(async ({ data }): Promise<AgentView | null> => {
     const c = daemonClient()
     let resolved: ResolvedAgent

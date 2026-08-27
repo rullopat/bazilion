@@ -4,9 +4,10 @@
 // (via the `/api/agents/:id/messages` POST, same path the CLI's `bazilion
 // send` uses), the scheduler tick should drain B's unread mail within one
 // tick interval and fire a turn for B with the messages embedded in the
-// prompt. We verify that by watching for a run row against B and matching
-// the mock LLM's received system prompt would be overkill — the presence
-// of a fresh run is sufficient signal the wake loop fired.
+// prompt. This fixture deliberately uses a configured-only local model so it
+// proves the new protected preflight happens before provider use or inbox
+// consumption. Successful protected dispatch is covered by the focused
+// scheduler/runtime suites with closed OpenAI Codex and Docker fixtures.
 
 import { createServer, type ServerResponse } from 'node:http'
 import { afterAll, beforeAll, beforeEach, expect, test } from 'vitest'
@@ -120,7 +121,7 @@ async function spawnAgent(name: string): Promise<string> {
   return extractAgentId(r.stdout)
 }
 
-test('unread message to an idle agent triggers an auto-delivered turn', async () => {
+test('protected readiness fails before a configured-only inbox message is marked read', async () => {
   await server.cli(['profile', 'create', 'p', '--model', 'lmstudio:test-model'])
   const a = await spawnAgent('alice')
   const b = await spawnAgent('bob')
@@ -130,14 +131,12 @@ test('unread message to an idle agent triggers an auto-delivered turn', async ()
   const send = await server.cli(['send', a, b, 'hello bob, please reply'])
   expect(send.exitCode).toBe(0)
 
-  // Wait up to 10s for B's auto-wake turn to hit the mock LLM.
-  let llmHit = false
-  for (let i = 0; i < 100; i++) {
-    if (mock.callCount() > 0) {
-      llmHit = true
-      break
-    }
-    await new Promise((r) => setTimeout(r, 100))
-  }
-  expect(llmHit).toBe(true)
+  // Give the scheduler several chances to preflight. A configured-only model
+  // must never reach its provider and the canonical message must stay unread.
+  await new Promise((r) => setTimeout(r, 1_000))
+  expect(mock.callCount()).toBe(0)
+  const unread = await server.cli(['inbox', 'list', b, '--unread'])
+  expect(unread.exitCode).toBe(0)
+  expect(unread.stdout).toContain('NEW')
+  expect(unread.stdout).toContain('hello bob, please reply')
 })

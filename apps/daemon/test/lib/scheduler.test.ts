@@ -2,6 +2,7 @@ import type { ChatFrame } from '@bazilion/api-types'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import * as agentRepo from '../../src/core/repos/agents.ts'
 import * as approvalRepo from '../../src/core/repos/communicationApprovals.ts'
+import * as messageRepo from '../../src/core/repos/messages.ts'
 import * as profileRepo from '../../src/core/repos/profiles.ts'
 import * as triggerDispatchRepo from '../../src/core/repos/triggerDispatches.ts'
 import * as triggerRepo from '../../src/core/repos/triggers.ts'
@@ -15,9 +16,11 @@ interface TurnPlan {
   abort?: boolean
 }
 
-interface TurnOptions {
-  acquiredLeaseRelease?: () => void
-  controller?: AbortController
+interface PreparedTurnInput {
+  invocation: {
+    turn: { agentId: string; message: string }
+    claim?: { controller: AbortController; releaseLease: () => void }
+  }
 }
 
 describe('durable scheduler dispatches', () => {
@@ -25,6 +28,10 @@ describe('durable scheduler dispatches', () => {
   let scheduler: typeof import('../../src/lib/scheduler.ts')
   let turnPlans: TurnPlan[]
   let turnCalls: Array<{ agentId: string; message: string }>
+  let protectedPreflightError: Error | null
+  let protectedPreflightCalls: number
+  let repositoryClaimError: Error | null
+  let repositorySucceedError: Error | null
   let oldEnforcement: string | undefined
   let oldTickMs: string | undefined
 
@@ -55,24 +62,66 @@ describe('durable scheduler dispatches', () => {
     })
     turnPlans = []
     turnCalls = []
+    protectedPreflightError = null
+    protectedPreflightCalls = 0
+    repositoryClaimError = null
+    repositorySucceedError = null
     vi.resetModules()
+    vi.doMock('../../src/core/index.ts', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('../../src/core/index.ts')>()
+      return {
+        ...actual,
+        triggerDispatchRepo: {
+          ...actual.triggerDispatchRepo,
+          claim: (...args: Parameters<typeof actual.triggerDispatchRepo.claim>) => {
+            if (repositoryClaimError) {
+              const error = repositoryClaimError
+              repositoryClaimError = null
+              throw error
+            }
+            return actual.triggerDispatchRepo.claim(...args)
+          },
+          succeed: (...args: Parameters<typeof actual.triggerDispatchRepo.succeed>) => {
+            if (repositorySucceedError) {
+              const error = repositorySucceedError
+              repositorySucceedError = null
+              throw error
+            }
+            return actual.triggerDispatchRepo.succeed(...args)
+          },
+        },
+      }
+    })
     vi.doMock('../../src/lib/ctx.ts', () => ({
       getCtx: () => ({ db: env.db, paths: env.paths, authToken: 'test-token' }),
     }))
     vi.doMock('../../src/lib/agent-turn.ts', () => ({
-      runAgentTurn: (agentId: string, message: string, options: TurnOptions = {}) => {
-        turnCalls.push({ agentId, message })
+      prepareAgentTurn: async (turn: PreparedTurnInput) => {
+        turnCalls.push({
+          agentId: turn.invocation.turn.agentId,
+          message: turn.invocation.turn.message,
+        })
+        turn.invocation.claim?.releaseLease()
+        return turn
+      },
+      runAgentTurn: (turn: PreparedTurnInput) => {
         const plan = turnPlans.shift() ?? { frames: [{ kind: 'done', messages: [] }] }
         return (async function* () {
           try {
-            if (plan.abort) options.controller?.abort()
+            if (plan.abort) turn.invocation.claim?.controller.abort()
             for (const frame of plan.frames ?? []) yield frame
             if (plan.error) throw plan.error
           } finally {
-            options.acquiredLeaseRelease?.()
-            unregisterAgent(agentId)
+            unregisterAgent(turn.invocation.turn.agentId)
           }
         })()
+      },
+    }))
+    vi.doMock('../../src/lib/protected-execution.ts', () => ({
+      prepareProtectedExecution: async () => {
+        protectedPreflightCalls++
+        if (protectedPreflightError) throw protectedPreflightError
+        return { testPreparedProtectedExecution: true }
       },
     }))
     scheduler = await import('../../src/lib/scheduler.ts')
@@ -83,8 +132,10 @@ describe('durable scheduler dispatches', () => {
     scheduler._resetSchedulerForTest()
     unregisterAgent('a1')
     env.cleanup()
+    vi.doUnmock('../../src/core/index.ts')
     vi.doUnmock('../../src/lib/ctx.ts')
     vi.doUnmock('../../src/lib/agent-turn.ts')
+    vi.doUnmock('../../src/lib/protected-execution.ts')
     vi.resetModules()
     vi.restoreAllMocks()
     vi.useRealTimers()
@@ -125,6 +176,58 @@ describe('durable scheduler dispatches', () => {
     })
   })
 
+  test('releases scheduler ownership when a repository claim throws before preclaim handoff', async () => {
+    const { dispatch } = materialize()
+    repositoryClaimError = new Error('claim persistence failed')
+
+    await scheduler._tickOnce()
+    expect(turnCalls).toEqual([])
+
+    await scheduler._tickOnce()
+
+    expect(turnCalls).toHaveLength(1)
+    expect(triggerDispatchRepo.get(env.db, dispatch.id)).toMatchObject({
+      status: 'succeeded',
+      attemptCount: 1,
+    })
+  })
+
+  test('clears the firing guard when terminal dispatch persistence throws', async () => {
+    const { dispatch } = materialize()
+    repositorySucceedError = new Error('terminal persistence failed')
+
+    await scheduler._tickOnce()
+    expect(turnCalls).toHaveLength(1)
+    const abandoned = triggerDispatchRepo.get(env.db, dispatch.id)
+    expect(abandoned).toMatchObject({ status: 'running', attemptCount: 1 })
+
+    vi.setSystemTime((abandoned?.leaseExpiresAt as number) + 1)
+    await scheduler._tickOnce()
+
+    expect(turnCalls).toHaveLength(2)
+    expect(triggerDispatchRepo.get(env.db, dispatch.id)).toMatchObject({
+      status: 'succeeded',
+      attemptCount: 2,
+    })
+  })
+
+  test('leaves inbox messages unread when protected readiness fails before claim', async () => {
+    protectedPreflightError = new Error('credential sentinel must not be persisted')
+    const message = messageRepo.send(env.db, {
+      from: 'a1',
+      to: 'a1',
+      payload: JSON.stringify({ text: 'protected inbox work' }),
+    })
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    await scheduler._tickOnce()
+
+    expect(protectedPreflightCalls).toBe(1)
+    expect(turnCalls).toEqual([])
+    expect(messageRepo.get(env.db, message.id)).toMatchObject({ readAt: null })
+    expect(messageRepo.listInbox(env.db, 'a1', { unreadOnly: true })).toHaveLength(1)
+  })
+
   test('provider error frames retry the materialized occurrence despite a newer watermark', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
     turnPlans.push(
@@ -143,7 +246,7 @@ describe('durable scheduler dispatches', () => {
     expect(retry).toMatchObject({
       status: 'retrying',
       attemptCount: 1,
-      lastError: 'provider unavailable',
+      lastError: 'Protected Agent turn failed. Check Bazilion Config or bazilion doctor.',
     })
 
     triggerRepo.markFired(env.db, trigger.id, dispatch.scheduledAt + 30_000)
@@ -177,7 +280,7 @@ describe('durable scheduler dispatches', () => {
     expect(triggerDispatchRepo.get(env.db, dispatch.id)).toMatchObject({
       status: 'failed',
       attemptCount: 3,
-      lastError: 'final failure',
+      lastError: 'Protected Agent turn failed. Check Bazilion Config or bazilion doctor.',
       finishedAt: expect.any(Number),
     })
   })
