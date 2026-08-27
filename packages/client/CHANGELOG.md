@@ -1,5 +1,17 @@
 # @bazilion/client
 
+## 0.13.0
+
+### Minor Changes
+
+- Add client contracts for the private gateway, expiring device credentials, bounded browser
+  sessions, protected identity, detailed health, and backup/restore parity.
+
+### Patch Changes
+
+- Updated dependencies:
+  - @bazilion/api-types@0.13.0
+
 ## 0.12.2
 
 ### Patch Changes

@@ -1,5 +1,31 @@
 # bazilion
 
+## 0.13.0
+
+### Minor Changes
+
+- Add credential-minimal protected execution for Telegram and autonomous Agent work, including
+  fail-closed Docker isolation, trusted invocation identity, guarded web fetching, and restricted
+  review workers. Replace Telegram first-sender ownership with authenticated one-time owner pairing
+  and add privacy, membership, identity, and secret-safe diagnostic checks.
+
+- Add a loopback-only private web gateway profile with Tailscale Serve preflight, expiring device
+  credentials, bounded hashed browser sessions, session-bound CSRF, strict origin/header policy,
+  protected identity, and CLI, web, mobile, backup, and restore parity.
+
+- Add recipient-encrypted age backups, authenticated staged restore, secret-name-only inventories,
+  crash-safe bootstrap rotation, non-bootstrap token revocation, and explicit credential recovery
+  guidance. Plaintext backups now require `--plaintext`.
+
+- Add a deterministic 60-case adversarial security acceptance gate covering the composed private
+  gateway, credential recovery, Telegram ingress, protected workers, SSRF, and Docker boundaries.
+
+- Extend protected and restricted-review workers across the complete pinned Pi provider catalog
+  with exhaustive drift checks and fail-closed provider-specific credential projections.
+
+- Update the bundled Pi agent engine to 0.84.3, add Baseten and Qwen Token Plan Individual, adapt
+  OAuth cancellation and prompt normalization, and refresh curated model examples.
+
 ## 0.12.2
 
 ### Patch Changes
