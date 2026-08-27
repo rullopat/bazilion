@@ -128,6 +128,14 @@ describe('minimal worker runtime', () => {
         /unexpected fields: enabledProviders/,
       )
 
+      const wrongProviderCredential = structuredClone(input)
+      wrongProviderCredential.runtime = {
+        ...wrongProviderCredential.runtime,
+        providerName: 'anthropic',
+        credentialEnv: [{ name: 'AWS_SECRET_ACCESS_KEY', value: 'cross-provider-secret' }],
+      }
+      expect(() => parseWorkerInput(wrongProviderCredential)).toThrow(/unexpected credential field/)
+
       const badMount = structuredClone(input)
       badMount.docker.readOnlyMounts[0] = {
         ...badMount.docker.readOnlyMounts[0],
@@ -461,7 +469,7 @@ function protectedSpec(root: string, accessToken = 'initial-access-token'): Prot
       providerName: 'openai-codex',
       modelId: 'gpt-5.6-sol',
       reasoningLevel: 'high',
-      accessToken,
+      apiKey: accessToken,
     },
     paths: {
       agentDir,

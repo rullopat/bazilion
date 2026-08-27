@@ -183,7 +183,7 @@ test('trigger rm deletes the trigger', async () => {
   expect(list.stdout).toContain('(no triggers)')
 })
 
-test('configured-only interval trigger materializes but fails closed before provider use', async () => {
+test('configured-provider interval trigger materializes but fails closed without protected Docker', async () => {
   const agentId = await spawnAgent()
 
   // intervalSec=1 → first fire happens ~1s after creation, scheduler ticks every 200ms.
@@ -219,9 +219,7 @@ test('configured-only interval trigger materializes but fails closed before prov
   expect(history.exitCode).toBe(0)
   expect(history.stdout).toContain('retrying')
   expect(history.stdout).toContain('attempts: 1')
-  expect(history.stdout).toContain(
-    'Protected unattended turns currently require an OpenAI Codex model.',
-  )
+  expect(history.stdout).toContain('Protected Docker runtime is unavailable.')
   expect(mock.callCount()).toBe(0)
 })
 

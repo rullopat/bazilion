@@ -6,7 +6,7 @@ process.stdin.on('data', (chunk) => chunks.push(chunk as Buffer))
 process.stdin.on('end', () => {
   const raw = Buffer.concat(chunks).toString('utf8')
   const input = JSON.parse(raw) as {
-    runtime: { accessToken: string }
+    runtime: { apiKey: string }
     scratch: {
       root: string
       homeDir: string
@@ -16,7 +16,7 @@ process.stdin.on('end', () => {
       reviewSessionDir: string
     }
   }
-  if (raw.split(input.runtime.accessToken).length - 1 !== 1) {
+  if (raw.split(input.runtime.apiKey).length - 1 !== 1) {
     throw new Error('selected access token escaped its designated review runtime field')
   }
   for (const sentinel of [
@@ -43,7 +43,7 @@ process.stdin.on('end', () => {
   ) {
     throw new Error('review scratch paths were unavailable or escaped their root')
   }
-  if (process.argv.join(' ').includes(input.runtime.accessToken)) {
+  if (process.argv.join(' ').includes(input.runtime.apiKey)) {
     throw new Error('selected access token entered review argv')
   }
   if ([0, 1, 2].some((fd) => fstatSync(fd).isFile()) || !process.connected) {

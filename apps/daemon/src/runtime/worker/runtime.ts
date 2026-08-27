@@ -17,18 +17,28 @@ import type {
   ReasoningLevel,
   ResolvedAgent,
 } from '@bazilion/api-types'
+import {
+  PROTECTED_PROVIDER_NAMES,
+  PROVIDER_CREDENTIAL_ENV,
+  type ProtectedProviderName,
+} from '../providers/pi-runtime.ts'
 import type { PromptSkill, ProtectedHomeDocuments } from '../session/prompt.ts'
 import type { ProtectedDockerRuntime } from '../shell/docker.ts'
 import type { InjectedMcpTool } from './ipc-protocol.ts'
 
 export const REDACTED_VALUE = '[REDACTED]'
 
-export interface OpenAICodexWorkerRuntime {
-  providerName: 'openai-codex'
+export interface ProtectedProviderWorkerRuntime {
+  providerName: ProtectedProviderName
   modelId: string
   reasoningLevel: ReasoningLevel
-  /** Current short-lived OAuth access token. The refresh credential never crosses this wire. */
-  accessToken: string
+  /** Selected provider credential only; unrelated daemon secrets never cross this wire. */
+  apiKey?: string
+  baseUrl?: string
+  /** Closed provider-specific fields installed in Pi's in-memory credential store, not process.env. */
+  credentialEnv?: Array<{ name: string; value: string }>
+  /** Explicit Google service-account/ADC JSON materialized only inside this turn's scratch tree. */
+  credentialFile?: { envName: 'GOOGLE_APPLICATION_CREDENTIALS'; content: string }
 }
 
 export interface ProtectedWorkerPaths {
@@ -64,7 +74,7 @@ export interface ProtectedWorkerSpec {
   images?: Attachment[]
   turnId: string
   bashApprovalMode: 'auto_deny'
-  runtime: OpenAICodexWorkerRuntime
+  runtime: ProtectedProviderWorkerRuntime
   paths: ProtectedWorkerPaths
   docker: ProtectedDockerRuntime
   /** The only general web capability in the protected normal surface. */
@@ -76,7 +86,7 @@ export interface RestrictedReviewWorkerSpec {
   agentId: string
   message: string
   turnId: string
-  runtime: OpenAICodexWorkerRuntime
+  runtime: ProtectedProviderWorkerRuntime
   review: {
     reviewId: string
     evidence: Array<{ sessionId: string; entryOrdinal: number }>
@@ -291,7 +301,15 @@ export function parseWorkerInput(value: unknown): WorkerInput {
     if (input.webFetchEnabled !== true) {
       throw new Error('worker: protected input requires guarded web_fetch')
     }
-    assertOpenAICodexRuntime(input.runtime)
+    assertProtectedProviderRuntime(input.runtime)
+    const runtime = input.runtime as ProtectedProviderWorkerRuntime
+    const separator = (input.agent as ResolvedAgent).model.indexOf(':')
+    if (
+      runtime.providerName !== (input.agent as ResolvedAgent).model.slice(0, separator) ||
+      runtime.modelId !== (input.agent as ResolvedAgent).model.slice(separator + 1)
+    ) {
+      throw new Error('worker: protected runtime does not match the resolved Agent model')
+    }
     assertProtectedWorkerPaths(input.paths, input.agent)
     assertProtectedDockerRuntime(input.docker, input.paths as ProtectedWorkerPaths)
     if (input.apiKeyRefreshEnabled !== true) {
@@ -306,7 +324,7 @@ export function parseWorkerInput(value: unknown): WorkerInput {
     requireString(input.agentId, 'agentId')
     requireString(input.message, 'message')
     requireString(input.turnId, 'turnId')
-    assertOpenAICodexRuntime(input.runtime)
+    assertProtectedProviderRuntime(input.runtime)
     if (input.apiKeyRefreshEnabled !== true) {
       throw new Error('worker: restricted review requires bound API key refresh')
     }
@@ -339,26 +357,90 @@ export function parseWorkerInput(value: unknown): WorkerInput {
   throw new Error('worker: unknown or missing runtime kind')
 }
 
-export function assertOpenAICodexRuntime(
+export function assertProtectedProviderRuntime(
   value: unknown,
-): asserts value is OpenAICodexWorkerRuntime {
-  const runtime = objectRecord(value, 'OpenAI Codex runtime')
+): asserts value is ProtectedProviderWorkerRuntime {
+  const runtime = objectRecord(value, 'protected provider runtime')
   assertExactKeys(
     runtime,
-    new Set(['providerName', 'modelId', 'reasoningLevel', 'accessToken']),
-    'OpenAI Codex runtime',
-    new Set(['providerName', 'modelId', 'reasoningLevel', 'accessToken']),
+    new Set([
+      'providerName',
+      'modelId',
+      'reasoningLevel',
+      'apiKey',
+      'baseUrl',
+      'credentialEnv',
+      'credentialFile',
+    ]),
+    'protected provider runtime',
+    new Set(['providerName', 'modelId', 'reasoningLevel']),
   )
-  if (runtime.providerName !== 'openai-codex') {
-    throw new Error('protected execution supports only openai-codex')
+  if (!PROTECTED_PROVIDER_NAMES.includes(runtime.providerName as ProtectedProviderName)) {
+    throw new Error('protected execution requires a registered provider')
   }
-  if (!nonEmptyString(runtime.modelId)) throw new Error('OpenAI Codex runtime requires a model id')
+  if (!nonEmptyString(runtime.modelId))
+    throw new Error('protected provider runtime requires a model id')
   if (!REASONING_LEVELS.has(runtime.reasoningLevel as ReasoningLevel)) {
-    throw new Error('OpenAI Codex runtime requires a valid reasoning level')
+    throw new Error('protected provider runtime requires a valid reasoning level')
   }
-  if (!nonEmptyString(runtime.accessToken)) {
-    throw new Error('OpenAI Codex runtime requires a current access token')
+  if (runtime.apiKey !== undefined && !nonEmptyString(runtime.apiKey)) {
+    throw new Error('protected provider runtime contains an invalid selected credential')
   }
+  if (runtime.baseUrl !== undefined) requireString(runtime.baseUrl, 'baseUrl')
+  if (runtime.credentialEnv !== undefined) {
+    if (!Array.isArray(runtime.credentialEnv)) {
+      throw new Error('protected provider credential fields must be an array')
+    }
+    const allowed = new Set(PROVIDER_CREDENTIAL_ENV[String(runtime.providerName)] ?? [])
+    const seen = new Set<string>()
+    for (const rawField of runtime.credentialEnv) {
+      const field = objectRecord(rawField, 'protected provider credential field')
+      assertExactKeys(
+        field,
+        new Set(['name', 'value']),
+        'protected provider credential field',
+        new Set(['name', 'value']),
+      )
+      requireString(field.name, 'credential field name')
+      requireString(field.value, 'credential field value')
+      if (!allowed.has(field.name as string) || seen.has(field.name as string)) {
+        throw new Error('protected provider runtime contains an unexpected credential field')
+      }
+      seen.add(field.name as string)
+    }
+  }
+  if (runtime.credentialFile !== undefined) {
+    const file = objectRecord(runtime.credentialFile, 'protected provider credential file')
+    assertExactKeys(
+      file,
+      new Set(['envName', 'content']),
+      'protected provider credential file',
+      new Set(['envName', 'content']),
+    )
+    if (
+      runtime.providerName !== 'google-vertex' ||
+      file.envName !== 'GOOGLE_APPLICATION_CREDENTIALS' ||
+      !nonEmptyString(file.content) ||
+      Buffer.byteLength(file.content as string, 'utf8') > 64 * 1024
+    ) {
+      throw new Error('protected provider runtime contains an invalid credential file')
+    }
+  }
+  if (
+    !nonEmptyString(runtime.apiKey) &&
+    !Array.isArray(runtime.credentialEnv) &&
+    runtime.credentialFile === undefined
+  ) {
+    throw new Error('protected provider runtime requires selected credentials')
+  }
+}
+
+export function protectedRuntimeSecrets(runtime: ProtectedProviderWorkerRuntime): string[] {
+  return [
+    runtime.apiKey,
+    ...(runtime.credentialEnv ?? []).map((field) => field.value),
+    runtime.credentialFile?.content,
+  ].filter((value): value is string => Boolean(value))
 }
 
 export function redactExactValue(text: string, value: string | undefined): string {

@@ -7,7 +7,55 @@ const PROVIDER_ALIASES: Record<string, string> = {
   'azure-openai': 'azure-openai-responses',
 }
 
-const LOCAL_PROVIDERS: Record<string, { baseUrl: string; apiKey: string; authHeader: boolean }> = {
+export const PROTECTED_PROVIDER_NAMES = [
+  'anthropic',
+  'openai',
+  'openai-codex',
+  'google',
+  'google-vertex',
+  'azure-openai',
+  'bedrock',
+  'mistral',
+  'groq',
+  'cerebras',
+  'xai',
+  'zai',
+  'huggingface',
+  'openrouter',
+  'vercel-ai-gateway',
+  'deepseek',
+  'fireworks',
+  'together',
+  'moonshotai',
+  'moonshotai-cn',
+  'kimi-coding',
+  'minimax',
+  'minimax-cn',
+  'qwen-token-plan',
+  'qwen-token-plan-cn',
+  'xiaomi',
+  'xiaomi-token-plan-ams',
+  'xiaomi-token-plan-cn',
+  'xiaomi-token-plan-sgp',
+  'ant-ling',
+  'nvidia',
+  'opencode',
+  'opencode-go',
+  'zai-coding-cn',
+  'github-copilot',
+  'cloudflare-ai-gateway',
+  'cloudflare-workers-ai',
+  'lmstudio',
+  'ollama',
+  'llamacpp',
+] as const
+
+export type ProtectedProviderName = (typeof PROTECTED_PROVIDER_NAMES)[number]
+
+export const LOCAL_PROVIDERS: Record<
+  string,
+  { baseUrl: string; apiKey: string; authHeader: boolean }
+> = {
   lmstudio: {
     baseUrl: 'http://127.0.0.1:1234/v1',
     apiKey: 'lm-studio',
@@ -17,7 +65,7 @@ const LOCAL_PROVIDERS: Record<string, { baseUrl: string; apiKey: string; authHea
   llamacpp: { baseUrl: 'http://127.0.0.1:8080/v1', apiKey: 'no-key', authHeader: true },
 }
 
-const API_KEY_ENV: Record<string, readonly string[]> = {
+export const PROVIDER_API_KEY_ENV: Record<string, readonly string[]> = {
   anthropic: ['ANTHROPIC_OAUTH_TOKEN', 'ANTHROPIC_API_KEY'],
   openai: ['OPENAI_API_KEY'],
   google: ['GEMINI_API_KEY'],
@@ -57,7 +105,7 @@ const API_KEY_ENV: Record<string, readonly string[]> = {
   llamacpp: ['LLAMACPP_API_KEY'],
 }
 
-const PROVIDER_ENV: Record<string, readonly string[]> = {
+export const PROVIDER_CREDENTIAL_ENV: Record<string, readonly string[]> = {
   bedrock: [
     'AWS_PROFILE',
     'AWS_BEARER_TOKEN_BEDROCK',
@@ -90,12 +138,20 @@ export interface OpenAICodexPiRuntimeOptions {
   accessToken: string
 }
 
+export interface ProtectedPiRuntimeOptions {
+  providerName: ProtectedProviderName
+  modelId: string
+  apiKey?: string
+  baseUrl?: string
+  credentialEnv?: Array<{ name: string; value: string }>
+}
+
 export function piProviderName(providerName: string): string {
   return PROVIDER_ALIASES[providerName] ?? providerName
 }
 
 export function providerApiKey(providerName: string, env: NodeJS.ProcessEnv): string | undefined {
-  for (const name of API_KEY_ENV[providerName] ?? []) {
+  for (const name of PROVIDER_API_KEY_ENV[providerName] ?? []) {
     const value = env[name]
     if (value) return value
   }
@@ -117,12 +173,12 @@ export function providerBaseUrl(providerName: string, env: NodeJS.ProcessEnv): s
   }
 }
 
-function providerCredentialEnv(
+export function providerCredentialEnv(
   providerName: string,
   env: NodeJS.ProcessEnv,
 ): Record<string, string> | undefined {
   const result: Record<string, string> = {}
-  for (const name of PROVIDER_ENV[providerName] ?? []) {
+  for (const name of PROVIDER_CREDENTIAL_ENV[providerName] ?? []) {
     const value = env[name]
     if (value !== undefined) result[name] = value
   }
@@ -242,6 +298,21 @@ export async function createOpenAICodexPiRuntime(
     expires: Number.MAX_SAFE_INTEGER,
   }))
   return ModelRuntime.create({ credentials, modelsPath: null })
+}
+
+/** Build a protected runtime only from the daemon's explicit wire projection. */
+export async function createProtectedPiRuntime(
+  options: ProtectedPiRuntimeOptions,
+): Promise<ModelRuntime> {
+  const env: NodeJS.ProcessEnv = {}
+  for (const field of options.credentialEnv ?? []) env[field.name] = field.value
+  return createBazilionPiRuntime({
+    providerName: options.providerName,
+    modelId: options.modelId,
+    env,
+    apiKey: options.apiKey,
+    baseUrl: options.baseUrl,
+  })
 }
 
 export function resolvePiModel(

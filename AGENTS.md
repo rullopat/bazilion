@@ -155,6 +155,18 @@ API in `apps/daemon/src/core/`: `openSecrets(db, password)` and `openConfig(db)`
 
 ## Implemented for the next release (don't re-implement)
 
+- **BAZ-031: provider-neutral protected runtime.** Every provider id in Bazilion's pinned Pi
+  registry is exhaustively accounted for. Protected and restricted-review workers receive only the
+  selected model id, reasoning level, selected API/OAuth credential, optional validated endpoint,
+  and a closed provider-specific credential-field list. These fields are installed into Pi's
+  in-memory credential store; the child process environment remains minimal. OpenAI Codex refresh
+  stays daemon-owned. Static-key providers, explicit Bedrock bearer/static credentials, Cloudflare
+  identifiers, loopback-only local providers, and explicit encrypted Google Vertex credentials JSON
+  use the same protected path. Vertex JSON is confined to a mode-0600 per-turn scratch file. Ambient
+  AWS profiles, host Google ADC paths, unknown providers, unsafe endpoints, and missing credentials
+  fail before spawn without falling back to configured host execution. Browser and MCP remain denied
+  and protected `web_fetch` remains uncredentialed.
+
 - **BAZ-006: opt-in Docker shell isolation and dangerous-command approval.** The default remains
   `BAZILION_BASH_SANDBOX=off`, which keeps Pi's host-backed
   `read`/`bash`/`edit`/`write`/`grep`/`find`/`ls` surface unchanged. In `docker` mode,

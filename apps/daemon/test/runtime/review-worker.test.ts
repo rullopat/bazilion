@@ -38,7 +38,7 @@ test('review worker returns its typed proposal batch', async () => {
           providerName: 'openai-codex',
           modelId: 'gpt-5.6-sol',
           reasoningLevel: 'low',
-          accessToken,
+          apiKey: accessToken,
         },
       },
       {

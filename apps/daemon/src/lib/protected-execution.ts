@@ -10,12 +10,15 @@ import {
 } from '../runtime/shell/docker.ts'
 import { resolveShellSecurityConfig } from '../runtime/shell/security.ts'
 import { SANDBOX_INPUTS_DIR, SANDBOX_MEMORY_DIR } from '../runtime/shell/tooling.ts'
-import type { OpenAICodexWorkerRuntime, ProtectedWorkerPaths } from '../runtime/worker/runtime.ts'
+import type {
+  ProtectedProviderWorkerRuntime,
+  ProtectedWorkerPaths,
+} from '../runtime/worker/runtime.ts'
 import { prepareInputFilesDirectory } from './attachments.ts'
 import { getCtx } from './ctx.ts'
 import {
   ProtectedExecutionUnavailableError,
-  resolveProtectedOpenAICodexRuntime,
+  resolveProtectedProviderRuntime,
 } from './protected-provider.ts'
 
 const preparedProtectedExecutionBrand: unique symbol = Symbol(
@@ -26,7 +29,7 @@ const consumedProtectedExecutions = new WeakSet<object>()
 
 export interface PreparedProtectedExecution {
   readonly [preparedProtectedExecutionBrand]: true
-  readonly runtime: OpenAICodexWorkerRuntime
+  readonly runtime: ProtectedProviderWorkerRuntime
   readonly paths: ProtectedWorkerPaths
   readonly docker: ProtectedDockerRuntime
   readonly refreshApiKey: (providerName: string) => Promise<string>
@@ -45,7 +48,7 @@ export async function prepareProtectedExecution(
   const signal = options.signal
   if (signal?.aborted) throw new Error('cancelled')
   const { db, paths, authToken } = getCtx()
-  const provider = await resolveProtectedOpenAICodexRuntime(db, authToken, agent)
+  const provider = await resolveProtectedProviderRuntime(db, authToken, agent)
   if (signal?.aborted) throw new Error('cancelled')
 
   let memoryDir: string
@@ -146,7 +149,7 @@ export function assertPreparedProtectedExecution(
   if (
     prepared.paths.agentDir !== agent.agent.dir ||
     prepared.paths.teamDir !== agent.team.path ||
-    prepared.runtime.providerName !== 'openai-codex' ||
+    prepared.runtime.providerName !== agent.model.slice(0, separator) ||
     prepared.runtime.modelId !== agent.model.slice(separator + 1) ||
     prepared.runtime.reasoningLevel !== agent.reasoningLevel
   ) {

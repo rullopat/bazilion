@@ -13,7 +13,7 @@ export function createIpcApiKeyRefresher(
   context: ApiKeyRefreshTurnContext,
 ): (providerName: string) => Promise<string> {
   return async (providerName) => {
-    assertOpenAICodexProvider(providerName, context.providerName)
+    assertSelectedProvider(providerName, context.providerName)
     return call<string>('refreshApiKey', {
       providerName,
       agentId: context.agentId,
@@ -36,8 +36,8 @@ export async function refreshApiKeyForTurn(
   if (args.agentId !== context.agentId || args.turnId !== context.turnId) {
     throw new Error('API key refresh request does not belong to this worker turn')
   }
-  assertOpenAICodexProvider(args.providerName, context.providerName)
-  if (!host) throw new Error('OpenAI Codex refresh is unavailable for this worker turn')
+  assertSelectedProvider(args.providerName, context.providerName)
+  if (!host) throw new Error('provider credential refresh is unavailable for this worker turn')
   if (signal?.aborted) throw refreshCancelledError()
 
   let token: string
@@ -49,7 +49,7 @@ export async function refreshApiKeyForTurn(
     // OAuth libraries and HTTP clients can include request context in their
     // errors. Never forward that detail across IPC where it could become a
     // model- or user-visible authentication error.
-    throw new Error('OpenAI Codex access token refresh failed — reconnect on /config and retry')
+    throw new Error('provider credential refresh failed — reconnect on /config and retry')
   }
   if (typeof token !== 'string' || token.length === 0) {
     throw new Error('API key refresh returned an invalid token')
@@ -57,8 +57,8 @@ export async function refreshApiKeyForTurn(
   return token
 }
 
-function assertOpenAICodexProvider(requested: string, expected: string): void {
-  if (expected !== 'openai-codex' || requested !== expected) {
+function assertSelectedProvider(requested: string, expected: string): void {
+  if (!expected || requested !== expected) {
     throw new Error('unexpected API key refresh provider')
   }
 }

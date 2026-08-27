@@ -9,7 +9,7 @@ import { makeTestEnv, type TestEnv } from '../core/helpers.ts'
 
 const mocks = vi.hoisted(() => ({
   context: null as TestEnv | null,
-  resolveProtectedOpenAICodexRuntime: vi.fn(),
+  resolveProtectedProviderRuntime: vi.fn(),
   spawnReviewWorker: vi.fn(),
 }))
 
@@ -22,7 +22,7 @@ vi.mock('../../src/lib/ctx.ts', () => ({
 
 vi.mock('../../src/lib/protected-provider.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/lib/protected-provider.ts')>()),
-  resolveProtectedOpenAICodexRuntime: mocks.resolveProtectedOpenAICodexRuntime,
+  resolveProtectedProviderRuntime: mocks.resolveProtectedProviderRuntime,
 }))
 
 vi.mock('../../src/runtime/index.ts', () => ({
@@ -45,14 +45,14 @@ let env: TestEnv
 beforeEach(() => {
   env = makeTestEnv()
   mocks.context = env
-  mocks.resolveProtectedOpenAICodexRuntime.mockReset()
+  mocks.resolveProtectedProviderRuntime.mockReset()
   mocks.spawnReviewWorker.mockReset()
-  mocks.resolveProtectedOpenAICodexRuntime.mockResolvedValue({
+  mocks.resolveProtectedProviderRuntime.mockResolvedValue({
     runtime: {
       providerName: 'openai-codex',
       modelId: 'gpt-5.6-sol',
       reasoningLevel: 'low',
-      accessToken: 'current-access-token',
+      apiKey: 'current-access-token',
     },
     refreshApiKey: async () => 'rotated-access-token',
   })
@@ -103,9 +103,9 @@ describe('restricted review dispatch ownership', () => {
 
   test('missing protected provider refresh becomes a bounded source-owned failure', async () => {
     const { review } = enqueueReview()
-    mocks.resolveProtectedOpenAICodexRuntime.mockRejectedValue(
+    mocks.resolveProtectedProviderRuntime.mockRejectedValue(
       new ProtectedExecutionUnavailableError(
-        'OpenAI Codex access and bound refresh are required for protected unattended turns.',
+        'Selected provider credentials are unavailable for protected turns.',
       ),
     )
     const { dispatchAgentReview } = await import('../../src/lib/review-dispatcher.ts')
@@ -114,8 +114,7 @@ describe('restricted review dispatch ownership', () => {
     const failed = agentReviewRepo.get(env.db, review.id)
     expect(failed).toMatchObject({
       status: 'retrying',
-      lastError:
-        'OpenAI Codex access and bound refresh are required for protected unattended turns.',
+      lastError: 'Selected provider credentials are unavailable for protected turns.',
     })
     expect(failed?.lastError?.length).toBeLessThanOrEqual(500)
     expect(mocks.spawnReviewWorker).not.toHaveBeenCalled()

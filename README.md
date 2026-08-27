@@ -227,6 +227,11 @@ Two tiers: the **data tier** (`bazilion.db*`, `profiles/`, `agents/`, `teams/`) 
 - **Core agent engine**: [pi-coding-agent](https://www.npmjs.com/package/@earendil-works/pi-coding-agent) is the engine Bazilion is based on. It owns the per-turn agent loop, transcript storage (JSONL session files under `~/.bazilion/agents/<id>/sessions/`), replay, compaction, provider/tool execution, and the file-IO toolset (`read`/`bash`/`edit`/`write`/`grep`/`find`/`ls`).
 - **LLM providers**: routed through [pi-ai](https://www.npmjs.com/package/@earendil-works/pi-ai) — Anthropic, OpenAI, OpenAI Codex (ChatGPT OAuth), Google AI Studio/Vertex, Azure OpenAI, AWS Bedrock, GitHub Copilot, DeepSeek, Mistral, Groq, Cerebras, xAI, Z.AI, Hugging Face, Fireworks, Together, Moonshot/Kimi, MiniMax, Qwen Token Plan, Xiaomi MiMo, Ant Ling, NVIDIA NIM, OpenCode, OpenRouter, Vercel AI Gateway, Cloudflare, LM Studio, Ollama, and llama.cpp. Model strings are `provider:model`.
 
+Protected Telegram/background/review turns use the same pinned provider catalog without inheriting
+the daemon environment. Bazilion projects only the selected provider credential into Pi's in-memory
+store, requires loopback endpoints for local providers, and fails closed for ambient profile or
+host credential-file discovery that cannot be safely projected.
+
 ## Exposing beyond loopback
 
 The supported private-server profile publishes only the web application through tailnet-only

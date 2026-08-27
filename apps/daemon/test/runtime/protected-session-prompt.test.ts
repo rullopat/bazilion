@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { ResolvedAgent } from '@bazilion/api-types'
@@ -41,7 +41,7 @@ describe('protected provider prompt boundary', () => {
       providerName: 'openai-codex' as const,
       modelId: 'gpt-5.6-sol',
       reasoningLevel: 'high' as const,
-      accessToken: 'protected-prompt-access-token',
+      apiKey: 'protected-prompt-access-token',
     }
     const hosts = scopedHosts()
     const handle = await createProtectedBazilionSession({
@@ -75,7 +75,7 @@ describe('protected provider prompt boundary', () => {
       messagingHost: hosts.messagingHost,
       userMdHost: hosts.userMdHost,
       bashApprovalHost: hosts.bashApprovalHost,
-      refreshApiKey: async () => runtime.accessToken,
+      refreshApiKey: async () => runtime.apiKey,
       fileSink: () => {},
     })
     let providerSystemPrompt = ''
@@ -117,7 +117,7 @@ describe('protected provider prompt boundary', () => {
         providerName: 'openai-codex',
         modelId: 'gpt-5.6-sol',
         reasoningLevel: 'low',
-        accessToken: 'review-prompt-access-token',
+        apiKey: 'review-prompt-access-token',
       },
       scratch,
       systemPrompt: 'Restricted reviewer instructions. Use propose_lesson only.',
@@ -142,6 +142,37 @@ describe('protected provider prompt boundary', () => {
     )
     expect(providerSystemPrompt).not.toContain(root)
     expect(providerSystemPrompt).not.toContain('node_modules')
+  })
+
+  test('materializes explicit Vertex credentials only inside turn scratch', async () => {
+    const root = temporaryRoot()
+    const scratch = createMinimalWorkerScratch(root)
+    const content = JSON.stringify({ type: 'service_account', private_key: 'vertex-secret' })
+    const handle = await createRestrictedReviewSession({
+      runtime: {
+        providerName: 'google-vertex',
+        modelId: 'gemini-3.6-flash',
+        reasoningLevel: 'low',
+        credentialEnv: [
+          { name: 'GOOGLE_CLOUD_PROJECT', value: 'project-one' },
+          { name: 'GOOGLE_CLOUD_LOCATION', value: 'europe-west1' },
+        ],
+        credentialFile: { envName: 'GOOGLE_APPLICATION_CREDENTIALS', content },
+      },
+      scratch,
+      systemPrompt: 'Restricted reviewer instructions.',
+      tools: [],
+      refreshApiKey: async () => '',
+    })
+    const credentialPath = join(scratch.tempDir, 'provider-credential.json')
+    try {
+      expect(readFileSync(credentialPath, 'utf8')).toBe(content)
+      expect(statSync(credentialPath).mode & 0o777).toBe(0o600)
+      expect(credentialPath.startsWith(scratch.root)).toBe(true)
+    } finally {
+      handle.dispose()
+      cleanupMinimalWorkerScratch(scratch)
+    }
   })
 })
 

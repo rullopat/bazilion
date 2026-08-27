@@ -194,6 +194,48 @@
       "test": "raw, cloned, contradictory, and downgrade-shaped metadata is never trusted"
     },
     {
+      "id": "PROTECTED-PROVIDER-CATALOG-DRIFT",
+      "owner": "BAZ-031",
+      "file": "apps/daemon/test/lib/protected-provider.test.ts",
+      "test": "accounts exhaustively for every provider in the pinned Pi registry"
+    },
+    {
+      "id": "PROTECTED-STATIC-PROVIDER-PROJECTION",
+      "owner": "BAZ-031",
+      "file": "apps/daemon/test/lib/protected-provider.test.ts",
+      "test": "projects only the selected static provider credential and returns it through bound IPC"
+    },
+    {
+      "id": "PROTECTED-LOCAL-ENDPOINT",
+      "owner": "BAZ-031",
+      "file": "apps/daemon/test/lib/protected-provider.test.ts",
+      "test": "local providers admit only explicit loopback HTTP endpoints"
+    },
+    {
+      "id": "PROTECTED-BEDROCK-EXPLICIT-CREDENTIALS",
+      "owner": "BAZ-031",
+      "file": "apps/daemon/test/lib/protected-provider.test.ts",
+      "test": "projects explicit Bedrock credentials but rejects ambient profile discovery"
+    },
+    {
+      "id": "PROTECTED-PROVIDER-NEUTRAL-READINESS",
+      "owner": "BAZ-031",
+      "file": "apps/daemon/test/lib/execution-security-status.test.ts",
+      "test": "execution-security projection > reports a provider-neutral ready base runtime when protected Docker is ready"
+    },
+    {
+      "id": "PROTECTED-VERTEX-EXPLICIT-CREDENTIALS",
+      "owner": "BAZ-031",
+      "file": "apps/daemon/test/lib/protected-provider.test.ts",
+      "test": "projects explicit Vertex JSON without exposing an ambient ADC path"
+    },
+    {
+      "id": "PROTECTED-VERTEX-SCRATCH-FILE",
+      "owner": "BAZ-031",
+      "file": "apps/daemon/test/runtime/protected-session-prompt.test.ts",
+      "test": "protected provider prompt boundary > materializes explicit Vertex credentials only inside turn scratch"
+    },
+    {
       "id": "PROTECTED-MINIMAL-ENV",
       "owner": "BAZ-027",
       "file": "apps/daemon/test/runtime/worker-runtime.test.ts",

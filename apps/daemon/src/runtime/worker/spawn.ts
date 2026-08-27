@@ -45,6 +45,7 @@ import {
   minimalWorkerProcessEnv,
   type ProtectedWorkerSpec,
   parseWorkerInput,
+  protectedRuntimeSecrets,
   type RestrictedReviewWorkerSpec,
   redactExactValue,
   redactJsonValue,
@@ -246,11 +247,11 @@ async function* spawnWorker(
       // The selected access token is allowed on this private wire only in the
       // closed runtime field. Exact-redact an accidental duplicate from all
       // other per-turn material before restoring that one designated value.
-      const accessToken = input.runtime.accessToken
-      const scrubbed = redactJsonValue(JSON.parse(validatedJson) as typeof input, accessToken)
+      const secrets = protectedRuntimeSecrets(input.runtime)
+      const scrubbed = redactJsonValue(JSON.parse(validatedJson) as typeof input, secrets)
       input = {
         ...scrubbed,
-        runtime: { ...scrubbed.runtime, accessToken },
+        runtime: input.runtime,
       }
       parseWorkerInput(input)
     }
@@ -267,10 +268,14 @@ async function* spawnWorker(
     if (scratch) cleanupMinimalWorkerScratch(scratch)
     throw error
   }
-  const accessToken =
-    spec.kind === 'configured_operator_http' ? spec.apiKey : spec.runtime.accessToken
-  const accessTokens = accessToken ? [accessToken] : []
-  const stderrRedactor = accessToken ? new ExactValueStreamRedactor(accessToken) : undefined
+  const accessTokens =
+    spec.kind === 'configured_operator_http'
+      ? spec.apiKey
+        ? [spec.apiKey]
+        : []
+      : protectedRuntimeSecrets(spec.runtime)
+  const stderrRedactor =
+    accessTokens.length > 0 ? new ExactValueStreamRedactor(accessTokens) : undefined
 
   let child: ChildProcess
   try {

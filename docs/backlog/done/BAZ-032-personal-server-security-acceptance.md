@@ -203,7 +203,7 @@ gate proves the complete required manifest and the live preflight remains a sepa
 
 ## As built
 
-- `pnpm security:acceptance` builds the production web application, verifies 53 exact required
+- `pnpm security:acceptance` builds the production web application, verifies 60 exact required
   cases from `security/acceptance-manifest.json` are collected, then runs them serially and rejects
   every missing, skipped, todo, or non-passing result. Its temporary JSON report is removed on both
   success and failure.
@@ -221,6 +221,8 @@ gate proves the complete required manifest and the live preflight remains a sepa
   fresh ingress attempt, and cross-origin guarded-fetch redirects strip sensitive request headers.
 - `docs/security-acceptance.md` records offline use, limitations, safe failure handling, and the
   separate live `bazilion gateway preflight`, commit, and publication evidence states.
-- Validated on Node 26.7.0: the 53-case acceptance gate passed; the root suite passed 131 files and
-  1102 tests with 1 file/3 tests intentionally skipped; root, web, and mobile typechecks passed;
-  lint passed with 40 existing warnings; and the production web build passed.
+- Extended by BAZ-031 with seven provider-neutral cases covering catalog drift, static-key and local
+  providers, explicit Bedrock and Vertex credentials, readiness, and scratch-file confinement.
+- Validated on Node 26.7.0: the 60-case acceptance gate passed; the root suite passed 131 files and
+  1108 tests with 1 file/3 tests intentionally skipped; root, web, and mobile typechecks passed;
+  lint passed with 39 existing warnings; and the production web build passed.

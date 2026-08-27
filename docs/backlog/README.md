@@ -27,11 +27,10 @@ docs/backlog/
 
 ---
 
-## Draft (1)
+## Draft (0)
 
 | ID | Title | Size | Notes |
 |----|-------|------|-------|
-| [BAZ-031](draft/BAZ-031-protected-runtime-provider-expansion.md) | Protected-runtime provider and credentialed web-tool expansion | L | Deferred until current usage needs something beyond BAZ-027's OpenAI Codex and guarded uncredentialed web fetch |
 
 ## Todo (0)
 
@@ -43,11 +42,12 @@ docs/backlog/
 | ID | Title | Size | Notes |
 |----|-------|------|-------|
 
-## Done (26)
+## Done (27)
 
 | ID | Title | Size | Shipped | Release | Notes |
 |----|-------|------|---------|---------|-------|
-| [BAZ-032](done/BAZ-032-personal-server-security-acceptance.md) | Personal-server adversarial security acceptance gate | M | 2026-08-26 | unreleased | 53-case deterministic cross-boundary release gate for BAZ-027 through BAZ-030, with live posture evidence kept separate |
+| [BAZ-031](done/BAZ-031-protected-runtime-provider-expansion.md) | Provider-neutral protected runtime | L | 2026-08-27 | unreleased | Exhaustive credential-minimal protected execution for every provider in the pinned Pi catalog |
+| [BAZ-032](done/BAZ-032-personal-server-security-acceptance.md) | Personal-server adversarial security acceptance gate | M | 2026-08-26 | unreleased | 60-case deterministic cross-boundary release gate for BAZ-027 through BAZ-031, with live posture evidence kept separate |
 | [BAZ-028](done/BAZ-028-secure-personal-web-mobile-gateway.md) | Secure personal web and mobile gateway | L | 2026-08-26 | unreleased | Expiring device credentials, hashed browser sessions, hardened private HTTPS gateway, and loopback-only Tailscale Serve preflight |
 | [BAZ-030](done/BAZ-030-encrypted-backups-credential-recovery.md) | Encrypted backups and single-operator credential recovery | L | 2026-08-26 | unreleased | Standard age recipient encryption, authenticated staged restore, secret-safe inventory, local token rotation, and external recovery guidance |
 | [BAZ-029](done/BAZ-029-single-owner-telegram-pairing.md) | Single-owner Telegram pairing and visibility hardening | M | 2026-08-26 | unreleased | One-time owner pairing, fail-closed ingress identity, private-supergroup warnings, and secret-safe diagnostics |

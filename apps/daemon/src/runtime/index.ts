@@ -52,7 +52,11 @@ export { listCatalogModels, listCatalogModelsSync } from './providers/catalog.ts
 export type { PiProviderConfig } from './providers/pi-adapter.ts'
 export { piProvider } from './providers/pi-adapter.ts'
 export type { OpenAICodexPiRuntimeOptions } from './providers/pi-runtime.ts'
-export { createOpenAICodexPiRuntime, resolvePiModel } from './providers/pi-runtime.ts'
+export {
+  createOpenAICodexPiRuntime,
+  createProtectedPiRuntime,
+  resolvePiModel,
+} from './providers/pi-runtime.ts'
 export type {
   ProviderConfig,
   ProviderMeta,
@@ -109,7 +113,7 @@ export type {
 export type {
   ConfiguredOperatorHttpWorkerSpec,
   MinimalWorkerScratch,
-  OpenAICodexWorkerRuntime,
+  ProtectedProviderWorkerRuntime,
   ProtectedWorkerPaths,
   ProtectedWorkerSpec,
   RestrictedReviewWorkerSpec,

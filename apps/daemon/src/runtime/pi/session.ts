@@ -36,7 +36,7 @@
 //   - inter-agent messaging, triggers, scheduler (core + apps/web)
 //   - memory backend (we wrap it as a pi customTool via `createBazilionCustomTools`)
 
-import { existsSync, mkdirSync, readdirSync, statSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import type { ResolvedAgent } from '@bazilion/api-types'
 import type { AgentMessage, ThinkingLevel } from '@earendil-works/pi-agent-core'
@@ -58,7 +58,7 @@ import { providerStateRepo } from '../../core/index.ts'
 import type { MemoryBackend } from '../memory/types.ts'
 import {
   createBazilionPiRuntime,
-  createOpenAICodexPiRuntime,
+  createProtectedPiRuntime,
   piProviderName,
   providerApiKey,
   providerBaseUrl,
@@ -78,10 +78,10 @@ import type {
 } from '../worker/ipc-protocol.ts'
 import type {
   MinimalWorkerScratch,
-  OpenAICodexWorkerRuntime,
+  ProtectedProviderWorkerRuntime,
   ProtectedWorkerPaths,
 } from '../worker/runtime.ts'
-import { redactJsonValue } from '../worker/runtime.ts'
+import { protectedRuntimeSecrets, redactJsonValue } from '../worker/runtime.ts'
 import { createBazilionCustomTools, createProtectedBazilionCustomTools } from './tools.ts'
 
 export interface CreateBazilionSessionOptions {
@@ -168,7 +168,7 @@ export interface BazilionSessionHandle {
 
 export interface CreateProtectedBazilionSessionOptions {
   agent: ResolvedAgent
-  runtime: OpenAICodexWorkerRuntime
+  runtime: ProtectedProviderWorkerRuntime
   paths: ProtectedWorkerPaths
   scratch: MinimalWorkerScratch
   docker: ProtectedDockerRuntime
@@ -181,7 +181,7 @@ export interface CreateProtectedBazilionSessionOptions {
 }
 
 export interface CreateRestrictedReviewSessionOptions {
-  runtime: OpenAICodexWorkerRuntime
+  runtime: ProtectedProviderWorkerRuntime
   scratch: MinimalWorkerScratch
   systemPrompt: string
   tools: ToolDefinition[]
@@ -388,12 +388,8 @@ export async function createProtectedBazilionSession(
   opts: CreateProtectedBazilionSessionOptions,
 ): Promise<BazilionSessionHandle> {
   const { providerName, modelId } = splitModelString(opts.agent.model)
-  if (
-    providerName !== 'openai-codex' ||
-    providerName !== opts.runtime.providerName ||
-    modelId !== opts.runtime.modelId
-  ) {
-    throw new Error('protected Agent model does not match the prepared OpenAI Codex runtime')
+  if (providerName !== opts.runtime.providerName || modelId !== opts.runtime.modelId) {
+    throw new Error('protected Agent model does not match the prepared provider runtime')
   }
   if (opts.agent.agent.dir !== opts.paths.agentDir || opts.agent.team.path !== opts.paths.teamDir) {
     throw new Error('protected session paths do not match the resolved Agent')
@@ -402,12 +398,19 @@ export async function createProtectedBazilionSession(
     throw new Error('protected Team workspace is unavailable')
   }
 
-  const modelRuntime = await createOpenAICodexPiRuntime({
+  const modelRuntime = await createProtectedPiRuntime({
     providerName: opts.runtime.providerName,
     modelId: opts.runtime.modelId,
-    accessToken: opts.runtime.accessToken,
+    apiKey: opts.runtime.apiKey,
+    baseUrl: opts.runtime.baseUrl,
+    credentialEnv: materializeProtectedCredentialFile(opts.runtime, opts.scratch),
   })
-  const model = resolvePiModel(modelRuntime, 'openai-codex', opts.runtime.modelId)
+  const model = resolvePiModel(
+    modelRuntime,
+    opts.runtime.providerName,
+    opts.runtime.modelId,
+    opts.runtime.baseUrl,
+  )
   const shellTools = createProtectedSessionShellTools(
     opts.paths.teamDir,
     opts.docker,
@@ -426,7 +429,7 @@ export async function createProtectedBazilionSession(
       sandboxMode: 'docker',
       homeDocuments: opts.paths.homeDocuments,
     }),
-    opts.runtime.accessToken,
+    protectedRuntimeSecrets(opts.runtime),
   )
   const resourceLoader = new DefaultResourceLoader({
     cwd: PROTECTED_MODEL_CWD,
@@ -463,7 +466,12 @@ export async function createProtectedBazilionSession(
     modelRuntime,
     resourceLoader,
   })
-  installProtectedCredentialBoundary(session, opts.runtime.accessToken, opts.refreshApiKey)
+  installProtectedCredentialBoundary(
+    session,
+    opts.runtime.providerName,
+    protectedRuntimeSecrets(opts.runtime),
+    opts.refreshApiKey,
+  )
   return sessionHandle(session)
 }
 
@@ -471,12 +479,19 @@ export async function createProtectedBazilionSession(
 export async function createRestrictedReviewSession(
   opts: CreateRestrictedReviewSessionOptions,
 ): Promise<BazilionSessionHandle> {
-  const modelRuntime = await createOpenAICodexPiRuntime({
+  const modelRuntime = await createProtectedPiRuntime({
     providerName: opts.runtime.providerName,
     modelId: opts.runtime.modelId,
-    accessToken: opts.runtime.accessToken,
+    apiKey: opts.runtime.apiKey,
+    baseUrl: opts.runtime.baseUrl,
+    credentialEnv: materializeProtectedCredentialFile(opts.runtime, opts.scratch),
   })
-  const model = resolvePiModel(modelRuntime, 'openai-codex', opts.runtime.modelId)
+  const model = resolvePiModel(
+    modelRuntime,
+    opts.runtime.providerName,
+    opts.runtime.modelId,
+    opts.runtime.baseUrl,
+  )
   const settingsManager = createInMemorySettingsManager()
   const sessionManager = SessionManager.create(
     opts.scratch.reviewCwd,
@@ -507,8 +522,30 @@ export async function createRestrictedReviewSession(
     modelRuntime,
     resourceLoader,
   })
-  installProtectedCredentialBoundary(session, opts.runtime.accessToken, opts.refreshApiKey)
+  installProtectedCredentialBoundary(
+    session,
+    opts.runtime.providerName,
+    protectedRuntimeSecrets(opts.runtime),
+    opts.refreshApiKey,
+  )
   return sessionHandle(session)
+}
+
+function materializeProtectedCredentialFile(
+  runtime: ProtectedProviderWorkerRuntime,
+  scratch: MinimalWorkerScratch,
+): Array<{ name: string; value: string }> | undefined {
+  const fields = [...(runtime.credentialEnv ?? [])]
+  if (runtime.credentialFile) {
+    const path = join(scratch.tempDir, 'provider-credential.json')
+    writeFileSync(path, runtime.credentialFile.content, {
+      encoding: 'utf8',
+      mode: 0o600,
+      flag: 'wx',
+    })
+    fields.push({ name: runtime.credentialFile.envName, value: path })
+  }
+  return fields.length > 0 ? fields : undefined
 }
 
 // --- helpers ---
@@ -527,10 +564,11 @@ function createInMemorySettingsManager(): SettingsManager {
 
 export function installProtectedCredentialBoundary(
   session: AgentSession,
-  initialAccessToken: string,
+  providerName: string,
+  initialSecrets: string[],
   refreshApiKey: (providerName: string) => Promise<string>,
 ): void {
-  const activeTokens = [initialAccessToken]
+  const activeTokens = [...new Set(initialSecrets.filter(Boolean))]
   session.agent.state.messages = redactJsonValue(session.agent.state.messages, activeTokens)
   const originalStream = session.agent.streamFunction
   session.agent.streamFunction = async (model, context, options) => {
@@ -579,9 +617,9 @@ export function installProtectedCredentialBoundary(
   }
 
   session.agent.getApiKey = async (requestedProvider) => {
-    if (requestedProvider !== 'openai-codex') return undefined
+    if (requestedProvider !== providerName) return undefined
     try {
-      const token = await refreshApiKey('openai-codex')
+      const token = await refreshApiKey(providerName)
       if (token && !activeTokens.includes(token)) activeTokens.push(token)
       return token || undefined
     } catch {

@@ -41,7 +41,12 @@ describe('protected Pi persistence credential boundary', () => {
       })
       return stream
     }
-    installProtectedCredentialBoundary(harness.session, initial, async () => rotated)
+    installProtectedCredentialBoundary(
+      harness.session,
+      'openai-codex',
+      [initial],
+      async () => rotated,
+    )
 
     await harness.session.prompt('exercise provider error')
     const serializedState = JSON.stringify(harness.session.agent.state.messages)
@@ -74,7 +79,12 @@ describe('protected Pi persistence credential boundary', () => {
       })
       return stream
     }
-    installProtectedCredentialBoundary(harness.session, initial, async () => initial)
+    installProtectedCredentialBoundary(
+      harness.session,
+      'openai-codex',
+      [initial],
+      async () => initial,
+    )
     const unhandled: unknown[] = []
     const captureUnhandled = (reason: unknown) => unhandled.push(reason)
     process.on('unhandledRejection', captureUnhandled)
@@ -122,7 +132,12 @@ describe('protected Pi persistence credential boundary', () => {
       queueMicrotask(() => stream.push({ type: 'done', reason, message }))
       return stream
     }
-    installProtectedCredentialBoundary(harness.session, initial, async () => initial)
+    installProtectedCredentialBoundary(
+      harness.session,
+      'openai-codex',
+      [initial],
+      async () => initial,
+    )
 
     await harness.session.prompt('exercise tool error')
     const serializedState = JSON.stringify(harness.session.agent.state.messages)

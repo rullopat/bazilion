@@ -1,9 +1,9 @@
 import type { ResolvedAgent } from '@bazilion/api-types'
 import { beforeEach, expect, test, vi } from 'vitest'
 
-const { spawnReviewWorker, resolveProtectedOpenAICodexRuntime } = vi.hoisted(() => ({
+const { spawnReviewWorker, resolveProtectedProviderRuntime } = vi.hoisted(() => ({
   spawnReviewWorker: vi.fn(),
-  resolveProtectedOpenAICodexRuntime: vi.fn(),
+  resolveProtectedProviderRuntime: vi.fn(),
 }))
 
 vi.mock('../../src/runtime/index.ts', () => ({ spawnReviewWorker }))
@@ -11,7 +11,7 @@ vi.mock('../../src/lib/ctx.ts', () => ({
   getCtx: () => ({ db: { test: true }, authToken: 'daemon-only-bootstrap' }),
 }))
 vi.mock('../../src/lib/protected-provider.ts', () => ({
-  resolveProtectedOpenAICodexRuntime,
+  resolveProtectedProviderRuntime,
 }))
 
 import {
@@ -70,14 +70,14 @@ function agent(): ResolvedAgent {
 
 beforeEach(() => {
   spawnReviewWorker.mockReset()
-  resolveProtectedOpenAICodexRuntime.mockReset()
+  resolveProtectedProviderRuntime.mockReset()
   refreshApiKey.mockClear()
-  resolveProtectedOpenAICodexRuntime.mockResolvedValue({
+  resolveProtectedProviderRuntime.mockResolvedValue({
     runtime: {
       providerName: 'openai-codex',
       modelId: 'gpt-5.6-sol',
       reasoningLevel: 'low',
-      accessToken: 'current-access',
+      apiKey: 'current-access',
     },
     refreshApiKey,
   })
@@ -94,7 +94,7 @@ test.each([
     evidence: [{ sessionId: 'session-1', entryOrdinal: 4 }],
   })
 
-  expect(resolveProtectedOpenAICodexRuntime).toHaveBeenCalledWith(
+  expect(resolveProtectedProviderRuntime).toHaveBeenCalledWith(
     { test: true },
     'daemon-only-bootstrap',
     expect.objectContaining({ model: 'openai-codex:gpt-5.6-sol' }),
@@ -112,7 +112,7 @@ test.each([
       providerName: 'openai-codex',
       modelId: 'gpt-5.6-sol',
       reasoningLevel: 'low',
-      accessToken: 'current-access',
+      apiKey: 'current-access',
     },
     review: {
       reviewId: `review-${trigger}`,
@@ -155,7 +155,7 @@ test('review preparation fails before provider resolution for mismatched or unbo
       evidence: [],
     }),
   ).rejects.toThrow(/bounded contract/)
-  expect(resolveProtectedOpenAICodexRuntime).not.toHaveBeenCalled()
+  expect(resolveProtectedProviderRuntime).not.toHaveBeenCalled()
 })
 
 test('raw review execution rejects a forged unprepared specification', async () => {
@@ -179,8 +179,8 @@ test('prepared review is immutable, clone-resistant, and executable exactly once
   expect(Object.isFrozen(prepared.spec)).toBe(true)
   expect(Object.isFrozen(prepared.spec.runtime)).toBe(true)
   expect(Object.isFrozen(prepared.spec.review.evidence)).toBe(true)
-  expect(Reflect.set(prepared.spec.runtime, 'accessToken', 'MUTATED')).toBe(false)
-  expect(prepared.spec.runtime.accessToken).toBe('current-access')
+  expect(Reflect.set(prepared.spec.runtime, 'apiKey', 'MUTATED')).toBe(false)
+  expect(prepared.spec.runtime.apiKey).toBe('current-access')
 
   await expect(executePreparedReview({ ...prepared })).rejects.toThrow(
     /not prepared by the trusted daemon boundary/,

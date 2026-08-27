@@ -37,10 +37,11 @@ export function projectExecutionSecurity(
   const providerBaselineEligible =
     input.protectedUnattendedTurns.openaiCodex.enabled &&
     input.protectedUnattendedTurns.openaiCodex.connected
+  // Provider readiness is selected-model-specific and checked immediately before spawn.
+  // The public base-runtime status reports only the provider-neutral Docker boundary.
   const baseRuntimeReady =
     input.protectedUnattendedTurns.docker.ready &&
-    input.protectedUnattendedTurns.docker.configurationValid !== false &&
-    providerBaselineEligible
+    input.protectedUnattendedTurns.docker.configurationValid !== false
 
   return {
     configuredOperatorHttp: {
@@ -82,12 +83,6 @@ function configuredCodingSurface(
 }
 
 function remediationFor(input: ExecutionSecurityProjectionInput): string {
-  const { enabled, connected } = input.protectedUnattendedTurns.openaiCodex
-  if (!enabled && !connected) {
-    return 'Enable OpenAI Codex and connect ChatGPT on the Config page.'
-  }
-  if (!enabled) return 'Enable OpenAI Codex on the Config page.'
-  if (!connected) return 'Connect ChatGPT for OpenAI Codex on the Config page.'
   if (input.protectedUnattendedTurns.docker.configurationValid === false) {
     return 'Fix the shell-security configuration in Config Services, then retry.'
   }

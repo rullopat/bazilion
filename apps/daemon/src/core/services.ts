@@ -102,6 +102,13 @@ export const SERVICES: ServiceDef[] = [
         label: 'GCP region',
         placeholder: 'us-central1',
       },
+      {
+        envVar: 'GOOGLE_VERTEX_CREDENTIALS_JSON',
+        kind: 'secret',
+        label: 'Explicit credentials JSON (protected turns)',
+        description:
+          'Service-account or ADC JSON projected only into the selected protected worker; ambient ADC files remain unsupported.',
+      },
     ],
   },
   {

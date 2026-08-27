@@ -31,12 +31,12 @@ describe('protected execution preparation', () => {
       const actual = await importOriginal<typeof import('../../src/lib/protected-provider.ts')>()
       return {
         ...actual,
-        resolveProtectedOpenAICodexRuntime: async () => ({
+        resolveProtectedProviderRuntime: async () => ({
           runtime: {
             providerName: 'openai-codex' as const,
             modelId: 'gpt-5.6-sol',
             reasoningLevel: 'medium' as const,
-            accessToken: 'ACCESS_SENTINEL',
+            apiKey: 'ACCESS_SENTINEL',
           },
           refreshApiKey: async () => 'ROTATED_ACCESS_SENTINEL',
         }),
@@ -152,8 +152,8 @@ describe('protected execution preparation', () => {
     expect(Object.isFrozen(prepared.runtime)).toBe(true)
     expect(Object.isFrozen(prepared.paths)).toBe(true)
     expect(Object.isFrozen(prepared.docker)).toBe(true)
-    expect(Reflect.set(prepared.runtime, 'accessToken', 'MUTATED')).toBe(false)
-    expect(prepared.runtime.accessToken).toBe('ACCESS_SENTINEL')
+    expect(Reflect.set(prepared.runtime, 'apiKey', 'MUTATED')).toBe(false)
+    expect(prepared.runtime.apiKey).toBe('ACCESS_SENTINEL')
     expect(() => assertPreparedProtectedExecution({ ...prepared }, resolved)).toThrow(
       /not prepared by the daemon/,
     )

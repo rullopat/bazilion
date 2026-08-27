@@ -8,7 +8,7 @@ interface FixtureInput {
   agent: { agent: { id: string } }
   message: string
   turnId: string
-  runtime: { providerName: 'openai-codex'; accessToken: string }
+  runtime: { providerName: 'openai-codex'; apiKey: string }
   scratch: { root: string }
   apiKeyRefreshEnabled: true
 }
@@ -50,9 +50,9 @@ async function main(): Promise<void> {
   }
 
   process.stderr.write('x'.repeat(20_000))
-  const initialSplit = Math.max(1, Math.floor(input.runtime.accessToken.length / 2))
-  process.stderr.write(`initial=${input.runtime.accessToken.slice(0, initialSplit)}`)
-  process.stderr.write(`${input.runtime.accessToken.slice(initialSplit)}\nrotated=${rotated}\n`)
+  const initialSplit = Math.max(1, Math.floor(input.runtime.apiKey.length / 2))
+  process.stderr.write(`initial=${input.runtime.apiKey.slice(0, initialSplit)}`)
+  process.stderr.write(`${input.runtime.apiKey.slice(initialSplit)}\nrotated=${rotated}\n`)
 
   const messages: ProviderMessage[] = [
     {
@@ -64,14 +64,14 @@ async function main(): Promise<void> {
         stdinEnded: process.stdin.readableEnded,
         stdioAreRegularFiles: [0, 1, 2].map((fd) => fstatSync(fd).isFile()),
         ipcConnected: process.connected,
-        selectedTokenInputOccurrences: raw.split(input.runtime.accessToken).length - 1,
+        selectedTokenInputOccurrences: raw.split(input.runtime.apiKey).length - 1,
         forbiddenInputOccurrences: Object.fromEntries(
           FORBIDDEN_MINIMAL_INPUT_SENTINELS.map((sentinel) => [
             sentinel,
             raw.split(sentinel).length - 1,
           ]),
         ),
-        initial: input.runtime.accessToken,
+        initial: input.runtime.apiKey,
         rotated,
       }),
     },

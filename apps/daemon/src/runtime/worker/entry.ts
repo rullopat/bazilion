@@ -28,6 +28,7 @@ import type {
 } from './ipc-protocol.ts'
 import {
   parseWorkerInput,
+  protectedRuntimeSecrets,
   redactJsonValue,
   validateMinimalWorkerProcessEnv,
   type WorkerInput,
@@ -322,9 +323,13 @@ async function main(): Promise<void> {
   if (input.kind !== 'configured_operator_http') {
     validateMinimalWorkerProcessEnv(process.env, input.scratch)
   }
-  const initialAccessToken =
-    input.kind === 'configured_operator_http' ? input.apiKey : input.runtime.accessToken
-  if (initialAccessToken) activeAccessTokens.push(initialAccessToken)
+  const initialAccessTokens =
+    input.kind === 'configured_operator_http'
+      ? input.apiKey
+        ? [input.apiKey]
+        : []
+      : protectedRuntimeSecrets(input.runtime)
+  activeAccessTokens.push(...initialAccessTokens.filter(Boolean))
   const ipcCall = createWorkerIpcCall()
   const { handle, reviewState } = await createSessionForInput(input, ipcCall)
   session = handle.session

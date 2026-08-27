@@ -248,7 +248,7 @@ test('daemon redacts host errors and rejects empty host results', async () => {
     exposedError = error
   }
   expect(exposedError).toBeInstanceOf(Error)
-  expect((exposedError as Error).message).toMatch(/access token refresh failed/)
+  expect((exposedError as Error).message).toMatch(/provider credential refresh failed/)
   expect((exposedError as Error).message).not.toContain(tokenSentinel)
   expect(String(exposedError)).not.toContain(tokenSentinel)
   expect(JSON.stringify(exposedError)).not.toContain(tokenSentinel)

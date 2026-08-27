@@ -56,12 +56,12 @@ describe('execution-security projection', () => {
           refreshOnNextTurn: false,
           baselineEligible: false,
         },
-        remediation: 'Enable OpenAI Codex and connect ChatGPT on the Config page.',
+        remediation: 'Install Docker locally and ensure the Bazilion daemon can execute it.',
       },
     })
   })
 
-  test('reports a ready base runtime when Docker and OpenAI Codex are baseline eligible', () => {
+  test('reports a provider-neutral ready base runtime when protected Docker is ready', () => {
     const projected = projectExecutionSecurity({
       ...base,
       configuredOperatorHttp: {
@@ -80,7 +80,7 @@ describe('execution-security projection', () => {
       },
       protectedUnattendedTurns: {
         docker: { ready: true, image: 'example.test/bazilion@sha256:123', reason: null },
-        openaiCodex: { enabled: true, connected: true, accessCurrent: true },
+        openaiCodex: { enabled: false, connected: false, accessCurrent: false },
       },
     })
 
@@ -92,7 +92,7 @@ describe('execution-security projection', () => {
     expect(projected.protectedUnattendedTurns).toMatchObject({
       baseRuntimeReady: true,
       remediation: null,
-      openaiCodex: { baselineEligible: true, refreshOnNextTurn: false },
+      openaiCodex: { baselineEligible: false, refreshOnNextTurn: false },
     })
   })
 

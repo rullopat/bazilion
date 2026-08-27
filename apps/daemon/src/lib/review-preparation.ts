@@ -5,7 +5,7 @@ import {
   spawnReviewWorker,
 } from '../runtime/index.ts'
 import { getCtx } from './ctx.ts'
-import { resolveProtectedOpenAICodexRuntime } from './protected-provider.ts'
+import { resolveProtectedProviderRuntime } from './protected-provider.ts'
 import {
   assertTrustedReviewInvocation,
   createTrustedReviewInvocation,
@@ -46,7 +46,7 @@ export async function prepareRestrictedReview(input: {
   })
   assertTrustedReviewInvocation(invocation)
   const { db, authToken } = getCtx()
-  const provider = await resolveProtectedOpenAICodexRuntime(
+  const provider = await resolveProtectedProviderRuntime(
     db,
     authToken,
     input.agent,

@@ -585,6 +585,11 @@ const PROVIDERS: Record<string, ProviderEntry> = {
   },
 }
 
+/** Canonical provider ids understood by Bazilion's pinned Pi adapter. */
+export function listRegisteredProviderNames(): string[] {
+  return Object.keys(PROVIDERS)
+}
+
 /**
  * Model strings are `provider:model`, e.g.:
  *   - `anthropic:claude-opus-4-6`
