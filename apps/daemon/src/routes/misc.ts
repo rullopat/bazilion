@@ -137,6 +137,7 @@ miscRouter.get('/health/details', async (c) => {
     ['mistral', 'mistral'],
     ['groq', 'groq'],
     ['cerebras', 'cerebras'],
+    ['baseten', 'baseten'],
     ['xai', 'xai'],
     ['zai', 'zai'],
     ['huggingface', 'huggingface'],

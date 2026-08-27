@@ -27,7 +27,9 @@ const openaiLoginCmd = defineCommand({
     console.log("(if it doesn't open automatically, paste the URL shown below)")
     const oauth = openaiCodexProvider().auth.oauth
     if (!oauth) throw new Error('Pi openai-codex provider does not expose OAuth')
+    const loginController = new AbortController()
     const creds = await oauth.login({
+      signal: loginController.signal,
       notify: (event) => {
         if (event.type === 'auth_url') {
           console.log('')

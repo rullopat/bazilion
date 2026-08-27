@@ -272,7 +272,7 @@ function ProviderCard({
   )
 }
 
-// Examples mirror pi-ai 0.83's current catalog. Refresh with the repository
+// Examples mirror pi-ai 0.84's current catalog. Refresh with the repository
 // `refresh-pi-models` skill whenever Pi's catalog changes.
 function exampleModelFor(providerId: string): string {
   switch (providerId) {
@@ -291,7 +291,7 @@ function exampleModelFor(providerId: string): string {
     case 'groq':
       return 'llama-3.3-70b-versatile'
     case 'cerebras':
-      return 'zai-glm-4.7'
+      return 'gpt-oss-120b'
     case 'mistral':
       return 'mistral-large-latest'
     case 'zai':
@@ -308,6 +308,8 @@ function exampleModelFor(providerId: string): string {
       return 'accounts/fireworks/models/kimi-k3'
     case 'together':
       return 'moonshotai/Kimi-K3'
+    case 'baseten':
+      return 'moonshotai/Kimi-K3'
     case 'moonshotai':
       return 'kimi-k3'
     case 'moonshotai-cn':
@@ -319,8 +321,10 @@ function exampleModelFor(providerId: string): string {
     case 'minimax-cn':
       return 'MiniMax-M3'
     case 'qwen-token-plan':
+      return 'qwen3.8-max'
     case 'qwen-token-plan-cn':
-      return 'qwen3.8-max-preview'
+    case 'qwen-token-plan-individual':
+      return 'qwen3.8-max'
     case 'ant-ling':
       return 'Ling-2.6-1T'
     case 'nvidia':

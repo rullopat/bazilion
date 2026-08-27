@@ -36,13 +36,16 @@ function openAICodexOAuth() {
 }
 
 export async function loginOpenAICodex(interaction: AuthInteraction): Promise<OAuthCredential> {
-  return openAICodexOAuth().login(interaction)
+  return openAICodexOAuth().login({
+    ...interaction,
+    signal: interaction.signal ?? new AbortController().signal,
+  })
 }
 
 export async function refreshOpenAICodexToken(
   credential: OAuthCredential,
 ): Promise<OAuthCredential> {
-  return openAICodexOAuth().refresh(credential)
+  return openAICodexOAuth().refresh(credential, new AbortController().signal)
 }
 
 export type StoredCredentials = OAuthCredential

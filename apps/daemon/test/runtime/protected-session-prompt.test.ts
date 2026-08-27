@@ -138,7 +138,7 @@ describe('protected provider prompt boundary', () => {
     }
 
     expect(providerSystemPrompt).toBe(
-      'Restricted reviewer instructions. Use propose_lesson only.\nCurrent working directory: /review',
+      'Restricted reviewer instructions. Use propose_lesson only.\nCurrent working directory: /review\n',
     )
     expect(providerSystemPrompt).not.toContain(root)
     expect(providerSystemPrompt).not.toContain('node_modules')
