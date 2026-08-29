@@ -27,7 +27,14 @@ interface DaemonLivenessRecord {
   instanceId: string
   pid: number
   owner: 'daemon' | 'restore'
-  state: 'starting' | 'listening' | 'restoring' | 'swapping' | 'installed' | 'recovery-required'
+  state:
+    | 'starting'
+    | 'listening'
+    | 'restoring'
+    | 'uninstalling'
+    | 'swapping'
+    | 'installed'
+    | 'recovery-required'
   host?: string
   port?: number
   startedAt: number
@@ -40,6 +47,7 @@ export interface HomeRestoreLock {
   markSwapping(recoveryPath: string, hadPrevious: boolean): void
   markInstalled(): void
   markRecoveryRequired(recoveryPath: string, hadPrevious: boolean): void
+  markUninstallComplete(): void
   release(): void
 }
 
@@ -88,6 +96,7 @@ function parseRecord(raw: string): DaemonLivenessRecord | null {
         'starting',
         'listening',
         'restoring',
+        'uninstalling',
         'swapping',
         'installed',
         'recovery-required',
@@ -99,7 +108,9 @@ function parseRecord(raw: string): DaemonLivenessRecord | null {
     if (
       (value.owner === 'daemon' && !['starting', 'listening'].includes(value.state ?? '')) ||
       (value.owner === 'restore' &&
-        !['restoring', 'swapping', 'installed', 'recovery-required'].includes(value.state ?? ''))
+        !['restoring', 'uninstalling', 'swapping', 'installed', 'recovery-required'].includes(
+          value.state ?? '',
+        ))
     ) {
       return null
     }
@@ -238,7 +249,10 @@ function reclaimRecord(path: string, existing: ExistingRecord): string | null {
  * The sibling record remains in place across a target-home rename, closing
  * the check-then-swap race for the entire validation/install/rollback window.
  */
-export async function acquireHomeRestoreLock(home: string): Promise<HomeRestoreLock> {
+export async function acquireHomeRestoreLock(
+  home: string,
+  operation: 'restoring' | 'uninstalling' = 'restoring',
+): Promise<HomeRestoreLock> {
   const targetHome = resolve(home)
   mkdirSync(dirname(targetHome), { recursive: true })
   const path = daemonLivenessPath(targetHome)
@@ -265,7 +279,7 @@ export async function acquireHomeRestoreLock(home: string): Promise<HomeRestoreL
       (await endpointHasOwner(endpoint, existing.record.instanceId))
     ) {
       throw new Error(
-        `bazilion daemon is running at ${endpoint} for ${targetHome} — stop it before restoring`,
+        `bazilion daemon is running at ${endpoint} for ${targetHome} — stop it before ${operation}`,
       )
     }
 
@@ -276,6 +290,23 @@ export async function acquireHomeRestoreLock(home: string): Promise<HomeRestoreL
       )
     }
     const livePid = pidIsAlive(existing.record.pid)
+    if (existing.record.owner === 'restore' && existing.record.state === 'uninstalling') {
+      if (livePid) {
+        throw new Error(
+          `bazilion uninstall process ${existing.record.pid} owns ${targetHome} — ` +
+            `wait for it to finish before ${operation}`,
+        )
+      }
+      if (operation !== 'uninstalling') {
+        throw new Error(
+          `a previous Bazilion uninstall was interrupted for ${targetHome}. ` +
+            'Re-run the same `bazilion uninstall` command (including its `--all` choice) ' +
+            'with the same BAZILION_HOME (or --home) ' +
+            `to finish it before ${operation}.`,
+        )
+      }
+      console.warn(`resuming interrupted Bazilion uninstall for ${targetHome}`)
+    }
     if (
       existing.record.owner === 'restore' &&
       ['swapping', 'recovery-required'].includes(existing.record.state)
@@ -298,7 +329,7 @@ export async function acquireHomeRestoreLock(home: string): Promise<HomeRestoreL
       const owner = existing.record.owner === 'daemon' ? 'daemon' : 'restore'
       throw new Error(
         `bazilion ${owner} process ${existing.record.pid} owns ${targetHome}${staleDetail} — ` +
-          `stop it before restoring`,
+          `stop it before ${operation}`,
       )
     }
 
@@ -311,7 +342,7 @@ export async function acquireHomeRestoreLock(home: string): Promise<HomeRestoreL
 
   if (fd === null) {
     throw new Error(
-      `could not safely acquire exclusive restore ownership for ${targetHome}; try again`,
+      `could not safely acquire exclusive ownership for ${operation} ${targetHome}; try again`,
     )
   }
 
@@ -321,7 +352,7 @@ export async function acquireHomeRestoreLock(home: string): Promise<HomeRestoreL
     instanceId,
     pid: process.pid,
     owner: 'restore',
-    state: 'restoring',
+    state: operation,
     startedAt: Date.now(),
   }
   try {
@@ -344,6 +375,7 @@ export async function acquireHomeRestoreLock(home: string): Promise<HomeRestoreL
     throw error
   }
   let released = false
+  let uninstallComplete = false
 
   const stillOwnsPath = (): boolean => {
     try {
@@ -355,7 +387,7 @@ export async function acquireHomeRestoreLock(home: string): Promise<HomeRestoreL
   const heartbeat = setInterval(() => {
     if (released) return
     if (!stillOwnsPath()) {
-      console.error('restore ownership was lost; exiting to protect the Bazilion database')
+      console.error(`${operation} ownership was lost; exiting to protect the Bazilion database`)
       process.exit(1)
     }
     try {
@@ -363,7 +395,7 @@ export async function acquireHomeRestoreLock(home: string): Promise<HomeRestoreL
       futimesSync(fd as number, now, now)
     } catch (error) {
       console.error(
-        'restore ownership heartbeat failed:',
+        `${operation} ownership heartbeat failed:`,
         error instanceof Error ? error.message : error,
       )
       process.exit(1)
@@ -395,12 +427,21 @@ export async function acquireHomeRestoreLock(home: string): Promise<HomeRestoreL
       record.hadPrevious = hadPrevious
       writeRecord(fd as number, record)
     },
+    markUninstallComplete() {
+      if (released || !stillOwnsPath()) throw new Error('uninstall ownership was lost')
+      if (record.state !== 'uninstalling') {
+        throw new Error('cannot complete uninstall from a non-uninstall ownership state')
+      }
+      uninstallComplete = true
+    },
     release() {
       if (released) return
       released = true
       clearInterval(heartbeat)
       const ownsPath = stillOwnsPath()
-      const retainForRecovery = ['swapping', 'recovery-required'].includes(record.state)
+      const retainForRecovery =
+        ['swapping', 'recovery-required'].includes(record.state) ||
+        (record.state === 'uninstalling' && !uninstallComplete)
       closeSync(fd as number)
       fd = null
       if (ownsPath && !retainForRecovery) rmSync(path, { force: true })

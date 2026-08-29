@@ -1,5 +1,11 @@
 import { afterAll, beforeAll, expect, test } from 'vitest'
-import { runMigrations } from '../../src/core/db/migrate.ts'
+import { openInMemoryDb } from '../../src/core/db/client.ts'
+import {
+  assertMigrationCompatibility,
+  INCOMPATIBLE_DATABASE_MESSAGE,
+  IncompatibleDatabaseError,
+  runMigrations,
+} from '../../src/core/db/migrate.ts'
 import { makeTestEnv, type TestEnv } from './helpers.ts'
 
 let env: TestEnv
@@ -84,6 +90,85 @@ test('migrations are idempotent', () => {
   expect(after).toEqual(before)
   expect(after.length).toBeGreaterThan(0)
   expect(after[0]?.version).toBe('0001_init')
+})
+
+test('legacy incremental migration ledgers fail before current schema is applied', () => {
+  const legacy = openInMemoryDb()
+  try {
+    legacy.raw.exec(`
+      CREATE TABLE schema_migrations (
+        version TEXT PRIMARY KEY,
+        applied_at INTEGER NOT NULL
+      );
+      INSERT INTO schema_migrations (version, applied_at)
+      VALUES ('0001_init', 1), ('0002_profile_groups', 2);
+      CREATE TABLE groups (id TEXT PRIMARY KEY);
+    `)
+
+    expect(() => runMigrations(legacy)).toThrow(IncompatibleDatabaseError)
+    expect(
+      legacy.raw
+        .query<{ name: string }, []>(
+          "SELECT name FROM sqlite_schema WHERE type = 'table' AND name = 'communication_approvals'",
+        )
+        .get(),
+    ).toBeNull()
+  } finally {
+    legacy.close()
+  }
+})
+
+test('pre-ledger databases fail without adding migration bookkeeping', () => {
+  const legacy = openInMemoryDb()
+  try {
+    legacy.raw.exec('CREATE TABLE groups (id TEXT PRIMARY KEY)')
+
+    expect(() => runMigrations(legacy)).toThrow(IncompatibleDatabaseError)
+    expect(
+      legacy.raw
+        .query<{ name: string }, []>(
+          "SELECT name FROM sqlite_schema WHERE type = 'table' AND name = 'schema_migrations'",
+        )
+        .get(),
+    ).toBeNull()
+  } finally {
+    legacy.close()
+  }
+})
+
+test('same-version legacy schema shapes fail with actionable full-reset guidance', () => {
+  const legacy = openInMemoryDb()
+  try {
+    legacy.raw.exec(`
+      CREATE TABLE schema_migrations (
+        version TEXT PRIMARY KEY,
+        applied_at INTEGER NOT NULL
+      );
+      INSERT INTO schema_migrations (version, applied_at) VALUES ('0001_init', 1);
+      CREATE TABLE groups (id TEXT PRIMARY KEY);
+    `)
+
+    expect(() => runMigrations(legacy)).toThrow(INCOMPATIBLE_DATABASE_MESSAGE)
+    expect(INCOMPATIBLE_DATABASE_MESSAGE).toContain('entire Bazilion home directory')
+    expect(INCOMPATIBLE_DATABASE_MESSAGE).toContain('bazilion.db and auth.json together')
+    expect(INCOMPATIBLE_DATABASE_MESSAGE).toContain('bazilion uninstall --yes')
+    expect(INCOMPATIBLE_DATABASE_MESSAGE).toContain('repository root of a source checkout')
+    expect(INCOMPATIBLE_DATABASE_MESSAGE).toContain(
+      'pnpm tsx apps/cli/src/index.ts uninstall --yes',
+    )
+    expect(INCOMPATIBLE_DATABASE_MESSAGE).toContain('Use `--all` only')
+  } finally {
+    legacy.close()
+  }
+})
+
+test('exact schema checks do not mistake a LIKE wildcard for the reserved sqlite_ prefix', () => {
+  env.db.raw.exec('CREATE TABLE sqliteXunexpected (id TEXT PRIMARY KEY)')
+  try {
+    expect(() => assertMigrationCompatibility(env.db)).toThrow(IncompatibleDatabaseError)
+  } finally {
+    env.db.raw.exec('DROP TABLE sqliteXunexpected')
+  }
 })
 
 test('nested transactions use savepoints without weakening outer rollback', () => {

@@ -25,6 +25,7 @@ import { createRequire } from 'node:module'
 import { isAbsolute } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import type { ChatFrame } from '@bazilion/api-types'
+import { formatNativeModuleAbiMismatch } from '../../lib/native-module-error.ts'
 import { type ApiKeyRefreshTurnContext, refreshApiKeyForTurn } from './api-key-refresh.ts'
 import type {
   ApiKeyRefreshHost,
@@ -390,7 +391,7 @@ async function* spawnWorker(
     if (!emittedFatal && exit.code !== 0 && exit.code !== null) {
       yield {
         kind: 'fatal',
-        error: appendDiagnostic(
+        error: formatWorkerExitFailure(
           `worker exited with code ${exit.code}${exit.signal ? ` (${exit.signal})` : ''}`,
           diagnostic,
         ),
@@ -398,7 +399,7 @@ async function* spawnWorker(
     } else if (!emittedFatal && exit.signal && exit.code === null) {
       yield {
         kind: 'fatal',
-        error: appendDiagnostic(`worker killed by ${exit.signal}`, diagnostic),
+        error: formatWorkerExitFailure(`worker killed by ${exit.signal}`, diagnostic),
       }
     }
   } finally {
@@ -516,7 +517,9 @@ function spawnHosts(
 
 function parseFrame(line: string, accessTokens: readonly string[]): ChatFrame {
   try {
-    return redactJsonValue(JSON.parse(line) as ChatFrame, accessTokens)
+    return normalizeWorkerDiagnosticFrame(
+      redactJsonValue(JSON.parse(line) as ChatFrame, accessTokens),
+    )
   } catch {
     return {
       kind: 'fatal',
@@ -776,4 +779,33 @@ async function pumpWorkerStderr(
 
 function appendDiagnostic(message: string, diagnostic: string): string {
   return diagnostic ? `${message}: ${diagnostic}` : message
+}
+
+/**
+ * Native addons can fail either during module loading (stderr-only) or later
+ * initialization (a structured worker frame). Keep bounded stderr in the
+ * daemon diagnostic sink, but turn every user-facing failure into a stable
+ * recovery instruction instead of exposing a checkout-specific binary path.
+ */
+export function formatWorkerExitFailure(message: string, diagnostic: string): string {
+  const formatted = formatWorkerDiagnostic(diagnostic)
+  if (formatted !== diagnostic) return formatted
+  return appendDiagnostic(message, diagnostic)
+}
+
+function normalizeWorkerDiagnosticFrame(frame: ChatFrame): ChatFrame {
+  if (frame.kind === 'fatal') {
+    return { ...frame, error: formatWorkerDiagnostic(frame.error) }
+  }
+  if (frame.kind === 'event' && frame.event.type === 'error') {
+    return {
+      ...frame,
+      event: { ...frame.event, error: formatWorkerDiagnostic(frame.event.error) },
+    }
+  }
+  return frame
+}
+
+function formatWorkerDiagnostic(diagnostic: string): string {
+  return formatNativeModuleAbiMismatch(diagnostic, { subject: 'worker' }) ?? diagnostic
 }

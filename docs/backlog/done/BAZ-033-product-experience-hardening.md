@@ -1,18 +1,20 @@
 ---
 id: BAZ-033
 title: Product experience hardening across web and mobile
-status: in_progress
+status: done
 size: L (1-2 weeks)
 created: 2026-08-29
 refined: 2026-08-29
+shipped: 2026-08-29
 priority: critical
-note: v0.14.0 release slice fixing first-run access, mobile chat correctness, data-loss risks, navigation and configuration overload, responsive overflow, accessibility, and destructive-action safety.
+note: Shipped in v0.14.0 via PR #42; fixed first-run access, mobile chat correctness, data-loss risks, navigation and configuration overload, responsive overflow, accessibility, and destructive-action safety.
 ---
 
 # BAZ-033 - Product experience hardening across web and mobile
 
-**Status:** In progress for v0.14.0. This item records the complete code and rendered-product
-audit so the release remains reviewable as one outcome rather than a collection of cosmetic edits.
+**Status:** Shipped in [v0.14.0](https://github.com/rullopat/bazilion/releases/tag/v0.14.0)
+via [PR #42](https://github.com/rullopat/bazilion/pull/42). This item records the complete code and
+rendered-product audit as one outcome rather than a collection of cosmetic edits.
 
 ## User stories
 
@@ -113,7 +115,7 @@ quality bar.
   `BAZILION_HOME` and without contacting paid providers or sending real external messages.
 - Full release checks required by the repository and Bazilion release workflow.
 
-## Release-candidate evidence
+## As built
 
 - Root typecheck, web typecheck/build, mobile typecheck, Expo export for every platform, and the
   repository build pass under the repository's pinned Node toolchain.
@@ -128,5 +130,6 @@ quality bar.
 - An isolated clean home was exercised from login through provider configuration, default-resource
   seeding, token creation, first-Agent spawn, and populated management views. Representative light
   and dark states at 1440x900, 1024x768, and 390x844 showed no document-level overflow.
-- `git diff --check` passes. Publishing, tagging, merging, deployment, and live-gateway acceptance
-  remain deliberately separate from this implementation PR.
+- `git diff --check` passed. PR #42 merged as
+  `fc66e7721cc88be4cc583ae23b948c0bfad1d830`; the v0.14.0 tag, GitHub Release, and all three
+  fixed-group npm packages were independently verified after publication.

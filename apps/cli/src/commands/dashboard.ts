@@ -201,7 +201,7 @@ export const dashboardCommand = defineCommand({
         }
         if (!existsSync(join(webDist, 'server', 'server.js'))) {
           throw new Error(
-            `bazilion web UI bundle not found at ${webDist}. Run "pnpm --filter @bazilion/web build" from a source checkout, or reinstall the published package.`,
+            `bazilion web UI bundle not found at ${webDist}. Run "pnpm --filter @bazilion/web build" from the repository root of a source checkout, or reinstall the published package.`,
           )
         }
         console.log(`starting bazilion web UI at ${webUrl}`)

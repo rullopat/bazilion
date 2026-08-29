@@ -4,10 +4,11 @@
 // This process is the single owner of `~/.bazilion`. The web app, CLI, and
 // mobile clients all talk to it over HTTP via @bazilion/client.
 
+import { writeSync } from 'node:fs'
 import { serve } from '@hono/node-server'
 import { createApp } from './app.ts'
-import { resolvePaths } from './core/index.ts'
-import { closeCtxForShutdown, getCtx } from './lib/ctx.ts'
+import { IncompatibleDatabaseError, resolvePaths } from './core/index.ts'
+import { closeCtxForShutdown, getCtx, IncompatibleBootstrapIdentityError } from './lib/ctx.ts'
 import { acquireDaemonLiveness } from './lib/daemon-liveness.ts'
 import { isLoopbackHost, resolvePublicOrigin } from './lib/public-origin.ts'
 import { shutdownResources } from './lib/resources.ts'
@@ -43,7 +44,30 @@ try {
 // write auth.json) before binding the port. Otherwise the first request
 // would race with bootstrap and the operator wouldn't see the bootstrap
 // message until something actually hits the daemon.
-getCtx()
+try {
+  getCtx()
+} catch (error) {
+  const detail =
+    error instanceof IncompatibleDatabaseError ||
+    error instanceof IncompatibleBootstrapIdentityError
+      ? error.message
+      : error instanceof Error
+        ? (error.stack ?? error.message)
+        : String(error)
+  writeSync(process.stderr.fd, `bazilion daemon failed to start: ${detail}\n`)
+  try {
+    closeCtxForShutdown()
+  } catch {
+    // Bootstrap owns and closes a not-yet-published DB handle. This is only a
+    // defensive cleanup in case a later startup step publishes one first.
+  }
+  try {
+    daemonLiveness.stop()
+  } catch {
+    // The process is exiting; a dead PID makes a retained record reclaimable.
+  }
+  process.exit(1)
+}
 
 const app = createApp()
 let shuttingDown = false

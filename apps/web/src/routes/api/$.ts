@@ -173,7 +173,16 @@ async function proxy(request: Request): Promise<Response> {
   // origin checks the daemon adds keep working.
   headers.set('origin', DAEMON_BASE_URL)
 
-  const init: RequestInit = { method: request.method, headers, redirect: 'manual' }
+  const init: RequestInit = {
+    method: request.method,
+    headers,
+    redirect: 'manual',
+    // Preserve cancellation across browser -> web gateway -> daemon. This is
+    // especially important for long-lived OAuth and chat requests: once the
+    // client connection is gone, the daemon must release its bounded work and
+    // process-wide coordination slots instead of waiting for a timeout.
+    signal: request.signal,
+  }
   if (request.method !== 'GET' && request.method !== 'HEAD') {
     const contentType = request.headers.get('content-type') ?? ''
     const limit = contentType.startsWith('multipart/form-data') ? MAX_UPLOAD_BODY : MAX_JSON_BODY

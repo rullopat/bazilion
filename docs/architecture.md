@@ -123,7 +123,14 @@ Uses Node 22's built-in `node:sqlite` (`DatabaseSync`). No `better-sqlite3`, no 
 
 **`BazilionDb`** is the public type: `{ raw: QueryableDatabase; backupTo(path): Promise<number>; close(): void }`. Everything downstream (repos, runtime helpers) takes `BazilionDb`, not the raw sqlite handle; `backupTo` is the daemon-owned SQLite online-snapshot seam.
 
-**`runMigrations(db)`** is idempotent. It creates a `schema_migrations(version, applied_at)` bookkeeping table, loads numbered `*.sql` files from `db/migrations/` in lexical order, and runs each unapplied file inside a transaction. Called from `apps/daemon/src/lib/ctx.ts:bootstrap()` at daemon startup — the daemon eagerly initializes the context so the bootstrap message + auth.json land before the HTTP port binds. A daemon started against an older schema self-heals on the next boot.
+**`runMigrations(db)`** is idempotent for the current canonical schema. It creates a
+`schema_migrations(version, applied_at)` bookkeeping table, loads numbered `*.sql` files from
+`db/migrations/` in lexical order, and runs each unapplied file inside a transaction. Called from
+`apps/daemon/src/lib/ctx.ts:bootstrap()` at daemon startup — the daemon eagerly initializes the
+context so the bootstrap message + auth.json land before the HTTP port binds. While the alpha
+contract remains clean-install-only, startup rejects an older or structurally incompatible schema
+before starting background services or binding HTTP and points the operator to the safe reset path;
+it does not attempt an in-place upgrade.
 
 ### 2.3 Schema (migrations)
 
@@ -480,7 +487,7 @@ The result is wrapped with `createClient({serverUrl, token})` from `@bazilion/cl
 |---|---|---|
 | `serve.ts` | `serve [--port N] [--host H]` | (direct) — spawns `apps/daemon/src/index.ts` under `node --import tsx/esm`. On first run the daemon auto-bootstraps `~/.bazilion` (mkdir, migrate, mint bootstrap token to `auth.json`) before binding the port. |
 | `dashboard.ts` | `dashboard [--port N] [--no-open]` | (direct) — reuses or starts the daemon, starts the bundled TanStack Start web server from `dist/web`, prints the dashboard URL + auth token path, and opens the browser by default. |
-| `uninstall.ts` | `uninstall` | (direct) — two-tier teardown (data vs full). `--all` removes `auth.json`, `logs/`, `skills/` in addition to the data tier. |
+| `uninstall.ts` | `uninstall` | (direct) — two-tier teardown (reset vs full). Both tiers remove `bazilion.db*`, its paired `auth.json`, profiles, Agents, Teams, and the legacy `groups/`, `config.json`, and `secrets.enc` paths; managed symlink slots are unlinked without traversing their external targets. `--all` additionally removes logs and skills, then removes a real home when no unmanaged entries remain; a symlinked home root stays as an empty stable slot for interruption recovery. |
 | `login.ts` | `login` | (direct) — writes `auth.json:remote` (or `--clear` to remove it). |
 | `token.ts` | `create / list / revoke / show-local` | `/api/tokens/*`. `show-local` reads the bootstrap token from local `auth.json`. |
 | `agent.ts` | `spawn / edit / list / show / chat / archive / unarchive / delete / move / cancel / skill / chat-{reset,trim,context,compact} / session-head` | `/api/agents*` — `chat` drains NDJSON from `/api/agents/:id/chat`; `cancel` POSTs to `/api/agents/:id/cancel`. |
@@ -512,16 +519,19 @@ The daemon's `apps/daemon/src/index.ts` eagerly calls `getCtx()` before `serve()
 ```
 getCtx()
   └─ bootstrap()
-       └─ resolvePaths() → mkdir ~/.bazilion + {profiles,agents,skills,teams,logs}
-       └─ openDb + runMigrations
-       └─ if auth.json missing:
+       └─ require bazilion.db + auth.json to be both present or both absent
+       └─ on a fresh pair, mkdir ~/.bazilion + {profiles,agents,skills,teams,logs}
+       └─ openDb + runMigrations (reject an incompatible alpha schema)
+       └─ if both identity artifacts were absent:
             webTokenRepo.create(db, 'bootstrap') → randomBytes(24).toString('hex')
             writeFile auth.json {token}          → mode 0600
+       └─ otherwise verify auth.json matches an active bootstrap row
        └─ cache authToken in getCtx() for PBKDF2-seeding the secrets table
        └─ startScheduler  (unless BAZILION_SCHEDULER=off)
 ```
 
-Idempotent: existing installs short-circuit the mkdir + token-mint steps. The migration runner picks up new files on every boot.
+Idempotent: existing current installs short-circuit the mkdir + token-mint steps. A missing identity
+half or incompatible alpha schema fails before the listener and background services start.
 
 The web UI is **not** booted by `serve`. Published installs use `bazilion dashboard`, which spawns `dist/web-server.js` against the copied production build in `dist/web`. Source development still usually runs the Vite dev server separately with `cd apps/web && pnpm dev`.
 

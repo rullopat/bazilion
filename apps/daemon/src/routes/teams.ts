@@ -22,6 +22,7 @@ import {
 } from '../core/index.ts'
 import { validateSlug } from '../core/profile/validate.ts'
 import { getCtx } from '../lib/ctx.ts'
+import { sanitizeNativeModuleError } from '../lib/native-module-error.ts'
 import { validateTopicNameFormat } from '../lib/telegram/naming.ts'
 import { syncGroupTopicNames } from '../lib/telegram/topic-rename.ts'
 import { qmdBackend } from '../runtime/index.ts'
@@ -391,13 +392,27 @@ teamsRouter.put('/:id/topic-format', async (c) => {
 
 // ─── Memory (per-team, shared across all member agents) ──────────────────
 
+class TeamMemoryNotFoundError extends Error {}
+
 async function openMemory(rawId: string) {
   const { db, paths } = getCtx()
   const team = teamRepo.get(db, rawId, paths)
-  if (!team) throw new Error(`team not found: ${rawId}`)
+  if (!team) throw new TeamMemoryNotFoundError(`team not found: ${rawId}`)
   const mem = qmdBackend(join(team.path, 'memory'))
   await mem.init()
   return { mem, team }
+}
+
+function teamMemoryError(c: Context, error: unknown): Response {
+  // qmd's native SQLite diagnostics can contain absolute checkout paths.
+  // qmdBackend already applies this boundary; repeat it here so route-level
+  // substitutions and future backends cannot accidentally expose one.
+  const safe = sanitizeNativeModuleError(error, { subject: 'Bazilion memory' })
+  const message = safe instanceof Error ? safe.message : String(safe)
+  if (safe instanceof TeamMemoryNotFoundError || message.startsWith('memory entry not found:')) {
+    return c.json({ error: message }, 404)
+  }
+  return c.json({ error: message }, 500)
 }
 
 teamsRouter.get('/:id/memory', async (c) => {
@@ -405,7 +420,7 @@ teamsRouter.get('/:id/memory', async (c) => {
     const { mem } = await openMemory(c.req.param('id'))
     return c.json(await mem.list())
   } catch (err) {
-    return c.json({ error: (err as Error).message }, 404)
+    return teamMemoryError(c, err)
   }
 })
 
@@ -417,7 +432,7 @@ teamsRouter.get('/:id/memory/search', async (c) => {
     const { mem } = await openMemory(c.req.param('id'))
     return c.json(await mem.search(q, { limit }))
   } catch (err) {
-    return c.json({ error: (err as Error).message }, 404)
+    return teamMemoryError(c, err)
   }
 })
 
@@ -429,7 +444,7 @@ teamsRouter.get('/:id/memory/:key{.+}', async (c) => {
     const { mem } = await openMemory(c.req.param('id'))
     return c.json(await mem.read(c.req.param('key')))
   } catch (err) {
-    return c.json({ error: (err as Error).message }, 404)
+    return teamMemoryError(c, err)
   }
 })
 
@@ -441,7 +456,7 @@ teamsRouter.put('/:id/memory/:key{.+}', async (c) => {
     const { mem } = await openMemory(c.req.param('id'))
     return c.json(await mem.write(c.req.param('key'), body.content))
   } catch (err) {
-    return c.json({ error: (err as Error).message }, 500)
+    return teamMemoryError(c, err)
   }
 })
 
@@ -451,7 +466,7 @@ teamsRouter.delete('/:id/memory/:key{.+}', async (c) => {
     await mem.remove(c.req.param('key'))
     return c.body(null, 204)
   } catch (err) {
-    return c.json({ error: (err as Error).message }, 500)
+    return teamMemoryError(c, err)
   }
 })
 

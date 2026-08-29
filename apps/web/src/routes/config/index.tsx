@@ -680,21 +680,42 @@ function OpenAICodexCard({ status }: { status: OpenAICodexStatus }) {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [confirmDisconnect, setConfirmDisconnect] = useState(false)
+  const loginRequest = useRef<AbortController | null>(null)
+
+  useEffect(
+    () => () => {
+      // A client-side route change does not automatically cancel fetch().
+      // End the gateway request so the daemon can release its OAuth slot.
+      loginRequest.current?.abort()
+    },
+    [],
+  )
 
   async function connect() {
+    loginRequest.current?.abort()
+    const controller = new AbortController()
+    loginRequest.current = controller
     setBusy(true)
     setErr(null)
     try {
-      const res = await fetch('/api/auth/openai/login', { method: 'POST' })
+      const res = await fetch('/api/auth/openai/login', {
+        method: 'POST',
+        signal: controller.signal,
+      })
       if (!res.ok) {
         const j = (await res.json().catch(() => ({}))) as { error?: string }
         throw new Error(j.error ?? `${res.status} ${res.statusText}`)
       }
+      if (controller.signal.aborted) return
       await router.invalidate()
     } catch (e) {
+      if (controller.signal.aborted) return
       setErr((e as Error).message)
     } finally {
-      setBusy(false)
+      if (loginRequest.current === controller) {
+        loginRequest.current = null
+        if (!controller.signal.aborted) setBusy(false)
+      }
     }
   }
   async function disconnect() {
@@ -745,17 +766,22 @@ function OpenAICodexCard({ status }: { status: OpenAICodexStatus }) {
           <p className="text-xs text-muted-foreground mb-2">
             Sign in with your ChatGPT account — the OAuth flow opens a new browser tab. The
             loopback callback at <code className="font-mono">localhost:1455</code> only works
-            when you're using the web UI on the same machine as the daemon. For remote setups,
-            run <code className="font-mono">bazilion auth openai login</code> on the client.
+            when you're using the web UI on the same machine as the daemon. For remote setups or
+            callback trouble, run{' '}
+            <code className="font-mono">bazilion auth openai login --device-code</code> on the
+            client. From a source checkout, run{' '}
+            <code className="font-mono">
+              pnpm tsx apps/cli/src/index.ts auth openai login --device-code
+            </code>{' '}
+            from the repository root.
           </p>
-          <button
-            type="button"
+          <Button
+            variant="primary"
             onClick={connect}
             disabled={busy}
-            className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-50"
           >
             {busy ? 'opening browser…' : 'Connect ChatGPT →'}
-          </button>
+          </Button>
         </>
       )}
       {err && <p role="alert" className="text-sm text-danger mt-2">{err}</p>}

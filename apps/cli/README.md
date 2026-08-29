@@ -107,8 +107,12 @@ cd apps/web && pnpm dev    # http://127.0.0.1:4322
 Use your ChatGPT account instead of an API key to access `gpt-5.x` / `gpt-5.x-codex` models:
 
 ```sh
-bazilion auth openai login     # browser flow on localhost:1455
-bazilion auth openai status    # check connection / token expiry
+bazilion auth openai login                # browser flow on localhost:1455
+bazilion auth openai login --device-code  # headless/remote or callback-port fallback
+bazilion auth openai status               # check connection / token expiry
+
+# Source checkout: run from the repository root.
+pnpm tsx apps/cli/src/index.ts auth openai login --device-code
 ```
 
 After connecting, enable `openai-codex` and curate at least one model, for example
@@ -125,10 +129,17 @@ Credentials are stored AES-256-GCM-encrypted in the daemon's `secrets` table.
 ## Uninstall
 
 ```sh
-bazilion uninstall                # interactive: data wipe, then optional full wipe
-bazilion uninstall --yes          # data tier only (DB + profiles/agents/teams)
-bazilion uninstall --yes --all    # also remove auth.json, logs/, skills/
+bazilion uninstall                # interactive: reset, then optional full wipe
+bazilion uninstall --yes          # reset DB + auth.json + profiles/agents/teams
+bazilion uninstall --yes --all    # also remove logs/ and skills/
 ```
+
+Both tiers remove the DB and `auth.json` together so the next `bazilion serve` creates a matching
+bootstrap-token pair. They also remove the legacy `groups/`, `config.json`, and `secrets.enc`
+paths. Team and legacy Group symlink slots are unlinked without touching their external targets. A
+full wipe removes the Bazilion home when only managed paths remain; unmanaged files keep the home
+in place. A symlinked `BAZILION_HOME` root remains as an empty slot so interrupted cleanup can be
+safely resumed through the same canonical identity.
 
 ## Documentation
 

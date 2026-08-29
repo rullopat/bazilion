@@ -21,7 +21,12 @@ export {
 } from './availableModels.ts'
 export type { BazilionDb } from './db/client.ts'
 export { openDb, openInMemoryDb } from './db/client.ts'
-export { runMigrations } from './db/migrate.ts'
+export {
+  assertMigrationCompatibility,
+  INCOMPATIBLE_DATABASE_MESSAGE,
+  IncompatibleDatabaseError,
+  runMigrations,
+} from './db/migrate.ts'
 export type { Paths } from './paths.ts'
 export { resolvePaths } from './paths.ts'
 export type { CreateProfileInput } from './profile/create.ts'

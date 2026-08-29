@@ -1,5 +1,14 @@
 # bazilion
 
+## 0.14.1
+
+### Patch Changes
+
+- Fail fast with actionable recovery for incompatible alpha databases and mismatched bootstrap
+  identity, keep database and auth resets paired across interruption, make ChatGPT OAuth callback
+  cancellation and device-code fallback reliable, propagate abandoned gateway requests, and surface
+  sanitized native-module ABI recovery guidance across chat and memory.
+
 ## 0.14.0
 
 ### Minor Changes
