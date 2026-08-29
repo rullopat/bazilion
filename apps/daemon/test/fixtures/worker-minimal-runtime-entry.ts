@@ -31,6 +31,31 @@ async function readInput(): Promise<{ input: FixtureInput; raw: string }> {
 async function main(): Promise<void> {
   const { input, raw } = await readInput()
   if (!input.apiKeyRefreshEnabled) throw new Error('refresh IPC was not enabled')
+  if (input.message === 'native-abi-mismatch') {
+    await new Promise<void>((resolve, reject) => {
+      process.stderr.write(
+        "The module '/private/checkout/node_modules/better_sqlite3.node'\n" +
+          'was compiled against a different Node.js version using NODE_MODULE_VERSION 141. ' +
+          'This version of Node.js requires NODE_MODULE_VERSION 147. Please try re-compiling.\n',
+        (error) => (error ? reject(error) : resolve()),
+      )
+    })
+    process.exitCode = 1
+    return
+  }
+  if (input.message === 'native-abi-frame') {
+    process.stdout.write(
+      `${JSON.stringify({
+        kind: 'fatal',
+        error:
+          "The module '/private/checkout/node_modules/better_sqlite3.node' was compiled " +
+          'against a different Node.js version using NODE_MODULE_VERSION 141. ' +
+          'This version of Node.js requires NODE_MODULE_VERSION 147.',
+      })}\n`,
+    )
+    process.exitCode = 1
+    return
+  }
   const call = createIpcClient({
     send: process.send
       ? (message, done) => process.send?.(message, undefined, undefined, done)

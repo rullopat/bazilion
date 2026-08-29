@@ -15,26 +15,42 @@ import {
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import type { MemoryEntry, MemoryHit } from '@bazilion/api-types'
 import { createStore, extractSnippet, type QMDStore } from '@tobilu/qmd'
+import { withNativeModuleErrorBoundary } from '../../lib/native-module-error.ts'
 import type { MemoryBackend } from './types.ts'
 
 const INDEX_FILENAME = '.qmd-index.sqlite'
 const COLLECTION_NAME = 'memory'
 const PATTERN = '**/*.md'
+const QMD_NATIVE_ERROR_OPTIONS = { subject: 'Bazilion memory' } as const
+
+export interface QmdBackendOptions {
+  /** Test seam for exercising qmd initialization failures without replacing a native binary. */
+  createStore?: typeof createStore
+}
 
 // One store per memory directory per process. createStore opens a SQLite
 // handle; we dedupe so concurrent chat requests for the same agent reuse it.
 const storeCache = new Map<string, Promise<QMDStore>>()
 
-function getStore(dir: string): Promise<QMDStore> {
+function getStore(dir: string, storeFactory: typeof createStore): Promise<QMDStore> {
   let p = storeCache.get(dir)
   if (!p) {
-    p = createStore({
-      dbPath: join(dir, INDEX_FILENAME),
-      config: {
-        collections: {
-          [COLLECTION_NAME]: { path: dir, pattern: PATTERN },
-        },
-      },
+    p = withNativeModuleErrorBoundary(
+      () =>
+        storeFactory({
+          dbPath: join(dir, INDEX_FILENAME),
+          config: {
+            collections: {
+              [COLLECTION_NAME]: { path: dir, pattern: PATTERN },
+            },
+          },
+        }),
+      QMD_NATIVE_ERROR_OPTIONS,
+    ).catch((error) => {
+      // A failed initialization must be retryable after the operator rebuilds
+      // native dependencies without restarting the daemon.
+      storeCache.delete(dir)
+      throw error
     })
     storeCache.set(dir, p)
   }
@@ -263,8 +279,9 @@ function walkMd(root: string, dir: string, prefix: string, out: MemoryEntry[]): 
  * can be wired in later if we want semantic search — they'd add a dependency
  * on `node-llama-cpp` and several GB of GGUF models.
  */
-export function qmdBackend(root: string): MemoryBackend {
+export function qmdBackend(root: string, options: QmdBackendOptions = {}): MemoryBackend {
   let canonicalRoot: string | undefined
+  const storeFactory = options.createStore ?? createStore
 
   const safeRoot = (): string => {
     if (!canonicalRoot) canonicalRoot = initializeSafeRoot(root)
@@ -277,8 +294,8 @@ export function qmdBackend(root: string): MemoryBackend {
       const safe = safeRoot()
       assertSafeTree(safe)
       // Opening the store + initial scan. update() is idempotent.
-      const store = await getStore(safe)
-      await store.update()
+      const store = await getStore(safe, storeFactory)
+      await withNativeModuleErrorBoundary(() => store.update(), QMD_NATIVE_ERROR_OPTIONS)
     },
 
     async read(key) {
@@ -301,8 +318,8 @@ export function qmdBackend(root: string): MemoryBackend {
       // update() re-scans the collection; for typical memory sizes (tens of
       // files) this is sub-millisecond.
       assertSafeTree(safe)
-      const store = await getStore(safe)
-      await store.update()
+      const store = await getStore(safe, storeFactory)
+      await withNativeModuleErrorBoundary(() => store.update(), QMD_NATIVE_ERROR_OPTIONS)
       return { key, content, updatedAt: stats.mtimeMs }
     },
 
@@ -310,11 +327,15 @@ export function qmdBackend(root: string): MemoryBackend {
       const limit = opts?.limit ?? 10
       const safe = safeRoot()
       assertSafeTree(safe)
-      const store = await getStore(safe)
-      const results = await store.searchLex(query, {
-        limit,
-        collection: COLLECTION_NAME,
-      })
+      const store = await getStore(safe, storeFactory)
+      const results = await withNativeModuleErrorBoundary(
+        () =>
+          store.searchLex(query, {
+            limit,
+            collection: COLLECTION_NAME,
+          }),
+        QMD_NATIVE_ERROR_OPTIONS,
+      )
       const hits: MemoryHit[] = []
       for (const r of results) {
         // qmd's filepath is a synthetic URI (`qmd://<collection>/<path>`);
@@ -356,8 +377,8 @@ export function qmdBackend(root: string): MemoryBackend {
         rmSync(path)
       }
       assertSafeTree(safe)
-      const store = await getStore(safe)
-      await store.update()
+      const store = await getStore(safe, storeFactory)
+      await withNativeModuleErrorBoundary(() => store.update(), QMD_NATIVE_ERROR_OPTIONS)
     },
   }
 }

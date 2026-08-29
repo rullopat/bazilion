@@ -143,3 +143,32 @@ test('persistence: a new backend instance sees previously written entries', asyn
   const hits = await fresh.search('survives')
   expect(hits.length).toBeGreaterThanOrEqual(1)
 })
+
+test('sanitizes a direct qmd native ABI mismatch without retaining its checkout path', async () => {
+  const brokenRoot = mkdtempSync(join(tmpdir(), 'bazilion-mem-qmd-abi-'))
+  const raw = new Error(
+    "The module '/private/checkout/node_modules/better_sqlite3.node' was compiled against " +
+      'a different Node.js version using NODE_MODULE_VERSION 141. This version of Node.js ' +
+      'requires NODE_MODULE_VERSION 147.',
+  )
+  const broken = qmdBackend(brokenRoot, {
+    createStore: async () => {
+      throw raw
+    },
+  })
+
+  try {
+    const error = await broken.init().catch((caught: unknown) => caught)
+    expect(error).toMatchObject({
+      name: 'NativeModuleAbiMismatchError',
+      code: 'native_module_abi_mismatch',
+    })
+    expect((error as Error).message).toMatch(
+      /Bazilion memory could not load.*ABI 141.*requires ABI 147.*pnpm rebuild better-sqlite3/s,
+    )
+    expect((error as Error).message).not.toContain('/private/checkout')
+    expect((error as Error).stack).not.toContain('/private/checkout')
+  } finally {
+    rmSync(brokenRoot, { recursive: true, force: true })
+  }
+})

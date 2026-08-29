@@ -40,7 +40,14 @@ interface ExistingOwnershipRecord {
   instanceId?: string
   pid?: number
   owner?: 'daemon' | 'restore'
-  state?: 'starting' | 'listening' | 'restoring' | 'swapping' | 'installed' | 'recovery-required'
+  state?:
+    | 'starting'
+    | 'listening'
+    | 'restoring'
+    | 'uninstalling'
+    | 'swapping'
+    | 'installed'
+    | 'recovery-required'
   recoveryPath?: string
   hadPrevious?: boolean
   host?: string
@@ -132,6 +139,7 @@ function readExisting(path: string): ExistingOwnershipRecord | null {
           'starting',
           'listening',
           'restoring',
+          'uninstalling',
           'swapping',
           'installed',
           'recovery-required',
@@ -162,7 +170,9 @@ function readExisting(path: string): ExistingOwnershipRecord | null {
           (state !== 'listening' || (host !== undefined && port !== undefined))) ||
         (owner === 'restore' &&
           state !== undefined &&
-          ['restoring', 'swapping', 'installed', 'recovery-required'].includes(state) &&
+          ['restoring', 'uninstalling', 'swapping', 'installed', 'recovery-required'].includes(
+            state,
+          ) &&
           (!['swapping', 'recovery-required'].includes(state) ||
             (recoveryPath !== undefined && hadPrevious !== undefined)))
       if (!validOwnerState) {
@@ -291,6 +301,19 @@ export function acquireDaemonLiveness(paths: Paths): DaemonLivenessHandle {
         )
       }
       const livePid = pidIsAlive(existing.pid)
+      if (existing.owner === 'restore' && existing.state === 'uninstalling') {
+        if (livePid) {
+          throw new Error(
+            `uninstall process ${existing.pid} is modifying this home; wait for it to finish`,
+          )
+        }
+        throw new Error(
+          'a previous Bazilion uninstall was interrupted for this home. ' +
+            'Re-run the same `bazilion uninstall` command (including its `--all` choice) ' +
+            'with the same BAZILION_HOME (or --home) ' +
+            'to finish it before starting Bazilion again.',
+        )
+      }
       if (
         existing.owner === 'restore' &&
         ['swapping', 'recovery-required'].includes(existing.state)

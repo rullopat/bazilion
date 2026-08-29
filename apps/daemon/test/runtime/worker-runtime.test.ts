@@ -30,7 +30,7 @@ import {
   type ProtectedWorkerSpec,
   parseWorkerInput,
 } from '../../src/runtime/worker/runtime.ts'
-import { spawnWorkerTurn } from '../../src/runtime/worker/spawn.ts'
+import { formatWorkerExitFailure, spawnWorkerTurn } from '../../src/runtime/worker/spawn.ts'
 
 const cleanup: string[] = []
 afterEach(() => {
@@ -441,6 +441,85 @@ describe('minimal worker runtime', () => {
       error: 'worker frame exceeded the maximum size',
     })
     expect(readdirSync(scratchParent)).toEqual([])
+  })
+
+  test('turns a native module ABI mismatch into an actionable fatal frame', async () => {
+    const root = tempRoot()
+    const scratchParent = join(root, 'scratch-parent')
+    mkdirSync(scratchParent)
+    const spec = protectedSpec(root)
+    spec.message = 'native-abi-mismatch'
+    const diagnostics: string[] = []
+    const frames = []
+
+    for await (const frame of spawnWorkerTurn(spec, {
+      ...scopedHosts(),
+      apiKeyRefreshHost: { refresh: async () => 'rotated' },
+      scratchParentDir: scratchParent,
+      diagnosticSink: (message) => diagnostics.push(message),
+      workerEntryPath: fileURLToPath(
+        new URL('../fixtures/worker-minimal-runtime-entry.ts', import.meta.url),
+      ),
+    })) {
+      frames.push(frame)
+    }
+
+    expect(frames).toEqual([
+      {
+        kind: 'fatal',
+        error: expect.stringMatching(
+          /built for Node module ABI 141.*requires ABI 147.*pnpm rebuild better-sqlite3/s,
+        ),
+      },
+    ])
+    expect(JSON.stringify(frames)).not.toContain('/private/checkout')
+    expect(diagnostics).toHaveLength(1)
+    expect(diagnostics[0]).toContain('/private/checkout/node_modules/better_sqlite3.node')
+    expect(readdirSync(scratchParent)).toEqual([])
+  })
+
+  test('normalizes a native ABI mismatch already emitted as a worker frame', async () => {
+    const root = tempRoot()
+    const scratchParent = join(root, 'scratch-parent')
+    mkdirSync(scratchParent)
+    const spec = protectedSpec(root)
+    spec.message = 'native-abi-frame'
+    const frames = []
+
+    for await (const frame of spawnWorkerTurn(spec, {
+      ...scopedHosts(),
+      apiKeyRefreshHost: { refresh: async () => 'rotated' },
+      scratchParentDir: scratchParent,
+      workerEntryPath: fileURLToPath(
+        new URL('../fixtures/worker-minimal-runtime-entry.ts', import.meta.url),
+      ),
+    })) {
+      frames.push(frame)
+    }
+
+    expect(frames).toEqual([
+      {
+        kind: 'fatal',
+        error: expect.stringMatching(
+          /built for Node module ABI 141.*requires ABI 147.*pnpm rebuild better-sqlite3/s,
+        ),
+      },
+    ])
+    expect(JSON.stringify(frames)).not.toContain('/private/checkout')
+    expect(readdirSync(scratchParent)).toEqual([])
+  })
+
+  test('uses generic rebuild guidance for a different native addon', () => {
+    const error = formatWorkerExitFailure(
+      'worker exited with code 1',
+      "The module '/private/checkout/tree_sitter.node' was compiled against a different " +
+        'Node.js version using NODE_MODULE_VERSION 141. This version of Node.js requires ' +
+        'NODE_MODULE_VERSION 147.',
+    )
+
+    expect(error).toContain('run `pnpm rebuild`')
+    expect(error).not.toContain('pnpm rebuild better-sqlite3')
+    expect(error).not.toContain('/private/checkout')
   })
 })
 

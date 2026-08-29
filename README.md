@@ -27,7 +27,7 @@ bazilion dashboard
 
 > **Alpha database contract:** the schema is a clean-install-only `0001_init.sql`. Bazilion does
 > not carry database, API, URL, or filesystem compatibility adapters yet. After a breaking schema
-> change, export anything you need and run `bazilion uninstall --yes --all` before bootstrapping
+> change, export anything you need and run `bazilion uninstall --yes` before bootstrapping
 > again.
 
 For a daemon-only CLI flow:
@@ -60,6 +60,9 @@ Other provider env vars: `OPENAI_API_KEY`, `GEMINI_API_KEY`, `LMSTUDIO_URL`/`LMS
 ## Develop from source
 
 Contributors: clone the repo. Node 24+ and pnpm 10+ are required. If `corepack` is unavailable, install pnpm directly with `npm install -g pnpm`.
+The exact development versions are pinned in `mise.toml`; with mise, run `mise install` and prefix
+commands with `mise exec --`. After changing Node versions, rebuild native dependencies before
+starting Bazilion so the worker and qmd use the same Node module ABI.
 
 ```sh
 git clone https://github.com/rullopat/bazilion
@@ -81,7 +84,7 @@ From the source checkout, every CLI command is `pnpm tsx apps/cli/src/index.ts <
 ```
 bazilion dashboard [--port N] [--no-open]  # boot daemon + bundled web UI (4321 + 4322 by default)
 bazilion serve [--port N] [--host H]       # boot daemon only (auto-bootstraps on first run; HTTP API on 4321)
-bazilion uninstall [--yes] [--all]         # wipe state (two-tier: data vs full)
+bazilion uninstall [--yes] [--all]         # wipe state (two-tier: reset vs full)
 bazilion doctor                            # diagnose your install
 bazilion auth openai login|logout|status   # ChatGPT OAuth (Plus/Pro/Team accounts)
 bazilion profile create|list|show|edit|update|delete   # manage profile templates
@@ -195,12 +198,16 @@ Bazilion has two OpenAI integrations. The classic one (`openai` provider) authen
 # CLI: runs the browser flow locally (loopback on :1455), then uploads the
 # resulting credentials to the server. Works even against a remote bazilion.
 bazilion auth openai login
+bazilion auth openai login --device-code  # headless/remote or callback-port fallback
 bazilion auth openai status        # connected? when does the access token expire?
 bazilion auth openai logout        # wipe stored credentials
 
+# Source checkout: run from the repository root.
+pnpm tsx apps/cli/src/index.ts auth openai login --device-code
+
 # Web UI: /config has a "Connect ChatGPT" card that does the same thing, but
-# spawns the browser on the server's machine (fine when you're local; use the
-# CLI from a remote client).
+# spawns the browser on the server's machine (fine when you're local). Use the
+# CLI device-code flow from a remote client or when localhost:1455 is busy.
 ```
 
 After connecting, enable `openai-codex` on `/config` and curate at least one model (e.g. `gpt-5.6-luna`, `gpt-5.6-terra`, or `gpt-5.6-sol`). Credentials are stored AES-256-GCM-encrypted in the daemon's `secrets` table (key derived from the bootstrap token in `auth.json`); the access token auto-refreshes via the stored refresh token.
@@ -208,21 +215,29 @@ After connecting, enable `openai-codex` on `/config` and curate at least one mod
 ## Uninstalling
 
 ```sh
-# Interactive — asks two y/N prompts (data-tier, then full-wipe)
+# Interactive — asks two y/N prompts (reset-tier, then full-wipe)
 bazilion uninstall
 
 # Non-interactive equivalents
-bazilion uninstall --yes          # wipe DB + agent/profile/team data only
-bazilion uninstall --yes --all    # also remove auth.json, logs/, skills/
+bazilion uninstall --yes          # reset DB + auth.json + agent/profile/team data
+bazilion uninstall --yes --all    # also remove logs/ and skills/
 ```
 
-Two tiers: the **data tier** (`bazilion.db*`, `profiles/`, `agents/`, `teams/`) is the factory-reset path — useful during alpha when the DB schema moves. The **full wipe** (`--all`) additionally removes `auth.json`, logs, and the skill library, leaving nothing behind under `~/.bazilion/`. Symlinked teams (registered via `--link`) only have their slot under `~/.bazilion/teams/` removed; the symlink target is never touched.
+Two tiers: the **reset tier** (`bazilion.db*`, `auth.json`, `profiles/`, `agents/`,
+`teams/`, plus the legacy `groups/`, `config.json`, and `secrets.enc` paths) is the clean-bootstrap
+path — useful during alpha when the DB schema moves. The DB and `auth.json` are always removed
+together because the file's bootstrap credential must match a row in that DB. The **full wipe**
+(`--all`) additionally removes logs and the skill library. It removes
+`~/.bazilion/` when only Bazilion-managed entries remain, but preserves the directory and reports
+it when unmanaged files are present. A symlinked `BAZILION_HOME` root remains as an empty slot so
+interruption recovery keeps the same canonical identity. Symlinked Team slots and legacy Group
+slots are unlinked; their external targets are never touched.
 
 ## Stack notes
 
 - **SQLite driver**: `node:sqlite` (Node 22+ built-in). Wrapped in `apps/daemon/src/core/db/client.ts` with a manual `BEGIN/COMMIT/ROLLBACK` `transaction()` helper since `node:sqlite` has no callable wrapper of its own.
 - **Daemon owns the DB**: workers spawned per turn don't hold their own SQLite handle. Anything they need at request time (agent record, provider gate, secrets) is pre-resolved by the daemon and passed via stdin; live messaging tool calls (`send_message` / `read_inbox` / `wait_for_reply`) round-trip back to the daemon over Node IPC (the `'ipc'` channel on `child_process.spawn`).
-- **Native modules**: qmd pulls `better-sqlite3` and a handful of tree-sitter grammars (small native compiles on install). `node-llama-cpp` is a qmd transitive dep but intentionally excluded from build in `pnpm.onlyBuiltDependencies` — qmd's BM25 search doesn't need it, and enabling it would require downloading multi-GB GGUF models.
+- **Native modules**: qmd pulls `better-sqlite3` and a handful of tree-sitter grammars (small native compiles on install). `node-llama-cpp` is a qmd transitive dep but intentionally excluded from build in `pnpm.onlyBuiltDependencies` — qmd's BM25 search doesn't need it, and enabling it would require downloading multi-GB GGUF models. If Bazilion reports a Node module ABI mismatch after changing Node versions, run `pnpm rebuild better-sqlite3` (or `pnpm install --force`) from the repository root with the same runtime used to start Bazilion, then restart it.
 - **Skills format**: standard agent-skill `SKILL.md` (YAML frontmatter with `name` / `description`, free-form body). OpenClaw skills drop in unchanged via `bazilion skill import --from openclaw`.
 - **Core agent engine**: [pi-coding-agent](https://www.npmjs.com/package/@earendil-works/pi-coding-agent) is the engine Bazilion is based on. It owns the per-turn agent loop, transcript storage (JSONL session files under `~/.bazilion/agents/<id>/sessions/`), replay, compaction, provider/tool execution, and the file-IO toolset (`read`/`bash`/`edit`/`write`/`grep`/`find`/`ls`).
 - **LLM providers**: routed through [pi-ai](https://www.npmjs.com/package/@earendil-works/pi-ai) — Anthropic, OpenAI, OpenAI Codex (ChatGPT OAuth), Google AI Studio/Vertex, Azure OpenAI, AWS Bedrock, GitHub Copilot, DeepSeek, Mistral, Groq, Cerebras, xAI, Z.AI, Hugging Face, Fireworks, Together, Baseten, Moonshot/Kimi, MiniMax, Qwen Token Plan (including Individual), Xiaomi MiMo, Ant Ling, NVIDIA NIM, OpenCode, OpenRouter, Vercel AI Gateway, Cloudflare, LM Studio, Ollama, and llama.cpp. Model strings are `provider:model`.

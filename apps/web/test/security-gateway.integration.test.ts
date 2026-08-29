@@ -375,6 +375,7 @@ test('production gateway applies security headers and bounds request bodies', as
 interface FakeUpstream {
   url: string
   seen: Array<{ path: string; headers: IncomingMessage['headers']; bytes: number }>
+  abortObserved: Promise<void>
   releaseStream(): void
   stop(): Promise<void>
 }
@@ -385,11 +386,23 @@ async function startFakeUpstream(): Promise<FakeUpstream> {
   const streamBarrier = new Promise<void>((resolve) => {
     release = resolve
   })
+  let observeAbort = () => {}
+  const abortObserved = new Promise<void>((resolve) => {
+    observeAbort = resolve
+  })
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     const chunks: Buffer[] = []
     req.on('data', (chunk: Buffer) => chunks.push(chunk))
     req.on('end', async () => {
       seen.push({ path: req.url ?? '', headers: req.headers, bytes: Buffer.concat(chunks).byteLength })
+      if (req.url === '/api/abort') {
+        res.on('close', () => {
+          if (!res.writableEnded) observeAbort()
+        })
+        res.writeHead(200, { 'content-type': 'text/plain' })
+        res.write('waiting for client cancellation')
+        return
+      }
       if (req.url === '/api/stream') {
         res.writeHead(200, { 'content-type': 'application/x-ndjson' })
         res.write(`${JSON.stringify({ kind: 'event', value: 1 })}\n`)
@@ -411,6 +424,7 @@ async function startFakeUpstream(): Promise<FakeUpstream> {
   return {
     url: `http://127.0.0.1:${port}`,
     seen,
+    abortObserved,
     releaseStream: release,
     stop: () => new Promise((resolve) => server.close(() => resolve())),
   }
@@ -456,6 +470,57 @@ test('production gateway preserves streaming, downloads, and uploads while strip
       expect(observed.headers.host).toBe(new URL(upstream.url).host)
     }
     expect(upstream.seen.find((entry) => entry.path === '/api/upload')?.bytes).toBeGreaterThan(0)
+  } finally {
+    await proxy.stop()
+    await upstream.stop()
+  }
+}, 30_000)
+
+test('production gateway propagates client disconnects to the upstream daemon request', async () => {
+  const upstream = await startFakeUpstream()
+  const proxy = await startWeb(upstream.url)
+  try {
+    const target = new URL(proxy.url)
+    await new Promise<void>((resolve, reject) => {
+      const req = httpRequest(
+        {
+          hostname: target.hostname,
+          port: target.port,
+          path: '/api/abort',
+          method: 'GET',
+          headers: { authorization: 'Bearer native-fixture' },
+        },
+        (res) => {
+          res.once('data', () => {
+            res.destroy()
+            req.destroy()
+            resolve()
+          })
+        },
+      )
+      req.once('error', (error) => {
+        if ((error as NodeJS.ErrnoException).code !== 'ECONNRESET') reject(error)
+      })
+      req.end()
+    })
+
+    let abortTimeout: ReturnType<typeof setTimeout> | undefined
+    try {
+      await Promise.race([
+        upstream.abortObserved,
+        new Promise<never>((_, reject) => {
+          abortTimeout = setTimeout(
+            () => reject(new Error('upstream request was not aborted')),
+            5_000,
+          )
+        }),
+      ])
+    } finally {
+      clearTimeout(abortTimeout)
+    }
+    expect(upstream.seen.find((entry) => entry.path === '/api/abort')).toMatchObject({
+      headers: expect.objectContaining({ authorization: 'Bearer native-fixture' }),
+    })
   } finally {
     await proxy.stop()
     await upstream.stop()

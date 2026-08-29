@@ -2,7 +2,6 @@
 // /api/providers/test — model smoke-test.
 // /api/login — device-token exchange for bounded browser session cookies.
 
-import { spawn } from 'node:child_process'
 import type {
   AuthenticatedOwnerResponse,
   ListSessionsResponse,
@@ -21,6 +20,13 @@ import {
 } from '../core/index.ts'
 import { type AuthVariables, authenticateToken } from '../lib/auth.ts'
 import { getCtx } from '../lib/ctx.ts'
+import {
+  acquireWebOpenAILogin,
+  answerWebOpenAIPrompt,
+  createWebOpenAILoginLifetime,
+  launchOpenAICodexBrowser,
+  preflightOpenAICodexCallback,
+} from '../lib/openai-oauth-prompt.ts'
 import { resolvePublicOrigin } from '../lib/public-origin.ts'
 import {
   clearOpenAICodexCredentials,
@@ -96,24 +102,30 @@ authRouter.delete('/auth/openai', (c) => {
 
 authRouter.post('/auth/openai/login', async (c) => {
   const { db, authToken } = getCtx()
+  const lifetime = createWebOpenAILoginLifetime(c.req.raw.signal)
+  let releaseLogin: (() => void) | undefined
   try {
+    releaseLogin = await acquireWebOpenAILogin(lifetime.signal)
+    if (lifetime.signal.aborted) throw lifetime.signal.reason
+    await preflightOpenAICodexCallback()
+    if (lifetime.signal.aborted) throw lifetime.signal.reason
     const creds = await loginOpenAICodex({
+      signal: lifetime.signal,
       notify: (event) => {
-        if (event.type === 'auth_url') openBrowser(event.url)
+        if (event.type === 'auth_url') {
+          launchOpenAICodexBrowser(event.url, (error) => lifetime.abort(error))
+        }
       },
-      prompt: (prompt) =>
-        prompt.type === 'select'
-          ? Promise.resolve(prompt.options[0]?.id ?? '')
-          : Promise.reject(
-              new Error(
-                'interactive paste not supported in the web flow — cancel and try again, or use `bazilion auth openai login`',
-              ),
-            ),
+      prompt: (prompt) => answerWebOpenAIPrompt(prompt, lifetime.signal),
     })
+    if (lifetime.signal.aborted) throw lifetime.signal.reason
     saveOpenAICodexLoginCredentials(db, authToken, creds)
     return c.json(getOpenAICodexStatus(db, authToken))
   } catch (err) {
     return c.json({ error: (err as Error).message }, 400)
+  } finally {
+    releaseLogin?.()
+    lifetime.dispose()
   }
 })
 
@@ -242,27 +254,3 @@ authRouter.delete('/sessions/:id', (c) => {
   }
   return c.body(null, 204)
 })
-
-/**
- * Open `url` in the host's default browser. Only called by the OAuth flow
- * triggered from /config — the user is on the same machine as the daemon in
- * that scenario (loopback-only `bazilion serve`).
- */
-function openBrowser(url: string): void {
-  const platform = process.platform
-  const [cmd, ...args] =
-    platform === 'darwin'
-      ? ['open', url]
-      : platform === 'win32'
-        ? ['cmd', '/c', 'start', '""', url]
-        : ['xdg-open', url]
-  try {
-    const child = spawn(cmd as string, args, { stdio: 'ignore', detached: true })
-    child.unref()
-    child.on('error', () => {
-      // xdg-open missing on minimal installs — swallow so the flow still works
-    })
-  } catch {
-    // spawn failed — user will still see the URL in the progress log
-  }
-}

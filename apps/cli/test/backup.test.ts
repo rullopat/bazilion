@@ -1459,6 +1459,9 @@ test('failure between swap renames stays fail-closed with exact recovery path', 
   writeFileSync(runtimePath, `${JSON.stringify(record)}\n`)
 
   await expect(acquireHomeRestoreLock(target)).rejects.toThrow(/recovery data is at/)
+  await expect(acquireHomeRestoreLock(target, 'uninstalling')).rejects.toThrow(
+    /recovery data is at/,
+  )
   const daemonAttempt = await runCli(['serve', '--port', '0'], target)
   expect(daemonAttempt.exitCode).not.toBe(0)
   expect(daemonAttempt.stderr + daemonAttempt.stdout).toMatch(/restore recovery is required/)

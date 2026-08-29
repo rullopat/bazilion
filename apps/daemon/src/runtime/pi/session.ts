@@ -267,7 +267,7 @@ export async function createBazilionSession(
       })
 
   // Session file under the agent's own directory. Keeping it under
-  // `agents/<id>/sessions/` makes `bazilion uninstall` (data tier) already
+  // `agents/<id>/sessions/` makes `bazilion uninstall` (reset tier) already
   // clean them up without changes.
   //
   // Resume-or-create: pi's SessionManager has no built-in "latest session"
