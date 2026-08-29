@@ -1,5 +1,6 @@
 import { type BazilionClient, createClient } from '@bazilion/client'
 import * as SecureStore from 'expo-secure-store'
+import { mobileErrorMessage } from './errors'
 
 const KEY_SERVER = 'bazilion.server'
 const KEY_TOKEN = 'bazilion.token'
@@ -65,7 +66,7 @@ export async function verifyCredentials(creds: Credentials): Promise<void> {
     if (err instanceof Error && err.name === 'AbortError') {
       throw new Error(`could not reach ${creds.server} within 5s`)
     }
-    throw err
+    throw new Error(mobileErrorMessage(err, creds.server))
   } finally {
     clearTimeout(timer)
   }

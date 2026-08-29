@@ -21,6 +21,7 @@ import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { useEffect, useState } from 'react'
 import { Button } from '../../../components/Button'
+import { ConfirmDialog } from '../../../components/ConfirmDialog'
 import { ConfigPage } from '../../../components/ConfigPage'
 import { daemonClient } from '../../../lib/daemon-client'
 
@@ -45,12 +46,22 @@ function TelegramIntegrationPage() {
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saveOk, setSaveOk] = useState(false)
+  const [confirmDisconnect, setConfirmDisconnect] = useState(false)
 
   const [health, setHealth] = useState<TelegramHealth | null>(null)
   const [checking, setChecking] = useState(false)
 
   async function save(e: React.FormEvent) {
     e.preventDefault()
+    if (initial.configured && token.trim().length === 0) {
+      setSaveOk(false)
+      setSaveError(
+        chatId.trim() === initial.chatId
+          ? 'Nothing changed. Paste a replacement token to update credentials.'
+          : 'Paste the bot token again when changing the supergroup, so the existing secret is never cleared or reused silently.',
+      )
+      return
+    }
     setSaving(true)
     setSaveError(null)
     setSaveOk(false)
@@ -75,18 +86,17 @@ function TelegramIntegrationPage() {
   }
 
   async function disconnect() {
-    if (!confirm('Clear the saved Telegram credentials?')) return
-    try {
-      await fetch('/api/config/telegram', { method: 'DELETE' })
-      setToken('')
-      setChatId('')
-      setHealth(null)
-      setSaveOk(false)
-      setSaveError(null)
-      await router.invalidate()
-    } catch (e) {
-      setSaveError((e as Error).message)
+    const response = await fetch('/api/config/telegram', { method: 'DELETE' })
+    if (!response.ok && response.status !== 204) {
+      const body = (await response.json().catch(() => null)) as { error?: string } | null
+      throw new Error(body?.error ?? `Could not clear Telegram credentials (${response.status})`)
     }
+    setToken('')
+    setChatId('')
+    setHealth(null)
+    setSaveOk(false)
+    setSaveError(null)
+    await router.invalidate()
   }
 
   async function runHealth() {
@@ -140,7 +150,10 @@ function TelegramIntegrationPage() {
               type="password"
               autoComplete="off"
               value={token}
-              onChange={(e) => setToken(e.target.value)}
+              onChange={(e) => {
+                setToken(e.target.value)
+                setSaveError(null)
+              }}
               placeholder={initial.configured ? '(leave blank to keep stored value)' : '1234567890:ABC...'}
               className="w-full rounded-md border bg-background px-2 py-1.5 font-mono text-sm outline-none focus:ring-2 focus:ring-ring/30"
               required={!initial.configured}
@@ -149,6 +162,12 @@ function TelegramIntegrationPage() {
               From @BotFather → /newbot. Disable Privacy Mode in <em>Bot Settings → Team
               Privacy → Turn off</em>.
             </p>
+            {initial.configured && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Blank preserves the stored token. To remove it, use clear credentials and confirm
+                the integration shutdown.
+              </p>
+            )}
           </label>
 
           <label className="block">
@@ -156,7 +175,10 @@ function TelegramIntegrationPage() {
             <input
               type="text"
               value={chatId}
-              onChange={(e) => setChatId(e.target.value)}
+              onChange={(e) => {
+                setChatId(e.target.value)
+                setSaveError(null)
+              }}
               placeholder="-1001234567890"
               className="w-full rounded-md border bg-background px-2 py-1.5 font-mono text-sm outline-none focus:ring-2 focus:ring-ring/30"
               required
@@ -172,12 +194,12 @@ function TelegramIntegrationPage() {
               {saving ? 'saving…' : 'save credentials'}
             </Button>
             {initial.configured && (
-              <Button variant="danger" onClick={disconnect}>
+              <Button variant="danger" onClick={() => setConfirmDisconnect(true)}>
                 clear credentials
               </Button>
             )}
             {saveOk && <span className="text-xs text-success">saved ✓</span>}
-            {saveError && <span className="text-xs text-danger">error: {saveError}</span>}
+            {saveError && <span role="alert" className="text-xs text-danger">error: {saveError}</span>}
           </div>
         </form>
       </section>
@@ -211,6 +233,27 @@ function TelegramIntegrationPage() {
 
       {initial.configured && <OwnerPairingCard />}
       {initial.configured && <AccessControlCard />}
+      <ConfirmDialog
+        open={confirmDisconnect}
+        title="Disconnect Telegram?"
+        description={
+          <p>
+            This permanently removes the saved bot token and supergroup ID. Telegram polling,
+            ingress, and outbound delivery stop until new credentials are saved and pairing is
+            completed again.
+          </p>
+        }
+        confirmLabel="clear credentials and disconnect"
+        onConfirm={async () => {
+          try {
+            await disconnect()
+          } catch (error) {
+            setSaveError(error instanceof Error ? error.message : String(error))
+            throw error
+          }
+        }}
+        onOpenChange={setConfirmDisconnect}
+      />
     </ConfigPage>
   )
 }
@@ -219,6 +262,7 @@ function OwnerPairingCard() {
   const [status, setStatus] = useState<TelegramPairingStatus | null>(null)
   const [code, setCode] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
+  const [confirmReset, setConfirmReset] = useState(false)
   const load = async () => {
     const res = await fetch('/api/config/telegram/pairing')
     if (!res.ok) throw new Error(res.statusText)
@@ -238,18 +282,24 @@ function OwnerPairingCard() {
     setStatus(body as TelegramPairingChallenge)
   }
   async function cancelChallenge() {
-    await fetch('/api/config/telegram/pairing/challenge', { method: 'DELETE' })
+    const res = await fetch('/api/config/telegram/pairing/challenge', { method: 'DELETE' })
+    if (!res.ok && res.status !== 204) {
+      const body = (await res.json().catch(() => null)) as { error?: string } | null
+      throw new Error(body?.error ?? 'Could not cancel the pairing code')
+    }
     setCode(null)
     await load()
   }
   async function resetOwner() {
-    if (!confirm('Revoke the Telegram owner now? Ingress will close until a new owner pairs.')) return
     const res = await fetch('/api/config/telegram/pairing/reset', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ confirm: true }),
     })
-    if (!res.ok) return setErr('Could not reset Telegram owner')
+    if (!res.ok) {
+      const body = (await res.json().catch(() => null)) as { error?: string } | null
+      throw new Error(body?.error ?? 'Could not reset Telegram owner')
+    }
     setCode(null)
     await load()
   }
@@ -265,7 +315,7 @@ function OwnerPairingCard() {
       {status?.paired ? (
         <div className="flex flex-wrap items-center gap-3">
           <span className="text-sm text-success">✓ owner paired</span>
-          <Button variant="danger" onClick={resetOwner}>reset owner</Button>
+          <Button variant="danger" onClick={() => setConfirmReset(true)}>reset owner</Button>
         </div>
       ) : (
         <div className="space-y-2">
@@ -278,11 +328,31 @@ function OwnerPairingCard() {
           ) : null}
           <div className="flex flex-wrap gap-2">
             <Button variant="primary" onClick={createChallenge}>generate pairing code</Button>
-            {status?.challengeActive && <Button variant="ghost" onClick={cancelChallenge}>cancel code</Button>}
+            {status?.challengeActive && <Button variant="ghost" onClick={() => void cancelChallenge().catch((error) => setErr(error instanceof Error ? error.message : String(error)))}>cancel code</Button>}
           </div>
         </div>
       )}
-      {err && <p className="mt-2 text-xs text-danger">{err}</p>}
+      {err && <p role="alert" className="mt-2 text-xs text-danger">{err}</p>}
+      <ConfirmDialog
+        open={confirmReset}
+        title="Revoke the paired Telegram owner?"
+        description={
+          <p>
+            This immediately revokes the current owner and closes all Telegram ingress. No one can
+            use the bot until a new one-time pairing code is generated and consumed.
+          </p>
+        }
+        confirmLabel="revoke owner and close ingress"
+        onConfirm={async () => {
+          try {
+            await resetOwner()
+          } catch (error) {
+            setErr(error instanceof Error ? error.message : String(error))
+            throw error
+          }
+        }}
+        onOpenChange={setConfirmReset}
+      />
     </section>
   )
 }
@@ -293,6 +363,7 @@ function AccessControlCard() {
   const [label, setLabel] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  const [removeTarget, setRemoveTarget] = useState<TelegramAllowedUser | null>(null)
 
   async function load() {
     try {
@@ -338,16 +409,12 @@ function AccessControlCard() {
 
   async function remove(id: number) {
     setErr(null)
-    try {
-      const res = await fetch(`/api/config/telegram/acl/${id}`, { method: 'DELETE' })
-      if (!res.ok) {
-        const j = (await res.json().catch(() => ({}))) as { error?: string }
-        throw new Error(j.error ?? res.statusText)
-      }
-      await load()
-    } catch (e) {
-      setErr((e as Error).message)
+    const res = await fetch(`/api/config/telegram/acl/${id}`, { method: 'DELETE' })
+    if (!res.ok) {
+      const j = (await res.json().catch(() => ({}))) as { error?: string }
+      throw new Error(j.error ?? res.statusText)
     }
+    await load()
   }
 
   return (
@@ -376,37 +443,64 @@ function AccessControlCard() {
                 {u.label ?? (u.username ? `@${u.username}` : '—')} · {u.role}
               </span>
               {u.role !== 'owner' && (
-                <button
-                  type="button"
-                  onClick={() => void remove(u.userId)}
-                  className="ghost-btn text-xs text-rose-baziu"
-                >
+                <Button variant="danger" className="text-xs" onClick={() => setRemoveTarget(u)}>
                   remove
-                </button>
+                </Button>
               )}
             </li>
           ))}
         </ul>
       )}
 
-      <form onSubmit={add} className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-        <input
-          value={userId}
-          onChange={(e) => setUserId(e.target.value)}
-          placeholder="user id"
-          className="w-full rounded-md border bg-background px-2 py-1 font-mono text-sm sm:w-28"
-        />
-        <input
-          value={label}
-          onChange={(e) => setLabel(e.target.value)}
-          placeholder="label (optional)"
-          className="w-full rounded-md border bg-background px-2 py-1 text-sm sm:w-40"
-        />
+      <form onSubmit={add} className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
+        <label className="m-0 flex flex-col gap-1 text-xs font-medium text-foreground">
+          Telegram user ID
+          <input
+            value={userId}
+            onChange={(e) => setUserId(e.target.value)}
+            placeholder="123456789"
+            inputMode="numeric"
+            className="w-full rounded-md border bg-background px-2 py-1 font-mono text-sm sm:w-32"
+          />
+        </label>
+        <label className="m-0 flex flex-col gap-1 text-xs font-medium text-foreground">
+          Label <span className="font-normal text-muted-foreground">(optional)</span>
+          <input
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            placeholder="e.g. Pat"
+            className="w-full rounded-md border bg-background px-2 py-1 text-sm sm:w-40"
+          />
+        </label>
         <Button variant="ghost" type="submit" disabled={busy}>
           add
         </Button>
-        {err && <span className="text-xs text-danger">{err}</span>}
+        {err && <span role="alert" className="text-xs text-danger">{err}</span>}
       </form>
+      <ConfirmDialog
+        open={removeTarget !== null}
+        title={`Remove ${removeTarget?.label ?? removeTarget?.username ?? removeTarget?.userId ?? ''}?`}
+        description={
+          <p>
+            Telegram user <code className="font-mono">{removeTarget?.userId}</code> immediately
+            loses command and chat access. Their Telegram account is not changed, and they can be
+            allowlisted again later.
+          </p>
+        }
+        confirmLabel="remove Telegram access"
+        onConfirm={async () => {
+          if (!removeTarget) return
+          try {
+            await remove(removeTarget.userId)
+          } catch (error) {
+            setErr(error instanceof Error ? error.message : String(error))
+            throw error
+          }
+        }}
+        onOpenChange={(open) => {
+          if (!open) setRemoveTarget(null)
+        }}
+      />
     </section>
   )
 }
@@ -441,7 +535,7 @@ function MigrationBanner({ toChatId }: { toChatId: string }) {
       <Button variant="primary" onClick={reconnect} disabled={busy}>
         {busy ? 'reconnecting…' : `Reconnect to ${toChatId}`}
       </Button>
-      {err && <span className="ml-3 text-xs text-danger">{err}</span>}
+      {err && <span role="alert" className="ml-3 text-xs text-danger">{err}</span>}
     </div>
   )
 }
@@ -467,7 +561,7 @@ function PollingState({ polling }: { polling: NonNullable<TelegramHealth['pollin
         {startedAt && <span>started {startedAt}</span>}
         {lastPoll && <span>last poll {lastPoll}</span>}
       </div>
-      {polling.error && <p className="text-danger">error: {polling.error}</p>}
+      {polling.error && <p role="alert" className="text-danger">error: {polling.error}</p>}
     </div>
   )
 }
@@ -475,7 +569,7 @@ function PollingState({ polling }: { polling: NonNullable<TelegramHealth['pollin
 function PreflightResult({ health }: { health: TelegramHealth }) {
   if (health.error) {
     return (
-      <div className="rounded-md border border-danger/25 bg-danger/10 px-3 py-2 text-sm">
+      <div role="alert" className="rounded-md border border-danger/25 bg-danger/10 px-3 py-2 text-sm">
         <p className="font-semibold text-danger">
           Failed at <code className="font-mono">{health.error.step}</code>
         </p>
@@ -486,12 +580,12 @@ function PreflightResult({ health }: { health: TelegramHealth }) {
   }
 
   if (!health.preflight) {
-    return <p className="text-xs text-muted-foreground italic">No preflight data.</p>
+    return <p role="status" className="text-xs text-muted-foreground italic">No preflight data.</p>
   }
 
   const p = health.preflight
   return (
-    <ul className="space-y-1.5">
+    <ul role="status" aria-live="polite" aria-atomic="true" className="space-y-1.5">
       <Check ok={p.botUsername.length > 0} label="Bot identity">
         @{p.botUsername}
       </Check>

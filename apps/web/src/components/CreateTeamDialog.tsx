@@ -6,6 +6,13 @@
 import { useRouter } from '@tanstack/react-router'
 import { useState } from 'react'
 import { Button } from './Button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from './ui/dialog'
 
 interface Props {
   onClose: () => void
@@ -49,78 +56,85 @@ export function CreateTeamDialog({ onClose }: Props) {
   }
 
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: backdrop click-to-close is augmentative
-    // biome-ignore lint/a11y/useKeyWithClickEvents: ditto
-    <div
-      onClick={onClose}
-      onKeyDown={(event) => {
-        if (event.key === 'Escape') onClose()
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open && !busy) onClose()
       }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-charcoal/45 p-4 backdrop-blur-sm"
     >
-      <form
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="create-team-title"
-        onSubmit={submit}
-        onClick={(e) => e.stopPropagation()}
+      <DialogContent
+        showCloseButton={!busy}
         className="max-h-[calc(100dvh-2rem)] w-full max-w-lg overflow-y-auto rounded-3xl border border-frost bg-card p-6 shadow-baziu-lg sm:p-7"
+        onEscapeKeyDown={(event) => {
+          if (busy) event.preventDefault()
+        }}
+        onPointerDownOutside={(event) => {
+          if (busy) event.preventDefault()
+        }}
       >
-        <h2 id="create-team-title" className="font-serif text-2xl text-foreground">Create a team</h2>
-        <p className="text-sm text-muted-foreground mb-4">
-          A team is a collaboration context — one filesystem root, one USER.md, one roster. The
-          slot lives at <code className="font-mono">~/.bazilion/teams/&lt;slug&gt;/</code>.
-        </p>
-        <div className="mb-3 grid gap-3 sm:grid-cols-2">
-          <label className="block text-sm">
-            ID (slug)
+        <form onSubmit={submit}>
+          <DialogHeader>
+            <DialogTitle className="font-serif text-2xl text-foreground">
+              Create a team
+            </DialogTitle>
+            <DialogDescription>
+              A team is a collaboration context — one filesystem root, one USER.md, one roster. The
+              slot lives at <code className="font-mono">~/.bazilion/teams/&lt;slug&gt;/</code>.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mb-3 mt-4 grid gap-3 sm:grid-cols-2">
+            <label className="block text-sm">
+              ID (slug)
+              <input
+                type="text"
+                value={id}
+                onChange={(e) => setId(e.target.value)}
+                required
+                pattern="[a-z0-9][a-z0-9_-]*"
+                placeholder="myproject"
+                className="mt-1 block w-full rounded-md border bg-background px-3 py-2 outline-none focus:ring-2 focus:ring-ring/30"
+              />
+            </label>
+            <label className="block text-sm">
+              Name <span className="text-muted-foreground font-normal">(optional)</span>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="mt-1 block w-full rounded-md border bg-background px-3 py-2 outline-none focus:ring-2 focus:ring-ring/30"
+              />
+            </label>
+          </div>
+          <label className="mb-3 block text-sm">
+            Link target{' '}
+            <span className="text-muted-foreground font-normal">(optional, absolute path)</span>
             <input
               type="text"
-              value={id}
-              onChange={(e) => setId(e.target.value)}
-              required
-              pattern="[a-z0-9][a-z0-9_-]*"
-              placeholder="myproject"
-              // biome-ignore lint/a11y/noAutofocus: dialog convention
-              autoFocus
+              value={link}
+              onChange={(e) => setLink(e.target.value)}
+              placeholder="/home/you/projects/myrepo"
               className="mt-1 block w-full rounded-md border bg-background px-3 py-2 outline-none focus:ring-2 focus:ring-ring/30"
             />
+            <span className="mt-1 block text-xs text-muted-foreground">
+              Leave blank to create a fresh directory. Supply an absolute path to materialize the
+              slot as a symlink to your existing project tree.
+            </span>
           </label>
-          <label className="block text-sm">
-            Name <span className="text-muted-foreground font-normal">(optional)</span>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="mt-1 block w-full rounded-md border bg-background px-3 py-2 outline-none focus:ring-2 focus:ring-ring/30"
-            />
-          </label>
-        </div>
-        <label className="block text-sm mb-3">
-          Link target{' '}
-          <span className="text-muted-foreground font-normal">(optional, absolute path)</span>
-          <input
-            type="text"
-            value={link}
-            onChange={(e) => setLink(e.target.value)}
-            placeholder="/home/you/projects/myrepo"
-            className="mt-1 block w-full rounded-md border bg-background px-3 py-2 outline-none focus:ring-2 focus:ring-ring/30"
-          />
-          <span className="mt-1 block text-xs text-muted-foreground">
-            Leave blank to create a fresh directory. Supply an absolute path to materialize the
-            slot as a symlink to your existing project tree.
-          </span>
-        </label>
-        {err && <p className="err mt-2">{err}</p>}
-        <div className="mt-5 flex justify-end gap-2">
-          <Button variant="ghost" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button variant="primary" type="submit" disabled={busy}>
-            {busy ? 'Creating…' : 'Create'}
-          </Button>
-        </div>
-      </form>
-    </div>
+          {err && (
+            <p role="alert" className="err mt-2">
+              {err}
+            </p>
+          )}
+          <div className="mt-5 flex justify-end gap-2">
+            <Button variant="ghost" disabled={busy} onClick={onClose}>
+              Cancel
+            </Button>
+            <Button variant="primary" type="submit" disabled={busy}>
+              {busy ? 'Creating…' : 'Create team'}
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }

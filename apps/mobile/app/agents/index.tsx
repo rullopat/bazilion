@@ -18,6 +18,7 @@ import {
   loadCredentials,
 } from '@/src/auth'
 import { useColors } from '@/src/theme-context'
+import { mobileErrorMessage } from '@/src/errors'
 import { type Colors, fonts, radii } from '@/src/theme'
 
 type Load =
@@ -37,12 +38,13 @@ export default function AgentsList() {
 
   const fetchAgents = useCallback(async (initial: boolean) => {
     if (initial) setLoad({ kind: 'loading' })
-    const creds = await loadCredentials()
-    if (!creds) {
-      router.replace('/pair')
-      return
-    }
+    let creds: Credentials | null = null
     try {
+      creds = await loadCredentials()
+      if (!creds) {
+        router.replace('/pair')
+        return
+      }
       const agents = await clientFor(creds).get<Agent[]>('/api/agents')
       setLoad({ kind: 'ready', agents, creds })
     } catch (err) {
@@ -52,7 +54,7 @@ export default function AgentsList() {
         router.replace('/pair')
         return
       }
-      const message = err instanceof Error ? err.message : 'unknown error'
+      const message = mobileErrorMessage(err, creds?.server ?? 'the Bazilion gateway')
       setLoad({ kind: 'error', message })
     }
   }, [])
@@ -80,7 +82,7 @@ export default function AgentsList() {
 
   if (load.kind === 'loading') {
     return (
-      <View style={styles.centered}>
+      <View style={styles.centered} accessibilityLabel="Loading agents">
         <ActivityIndicator />
       </View>
     )
@@ -90,11 +92,23 @@ export default function AgentsList() {
     return (
       <View style={styles.centered}>
         <Text style={styles.errorTitle}>Couldn't load agents</Text>
-        <Text style={styles.errorBody}>{load.message}</Text>
-        <Pressable style={styles.primaryBtn} onPress={() => fetchAgents(true)}>
+        <Text style={styles.errorBody} accessibilityRole="alert">
+          {load.message}
+        </Text>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Retry loading agents"
+          style={styles.primaryBtn}
+          onPress={() => fetchAgents(true)}
+        >
           <Text style={styles.primaryBtnText}>Retry</Text>
         </Pressable>
-        <Pressable style={styles.linkBtn} onPress={onUnpair}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Unpair this device"
+          style={styles.linkBtn}
+          onPress={onUnpair}
+        >
           <Text style={styles.linkBtnText}>Unpair</Text>
         </Pressable>
       </View>
@@ -105,12 +119,18 @@ export default function AgentsList() {
     <View style={styles.screen}>
       <View style={styles.header}>
         <Text style={styles.headerServer}>{load.creds.server}</Text>
-        <Pressable onPress={() => router.push('/settings')} hitSlop={10}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Open Bazilion settings"
+          onPress={() => router.push('/settings')}
+          hitSlop={10}
+        >
           <Text style={styles.headerSettings}>Settings</Text>
         </Pressable>
       </View>
       <FlatList
         data={load.agents}
+        accessibilityLabel="Bazilion agents"
         keyExtractor={(a) => a.id}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         ListEmptyComponent={
@@ -133,6 +153,9 @@ function AgentRow({ agent }: { agent: Agent }) {
   const styles = useMemo(() => makeStyles(colors), [colors])
   return (
     <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${agent.name}, ${agent.status}`}
+      accessibilityHint="Opens chat. Long press opens agent details."
       style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
       onPress={() => router.push(`/agents/${agent.id}/chat`)}
       onLongPress={() => router.push(`/agents/${agent.id}`)}

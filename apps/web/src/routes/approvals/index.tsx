@@ -45,9 +45,13 @@ function ApprovalQueue() {
     setApprovals(((await response.json()) as { approvals: CommunicationApproval[] }).approvals)
   }
   const inspect = async (id: string) => {
-    const response = await fetch(`/api/approvals/${encodeURIComponent(id)}`)
-    if (!response.ok) throw new Error(`Could not load approval (${response.status})`)
-    setSelected((await response.json()) as CommunicationApprovalDetail)
+    try {
+      const response = await fetch(`/api/approvals/${encodeURIComponent(id)}`)
+      if (!response.ok) throw new Error(`Could not load approval (${response.status})`)
+      setSelected((await response.json()) as CommunicationApprovalDetail)
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : String(error))
+    }
   }
   const decide = async (action: 'approve' | 'deny') => {
     if (!selected) return
@@ -116,7 +120,8 @@ function ApprovalQueue() {
               description="Try another status filter or return when a protected attempt needs review."
             />
           ) : (
-            <div className="overflow-x-auto">
+            <>
+            <div className="hidden overflow-x-auto md:block">
               <table className="m-0 min-w-[680px]">
                 <thead>
                   <tr>
@@ -124,23 +129,14 @@ function ApprovalQueue() {
                     <th>Path</th>
                     <th>Origin</th>
                     <th>Expires</th>
+                    <th><span className="sr-only">Action</span></th>
                   </tr>
                 </thead>
                 <tbody>
                   {visible.map((item) => (
                     <tr
                       key={item.id}
-                      tabIndex={0}
-                      role="button"
-                      aria-label={`Inspect ${item.attemptKind} approval`}
-                      aria-current={selected?.id === item.id ? 'true' : undefined}
                       onClick={() => void inspect(item.id)}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Enter' || event.key === ' ') {
-                          event.preventDefault()
-                          void inspect(item.id)
-                        }
-                      }}
                       className={`cursor-pointer ${selected?.id === item.id ? 'bg-accent/60' : ''}`}
                     >
                       <td>
@@ -155,11 +151,56 @@ function ApprovalQueue() {
                           {formatTimestamp(item.expiresAt)}
                         </time>
                       </td>
+                      <td>
+                        <Button
+                          variant="ghost"
+                          aria-pressed={selected?.id === item.id}
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            void inspect(item.id)
+                          }}
+                        >
+                          Inspect
+                        </Button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
+            <div className="grid gap-3 md:hidden">
+              {visible.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  aria-label={`Inspect ${item.attemptKind} approval`}
+                  aria-pressed={selected?.id === item.id}
+                  onClick={() => void inspect(item.id)}
+                  className={`unstyled min-w-0 rounded-xl border p-4 text-left ${
+                    selected?.id === item.id
+                      ? 'border-primary/40 bg-accent/60'
+                      : 'border-border bg-muted/20'
+                  }`}
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <Status value={item.status} />
+                    <time
+                      dateTime={new Date(item.expiresAt).toISOString()}
+                      className="text-xs text-muted-foreground"
+                    >
+                      {formatTimestamp(item.expiresAt)}
+                    </time>
+                  </div>
+                  <div className="mt-3 break-words text-sm font-semibold text-foreground">
+                    {endpoint(item.source)} → {endpoint(item.target)}
+                  </div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    Origin: {item.origin}
+                  </div>
+                </button>
+              ))}
+            </div>
+            </>
           )}
         </SectionCard>
 

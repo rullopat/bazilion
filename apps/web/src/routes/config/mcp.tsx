@@ -2,6 +2,8 @@ import type { McpServer, McpToolInfo, McpTransport } from '@bazilion/api-types'
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { useState } from 'react'
+import { Button } from '../../components/Button'
+import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { ConfigPage } from '../../components/ConfigPage'
 import { daemonClient } from '../../lib/daemon-client'
 
@@ -27,7 +29,11 @@ function McpPage() {
   const [token, setToken] = useState('')
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const [testResult, setTestResult] = useState<Record<string, string>>({})
+  const [testResult, setTestResult] = useState<
+    Record<string, { kind: 'pending' | 'success' | 'error'; message: string }>
+  >({})
+  const [actionBusy, setActionBusy] = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<McpServer | null>(null)
 
   async function add(e: React.FormEvent) {
     e.preventDefault()
@@ -65,33 +71,64 @@ function McpPage() {
   }
 
   async function toggle(s: McpServer) {
-    await fetch(`/api/mcp-servers/${s.id}`, {
-      method: 'PATCH',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ enabled: !s.enabled }),
-    })
-    await router.invalidate()
+    setActionBusy(s.id)
+    setErr(null)
+    try {
+      const response = await fetch(`/api/mcp-servers/${encodeURIComponent(s.id)}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ enabled: !s.enabled }),
+      })
+      if (!response.ok) {
+        const body = (await response.json().catch(() => null)) as { error?: string } | null
+        throw new Error(body?.error ?? `Could not ${s.enabled ? 'disable' : 'enable'} server`)
+      }
+      await router.invalidate()
+    } catch (error) {
+      setErr(error instanceof Error ? error.message : String(error))
+    } finally {
+      setActionBusy(null)
+    }
   }
 
   async function remove(id: string) {
-    await fetch(`/api/mcp-servers/${id}`, { method: 'DELETE' })
+    const response = await fetch(`/api/mcp-servers/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    })
+    if (!response.ok && response.status !== 204) {
+      const body = (await response.json().catch(() => null)) as { error?: string } | null
+      throw new Error(body?.error ?? 'Could not delete MCP server')
+    }
     await router.invalidate()
   }
 
   async function test(id: string) {
-    setTestResult((r) => ({ ...r, [id]: 'connecting…' }))
-    const res = await fetch(`/api/mcp-servers/${id}/test`, { method: 'POST' })
-    const j = (await res.json().catch(() => ({}))) as {
-      ok?: boolean
-      tools?: McpToolInfo[]
-      error?: string
+    setTestResult((r) => ({ ...r, [id]: { kind: 'pending', message: 'Connecting…' } }))
+    try {
+      const res = await fetch(`/api/mcp-servers/${encodeURIComponent(id)}/test`, { method: 'POST' })
+      const j = (await res.json().catch(() => ({}))) as {
+        ok?: boolean
+        tools?: McpToolInfo[]
+        error?: string
+      }
+      setTestResult((r) => ({
+        ...r,
+        [id]: res.ok && j.ok
+          ? {
+              kind: 'success',
+              message: `${j.tools?.length ?? 0} tools: ${(j.tools ?? []).map((t) => t.name).join(', ')}`,
+            }
+          : { kind: 'error', message: j.error ?? `Test failed (${res.status})` },
+      }))
+    } catch (error) {
+      setTestResult((r) => ({
+        ...r,
+        [id]: {
+          kind: 'error',
+          message: error instanceof Error ? error.message : String(error),
+        },
+      }))
     }
-    setTestResult((r) => ({
-      ...r,
-      [id]: j.ok
-        ? `✓ ${j.tools?.length ?? 0} tools: ${(j.tools ?? []).map((t) => t.name).join(', ')}`
-        : `✗ ${j.error ?? 'failed'}`,
-    }))
   }
 
   return (
@@ -187,14 +224,10 @@ function McpPage() {
             </div>
           )}
 
-          <button
-            type="submit"
-            disabled={busy}
-            className="w-full rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50 sm:w-auto"
-          >
+          <Button variant="primary" type="submit" disabled={busy} className="w-full sm:w-auto">
             {busy ? 'adding…' : 'add server'}
-          </button>
-          {err && <p className="text-sm text-danger">{err}</p>}
+          </Button>
+          {err && <p role="alert" className="text-sm text-danger">{err}</p>}
         </form>
       </section>
 
@@ -217,62 +250,101 @@ function McpPage() {
                 </td>
               </tr>
             )}
-            {servers.map((s) => (
-              <tr key={s.id} className="border-b last:border-0 align-top">
-                <td className="py-2">
-                  {s.name}
-                  {s.hasAuthToken && (
-                    <span className="ml-2 text-[0.7em] uppercase tracking-wide text-muted-foreground">
-                      auth
-                    </span>
-                  )}
-                  {testResult[s.id] && (
-                    <div className="text-xs text-muted-foreground mt-1 break-all">
-                      {testResult[s.id]}
+            {servers.map((s) => {
+              const result = testResult[s.id]
+              return (
+                <tr key={s.id} className="border-b last:border-0 align-top">
+                  <td className="py-2">
+                    {s.name}
+                    {s.hasAuthToken && (
+                      <span className="ml-2 text-[0.7em] uppercase tracking-wide text-muted-foreground">
+                        auth
+                      </span>
+                    )}
+                  </td>
+                  <td>{s.transport}</td>
+                  <td className="font-mono text-xs break-all">
+                    {s.transport === 'stdio'
+                      ? `${s.command ?? ''} ${s.args.join(' ')}`.trim()
+                      : s.url}
+                  </td>
+                  <td>
+                    {s.enabled ? (
+                      <span className="text-success">enabled</span>
+                    ) : (
+                      <span className="text-muted-foreground">disabled</span>
+                    )}
+                  </td>
+                  <td className="whitespace-nowrap">
+                    <div className="flex gap-2">
+                      <Button variant="ghost" className="text-xs" onClick={() => void test(s.id)}>
+                        test
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        className="text-xs"
+                        disabled={actionBusy === s.id}
+                        onClick={() => void toggle(s)}
+                      >
+                        {actionBusy === s.id ? 'working…' : s.enabled ? 'disable' : 'enable'}
+                      </Button>
+                      <Button
+                        variant="danger"
+                        className="text-xs"
+                        disabled={actionBusy === s.id}
+                        onClick={() => {
+                          setErr(null)
+                          setDeleteTarget(s)
+                        }}
+                      >
+                        delete
+                      </Button>
                     </div>
-                  )}
-                </td>
-                <td>{s.transport}</td>
-                <td className="font-mono text-xs break-all">
-                  {s.transport === 'stdio'
-                    ? `${s.command ?? ''} ${s.args.join(' ')}`.trim()
-                    : s.url}
-                </td>
-                <td>
-                  {s.enabled ? (
-                    <span className="text-success">enabled</span>
-                  ) : (
-                    <span className="text-muted-foreground">disabled</span>
-                  )}
-                </td>
-                <td className="space-x-2 whitespace-nowrap">
-                  <button
-                    type="button"
-                    onClick={() => test(s.id)}
-                    className="rounded-md border px-2 py-1 text-xs hover:bg-accent"
-                  >
-                    test
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => toggle(s)}
-                    className="rounded-md border px-2 py-1 text-xs hover:bg-accent"
-                  >
-                    {s.enabled ? 'disable' : 'enable'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => remove(s.id)}
-                    className="rounded-md border px-2 py-1 text-xs text-danger hover:bg-danger/10"
-                  >
-                    delete
-                  </button>
-                </td>
-              </tr>
-            ))}
+                    {result && (
+                      <p
+                        role={result.kind === 'error' ? 'alert' : 'status'}
+                        className={`mt-2 max-w-72 whitespace-normal break-words text-xs ${
+                          result.kind === 'error'
+                            ? 'text-danger'
+                            : result.kind === 'success'
+                              ? 'text-success'
+                              : 'text-muted-foreground'
+                        }`}
+                      >
+                        {result.message}
+                      </p>
+                    )}
+                  </td>
+                </tr>
+              )
+            })}
           </tbody>
         </table>
       </div>
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title={`Delete MCP server ${deleteTarget?.name ?? ''}?`}
+        description={
+          <p>
+            This permanently removes the server configuration and its stored bearer token, closes
+            the current connection, and removes its tools from future Agent turns. Reconnecting
+            requires adding the server and credential again.
+          </p>
+        }
+        confirmLabel="delete MCP server"
+        onConfirm={async () => {
+          if (!deleteTarget) return
+          try {
+            await remove(deleteTarget.id)
+          } catch (error) {
+            setErr(error instanceof Error ? error.message : String(error))
+            throw error
+          }
+        }}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null)
+        }}
+      />
     </ConfigPage>
   )
 }

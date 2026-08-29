@@ -27,8 +27,8 @@ export function createApp(): Hono {
   const app = new Hono()
 
   // Auth + first-run gate runs before every route. Public paths (/api/login,
-  // /api/health) and the setup-open prefixes (/api/config, /api/auth) are
-  // whitelisted inside the middleware itself.
+  // /api/health) and the setup-open configuration, auth, credential, and
+  // provider-test paths are whitelisted inside the middleware itself.
   app.use('*', authMiddleware)
 
   app.route('/api/agents', agentsRouter)

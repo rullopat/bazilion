@@ -7,7 +7,12 @@ function isLoopback(hostname: string): boolean {
 
 function secureHeaders(headers: Headers, production: boolean): void {
   headers.set('x-content-type-options', 'nosniff')
-  headers.set('referrer-policy', 'no-referrer')
+  // Keep same-origin form POSTs attributable to this gateway. Chromium derives
+  // the Origin header for non-GET requests from the active referrer policy;
+  // `no-referrer` serializes it as `null`, which makes our exact-origin login
+  // check correctly fail closed. `same-origin` still withholds referrers from
+  // every cross-origin destination while preserving a usable Origin here.
+  headers.set('referrer-policy', 'same-origin')
   headers.set('permissions-policy', 'camera=(), microphone=(), geolocation=()')
   headers.set('x-frame-options', 'DENY')
   headers.set(

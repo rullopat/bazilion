@@ -92,8 +92,11 @@ absence of vulnerabilities, or a new security framework.
   session. Exact-origin requests succeed.
 - Prove a valid native device bearer works without browser CSRF and remains bearer-authenticated;
   the gateway must not mint, translate, or persist a browser session for it.
-- Prove bootstrap browser login, expired/revoked devices, session fixation input, duplicate cookies,
-  and stale concurrent session revocation fail explicitly without reflecting secrets.
+- Prove bootstrap browser login succeeds only while setup is incomplete, creates a bounded session
+  through an internal expiring/revocable device identity, and never reflects or stores the
+  bootstrap bearer in browser cookies. Prove the same login fails after setup completes, alongside
+  expired/revoked devices, session fixation input, duplicate cookies, and stale concurrent session
+  revocation.
 - Assert production cookie flags, security headers on HTML and API responses, local-only font/CSP
   assets, JSON and multipart size limits, streaming NDJSON, downloads, and supported upload flow.
 

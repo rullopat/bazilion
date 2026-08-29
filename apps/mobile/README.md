@@ -6,31 +6,48 @@ loopback.
 
 ## First run
 
-1. **On the server**: expose the daemon on your LAN.
+1. **On the server**: configure the exact private HTTPS origin for both Bazilion processes. Keep
+   the daemon and web listeners on loopback.
    ```sh
-   bazilion serve --host 0.0.0.0
+   export BAZILION_PUBLIC_ORIGIN=https://bazilion.example.ts.net
+   export HOST=127.0.0.1 PORT=4321
+   export WEB_HOST=127.0.0.1 WEB_PORT=4322
+   bazilion dashboard --no-open
    ```
-   The daemon binds `127.0.0.1:4321` by default and prints a loud warning when
-   you bind it beyond loopback — TLS is your responsibility (Tailscale handles
-   it for personal networks; reverse-proxy with TLS for anything else).
-2. **On the server**: mint a pairing token.
+2. **On the server**: publish only the loopback web gateway with tailnet-only Tailscale Serve and
+   verify the supported posture. Do not use Funnel and do not expose ports 4321 or 4322 directly.
    ```sh
-   bazilion token create phone --qr
+   tailscale serve --bg --https=443 http://127.0.0.1:4322
+   bazilion gateway preflight
+   ```
+3. **On the server**: mint a separate, expiring device credential for the phone.
+   ```sh
+   bazilion token create phone --expires-days 90 --qr \
+     --server "$BAZILION_PUBLIC_ORIGIN"
    ```
    A QR encoding `bazilion://pair?server=<url>&token=<t>` prints in the terminal.
-3. **On the phone**: install [Expo Go](https://expo.dev/go) and make sure it's on the same network as the server (or Tailscale, etc.).
-4. **On your dev machine**:
+4. **On the phone**: install [Expo Go](https://expo.dev/go), sign in to the same tailnet, and
+   confirm the HTTPS gateway opens in the phone's browser.
+5. **On your dev machine**:
    ```sh
    pnpm --filter @bazilion/mobile start
    ```
-   Scan the QR the Expo CLI prints with Expo Go → the app loads → grant camera access → point the camera at the **pairing** QR from step 2.
-5. The app verifies the device token against protected `/api/auth/whoami`, checks that the returned
+   Scan the QR the Expo CLI prints with Expo Go → the app loads → grant camera access → point the
+   camera at the **pairing** QR from step 3.
+6. The app verifies the device token against protected `/api/auth/whoami`, checks that the returned
    canonical public origin matches, saves `server` + `token` into `expo-secure-store`, and lands on
    the agents list.
 
 ## Manual pairing
 
-If the camera flow doesn't work (remote testing, wrong Expo Go version, etc.), tap "Paste URL instead" and paste the `bazilion://pair?…` URL the CLI printed. Same verification path.
+If the camera flow doesn't work (remote testing, wrong Expo Go version, etc.), tap "Paste URL
+instead" and paste the `bazilion://pair?…` URL the CLI printed. Opening that custom-scheme URL in
+an installed build also lands on the same verification flow. Pairing rejects plain HTTP except for
+loopback development.
+
+See [`docs/private-gateway.md`](../../docs/private-gateway.md) for service-manager setup, external
+verification, and credential recovery. Direct daemon exposure, direct LAN access, public reverse
+proxies, and Tailscale Funnel are unsupported.
 
 ## Commands
 
@@ -44,16 +61,20 @@ If the camera flow doesn't work (remote testing, wrong Expo Go version, etc.), t
 app/
   _layout.tsx        root stack + StatusBar
   index.tsx          loads SecureStore → redirects /pair or /agents
-  pair.tsx           camera QR scan + manual-paste fallback + verify + save
+  pair.tsx           deep link + deduplicated camera scan + manual paste + verify + save
   settings.tsx       server URL + unpair
   agents/
     index.tsx        FlatList of agents (pull-to-refresh, unpair header, 401 → /pair)
     [id]/
       index.tsx      detail: name, status, model, profile, team, skills
-      chat.tsx       NDJSON streaming chat screen
+      chat.tsx       NDJSON chat with recipient identity, authoritative done reconciliation,
+                     accepted-approval handling, cancellation, and retry states
 src/
   auth.ts            SecureStore wrapper + verifyCredentials + clientFor()
   pair-url.ts        pure TS URL parser (vitest-tested)
+  pairing-attempt.ts duplicate-scan gate
+  chat-state.ts      pure transcript/frame reducer
+  ndjson.ts          chunk-safe incremental decoder
   theme.ts           Baziu palette + spacing tokens
 test/
   pair-url.test.ts
@@ -61,4 +82,6 @@ test/
 
 ## Status
 
-Pairing, agents list, chat (NDJSON streaming), and settings ship end-to-end. Inbox + triggers screens are the next mobile work — paused for now while focus is on the web app.
+Pairing, agents list, chat (NDJSON streaming), and settings ship end-to-end. Native chat keeps risky
+shell commands fail-closed; use web chat when an interactive command approval surface is required.
+Inbox + triggers screens remain future mobile work.

@@ -10,6 +10,17 @@ export class PairUrlError extends Error {
   }
 }
 
+/** True only for the custom-scheme route owned by the mobile pairing screen. */
+export function isPairingDeepLink(raw: string | null): raw is string {
+  if (!raw) return false
+  try {
+    const url = new URL(raw)
+    return url.protocol === 'bazilion:' && url.hostname === 'pair'
+  } catch {
+    return false
+  }
+}
+
 /**
  * Parse a `bazilion://pair?server=<url>&token=<t>` URL emitted by
  * `bazilion token create --qr`. The scheme and host are both mandatory so a

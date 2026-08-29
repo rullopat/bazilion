@@ -3,6 +3,7 @@ import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { type ChangeEvent, type DragEvent, useRef, useState } from 'react'
 import { Button } from '../../components/Button'
+import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { EmptyState, PageHeader, PageShell, SectionCard, StatusBadge } from '../../components/Page'
 import { daemonClient } from '../../lib/daemon-client'
 
@@ -20,13 +21,14 @@ type Tab = 'openclaw' | 'path' | 'zip'
 function SkillsPage() {
   const skills = Route.useLoaderData()
   const router = useRouter()
+  const [removeTarget, setRemoveTarget] = useState<SkillInfo | null>(null)
+  const [removeError, setRemoveError] = useState<string | null>(null)
 
   async function remove(name: string) {
-    if (!confirm(`Remove skill "${name}"? This deletes the directory on disk.`)) return
     const res = await fetch(`/api/skills/${encodeURIComponent(name)}`, { method: 'DELETE' })
     if (!res.ok && res.status !== 204) {
-      alert(res.statusText)
-      return
+      const body = (await res.json().catch(() => null)) as { error?: string } | null
+      throw new Error(body?.error ?? `Could not remove skill (${res.status})`)
     }
     await router.invalidate()
   }
@@ -37,6 +39,11 @@ function SkillsPage() {
         title="Skills"
         description="Install and review the prompt-only skills available to your agents."
       />
+      {removeError && (
+        <p role="alert" className="err">
+          {removeError}
+        </p>
+      )}
       <ImportCard onImported={() => router.invalidate()} />
 
       <SectionCard
@@ -91,7 +98,10 @@ function SkillsPage() {
                       <Button
                         variant="danger"
                         className="whitespace-nowrap"
-                        onClick={() => remove(s.name)}
+                        onClick={() => {
+                          setRemoveError(null)
+                          setRemoveTarget(s)
+                        }}
                       >
                         Remove
                       </Button>
@@ -103,6 +113,31 @@ function SkillsPage() {
           </div>
         )}
       </SectionCard>
+      <ConfirmDialog
+        open={removeTarget !== null}
+        title={`Remove skill ${removeTarget?.name ?? ''}?`}
+        description={
+          <p>
+            This permanently deletes the installed <code className="font-mono">SKILL.md</code> and
+            every helper script or asset in the <code className="font-mono">{removeTarget?.name}</code>{' '}
+            directory. The skill becomes unavailable to every Agent and Agent template until it is
+            imported again.
+          </p>
+        }
+        confirmLabel="delete installed skill"
+        onConfirm={async () => {
+          if (!removeTarget) return
+          try {
+            await remove(removeTarget.name)
+          } catch (error) {
+            setRemoveError(error instanceof Error ? error.message : String(error))
+            throw error
+          }
+        }}
+        onOpenChange={(open) => {
+          if (!open) setRemoveTarget(null)
+        }}
+      />
     </PageShell>
   )
 }

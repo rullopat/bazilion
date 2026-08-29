@@ -2,11 +2,10 @@ import { Link, useRouterState } from '@tanstack/react-router'
 import { SECTION_TABS_CLASS, sectionTabClass } from './SectionTabs'
 
 const TABS = [
-  { suffix: '', label: 'Overview', exact: true },
+  { suffix: '', label: 'Context', exact: true },
   { suffix: '/members', label: 'Members' },
   { suffix: '/policy', label: 'Policy' },
   { suffix: '/memory', label: 'Memory' },
-  { suffix: '/context', label: 'Context' },
   { suffix: '/activity', label: 'Activity' },
 ] as const
 

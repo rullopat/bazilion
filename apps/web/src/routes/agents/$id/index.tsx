@@ -18,9 +18,11 @@ import { useState } from 'react'
 import { ArrowLeft } from 'lucide-react'
 import { AgentAvatar } from '../../../components/AgentAvatar'
 import { AgentTabs } from '../../../components/AgentTabs'
+import { Button } from '../../../components/Button'
 import { ChatPane } from '../../../components/ChatPane'
+import { ConfirmDialog } from '../../../components/ConfirmDialog'
 import { CopyButton } from '../../../components/CopyButton'
-import { PageShell } from '../../../components/Page'
+import { PageShell, SectionCard } from '../../../components/Page'
 import { daemonClient } from '../../../lib/daemon-client'
 import { REASONING_LEVELS } from '../../../lib/wire-constants'
 
@@ -80,7 +82,8 @@ const fetchAgent = createServerFn({ method: 'POST' })
   })
 
 export const Route = createFileRoute('/agents/$id/')({
-  validateSearch: (search: Record<string, unknown>): { teamPolicy?: string; view?: 'flow'|'matrix'; selected?: string; vx?: number; vy?: number; vz?: number } => ({
+  validateSearch: (search: Record<string, unknown>): { mode?: 'settings'; teamPolicy?: string; view?: 'flow'|'matrix'; selected?: string; vx?: number; vy?: number; vz?: number } => ({
+    ...(search.mode === 'settings' ? { mode: 'settings' as const } : {}),
     ...(typeof search.teamPolicy === 'string' && search.teamPolicy
       ? { teamPolicy: search.teamPolicy }
       : {}),
@@ -110,32 +113,48 @@ function AgentDetailPage() {
   } = Route.useLoaderData()
   const search = Route.useSearch()
   const router = useRouter()
+  const [confirmAction, setConfirmAction] = useState<'archive' | 'delete' | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
+  const settingsMode = search.mode === 'settings'
 
   async function archive() {
-    if (!confirm(`archive "${resolved.agent.name}"? (reversible)`)) return
-    await fetch(`/api/agents/${resolved.agent.id}/archive`, { method: 'POST' })
+    const response = await fetch(`/api/agents/${encodeURIComponent(resolved.agent.id)}/archive`, {
+      method: 'POST',
+    })
+    if (!response.ok && response.status !== 204) {
+      const body = (await response.json().catch(() => null)) as { error?: string } | null
+      throw new Error(body?.error ?? `Could not archive Agent (${response.status})`)
+    }
     await router.invalidate()
   }
   async function unarchive() {
-    await fetch(`/api/agents/${resolved.agent.id}/unarchive`, { method: 'POST' })
-    await router.invalidate()
+    setActionError(null)
+    try {
+      const response = await fetch(
+        `/api/agents/${encodeURIComponent(resolved.agent.id)}/unarchive`,
+        { method: 'POST' },
+      )
+      if (!response.ok && response.status !== 204) {
+        const body = (await response.json().catch(() => null)) as { error?: string } | null
+        throw new Error(body?.error ?? `Could not restore Agent (${response.status})`)
+      }
+      await router.invalidate()
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : String(error))
+    }
   }
   async function del() {
-    const msg =
-      `Permanently delete agent "${resolved.agent.name}"?\n\n` +
-      `This removes the DB rows (messages, triggers, skill attachments) AND the agent's on-disk directory (memory, templates, state, sessions). This cannot be undone.`
-    if (!confirm(msg)) return
     const policyResponse = await fetch(`/api/teams/${encodeURIComponent(resolved.team.id)}/policy`)
     if (!policyResponse.ok) {
-      alert('The current Team policy is unavailable. Nothing was deleted.')
-      return
+      throw new Error('The current Team policy is unavailable. Nothing was deleted.')
     }
     const current = (await policyResponse.json()) as ResolvedTeamPolicy
     const res = await fetch(`/api/agents/${resolved.agent.id}?expectedTeamRevision=${current.teamPolicy.revision}`, { method: 'DELETE' })
     if (res.ok || res.status === 204) {
       window.location.assign('/agents')
     } else {
-      alert(`failed: ${res.statusText}`)
+      const body = (await res.json().catch(() => null)) as { error?: string } | null
+      throw new Error(body?.error ?? `Could not delete Agent (${res.status})`)
     }
   }
 
@@ -148,10 +167,10 @@ function AgentDetailPage() {
             <span className="text-xs text-mocha-light">Returns to the same projection, viewport, and selection.</span>
           </div>
         )}
-        <div className="flex items-center gap-3">
+        <div className="flex min-w-0 items-center gap-3">
           <AgentAvatar identity={resolved.agent.identity} size={44} />
-          <div>
-            <h1 className="mb-0">{resolved.agent.name}</h1>
+          <div className="min-w-0">
+            <h1 className="mb-0 break-words">{resolved.agent.name}</h1>
             {(resolved.agent.identity?.creature || resolved.agent.identity?.vibe) && (
               <p className="muted mt-0.5 text-sm">
                 {[resolved.agent.identity?.creature, resolved.agent.identity?.vibe]
@@ -163,7 +182,7 @@ function AgentDetailPage() {
         </div>
         <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-2">
           <Tag>
-            <span className="px-1.5 font-mono text-[0.95em] text-mocha select-all">
+            <span className="min-w-0 break-all px-1.5 font-mono text-[0.95em] text-mocha select-all">
               {resolved.agent.id}
             </span>
             <CopyButton
@@ -176,13 +195,16 @@ function AgentDetailPage() {
             status: <span className="ml-1">{resolved.agent.status}</span>
           </Tag>
           <Tag>
-            profile: <code className="ml-1 bg-transparent px-0">{resolved.profile.id}</code>
+            profile:{' '}
+            <code className="ml-1 min-w-0 break-all bg-transparent px-0">
+              {resolved.profile.id}
+            </code>
           </Tag>
           <Tag>
             team:{' '}
             <a
               href={`/teams/${encodeURIComponent(resolved.team.id)}`}
-              className="ml-1 bg-transparent px-0 font-mono underline"
+              className="ml-1 min-w-0 break-all bg-transparent px-0 font-mono underline"
             >
               {resolved.team.id}
             </a>{' '}
@@ -195,7 +217,8 @@ function AgentDetailPage() {
             </a>
           </Tag>
           <Tag>
-            model: <code className="ml-1 bg-transparent px-0">{resolved.model}</code>
+            model:{' '}
+            <code className="ml-1 min-w-0 break-all bg-transparent px-0">{resolved.model}</code>
           </Tag>
           <Tag>
             reasoning:{' '}
@@ -205,31 +228,17 @@ function AgentDetailPage() {
 
         <div className="mt-3 flex flex-wrap gap-2">
           {resolved.agent.status === 'archived' ? (
-            <button type="button" onClick={unarchive} className="ghost-btn">
-              unarchive
-            </button>
+            <Button variant="ghost" onClick={() => void unarchive()}>Restore</Button>
           ) : (
-            <button type="button" onClick={archive} className="ghost-btn">
-              archive
-            </button>
+            <Button variant="ghost" onClick={() => setConfirmAction('archive')}>Archive</Button>
           )}
-          <button
-            type="button"
-            onClick={del}
-            className="ghost-btn border-[rgba(196,135,138,0.4)] text-danger hover:bg-[rgba(196,135,138,0.08)]"
-          >
-            delete permanently
-          </button>
+          <Button variant="danger" onClick={() => setConfirmAction('delete')}>
+            Delete permanently
+          </Button>
         </div>
-
-        <SettingsDetails
-          agentId={resolved.agent.id}
-          currentModelOverride={resolved.agent.modelOverride ?? null}
-          profileDefaultModel={resolved.profile.defaultModel}
-          currentReasoning={resolved.reasoningLevel}
-          modelGroups={modelGroups}
-        />
       </header>
+
+      {actionError && <p role="alert" className="err">{actionError}</p>}
 
       {resolved.agent.status === 'archived' && (
         <div className="mb-4 rounded-md border border-frost bg-fawn/35 px-4 py-2 text-[0.9em] text-chocolate">
@@ -241,10 +250,12 @@ function AgentDetailPage() {
 
       <AgentTabs
         agentId={resolved.agent.id}
-        active="chat"
+        active={settingsMode ? 'settings' : 'chat'}
         archived={resolved.agent.status === 'archived'}
       />
 
+      {!settingsMode ? (
+        <>
       <SectionTitle>Chat</SectionTitle>
       <div className="h-[70vh]">
         <ChatPane
@@ -258,7 +269,18 @@ function AgentDetailPage() {
         chat history persists in bazilion across navigation and restarts.
       </p>
 
-      <section className="mt-10">
+        </>
+      ) : (
+        <div className="space-y-6">
+          <SettingsDetails
+            agentId={resolved.agent.id}
+            currentModelOverride={resolved.agent.modelOverride ?? null}
+            profileDefaultModel={resolved.profile.defaultModel}
+            currentReasoning={resolved.reasoningLevel}
+            modelGroups={modelGroups}
+          />
+
+      <SectionCard title="Team" description="Move this permanent Agent between Team workspaces with an exact policy preview.">
         <SectionTitle>Team</SectionTitle>
         <p className="text-[0.9em] text-mocha-light">
           Current team: <code>{resolved.team.id}</code> ({resolved.team.name}) —{' '}
@@ -270,23 +292,60 @@ function AgentDetailPage() {
           currentTeamId={resolved.team.id}
           teams={teams}
         />
-      </section>
+      </SectionCard>
 
-      <section className="mt-10">
-        <SectionTitle>Skills</SectionTitle>
+      <SectionCard title="Skills" description="Attach or detach prompt skills for this Agent.">
         <SkillsTable
           agentId={resolved.agent.id}
           attached={new Set(resolved.skills)}
           all={skills}
         />
-      </section>
+      </SectionCard>
 
       {telegramConfigured && (
-        <section className="mt-10">
-          <SectionTitle>Telegram</SectionTitle>
+        <SectionCard title="Telegram" description="Bind this Agent to its Telegram topic and control mirroring.">
           <TelegramSection agent={resolved.agent} />
-        </section>
+        </SectionCard>
       )}
+        </div>
+      )}
+
+      <ConfirmDialog
+        open={confirmAction !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmAction(null)
+        }}
+        title={
+          confirmAction === 'delete'
+            ? `Delete ${resolved.agent.name} permanently?`
+            : `Archive ${resolved.agent.name}?`
+        }
+        description={
+          confirmAction === 'delete' ? (
+            <p>
+              This permanently removes messages, triggers, skill attachments, sessions, and the
+              Agent's private on-disk directory. This cannot be undone.
+            </p>
+          ) : (
+            <p>
+              The Agent will stop receiving normal work and disappear from current lists. You
+              can restore it later from “Show archived”.
+            </p>
+          )
+        }
+        confirmLabel={confirmAction === 'delete' ? 'Delete permanently' : 'Archive Agent'}
+        confirmVariant={confirmAction === 'delete' ? 'danger' : 'primary'}
+        onConfirm={async () => {
+          setActionError(null)
+          try {
+            if (confirmAction === 'delete') await del()
+            else await archive()
+          } catch (error) {
+            setActionError(error instanceof Error ? error.message : String(error))
+            throw error
+          }
+        }}
+      />
     </PageShell>
   )
 }
@@ -301,7 +360,7 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 
 function Tag({ children }: { children: React.ReactNode }) {
   return (
-    <span className="inline-flex items-center gap-1 rounded-full border border-frost bg-ivory px-3 py-0.5 text-[0.84em] text-mocha-light">
+    <span className="inline-flex max-w-full min-w-0 flex-wrap items-center gap-1 break-all rounded-full border border-frost bg-ivory px-3 py-0.5 text-[0.84em] text-mocha-light">
       {children}
     </span>
   )
@@ -361,19 +420,21 @@ function SettingsDetails({
   }
 
   return (
-    <details className="mt-3 text-[0.9em]">
-      <summary className="cursor-pointer text-mocha-light">settings</summary>
+    <SectionCard
+      title="Model and reasoning"
+      description="Override the Agent template defaults for this Agent only."
+    >
       <form
         onSubmit={save}
-        className="mt-2 flex flex-wrap items-end gap-3 border-t border-dashed border-frost py-3"
+        className="grid gap-4 sm:grid-cols-2"
       >
-        <label className="flex flex-col gap-1 text-[0.85em] text-mocha-light">
-          model override
+        <label className="m-0 flex min-w-0 flex-col gap-1 text-sm text-foreground">
+          Model override
           <select
             name="modelOverride"
             value={modelOverride}
             onChange={(e) => setModelOverride(e.target.value)}
-            className="min-w-[16rem] rounded-sm border border-frost bg-snow px-2 py-1.5"
+            className="min-w-0"
           >
             <option value="">inherit from profile ({profileDefaultModel})</option>
             {currentModelOverride !== null && !currentInGroups && (
@@ -395,13 +456,13 @@ function SettingsDetails({
             ))}
           </select>
         </label>
-        <label className="flex flex-col gap-1 text-[0.85em] text-mocha-light">
-          reasoning level
+        <label className="m-0 flex min-w-0 flex-col gap-1 text-sm text-foreground">
+          Reasoning level
           <select
             name="reasoningLevel"
             value={reasoning}
             onChange={(e) => setReasoning(e.target.value as ReasoningLevel)}
-            className="min-w-[16rem] rounded-sm border border-frost bg-snow px-2 py-1.5"
+            className="min-w-0"
           >
             {REASONING_LEVELS.map((lvl) => (
               <option key={lvl} value={lvl}>
@@ -410,13 +471,15 @@ function SettingsDetails({
             ))}
           </select>
         </label>
-        <button type="submit" disabled={saving}>
-          {saving ? 'saving…' : 'save'}
-        </button>
-        {savedFlash && <span className="text-[0.85em] text-[#3b7a3b]">saved ✓</span>}
-        {error && <span className="text-[0.85em] text-danger">{error}</span>}
+        <div className="flex flex-wrap items-center gap-3 sm:col-span-2">
+          <Button variant="primary" type="submit" disabled={saving}>
+            {saving ? 'Saving…' : 'Save model settings'}
+          </Button>
+          {savedFlash && <span role="status" className="text-sm text-success">Saved</span>}
+          {error && <span role="alert" className="text-sm text-danger">{error}</span>}
+        </div>
       </form>
-    </details>
+    </SectionCard>
   )
 }
 
@@ -495,12 +558,12 @@ function MoveGroupForm({
 
   return (
     <form onSubmit={move} className="mt-2 flex flex-wrap items-end gap-2">
-      <label className="flex flex-col gap-1 text-[0.85em] text-mocha-light">
+      <label className="flex min-w-0 flex-1 flex-col gap-1 text-[0.85em] text-mocha-light">
         move to:
         <select
           value={teamId}
           onChange={(e) => {setTeamId(e.target.value);setPreview(null)}}
-          className="min-w-[18rem] rounded-sm border border-frost bg-snow px-2 py-1.5"
+          className="w-full min-w-0 rounded-sm border border-frost bg-snow px-2 py-1.5 sm:min-w-[18rem]"
         >
           {teams.map((g) => (
             <option key={g.id} value={g.id}>
@@ -516,10 +579,10 @@ function MoveGroupForm({
           <option value="isolated">isolated</option>
         </select>
       </label>
-      <button type="submit" disabled={moving || teamId === currentTeamId}>
+      <Button variant="primary" type="submit" disabled={moving || teamId === currentTeamId}>
         {moving ? 'working…' : preview ? 'commit reviewed move' : 'review move'}
-      </button>
-      {err && <span className="text-[0.85em] text-danger">{err}</span>}
+      </Button>
+      {err && <span role="alert" className="basis-full text-[0.85em] text-danger">{err}</span>}
       {preview && <div className="basis-full rounded-md border border-sapphire-light bg-sapphire-glow p-3 text-sm"><p>Source revision {preview.source.currentRevision} → <strong>{preview.source.resultingRevision}</strong>, removing {preview.source.removedEdges.length} incident edges. Destination revision {preview.destination.currentRevision} → <strong>{preview.destination.resultingRevision}</strong>, adding {preview.destination.addedEdges.length} edges to {preview.destination.existingEdges.length} existing edges.</p><p className="mt-1 muted">{preview.lineage}</p></div>}
     </form>
   )
@@ -537,17 +600,15 @@ function SkillsTable({
   const router = useRouter()
   const [pending, setPending] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
+  const [riskySkill, setRiskySkill] = useState<SkillInfo | null>(null)
+  const [detachSkill, setDetachSkill] = useState<string | null>(null)
 
-  async function attach(skill: SkillInfo) {
+  async function attach(skill: SkillInfo, findingsConfirmed = false) {
     const findings = skill.scanFindings ?? []
-    const allowFindings =
-      findings.length === 0 ||
-      confirm(
-        `Skill "${skill.name}" has ${findings.length} scan finding${
-          findings.length === 1 ? '' : 's'
-        }. Attach it anyway?`,
-      )
-    if (!allowFindings) return
+    if (findings.length > 0 && !findingsConfirmed) {
+      setRiskySkill(skill)
+      return
+    }
     setPending(skill.name)
     setErr(null)
     try {
@@ -562,7 +623,8 @@ function SkillsTable({
       }
       await router.invalidate()
     } catch (e) {
-      setErr((e as Error).message)
+      setErr(e instanceof Error ? e.message : String(e))
+      throw e
     } finally {
       setPending(null)
     }
@@ -582,6 +644,7 @@ function SkillsTable({
       await router.invalidate()
     } catch (e) {
       setErr((e as Error).message)
+      throw e
     } finally {
       setPending(null)
     }
@@ -592,8 +655,8 @@ function SkillsTable({
   }
   return (
     <>
-      {err && <p className="mb-2 text-[0.85em] text-danger">{err}</p>}
-      <table>
+      {err && <p role="alert" className="mb-2 text-[0.85em] text-danger">{err}</p>}
+      <table className="hidden md:table">
         <thead>
           <tr>
             <th>name</th>
@@ -617,23 +680,21 @@ function SkillsTable({
                 </td>
                 <td>
                   {isAttached ? (
-                    <button
-                      type="button"
-                      className="ghost-btn"
+                    <Button
+                      variant="ghost"
                       disabled={busy}
-                      onClick={() => detach(s.name)}
+                      onClick={() => setDetachSkill(s.name)}
                     >
                       {busy ? '…' : 'detach'}
-                    </button>
+                    </Button>
                   ) : (
-                    <button
-                      type="button"
-                      className="ghost-btn"
+                    <Button
+                      variant="ghost"
                       disabled={busy}
-                      onClick={() => attach(s)}
+                      onClick={() => void attach(s).catch(() => {})}
                     >
                       {busy ? '…' : 'attach'}
-                    </button>
+                    </Button>
                   )}
                 </td>
               </tr>
@@ -641,6 +702,75 @@ function SkillsTable({
           })}
         </tbody>
       </table>
+      <div className="grid gap-3 md:hidden">
+        {all.map((skill) => {
+          const isAttached = attached.has(skill.name)
+          const busy = pending === skill.name
+          return (
+            <article key={skill.name} className="min-w-0 rounded-xl border border-border bg-muted/20 p-4">
+              <div className="flex min-w-0 items-start justify-between gap-3">
+                <code className="min-w-0 break-all font-mono text-sm">{skill.name}</code>
+                <span className={`shrink-0 text-xs font-semibold ${isAttached ? 'text-success' : 'text-muted-foreground'}`}>
+                  {isAttached ? 'Attached' : 'Available'}
+                </span>
+              </div>
+              <p className="mt-2 text-sm text-muted-foreground">
+                {skill.description || 'No description provided.'}
+              </p>
+              <div className="mt-2"><SkillFindingSummary findings={skill.scanFindings ?? []} /></div>
+              <div className="mt-3">
+                {isAttached ? (
+                  <Button variant="ghost" disabled={busy} onClick={() => setDetachSkill(skill.name)}>
+                    {busy ? 'Detaching…' : 'Detach'}
+                  </Button>
+                ) : (
+                  <Button variant="ghost" disabled={busy} onClick={() => void attach(skill).catch(() => {})}>
+                    {busy ? 'Attaching…' : 'Attach'}
+                  </Button>
+                )}
+              </div>
+            </article>
+          )
+        })}
+      </div>
+      <ConfirmDialog
+        open={riskySkill !== null}
+        onOpenChange={(open) => {
+          if (!open) setRiskySkill(null)
+        }}
+        title={`Attach ${riskySkill?.name ?? 'skill'} despite scan findings?`}
+        description={
+          <div className="space-y-2">
+            <p>
+              Static scanning found {riskySkill?.scanFindings?.length ?? 0} potentially unsafe
+              instruction{riskySkill?.scanFindings?.length === 1 ? '' : 's'}. Review the findings
+              before allowing this skill into the Agent's prompt.
+            </p>
+            <SkillFindingSummary findings={riskySkill?.scanFindings ?? []} />
+          </div>
+        }
+        confirmLabel="Attach despite findings"
+        onConfirm={async () => {
+          if (riskySkill) await attach(riskySkill, true)
+        }}
+      />
+      <ConfirmDialog
+        open={detachSkill !== null}
+        onOpenChange={(open) => {
+          if (!open) setDetachSkill(null)
+        }}
+        title={`Detach ${detachSkill ?? 'skill'}?`}
+        description={
+          <p>
+            This removes the skill's instructions from this Agent's future turns. It does not
+            uninstall the skill, and you can attach it again later.
+          </p>
+        }
+        confirmLabel="Detach skill"
+        onConfirm={async () => {
+          if (detachSkill) await detach(detachSkill)
+        }}
+      />
     </>
   )
 }
@@ -677,6 +807,7 @@ function TelegramSection({
   const [error, setError] = useState<string | null>(null)
   const [mirrorMode, setMirrorMode] = useState<TelegramMirrorMode>(agent.telegramMirrorMode)
   const [iconEmoji, setIconEmoji] = useState(agent.telegramIconEmoji ?? '')
+  const [confirmUnbind, setConfirmUnbind] = useState(false)
 
   const isBound = agent.telegramTopicId !== null
 
@@ -704,8 +835,6 @@ function TelegramSection({
   }
 
   async function unbind() {
-    if (!confirm('Unbind this agent from its Telegram topic? The topic stays in Telegram as an orphan.'))
-      return
     setBusy(true)
     setError(null)
     try {
@@ -713,10 +842,14 @@ function TelegramSection({
         `/api/agents/${encodeURIComponent(agent.id)}/telegram/binding`,
         { method: 'DELETE' },
       )
-      if (!res.ok) throw new Error(res.statusText)
+      if (!res.ok && res.status !== 204) {
+        const body = (await res.json().catch(() => null)) as { error?: string } | null
+        throw new Error(body?.error ?? `Could not unbind Telegram topic (${res.status})`)
+      }
       await router.invalidate()
     } catch (e) {
-      setError((e as Error).message)
+      setError(e instanceof Error ? e.message : String(e))
+      throw e
     } finally {
       setBusy(false)
     }
@@ -755,8 +888,9 @@ function TelegramSection({
   }
 
   return (
+    <>
     <div className="text-[0.9em]">
-      <div className="mb-3 flex items-center gap-3">
+      <div className="mb-3 flex flex-wrap items-center gap-3">
         {isBound ? (
           <>
             <span className="rounded-full bg-success/10 px-2 py-0.5 text-xs font-semibold text-success">
@@ -772,14 +906,9 @@ function TelegramSection({
             >
               open in Telegram
             </button>
-            <button
-              type="button"
-              onClick={unbind}
-              disabled={busy}
-              className="ghost-btn border-[rgba(196,135,138,0.4)] text-danger hover:bg-[rgba(196,135,138,0.08)]"
-            >
-              unbind
-            </button>
+            <Button variant="danger" onClick={() => setConfirmUnbind(true)} disabled={busy}>
+              Unbind
+            </Button>
           </>
         ) : (
           <>
@@ -799,9 +928,9 @@ function TelegramSection({
         )}
       </div>
 
-      <div className="flex items-center gap-2">
-        <label htmlFor="mirror-mode" className="text-mocha-light">
-          mirror mode:
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-2">
+        <label htmlFor="mirror-mode" className="m-0 text-mocha-light">
+          Mirror mode
         </label>
         <select
           id="mirror-mode"
@@ -815,9 +944,9 @@ function TelegramSection({
         </select>
       </div>
 
-      <div className="mt-2 flex items-center gap-2">
-        <label htmlFor="topic-icon" className="text-mocha-light">
-          topic icon:
+      <div className="mt-3 flex flex-wrap items-end gap-2">
+        <label htmlFor="topic-icon" className="m-0 text-mocha-light">
+          Topic icon
         </label>
         <input
           id="topic-icon"
@@ -838,7 +967,7 @@ function TelegramSection({
         </button>
       </div>
 
-      {error && <p className="mt-2 text-sm text-danger">{error}</p>}
+      {error && <p role="alert" className="mt-2 text-sm text-danger">{error}</p>}
 
       <p className="mt-3 text-[0.85em] text-mocha-light">
         When bound, every assistant turn for this agent gets mirrored to the topic. Typing in
@@ -847,5 +976,19 @@ function TelegramSection({
         still functional; navigate via the topic list manually.
       </p>
     </div>
+    <ConfirmDialog
+      open={confirmUnbind}
+      onOpenChange={setConfirmUnbind}
+      title={`Unbind ${agent.name} from Telegram?`}
+      description={
+        <p>
+          Telegram ingress and mirroring stop for this Agent. The existing forum topic remains in
+          Telegram as an orphan until you remove it there.
+        </p>
+      }
+      confirmLabel="Unbind Telegram topic"
+      onConfirm={unbind}
+    />
+    </>
   )
 }

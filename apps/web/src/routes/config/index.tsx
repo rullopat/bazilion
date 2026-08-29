@@ -3,14 +3,31 @@ import type {
   OpenAICodexStatus,
   ProviderConfigEntry,
   ProviderConfigResponse,
+  ProviderTestResponse,
 } from '@bazilion/api-types'
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
-import { useState } from 'react'
+import {
+  CheckCircle2,
+  ChevronDown,
+  ChevronRight,
+  Search,
+  Server,
+  ShieldCheck,
+} from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Button } from '../../components/Button'
+import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { ConfigPage } from '../../components/ConfigPage'
 import { ExecutionSecurityCard } from '../../components/ExecutionSecurityCard'
 import { FieldRow } from '../../components/FieldRow'
+import { EmptyState, StatusBadge } from '../../components/Page'
 import { daemonClient } from '../../lib/daemon-client'
+import {
+  groupProviders,
+  providerHasConfiguration,
+  providerReadiness,
+} from '../../lib/provider-presentation'
 
 interface ProvidersData {
   providers: ProviderConfigEntry[]
@@ -38,30 +55,172 @@ export const Route = createFileRoute('/config/')({
 function ProvidersPage() {
   const { providers, openaiCodex, executionSecurity } = Route.useLoaderData()
   const setupComplete = providers.some((p) => p.enabled && p.curated.length > 0)
+  const startedComplete = useRef(setupComplete)
+  const [showCompletion, setShowCompletion] = useState(false)
+  const [query, setQuery] = useState('')
+  const sections = useMemo(() => groupProviders(providers, query), [providers, query])
+  const configured = providers.filter(providerHasConfiguration).length
+  const enabled = providers.filter((provider) => provider.enabled).length
+
+  useEffect(() => {
+    if (!startedComplete.current && setupComplete) setShowCompletion(true)
+  }, [setupComplete])
+
   return (
     <ConfigPage
       active="providers"
       title="Providers"
       description={
         <>
-          Configure credentials, endpoints, and the curated model lists used by agent
-          templates and running agents. Secrets are encrypted; URLs and IDs remain
-          inspectable configuration.
+          Connect the model services your agents may use. Credentials stay encrypted;
+          advanced endpoint and environment names remain available inside each provider.
         </>
       }
     >
-      <ExecutionSecurityCard status={executionSecurity} />
-      {!setupComplete && <SetupBlockerBanner providers={providers} openaiCodex={openaiCodex} />}
-      <div className="space-y-3">
-        {providers.map((p) => (
-          <ProviderCard
-            key={p.id}
-            p={p}
-            openaiCodexStatus={p.id === 'openai-codex' ? openaiCodex : undefined}
-          />
-        ))}
+      <div className="grid gap-3 sm:grid-cols-3" aria-label="Provider summary">
+        <SummaryStat label="Configured" value={configured} detail="credentials, models, or toggle" />
+        <SummaryStat label="Enabled" value={enabled} detail="available to agent runtime" />
+        <SummaryStat
+          label="Selected models"
+          value={providers.reduce((count, provider) => count + (provider.enabled ? provider.curated.length : 0), 0)}
+          detail="configured; test connectivity separately"
+        />
       </div>
+
+      <details className="rounded-2xl border border-border bg-card shadow-baziu-sm">
+        <summary className="flex min-h-12 cursor-pointer list-none items-center gap-3 px-4 py-3 text-sm font-semibold text-foreground marker:hidden sm:px-5">
+          <ShieldCheck className="size-4 text-primary" aria-hidden="true" />
+          Execution security
+          <span className="ml-auto text-xs font-normal text-muted-foreground">
+            Inspect host and protected-turn posture
+          </span>
+          <ChevronDown className="size-4 text-muted-foreground" aria-hidden="true" />
+        </summary>
+        <div className="border-t border-border p-3 sm:p-4">
+          <ExecutionSecurityCard status={executionSecurity} />
+        </div>
+      </details>
+
+      {!setupComplete && <SetupBlockerBanner providers={providers} openaiCodex={openaiCodex} />}
+
+      {showCompletion && (
+        <section
+          role="status"
+          className="rounded-2xl border border-success/30 bg-success/10 p-5 text-sm"
+        >
+          <div className="flex items-start gap-3">
+            <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-success" aria-hidden="true" />
+            <div className="min-w-0 flex-1">
+              <h2 className="m-0 font-body text-base font-semibold text-foreground">
+                Your default workspace is ready
+              </h2>
+              <p className="mt-1 text-muted-foreground">
+                Bazilion created the default Agent template and Team. Test the selected model
+                below before relying on it, or continue to spawn your first agent.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <a href="/agents" className="btn-primary no-underline">
+                  Spawn your first agent
+                  <ChevronRight className="size-4" aria-hidden="true" />
+                </a>
+                <Button variant="ghost" onClick={() => setShowCompletion(false)}>
+                  Keep configuring
+                </Button>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
+      <div className="rounded-2xl border border-border bg-card p-4 shadow-baziu-sm sm:p-5">
+        <label htmlFor="provider-search" className="m-0 text-sm font-semibold text-foreground">
+          Find a provider
+        </label>
+        <div className="relative mt-2">
+          <Search
+            className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+            aria-hidden="true"
+          />
+          <input
+            id="provider-search"
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search by service, model, or advanced key"
+            className="pl-9"
+          />
+        </div>
+        <p className="mt-2 text-xs leading-5 text-muted-foreground">
+          Start with one provider. Everything else stays collapsed until you need it.
+        </p>
+      </div>
+
+      {sections.length === 0 ? (
+        <EmptyState
+          icon={<Search className="size-4" aria-hidden="true" />}
+          title="No providers match"
+          description={`Try another search instead of “${query}”.`}
+          actions={<Button variant="ghost" onClick={() => setQuery('')}>Clear search</Button>}
+        />
+      ) : (
+        <div className="space-y-4">
+          {sections.map((section) => (
+            <details
+              key={`${section.key}:${query}`}
+              open={Boolean(query) || section.key === 'configured' || (!setupComplete && section.key === 'recommended')}
+              className="group/providers overflow-hidden rounded-2xl border border-border bg-card shadow-baziu-sm"
+            >
+              <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-4 marker:hidden sm:px-5">
+                <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-accent text-accent-foreground">
+                  <Server className="size-4" aria-hidden="true" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-semibold text-foreground">{section.title}</span>
+                  <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">
+                    {section.description}
+                  </span>
+                </span>
+                <span className="rounded-full border border-border bg-muted px-2 py-0.5 text-xs font-semibold text-muted-foreground">
+                  {section.providers.length}
+                </span>
+                <ChevronDown
+                  className="size-4 shrink-0 text-muted-foreground transition-transform group-open/providers:rotate-180"
+                  aria-hidden="true"
+                />
+              </summary>
+              <div className="space-y-2 border-t border-border bg-muted/20 p-2 sm:p-3">
+                {section.providers.map((provider) => (
+                  <ProviderCard
+                    key={provider.id}
+                    p={provider}
+                    initiallyOpen={
+                      provider.enabled ||
+                      Boolean(query) ||
+                      (!setupComplete && provider.id === 'openai-codex')
+                    }
+                    openaiCodexStatus={
+                      provider.id === 'openai-codex' ? openaiCodex : undefined
+                    }
+                  />
+                ))}
+              </div>
+            </details>
+          ))}
+        </div>
+      )}
     </ConfigPage>
+  )
+}
+
+function SummaryStat({ label, value, detail }: { label: string; value: number; detail: string }) {
+  return (
+    <div className="min-w-0 rounded-2xl border border-border bg-card p-4 shadow-baziu-sm">
+      <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        {label}
+      </div>
+      <div className="mt-1 text-2xl font-semibold text-foreground">{value}</div>
+      <div className="mt-0.5 text-xs leading-5 text-muted-foreground">{detail}</div>
+    </div>
   )
 }
 
@@ -86,24 +245,22 @@ function SetupBlockerBanner({
   }
   const enabledCount = providers.filter((p) => p.enabled).length
   return (
-    <div className="rounded-md border-2 border-warning/25 bg-warning/10 px-4 py-3 text-sm">
-      <div className="font-semibold text-warning mb-1">First-run setup is not complete</div>
-      <p className="text-warning mb-2">
-        The rest of the app stays on the Welcome screen until at least one provider is{' '}
-        <strong>enabled</strong> and has <strong>at least one curated model</strong>. Use a
-        catalog chip when one is available, or paste the exact model id from your local/server
-        provider.
+    <div role="status" className="rounded-2xl border border-warning/30 bg-warning/10 p-5 text-sm">
+      <div className="font-semibold text-foreground mb-1">Finish your first provider</div>
+      <p className="text-muted-foreground mb-2">
+        Enable one provider, save at least one exact model id, then send the small test request.
+        Saving the model creates your default resources; a successful test confirms that the
+        credential and model actually work.
       </p>
       {issues.length > 0 ? (
-        <ul className="list-disc pl-5 text-warning space-y-0.5">
+        <ul className="list-disc space-y-1 pl-5 text-warning">
           {issues.map((i) => (
             <li key={i}>{i}</li>
           ))}
         </ul>
       ) : enabledCount === 0 ? (
         <p className="text-warning">
-          No providers are enabled yet — pick one below, flip the toggle on, set credentials,
-          and save at least one model name.
+          No provider is enabled. Open a recommended option below and follow its steps.
         </p>
       ) : null}
     </div>
@@ -113,27 +270,46 @@ function SetupBlockerBanner({
 function ProviderCard({
   p,
   openaiCodexStatus,
+  initiallyOpen,
 }: {
   p: ProviderConfigEntry
   openaiCodexStatus: OpenAICodexStatus | undefined
+  initiallyOpen: boolean
 }) {
   const router = useRouter()
   const [enabled, setEnabled] = useState(p.enabled)
+  const [expanded, setExpanded] = useState(initiallyOpen)
   const [models, setModels] = useState(p.curated.join('\n'))
   const [savingModels, setSavingModels] = useState(false)
-  const [modelStatus, setModelStatus] = useState<string | null>(null)
+  const [modelStatus, setModelStatus] = useState<
+    { kind: 'success'; message: string } | { kind: 'error'; message: string } | null
+  >(null)
+  const [toggleError, setToggleError] = useState<string | null>(null)
+  const [testModel, setTestModel] = useState(p.curated[0] ?? '')
+  const [testing, setTesting] = useState(false)
+  const [testResult, setTestResult] = useState<
+    { kind: 'success'; message: string } | { kind: 'error'; message: string } | null
+  >(null)
+  const readiness = providerReadiness({ ...p, enabled })
 
   async function toggle(next: boolean) {
     setEnabled(next)
+    setToggleError(null)
     try {
-      await fetch(`/api/config/providers/${encodeURIComponent(p.id)}/enabled`, {
+      const response = await fetch(`/api/config/providers/${encodeURIComponent(p.id)}/enabled`, {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ enabled: next }),
       })
+      if (!response.ok) {
+        const body = (await response.json().catch(() => null)) as { error?: string } | null
+        throw new Error(body?.error ?? `Could not update provider (${response.status})`)
+      }
+      if (next) setExpanded(true)
       await router.invalidate()
-    } catch {
+    } catch (error) {
       setEnabled(!next)
+      setToggleError(error instanceof Error ? error.message : String(error))
     }
   }
 
@@ -155,40 +331,101 @@ function ProviderCard({
         const j = (await res.json().catch(() => ({}))) as { error?: string }
         throw new Error(j.error ?? `${res.status} ${res.statusText}`)
       }
-      setModelStatus('saved ✓')
+      setModelStatus({
+        kind: 'success',
+        message: 'Models saved. Run the connection test before relying on them.',
+      })
+      setTestModel(list[0] ?? '')
+      setTestResult(null)
       await router.invalidate()
     } catch (e) {
-      setModelStatus(`error: ${(e as Error).message}`)
+      setModelStatus({ kind: 'error', message: (e as Error).message })
     } finally {
       setSavingModels(false)
     }
   }
 
+  async function testConnection() {
+    if (!testModel) return
+    setTesting(true)
+    setTestResult(null)
+    try {
+      const response = await fetch('/api/providers/test', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          model: `${p.id}:${testModel}`,
+          message: 'Reply with exactly: Bazilion connection verified.',
+        }),
+      })
+      const body = (await response.json().catch(() => null)) as
+        | (ProviderTestResponse & { error?: string })
+        | null
+      if (!response.ok) {
+        throw new Error(body?.error ?? `Connection test failed (${response.status})`)
+      }
+      setTestResult({
+        kind: 'success',
+        message: `Verified ${p.displayName} with ${testModel}.`,
+      })
+      await router.invalidate()
+    } catch (error) {
+      setTestResult({
+        kind: 'error',
+        message: error instanceof Error ? error.message : String(error),
+      })
+    } finally {
+      setTesting(false)
+    }
+  }
+
   return (
-    <section className="overflow-hidden rounded-lg border bg-card">
-      <header className="flex flex-wrap items-center gap-3 px-4 py-3">
-        <span className="font-mono font-semibold">{p.id}</span>
-        <span className="text-muted-foreground text-sm">· {p.displayName}</span>
-        <label className="flex items-center gap-1.5 text-xs uppercase tracking-wide font-semibold cursor-pointer">
+    <section className="overflow-hidden rounded-xl border border-border bg-card">
+      <header className="flex min-w-0 flex-wrap items-center gap-2 px-3 py-3 sm:px-4">
+        <button
+          type="button"
+          className="unstyled flex min-w-0 flex-1 items-center gap-2 rounded-lg text-left"
+          aria-expanded={expanded}
+          aria-controls={`provider-${p.id}`}
+          onClick={() => setExpanded((value) => !value)}
+        >
+          <ChevronRight
+            className={`size-4 shrink-0 text-muted-foreground transition-transform ${expanded ? 'rotate-90' : ''}`}
+            aria-hidden="true"
+          />
+          <span className="min-w-0">
+            <span className="block truncate text-sm font-semibold text-foreground">
+              {p.displayName}
+            </span>
+            <span className="block truncate font-mono text-xs text-muted-foreground">{p.id}</span>
+          </span>
+        </button>
+        <StatusBadge variant={readiness.tone === 'success' ? 'success' : readiness.tone === 'warning' ? 'warning' : 'neutral'}>
+          {readiness.label}
+        </StatusBadge>
+        <label className="m-0 flex cursor-pointer items-center gap-1.5 rounded-lg px-1 text-xs font-semibold">
           <input
             type="checkbox"
             checked={enabled}
             onChange={(e) => toggle(e.target.checked)}
             className="size-4"
+            aria-label={`${enabled ? 'Disable' : 'Enable'} ${p.displayName}`}
           />
           <span className={enabled ? 'text-success' : 'text-muted-foreground'}>
             {enabled ? 'enabled' : 'disabled'}
           </span>
         </label>
-        <span className="w-full text-xs text-muted-foreground sm:ml-auto sm:w-auto">
+        <span className="w-full pl-6 text-xs text-muted-foreground sm:w-auto sm:pl-0">
           {p.curated.length > 0 && <span>{p.curated.length} curated</span>}
           {p.catalog.length > 0 && <span> · {p.catalog.length} catalog</span>}
           {p.live && !p.live.error && <span> · {p.live.models.length} live</span>}
         </span>
       </header>
 
-      {enabled && (
-        <div className="border-t border-dashed px-4 py-3">
+      {toggleError && <p role="alert" className="mx-4 mb-3 text-sm text-danger">{toggleError}</p>}
+
+      {expanded && (
+        <div id={`provider-${p.id}`} className="border-t border-dashed px-3 py-4 sm:px-4">
           {p.hint && <p className="text-xs text-muted-foreground mb-2">{p.hint}</p>}
 
           {p.id === 'openai-codex' && openaiCodexStatus && (
@@ -205,8 +442,11 @@ function ProviderCard({
             <FieldRow key={f.envVar} field={f} />
           ))}
 
-          <h4 className="mt-4 mb-1 text-xs uppercase tracking-wide text-muted-foreground">
-            curated models (one per line)
+          <h4
+            id={`provider-${p.id}-models-label`}
+            className="mt-4 mb-1 font-body text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+          >
+            Models available to agents
           </h4>
           {p.curated.length === 0 && (
             <p className="mb-2 text-xs font-medium text-warning">
@@ -217,6 +457,8 @@ function ProviderCard({
           )}
           <form onSubmit={saveModels}>
             <textarea
+              id={`provider-${p.id}-models`}
+              aria-labelledby={`provider-${p.id}-models-label`}
               value={models}
               onChange={(e) => setModels(e.target.value)}
               rows={Math.max(3, Math.min(8, models.split('\n').length))}
@@ -233,10 +475,17 @@ function ProviderCard({
                 disabled={savingModels}
                 className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-50"
               >
-                save models
+                {savingModels ? 'Saving…' : 'Save models'}
               </button>
               {modelStatus && (
-                <span className="text-xs text-muted-foreground">{modelStatus}</span>
+                <span
+                  role={modelStatus.kind === 'error' ? 'alert' : 'status'}
+                  className={`text-xs ${
+                    modelStatus.kind === 'error' ? 'text-danger' : 'text-success'
+                  }`}
+                >
+                  {modelStatus.message}
+                </span>
               )}
             </div>
           </form>
@@ -264,7 +513,51 @@ function ProviderCard({
             </>
           )}
           {p.live?.error && (
-            <p className="text-xs text-danger mt-2">could not fetch: {p.live.error}</p>
+            <p role="alert" className="text-xs text-danger mt-2">Could not fetch live models: {p.live.error}</p>
+          )}
+
+          {enabled && p.curated.length > 0 && (
+            <div className="mt-4 rounded-xl border border-border bg-muted/30 p-3">
+              <h4 className="m-0 font-body text-sm font-semibold text-foreground">
+                Test the connection
+              </h4>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                Sends one short real request. Your provider may charge its normal token cost.
+              </p>
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end">
+                <label className="m-0 min-w-0 flex-1 text-xs font-semibold text-foreground">
+                  Model
+                  <select
+                    className="mt-1"
+                    value={testModel}
+                    onChange={(event) => setTestModel(event.target.value)}
+                  >
+                    {p.curated.map((model) => (
+                      <option key={model} value={model}>{model}</option>
+                    ))}
+                  </select>
+                </label>
+                <Button
+                  variant="ghost"
+                  disabled={testing || !testModel}
+                  onClick={() => void testConnection()}
+                >
+                  {testing ? 'Testing…' : 'Send test request'}
+                </Button>
+              </div>
+              {testResult && (
+                <p
+                  role={testResult.kind === 'error' ? 'alert' : 'status'}
+                  className={`mt-3 rounded-lg px-3 py-2 text-sm ${
+                    testResult.kind === 'error'
+                      ? 'bg-danger/10 text-danger'
+                      : 'bg-success/10 text-success'
+                  }`}
+                >
+                  {testResult.message}
+                </p>
+              )}
+            </div>
           )}
         </div>
       )}
@@ -372,6 +665,7 @@ function ChipList({ items, onPick }: { items: string[]; onPick: (name: string) =
           key={m}
           type="button"
           onClick={() => onPick(m)}
+          aria-label={`Add ${m} to selected models`}
           className="rounded border bg-card px-2 py-0.5 font-mono text-xs hover:border-primary hover:bg-accent"
         >
           {m}
@@ -385,6 +679,7 @@ function OpenAICodexCard({ status }: { status: OpenAICodexStatus }) {
   const router = useRouter()
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  const [confirmDisconnect, setConfirmDisconnect] = useState(false)
 
   async function connect() {
     setBusy(true)
@@ -406,16 +701,22 @@ function OpenAICodexCard({ status }: { status: OpenAICodexStatus }) {
     setBusy(true)
     setErr(null)
     try {
-      await fetch('/api/auth/openai', { method: 'DELETE' })
+      const response = await fetch('/api/auth/openai', { method: 'DELETE' })
+      if (!response.ok && response.status !== 204) {
+        const body = (await response.json().catch(() => null)) as { error?: string } | null
+        throw new Error(body?.error ?? `Could not disconnect ChatGPT (${response.status})`)
+      }
       await router.invalidate()
     } catch (e) {
-      setErr((e as Error).message)
+      setErr(e instanceof Error ? e.message : String(e))
+      throw e
     } finally {
       setBusy(false)
     }
   }
 
   return (
+    <>
     <div className="rounded-md border bg-muted/30 p-3 mb-3">
       {status.connected ? (
         <>
@@ -435,14 +736,9 @@ function OpenAICodexCard({ status }: { status: OpenAICodexStatus }) {
               </span>
             )}
           </div>
-          <button
-            type="button"
-            onClick={disconnect}
-            disabled={busy}
-            className="rounded-md border px-3 py-1.5 text-sm text-danger hover:bg-danger/10 disabled:opacity-50"
-          >
-            disconnect
-          </button>
+          <Button variant="danger" onClick={() => setConfirmDisconnect(true)} disabled={busy}>
+            Disconnect ChatGPT
+          </Button>
         </>
       ) : (
         <>
@@ -462,7 +758,21 @@ function OpenAICodexCard({ status }: { status: OpenAICodexStatus }) {
           </button>
         </>
       )}
-      {err && <p className="text-sm text-danger mt-2">{err}</p>}
+      {err && <p role="alert" className="text-sm text-danger mt-2">{err}</p>}
     </div>
+    <ConfirmDialog
+      open={confirmDisconnect}
+      onOpenChange={setConfirmDisconnect}
+      title="Disconnect ChatGPT?"
+      description={
+        <p>
+          This removes the saved OpenAI Codex OAuth credentials. Agents using an{' '}
+          <code>openai-codex</code> model will stop working until you connect again.
+        </p>
+      }
+      confirmLabel="Disconnect ChatGPT"
+      onConfirm={disconnect}
+    />
+    </>
   )
 }

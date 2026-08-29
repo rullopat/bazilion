@@ -3,9 +3,11 @@ import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { useState } from 'react'
 import { Button } from '../../../components/Button'
+import { ConfirmDialog } from '../../../components/ConfirmDialog'
 import { PageHeader, PageShell } from '../../../components/Page'
 import { ProfileCommunicationEditor } from '../../../components/team-policy/ProfileCommunicationEditor'
 import { TemplatesTabs } from '../../../components/TemplatesTabs'
+import { UnsavedChangesGuard } from '../../../components/UnsavedChangesGuard'
 import { daemonClient } from '../../../lib/daemon-client'
 import { DEFAULT_PROFILE_COMMUNICATION } from '../../../lib/team-policy'
 
@@ -55,14 +57,14 @@ export const Route = createFileRoute('/templates/agents/')({
 function ProfilesPage() {
   const { profiles, modelGroups, skills, templates } = Route.useLoaderData()
   const router = useRouter()
+  const [deleteTarget, setDeleteTarget] = useState<ProfileWithCounts | null>(null)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   async function del(id: string) {
-    if (!confirm('delete profile and all its files?')) return
-    const res = await fetch(`/api/profiles/${id}`, { method: 'DELETE' })
+    const res = await fetch(`/api/profiles/${encodeURIComponent(id)}`, { method: 'DELETE' })
     if (!res.ok && res.status !== 204) {
       const body = (await res.json().catch(() => null)) as { error?: string } | null
-      alert(body?.error ?? res.statusText)
-      return
+      throw new Error(body?.error ?? res.statusText)
     }
     await router.invalidate()
   }
@@ -74,6 +76,11 @@ function ProfilesPage() {
         title="Agent templates"
         description="Define reusable identity, model, skills, and communication defaults for newly spawned agents."
       />
+      {deleteError && (
+        <p role="alert" className="err">
+          {deleteError}
+        </p>
+      )}
       <TemplatesTabs />
 
       <CreateProfileForm
@@ -125,7 +132,13 @@ function ProfilesPage() {
                 <td className="text-xs text-mocha-light">{skillsLabel}</td>
                 <td>
                   {p.agentCount === 0 ? (
-                    <Button variant="danger" onClick={() => del(p.id)}>
+                    <Button
+                      variant="danger"
+                      onClick={() => {
+                        setDeleteError(null)
+                        setDeleteTarget(p)
+                      }}
+                    >
                       delete
                     </Button>
                   ) : (
@@ -140,6 +153,29 @@ function ProfilesPage() {
         </tbody>
       </table>
       </div>
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title={`Delete Agent template ${deleteTarget?.name ?? ''}?`}
+        description={
+          <p>
+            This permanently deletes <code className="font-mono">{deleteTarget?.id}</code> and all
+            of its template files. It cannot be restored. Existing Agents keep their own copies.
+          </p>
+        }
+        confirmLabel="delete Agent template"
+        onConfirm={async () => {
+          if (!deleteTarget) return
+          try {
+            await del(deleteTarget.id)
+          } catch (err) {
+            setDeleteError(err instanceof Error ? err.message : String(err))
+            throw err
+          }
+        }}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null)
+        }}
+      />
     </PageShell>
   )
 }
@@ -191,6 +227,21 @@ function CreateProfileForm({
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const dirty =
+    id.length > 0 ||
+    name.length > 0 ||
+    model.length > 0 ||
+    soul !== templates.soul ||
+    identity !== templates.identity ||
+    bootstrap !== templates.bootstrap ||
+    !enableBootstrap ||
+    agentsTpl !== templates.agents ||
+    !enableAgents ||
+    toolsTpl !== templates.tools ||
+    !enableTools ||
+    skillsMode !== 'all' ||
+    picked.size > 0 ||
+    JSON.stringify(communication) !== JSON.stringify(DEFAULT_PROFILE_COMMUNICATION)
 
   function togglePicked(name: string) {
     setPicked((prev) => {
@@ -241,6 +292,9 @@ function CreateProfileForm({
       setId('')
       setName('')
       setModel('')
+      setSoul(templates.soul)
+      setIdentity(templates.identity)
+      setBootstrap(templates.bootstrap)
       setEnableBootstrap(true)
       setAgentsTpl(templates.agents)
       setEnableAgents(true)
@@ -260,8 +314,9 @@ function CreateProfileForm({
 
   return (
     <form className="card" onSubmit={submit}>
+      <UnsavedChangesGuard when={dirty && !submitting} subject="Agent template draft" />
       <h3>create agent template</h3>
-      {error && <div className="err">{error}</div>}
+      {error && <div role="alert" className="err">{error}</div>}
 
       <Tabs
         items={[

@@ -1,7 +1,9 @@
-import type { ListSessionsResponse, ListTokensResponse } from '@bazilion/api-types'
+import type { ListSessionsResponse, ListTokensResponse, WebSession, WebToken } from '@bazilion/api-types'
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { useState } from 'react'
+import { Button } from '../../components/Button'
+import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { ConfigPage } from '../../components/ConfigPage'
 import { daemonClient } from '../../lib/daemon-client'
 
@@ -39,6 +41,8 @@ function TokensPage() {
   const [expiresDays, setExpiresDays] = useState('90')
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [revokeTokenTarget, setRevokeTokenTarget] = useState<WebToken | null>(null)
+  const [revokeSessionTarget, setRevokeSessionTarget] = useState<WebSession | null>(null)
 
   async function mint(e: React.FormEvent) {
     e.preventDefault()
@@ -65,19 +69,30 @@ function TokensPage() {
     }
   }
 
-  async function revoke(id: string) {
-    await fetch(`/api/tokens/${id}`, { method: 'DELETE' })
-    await router.invalidate()
+  async function revoke(id: string, revokesCurrentSession: boolean) {
+    const response = await fetch(`/api/tokens/${encodeURIComponent(id)}`, { method: 'DELETE' })
+    if (!response.ok && response.status !== 204) {
+      const body = (await response.json().catch(() => ({}))) as { error?: string }
+      throw new Error(body.error ?? 'Could not revoke API token')
+    }
+    if (revokesCurrentSession) {
+      window.location.assign('/login')
+    } else {
+      await router.invalidate()
+    }
   }
 
-  async function revokeSession(id: string) {
+  async function revokeSession(id: string, current: boolean) {
     const response = await fetch(`/api/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' })
     if (!response.ok) {
       const body = (await response.json().catch(() => ({}))) as { error?: string }
-      setErr(body.error ?? 'Could not revoke browser session')
-      return
+      throw new Error(body.error ?? 'Could not revoke browser session')
     }
-    await router.invalidate()
+    if (current) {
+      window.location.assign('/login')
+    } else {
+      await router.invalidate()
+    }
   }
 
   return (
@@ -123,13 +138,9 @@ function TokensPage() {
               className="mt-1 block w-full rounded-md border bg-background px-3 py-2 text-sm sm:w-36"
             />
           </label>
-          <button
-            type="submit"
-            disabled={busy}
-            className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
-          >
+          <Button variant="primary" type="submit" disabled={busy}>
             {busy ? 'creating…' : 'create'}
-          </button>
+          </Button>
         </form>
         {created && (
           <div className="rounded-md border border-warning/25 bg-warning/10 p-3">
@@ -139,7 +150,7 @@ function TokensPage() {
             <pre className="font-mono text-xs whitespace-pre-wrap break-all">{created}</pre>
           </div>
         )}
-        {err && <p className="text-sm text-danger">{err}</p>}
+        {err && <p role="alert" className="text-sm text-danger">{err}</p>}
       </section>
 
       <div>
@@ -209,13 +220,16 @@ function TokensPage() {
                   </td>
                   <td>
                     {!t.revokedAt && !isBootstrap && (
-                      <button
-                        type="button"
-                        onClick={() => revoke(t.id)}
-                        className="rounded-md border px-2 py-1 text-xs text-danger hover:bg-danger/10"
+                      <Button
+                        variant="danger"
+                        className="text-xs"
+                        onClick={() => {
+                          setErr(null)
+                          setRevokeTokenTarget(t)
+                        }}
                       >
                         revoke
-                      </button>
+                      </Button>
                     )}
                   </td>
                 </tr>
@@ -264,13 +278,16 @@ function TokensPage() {
                   <td className="text-xs text-muted-foreground">{fmtTs(session.idleExpiresAt)}</td>
                   <td className="text-xs text-muted-foreground">{fmtTs(session.absoluteExpiresAt)}</td>
                   <td>
-                    <button
-                      type="button"
-                      onClick={() => revokeSession(session.id)}
-                      className="rounded-md border px-2 py-1 text-xs text-danger hover:bg-danger/10"
+                    <Button
+                      variant="danger"
+                      className="text-xs"
+                      onClick={() => {
+                        setErr(null)
+                        setRevokeSessionTarget(session)
+                      }}
                     >
                       revoke
-                    </button>
+                    </Button>
                   </td>
                 </tr>
               ))}
@@ -278,6 +295,66 @@ function TokensPage() {
           </table>
         </div>
       </section>
+      <ConfirmDialog
+        open={revokeTokenTarget !== null}
+        title={`Revoke ${revokeTokenTarget?.label ?? ''}?`}
+        description={
+          <p>
+            This permanently revokes device token{' '}
+            <code className="font-mono">{revokeTokenTarget?.id}</code> and every browser session
+            created from it. Clients using it will be signed out and cannot reconnect with this
+            credential.
+            {sessions.some(
+              (session) =>
+                session.current && session.deviceTokenId === revokeTokenTarget?.id,
+            ) && ' This includes the browser session you are using now.'}
+          </p>
+        }
+        confirmLabel="revoke token and sessions"
+        onConfirm={async () => {
+          if (!revokeTokenTarget) return
+          try {
+            await revoke(
+              revokeTokenTarget.id,
+              sessions.some(
+                (session) =>
+                  session.current && session.deviceTokenId === revokeTokenTarget.id,
+              ),
+            )
+          } catch (error) {
+            setErr(error instanceof Error ? error.message : String(error))
+            throw error
+          }
+        }}
+        onOpenChange={(open) => {
+          if (!open) setRevokeTokenTarget(null)
+        }}
+      />
+      <ConfirmDialog
+        open={revokeSessionTarget !== null}
+        title={`Revoke ${revokeSessionTarget?.deviceLabel ?? ''} browser session?`}
+        description={
+          <p>
+            This ends browser session <code className="font-mono">{revokeSessionTarget?.id}</code>
+            {revokeSessionTarget?.current
+              ? ' and signs this browser out immediately.'
+              : '. The device token remains active for future logins.'}
+          </p>
+        }
+        confirmLabel={revokeSessionTarget?.current ? 'sign out this browser' : 'revoke session'}
+        onConfirm={async () => {
+          if (!revokeSessionTarget) return
+          try {
+            await revokeSession(revokeSessionTarget.id, revokeSessionTarget.current)
+          } catch (error) {
+            setErr(error instanceof Error ? error.message : String(error))
+            throw error
+          }
+        }}
+        onOpenChange={(open) => {
+          if (!open) setRevokeSessionTarget(null)
+        }}
+      />
     </ConfigPage>
   )
 }

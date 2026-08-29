@@ -23,7 +23,7 @@ npm install -g bazilion
 bazilion dashboard
 ```
 
-`dashboard` starts the daemon on `127.0.0.1:4321`, starts the bundled web UI on `127.0.0.1:4322`, and opens the dashboard in your browser. The daemon auto-bootstraps `~/.bazilion` on first run (creates dirs, runs migrations, mints the bootstrap token, writes `auth.json`). Save the token somewhere — the local CLI picks it up automatically from `~/.bazilion/auth.json`, but you'll need it to log in to the web UI or pair remote clients.
+`dashboard` starts the daemon on `127.0.0.1:4321`, starts the bundled web UI on `127.0.0.1:4322`, and opens the dashboard in your browser. The daemon auto-bootstraps `~/.bazilion` on first run (creates dirs, runs migrations, mints the bootstrap token, writes `auth.json`). The local CLI reads that token automatically. While provider setup is still incomplete, you can also paste it into the browser login to obtain a bounded setup session; remote CLI and mobile clients always use separately minted device credentials.
 
 > **Alpha database contract:** the schema is a clean-install-only `0001_init.sql`. Bazilion does
 > not carry database, API, URL, or filesystem compatibility adapters yet. After a breaking schema
@@ -71,7 +71,7 @@ pnpm tsx apps/cli/src/index.ts serve
 
 # In another terminal, start the web UI dev server on 4322.
 cd apps/web && pnpm dev
-# → http://127.0.0.1:4322 — paste the bootstrap token to log in
+# → http://127.0.0.1:4322 — on a fresh install, paste the bootstrap token to finish setup
 ```
 
 From the source checkout, every CLI command is `pnpm tsx apps/cli/src/index.ts <cmd>` instead of `bazilion <cmd>`. Example: `pnpm tsx apps/cli/src/index.ts agent spawn --profile default --name first`. Build the distributable bundle with `pnpm build`.
@@ -169,7 +169,7 @@ bazilion/
 │   ├── cli/                      # bazilion binary
 │   ├── daemon/                   # Hono HTTP API (booted by `bazilion serve`)
 │   ├── web/                      # TanStack Start UI (pairs with apps/daemon)
-│   └── mobile/                   # Expo / React Native app (LAN/Tailscale pairing)
+│   └── mobile/                   # Expo / React Native app (private HTTPS gateway pairing)
 └── packages/
     ├── api-types/                # hermetic HTTP/IPC wire types (zero deps)
     └── client/                   # cross-origin HTTP client used by CLI + mobile
@@ -256,9 +256,12 @@ bazilion token revoke <id>
 bazilion session list
 ```
 
-The local bootstrap token cannot expire or be revoked because it seeds secrets encryption, and
-browser login rejects it. Device bearers are exchanged for hashed, bounded browser sessions with
-session-bound CSRF protection. See [the private gateway guide](docs/private-gateway.md) for service
+The local bootstrap token cannot expire or be revoked because it seeds secrets encryption. Only
+while setup is incomplete, browser login may use it to create an internal expiring, revocable
+device identity and then issue the same hashed, bounded browser session and session-bound CSRF
+cookies used for normal login. The bootstrap bearer is never stored in those cookies, and browser
+login rejects it after setup completes. Named device credentials remain the normal ongoing login
+and native-client path. See [the private gateway guide](docs/private-gateway.md) for service
 environment, verification, recovery, and remote CLI/mobile details.
 
 ## Agent shell security

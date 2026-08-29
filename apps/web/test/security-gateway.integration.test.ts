@@ -179,7 +179,7 @@ test('production gateway rejects hostile authority before side effects and enfor
     { method: 'POST', body: JSON.stringify({ token: daemon.token }) },
     { origin: web.origin, 'content-type': 'application/json' },
   )
-  expect(bootstrapLogin.status).toBe(401)
+  expect(bootstrapLogin.status, await bootstrapLogin.clone().text()).toBe(401)
   const hostile = [
     rawRequest(web, '/api/login', {
       method: 'POST',
@@ -192,6 +192,10 @@ test('production gateway rejects hostile authority before side effects and enfor
     }),
     request(web, '/api/login', { method: 'POST', body: loginBody }, {
       origin: 'https://attacker.invalid',
+      'content-type': 'application/json',
+    }),
+    request(web, '/api/login', { method: 'POST', body: loginBody }, {
+      origin: 'null',
       'content-type': 'application/json',
     }),
     request(web, '/api/login', { method: 'POST', body: loginBody }, {
@@ -211,7 +215,7 @@ test('production gateway rejects hostile authority before side effects and enfor
     }),
   ]
   expect((await Promise.all(hostile)).map((response) => response.status)).toEqual([
-    404, 403, 400, 400, 400,
+    404, 403, 403, 400, 400, 400,
   ])
   const noSessions = await fetch(`${daemon.url}/api/sessions`, {
     headers: { authorization: `Bearer ${daemon.token}` },
@@ -340,12 +344,14 @@ test('production gateway applies security headers and bounds request bodies', as
   expect(health.headers.get('strict-transport-security')).toContain('max-age=31536000')
   expect(health.headers.get('x-content-type-options')).toBe('nosniff')
   expect(health.headers.get('x-frame-options')).toBe('DENY')
+  expect(health.headers.get('referrer-policy')).toBe('same-origin')
   expect(health.headers.get('content-security-policy')).toContain("font-src 'self'")
   expect(health.headers.get('content-security-policy')).not.toMatch(/https?:\/\/(?!security)/)
 
   const html = await request(web, '/')
   expect(html.status).toBe(200)
   expect(html.headers.get('content-security-policy')).toContain("frame-ancestors 'none'")
+  expect(html.headers.get('referrer-policy')).toBe('same-origin')
   const body = await html.text()
   expect(body).not.toContain('fonts.googleapis.com')
   expect(body).not.toContain('fonts.gstatic.com')
@@ -455,3 +461,98 @@ test('production gateway preserves streaming, downloads, and uploads while strip
     await upstream.stop()
   }
 }, 30_000)
+
+test('fresh install exchanges the bootstrap credential for a bounded setup session without a CLI prerequisite', async () => {
+  const port = await findFreePort()
+  const origin = `https://127.0.0.1:${port}`
+  const freshDaemon = await startTestServer(
+    { BAZILION_PUBLIC_ORIGIN: origin },
+    { setupComplete: false },
+  )
+  const freshWeb = await startWeb(freshDaemon.url, { port, origin })
+  try {
+    const stillLocked = await fetch(`${freshDaemon.url}/api/agents`, {
+      headers: { authorization: `Bearer ${freshDaemon.token}` },
+    })
+    expect(stillLocked.status).toBe(409)
+
+    const missingOrigin = await request(
+      freshWeb,
+      '/api/login',
+      {
+        method: 'POST',
+        body: new URLSearchParams({ token: freshDaemon.token }),
+        redirect: 'manual',
+      },
+      { accept: 'text/html' },
+    )
+    expect(missingOrigin.status).toBe(303)
+    expect(missingOrigin.headers.get('location')).toBe('/login?error=origin')
+
+    const login = await request(
+      freshWeb,
+      '/api/login',
+      {
+        method: 'POST',
+        body: new URLSearchParams({ token: freshDaemon.token }),
+        redirect: 'manual',
+      },
+      { accept: 'text/html', origin },
+    )
+    expect(login.status).toBe(302)
+    expect(login.headers.get('location')).toBe('/welcome')
+    const setCookies = login.headers.getSetCookie()
+    expect(setCookies.join('\n')).not.toContain(freshDaemon.token)
+    const session = cookieValue(setCookies, '__Host-bz_session')
+    const csrf = cookieValue(setCookies, '__Host-bz_csrf')
+    const cookies = `__Host-bz_session=${session}; __Host-bz_csrf=${csrf}`
+
+    const whoami = await request(freshWeb, '/api/auth/whoami', {}, { cookie: cookies })
+    expect(whoami.status).toBe(200)
+    expect(await whoami.json()).toMatchObject({
+      authenticated: true,
+      setupComplete: false,
+      principal: {
+        kind: 'session',
+        label: 'first-run browser session',
+      },
+    })
+    expect((await request(freshWeb, '/api/config/providers', {}, { cookie: cookies })).status).toBe(
+      200,
+    )
+    expect(
+      (
+        await request(
+          freshWeb,
+          '/api/providers/test',
+          { method: 'POST', body: '{}' },
+          {
+            cookie: cookies,
+            origin,
+            'x-bazilion-csrf': csrf,
+            'content-type': 'application/json',
+          },
+        )
+      ).status,
+    ).toBe(400)
+    expect((await request(freshWeb, '/api/agents', {}, { cookie: cookies })).status).toBe(409)
+
+    const cliMint = await freshDaemon.cli(['token', 'create', 'first-named-browser'])
+    expect(cliMint.exitCode).toBe(0)
+    expect(cliMint.stdout).toContain('first-named-browser')
+    const tokens = await fetch(`${freshDaemon.url}/api/tokens`, {
+      headers: { authorization: `Bearer ${freshDaemon.token}` },
+    })
+    expect(tokens.status).toBe(200)
+    expect(await tokens.json()).toMatchObject({
+      tokens: expect.arrayContaining([
+        expect.objectContaining({ kind: 'bootstrap' }),
+        expect.objectContaining({ kind: 'device', label: 'first-run browser session' }),
+        expect.objectContaining({ kind: 'device', label: 'first-named-browser' }),
+      ]),
+    })
+  } finally {
+    await freshWeb.stop()
+    await freshDaemon.stop()
+  }
+}, 60_000)

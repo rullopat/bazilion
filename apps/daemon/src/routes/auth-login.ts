@@ -12,10 +12,12 @@ import type {
 import { Hono } from 'hono'
 import { deleteCookie, setCookie } from 'hono/cookie'
 import {
+  ensureSetupSeeded,
   isSetupComplete,
   mergeSecretsIntoEnv,
   providerStateRepo,
   webSessionRepo,
+  webTokenRepo,
 } from '../core/index.ts'
 import { type AuthVariables, authenticateToken } from '../lib/auth.ts'
 import { getCtx } from '../lib/ctx.ts'
@@ -135,6 +137,10 @@ authRouter.post('/providers/test', async (c) => {
       messages: [{ role: 'user', content: message }],
       maxTokens: 256,
     })
+    // Provider setup mutations may already have crossed the readiness
+    // threshold; repeat the idempotent seed after a real successful request
+    // so first-run completion can be coupled to this proof without a race.
+    ensureSetupSeeded(db, getCtx().paths)
     const out: ProviderTestResponse = { content: res.content, usage: res.usage }
     return c.json(out)
   } catch (err) {
@@ -145,11 +151,17 @@ authRouter.post('/providers/test', async (c) => {
 // ─── Browser login ───────────────────────────────────────────────────────
 
 /**
- * Device-token login. Two body shapes accepted:
+ * Browser-session login. Two body shapes accepted:
  *   - `application/json`: `{ token: "<value>" }` → returns `{ ok: true }` on
  *     success, sets bounded browser session and CSRF cookies.
  *   - `application/x-www-form-urlencoded`: `token=<value>` → 302 to `/` on
- *     success or `/login?error=1` on failure. Used by the web login form.
+ *     success or `/login?error=token` on failure. Used by the web login form.
+ *
+ * Normally the submitted credential must be a revocable device token. During
+ * first-run only, the non-revocable bootstrap credential may authorize one
+ * bounded setup session. That session is attached to an internal expiring,
+ * revocable device row; neither the bootstrap secret nor the generated device
+ * secret is retained by the browser.
  */
 authRouter.post('/login', async (c) => {
   const ct = c.req.header('content-type') ?? ''
@@ -164,15 +176,22 @@ authRouter.post('/login', async (c) => {
     if (typeof v === 'string') token = v
   }
 
+  const ctx = getCtx()
   const principal = token ? authenticateToken(token) : null
-  if (principal?.kind !== 'device') {
+  let deviceTokenId = principal?.kind === 'device' ? principal.tokenId : null
+  if (principal?.kind === 'bootstrap' && !isSetupComplete(ctx.db)) {
+    deviceTokenId = webTokenRepo.create(ctx.db, 'first-run browser session', {
+      expiresAt: Date.now() + webSessionRepo.SESSION_ABSOLUTE_MS,
+    }).meta.id
+  }
+  if (!deviceTokenId) {
     if (ct.startsWith('application/json')) {
       return c.json({ error: 'invalid token' }, 401)
     }
-    return c.redirect('/login?error=1', 302)
+    return c.redirect('/login?error=token', 302)
   }
 
-  const created = webSessionRepo.create(getCtx().db, principal.tokenId)
+  const created = webSessionRepo.create(ctx.db, deviceTokenId)
   const origin = resolvePublicOrigin()
   setCookie(c, origin.sessionCookie, created.cookieValue, {
     path: '/',
@@ -192,7 +211,10 @@ authRouter.post('/login', async (c) => {
   if (ct.startsWith('application/json')) {
     return c.json({ ok: true })
   }
-  return c.redirect('/', 302)
+  // Skip an avoidable redirect through the locked root on a fresh install.
+  // Setup mutations seed the defaults synchronously, so completed installs
+  // can still enter the workspace directly.
+  return c.redirect(isSetupComplete(ctx.db) ? '/' : '/welcome', 302)
 })
 
 authRouter.post('/logout', (c) => {

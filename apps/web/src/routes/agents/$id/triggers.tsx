@@ -4,6 +4,8 @@ import { createFileRoute, redirect, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { useState } from 'react'
 import { AgentTabs } from '../../../components/AgentTabs'
+import { Button } from '../../../components/Button'
+import { ConfirmDialog } from '../../../components/ConfirmDialog'
 import { PageShell } from '../../../components/Page'
 import { daemonClient } from '../../../lib/daemon-client'
 
@@ -45,18 +47,36 @@ export const Route = createFileRoute('/agents/$id/triggers')({
 function TriggersPage() {
   const { resolved, triggers, dispatches } = Route.useLoaderData()
   const router = useRouter()
+  const [deleteTarget, setDeleteTarget] = useState<AgentTrigger | null>(null)
+  const [mutationError, setMutationError] = useState<string | null>(null)
+  const [busyId, setBusyId] = useState<string | null>(null)
 
   async function toggle(t: AgentTrigger) {
-    await fetch(`/api/triggers/${t.id}`, {
-      method: 'PATCH',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ enabled: !t.enabled }),
-    })
-    await router.invalidate()
+    setBusyId(t.id)
+    setMutationError(null)
+    try {
+      const response = await fetch(`/api/triggers/${encodeURIComponent(t.id)}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ enabled: !t.enabled }),
+      })
+      if (!response.ok) {
+        const body = (await response.json().catch(() => null)) as { error?: string } | null
+        throw new Error(body?.error ?? `Could not ${t.enabled ? 'disable' : 'enable'} trigger`)
+      }
+      await router.invalidate()
+    } catch (error) {
+      setMutationError(error instanceof Error ? error.message : String(error))
+    } finally {
+      setBusyId(null)
+    }
   }
   async function del(id: string) {
-    if (!confirm('delete this trigger?')) return
-    await fetch(`/api/triggers/${id}`, { method: 'DELETE' })
+    const response = await fetch(`/api/triggers/${encodeURIComponent(id)}`, { method: 'DELETE' })
+    if (!response.ok && response.status !== 204) {
+      const body = (await response.json().catch(() => null)) as { error?: string } | null
+      throw new Error(body?.error ?? 'Could not delete trigger')
+    }
     await router.invalidate()
   }
 
@@ -72,6 +92,11 @@ function TriggersPage() {
       />
 
       <AddTriggerForm agentId={resolved.agent.id} onAdded={() => router.invalidate()} />
+      {mutationError && (
+        <p role="alert" className="err mt-4">
+          {mutationError}
+        </p>
+      )}
 
       <h3 className="mb-3 mt-6 font-body text-[0.85em] font-semibold uppercase tracking-wider text-mocha-light">
         Active triggers
@@ -80,53 +105,107 @@ function TriggersPage() {
       {triggers.length === 0 ? (
         <p className="muted">no triggers yet — add one above.</p>
       ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>id</th>
-              <th>kind</th>
-              <th>spec</th>
-              <th>message</th>
-              <th>last fired</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
+        <>
+          <div className="grid gap-3 md:hidden">
             {triggers.map((t) => {
               const spec = t.kind === 'interval' ? `every ${t.intervalSec}s` : t.cronExpr
-              const last = t.lastFiredAt ? new Date(t.lastFiredAt).toLocaleString() : '(never)'
+              const last = t.lastFiredAt ? new Date(t.lastFiredAt).toLocaleString() : 'Never'
               return (
-                <tr key={t.id} className={t.enabled ? '' : 'opacity-60'}>
-                  <td>
-                    <code>{t.id.slice(0, 8)}…</code>
-                  </td>
-                  <td>
-                    <span className="inline-block rounded-sm border border-frost bg-ivory px-2 py-0.5 font-mono text-[0.8em] text-mocha">
+                <article
+                  key={t.id}
+                  className={`card min-w-0 ${t.enabled ? '' : 'opacity-60'}`}
+                >
+                  <div className="flex min-w-0 items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="m-0 break-all font-mono text-xs text-muted-foreground">
+                        {t.id}
+                      </p>
+                      <p className="mb-0 mt-1 font-medium text-foreground">{spec}</p>
+                    </div>
+                    <span className="shrink-0 rounded-sm border border-frost bg-ivory px-2 py-0.5 font-mono text-xs text-mocha">
                       {t.kind}
                     </span>
-                  </td>
-                  <td>
-                    <code>{spec}</code>
-                  </td>
-                  <td>
-                    {t.message.length > 60 ? `${t.message.slice(0, 60)}…` : t.message}
-                  </td>
-                  <td className="text-[0.82em] text-mocha-light">{last}</td>
-                  <td>
-                    <div className="flex gap-1.5">
-                      <button type="button" className="ghost-btn" onClick={() => toggle(t)}>
-                        {t.enabled ? 'disable' : 'enable'}
-                      </button>
-                      <button type="button" className="ghost-btn" onClick={() => del(t.id)}>
-                        delete
-                      </button>
-                    </div>
-                  </td>
-                </tr>
+                  </div>
+                  <p className="my-3 break-words text-sm text-foreground">{t.message}</p>
+                  <p className="mb-3 text-xs text-muted-foreground">Last fired: {last}</p>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant="ghost"
+                      disabled={busyId === t.id}
+                      onClick={() => void toggle(t)}
+                    >
+                      {busyId === t.id ? 'Working…' : t.enabled ? 'Disable' : 'Enable'}
+                    </Button>
+                    <Button
+                      variant="danger"
+                      disabled={busyId === t.id}
+                      onClick={() => {
+                        setMutationError(null)
+                        setDeleteTarget(t)
+                      }}
+                    >
+                      Delete
+                    </Button>
+                  </div>
+                </article>
               )
             })}
-          </tbody>
-        </table>
+          </div>
+          <div className="hidden overflow-x-auto md:block">
+            <table className="min-w-full">
+              <thead>
+                <tr>
+                  <th>id</th>
+                  <th>kind</th>
+                  <th>spec</th>
+                  <th>message</th>
+                  <th>last fired</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {triggers.map((t) => {
+                  const spec = t.kind === 'interval' ? `every ${t.intervalSec}s` : t.cronExpr
+                  const last = t.lastFiredAt ? new Date(t.lastFiredAt).toLocaleString() : '(never)'
+                  return (
+                    <tr key={t.id} className={t.enabled ? '' : 'opacity-60'}>
+                      <td><code>{t.id.slice(0, 8)}…</code></td>
+                      <td>
+                        <span className="inline-block rounded-sm border border-frost bg-ivory px-2 py-0.5 font-mono text-[0.8em] text-mocha">
+                          {t.kind}
+                        </span>
+                      </td>
+                      <td><code>{spec}</code></td>
+                      <td>{t.message.length > 60 ? `${t.message.slice(0, 60)}…` : t.message}</td>
+                      <td className="text-[0.82em] text-mocha-light">{last}</td>
+                      <td>
+                        <div className="flex gap-1.5">
+                          <Button
+                            variant="ghost"
+                            disabled={busyId === t.id}
+                            onClick={() => void toggle(t)}
+                          >
+                            {busyId === t.id ? 'working…' : t.enabled ? 'disable' : 'enable'}
+                          </Button>
+                          <Button
+                            variant="danger"
+                            disabled={busyId === t.id}
+                            onClick={() => {
+                              setMutationError(null)
+                              setDeleteTarget(t)
+                            }}
+                          >
+                            delete
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
 
       <h3 className="mb-3 mt-8 font-body text-[0.85em] font-semibold uppercase tracking-wider text-mocha-light">
@@ -135,27 +214,78 @@ function TriggersPage() {
       {dispatches.length === 0 ? (
         <p className="muted">no scheduled occurrences yet.</p>
       ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>scheduled</th>
-              <th>status</th>
-              <th>attempts</th>
-              <th>error</th>
-            </tr>
-          </thead>
-          <tbody>
+        <>
+          <div className="grid gap-3 md:hidden">
             {dispatches.map((dispatch) => (
-              <tr key={dispatch.id}>
-                <td className="text-[0.82em]">{new Date(dispatch.scheduledAt).toLocaleString()}</td>
-                <td><code>{dispatch.status}</code></td>
-                <td>{dispatch.attemptCount}</td>
-                <td className="text-[0.82em] text-mocha-light">{dispatch.lastError ?? '—'}</td>
-              </tr>
+              <article key={dispatch.id} className="card min-w-0">
+                <div className="flex items-start justify-between gap-3">
+                  <time className="text-sm text-foreground">
+                    {new Date(dispatch.scheduledAt).toLocaleString()}
+                  </time>
+                  <code className="shrink-0">{dispatch.status}</code>
+                </div>
+                <p className="mb-0 mt-2 text-xs text-muted-foreground">
+                  {dispatch.attemptCount} attempt{dispatch.attemptCount === 1 ? '' : 's'}
+                </p>
+                {dispatch.lastError && (
+                  <p className="mb-0 mt-2 break-words text-sm text-danger">{dispatch.lastError}</p>
+                )}
+              </article>
             ))}
-          </tbody>
-        </table>
+          </div>
+          <div className="hidden overflow-x-auto md:block">
+            <table className="min-w-full">
+              <thead>
+                <tr>
+                  <th>scheduled</th>
+                  <th>status</th>
+                  <th>attempts</th>
+                  <th>error</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dispatches.map((dispatch) => (
+                  <tr key={dispatch.id}>
+                    <td className="text-[0.82em]">
+                      {new Date(dispatch.scheduledAt).toLocaleString()}
+                    </td>
+                    <td><code>{dispatch.status}</code></td>
+                    <td>{dispatch.attemptCount}</td>
+                    <td className="text-[0.82em] text-mocha-light">
+                      {dispatch.lastError ?? '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title={`Delete ${deleteTarget?.kind ?? ''} trigger?`}
+        description={
+          <p>
+            This permanently removes trigger{' '}
+            <code className="font-mono">{deleteTarget?.id}</code>, its recorded dispatch history,
+            and every future scheduled occurrence for {resolved.agent.name}. The Agent itself is
+            not deleted.
+          </p>
+        }
+        confirmLabel="delete trigger and history"
+        onConfirm={async () => {
+          if (!deleteTarget) return
+          try {
+            await del(deleteTarget.id)
+          } catch (error) {
+            setMutationError(error instanceof Error ? error.message : String(error))
+            throw error
+          }
+        }}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null)
+        }}
+      />
     </PageShell>
   )
 }
@@ -262,10 +392,10 @@ function AddTriggerForm({
         />
       </label>
       <div className="mt-3 flex items-center gap-3">
-        <button type="submit" disabled={submitting}>
+        <Button variant="primary" type="submit" disabled={submitting}>
           {submitting ? 'adding…' : 'add'}
-        </button>
-        {err && <span className="text-[0.85em] text-danger">{err}</span>}
+        </Button>
+        {err && <span role="alert" className="text-[0.85em] text-danger">{err}</span>}
       </div>
     </form>
   )

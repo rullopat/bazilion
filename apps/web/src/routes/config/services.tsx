@@ -3,6 +3,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { ConfigPage } from '../../components/ConfigPage'
 import { FieldRow } from '../../components/FieldRow'
+import { EmptyState, StatusBadge } from '../../components/Page'
 import { daemonClient } from '../../lib/daemon-client'
 
 const UNGROUPED_LABEL = 'Other'
@@ -49,33 +50,58 @@ function ServicesPage() {
       title="Services"
       description={
         <>
-          Configure non-LLM integrations such as web search and crawlers. Secret fields are
-          encrypted in the <code className="font-mono">secrets</code> table; URLs and IDs live
-          in the <code className="font-mono">config</code> table.
+          Connect optional tools such as web search and crawlers. Secret values are encrypted;
+          endpoint details remain inspectable and editable on this device.
         </>
       }
     >
       {services.length === 0 && (
-        <p className="text-muted-foreground italic">(no services registered)</p>
+        <EmptyState
+          title="No optional services"
+          description="This Bazilion build has no additional service connectors registered."
+        />
       )}
 
       {grouped.map(({ team, items }) => (
-        <section key={team}>
-          <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            {team}
-          </h2>
-          {items.map((s) => (
-            <section key={s.id} className="rounded-lg border bg-card p-5 mb-3">
-              <header className="mb-3 flex flex-wrap items-center gap-2">
-                <span className="font-mono font-semibold">{s.id}</span>
-                <span className="text-muted-foreground text-sm">· {s.displayName}</span>
-              </header>
-              {s.hint && <p className="text-xs text-muted-foreground mb-2">{s.hint}</p>}
-              {s.fields.map((f) => (
-                <FieldRow key={f.envVar} field={f} />
-              ))}
-            </section>
-          ))}
+        <section key={team} className="space-y-3">
+          <div>
+            <h2 className="m-0 font-body text-base font-semibold text-foreground">{team}</h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Open only the service you want to configure.
+            </p>
+          </div>
+          {items.map((service) => {
+            const configured = service.fields.filter((field) => field.set).length
+            return (
+              <details
+                key={service.id}
+                open={configured > 0}
+                className="overflow-hidden rounded-2xl border border-border bg-card shadow-baziu-sm"
+              >
+                <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-4 marker:hidden sm:px-5">
+                  <span className="min-w-0 flex-1">
+                    <span className="block font-semibold text-foreground">{service.displayName}</span>
+                    <span className="mt-0.5 block font-mono text-xs text-muted-foreground">
+                      {service.id}
+                    </span>
+                  </span>
+                  <StatusBadge variant={configured > 0 ? 'success' : 'neutral'}>
+                    {configured > 0
+                      ? `${configured} field${configured === 1 ? '' : 's'} configured`
+                      : 'Not configured'}
+                  </StatusBadge>
+                </summary>
+                <div className="border-t border-border px-4 py-4 sm:px-5">
+                  {service.hint && (
+                    <p className="mb-2 text-sm text-muted-foreground">{service.hint}</p>
+                  )}
+                  {service.fields.map((field) => (
+                    <FieldRow key={field.envVar} field={field} />
+                  ))}
+                </div>
+              </details>
+            )
+          })}
         </section>
       ))}
     </ConfigPage>

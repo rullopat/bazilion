@@ -1,9 +1,9 @@
 import { CameraView, useCameraPermissions } from 'expo-camera'
+import { useLinkingURL } from 'expo-linking'
 import { router } from 'expo-router'
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
-  Alert,
   Button,
   Platform,
   Pressable,
@@ -13,7 +13,11 @@ import {
   View,
 } from 'react-native'
 import { saveCredentials, verifyCredentials } from '@/src/auth'
-import { PairUrlError, parsePairingUrl } from '@/src/pair-url'
+import {
+  canStartPairingAttempt,
+  type PairingAttemptSnapshot,
+} from '@/src/pairing-attempt'
+import { isPairingDeepLink, PairUrlError, parsePairingUrl } from '@/src/pair-url'
 import { useColors } from '@/src/theme-context'
 import { type Colors, fonts, radii } from '@/src/theme'
 
@@ -40,42 +44,67 @@ export default function PairScreen() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [pasteValue, setPasteValue] = useState('')
-  // Expo fires the barcode callback repeatedly on every frame — dedupe.
-  const handled = useRef(false)
+  const [scanPaused, setScanPaused] = useState(false)
+  // Expo fires the barcode callback repeatedly on every frame. Keep the gate
+  // in a ref so callbacks cannot race React's asynchronous state updates.
+  const attempt = useRef<PairingAttemptSnapshot>({
+    busy: false,
+    lastRaw: null,
+    scanPaused: false,
+  })
+  const linkingUrl = useLinkingURL()
   const colors = useColors()
   const styles = useMemo(() => makeStyles(colors), [colors])
 
-  const handlePairingUrl = useCallback(async (raw: string) => {
-    if (handled.current) return
-    handled.current = true
+  const handlePairingUrl = useCallback(async (
+    raw: string,
+    source: 'camera' | 'paste' | 'link',
+    explicitRetry = false,
+  ) => {
+    const normalized = raw.trim()
+    if (!canStartPairingAttempt(normalized, attempt.current, explicitRetry)) return
+    attempt.current = { ...attempt.current, busy: true, lastRaw: normalized }
     setBusy(true)
     setError(null)
     try {
-      const creds = parsePairingUrl(raw)
+      const creds = parsePairingUrl(normalized)
       await verifyCredentials(creds)
       await saveCredentials(creds)
       router.replace('/agents')
     } catch (err) {
-      handled.current = false
       const msg =
         err instanceof PairUrlError
-          ? `QR content is not a pairing URL: ${err.message}`
+          ? `${source === 'camera' ? 'QR content' : 'Pairing URL'} is not valid: ${err.message}`
           : err instanceof Error
             ? err.message
             : 'unknown error'
       setError(msg)
-      Alert.alert('Pairing failed', msg)
+      // A failed QR remains under the camera and would otherwise fire again
+      // every frame. Require a deliberate "Scan again" action.
+      const paused = source !== 'paste'
+      attempt.current = { ...attempt.current, scanPaused: paused }
+      setScanPaused(paused)
     } finally {
+      attempt.current = { ...attempt.current, busy: false }
       setBusy(false)
     }
   }, [])
 
+  // Consume the actual custom-scheme URL on cold launch and while the app is
+  // already running. Expo Router opens /pair, but query handling belongs here
+  // so the credential is verified before it reaches SecureStore.
+  useEffect(() => {
+    if (!isPairingDeepLink(linkingUrl)) return
+    void handlePairingUrl(linkingUrl, 'link')
+  }, [handlePairingUrl, linkingUrl])
+
   if (mode === 'paste') {
     return (
-      <View style={styles.container}>
+      <View style={[styles.container, styles.form]}>
         <Text style={styles.title}>Paste pairing URL</Text>
         <Text style={styles.hint}>
-          Run `bazilion token create &lt;label&gt; --qr` on your server to generate one.
+          Publish only the loopback web app with Tailscale Serve, then run `bazilion token create
+          &lt;label&gt; --expires-days 90 --qr --server $BAZILION_PUBLIC_ORIGIN`.
         </Text>
         <TextInput
           value={pasteValue}
@@ -85,12 +114,19 @@ export default function PairScreen() {
           autoCorrect={false}
           style={styles.input}
           multiline
+          placeholderTextColor={colors.mocha}
+          accessibilityLabel="Bazilion pairing URL"
+          accessibilityHint="Paste the complete pairing URL from the Bazilion CLI"
         />
-        {error ? <Text style={styles.error}>{error}</Text> : null}
+        {error ? (
+          <Text style={styles.error} accessibilityRole="alert">
+            {error}
+          </Text>
+        ) : null}
         <View style={styles.row}>
           <Button
             title={busy ? 'Verifying…' : 'Pair'}
-            onPress={() => handlePairingUrl(pasteValue.trim())}
+            onPress={() => handlePairingUrl(pasteValue, 'paste', true)}
             disabled={busy || !pasteValue.trim()}
           />
           <Button title="Scan instead" onPress={() => setMode('scan')} disabled={busy} />
@@ -118,9 +154,13 @@ export default function PairScreen() {
         <Text style={styles.diag}>
           status: {permission.status} · canAskAgain: {String(permission.canAskAgain)}
         </Text>
-        {webBlocked ? <Text style={styles.error}>{webBlocked}</Text> : null}
+        {webBlocked ? (
+          <Text style={styles.error} accessibilityRole="alert">
+            {webBlocked}
+          </Text>
+        ) : null}
         {!permission.canAskAgain && !webBlocked ? (
-          <Text style={styles.error}>
+          <Text style={styles.error} accessibilityRole="alert">
             The OS won't prompt again — camera was denied earlier. Grant it in Settings → Expo Go
             → Camera, then restart Expo Go.
           </Text>
@@ -131,13 +171,10 @@ export default function PairScreen() {
             try {
               const r = await requestPermission()
               if (!r.granted) {
-                Alert.alert(
-                  'Camera not granted',
-                  `status=${r.status} canAskAgain=${r.canAskAgain}`,
-                )
+                setError(`Camera not granted: ${r.status}. You can use manual paste instead.`)
               }
             } catch (err) {
-              Alert.alert('requestPermission threw', String(err))
+              setError(`Couldn’t request camera access: ${String(err)}`)
             }
           }}
           disabled={!!webBlocked}
@@ -154,18 +191,45 @@ export default function PairScreen() {
         style={styles.camera}
         facing="back"
         barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
-        onBarcodeScanned={busy || handled.current ? undefined : ({ data }) => handlePairingUrl(data)}
+        onBarcodeScanned={
+          busy || scanPaused ? undefined : ({ data }) => handlePairingUrl(data, 'camera')
+        }
+        accessible
+        accessibilityLabel="Pairing QR scanner"
       >
         <View style={styles.overlay}>
           <Text style={styles.overlayTitle}>Scan pairing QR</Text>
           <Text style={styles.overlayHint}>
-            Point the camera at the QR code emitted by `bazilion token create --qr`.
+            Scan the private HTTPS gateway QR emitted by `bazilion token create --qr`.
           </Text>
           {busy ? <ActivityIndicator style={{ marginTop: 12 }} /> : null}
-          {error ? <Text style={[styles.error, styles.onCamera]}>{error}</Text> : null}
+          {error ? (
+            <Text style={[styles.error, styles.onCamera]} accessibilityRole="alert">
+              {error}
+            </Text>
+          ) : null}
+          {scanPaused ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Scan another pairing QR code"
+              style={styles.scanAgain}
+              onPress={() => {
+                attempt.current = { busy: false, lastRaw: null, scanPaused: false }
+                setError(null)
+                setScanPaused(false)
+              }}
+            >
+              <Text style={styles.scanAgainText}>Scan again</Text>
+            </Pressable>
+          ) : null}
         </View>
       </CameraView>
-      <Pressable style={styles.fallback} onPress={() => setMode('paste')}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Paste a pairing URL instead"
+        style={styles.fallback}
+        onPress={() => setMode('paste')}
+      >
         <Text style={styles.fallbackText}>Paste URL instead</Text>
       </Pressable>
     </View>
@@ -175,6 +239,7 @@ export default function PairScreen() {
 const makeStyles = (colors: Colors) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
+    form: { padding: 20 },
     centered: { justifyContent: 'center', alignItems: 'center', padding: 24, gap: 12 },
     title: {
       fontSize: 22,
@@ -184,7 +249,7 @@ const makeStyles = (colors: Colors) =>
     },
     hint: { color: colors.mocha, marginBottom: 16, textAlign: 'center', fontFamily: fonts.body },
     input: {
-      margin: 16,
+      marginVertical: 16,
       padding: 12,
       borderWidth: 1,
       borderColor: colors.border,
@@ -207,6 +272,7 @@ const makeStyles = (colors: Colors) =>
       justifyContent: 'flex-end',
       padding: 24,
       paddingBottom: 80,
+      backgroundColor: 'rgba(0,0,0,0.28)',
     },
     overlayTitle: {
       color: '#FFFFFF',
@@ -215,6 +281,15 @@ const makeStyles = (colors: Colors) =>
       marginBottom: 4,
     },
     overlayHint: { color: '#ddd', fontFamily: fonts.body },
+    scanAgain: {
+      alignSelf: 'flex-start',
+      marginTop: 8,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      borderRadius: radii.md,
+      backgroundColor: '#FFFFFF',
+    },
+    scanAgainText: { color: '#3D2B1F', fontFamily: fonts.bodyMedium },
     fallback: {
       position: 'absolute',
       bottom: 24,
@@ -222,5 +297,13 @@ const makeStyles = (colors: Colors) =>
       right: 0,
       alignItems: 'center',
     },
-    fallbackText: { color: '#FFFFFF', textDecorationLine: 'underline', fontFamily: fonts.body },
+    fallbackText: {
+      color: '#FFFFFF',
+      backgroundColor: 'rgba(0,0,0,0.72)',
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: radii.md,
+      textDecorationLine: 'underline',
+      fontFamily: fonts.bodyMedium,
+    },
   })

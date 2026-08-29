@@ -43,7 +43,12 @@ export function findFreePort(): Promise<number> {
  * bootstrap (`apps/daemon/src/lib/ctx.ts:bootstrap`) without the subprocess
  * overhead.
  */
-function initHome(): { home: string; token: string } {
+export interface TestServerFixtureOptions {
+  /** Defaults to true because most integration tests exercise the unlocked API. */
+  setupComplete?: boolean
+}
+
+function initHome(options: TestServerFixtureOptions = {}): { home: string; token: string } {
   const home = mkdtempSync(join(tmpdir(), 'bazilion-test-'))
   const paths = resolvePaths(home)
   for (const d of [
@@ -61,21 +66,23 @@ function initHome(): { home: string; token: string } {
   // Mint a bootstrap token row + write its plaintext into auth.json.
   const created = webTokenRepo.create(db, 'bootstrap', { kind: 'bootstrap' })
   writeFileSync(paths.authFile, `${JSON.stringify({ token: created.token }, null, 2)}\n`)
-  // Enable lmstudio + ollama by default for test setup — the integration
-  // tests mount their mock server via LMSTUDIO_URL and expect model resolution
-  // to succeed. Real installs default to all providers disabled and require
-  // the admin to toggle them on via /config.
-  providerStateRepo.setEnabled(db, 'lmstudio', true)
-  providerStateRepo.setEnabled(db, 'ollama', true)
-  // Curate a placeholder model so the first-run middleware gate sees setup
-  // as complete (isSetupComplete = any enabled provider has ≥1 curated model).
-  // Tests that care about a specific model still override via --model.
-  providerModelRepo.replace(db, 'lmstudio', ['test-model'])
-  providerModelRepo.replace(db, 'ollama', ['test-model'])
-  // Seed the 'default' team so spawnAgent's default-team fallback works
-  // without tests having to register one first. Matches the fresh-install
-  // post-first-run-setup state.
-  registerTeam(db, { id: 'default', name: 'Default' }, paths)
+  if (options.setupComplete !== false) {
+    // Enable lmstudio + ollama by default for test setup — the integration
+    // tests mount their mock server via LMSTUDIO_URL and expect model resolution
+    // to succeed. Real installs default to all providers disabled and require
+    // the admin to toggle them on via /config.
+    providerStateRepo.setEnabled(db, 'lmstudio', true)
+    providerStateRepo.setEnabled(db, 'ollama', true)
+    // Curate a placeholder model so the first-run middleware gate sees setup
+    // as complete (isSetupComplete = any enabled provider has ≥1 curated model).
+    // Tests that care about a specific model still override via --model.
+    providerModelRepo.replace(db, 'lmstudio', ['test-model'])
+    providerModelRepo.replace(db, 'ollama', ['test-model'])
+    // Seed the 'default' team so spawnAgent's default-team fallback works
+    // without tests having to register one first. Matches the fresh-install
+    // post-first-run-setup state.
+    registerTeam(db, { id: 'default', name: 'Default' }, paths)
+  }
   db.close()
   return { home, token: created.token }
 }
@@ -171,8 +178,11 @@ function resetHome(home: string): void {
  * Additional env vars can be passed (e.g. `LMSTUDIO_URL` pointing at a mock
  * provider) — they're merged into the server's env.
  */
-export async function startTestServer(extraServerEnv: NodeJS.ProcessEnv = {}): Promise<TestServer> {
-  const { home, token } = initHome()
+export async function startTestServer(
+  extraServerEnv: NodeJS.ProcessEnv = {},
+  fixtureOptions: TestServerFixtureOptions = {},
+): Promise<TestServer> {
+  const { home, token } = initHome(fixtureOptions)
   const port = await findFreePort()
   const url = `http://127.0.0.1:${port}`
 
