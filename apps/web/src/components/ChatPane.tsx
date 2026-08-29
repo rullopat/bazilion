@@ -12,7 +12,15 @@ import type {
   ProviderMessage,
   SessionHeadResponse,
 } from '@bazilion/api-types'
-import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react'
 import { renderMd } from '../lib/md'
 import { Button } from './Button'
 import { ConfirmDialog } from './ConfirmDialog'
@@ -23,6 +31,10 @@ const AUTOSCROLL_THRESHOLD_PX = 40
 const SESSION_POLL_MS = 10_000
 const TOOL_GROUP_MAX_HEIGHT_PX = 320
 const MAX_INPUT_HEIGHT = 200
+
+const subscribeToHydration = () => () => {}
+const browserMarkdownReady = () => true
+const serverMarkdownReady = () => false
 
 type ToolItem = {
   kind: 'call' | 'result' | 'error'
@@ -208,6 +220,14 @@ export function ChatPane({
   initialMessages,
   initialSessionHead,
 }: ChatPaneProps) {
+  // useSyncExternalStore's server snapshot is also used for the browser's
+  // hydration pass. That keeps dangerouslySetInnerHTML byte-for-byte stable,
+  // then enables marked + DOMPurify immediately after hydration.
+  const markdownReady = useSyncExternalStore(
+    subscribeToHydration,
+    browserMarkdownReady,
+    serverMarkdownReady,
+  )
   const [serverMessages, setServerMessages] = useState<ProviderMessage[]>(initialMessages)
   const [liveEntries, setLiveEntries] = useState<RenderEntry[]>([])
   const [systemBubbles, setSystemBubbles] = useState<
@@ -1096,6 +1116,7 @@ export function ChatPane({
                 <Bubble
                   key={`y-${sb.id}`}
                   entry={{ type: 'system', content: sb.content }}
+                  markdownReady={markdownReady}
                   onCommandApprovalDecision={decideCommandApproval}
                 />,
               )
@@ -1109,6 +1130,7 @@ export function ChatPane({
               <Bubble
                 key={`s-${i}`}
                 entry={entry}
+                markdownReady={markdownReady}
                 isLastUser={i === lastUserIdx && editIdx === null}
                 isWillDrop={willDropFromIdx !== -1 && i >= willDropFromIdx}
                 onEdit={enterEditMode}
@@ -1131,6 +1153,7 @@ export function ChatPane({
               <Bubble
                 key={`l-${i}`}
                 entry={entry}
+                markdownReady={markdownReady}
                 onCommandApprovalDecision={decideCommandApproval}
                 commandApprovalBusy={
                   entry.type === 'command_approval' && Boolean(approvalBusy[entry.approval.id])
@@ -1156,6 +1179,7 @@ export function ChatPane({
               <Bubble
                 key={`y-${sb.id}`}
                 entry={{ type: 'system', content: sb.content }}
+                markdownReady={markdownReady}
                 onCommandApprovalDecision={decideCommandApproval}
               />,
             )
@@ -1315,6 +1339,7 @@ export function ChatPane({
 
 interface BubbleProps {
   entry: RenderEntry
+  markdownReady: boolean
   isLastUser?: boolean
   isWillDrop?: boolean
   onEdit?: () => void
@@ -1328,6 +1353,7 @@ interface BubbleProps {
 
 function Bubble({
   entry,
+  markdownReady,
   isLastUser,
   isWillDrop,
   onEdit,
@@ -1409,7 +1435,7 @@ function Bubble({
             <div
               className="md-content mt-2 rounded-sm bg-frost/40 p-2 not-italic"
               // biome-ignore lint/security/noDangerouslySetInnerHtml: marked + DOMPurify
-              dangerouslySetInnerHTML={{ __html: renderMd(summary) }}
+              dangerouslySetInnerHTML={{ __html: renderMd(summary, markdownReady) }}
             />
           </details>
         </div>
@@ -1428,7 +1454,7 @@ function Bubble({
           <div
             className="bubble-content rounded-r-sm border-l-[3px] border-l-danger bg-danger/10 py-1 pl-3 pr-2 leading-[1.55]"
             // biome-ignore lint/security/noDangerouslySetInnerHtml: marked + DOMPurify
-            dangerouslySetInnerHTML={{ __html: renderMd(entry.content) }}
+            dangerouslySetInnerHTML={{ __html: renderMd(entry.content, markdownReady) }}
           />
         </div>
       )
@@ -1439,7 +1465,7 @@ function Bubble({
         <div
           className="md-content bubble-content w-full leading-[1.55] text-chocolate"
           // biome-ignore lint/security/noDangerouslySetInnerHtml: marked + DOMPurify
-          dangerouslySetInnerHTML={{ __html: renderMd(entry.content) }}
+          dangerouslySetInnerHTML={{ __html: renderMd(entry.content, markdownReady) }}
         />
       </div>
     )

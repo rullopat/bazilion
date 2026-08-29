@@ -1,6 +1,34 @@
 import { Dialog as DialogPrimitive } from 'radix-ui'
-import { useEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Button } from './Button'
+
+type DialogFocusRestoreTarget = Element & {
+  focus: (options?: FocusOptions) => void
+}
+
+const useBrowserLayoutEffect = typeof document === 'undefined' ? useEffect : useLayoutEffect
+
+export function getDialogFocusRestoreTarget(doc: Document): DialogFocusRestoreTarget | null {
+  const target = doc.activeElement
+  if (
+    !target ||
+    target === doc.body ||
+    target === doc.documentElement ||
+    !('focus' in target) ||
+    typeof target.focus !== 'function'
+  ) {
+    return null
+  }
+  return target as DialogFocusRestoreTarget
+}
+
+export function restoreDialogFocus(
+  target: DialogFocusRestoreTarget | null,
+  doc: Document,
+): void {
+  if (!target || !target.isConnected || target.ownerDocument !== doc) return
+  target.focus({ preventScroll: true })
+}
 
 interface ConfirmDialogProps {
   open: boolean
@@ -23,6 +51,15 @@ export function ConfirmDialog({
 }: ConfirmDialogProps) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const focusRestoreTargetRef = useRef<DialogFocusRestoreTarget | null>(null)
+  const wasOpenRef = useRef(false)
+
+  useBrowserLayoutEffect(() => {
+    if (open && !wasOpenRef.current) {
+      focusRestoreTargetRef.current = getDialogFocusRestoreTarget(document)
+    }
+    wasOpenRef.current = open
+  }, [open])
 
   useEffect(() => {
     if (!open) {
@@ -54,6 +91,12 @@ export function ConfirmDialog({
         <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-chocolate/35 backdrop-blur-[2px] data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
         <DialogPrimitive.Content
           className="fixed left-1/2 top-1/2 z-50 grid w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 gap-4 rounded-[16px] border border-frost bg-snow p-5 text-chocolate shadow-baziu-lg outline-none data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95"
+          onCloseAutoFocus={(event) => {
+            event.preventDefault()
+            const target = focusRestoreTargetRef.current
+            focusRestoreTargetRef.current = null
+            restoreDialogFocus(target, document)
+          }}
           onEscapeKeyDown={(event) => {
             if (busy) event.preventDefault()
           }}
