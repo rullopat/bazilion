@@ -5,12 +5,13 @@ import { PawIcon } from '../components/PawIcon'
 import { ThemeToggle } from '../components/ThemeToggle'
 
 export const Route = createFileRoute('/login')({
-  // Optional `?error=1` from a failed POST /api/login redirect — daemon sends
-  // the user back here when the form token is invalid. We type it as fully
-  // optional so the redirect from the root middleware doesn't have to pass a
-  // search object.
-  validateSearch: (search: Record<string, unknown>): { error?: '1' } => ({
-    error: search.error === '1' ? '1' : undefined,
+  // Failed form submissions return to this branded page with a specific,
+  // actionable reason. The field stays optional for normal auth redirects.
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { error?: 'token' | 'origin' } => ({
+    error:
+      search.error === 'token' || search.error === 'origin' ? search.error : undefined,
   }),
   component: LoginPage,
 })
@@ -58,11 +59,22 @@ function LoginPage() {
           <div className="mb-6 flex h-10 w-10 items-center justify-center rounded-xl bg-sapphire-glow text-sapphire">
             <KeyRound className="h-5 w-5" aria-hidden="true" />
           </div>
-          <h2 className="font-display text-3xl text-charcoal">Welcome back</h2>
+          <h2 className="font-display text-3xl text-charcoal">Open Bazilion</h2>
           <p className="mt-2 text-sm leading-6 text-mocha-light">
-            Use a named device token minted locally by your Bazilion CLI.
+            Use the fresh-install credential once, then a named device token for future sign-ins.
           </p>
-          {error && <div className="err mt-5">That token was not accepted.</div>}
+          {error === 'token' && (
+            <div className="err mt-5" role="alert">
+              That credential was not accepted. On first run, use the bootstrap token from{' '}
+              <code>auth.json</code>; afterward, use a named device token.
+            </div>
+          )}
+          {error === 'origin' && (
+            <div className="err mt-5" role="alert">
+              Bazilion blocked the sign-in request because its browser origin was hidden. Reload
+              this page and try again from the configured Bazilion address.
+            </div>
+          )}
           <form method="POST" action="/api/login" className="mt-6 text-left">
             <label htmlFor="token" className="block text-[0.85em] font-semibold text-mocha">
               Access token
@@ -82,13 +94,14 @@ function LoginPage() {
             </button>
           </form>
           <p className="mt-5 rounded-xl bg-ivory px-3 py-2.5 text-[0.78em] leading-relaxed text-mocha-light">
-            On the server, run <code>bazilion token create browser</code>. The bootstrap token in{' '}
-            <code>auth.json</code> is intentionally rejected here.
+            Fresh install? Paste the bootstrap token from <code>auth.json</code>; it is accepted
+            only until provider setup is complete and is exchanged for a bounded session. For
+            later sign-ins, run <code>bazilion token create browser</code> on the server.
           </p>
         </section>
       </div>
 
-      <footer className="absolute bottom-4 left-0 right-0 text-center text-[0.75em] text-fawn">
+      <footer className="absolute bottom-4 left-0 right-0 text-center text-xs text-mocha-light">
         dedicated to Baziu
         <PawIcon className="ml-1 inline-block h-3 w-3 align-[-1px] opacity-40" />
       </footer>

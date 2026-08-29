@@ -3,8 +3,9 @@ import { ApiClientError } from '@bazilion/client'
 import { router, useLocalSearchParams } from 'expo-router'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
-import { clearCredentials, clientFor, loadCredentials } from '@/src/auth'
+import { clearCredentials, clientFor, type Credentials, loadCredentials } from '@/src/auth'
 import { useColors } from '@/src/theme-context'
+import { mobileErrorMessage } from '@/src/errors'
 import { type Colors, fonts, radii } from '@/src/theme'
 
 type Load =
@@ -20,12 +21,13 @@ export default function AgentDetail() {
 
   const fetchAgent = useCallback(async () => {
     setLoad({ kind: 'loading' })
-    const creds = await loadCredentials()
-    if (!creds) {
-      router.replace('/pair')
-      return
-    }
+    let creds: Credentials | null = null
     try {
+      creds = await loadCredentials()
+      if (!creds) {
+        router.replace('/pair')
+        return
+      }
       const agent = await clientFor(creds).get<ResolvedAgent>(`/api/agents/${id}`)
       setLoad({ kind: 'ready', agent })
     } catch (err) {
@@ -34,7 +36,7 @@ export default function AgentDetail() {
         router.replace('/pair')
         return
       }
-      const message = err instanceof Error ? err.message : 'unknown error'
+      const message = mobileErrorMessage(err, creds?.server ?? 'the Bazilion gateway')
       setLoad({ kind: 'error', message })
     }
   }, [id])
@@ -45,7 +47,7 @@ export default function AgentDetail() {
 
   if (load.kind === 'loading') {
     return (
-      <View style={styles.centered}>
+      <View style={styles.centered} accessibilityLabel="Loading agent details">
         <ActivityIndicator />
       </View>
     )
@@ -55,8 +57,15 @@ export default function AgentDetail() {
     return (
       <View style={styles.centered}>
         <Text style={styles.errorTitle}>Couldn't load agent</Text>
-        <Text style={styles.errorBody}>{load.message}</Text>
-        <Pressable style={styles.primaryBtn} onPress={fetchAgent}>
+        <Text style={styles.errorBody} accessibilityRole="alert">
+          {load.message}
+        </Text>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Retry loading agent details"
+          style={styles.primaryBtn}
+          onPress={fetchAgent}
+        >
           <Text style={styles.primaryBtnText}>Retry</Text>
         </Pressable>
       </View>
@@ -103,6 +112,8 @@ export default function AgentDetail() {
       </Section>
 
       <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Open chat with ${a.agent.name}`}
         style={({ pressed }) => [styles.primaryBtn, pressed && styles.primaryBtnPressed]}
         onPress={() => router.push(`/agents/${a.agent.id}/chat`)}
       >

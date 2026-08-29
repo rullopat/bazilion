@@ -20,7 +20,19 @@ const PUBLIC_PATHS = new Set(['/api/login', '/api/health'])
  * users can finish their initial setup. Everything else 409s until the user
  * has at least one enabled provider with ≥1 curated model.
  */
-const SETUP_OPEN_PREFIXES = ['/api/config', '/api/auth', '/api/health']
+const SETUP_OPEN_PREFIXES = [
+  '/api/config',
+  '/api/auth',
+  '/api/health',
+  // Credential management must remain usable during setup: the first-run
+  // browser exchange is bounded, and the local CLI can mint a named device
+  // credential before provider setup has unlocked the rest of the API.
+  '/api/tokens',
+  '/api/sessions',
+  // A fresh installation must be able to prove provider connectivity before
+  // the provider gate opens the rest of the product.
+  '/api/providers/test',
+]
 
 function isSetupOpen(path: string): boolean {
   for (const prefix of SETUP_OPEN_PREFIXES) {

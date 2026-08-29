@@ -28,7 +28,13 @@ is exact HTTPS, Serve clearly targets the web port, Funnel is absent, authentica
 works, and BAZ-027 protected turns are ready. It never changes Serve, Funnel, firewall, or tailnet
 policy.
 
-Mint a different device credential for each browser or phone. The plaintext is shown once:
+On a fresh installation, the browser login accepts the `auth.json` bootstrap secret only until
+provider setup is complete. The daemon exchanges it for an internal expiring, revocable device
+identity and a bounded browser session; the browser cookies never retain the bootstrap bearer.
+After setup completes, the bootstrap secret is rejected by browser login.
+
+For ongoing access, mint a different device credential for each browser or phone. Native clients
+always require a device credential. The plaintext is shown once:
 
 ```sh
 bazilion token create personal-laptop --expires-days 90 --qr
@@ -36,10 +42,10 @@ bazilion token list
 bazilion session list
 ```
 
-Open the HTTPS origin from a tailnet device and log in with the named device token. Browser login
-rejects the local bootstrap token and exchanges the device token for a bounded server session. To
-recover from a lost device, revoke that device token; all browser sessions derived from it become
-invalid immediately.
+Open the HTTPS origin from a tailnet device and log in with its named device token. The daemon
+exchanges that token for a bounded server session without retaining the bearer in browser cookies.
+To recover from a lost device, revoke that device token; all browser sessions derived from it
+become invalid immediately.
 
 Verify externally that ports 4321 and 4322 are not reachable directly and that the HTTPS name is
 unreachable off-tailnet. `tailscale serve status --json` must show Serve, never Funnel. See the

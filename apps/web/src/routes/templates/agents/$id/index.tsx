@@ -2,10 +2,11 @@ import { ApiClientError } from '@bazilion/client'
 import type { LoadedProfile, SkillInfo } from '@bazilion/api-types'
 import { createFileRoute, redirect, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { PageShell } from '../../../../components/Page'
 import { ProfileCommunicationEditor } from '../../../../components/team-policy/ProfileCommunicationEditor'
 import { TemplatesTabs } from '../../../../components/TemplatesTabs'
+import { UnsavedChangesGuard } from '../../../../components/UnsavedChangesGuard'
 import { daemonClient } from '../../../../lib/daemon-client'
 import { DEFAULT_PROFILE_COMMUNICATION } from '../../../../lib/team-policy'
 import type { ProfileCommunicationDefaults } from '@bazilion/api-types'
@@ -54,9 +55,17 @@ export const Route = createFileRoute('/templates/agents/$id/')({
 function ProfileDetailPage() {
   const { loaded, modelGroups, skills } = Route.useLoaderData()
   const [tab, setTab] = useState<'basics' | 'skills' | 'communication'>('basics')
+  const [dirtySections, setDirtySections] = useState<Record<string, boolean>>({})
+  const reportDirty = useCallback((section: string, dirty: boolean) => {
+    setDirtySections((current) =>
+      current[section] === dirty ? current : { ...current, [section]: dirty },
+    )
+  }, [])
+  const dirtyCount = Object.values(dirtySections).filter(Boolean).length
 
   return (
     <PageShell>
+      <UnsavedChangesGuard when={dirtyCount > 0} subject="Agent template changes" />
       <TemplatesTabs />
       <header className="mb-1">
         <a
@@ -90,21 +99,28 @@ function ProfileDetailPage() {
         active={tab}
         onChange={(t) => setTab(t as 'basics' | 'skills' | 'communication')}
       />
+      {dirtyCount > 0 && (
+        <p role="status" className="mb-4 text-sm text-warning">
+          {dirtyCount} unsaved {dirtyCount === 1 ? 'section' : 'sections'} — switching tabs keeps
+          the draft, but leaving this page will ask for confirmation.
+        </p>
+      )}
 
-      {tab === 'basics' && (
-        <div>
+      <div hidden={tab !== 'basics'}>
           <SettingsCard
             profileId={loaded.profile.id}
             initialName={loaded.profile.name}
             currentModel={loaded.profile.defaultModel}
             modelGroups={modelGroups}
+            onDirtyChange={reportDirty}
           />
-          <FileCard profileId={loaded.profile.id} file="SOUL.md" initialContent={loaded.files.soul} rows={14} />
+          <FileCard profileId={loaded.profile.id} file="SOUL.md" initialContent={loaded.files.soul} rows={14} onDirtyChange={reportDirty} />
           <FileCard
             profileId={loaded.profile.id}
             file="IDENTITY.md"
             initialContent={loaded.files.identity}
             rows={10}
+            onDirtyChange={reportDirty}
           />
           {loaded.files.bootstrap === null ? (
             <section className="file-card">
@@ -122,6 +138,7 @@ function ProfileDetailPage() {
               file="BOOTSTRAP.md"
               initialContent={loaded.files.bootstrap}
               rows={10}
+              onDirtyChange={reportDirty}
             />
           )}
           <OptionalFileCard
@@ -129,41 +146,68 @@ function ProfileDetailPage() {
             file="AGENTS.md"
             initialContent={loaded.files.agents}
             hint="Peers and routing notes — who this agent can hand off to."
+            onDirtyChange={reportDirty}
           />
           <OptionalFileCard
             profileId={loaded.profile.id}
             file="TOOLS.md"
             initialContent={loaded.files.tools}
             hint="Tool playbook. Agent-specific usage notes that go beyond the generic tool descriptions."
+            onDirtyChange={reportDirty}
           />
-        </div>
-      )}
+      </div>
 
-      {tab === 'skills' && (
+      <div hidden={tab !== 'skills'}>
         <SkillsCard
           profileId={loaded.profile.id}
           initialMode={loaded.profile.skillsMode}
           initialPicked={new Set(loaded.defaultSkills)}
           skills={skills}
+          onDirtyChange={reportDirty}
         />
-      )}
+      </div>
 
-      {tab === 'communication' && (
-        <ProfileCommunicationCard profileId={loaded.profile.id} initial={loaded.profile.communicationDefaults ?? DEFAULT_PROFILE_COMMUNICATION} />
-      )}
+      <div hidden={tab !== 'communication'}>
+        <ProfileCommunicationCard
+          profileId={loaded.profile.id}
+          initial={loaded.profile.communicationDefaults ?? DEFAULT_PROFILE_COMMUNICATION}
+          onDirtyChange={reportDirty}
+        />
+      </div>
     </PageShell>
   )
 }
 
-function ProfileCommunicationCard({ profileId, initial }: { profileId: string; initial: ProfileCommunicationDefaults }) {
-  const [value, setValue] = useState<ProfileCommunicationDefaults>(initial)
-  const [savedAt, setSavedAt] = useState<number | null>(null)
+type DirtyChangeHandler = (section: string, dirty: boolean) => void
 
-  const dirty = JSON.stringify(value) !== JSON.stringify(initial)
+function useDirtyReporter(
+  section: string,
+  dirty: boolean,
+  onDirtyChange: DirtyChangeHandler,
+) {
+  useEffect(() => {
+    onDirtyChange(section, dirty)
+  }, [dirty, onDirtyChange, section])
+}
+
+function ProfileCommunicationCard({ profileId, initial, onDirtyChange }: { profileId: string; initial: ProfileCommunicationDefaults; onDirtyChange: DirtyChangeHandler }) {
+  const [value, setValue] = useState<ProfileCommunicationDefaults>(initial)
+  const [original, setOriginal] = useState<ProfileCommunicationDefaults>(initial)
+  const [status, setStatus] = useState<StatusState>({ kind: 'idle', message: '' })
+
+  const dirty = JSON.stringify(value) !== JSON.stringify(original)
+  const display = visibleStatus(dirty, status)
+  useDirtyReporter('communication', dirty, onDirtyChange)
   const save = async () => {
-    const response = await fetch(`/api/profiles/${encodeURIComponent(profileId)}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ communicationDefaults: value }) })
-    if (!response.ok) throw new Error(((await response.json().catch(() => null)) as { error?: string } | null)?.error ?? response.statusText)
-    setSavedAt(Date.now())
+    setStatus({ kind: 'saving', message: 'saving…' })
+    try {
+      const response = await fetch(`/api/profiles/${encodeURIComponent(profileId)}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ communicationDefaults: value }) })
+      if (!response.ok) throw new Error(((await response.json().catch(() => null)) as { error?: string } | null)?.error ?? response.statusText)
+      setOriginal(value)
+      setStatus({ kind: 'saved', message: 'saved to daemon' })
+    } catch (err) {
+      setStatus({ kind: 'error', message: `error: ${err instanceof Error ? err.message : String(err)}` })
+    }
   }
 
   return (
@@ -179,15 +223,14 @@ function ProfileCommunicationCard({ profileId, initial }: { profileId: string; i
       </p>
       <ProfileCommunicationEditor value={value} onChange={setValue} />
       <div className="mt-4 flex items-center gap-3">
-        <button
-          type="button"
-          className="btn-primary"
-          disabled={!dirty}
-          onClick={save}
-        >
+        <button type="button" className="btn-primary" disabled={!dirty || status.kind === 'saving'} onClick={save}>
           save communication defaults
         </button>
-        {savedAt && <span className="text-xs text-sapphire">saved to daemon</span>}
+        {display.message && (
+          <span role={display.kind === 'error' ? 'alert' : 'status'} className={`text-xs ${statusColor(display.kind)}`}>
+            {display.message}
+          </span>
+        )}
       </div>
     </section>
   )
@@ -236,6 +279,12 @@ function statusColor(kind: StatusKind) {
   return 'text-mocha-light'
 }
 
+function visibleStatus(dirty: boolean, status: StatusState): StatusState {
+  return dirty && status.kind !== 'saving' && status.kind !== 'error'
+    ? { kind: 'dirty', message: 'unsaved changes' }
+    : status
+}
+
 function FileCardShell({
   title,
   status,
@@ -252,7 +301,12 @@ function FileCardShell({
           {title}
         </h3>
         {status && (
-          <span className={`text-[0.82em] ${statusColor(status.kind)}`}>{status.message}</span>
+          <span
+            role={status.kind === 'error' ? 'alert' : status.message ? 'status' : undefined}
+            className={`text-[0.82em] ${statusColor(status.kind)}`}
+          >
+            {status.message}
+          </span>
         )}
       </div>
       {children}
@@ -265,19 +319,20 @@ function FileCard({
   file,
   initialContent,
   rows = 10,
+  onDirtyChange,
 }: {
   profileId: string
   file: string
   initialContent: string
   rows?: number
+  onDirtyChange: DirtyChangeHandler
 }) {
   const [original, setOriginal] = useState(initialContent)
   const [content, setContent] = useState(initialContent)
   const [status, setStatus] = useState<StatusState>({ kind: 'idle', message: '' })
   const dirty = content !== original
-  const display: StatusState = dirty && status.kind !== 'saving' && status.kind !== 'error'
-    ? { kind: 'dirty', message: 'unsaved changes' }
-    : status
+  useDirtyReporter(`file:${file}`, dirty, onDirtyChange)
+  const display = visibleStatus(dirty, status)
 
   async function save() {
     setStatus({ kind: 'saving', message: 'saving…' })
@@ -308,6 +363,7 @@ function FileCard({
   return (
     <FileCardShell title={file} status={display}>
       <textarea
+        aria-label={`${file} contents`}
         rows={rows}
         value={content}
         onChange={(e) => setContent(e.target.value)}
@@ -335,11 +391,13 @@ function OptionalFileCard({
   file,
   initialContent,
   hint,
+  onDirtyChange,
 }: {
   profileId: string
   file: string
   initialContent: string | null
   hint: string
+  onDirtyChange: DirtyChangeHandler
 }) {
   const router = useRouter()
   const [creating, setCreating] = useState(false)
@@ -388,7 +446,7 @@ function OptionalFileCard({
   return (
     <>
       <p className="muted -mb-3 ml-1 mt-2 text-[0.85em]">{hint}</p>
-      <FileCard profileId={profileId} file={file} initialContent={initialContent} rows={10} />
+      <FileCard profileId={profileId} file={file} initialContent={initialContent} rows={10} onDirtyChange={onDirtyChange} />
     </>
   )
 }
@@ -398,34 +456,47 @@ function SettingsCard({
   initialName,
   currentModel,
   modelGroups,
+  onDirtyChange,
 }: {
   profileId: string
   initialName: string
   currentModel: string
   modelGroups: ModelGroup[]
+  onDirtyChange: DirtyChangeHandler
 }) {
   const router = useRouter()
   const [name, setName] = useState(initialName)
   const [defaultModel, setDefaultModel] = useState(currentModel)
+  const [originalName, setOriginalName] = useState(initialName)
+  const [originalModel, setOriginalModel] = useState(currentModel)
   const [status, setStatus] = useState<StatusState>({ kind: 'idle', message: '' })
+  const dirty = name !== originalName || defaultModel !== originalModel
+  const display = visibleStatus(dirty, status)
+  useDirtyReporter('settings', dirty, onDirtyChange)
 
   const modelValues = modelGroups.flatMap((g) => g.models.map((m) => `${g.provider}:${m}`))
   const modelMissing = !modelValues.includes(currentModel)
 
   async function save(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
+    const savedName = name.trim()
+    const savedModel = defaultModel.trim()
     setStatus({ kind: 'saving', message: 'saving…' })
     try {
       const res = await fetch(`/api/profiles/${encodeURIComponent(profileId)}`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ name: name.trim(), defaultModel: defaultModel.trim() }),
+        body: JSON.stringify({ name: savedName, defaultModel: savedModel }),
       })
       if (!res.ok) {
         const e2 = (await res.json().catch(() => null)) as { error?: string } | null
         throw new Error(e2?.error ?? res.statusText)
       }
       await router.invalidate()
+      setName(savedName)
+      setDefaultModel(savedModel)
+      setOriginalName(savedName)
+      setOriginalModel(savedModel)
       setStatus({ kind: 'saved', message: 'saved' })
     } catch (err) {
       setStatus({ kind: 'error', message: `error: ${(err as Error).message}` })
@@ -433,7 +504,7 @@ function SettingsCard({
   }
 
   return (
-    <FileCardShell title="settings" status={status}>
+    <FileCardShell title="settings" status={display}>
       <form onSubmit={save}>
         <div className="flex gap-4">
           <label className="flex-1">
@@ -468,7 +539,7 @@ function SettingsCard({
           </label>
         </div>
         <div className="mt-3 flex gap-2">
-          <button type="submit" disabled={status.kind === 'saving'}>
+          <button type="submit" disabled={!dirty || status.kind === 'saving'}>
             save settings
           </button>
         </div>
@@ -482,16 +553,23 @@ function SkillsCard({
   initialMode,
   initialPicked,
   skills,
+  onDirtyChange,
 }: {
   profileId: string
   initialMode: 'all' | 'selected'
   initialPicked: Set<string>
   skills: SkillInfo[]
+  onDirtyChange: DirtyChangeHandler
 }) {
   const router = useRouter()
   const [mode, setMode] = useState<'all' | 'selected'>(initialMode)
   const [picked, setPicked] = useState<Set<string>>(initialPicked)
+  const [originalMode, setOriginalMode] = useState<'all' | 'selected'>(initialMode)
+  const [originalPicked, setOriginalPicked] = useState<Set<string>>(initialPicked)
   const [status, setStatus] = useState<StatusState>({ kind: 'idle', message: '' })
+  const dirty = mode !== originalMode || !sameSet(picked, originalPicked)
+  const display = visibleStatus(dirty, status)
+  useDirtyReporter('skills', dirty, onDirtyChange)
 
   function toggle(name: string) {
     setPicked((prev) => {
@@ -504,6 +582,7 @@ function SkillsCard({
 
   async function save(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
+    const savedPicked = mode === 'selected' ? new Set(picked) : new Set<string>()
     setStatus({ kind: 'saving', message: 'saving…' })
     try {
       const res = await fetch(`/api/profiles/${encodeURIComponent(profileId)}`, {
@@ -511,7 +590,7 @@ function SkillsCard({
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           skillsMode: mode,
-          defaultSkills: mode === 'selected' ? Array.from(picked) : [],
+          defaultSkills: Array.from(savedPicked),
         }),
       })
       if (!res.ok) {
@@ -523,6 +602,9 @@ function SkillsCard({
       // and remounts it with the stale `initialPicked` snapshot — the save
       // looks like it was lost even though the backend persisted it.
       await router.invalidate()
+      setOriginalMode(mode)
+      setPicked(savedPicked)
+      setOriginalPicked(savedPicked)
       setStatus({ kind: 'saved', message: 'saved' })
     } catch (err) {
       setStatus({ kind: 'error', message: `error: ${(err as Error).message}` })
@@ -530,7 +612,7 @@ function SkillsCard({
   }
 
   return (
-    <FileCardShell title="skills" status={status}>
+    <FileCardShell title="skills" status={display}>
       <p className="muted my-2">
         Choose what agents spawned from this profile inherit. Existing agents aren't affected
         — they keep whatever skills they were spawned with.
@@ -582,11 +664,15 @@ function SkillsCard({
           )}
         </div>
         <div className="mt-3 flex gap-2">
-          <button type="submit" disabled={status.kind === 'saving'}>
+          <button type="submit" disabled={!dirty || status.kind === 'saving'}>
             save skills
           </button>
         </div>
       </form>
     </FileCardShell>
   )
+}
+
+function sameSet(left: Set<string>, right: Set<string>): boolean {
+  return left.size === right.size && Array.from(left).every((item) => right.has(item))
 }

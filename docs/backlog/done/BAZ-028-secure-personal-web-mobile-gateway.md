@@ -71,13 +71,16 @@ boundary at the web gateway before it rewrites requests for the loopback daemon.
 - **Daemon ownership remains canonical:** the daemon owns device credentials, browser sessions,
   their hashes and revocation state, and all authentication decisions. The web server proxies; it
   does not grow a second auth database.
-- **The bootstrap token stays local:** the non-revocable `bootstrap` row and plaintext in
-  `auth.json` remain the daemon's PBKDF2 seed and local CLI credential. Normal browser and mobile
-  setup mints a separate device credential locally over CLI/SSH instead of copying the bootstrap
-  token to a device. Browser login accepts device credentials only, including during first-run.
-- **Sessions, not bearer cookies:** browser login accepts a device credential once and returns an
-  opaque session secret. Only its hash is stored by the daemon. The browser cookie contains the
-  session secret, never the source device or bootstrap bearer.
+- **The bootstrap token remains bounded to bootstrap duties:** the non-revocable `bootstrap` row
+  and plaintext in `auth.json` remain the daemon's PBKDF2 seed and local CLI credential. Only while
+  setup is incomplete may browser login accept that secret. The daemon creates an internal
+  expiring/revocable device identity as the source of a bounded setup session; after setup,
+  browser login rejects the bootstrap secret. Mobile pairing always requires a separately minted
+  device credential.
+- **Sessions, not bearer cookies:** browser login accepts a device credential, or the bootstrap
+  credential under the first-run exception above, and returns an opaque session secret. Only its
+  hash is stored by the daemon. The browser cookie contains the session secret, never the source
+  device secret or bootstrap bearer.
 - **Bearer auth remains for native clients:** CLI and mobile continue to use
   `@bazilion/client` with one device credential held in their existing platform-appropriate store.
   They do not receive a browser cookie or share one device credential with each other.
@@ -142,9 +145,11 @@ authenticated-owner response, and typed login/logout errors.
 
 Authentication surfaces:
 
-- `POST /api/login` validates a device bearer supplied in the request body, creates a
-  bounded browser session, and sets the session cookie. It never reflects or persists the bearer
-  in the response or cookie. Bootstrap credentials are rejected on this route.
+- `POST /api/login` normally validates a device bearer supplied in the request body, creates a
+  bounded browser session, and sets the session cookie. While setup is incomplete, a valid
+  bootstrap secret may instead authorize creation of an internal expiring/revocable device
+  identity and a session sourced from it. The route never reflects or stores either bearer in the
+  response or browser cookies, and rejects bootstrap login once setup is complete.
 - `POST /api/logout` revokes the current browser session and expires its cookie.
 - `GET /api/auth/whoami` is protected and returns bounded credential/session metadata. Mobile and
   CLI use this endpoint to prove that their supplied bearer was authenticated.
@@ -235,8 +240,9 @@ Document and verify one reproducible small-server setup:
 4. Use Tailscale Serve to publish the loopback web listener over tailnet-only HTTPS.
 5. Confirm that no Bazilion port is listening on a public or LAN interface and that Funnel is not
    enabled for the Bazilion origin.
-6. Mint one named device credential locally, use it for the first browser login or mobile pairing,
-   and verify login/logout/revocation remotely.
+6. On a fresh install, use the `auth.json` bootstrap secret in the browser only to finish provider
+   setup. Then mint one named device credential per browser or phone and verify
+   login/logout/revocation remotely.
 
 Deployment support is read-only in this story: it inspects listeners plus `tailscale serve status
 --json`, rejects an observed Funnel/public route or ambiguous state, and prints exact copy/paste
@@ -279,6 +285,10 @@ commands. It must not edit tailnet policy, firewall state, or Serve configuratio
   source-device expiry.
 - The bootstrap credential remains paired with `auth.json`, non-revocable, and usable locally, but
   normal device/QR creation never returns it.
+- Before setup completes, a valid bootstrap browser login creates an internal expiring/revocable
+  device identity and the same bounded session/CSRF cookies as device login. No browser cookie,
+  response, session row, or log contains the bootstrap secret. After setup completes, the same
+  login attempt is rejected.
 - Device list/create/revoke and browser session list/revoke have matching authenticated HTTP, CLI,
   and web coverage, including concurrent tabs and stale revocation attempts.
 - Cookie-authenticated POST/PUT/PATCH/DELETE requests with a missing/mismatched Origin or CSRF value
@@ -329,8 +339,9 @@ reachable listener.
   the restored home.
 - `BAZILION_PUBLIC_ORIGIN` is the production source of truth shared by daemon and web gateway.
   Request and forwarding headers never define it.
-- Browser login never accepts the bootstrap token. The operator mints the first named device token
-  locally with the CLI before logging in from either a local or remote browser.
+- Browser login accepts the bootstrap token only while setup is incomplete and exchanges it through
+  an internal expiring/revocable device identity for a bounded setup session. Once setup completes,
+  the operator uses named device tokens for all later local or remote browser logins.
 - Loopback HTTP development uses `bz_session_dev` and `bz_csrf_dev` without `Secure`, only when both
   listener and request host are loopback and `BAZILION_PUBLIC_ORIGIN` is unset. Production requires
   the `__Host-` secure cookies and has no automatic downgrade.
@@ -344,7 +355,9 @@ reachable listener.
 
 - Added explicit bootstrap/device credential kinds, 90-day default and 365-day maximum device
   expiry, active-state diagnostics, and immediate derived-session invalidation on revocation or
-  expiry. The bootstrap remains local, non-expiring, non-revocable, and rejected by browser login.
+  expiry. The bootstrap remains non-expiring and non-revocable. The v0.14 first-run exchange accepts
+  it only while setup is incomplete, creates an internal expiring/revocable device identity, and
+  rejects it after setup completes.
 - Browser login now exchanges a device secret for separately random session and CSRF values. Only
   hashes are persisted; sessions enforce 12-hour idle and seven-day absolute deadlines and support
   logout, list, and independent revocation across HTTP, CLI, and web Config.

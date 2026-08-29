@@ -24,15 +24,15 @@ function install(): void {
   installed = true
 }
 
-export function renderMd(text: string): string {
+export function renderMd(text: string, domReady: boolean): string {
   if (!text) return ''
-  if (typeof window === 'undefined') {
-    // SSR — DOMPurify needs a DOM. Return escaped text; the client will
-    // re-render once it hydrates.
+  if (!domReady || typeof window === 'undefined') {
+    // DOMPurify needs a DOM. SSR and the browser's hydration pass both use
+    // this escaped representation; ChatPane upgrades it after hydration.
     return escapeHtml(text)
   }
-  install()
   try {
+    install()
     const html = marked.parse(text, { async: false }) as string
     return DOMPurify.sanitize(html)
   } catch {

@@ -15,6 +15,7 @@ import {
 } from 'react-native'
 import { clearCredentials, clientFor, type Credentials, loadCredentials } from '@/src/auth'
 import { useColors, useThemeMode } from '@/src/theme-context'
+import { mobileErrorMessage } from '@/src/errors'
 import { type Colors, fonts, radii, type ThemeMode } from '@/src/theme'
 
 type Load =
@@ -32,12 +33,13 @@ export default function Settings() {
 
   const fetchTokens = useCallback(async () => {
     setLoad({ kind: 'loading' })
-    const creds = await loadCredentials()
-    if (!creds) {
-      router.replace('/pair')
-      return
-    }
+    let creds: Credentials | null = null
     try {
+      creds = await loadCredentials()
+      if (!creds) {
+        router.replace('/pair')
+        return
+      }
       const res = await clientFor(creds).get<ListTokensResponse>('/api/tokens')
       // Identify the bootstrap row so the UI can hide its revoke button
       // (matches the daemon's 409-on-revoke guard).
@@ -54,7 +56,7 @@ export default function Settings() {
         router.replace('/pair')
         return
       }
-      const message = err instanceof Error ? err.message : 'unknown error'
+      const message = mobileErrorMessage(err, creds?.server ?? 'the Bazilion gateway')
       setLoad({ kind: 'error', message })
     }
   }, [])
@@ -74,7 +76,7 @@ export default function Settings() {
       setNewLabel('')
       await fetchTokens()
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'unknown error'
+      const message = mobileErrorMessage(err, load.creds.server)
       Alert.alert('Could not mint token', message)
     } finally {
       setMinting(false)
@@ -97,7 +99,7 @@ export default function Settings() {
                 await clientFor(load.creds).del(`/api/tokens/${id}`)
                 await fetchTokens()
               } catch (err) {
-                const message = err instanceof Error ? err.message : 'unknown error'
+                const message = mobileErrorMessage(err, load.creds.server)
                 Alert.alert('Could not revoke', message)
               }
             },
@@ -130,7 +132,7 @@ export default function Settings() {
 
   if (load.kind === 'loading') {
     return (
-      <View style={styles.centered}>
+      <View style={styles.centered} accessibilityLabel="Loading settings">
         <ActivityIndicator />
       </View>
     )
@@ -140,11 +142,23 @@ export default function Settings() {
     return (
       <View style={styles.centered}>
         <Text style={styles.errorTitle}>Couldn't load settings</Text>
-        <Text style={styles.errorBody}>{load.message}</Text>
-        <Pressable style={styles.primaryBtn} onPress={fetchTokens}>
+        <Text style={styles.errorBody} accessibilityRole="alert">
+          {load.message}
+        </Text>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Retry loading settings"
+          style={styles.primaryBtn}
+          onPress={fetchTokens}
+        >
           <Text style={styles.primaryBtnText}>Retry</Text>
         </Pressable>
-        <Pressable style={styles.linkBtn} onPress={onUnpair}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Unpair this device"
+          style={styles.linkBtn}
+          onPress={onUnpair}
+        >
           <Text style={styles.linkBtnText}>Unpair</Text>
         </Pressable>
       </View>
@@ -177,12 +191,15 @@ export default function Settings() {
             value={newLabel}
             onChangeText={setNewLabel}
             placeholder="e.g. tablet, laptop"
-            placeholderTextColor="#aaa"
+            placeholderTextColor={colors.mocha}
             style={styles.mintInput}
             editable={!minting}
             autoCapitalize="none"
+            accessibilityLabel="New device token label"
           />
           <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Mint a new device token"
             onPress={onMint}
             disabled={minting || !newLabel.trim()}
             style={({ pressed }) => [
@@ -210,6 +227,7 @@ export default function Settings() {
       <Section label={`tokens (${load.tokens.length})`}>
         <FlatList
           data={load.tokens}
+          accessibilityLabel="Device tokens"
           scrollEnabled={false}
           keyExtractor={(t) => t.id}
           renderItem={({ item }) => (
@@ -226,6 +244,9 @@ export default function Settings() {
       <View style={styles.divider} />
 
       <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Unpair this device"
+        accessibilityHint="Removes the saved Bazilion server and token from this device"
         onPress={onUnpair}
         style={({ pressed }) => [styles.dangerBtn, pressed && styles.dangerBtnPressed]}
       >
@@ -270,7 +291,12 @@ function TokenRow({
         </Text>
       </View>
       {!isBootstrap && !token.revokedAt ? (
-        <Pressable onPress={onRevoke} hitSlop={10}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Revoke ${token.label} token`}
+          onPress={onRevoke}
+          hitSlop={10}
+        >
           <Text style={styles.tokenRevoke}>Revoke</Text>
         </Pressable>
       ) : null}
@@ -295,6 +321,9 @@ function ThemePicker() {
         return (
           <Pressable
             key={opt.value}
+            accessibilityRole="radio"
+            accessibilityState={{ checked: active }}
+            accessibilityLabel={`${opt.label} theme`}
             onPress={() => {
               void setMode(opt.value)
             }}

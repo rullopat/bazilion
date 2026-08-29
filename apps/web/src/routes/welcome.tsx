@@ -22,13 +22,13 @@ function WelcomePage() {
       <PageHeader
         eyebrow="First run"
         title="Welcome to bazilion"
-        description="Connect one model provider, then Bazilion will prepare your default Agent template and Team."
+        description="Configure one model provider to prepare your defaults, then test it before the first conversation."
       />
       <SectionCard title="Three steps to your first conversation">
         <p className="text-sm leading-6 text-muted-foreground">
           Before you can spawn agents, enable a provider and save at least one concrete model id.
-          Once you do, a <code>default</code> Agent template (and a <code>default</code> team
-          directory) are created automatically and the rest of the app unlocks.
+          Bazilion then creates a <code>default</code> Agent template and <code>default</code> Team.
+          Send the small connection test before relying on that model.
         </p>
         <ol className="my-5 space-y-4">
           <Step n={1}>
@@ -44,8 +44,9 @@ function WelcomePage() {
             press <em>save models</em>.
           </Step>
           <Step n={3}>
-            <strong>Start chatting.</strong> You'll be redirected to the home page
-            automatically, where the <code>default</code> Agent template is ready for your first spawn.
+            <strong>Verify and spawn.</strong> Send the short real-model test. When setup is
+            configured, the page gives you a direct action to spawn the first agent from the{' '}
+            <code>default</code> template.
           </Step>
         </ol>
         <a

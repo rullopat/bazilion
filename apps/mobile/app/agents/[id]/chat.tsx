@@ -1,10 +1,15 @@
-import type { ChatFrame, ProviderMessage, SessionEvent } from '@bazilion/api-types'
-import { useHeaderHeight } from '@react-navigation/elements'
-import { router, useLocalSearchParams } from 'expo-router'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import type {
+  ChatFrame,
+  ProviderMessage,
+  ResolvedAgent,
+} from '@bazilion/api-types'
+import { ApiClientError } from '@bazilion/client'
+import { Stack, router, useLocalSearchParams } from 'expo-router'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   FlatList,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -15,238 +20,323 @@ import {
 } from 'react-native'
 import Markdown from 'react-native-markdown-display'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { clearCredentials, type Credentials, loadCredentials } from '@/src/auth'
+import { clearCredentials, clientFor, type Credentials, loadCredentials } from '@/src/auth'
+import {
+  appendChatNotice,
+  appendLocalUser,
+  applyChatFrame,
+  type ChatItem,
+  type ChatState,
+  chatStateFromHistory,
+  parseCommunicationPending,
+} from '@/src/chat-state'
+import { mobileErrorMessage } from '@/src/errors'
+import { NdjsonDecoder } from '@/src/ndjson'
 import { useColors } from '@/src/theme-context'
 import { type Colors, fonts, radii } from '@/src/theme'
 
-// Display-side rendering item. Derived from the server's ProviderMessage[]
-// (history) and SessionEvent stream (live turn). Tool-call/result pairs are
-// collapsed into a single tool item so the UI doesn't show them as separate
-// rows.
-type Item =
-  | { id: string; kind: 'user'; text: string }
-  | { id: string; kind: 'assistant'; text: string }
-  | { id: string; kind: 'tool'; name: string; result?: string; error?: string }
-  | { id: string; kind: 'error'; text: string }
+type LoadState =
+  | { kind: 'loading' }
+  | { kind: 'ready'; creds: Credentials; agent: ResolvedAgent }
+  | { kind: 'error'; message: string }
 
-let _itemIdSeq = 0
-const nextItemId = (): string => `i${++_itemIdSeq}`
-
-/** Turn the server's flattened ProviderMessage[] (history) into display Items. */
-function historyToItems(messages: ProviderMessage[]): Item[] {
-  const out: Item[] = []
-  for (const m of messages) {
-    if (m.role === 'user') {
-      out.push({ id: nextItemId(), kind: 'user', text: m.content })
-    } else if (m.role === 'assistant') {
-      if (m.content) out.push({ id: nextItemId(), kind: 'assistant', text: m.content })
-      for (const tc of m.toolCalls ?? []) {
-        out.push({ id: tc.id, kind: 'tool', name: tc.name })
-      }
-    } else if (m.role === 'tool') {
-      // Backfill matching tool item with its result. The tool entry was
-      // pushed when we saw the assistant's tool_call above; find by id.
-      const idx = out.findIndex((it) => it.kind === 'tool' && it.id === m.toolCallId)
-      if (idx >= 0) {
-        const existing = out[idx]
-        if (existing && existing.kind === 'tool') {
-          out[idx] = { ...existing, result: m.content }
-        }
-      }
-    }
-  }
-  return out
+const EMPTY_CHAT: ChatState = {
+  items: [],
+  assistantDraftId: null,
+  terminal: 'idle',
 }
 
-/**
- * Apply a SessionEvent emitted during a turn to the running items list.
- * Pure — caller commits the new array via setState.
- */
-function applyEvent(items: Item[], ev: SessionEvent): Item[] {
-  switch (ev.type) {
-    case 'user_message':
-      // Already appended locally on send; ignore the echo.
-      return items
-    case 'assistant_message':
-      return [...items, { id: nextItemId(), kind: 'assistant', text: ev.text }]
-    case 'assistant_delta': {
-      const last = items[items.length - 1]
-      if (last && last.kind === 'assistant') {
-        return [...items.slice(0, -1), { ...last, text: last.text + ev.delta }]
-      }
-      return [...items, { id: nextItemId(), kind: 'assistant', text: ev.delta }]
-    }
-    case 'tool_call':
-      return [...items, { id: ev.id, kind: 'tool', name: ev.name }]
-    case 'tool_result':
-    case 'tool_error': {
-      const idx = items.findIndex((it) => it.kind === 'tool' && it.id === ev.id)
-      if (idx < 0) return items
-      const existing = items[idx]
-      if (!existing || existing.kind !== 'tool') return items
-      const updated: Item =
-        ev.type === 'tool_result'
-          ? { ...existing, result: ev.result }
-          : { ...existing, error: ev.error }
-      return [...items.slice(0, idx), updated, ...items.slice(idx + 1)]
-    }
-    case 'error':
-      return [...items, { id: nextItemId(), kind: 'error', text: ev.error }]
-    default:
-      return items
+function isChatFrame(value: unknown): value is ChatFrame {
+  if (!value || typeof value !== 'object') return false
+  const frame = value as Record<string, unknown>
+  if (frame.kind === 'fatal') return typeof frame.error === 'string'
+  if (frame.kind === 'done') return Array.isArray(frame.messages)
+  return frame.kind === 'event' && !!frame.event && typeof frame.event === 'object'
+}
+
+function responseError(body: unknown, status: number, fallback: string): string {
+  if (body && typeof body === 'object') {
+    const value = body as Record<string, unknown>
+    if (typeof value.error === 'string') return value.error
+    if (typeof value.reason === 'string') return value.reason
+    if (typeof value.code === 'string') return value.code.replaceAll('_', ' ')
   }
+  return fallback || `server returned ${status}`
+}
+
+async function consumeChatFrames(
+  response: Response,
+  onFrame: (frame: ChatFrame) => void,
+): Promise<void> {
+  const decoder = new NdjsonDecoder<unknown>()
+  const emit = (value: unknown) => {
+    if (!isChatFrame(value)) throw new SyntaxError('invalid chat frame')
+    onFrame(value)
+  }
+
+  if (response.body && typeof response.body.getReader === 'function') {
+    const reader = response.body.getReader()
+    const text = new TextDecoder()
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      for (const frame of decoder.push(text.decode(value, { stream: true }))) emit(frame)
+    }
+    for (const frame of decoder.finish(text.decode())) emit(frame)
+    return
+  }
+
+  // Some React Native fetch implementations expose no readable body. Keep a
+  // correct buffered fallback for ordinary turns instead of dropping frames.
+  for (const frame of decoder.finish(await response.text())) emit(frame)
 }
 
 export default function ChatScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
-  const [items, setItems] = useState<Item[]>([])
-  const [creds, setCreds] = useState<Credentials | null>(null)
+  const [chat, setChat] = useState<ChatState>(EMPTY_CHAT)
+  const [load, setLoad] = useState<LoadState>({ kind: 'loading' })
+  const [reloadKey, setReloadKey] = useState(0)
   const [draft, setDraft] = useState('')
-  const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading')
-  const [loadError, setLoadError] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
+  const [canceling, setCanceling] = useState(false)
+  const [failedMessage, setFailedMessage] = useState<string | null>(null)
+  const streamAbort = useRef<AbortController | null>(null)
+  const cancelRequested = useRef(false)
+  const disposed = useRef(false)
   const colors = useColors()
   const styles = useMemo(() => makeStyles(colors), [colors])
-  // Real header height (varies with notch / dynamic island / safe-area
-  // insets) so KeyboardAvoidingView lifts the input box above the keyboard
-  // by exactly the right amount.
-  const headerHeight = useHeaderHeight()
-  // Bottom inset clears the home indicator on iPhones with curved
-  // corners — without this, the input row gets clipped at rest.
   const insets = useSafeAreaInsets()
+  const keyboardOffset = Platform.OS === 'ios' ? insets.top + 44 : 0
+  const reversedItems = useMemo(() => [...chat.items].reverse(), [chat.items])
 
-  // FlatList is `inverted` so the visual bottom is index 0 of the rendered
-  // data — chronological items get reversed at render time. This makes the
-  // list anchor itself to the bottom by default; no scrollToEnd dance.
-  const reversedItems = useMemo(() => [...items].reverse(), [items])
-
-  // History fetch on mount.
   useEffect(() => {
     let cancelled = false
+    setLoad({ kind: 'loading' })
     ;(async () => {
-      const c = await loadCredentials()
-      if (!c) {
-        router.replace('/pair')
-        return
-      }
-      if (cancelled) return
-      setCreds(c)
+      let creds: Credentials | null = null
       try {
-        const res = await fetch(`${c.server}/api/agents/${id}/sessions/messages`, {
-          headers: { authorization: `Bearer ${c.token}`, origin: c.server },
-        })
-        if (res.status === 401) {
+        creds = await loadCredentials()
+        if (!creds) {
+          router.replace('/pair')
+          return
+        }
+        const client = clientFor(creds)
+        const [agent, history] = await Promise.all([
+          client.get<ResolvedAgent>(`/api/agents/${id}`),
+          client.get<{ messages: ProviderMessage[] }>(`/api/agents/${id}/sessions/messages`),
+        ])
+        if (cancelled) return
+        setChat(chatStateFromHistory(history.messages))
+        setLoad({ kind: 'ready', creds, agent })
+      } catch (error) {
+        if (cancelled) return
+        if (error instanceof ApiClientError && error.status === 401) {
           await clearCredentials()
           router.replace('/pair')
           return
         }
-        if (!res.ok) {
-          throw new Error(`server returned ${res.status} loading history`)
-        }
-        const body = (await res.json()) as { messages: ProviderMessage[] }
-        if (cancelled) return
-        setItems(historyToItems(body.messages))
-        setLoadState('ready')
-      } catch (err) {
-        if (cancelled) return
-        setLoadError(err instanceof Error ? err.message : 'unknown error')
-        setLoadState('error')
+        setLoad({
+          kind: 'error',
+          message: mobileErrorMessage(error, creds?.server ?? 'the Bazilion gateway'),
+        })
       }
     })()
     return () => {
       cancelled = true
     }
-  }, [id])
+  }, [id, reloadKey])
 
-  const onSend = useCallback(async () => {
-    if (!creds || sending) return
-    const text = draft.trim()
-    if (!text) return
+  useEffect(() => {
+    disposed.current = false
+    return () => {
+      disposed.current = true
+      streamAbort.current?.abort()
+    }
+  }, [])
 
-    setDraft('')
-    setSending(true)
-    setItems((prev) => [...prev, { id: nextItemId(), kind: 'user', text }])
+  const sendMessage = useCallback(
+    async (text: string) => {
+      if (load.kind !== 'ready' || sending || streamAbort.current) return
+      const message = text.trim()
+      if (!message) return
 
+      const controller = new AbortController()
+      streamAbort.current = controller
+      cancelRequested.current = false
+      setDraft('')
+      setFailedMessage(null)
+      setSending(true)
+      setChat((current) => appendLocalUser(current, message))
+
+      let terminalFrame = false
+      try {
+        const response = await fetch(`${load.creds.server}/api/agents/${id}/chat`, {
+          method: 'POST',
+          headers: {
+            authorization: `Bearer ${load.creds.token}`,
+            origin: load.creds.server,
+            'content-type': 'application/json',
+          },
+          // Native keeps dangerous shell commands fail-closed. Interactive
+          // command approval requires a guaranteed streaming transport; the
+          // web chat remains the supported approval surface.
+          body: JSON.stringify({ message, bashApprovalMode: 'auto_deny' }),
+          signal: controller.signal,
+        })
+
+        if (response.status === 401) {
+          await clearCredentials()
+          router.replace('/pair')
+          return
+        }
+        if (response.status === 202) {
+          const pending = parseCommunicationPending(await response.json())
+          const expiry = new Date(pending.expiresAt).toLocaleString()
+          setChat((current) => ({
+            ...appendChatNotice(
+              current,
+              'info',
+              `Message held for Team Policy approval until ${expiry}. Review it in the web Approval queue.`,
+            ),
+            terminal: 'done',
+          }))
+          terminalFrame = true
+          return
+        }
+        if (!response.ok) {
+          const body = await response.json().catch(() => null)
+          throw new Error(responseError(body, response.status, response.statusText))
+        }
+        const contentType = response.headers.get('content-type') ?? ''
+        if (!contentType.includes('application/x-ndjson')) {
+          throw new SyntaxError(`expected NDJSON, received ${contentType || 'no content type'}`)
+        }
+
+        await consumeChatFrames(response, (frame) => {
+          if (frame.kind === 'done' || frame.kind === 'fatal') {
+            terminalFrame = true
+            if (frame.kind === 'fatal') setFailedMessage(message)
+          }
+          setChat((current) => applyChatFrame(current, frame))
+        })
+        if (!terminalFrame) throw new Error('Chat stream ended before a done or fatal frame.')
+      } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError' && disposed.current) {
+          return
+        }
+        if (error instanceof Error && error.name === 'AbortError' && cancelRequested.current) {
+          setChat((current) => ({
+            ...appendChatNotice(current, 'info', 'Turn cancelled.'),
+            terminal: 'done',
+          }))
+        } else {
+          const detail = mobileErrorMessage(error, load.creds.server)
+          setChat((current) => ({
+            ...appendChatNotice(current, 'error', detail),
+            terminal: 'fatal',
+          }))
+          setFailedMessage(message)
+          setDraft((current) => current || message)
+        }
+      } finally {
+        if (streamAbort.current === controller) {
+          streamAbort.current = null
+          cancelRequested.current = false
+          if (!disposed.current) {
+            setSending(false)
+            setCanceling(false)
+          }
+        }
+      }
+    },
+    [id, load, sending],
+  )
+
+  const onSend = useCallback(() => {
+    void sendMessage(draft)
+  }, [draft, sendMessage])
+
+  const onCancel = useCallback(async () => {
+    if (load.kind !== 'ready' || !streamAbort.current || canceling) return
+    setCanceling(true)
     try {
-      const res = await fetch(`${creds.server}/api/agents/${id}/chat`, {
-        method: 'POST',
-        headers: {
-          authorization: `Bearer ${creds.token}`,
-          origin: creds.server,
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify({ message: text }),
-      })
-      if (res.status === 401) {
-        await clearCredentials()
-        router.replace('/pair')
+      await clientFor(load.creds).post(`/api/agents/${id}/cancel`)
+      cancelRequested.current = true
+      streamAbort.current?.abort()
+    } catch (error) {
+      if (error instanceof ApiClientError && error.status === 409) {
+        setChat((current) =>
+          appendChatNotice(
+            current,
+            'info',
+            'The turn already finished; waiting for its final response.',
+          ),
+        )
+        setCanceling(false)
         return
       }
-      if (!res.ok) {
-        const errBody = (await res.json().catch(() => ({ error: res.statusText }))) as {
-          error?: string
-        }
-        throw new Error(errBody.error ?? `server returned ${res.status}`)
-      }
-      // Buffered NDJSON: read the whole body, split per line, parse each
-      // ChatFrame, then apply contained SessionEvents in order. RN's
-      // ReadableStream support is platform-flaky; buffering trades the
-      // typing-effect for reliability.
-      const raw = await res.text()
-      const frames: ChatFrame[] = raw
-        .split('\n')
-        .filter((l) => l.trim())
-        .map((l) => JSON.parse(l) as ChatFrame)
-
-      let next = items
-      for (const frame of frames) {
-        if (frame.kind === 'event') {
-          next = applyEvent(next, frame.event)
-          // Apply via setState too so each frame committed visibly when
-          // the chunk lands. (We defer to the final setState below for
-          // efficiency; this comment notes intent.)
-        } else if (frame.kind === 'fatal') {
-          next = [...next, { id: nextItemId(), kind: 'error', text: frame.error }]
-        }
-      }
-      setItems(next)
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'unknown error'
-      setItems((prev) => [...prev, { id: nextItemId(), kind: 'error', text: message }])
-    } finally {
-      setSending(false)
+      setChat((current) =>
+        appendChatNotice(
+          current,
+          'error',
+          `Couldn’t confirm cancellation. ${mobileErrorMessage(error, load.creds.server)}`,
+        ),
+      )
+      setCanceling(false)
     }
-  }, [creds, draft, id, items, sending])
+  }, [canceling, id, load])
 
-  if (loadState === 'loading') {
+  if (load.kind === 'loading') {
     return (
-      <View style={styles.centered}>
+      <View style={styles.centered} accessibilityLabel="Loading chat">
         <ActivityIndicator />
       </View>
     )
   }
 
-  if (loadState === 'error') {
+  if (load.kind === 'error') {
     return (
       <View style={styles.centered}>
-        <Text style={styles.errorTitle}>Couldn't load chat</Text>
-        <Text style={styles.errorBody}>{loadError}</Text>
+        <Text style={styles.errorTitle}>Couldn’t load chat</Text>
+        <Text style={styles.errorBody} accessibilityRole="alert">
+          {load.message}
+        </Text>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Retry loading chat"
+          style={styles.primaryBtn}
+          onPress={() => setReloadKey((value) => value + 1)}
+        >
+          <Text style={styles.primaryBtnText}>Retry</Text>
+        </Pressable>
       </View>
     )
   }
+
+  const identity = load.agent.agent.identity
+  const recipient = `${identity?.emoji ? `${identity.emoji} ` : ''}${load.agent.agent.name}`
 
   return (
     <KeyboardAvoidingView
       style={styles.screen}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={headerHeight}
+      keyboardVerticalOffset={keyboardOffset}
     >
+      <Stack.Screen options={{ title: load.agent.agent.name }} />
+      <View style={styles.recipient} accessible accessibilityLabel={`Chatting with ${recipient}`}>
+        <Text style={styles.recipientName}>Chatting with {recipient}</Text>
+        <Text style={styles.recipientMeta} numberOfLines={1}>
+          {load.agent.team.name} · {load.agent.model}
+        </Text>
+      </View>
       <FlatList
         data={reversedItems}
         inverted
-        keyExtractor={(it) => it.id}
+        keyExtractor={(item) => item.id}
         renderItem={({ item }) => <Bubble item={item} />}
         contentContainerStyle={styles.listContent}
+        keyboardShouldPersistTaps="handled"
+        accessibilityLabel={`Conversation with ${load.agent.agent.name}`}
         ListEmptyComponent={
           <View style={styles.empty}>
             <Text style={styles.emptyText}>Start the conversation.</Text>
@@ -254,22 +344,50 @@ export default function ChatScreen() {
         }
       />
       {sending ? (
-        <View style={styles.thinking}>
-          <ActivityIndicator size="small" color={colors.mochaLight} />
-          <Text style={styles.thinkingText}>thinking…</Text>
+        <View style={styles.thinking} accessibilityLiveRegion="polite">
+          <ActivityIndicator size="small" color={colors.mocha} />
+          <Text style={styles.thinkingText}>{canceling ? 'cancelling…' : 'working…'}</Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Cancel ${load.agent.agent.name}’s active turn`}
+            disabled={canceling}
+            onPress={() => void onCancel()}
+            style={styles.cancelBtn}
+          >
+            <Text style={styles.cancelBtnText}>Cancel</Text>
+          </Pressable>
+        </View>
+      ) : null}
+      {failedMessage && !sending ? (
+        <View style={styles.retryRow} accessibilityLiveRegion="polite">
+          <Text style={styles.retryText} numberOfLines={2}>
+            Send failed. Check the conversation before retrying if the connection dropped mid-turn.
+          </Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Send failed message again"
+            onPress={() => void sendMessage(failedMessage)}
+            style={styles.retryBtn}
+          >
+            <Text style={styles.retryBtnText}>Send again</Text>
+          </Pressable>
         </View>
       ) : null}
       <View style={[styles.inputRow, { paddingBottom: 4 + insets.bottom }]}>
         <TextInput
           value={draft}
           onChangeText={setDraft}
-          placeholder="Message"
-          placeholderTextColor={colors.fawn}
+          placeholder={`Message ${load.agent.agent.name}`}
+          placeholderTextColor={colors.mocha}
           style={styles.input}
           multiline
           editable={!sending}
+          accessibilityLabel={`Message ${load.agent.agent.name}`}
+          accessibilityHint="Enter a message for this agent"
         />
         <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Send message to ${load.agent.agent.name}`}
           onPress={onSend}
           disabled={sending || !draft.trim()}
           style={({ pressed }) => [
@@ -285,13 +403,17 @@ export default function ChatScreen() {
   )
 }
 
-function Bubble({ item }: { item: Item }) {
+function Bubble({ item }: { item: ChatItem }) {
   const colors = useColors()
   const styles = useMemo(() => makeStyles(colors), [colors])
   const markdownStyles = useMemo(() => makeMarkdownStyles(colors), [colors])
   if (item.kind === 'user') {
     return (
-      <View style={[styles.bubbleRow, styles.bubbleRowRight]}>
+      <View
+        style={[styles.bubbleRow, styles.bubbleRowRight]}
+        accessible
+        accessibilityLabel={`You: ${item.text}`}
+      >
         <View style={[styles.bubble, styles.bubbleUser]}>
           <Text style={styles.bubbleUserText}>{item.text}</Text>
         </View>
@@ -300,7 +422,11 @@ function Bubble({ item }: { item: Item }) {
   }
   if (item.kind === 'assistant') {
     return (
-      <View style={[styles.bubbleRow, styles.bubbleRowLeft]}>
+      <View
+        style={[styles.bubbleRow, styles.bubbleRowLeft]}
+        accessible
+        accessibilityLabel={`Agent: ${item.text}`}
+      >
         <View style={[styles.bubble, styles.bubbleAssistant]}>
           <Markdown style={markdownStyles}>{item.text}</Markdown>
         </View>
@@ -310,7 +436,7 @@ function Bubble({ item }: { item: Item }) {
   if (item.kind === 'tool') {
     const status = item.error ? 'error' : item.result !== undefined ? 'done' : 'running'
     return (
-      <View style={styles.toolRow}>
+      <View style={styles.toolRow} accessible accessibilityLabel={`${item.name} tool ${status}`}>
         <Text style={styles.toolLabel}>
           ⚙ {item.name} · {status}
         </Text>
@@ -323,12 +449,57 @@ function Bubble({ item }: { item: Item }) {
             {item.result}
           </Text>
         ) : null}
+        {item.images?.map((image, index) => (
+          <Image
+            // biome-ignore lint/suspicious/noArrayIndexKey: append-only image result list
+            key={index}
+            source={{ uri: `data:${image.mimeType};base64,${image.data}` }}
+            style={styles.toolImage}
+            resizeMode="contain"
+            accessibilityLabel={`${item.name} result image ${index + 1}`}
+          />
+        ))}
+      </View>
+    )
+  }
+  if (item.kind === 'file') {
+    return (
+      <View style={styles.fileRow} accessible accessibilityLabel={`Delivered file ${item.name}`}>
+        {item.mimeType.startsWith('image/') ? (
+          <Image
+            source={{ uri: `data:${item.mimeType};base64,${item.data}` }}
+            style={styles.fileImage}
+            resizeMode="contain"
+            accessibilityLabel={item.name}
+          />
+        ) : null}
+        <Text style={styles.fileName}>📄 {item.name}</Text>
+        <Text style={styles.fileType}>{item.mimeType}</Text>
+      </View>
+    )
+  }
+  if (item.kind === 'approval') {
+    return (
+      <View
+        style={styles.approvalRow}
+        accessible
+        accessibilityLabel={`Shell command ${item.approval.status}`}
+      >
+        <Text style={styles.approvalTitle}>Shell command · {item.approval.status}</Text>
+        <Text style={styles.approvalCommand}>{item.approval.command}</Text>
+        <Text style={styles.approvalHint}>Use web chat to review interactive shell commands.</Text>
       </View>
     )
   }
   return (
-    <View style={styles.errorRow}>
-      <Text style={styles.errorBubbleText}>error: {item.text}</Text>
+    <View
+      style={item.tone === 'error' ? styles.errorRow : styles.infoRow}
+      accessibilityRole={item.tone === 'error' ? 'alert' : undefined}
+      accessibilityLiveRegion="polite"
+    >
+      <Text style={item.tone === 'error' ? styles.errorBubbleText : styles.infoBubbleText}>
+        {item.text}
+      </Text>
     </View>
   )
 }
@@ -337,9 +508,18 @@ const makeStyles = (colors: Colors) =>
   StyleSheet.create({
     screen: { flex: 1, backgroundColor: colors.background },
     centered: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24, gap: 12 },
+    recipient: {
+      paddingHorizontal: 16,
+      paddingVertical: 9,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.border,
+      backgroundColor: colors.ivory,
+    },
+    recipientName: { color: colors.foreground, fontFamily: fonts.bodyMedium, fontSize: 14 },
+    recipientMeta: { color: colors.mocha, fontFamily: fonts.mono, fontSize: 11, marginTop: 1 },
     listContent: { padding: 12, paddingBottom: 24, gap: 8 },
     empty: { padding: 32, alignItems: 'center' },
-    emptyText: { color: colors.mochaLight, fontSize: 13, fontFamily: fonts.body },
+    emptyText: { color: colors.mocha, fontSize: 13, fontFamily: fonts.body },
     bubbleRow: { flexDirection: 'row' },
     bubbleRowLeft: { justifyContent: 'flex-start' },
     bubbleRowRight: { justifyContent: 'flex-end' },
@@ -347,10 +527,9 @@ const makeStyles = (colors: Colors) =>
     bubbleUser: { backgroundColor: colors.sapphire },
     bubbleUserText: { color: colors.primaryForeground, fontSize: 15, fontFamily: fonts.body },
     bubbleAssistant: { backgroundColor: colors.card },
-    bubbleAssistantText: { color: colors.foreground, fontSize: 15, fontFamily: fonts.body },
     toolRow: {
       paddingHorizontal: 12,
-      paddingVertical: 6,
+      paddingVertical: 8,
       backgroundColor: colors.ivory,
       borderRadius: radii.md,
       borderWidth: StyleSheet.hairlineWidth,
@@ -358,17 +537,47 @@ const makeStyles = (colors: Colors) =>
       gap: 4,
     },
     toolLabel: { fontFamily: fonts.mono, fontSize: 12, color: colors.mocha },
-    toolResult: { fontFamily: fonts.mono, fontSize: 11, color: colors.mochaLight },
+    toolResult: { fontFamily: fonts.mono, fontSize: 11, color: colors.mocha },
     toolError: { fontFamily: fonts.mono, fontSize: 11, color: colors.destructive },
+    toolImage: { width: '100%', height: 220, borderRadius: radii.sm, marginTop: 6 },
+    fileRow: {
+      padding: 12,
+      borderRadius: radii.md,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.sapphire,
+      backgroundColor: colors.sapphireGlow,
+      gap: 4,
+    },
+    fileImage: { width: '100%', height: 240, borderRadius: radii.sm, marginBottom: 4 },
+    fileName: { color: colors.foreground, fontFamily: fonts.bodyMedium, fontSize: 14 },
+    fileType: { color: colors.mocha, fontFamily: fonts.mono, fontSize: 11 },
+    approvalRow: {
+      padding: 12,
+      borderRadius: radii.md,
+      borderWidth: 1,
+      borderColor: colors.destructive,
+      backgroundColor: `${colors.destructive}12`,
+      gap: 6,
+    },
+    approvalTitle: { color: colors.destructive, fontFamily: fonts.bodyBold, fontSize: 13 },
+    approvalCommand: { color: colors.foreground, fontFamily: fonts.mono, fontSize: 12 },
+    approvalHint: { color: colors.mocha, fontFamily: fonts.body, fontSize: 12 },
     errorRow: {
       paddingHorizontal: 12,
       paddingVertical: 8,
-      // 6-char hex + 1A alpha suffix = ~10% opacity; tracks colors.destructive
-      // across both themes without needing a separate `destructiveBg` token.
       backgroundColor: `${colors.destructive}1A`,
       borderRadius: radii.md,
     },
+    infoRow: {
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      backgroundColor: colors.sapphireGlow,
+      borderRadius: radii.md,
+      borderLeftWidth: 3,
+      borderLeftColor: colors.sapphire,
+    },
     errorBubbleText: { color: colors.destructive, fontSize: 13, fontFamily: fonts.body },
+    infoBubbleText: { color: colors.accentForeground, fontSize: 13, fontFamily: fonts.body },
     thinking: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -376,29 +585,43 @@ const makeStyles = (colors: Colors) =>
       paddingHorizontal: 16,
       paddingVertical: 6,
     },
-    thinkingText: {
-      color: colors.mochaLight,
-      fontSize: 12,
-      fontStyle: 'italic',
-      fontFamily: fonts.body,
+    thinkingText: { flex: 1, color: colors.mocha, fontSize: 12, fontFamily: fonts.body },
+    cancelBtn: { paddingHorizontal: 10, paddingVertical: 6 },
+    cancelBtnText: { color: colors.destructive, fontSize: 13, fontFamily: fonts.bodyMedium },
+    retryRow: {
+      marginHorizontal: 12,
+      marginBottom: 4,
+      padding: 10,
+      borderRadius: radii.md,
+      backgroundColor: `${colors.destructive}12`,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
     },
+    retryText: { flex: 1, color: colors.destructive, fontSize: 11, fontFamily: fonts.body },
+    retryBtn: {
+      paddingHorizontal: 10,
+      paddingVertical: 7,
+      borderRadius: radii.sm,
+      backgroundColor: colors.card,
+    },
+    retryBtnText: { color: colors.destructive, fontSize: 12, fontFamily: fonts.bodyMedium },
     inputRow: {
       flexDirection: 'row',
       alignItems: 'flex-end',
       gap: 8,
       paddingHorizontal: 12,
       paddingTop: 8,
-      paddingBottom: 12,
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: colors.border,
       backgroundColor: colors.background,
     },
     input: {
       flex: 1,
-      minHeight: 40,
+      minHeight: 44,
       maxHeight: 120,
       paddingHorizontal: 12,
-      paddingVertical: 8,
+      paddingVertical: 9,
       borderRadius: radii.xl,
       backgroundColor: colors.ivory,
       fontSize: 15,
@@ -406,81 +629,87 @@ const makeStyles = (colors: Colors) =>
       fontFamily: fonts.body,
     },
     sendBtn: {
+      minHeight: 44,
       paddingHorizontal: 16,
-      paddingVertical: 10,
+      paddingVertical: 11,
       borderRadius: radii.xl,
       backgroundColor: colors.sapphire,
       alignSelf: 'flex-end',
+      justifyContent: 'center',
     },
-    sendBtnDisabled: { backgroundColor: colors.mochaLight },
+    sendBtnDisabled: { backgroundColor: colors.mocha },
     sendBtnPressed: { backgroundColor: colors.sapphireDeep },
     sendBtnText: { color: colors.primaryForeground, fontSize: 14, fontFamily: fonts.bodyMedium },
     errorTitle: { fontSize: 18, fontFamily: fonts.bodyBold, color: colors.foreground },
     errorBody: { color: colors.destructive, textAlign: 'center', fontFamily: fonts.body },
+    primaryBtn: {
+      marginTop: 8,
+      minHeight: 44,
+      paddingHorizontal: 20,
+      paddingVertical: 11,
+      borderRadius: radii.md,
+      backgroundColor: colors.sapphire,
+      justifyContent: 'center',
+    },
+    primaryBtnText: { color: colors.primaryForeground, fontSize: 14, fontFamily: fonts.bodyMedium },
   })
 
-// Style overrides for assistant-bubble markdown. Matches the surrounding
-// bubble look (Baziu body font, foreground color) and trims default
-// vertical paragraph margins so short replies don't get extra space.
-const makeMarkdownStyles = (colors: Colors) =>
-  StyleSheet.create({
-    body: { color: colors.foreground, fontSize: 15, fontFamily: fonts.body },
-    paragraph: { marginTop: 0, marginBottom: 0 },
-    heading1: {
-      fontSize: 22,
-      fontFamily: fonts.display,
-      color: colors.foreground,
-      marginTop: 4,
-      marginBottom: 4,
-    },
-    heading2: {
-      fontSize: 19,
-      fontFamily: fonts.display,
-      color: colors.foreground,
-      marginTop: 4,
-      marginBottom: 4,
-    },
-    heading3: {
-      fontSize: 17,
-      fontFamily: fonts.bodyBold,
-      color: colors.foreground,
-      marginTop: 4,
-      marginBottom: 4,
-    },
-    strong: { fontFamily: fonts.bodyBold },
-    code_inline: {
-      fontFamily: fonts.mono,
-      fontSize: 13,
-      backgroundColor: colors.frost,
-      color: colors.charcoal,
-      paddingHorizontal: 4,
-      borderRadius: 4,
-    },
-    code_block: {
-      fontFamily: fonts.mono,
-      fontSize: 12,
-      backgroundColor: colors.frost,
-      color: colors.charcoal,
-      padding: 8,
-      borderRadius: radii.sm,
-    },
-    fence: {
-      fontFamily: fonts.mono,
-      fontSize: 12,
-      backgroundColor: colors.frost,
-      color: colors.charcoal,
-      padding: 8,
-      borderRadius: radii.sm,
-    },
-    link: { color: colors.sapphireDeep },
-    blockquote: {
-      backgroundColor: colors.ivory,
-      borderLeftColor: colors.sapphire,
-      borderLeftWidth: 3,
-      paddingLeft: 8,
-      paddingVertical: 4,
-      marginVertical: 4,
-    },
-    bullet_list: { marginVertical: 2 },
-    ordered_list: { marginVertical: 2 },
-  })
+const makeMarkdownStyles = (colors: Colors) => ({
+  body: { color: colors.foreground, fontSize: 15, fontFamily: fonts.body, lineHeight: 21 },
+  paragraph: { marginTop: 0, marginBottom: 7 },
+  heading1: {
+    color: colors.foreground,
+    fontFamily: fonts.display,
+    fontSize: 22,
+    marginVertical: 6,
+  },
+  heading2: {
+    color: colors.foreground,
+    fontFamily: fonts.display,
+    fontSize: 19,
+    marginVertical: 5,
+  },
+  heading3: {
+    color: colors.foreground,
+    fontFamily: fonts.bodyBold,
+    fontSize: 16,
+    marginVertical: 4,
+  },
+  strong: { fontFamily: fonts.bodyBold },
+  em: { fontStyle: 'italic' as const },
+  code_inline: {
+    fontFamily: fonts.mono,
+    fontSize: 13,
+    color: colors.charcoal,
+    backgroundColor: colors.frost,
+  },
+  code_block: {
+    fontFamily: fonts.mono,
+    fontSize: 12,
+    color: colors.charcoal,
+    backgroundColor: colors.ivory,
+    borderColor: colors.border,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radii.sm,
+    padding: 10,
+  },
+  fence: {
+    fontFamily: fonts.mono,
+    fontSize: 12,
+    color: colors.charcoal,
+    backgroundColor: colors.ivory,
+    borderColor: colors.border,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radii.sm,
+    padding: 10,
+  },
+  link: { color: colors.sapphireDeep, textDecorationLine: 'underline' as const },
+  blockquote: {
+    backgroundColor: colors.ivory,
+    borderLeftColor: colors.sapphire,
+    borderLeftWidth: 3,
+    paddingHorizontal: 10,
+  },
+  bullet_list: { marginVertical: 4 },
+  ordered_list: { marginVertical: 4 },
+})

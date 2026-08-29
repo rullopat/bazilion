@@ -4,6 +4,7 @@ import { createServerFn } from '@tanstack/react-start'
 import { useState } from 'react'
 import { AgentAvatar } from '../../components/AgentAvatar'
 import { Button } from '../../components/Button'
+import { ConfirmDialog } from '../../components/ConfirmDialog'
 import {
   EmptyState,
   PageHeader,
@@ -55,27 +56,52 @@ function AgentsPage() {
   const { all } = Route.useSearch()
   const showAll = all === '1'
   const router = useRouter()
+  const [pendingAction, setPendingAction] = useState<
+    { kind: 'archive' | 'delete'; agent: Agent } | null
+  >(null)
+  const [actionError, setActionError] = useState<string | null>(null)
 
   async function archive(id: string) {
-    if (!confirm('archive this agent? (reversible)')) return
-    await fetch(`/api/agents/${id}/archive`, { method: 'POST' })
+    const response = await fetch(`/api/agents/${encodeURIComponent(id)}/archive`, {
+      method: 'POST',
+    })
+    if (!response.ok && response.status !== 204) {
+      const body = (await response.json().catch(() => null)) as { error?: string } | null
+      throw new Error(body?.error ?? `Could not archive agent (${response.status})`)
+    }
     await router.invalidate()
   }
   async function unarchive(id: string) {
-    await fetch(`/api/agents/${id}/unarchive`, { method: 'POST' })
-    await router.invalidate()
+    setActionError(null)
+    try {
+      const response = await fetch(`/api/agents/${encodeURIComponent(id)}/unarchive`, {
+        method: 'POST',
+      })
+      if (!response.ok && response.status !== 204) {
+        const body = (await response.json().catch(() => null)) as { error?: string } | null
+        throw new Error(body?.error ?? `Could not restore agent (${response.status})`)
+      }
+      await router.invalidate()
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : String(error))
+    }
   }
   async function del(id: string) {
-    if (!confirm('permanently delete this agent and all its data?')) return
     const agent = agents.find((candidate) => candidate.id === id)
-    if (!agent) return
+    if (!agent) throw new Error('The selected agent no longer exists.')
     const policyResponse = await fetch(`/api/teams/${encodeURIComponent(agent.teamId)}/policy`)
-    if (!policyResponse.ok) return
+    if (!policyResponse.ok) {
+      throw new Error('The current Team policy is unavailable. Nothing was deleted.')
+    }
     const policy = (await policyResponse.json()) as ResolvedTeamPolicy
-    await fetch(
+    const response = await fetch(
       `/api/agents/${encodeURIComponent(id)}?expectedTeamRevision=${policy.teamPolicy.revision}`,
       { method: 'DELETE' },
     )
+    if (!response.ok && response.status !== 204) {
+      const body = (await response.json().catch(() => null)) as { error?: string } | null
+      throw new Error(body?.error ?? `Could not delete agent (${response.status})`)
+    }
     await router.invalidate()
   }
 
@@ -102,6 +128,8 @@ function AgentsPage() {
         onSpawned={router.invalidate}
       />
 
+      {actionError && <p role="alert" className="err">{actionError}</p>}
+
       <SectionCard
         title={showAll ? 'All agents' : 'Current agents'}
         description={
@@ -116,7 +144,8 @@ function AgentsPage() {
             description="Spawn an agent above to give a team its first working member."
           />
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          <div className="hidden overflow-x-auto md:block">
             <table className="min-w-[760px]">
               <thead>
                 <tr>
@@ -163,7 +192,10 @@ function AgentsPage() {
                     <td>
                       <div className="flex justify-end gap-1.5">
                         {a.status !== 'archived' ? (
-                          <Button variant="ghost" onClick={() => archive(a.id)}>
+                          <Button
+                            variant="ghost"
+                            onClick={() => setPendingAction({ kind: 'archive', agent: a })}
+                          >
                             Archive
                           </Button>
                         ) : (
@@ -171,7 +203,10 @@ function AgentsPage() {
                             Restore
                           </Button>
                         )}
-                        <Button variant="danger" onClick={() => del(a.id)}>
+                        <Button
+                          variant="danger"
+                          onClick={() => setPendingAction({ kind: 'delete', agent: a })}
+                        >
                           Delete
                         </Button>
                       </div>
@@ -181,8 +216,91 @@ function AgentsPage() {
               </tbody>
             </table>
           </div>
+          <div className="grid gap-3 md:hidden">
+            {agents.map((agent) => (
+              <article key={agent.id} className="min-w-0 rounded-xl border border-border bg-muted/20 p-4">
+                <div className="flex min-w-0 items-start gap-3">
+                  <AgentAvatar identity={agent.identity} size={36} />
+                  <div className="min-w-0 flex-1">
+                    <a href={`/agents/${agent.id}`} className="block truncate font-semibold text-foreground">
+                      {agent.name}
+                    </a>
+                    <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                      {agent.identity?.creature || agent.identity?.vibe
+                        ? [agent.identity?.creature, agent.identity?.vibe].filter(Boolean).join(' · ')
+                        : `Agent template: ${agent.profileId}`}
+                    </p>
+                  </div>
+                  <StatusBadge variant={agent.status === 'archived' ? 'warning' : 'success'}>
+                    {agent.status}
+                  </StatusBadge>
+                </div>
+                <dl className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                  <div className="min-w-0 rounded-lg bg-muted p-2">
+                    <dt className="font-semibold text-muted-foreground">ID</dt>
+                    <dd className="mt-0.5 truncate font-mono" title={agent.id}>{agent.id.slice(0, 12)}…</dd>
+                  </div>
+                  <div className="min-w-0 rounded-lg bg-muted p-2">
+                    <dt className="font-semibold text-muted-foreground">Agent template</dt>
+                    <dd className="mt-0.5 truncate font-mono" title={agent.profileId}>{agent.profileId}</dd>
+                  </div>
+                </dl>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {agent.status === 'archived' ? (
+                    <Button variant="ghost" onClick={() => void unarchive(agent.id)}>Restore</Button>
+                  ) : (
+                    <Button
+                      variant="ghost"
+                      onClick={() => setPendingAction({ kind: 'archive', agent })}
+                    >
+                      Archive
+                    </Button>
+                  )}
+                  <Button
+                    variant="danger"
+                    onClick={() => setPendingAction({ kind: 'delete', agent })}
+                  >
+                    Delete
+                  </Button>
+                </div>
+              </article>
+            ))}
+          </div>
+          </>
         )}
       </SectionCard>
+
+      <ConfirmDialog
+        open={pendingAction !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingAction(null)
+        }}
+        title={
+          pendingAction?.kind === 'delete'
+            ? `Delete ${pendingAction.agent.name} permanently?`
+            : `Archive ${pendingAction?.agent.name ?? 'agent'}?`
+        }
+        description={
+          pendingAction?.kind === 'delete' ? (
+            <p>
+              This permanently removes the Agent, its messages, triggers, skill attachments,
+              sessions, and private on-disk directory. This cannot be undone.
+            </p>
+          ) : (
+            <p>
+              The Agent will stop appearing in current lists and cannot receive normal work.
+              You can restore it later from “Show archived”.
+            </p>
+          )
+        }
+        confirmLabel={pendingAction?.kind === 'delete' ? 'Delete permanently' : 'Archive agent'}
+        confirmVariant={pendingAction?.kind === 'delete' ? 'danger' : 'primary'}
+        onConfirm={async () => {
+          if (!pendingAction) return
+          if (pendingAction.kind === 'delete') await del(pendingAction.agent.id)
+          else await archive(pendingAction.agent.id)
+        }}
+      />
     </PageShell>
   )
 }
@@ -256,7 +374,7 @@ function SpawnForm({
       description="Skills come from the Agent template at spawn time. You can adjust an agent's skills later from its detail page."
     >
       <form onSubmit={submit}>
-        {err && <div className="err">{err}</div>}
+        {err && <div role="alert" className="err">{err}</div>}
         <div className="grid gap-4 sm:grid-cols-2">
           <label>
             Agent template

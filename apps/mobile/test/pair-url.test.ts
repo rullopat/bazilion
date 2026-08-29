@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { PairUrlError, parsePairingUrl } from '../src/pair-url.ts'
+import { isPairingDeepLink, PairUrlError, parsePairingUrl } from '../src/pair-url.ts'
+import { canStartPairingAttempt } from '../src/pairing-attempt.ts'
 
 describe('parsePairingUrl', () => {
   it('extracts server and token from a well-formed URL', () => {
@@ -57,5 +58,35 @@ describe('parsePairingUrl', () => {
 
   it('rejects a completely malformed input', () => {
     expect(() => parsePairingUrl('not a url')).toThrow(PairUrlError)
+  })
+})
+
+describe('pairing attempt deduplication', () => {
+  it('ignores repeated camera frames and callbacks while verification is active', () => {
+    expect(
+      canStartPairingAttempt('bazilion://pair?server=x&token=y', {
+        busy: true,
+        lastRaw: null,
+        scanPaused: false,
+      }),
+    ).toBe(false)
+    expect(
+      canStartPairingAttempt('same', { busy: false, lastRaw: 'same', scanPaused: false }),
+    ).toBe(false)
+  })
+
+  it('requires an explicit user action to retry a failed QR value', () => {
+    const snapshot = { busy: false, lastRaw: 'same', scanPaused: true }
+    expect(canStartPairingAttempt('same', snapshot)).toBe(false)
+    expect(canStartPairingAttempt('same', snapshot, true)).toBe(true)
+  })
+})
+
+describe('pairing deep-link recognition', () => {
+  it('accepts only the Bazilion pair route', () => {
+    expect(isPairingDeepLink('bazilion://pair?server=https%3A%2F%2Fhost&token=t')).toBe(true)
+    expect(isPairingDeepLink('bazilion://pairing?server=https%3A%2F%2Fhost&token=t')).toBe(false)
+    expect(isPairingDeepLink('https://host/pair')).toBe(false)
+    expect(isPairingDeepLink(null)).toBe(false)
   })
 })

@@ -5,7 +5,7 @@ export const SECTION_TABS_CLASS =
 
 export function sectionTabClass(active: boolean): string {
   return cn(
-    'inline-flex items-center whitespace-nowrap rounded-lg border px-3 py-1.5 text-sm font-semibold transition-colors',
+    'inline-flex items-center whitespace-nowrap rounded-lg border px-2 py-1.5 text-xs font-semibold transition-colors sm:px-3 sm:text-sm',
     active
       ? 'border-border bg-card text-foreground shadow-baziu-sm'
       : 'border-transparent text-muted-foreground hover:bg-card/70 hover:text-foreground',

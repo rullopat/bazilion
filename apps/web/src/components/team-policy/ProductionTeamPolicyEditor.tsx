@@ -5,8 +5,10 @@ import type {
   ResolvedTeamPolicy,
 } from '@bazilion/api-types'
 import { AlertTriangle, ListTree, Plus, Save, TableProperties, X } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Button } from '../Button'
+import { ConfirmDialog } from '../ConfirmDialog'
+import { UnsavedChangesGuard } from '../UnsavedChangesGuard'
 import {
   addTeamPolicyEdge,
   applyProfileDefaults,
@@ -51,16 +53,8 @@ export function ProductionTeamPolicyEditor({ source, profiles, initialUi }: { so
   const [saving, setSaving] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
   const [conflict, setConflict] = useState<TeamPolicyDocument | null>(null)
+  const [confirmDiscard, setConfirmDiscard] = useState(false)
   const dirty = !sameDocument(server, draft)
-
-  useEffect(() => {
-    const warn = (event: BeforeUnloadEvent) => {
-      if (!dirty) return
-      event.preventDefault()
-    }
-    window.addEventListener('beforeunload', warn)
-    return () => window.removeEventListener('beforeunload', warn)
-  }, [dirty])
 
   const mutateEdge = (from: TeamPolicyEndpoint, to: TeamPolicyEndpoint, allowed: boolean) => {
     if (!isValidTeamPolicyConnection(from, to)) return
@@ -146,7 +140,9 @@ export function ProductionTeamPolicyEditor({ source, profiles, initialUi }: { so
   )
 
   return (
-    <section className="overflow-hidden rounded-lg border border-frost bg-snow" aria-label="Production policy editor">
+    <>
+      <UnsavedChangesGuard when={dirty} subject="Team policy draft" />
+      <section className="overflow-hidden rounded-lg border border-frost bg-snow" aria-label="Production policy editor">
       <header className="flex flex-wrap items-center gap-2 border-b border-frost bg-cream p-3">
         <div className="mr-auto min-w-0">
           <div className="flex items-center gap-2"><h2 className="m-0 truncate text-lg">{draft.name}</h2>
@@ -160,7 +156,7 @@ export function ProductionTeamPolicyEditor({ source, profiles, initialUi }: { so
           <Projection active={view === 'flow'} label="Flow" icon={<ListTree className="h-4 w-4" />} onClick={() => setView('flow')} />
           <Projection active={view === 'matrix'} label="Matrix" icon={<TableProperties className="h-4 w-4" />} onClick={() => setView('matrix')} />
         </div>
-        <Button variant="ghost" disabled={!dirty || saving} onClick={() => setDraft(server)}>Discard</Button>
+        <Button variant="ghost" disabled={!dirty || saving} onClick={() => setConfirmDiscard(true)}>Discard</Button>
         <Button variant="primary" disabled={!dirty || saving || (source.kind === 'template' && !!source.detail.template.deletedAt)} onClick={save}><Save className="h-4 w-4" /> {saving ? 'Saving…' : 'Save effective policy'}</Button>
       </header>
       {notice && <div role="status" className="border-b border-frost bg-ivory px-4 py-2 text-sm">{notice}</div>}
@@ -173,7 +169,25 @@ export function ProductionTeamPolicyEditor({ source, profiles, initialUi }: { so
           <Inspector document={draft} selected={selected} selectedMember={selectedMember} profiles={profiles} source={source} onDraft={setDraft} onToggle={mutateEdge} onPosture={setEdgePosture} />
         </aside>
       </div>
-    </section>
+      </section>
+      <ConfirmDialog
+        open={confirmDiscard}
+        title="Discard this Team policy draft?"
+        description={
+          <p>
+            This permanently discards every unsaved edge, posture, member, and layout change in
+            the draft. Effective revision {revision} will remain unchanged.
+          </p>
+        }
+        confirmLabel="discard policy draft"
+        onConfirm={() => {
+          setDraft(server)
+          setConflict(null)
+          setNotice('Draft discarded. The effective policy was not changed.')
+        }}
+        onOpenChange={setConfirmDiscard}
+      />
+    </>
   )
 }
 

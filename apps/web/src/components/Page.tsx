@@ -17,7 +17,7 @@ export function PageShell({ size = 'default', className, ...props }: PageShellPr
   return (
     <div
       className={cn(
-        'mx-auto w-full space-y-6',
+        'mx-auto min-w-0 w-full space-y-6',
         PAGE_SIZE_CLASS[size],
         className,
       )}
@@ -87,7 +87,7 @@ export function SectionCard({
   return (
     <section
       className={cn(
-        'rounded-2xl border border-border bg-card p-5 text-card-foreground shadow-baziu-sm sm:p-6',
+        'min-w-0 rounded-2xl border border-border bg-card p-5 text-card-foreground shadow-baziu-sm sm:p-6',
         className,
       )}
       {...props}

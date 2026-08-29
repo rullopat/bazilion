@@ -3,6 +3,7 @@ import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { useState } from 'react'
 import { Button } from '../../components/Button'
+import { ConfirmDialog } from '../../components/ConfirmDialog'
 import {
   EmptyState,
   PageHeader,
@@ -52,18 +53,19 @@ export const Route = createFileRoute('/teams/')({
 function TeamsPage() {
   const { teams, memberCounts, policies, readiness } = Route.useLoaderData()
   const router = useRouter()
+  const [removeTarget, setRemoveTarget] = useState<Team | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
 
   async function remove(id: string) {
-    if (!confirm('remove this team registration?')) return
     const revision = policies[id]?.revision
-    if (!revision) return
+    if (!revision) throw new Error('The Team policy revision is unavailable. Nothing was removed.')
     const res = await fetch(
       `/api/teams/${encodeURIComponent(id)}?expectedTeamPolicyRevision=${revision}`,
       { method: 'DELETE' },
     )
     if (!res.ok && res.status !== 204) {
-      alert(res.statusText)
-      return
+      const body = (await res.json().catch(() => null)) as { error?: string } | null
+      throw new Error(body?.error ?? `Could not remove Team (${res.status})`)
     }
     await router.invalidate()
   }
@@ -100,6 +102,8 @@ function TeamsPage() {
 
       <RegisterTeamForm onRegistered={() => router.invalidate()} />
 
+      {actionError && <p role="alert" className="err">{actionError}</p>}
+
       <SectionCard
         title="Registered teams"
         description="Open a Team to manage its context, members, shared memory, and policy."
@@ -110,7 +114,8 @@ function TeamsPage() {
             description="Register a Team above to create a workspace for your agents."
           />
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          <div className="hidden overflow-x-auto md:block">
             <table className="min-w-[820px]">
               <thead>
                 <tr>
@@ -146,7 +151,7 @@ function TeamsPage() {
                       <td>
                         <div className="flex justify-end">
                           {count === 0 ? (
-                            <Button variant="danger" onClick={() => remove(g.id)}>
+                            <Button variant="danger" onClick={() => setRemoveTarget(g)}>
                               Remove
                             </Button>
                           ) : (
@@ -165,8 +170,81 @@ function TeamsPage() {
               </tbody>
             </table>
           </div>
+          <div className="grid gap-3 md:hidden">
+            {teams.map((team) => {
+              const count = memberCounts[team.id] ?? 0
+              const policy = policies[team.id]
+              return (
+                <article key={team.id} className="min-w-0 rounded-xl border border-border bg-muted/20 p-4">
+                  <div className="flex min-w-0 items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <a
+                        href={`/teams/${encodeURIComponent(team.id)}`}
+                        className="block truncate font-semibold text-foreground"
+                      >
+                        {team.name}
+                      </a>
+                      <p className="mt-0.5 truncate font-mono text-xs text-muted-foreground">
+                        {team.id}
+                      </p>
+                    </div>
+                    <StatusBadge variant={count > 0 ? 'success' : 'neutral'}>
+                      {count} member{count === 1 ? '' : 's'}
+                    </StatusBadge>
+                  </div>
+                  <dl className="mt-3 grid gap-2 text-xs sm:grid-cols-2">
+                    <div className="rounded-lg bg-muted p-2">
+                      <dt className="font-semibold text-muted-foreground">Policy</dt>
+                      <dd className="mt-0.5">
+                        <a href={`/teams/${encodeURIComponent(team.id)}/policy`}>
+                          {policy ? `Revision ${policy.revision} · ${policy.edges} edges` : 'Unavailable'}
+                        </a>
+                      </dd>
+                    </div>
+                    <div className="rounded-lg bg-muted p-2">
+                      <dt className="font-semibold text-muted-foreground">Baseline</dt>
+                      <dd className="mt-0.5 break-words">{policy?.baseline ?? 'None'}</dd>
+                    </div>
+                  </dl>
+                  {count === 0 && (
+                    <div className="mt-3">
+                      <Button variant="danger" onClick={() => setRemoveTarget(team)}>
+                        Remove Team
+                      </Button>
+                    </div>
+                  )}
+                </article>
+              )
+            })}
+          </div>
+          </>
         )}
       </SectionCard>
+
+      <ConfirmDialog
+        open={removeTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setRemoveTarget(null)
+        }}
+        title={`Remove ${removeTarget?.name ?? 'Team'}?`}
+        description={
+          <p>
+            This removes the empty Team registration and its Bazilion-managed workspace slot.
+            If the slot is a symlink, its external target is not deleted. This action cannot be
+            undone from the web UI.
+          </p>
+        }
+        confirmLabel="Remove Team"
+        onConfirm={async () => {
+          if (!removeTarget) return
+          try {
+            await remove(removeTarget.id)
+          } catch (error) {
+            setActionError(error instanceof Error ? error.message : String(error))
+            throw error
+          }
+        }}
+      />
     </PageShell>
   )
 }
@@ -222,7 +300,7 @@ function RegisterTeamForm({ onRegistered }: { onRegistered: () => void }) {
       }
     >
       <form onSubmit={submit}>
-        {err && <div className="err">{err}</div>}
+        {err && <div role="alert" className="err">{err}</div>}
         <div className="grid gap-4 sm:grid-cols-2">
           <label>
             ID (slug)

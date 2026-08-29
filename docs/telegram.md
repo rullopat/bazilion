@@ -8,7 +8,10 @@ The doc below is preserved as the design record. Update it if you tackle Step 8 
 
 ## Problem
 
-Bazilion agents today are reachable from the web UI, the CLI, and (over LAN) the mobile app. None of those are good for the "ping me from the bus" case. We want a phone-friendly external surface — Telegram first — that lets a single user talk to **any** of their agents and teams from one app.
+Bazilion agents today are reachable from the web UI, the CLI, and the mobile app through the
+supported private HTTPS web gateway. None of those are as immediate as the "ping me from the bus"
+case. We want a phone-friendly external surface — Telegram first — that lets a single user talk to
+**any** of their agents and teams from one app.
 
 A naive "one bot per agent" approach is unworkable (a BotFather token and chat per agent). A naive "one bot, one chat" approach loses the ability to switch context cleanly. The right primitive is Telegram's **forum supergroup**: one supergroup with topics enabled, one topic per conversation thread. The bot is admin in that supergroup, creates/closes topics on demand, and routes messages by `message_thread_id`.
 

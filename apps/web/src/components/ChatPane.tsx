@@ -12,9 +12,18 @@ import type {
   ProviderMessage,
   SessionHeadResponse,
 } from '@bazilion/api-types'
-import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react'
 import { renderMd } from '../lib/md'
 import { Button } from './Button'
+import { ConfirmDialog } from './ConfirmDialog'
 
 const INBOX_WAKE_PREFIX = '[[bazilion:inbox-wake]]\n'
 const COMPACTION_REPLAY_PREFIX = '[conversation summary]'
@@ -22,6 +31,10 @@ const AUTOSCROLL_THRESHOLD_PX = 40
 const SESSION_POLL_MS = 10_000
 const TOOL_GROUP_MAX_HEIGHT_PX = 320
 const MAX_INPUT_HEIGHT = 200
+
+const subscribeToHydration = () => () => {}
+const browserMarkdownReady = () => true
+const serverMarkdownReady = () => false
 
 type ToolItem = {
   kind: 'call' | 'result' | 'error'
@@ -207,6 +220,14 @@ export function ChatPane({
   initialMessages,
   initialSessionHead,
 }: ChatPaneProps) {
+  // useSyncExternalStore's server snapshot is also used for the browser's
+  // hydration pass. That keeps dangerouslySetInnerHTML byte-for-byte stable,
+  // then enables marked + DOMPurify immediately after hydration.
+  const markdownReady = useSyncExternalStore(
+    subscribeToHydration,
+    browserMarkdownReady,
+    serverMarkdownReady,
+  )
   const [serverMessages, setServerMessages] = useState<ProviderMessage[]>(initialMessages)
   const [liveEntries, setLiveEntries] = useState<RenderEntry[]>([])
   const [systemBubbles, setSystemBubbles] = useState<
@@ -222,6 +243,7 @@ export function ChatPane({
   const [recoveredTurn, setRecoveredTurn] = useState(false)
   const [approvalBusy, setApprovalBusy] = useState<Record<string, boolean>>({})
   const [approvalErrors, setApprovalErrors] = useState<Record<string, string>>({})
+  const [resetConfirmOpen, setResetConfirmOpen] = useState(false)
 
   const messagesRef = useRef<HTMLDivElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
@@ -444,34 +466,30 @@ export function ChatPane({
     }
   }
 
+  async function performReset() {
+    exitEditMode()
+    const res = await fetch(`/api/agents/${encodeURIComponent(agentId)}/chat/reset`, {
+      method: 'POST',
+    })
+    if (!res.ok) {
+      let message = res.statusText
+      try {
+        message = ((await res.json()) as { error?: string }).error || message
+      } catch {}
+      throw new Error(message)
+    }
+    setServerMessages([])
+    setLiveEntries([])
+    setSystemBubbles([])
+    pushSystem('/reset: history wiped')
+  }
+
   async function runResetCommand() {
     if (serverMessages.length === 0) {
       pushSystem('/reset: history already empty')
       return
     }
-    if (!confirm('reset chat history for this agent?')) return
-    exitEditMode()
-    try {
-      const res = await fetch(`/api/agents/${encodeURIComponent(agentId)}/chat/reset`, {
-        method: 'POST',
-      })
-      if (!res.ok) {
-        let msg = res.statusText
-        try {
-          msg = ((await res.json()) as { error?: string }).error || msg
-        } catch {}
-        pushSystem(`/reset failed: ${msg}`)
-        return
-      }
-      setServerMessages([])
-      setLiveEntries([])
-      // Drop prior slash-command bubbles whose anchors point into the wiped
-      // history — they'd otherwise render at the trailing end with stale context.
-      setSystemBubbles([])
-      pushSystem('/reset: history wiped')
-    } catch (err) {
-      pushSystem(`/reset failed: ${(err as Error).message}`)
-    }
+    setResetConfirmOpen(true)
   }
 
   async function runCompactCommand(rest: string) {
@@ -631,7 +649,7 @@ export function ChatPane({
               err = ((await res.json()) as { error?: string }).error || err
             } catch {}
             setInput(text)
-            alert(`failed to replace last turn: ${err}`)
+            pushSystem(`Could not replace the last turn: ${err}`)
             return
           }
           truncatedServerMessages = serverMessages.slice(0, keep)
@@ -639,7 +657,7 @@ export function ChatPane({
           setEditIdx(null)
         } catch (err) {
           setInput(text)
-          alert(`failed to replace last turn: ${(err as Error).message}`)
+          pushSystem(`Could not replace the last turn: ${(err as Error).message}`)
           return
         }
       }
@@ -1028,16 +1046,19 @@ export function ChatPane({
           <h1 className="truncate font-display text-[1.2rem] text-charcoal">{agentName}</h1>
         </div>
         <a
-          href={`/agents/${agentId}`}
+          href={`/agents/${agentId}?mode=settings`}
           className="shrink-0 text-xs text-mocha-light hover:text-sapphire"
         >
-          settings →
+          Manage agent →
         </a>
       </div>
-
-
       {staleBanner && (
-        <div className="mx-5 mt-2 flex items-center gap-2 rounded-md border border-sapphire bg-frost px-4 py-2 text-[0.86em] text-mocha">
+        <div
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+          className="mx-5 mt-2 flex items-center gap-2 rounded-md border border-sapphire bg-frost px-4 py-2 text-[0.86em] text-mocha"
+        >
           <span
             className="h-2 w-2 flex-none rounded-full bg-sapphire"
             aria-hidden="true"
@@ -1068,10 +1089,15 @@ export function ChatPane({
       <div
         ref={messagesRef}
         onScroll={captureScroll}
+        role="log"
+        aria-label={`Conversation with ${agentName}`}
+        aria-live="polite"
+        aria-relevant="additions"
+        aria-busy={turnBusy}
         className={`min-h-[240px] flex-1 overflow-y-auto px-5 py-5 ${editIdx !== null ? 'is-editing' : ''}`}
       >
         {baseEntries.length === 0 && liveEntries.length === 0 && systemBubbles.length === 0 && (
-          <p className="py-12 text-center italic text-fawn">start a conversation…</p>
+          <p className="py-12 text-center italic text-mocha-light">Start a conversation…</p>
         )}
         {(() => {
           const out: ReactNode[] = []
@@ -1090,6 +1116,7 @@ export function ChatPane({
                 <Bubble
                   key={`y-${sb.id}`}
                   entry={{ type: 'system', content: sb.content }}
+                  markdownReady={markdownReady}
                   onCommandApprovalDecision={decideCommandApproval}
                 />,
               )
@@ -1103,6 +1130,7 @@ export function ChatPane({
               <Bubble
                 key={`s-${i}`}
                 entry={entry}
+                markdownReady={markdownReady}
                 isLastUser={i === lastUserIdx && editIdx === null}
                 isWillDrop={willDropFromIdx !== -1 && i >= willDropFromIdx}
                 onEdit={enterEditMode}
@@ -1125,6 +1153,7 @@ export function ChatPane({
               <Bubble
                 key={`l-${i}`}
                 entry={entry}
+                markdownReady={markdownReady}
                 onCommandApprovalDecision={decideCommandApproval}
                 commandApprovalBusy={
                   entry.type === 'command_approval' && Boolean(approvalBusy[entry.approval.id])
@@ -1150,6 +1179,7 @@ export function ChatPane({
               <Bubble
                 key={`y-${sb.id}`}
                 entry={{ type: 'system', content: sb.content }}
+                markdownReady={markdownReady}
                 onCommandApprovalDecision={decideCommandApproval}
               />,
             )
@@ -1166,6 +1196,9 @@ export function ChatPane({
           </div>
         )}
       </div>
+      <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {turnBusy ? `${agentName} is responding.` : 'Conversation ready.'}
+      </p>
 
       {editIdx !== null && (
         <div className="flex items-center gap-2 border-t border-frost bg-sapphire-glow px-5 py-2 text-[0.85em] text-sapphire-deep">
@@ -1222,7 +1255,7 @@ export function ChatPane({
       )}
 
       <form
-        className="flex items-end gap-2 border-t border-frost bg-ivory px-5 py-3"
+        className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-end gap-2 border-t border-frost bg-ivory px-3 py-3 sm:px-5"
         onSubmit={(e) => {
           e.preventDefault()
           void send(input)
@@ -1258,33 +1291,55 @@ export function ChatPane({
           disabled={turnBusy}
           placeholder="say something… (Shift+Enter for newline; paste or 📎 to attach images/files)"
           autoComplete="off"
+          aria-label={`Message ${agentName}`}
           className="max-h-[200px] min-h-[2.4rem] flex-1 resize-none overflow-y-auto rounded-md border-[1.5px] border-frost bg-snow px-3 py-2 text-[0.93em] leading-[1.45] text-chocolate outline-none transition-colors focus:border-sapphire focus:shadow-[0_0_0_3px_var(--color-sapphire-glow)]"
         />
-        <button
-          type="submit"
-          disabled={
-            turnBusy || (!input.trim() && attachments.length === 0)
-          }
-          className="rounded-md bg-sapphire px-4 py-2 text-[0.92em] font-semibold text-snow transition-colors hover:bg-sapphire-deep disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          send
-        </button>
-        {turnBusy && (
+        {turnBusy ? (
           <button
             type="button"
             onClick={cancel}
-            className="rounded-md border-[1.5px] border-frost bg-transparent px-3 py-1.5 text-[0.92em] font-medium text-mocha hover:border-sapphire-light hover:bg-sapphire-glow hover:text-sapphire"
+            aria-label="Cancel current response"
+            className="rounded-md border-[1.5px] border-danger bg-transparent px-3 py-2 text-[0.92em] font-medium text-danger hover:bg-danger/10"
           >
-            cancel
+            Cancel
+          </button>
+        ) : (
+          <button
+            type="submit"
+            disabled={!input.trim() && attachments.length === 0}
+            className="rounded-md bg-sapphire px-4 py-2 text-[0.92em] font-semibold text-snow transition-colors hover:bg-sapphire-deep disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Send
           </button>
         )}
       </form>
+      <ConfirmDialog
+        open={resetConfirmOpen}
+        onOpenChange={setResetConfirmOpen}
+        title={`Reset chat with ${agentName}?`}
+        description={
+          <p>
+            This permanently wipes the persisted session history for this Agent. Agent files,
+            Team memory, and other Agent settings are not changed.
+          </p>
+        }
+        confirmLabel="Reset chat history"
+        onConfirm={async () => {
+          try {
+            await performReset()
+          } catch (error) {
+            pushSystem(`/reset failed: ${error instanceof Error ? error.message : String(error)}`)
+            throw error
+          }
+        }}
+      />
     </div>
   )
 }
 
 interface BubbleProps {
   entry: RenderEntry
+  markdownReady: boolean
   isLastUser?: boolean
   isWillDrop?: boolean
   onEdit?: () => void
@@ -1298,6 +1353,7 @@ interface BubbleProps {
 
 function Bubble({
   entry,
+  markdownReady,
   isLastUser,
   isWillDrop,
   onEdit,
@@ -1379,7 +1435,7 @@ function Bubble({
             <div
               className="md-content mt-2 rounded-sm bg-frost/40 p-2 not-italic"
               // biome-ignore lint/security/noDangerouslySetInnerHtml: marked + DOMPurify
-              dangerouslySetInnerHTML={{ __html: renderMd(summary) }}
+              dangerouslySetInnerHTML={{ __html: renderMd(summary, markdownReady) }}
             />
           </details>
         </div>
@@ -1398,7 +1454,7 @@ function Bubble({
           <div
             className="bubble-content rounded-r-sm border-l-[3px] border-l-danger bg-danger/10 py-1 pl-3 pr-2 leading-[1.55]"
             // biome-ignore lint/security/noDangerouslySetInnerHtml: marked + DOMPurify
-            dangerouslySetInnerHTML={{ __html: renderMd(entry.content) }}
+            dangerouslySetInnerHTML={{ __html: renderMd(entry.content, markdownReady) }}
           />
         </div>
       )
@@ -1409,7 +1465,7 @@ function Bubble({
         <div
           className="md-content bubble-content w-full leading-[1.55] text-chocolate"
           // biome-ignore lint/security/noDangerouslySetInnerHtml: marked + DOMPurify
-          dangerouslySetInnerHTML={{ __html: renderMd(entry.content) }}
+          dangerouslySetInnerHTML={{ __html: renderMd(entry.content, markdownReady) }}
         />
       </div>
     )

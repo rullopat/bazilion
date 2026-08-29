@@ -7,10 +7,11 @@ import type {
 } from '@bazilion/api-types'
 import { createFileRoute, redirect, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Button } from '../../../components/Button'
-import { PageShell } from '../../../components/Page'
+import { PageShell, SectionCard, StatusBadge } from '../../../components/Page'
 import { TeamTabs } from '../../../components/TeamTabs'
+import { UnsavedChangesGuard } from '../../../components/UnsavedChangesGuard'
 import { daemonClient } from '../../../lib/daemon-client'
 
 interface TeamDetail {
@@ -54,6 +55,8 @@ function TeamDetailPage() {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [savedAt, setSavedAt] = useState<number | null>(null)
+  const [topicDirty, setTopicDirty] = useState(false)
+  const contextDirty = userMd !== team.userMd || topicDirty
 
   async function save() {
     setBusy(true)
@@ -79,6 +82,7 @@ function TeamDetailPage() {
 
   return (
     <PageShell>
+      <UnsavedChangesGuard when={contextDirty} subject="Team context" />
       <h1 className="font-serif text-3xl text-foreground">
         {team.name} <span className="text-muted-foreground text-base">({team.id})</span>
       </h1>
@@ -101,7 +105,11 @@ function TeamDetailPage() {
           Read-only context about the human, injected into every member agent's system prompt.
           12 KB cap. Agents cannot edit this file — only you can.
         </p>
+        <label htmlFor="team-user-context" className="sr-only">
+          USER.md Team context
+        </label>
         <textarea
+          id="team-user-context"
           value={userMd}
           onChange={(e) => setUserMd(e.target.value)}
           rows={16}
@@ -119,8 +127,8 @@ function TeamDetailPage() {
           <span className="text-xs text-muted-foreground">
             {userMd.length} / 12000 chars
           </span>
-          {savedAt && <span className="text-xs text-success">✓ saved</span>}
-          {err && <span className="text-xs text-danger">{err}</span>}
+          {savedAt && <span role="status" className="text-xs text-success">Saved</span>}
+          {err && <span role="alert" className="text-xs text-danger">{err}</span>}
         </div>
       </section>
 
@@ -128,6 +136,7 @@ function TeamDetailPage() {
         team={team}
         sampleAgent={members[0]?.name ?? 'researcher'}
         onSaved={() => router.invalidate()}
+        onDirtyChange={setTopicDirty}
       />
 
       {members.length === 0 && (
@@ -138,43 +147,15 @@ function TeamDetailPage() {
         />
       )}
 
-      <section className="rounded-lg border bg-card p-5">
-        <h3 className="font-serif text-xl mb-3">members</h3>
-        {members.length === 0 ? (
-          <p className="text-muted-foreground text-sm">No agents in this team yet.</p>
-        ) : (
-          <table className="w-full text-sm">
-            <thead className="text-left text-muted-foreground border-b">
-              <tr>
-                <th className="py-2">name</th>
-                <th>status</th>
-                <th>profile</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {members.map((m) => (
-                <tr key={m.id} className="border-b last:border-0">
-                  <td className="py-2">
-                    <a href={`/agents/${m.id}`} className="text-primary underline">
-                      {m.name}
-                    </a>
-                  </td>
-                  <td>{m.status}</td>
-                  <td>
-                    <code className="font-mono text-xs">{m.profileId}</code>
-                  </td>
-                  <td>
-                    <code className="font-mono text-xs text-muted-foreground">
-                      {m.id.slice(0, 8)}…
-                    </code>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </section>
+      <SectionCard
+        title="Roster"
+        description="Live Team membership has one canonical management view."
+        actions={<StatusBadge variant={members.length > 0 ? 'success' : 'neutral'}>{members.length} member{members.length === 1 ? '' : 's'}</StatusBadge>}
+      >
+        <a href={`/teams/${encodeURIComponent(team.id)}/members`} className="ghost-btn">
+          Manage Team members
+        </a>
+      </SectionCard>
     </PageShell>
   )
 }
@@ -183,10 +164,12 @@ function TopicNameFormatCard({
   team,
   sampleAgent,
   onSaved,
+  onDirtyChange,
 }: {
   team: Team
   sampleAgent: string
   onSaved: () => void
+  onDirtyChange: (dirty: boolean) => void
 }) {
   const [format, setFormat] = useState(team.telegramTopicNameFormat ?? '')
   const [busy, setBusy] = useState(false)
@@ -204,6 +187,11 @@ function TopicNameFormatCard({
       : `${team.id} › ${sampleAgent}`
 
   const dirty = (team.telegramTopicNameFormat ?? '') !== format
+
+  useEffect(() => {
+    onDirtyChange(dirty)
+    return () => onDirtyChange(false)
+  }, [dirty, onDirtyChange])
 
   async function save(clear: boolean) {
     setBusy(true)
@@ -239,7 +227,11 @@ function TopicNameFormatCard({
         <code className="font-mono">{'{agent.name}'}</code>. Saving renames existing topics that you
         haven't manually renamed in Telegram.
       </p>
+      <label htmlFor="team-telegram-topic-format" className="sr-only">
+        Telegram topic name format
+      </label>
       <input
+        id="team-telegram-topic-format"
         value={format}
         onChange={(e) => setFormat(e.target.value)}
         placeholder="{team.name} / {agent.name}"
@@ -261,8 +253,8 @@ function TopicNameFormatCard({
             clear
           </Button>
         )}
-        {savedAt && <span className="text-xs text-success">✓ saved</span>}
-        {err && <span className="text-xs text-danger">{err}</span>}
+        {savedAt && <span role="status" className="text-xs text-success">Saved</span>}
+        {err && <span role="alert" className="text-xs text-danger">{err}</span>}
       </div>
     </section>
   )
@@ -330,22 +322,25 @@ function SpawnFromTemplateCard({
           first.
         </p>
       ) : (
-        <div className="flex items-center gap-3">
-          <select
-            value={selected}
-            onChange={(e) => setSelected(e.target.value)}
-            className="rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring/30"
-          >
-            {eligible.map((g) => (
-              <option key={g.id} value={g.id}>
-                {g.name} ({g.slotCount} slot{g.slotCount === 1 ? '' : 's'}, r{g.currentRevision})
-              </option>
-            ))}
-          </select>
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="m-0 flex min-w-0 flex-1 flex-col gap-1 text-sm text-foreground">
+            Team template
+            <select
+              value={selected}
+              onChange={(e) => setSelected(e.target.value)}
+              className="min-w-0 rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring/30"
+            >
+              {eligible.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.name} ({g.slotCount} slot{g.slotCount === 1 ? '' : 's'}, r{g.currentRevision})
+                </option>
+              ))}
+            </select>
+          </label>
           <Button variant="primary" onClick={spawn} disabled={busy || !selected}>
             {busy ? 'spawning…' : 'spawn team'}
           </Button>
-          {err && <span className="text-xs text-danger">{err}</span>}
+          {err && <span role="alert" className="basis-full text-xs text-danger">{err}</span>}
         </div>
       )}
     </section>

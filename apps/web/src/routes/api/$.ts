@@ -3,7 +3,8 @@
 // so the bounded session and CSRF cookies auto-attach. Native clients retain
 // bearer auth through this same private HTTPS origin.
 //
-// Streams responses (chat NDJSON) and request bodies through unchanged.
+// Streams responses (including chat NDJSON) and forwards request bodies only
+// after applying strict size bounds.
 
 import { createFileRoute } from '@tanstack/react-router'
 import { getCookie } from '@tanstack/react-start/server'
@@ -46,22 +47,42 @@ function hasDuplicateCookie(header: string | null, name: string): boolean {
     .filter((cookieName) => cookieName === name).length > 1
 }
 
-function boundedBody(body: ReadableStream<Uint8Array>, limit: number): ReadableStream<Uint8Array> {
+async function readBoundedBody(
+  body: ReadableStream<Uint8Array>,
+  limit: number,
+): Promise<ArrayBuffer | null> {
   let seen = 0
-  return body.pipeThrough(
-    new TransformStream({
-      transform(chunk, controller) {
-        seen += chunk.byteLength
-        if (seen > limit) throw new Error('request body exceeds gateway limit')
-        controller.enqueue(chunk)
-      },
-    }),
-  )
+  const reader = body.getReader()
+  const chunks: Uint8Array[] = []
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      seen += value.byteLength
+      if (seen > limit) {
+        await reader.cancel('request body exceeds gateway limit')
+        return null
+      }
+      chunks.push(value)
+    }
+  } finally {
+    reader.releaseLock()
+  }
+
+  const result = new Uint8Array(new ArrayBuffer(seen))
+  let offset = 0
+  for (const chunk of chunks) {
+    result.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return result.buffer
 }
 
 function addSecurityHeaders(headers: Headers, production: boolean): void {
   headers.set('x-content-type-options', 'nosniff')
-  headers.set('referrer-policy', 'no-referrer')
+  // Same-origin unsafe requests need a non-null Origin for the strict check
+  // below. This policy still strips referrers entirely on cross-origin hops.
+  headers.set('referrer-policy', 'same-origin')
   headers.set('permissions-policy', 'camera=(), microphone=(), geolocation=()')
   headers.set('x-frame-options', 'DENY')
   headers.set(
@@ -93,7 +114,10 @@ async function proxy(request: Request): Promise<Response> {
     }
     const forwardedHost = request.headers.get('x-forwarded-host')
     const forwardedProto = request.headers.get('x-forwarded-proto')
-    if ((forwardedHost && forwardedHost !== expected.host) || (forwardedProto && forwardedProto !== 'https')) {
+    if (
+      (forwardedHost && forwardedHost !== expected.host) ||
+      (forwardedProto && forwardedProto !== 'https')
+    ) {
       return new Response('invalid forwarding headers', { status: 400 })
     }
   } else if (!isLoopback(incoming.hostname)) {
@@ -115,6 +139,18 @@ async function proxy(request: Request): Promise<Response> {
   const csrf = getCookie(originConfig.csrfCookie)
   if (unsafe && (session || incoming.pathname === '/api/login')) {
     if (request.headers.get('origin') !== expectedOrigin) {
+      const contentType = request.headers.get('content-type') ?? ''
+      const acceptsHtml = request.headers.get('accept')?.includes('text/html') ?? false
+      if (
+        incoming.pathname === '/api/login' &&
+        contentType.startsWith('application/x-www-form-urlencoded') &&
+        acceptsHtml
+      ) {
+        return new Response(null, {
+          status: 303,
+          headers: { location: '/login?error=origin' },
+        })
+      }
       return new Response('origin validation failed', { status: 403 })
     }
     if (session && (!csrf || request.headers.get('x-bazilion-csrf') !== csrf)) {
@@ -145,9 +181,14 @@ async function proxy(request: Request): Promise<Response> {
     if (Number.isFinite(contentLength) && contentLength > limit) {
       return new Response('request body too large', { status: 413 })
     }
-    if (request.body) init.body = boundedBody(request.body, limit)
-    // @ts-expect-error — undici needs duplex:'half' for streaming bodies
-    init.duplex = 'half'
+    if (request.body) {
+      // Undici must be able to replay unsafe request bodies when an upstream
+      // response triggers its auth handling. A one-shot ReadableStream causes
+      // upstream 401s to surface as gateway 500s on Node 25.
+      const body = await readBoundedBody(request.body, limit)
+      if (!body) return new Response('request body too large', { status: 413 })
+      init.body = body
+    }
   }
 
   const upstream = await fetch(target, init)
@@ -158,7 +199,9 @@ async function proxy(request: Request): Promise<Response> {
     if (lower !== 'set-cookie' && !STRIP_RESPONSE_HEADERS.has(lower)) respHeaders.set(k, v)
   }
   const getSetCookie = (upstream.headers as Headers & { getSetCookie?: () => string[] }).getSetCookie
-  for (const value of getSetCookie?.call(upstream.headers) ?? []) respHeaders.append('set-cookie', value)
+  for (const value of getSetCookie?.call(upstream.headers) ?? []) {
+    respHeaders.append('set-cookie', value)
+  }
   addSecurityHeaders(respHeaders, originConfig.production)
 
   return new Response(upstream.body, {

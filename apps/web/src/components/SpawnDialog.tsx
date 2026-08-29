@@ -6,6 +6,13 @@ import { useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 import { DEFAULT_TEAM_ID } from '../lib/wire-constants'
 import { Button } from './Button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from './ui/dialog'
 
 interface Props {
   profileId: string
@@ -112,88 +119,124 @@ export function SpawnDialog({ profileId, teamHint, teams, onClose }: Props) {
   }
 
   return (
-    <Backdrop onClose={onClose}>
-      <form
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="spawn-agent-title"
-        onSubmit={submit}
-        className="max-h-[calc(100dvh-2rem)] w-full max-w-lg overflow-y-auto rounded-3xl border border-frost bg-card p-6 shadow-baziu-lg sm:p-7"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h3 id="spawn-agent-title" className="font-serif text-xl text-foreground mb-1">Spawn a new agent</h3>
-        <p className="text-sm text-muted-foreground mb-4">
-          Profile: <code className="font-mono">{profileId}</code>
-        </p>
-        <label className="block text-sm text-foreground mb-3">
-          Agent name{' '}
-          <span className="text-muted-foreground font-normal">
-            (optional — defaults to the profile's name)
-          </span>
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            // biome-ignore lint/a11y/noAutofocus: dialog convention
-            autoFocus
-            autoComplete="off"
-            className="mt-1 block w-full rounded-md border bg-background px-3 py-2 outline-none focus:ring-2 focus:ring-ring/30"
-          />
-        </label>
-        <label className="block text-sm text-foreground mb-3">
-          Initial policy placement
-          <select value={placement} onChange={(e) => {setPlacement(e.target.value as typeof placement);setPreview(null)}} className="mt-1 block w-full rounded-md border bg-background px-3 py-2">
-            <option value="profile_defaults">Agent-template defaults</option>
-            <option value="isolated">isolated</option>
-          </select>
-          <span className="mt-1 block text-xs text-muted-foreground">The current Team revision is checked again when you submit.</span>
-        </label>
-        <label className="block text-sm text-foreground mb-3">
-          Team
-          <select
-            value={teamId}
-            onChange={(e) => {setTeamId(e.target.value);setPreview(null)}}
-            className="mt-1 block w-full rounded-md border bg-background px-3 py-2 outline-none focus:ring-2 focus:ring-ring/30"
-          >
-            {teams.map((g) => (
-              <option key={g.id} value={g.id}>
-                {g.name}
-                {g.id === DEFAULT_TEAM_ID ? ' (default)' : ''}
-              </option>
-            ))}
-          </select>
-        </label>
-        {err && <p className="err mt-2">{err}</p>}
-        {preview && <div className="mt-3 rounded-md border border-sapphire-light bg-sapphire-glow p-3 text-sm"><p>Creating this Agent advances Team revision {preview.currentRevision} → <strong>{preview.resultingRevision}</strong> and adds <strong>{preview.addedEdges.length}</strong> directed edges to the existing {preview.existingEdges.length}.</p><ul className="mt-2 max-h-36 overflow-auto">{preview.addedEdges.map((edge,index)=><li key={`${edge.sourceKind}:${edge.sourceId??''}>${edge.targetKind}:${edge.targetId??''}:${index}`}><code>{edge.sourceKind}{edge.sourceId?`:${edge.sourceId}`:''} → {edge.targetKind}{edge.targetId?`:${edge.targetId}`:''}</code></li>)}</ul>{preview.addedEdges.length===0&&<p className="mt-2">The new Agent starts isolated.</p>}</div>}
-        <div className="mt-5 flex justify-end gap-2">
-          <Button variant="ghost" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button variant="primary" type="submit" disabled={busy}>
-            {busy ? 'Working…' : preview ? 'Commit reviewed creation' : 'Review exact policy'}
-          </Button>
-        </div>
-      </form>
-    </Backdrop>
-  )
-}
-
-function Backdrop({
-  children,
-  onClose,
-}: {
-  children: React.ReactNode
-  onClose: () => void
-}) {
-  return (
-    // biome-ignore lint/a11y/useKeyWithClickEvents: ESC is handled by browsers via dialog convention; backdrop click is purely augmentative.
-    // biome-ignore lint/a11y/noStaticElementInteractions: ditto
-    <div
-      onClick={onClose}
-      onKeyDown={(event) => { if (event.key === 'Escape') onClose() }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-charcoal/45 p-4 backdrop-blur-sm"
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open && !busy) onClose()
+      }}
     >
-      {children}
-    </div>
+      <DialogContent
+        showCloseButton={!busy}
+        className="max-h-[calc(100dvh-2rem)] w-full max-w-lg overflow-y-auto rounded-3xl border border-frost bg-card p-6 shadow-baziu-lg sm:p-7"
+        onEscapeKeyDown={(event) => {
+          if (busy) event.preventDefault()
+        }}
+        onPointerDownOutside={(event) => {
+          if (busy) event.preventDefault()
+        }}
+      >
+        <form onSubmit={submit}>
+          <DialogHeader>
+            <DialogTitle className="font-serif text-xl text-foreground">
+              Spawn a new agent
+            </DialogTitle>
+            <DialogDescription>
+              Create an agent from profile <code className="font-mono">{profileId}</code>, then
+              review its exact Team policy placement before committing.
+            </DialogDescription>
+          </DialogHeader>
+          <label className="mb-3 mt-4 block text-sm text-foreground">
+            Agent name{' '}
+            <span className="text-muted-foreground font-normal">
+              (optional — defaults to the profile's name)
+            </span>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              autoComplete="off"
+              className="mt-1 block w-full rounded-md border bg-background px-3 py-2 outline-none focus:ring-2 focus:ring-ring/30"
+            />
+          </label>
+          <label className="mb-3 block text-sm text-foreground">
+            Initial policy placement
+            <select
+              value={placement}
+              onChange={(e) => {
+                setPlacement(e.target.value as typeof placement)
+                setPreview(null)
+              }}
+              className="mt-1 block w-full rounded-md border bg-background px-3 py-2"
+            >
+              <option value="profile_defaults">Agent-template defaults</option>
+              <option value="isolated">Isolated</option>
+            </select>
+            <span className="mt-1 block text-xs text-muted-foreground">
+              The current Team revision is checked again when you submit.
+            </span>
+          </label>
+          <label className="mb-3 block text-sm text-foreground">
+            Team
+            <select
+              value={teamId}
+              onChange={(e) => {
+                setTeamId(e.target.value)
+                setPreview(null)
+              }}
+              className="mt-1 block w-full rounded-md border bg-background px-3 py-2 outline-none focus:ring-2 focus:ring-ring/30"
+            >
+              {teams.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.name}
+                  {g.id === DEFAULT_TEAM_ID ? ' (default)' : ''}
+                </option>
+              ))}
+            </select>
+          </label>
+          {err && (
+            <p role="alert" className="err mt-2">
+              {err}
+            </p>
+          )}
+          {preview && (
+            <div
+              role="status"
+              className="mt-3 rounded-md border border-sapphire-light bg-sapphire-glow p-3 text-sm"
+            >
+              <p>
+                Creating this Agent advances Team revision {preview.currentRevision} →{' '}
+                <strong>{preview.resultingRevision}</strong> and adds{' '}
+                <strong>{preview.addedEdges.length}</strong> directed edges to the existing{' '}
+                {preview.existingEdges.length}.
+              </p>
+              <ul className="mt-2 max-h-36 overflow-auto">
+                {preview.addedEdges.map((edge, index) => (
+                  <li
+                    key={`${edge.sourceKind}:${edge.sourceId ?? ''}>${edge.targetKind}:${edge.targetId ?? ''}:${index}`}
+                  >
+                    <code>
+                      {edge.sourceKind}
+                      {edge.sourceId ? `:${edge.sourceId}` : ''} → {edge.targetKind}
+                      {edge.targetId ? `:${edge.targetId}` : ''}
+                    </code>
+                  </li>
+                ))}
+              </ul>
+              {preview.addedEdges.length === 0 && (
+                <p className="mt-2">The new Agent starts isolated.</p>
+              )}
+            </div>
+          )}
+          <div className="mt-5 flex justify-end gap-2">
+            <Button variant="ghost" disabled={busy} onClick={onClose}>
+              Cancel
+            </Button>
+            <Button variant="primary" type="submit" disabled={busy}>
+              {busy ? 'Working…' : preview ? 'Commit reviewed creation' : 'Review exact policy'}
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }

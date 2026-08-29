@@ -134,10 +134,22 @@ function HomePage() {
             initialSessionHead={data.selected.sessionHead}
           />
         ) : (
-          <div className="flex h-full items-center justify-center rounded-lg border border-dashed bg-card text-muted-foreground">
-            {data.agents.length === 0
-              ? 'No agents yet.'
-              : 'Pick an agent on the left to start chatting.'}
+          <div className="flex h-full items-center justify-center rounded-2xl border border-dashed bg-card px-6 text-center text-muted-foreground">
+            <div className="max-w-sm">
+              <h1 className="m-0 font-body text-lg font-semibold text-foreground">
+                {data.agents.length === 0 ? 'Start your first conversation' : 'Choose an agent'}
+              </h1>
+              <p className="mt-2 text-sm leading-6">
+                {data.agents.length === 0
+                  ? 'Your default Team and Agent template are ready. Use “Spawn first agent” on the left to create a working member.'
+                  : 'Pick an agent in the Team list to open its persistent conversation.'}
+              </p>
+              {data.agents.length === 0 && (
+                <a href="/agents" className="btn-primary mt-4 no-underline">
+                  Open agent setup
+                </a>
+              )}
+            </div>
           </div>
         )}
       </section>

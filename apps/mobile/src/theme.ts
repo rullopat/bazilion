@@ -50,7 +50,8 @@ export const lightColors: Colors = {
   chocolate: '#3D2B1F',
   charcoal: '#2A1F16',
   mocha: '#7A6555',
-  mochaLight: '#9E8E7E',
+  // Secondary text still clears WCAG AA against cream/ivory surfaces.
+  mochaLight: '#786858',
   sapphire: '#4A7C9B',
   sapphireDeep: '#3A6580',
   sapphireLight: '#6BA3C2',

@@ -37,10 +37,11 @@ docs/backlog/
 | ID | Title | Size | Notes |
 |----|-------|------|-------|
 
-## In Progress (0)
+## In Progress (1)
 
 | ID | Title | Size | Notes |
 |----|-------|------|-------|
+| [BAZ-033](in_progress/BAZ-033-product-experience-hardening.md) | Product experience hardening across web and mobile | L | v0.14.0 release slice from the complete rendered-product audit |
 
 ## Done (27)
 

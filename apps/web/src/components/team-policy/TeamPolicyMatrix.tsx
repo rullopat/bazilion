@@ -99,7 +99,7 @@ export function TeamPolicyMatrix({
                       </button>
                     ) : (
                       <span
-                        className="mx-auto flex h-9 w-9 items-center justify-center text-fawn"
+                        className="mx-auto flex h-9 w-9 items-center justify-center text-mocha-light"
                         title="Not a valid communication path"
                       >
                         <Minus className="h-4 w-4" />

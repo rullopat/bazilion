@@ -102,6 +102,14 @@ function RootComponent() {
         <HeadContent />
       </head>
       <body data-layout={isWorkspace ? 'workspace' : 'page'}>
+        {!isLogin && (
+          <a
+            href="#main-content"
+            className="sr-only z-[100] rounded-lg bg-primary px-4 py-2 font-semibold text-primary-foreground focus:not-sr-only focus:fixed focus:left-3 focus:top-3"
+          >
+            Skip to main content
+          </a>
+        )}
         {isLogin ? (
           <Outlet />
         ) : isWorkspace ? (
@@ -109,7 +117,7 @@ function RootComponent() {
             <div className="px-3 sm:px-5">
               <TopNav />
             </div>
-            <main className="mx-auto min-h-0 w-full max-w-[1600px] flex-1 overflow-hidden px-3 pb-3 sm:px-5 sm:pb-5">
+            <main id="main-content" tabIndex={-1} className="mx-auto min-h-0 w-full max-w-[1600px] flex-1 overflow-hidden px-3 pb-3 sm:px-5 sm:pb-5">
               <Outlet />
             </main>
           </div>
@@ -118,7 +126,7 @@ function RootComponent() {
             <div className="px-3 sm:px-5">
               <TopNav />
             </div>
-            <main className="mx-auto w-full max-w-[1500px] flex-1 px-4 py-9 sm:px-6 sm:py-12">
+            <main id="main-content" tabIndex={-1} className="mx-auto w-full max-w-[1500px] flex-1 px-4 py-9 sm:px-6 sm:py-12">
               <Outlet />
             </main>
             <div className="px-4 sm:px-6">

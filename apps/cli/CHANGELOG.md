@@ -1,5 +1,14 @@
 # bazilion
 
+## 0.14.0
+
+### Minor Changes
+
+- Overhaul the web and mobile operator experience with secure first-run browser bootstrap, correct
+  native chat streaming and pairing, safer durable edits and destructive actions, searchable provider
+  setup, responsive management surfaces, accessible navigation and dialogs, and clearer information
+  architecture.
+
 ## 0.13.0
 
 ### Minor Changes
