@@ -16,3 +16,10 @@ allowBuilds:
   tree-sitter-python: true
   tree-sitter-rust: true
   tree-sitter-typescript: true
+minimumReleaseAgeExclude:
+  - '@earendil-works/chord@0.85.1'
+  - '@earendil-works/pi-agent-core@0.85.1'
+  - '@earendil-works/pi-ai@0.85.1'
+  - '@earendil-works/pi-coding-agent@0.85.1'
+  - '@earendil-works/pi-telemetry@0.85.1'
+  - '@earendil-works/pi-tui@0.85.1'

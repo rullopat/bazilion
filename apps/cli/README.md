@@ -116,7 +116,8 @@ pnpm tsx apps/cli/src/index.ts auth openai login --device-code
 ```
 
 After connecting, enable `openai-codex` and curate at least one model, for example
-`gpt-5.6-sol` (the Pi 0.84 catalog also includes `gpt-5.6-luna` and `gpt-5.6-terra`).
+`gpt-6-astra` (GPT-6 Astra, available through both OpenAI API keys and ChatGPT OAuth
+in the Pi 0.85.1 catalog).
 Credentials are stored AES-256-GCM-encrypted in the daemon's `secrets` table.
 
 ## What's in the box

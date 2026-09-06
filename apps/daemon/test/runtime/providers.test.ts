@@ -18,7 +18,17 @@ import {
 // canned event streams. Wire-format correctness (SSE framing, provider-specific
 // request shapes) is pi-ai's responsibility and covered by its own test suite.
 
-test('Pi 0.84 catalog includes the refreshed model families and provider additions', () => {
+test('Pi 0.85.1 catalog includes Astra for API keys and Codex subscriptions', () => {
+  for (const provider of ['openai', 'openai-codex'] as const) {
+    expect(getBuiltinModels(provider).find((model) => model.id === 'gpt-6-astra')).toMatchObject({
+      name: 'GPT-6 Astra',
+      provider,
+      reasoning: true,
+    })
+  }
+})
+
+test('Pi catalog retains the refreshed model families and provider additions', () => {
   expect(getBuiltinModels('openai-codex').map((model) => model.id)).toContain('gpt-5.6-sol')
   expect(getBuiltinModels('anthropic').map((model) => model.id)).toContain('claude-opus-5')
   expect(getBuiltinModels('google').map((model) => model.id)).toContain('gemini-3.6-flash')

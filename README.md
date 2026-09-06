@@ -192,7 +192,7 @@ pnpm format           # biome --write
 
 ## ChatGPT OAuth (use your ChatGPT Plus/Pro/Team account)
 
-Bazilion has two OpenAI integrations. The classic one (`openai` provider) authenticates with an API key and hits `api.openai.com`. The second (`openai-codex` provider) signs in with your ChatGPT account via OAuth and talks to the ChatGPT backend that Codex CLI uses — so Plus/Pro/Team accounts can run chat turns against `gpt-5.x` / `gpt-5.x-codex` models inside Bazilion the same way they do in Codex.
+Bazilion has two OpenAI integrations. The classic one (`openai` provider) authenticates with an API key and hits `api.openai.com`. The second (`openai-codex` provider) signs in with your ChatGPT account via OAuth and talks to the ChatGPT backend that Codex CLI uses — so eligible ChatGPT accounts can run chat turns against catalog models such as GPT-6 Astra inside Bazilion the same way they do in Codex.
 
 ```sh
 # CLI: runs the browser flow locally (loopback on :1455), then uploads the
@@ -210,7 +210,7 @@ pnpm tsx apps/cli/src/index.ts auth openai login --device-code
 # CLI device-code flow from a remote client or when localhost:1455 is busy.
 ```
 
-After connecting, enable `openai-codex` on `/config` and curate at least one model (e.g. `gpt-5.6-luna`, `gpt-5.6-terra`, or `gpt-5.6-sol`). Credentials are stored AES-256-GCM-encrypted in the daemon's `secrets` table (key derived from the bootstrap token in `auth.json`); the access token auto-refreshes via the stored refresh token.
+After connecting, enable `openai-codex` on `/config` and curate at least one model (e.g. `gpt-6-astra`, `gpt-5.6-terra`, or `gpt-5.6-sol`). GPT-6 Astra is available through both OpenAI API keys and ChatGPT OAuth in the Pi 0.85.1 catalog. Credentials are stored AES-256-GCM-encrypted in the daemon's `secrets` table (key derived from the bootstrap token in `auth.json`); the access token auto-refreshes via the stored refresh token.
 
 ## Uninstalling
 

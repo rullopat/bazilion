@@ -1,5 +1,11 @@
 # bazilion
 
+## 0.14.2
+
+### Patch Changes
+
+- Upgrade the bundled Pi packages from 0.84.3 to 0.85.1, making GPT-6 Astra (`gpt-6-astra`) available in the OpenAI and OpenAI Codex catalogs. Refresh setup examples and verify catalog coverage for both API-key and ChatGPT OAuth selection.
+
 ## 0.14.1
 
 ### Patch Changes

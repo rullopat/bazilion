@@ -9,7 +9,10 @@
 // consumption. Successful protected dispatch is covered by the focused
 // scheduler/runtime suites with closed OpenAI Codex and Docker fixtures.
 
+import { randomUUID } from 'node:crypto'
 import { createServer, type ServerResponse } from 'node:http'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { afterAll, beforeAll, beforeEach, expect, test } from 'vitest'
 import { extractAgentId } from './helpers.ts'
 import { startTestServer, type TestServer } from './server-fixture.ts'
@@ -103,6 +106,9 @@ beforeAll(async () => {
   mock = await startMock()
   server = await startTestServer({
     LMSTUDIO_URL: mock.url,
+    // Keep protected preflight unavailable regardless of the host Docker setup.
+    DOCKER_HOST: `unix://${join(tmpdir(), randomUUID(), 'docker.sock')}`,
+    DOCKER_CONTEXT: '',
     // Fast scheduler ticks so the test doesn't wait 5s per auto-deliver.
     BAZILION_SCHEDULER_TICK_MS: '200',
   })

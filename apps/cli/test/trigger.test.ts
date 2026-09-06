@@ -1,4 +1,7 @@
+import { randomUUID } from 'node:crypto'
 import { createServer, type ServerResponse } from 'node:http'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { afterAll, beforeAll, beforeEach, expect, test } from 'vitest'
 import { extractAgentId } from './helpers.ts'
 import { startTestServer, type TestServer } from './server-fixture.ts'
@@ -98,6 +101,9 @@ beforeAll(async () => {
   mock = await startLmStudioMock()
   server = await startTestServer({
     LMSTUDIO_URL: mock.url,
+    // This fixture exercises missing Docker even on hosts with a working engine.
+    DOCKER_HOST: `unix://${join(tmpdir(), randomUUID(), 'docker.sock')}`,
+    DOCKER_CONTEXT: '',
     // Drive the scheduler fast so the test doesn't wait 5s per tick.
     BAZILION_SCHEDULER_TICK_MS: '200',
   })
