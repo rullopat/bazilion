@@ -7,6 +7,7 @@ created: 2026-08-23
 refined: 2026-08-23
 priority: high
 shipped: 2026-08-23
+release: v0.13.0
 note: Give protected workers only their selected runtime capabilities and force that fail-closed surface for Telegram and every background turn.
 ---
 

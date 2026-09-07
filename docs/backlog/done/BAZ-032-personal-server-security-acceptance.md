@@ -6,6 +6,7 @@ size: M
 created: 2026-08-26
 refined: 2026-08-26
 shipped: 2026-08-26
+release: v0.13.0
 priority: high
 note: Prove the composed BAZ-027 through BAZ-030 security boundary before releasing 0.13; do not add a second runtime or production security policy.
 ---

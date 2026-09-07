@@ -6,13 +6,14 @@ size: S (1-2 days)
 created: 2026-08-02
 refined: 2026-08-02
 shipped: 2026-08-02
+release: v0.11.0
 priority: high
 note: Keep workers DB-free; refresh expiring openai-codex access tokens through daemon-owned IPC.
 ---
 
 # BAZ-023 - Worker-side OpenAI Codex OAuth refresh
 
-**Status:** Done (unreleased).
+**Status:** Done. Released in v0.11.0.
 
 ## User stories
 

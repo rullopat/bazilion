@@ -5,14 +5,16 @@ status: done
 size: L (1-2 weeks)
 created: 2026-07-10
 refined: 2026-07-10
+shipped: 2026-07-11
+release: v0.9.0
 priority: high
 note: Complete BAZ-012 with server-backed Flow/Matrix editors, adoption/source workflows, BAZ-009 reviewed import, durable block detail, conflict recovery, chat return state, accessibility, and the required responsive theme matrix.
 ---
 
 # BAZ-017 - Production policy editors, local migration, activity, and web QA
 
-**Status:** Done. Completed the management/recovery prerequisite and activated the
-release-coupled BAZ-016 enforcement capability. ADR 0001 is normative.
+**Status:** Done. Released in v0.9.0. Completed the management/recovery prerequisite and activated
+the release-coupled BAZ-016 enforcement capability. ADR 0001 is normative.
 
 ## User stories
 

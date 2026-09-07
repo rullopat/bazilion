@@ -6,13 +6,14 @@ size: L (1-2 weeks)
 created: 2026-05-29
 refined: 2026-08-01
 shipped: 2026-08-02
+release: v0.11.0
 priority: high
-note: BAZ-008 shipped the static SKILL.md content scan. BAZ-006 adds independent default-off Docker isolation and dangerous-command approval controls; both are complete and awaiting release.
+note: BAZ-008 shipped the static SKILL.md content scan. BAZ-006 added independent default-off Docker isolation and dangerous-command approval controls; both shipped in v0.11.0.
 ---
 
 # BAZ-006 - Skill execution security - sandbox and command approval
 
-**Status:** Done. Unreleased.
+**Status:** Done. Released in v0.11.0.
 
 Bazilion's skill model is prompt-only: a `SKILL.md` under `~/.bazilion/skills/<name>/`
 is represented in the agent prompt, and any procedural work happens through the

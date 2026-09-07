@@ -6,13 +6,14 @@ size: M (~1 week)
 created: 2026-08-02
 refined: 2026-08-02
 shipped: 2026-08-02
+release: v0.11.0
 priority: high
 note: Replace live WAL-file archiving and destructive-first restore with a staged, verified workflow.
 ---
 
 # BAZ-024 - SQLite-consistent backup and validated restore
 
-**Status:** Done (unreleased).
+**Status:** Done. Released in v0.11.0.
 
 ## User stories
 

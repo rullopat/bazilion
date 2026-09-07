@@ -222,7 +222,7 @@ The coding-tool surface is mode-dependent:
   and declare no Docker `VOLUME`s; non-local Docker contexts and Docker/image/mount errors fail
   closed.
 
-BAZ-006 adds both controls for the next release. `BAZILION_BASH_SANDBOX=docker` selects the hard
+BAZ-006 added both controls in v0.11.0. `BAZILION_BASH_SANDBOX=docker` selects the hard
 container boundary. Independently, `BAZILION_BASH_APPROVAL=dangerous` wraps either host or Docker
 `bash`: safe commands continue immediately, while classified commands emit one turn-scoped
 approval event. Web and TTY CLI turns can allow once or deny; scheduled, Telegram, background, and

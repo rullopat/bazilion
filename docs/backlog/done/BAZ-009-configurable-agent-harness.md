@@ -6,13 +6,15 @@ size: L (1-2 weeks)
 created: 2026-07-06
 refined: 2026-07-10
 shipped: 2026-07-10
+release: superseded before release
 priority: high
 note: Build a functional in-app, locally persisted prototype that validates the policy model and flow-first teamPolicy UX before production schema, runtime enforcement, and CLI work are split into follow-up BAZs.
 ---
 
 # BAZ-009 - Configurable agent teamPolicy - functional communication-flow prototype
 
-**Status:** Done. Implemented 2026-07-10; unreleased.
+**Status:** Done (historical). Implemented 2026-07-10, then superseded by the canonical Team
+Policy work in BAZ-017 and BAZ-018 before a public release.
 
 Bazilion profile teams are currently ordered team templates. Spawned members share one
 team context and can message any agent id they know; user chat and Telegram reach agents
@@ -303,9 +305,9 @@ When the prototype is accepted, create separately sized Todo BAZs for:
 4. CLI policy show/import/export and block-history visibility.
 5. Optional human approval communication gates, only after allow/deny behavior is validated.
 
-## As-built (2026-07-10, unreleased)
+## As-built (2026-07-10, superseded before release)
 
-Shipped as the planned functional, browser-local prototype:
+Implemented as the planned functional, browser-local prototype:
 
 - Added a versioned canonical policy model in
   `apps/web/src/lib/policy-prototype.ts`, persisted under

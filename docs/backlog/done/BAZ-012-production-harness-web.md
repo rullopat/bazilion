@@ -5,15 +5,17 @@ status: done
 size: L (1-2 weeks)
 created: 2026-07-10
 refined: 2026-07-10
+shipped: 2026-07-11
+release: v0.9.0
 priority: high
 note: Converge Profiles/Profile Teams into Agent/Team templates, establish Team-owned policy navigation and server projections, preserve old URLs, and provide degraded/conflict recovery shell. Editors and local migration continue in BAZ-017.
 ---
 
 # BAZ-012 - Production Templates and Teams web information architecture
 
-**Status:** Done. ADR 0001 is normative. This is the
-first half of the former XL web story; BAZ-017 owns production editors, local import,
-activity detail, and the full interaction/visual matrix.
+**Status:** Done. Released in v0.9.0. ADR 0001 is normative. This was the first half of the former
+XL web story; BAZ-017 completed production editors, local import, activity detail, and the full
+interaction/visual matrix.
 
 ## User stories
 

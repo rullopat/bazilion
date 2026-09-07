@@ -6,6 +6,7 @@ size: M
 created: 2026-08-23
 refined: 2026-08-26
 shipped: 2026-08-26
+release: v0.13.0
 priority: high
 note: Secure the intended one-human Telegram deployment; preserve long-polling, the existing flat ACL, and shipped traffic guards.
 ---
