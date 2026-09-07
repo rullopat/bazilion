@@ -11,6 +11,7 @@ import {
 } from './telegram/ingress-attempt.ts'
 
 export interface AgentTurnApprovalPayload {
+  conversationId: string
   agentId: string
   message: string
   attachments: Attachment[]
@@ -357,6 +358,12 @@ function requireAgentToAgent(
 }
 
 function requireAgentTurnPayload(value: unknown): AgentTurnApprovalPayload {
+  if (
+    !isRecord(value) ||
+    typeof value.conversationId !== 'string' ||
+    !/^[0-9a-f-]{36}$/i.test(value.conversationId)
+  )
+    return invalid('agent_turn_conversation')
   if (!isRecord(value) || !isNonEmptyString(value.agentId) || typeof value.message !== 'string')
     return invalid('agent_turn_payload')
   if (!Array.isArray(value.attachments) || !value.attachments.every(isAttachment))
@@ -365,6 +372,7 @@ function requireAgentTurnPayload(value: unknown): AgentTurnApprovalPayload {
     return invalid('agent_turn_empty')
   return {
     agentId: value.agentId,
+    conversationId: value.conversationId,
     message: value.message,
     attachments: value.attachments,
   }

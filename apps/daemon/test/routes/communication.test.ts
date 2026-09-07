@@ -1,7 +1,9 @@
-import { existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
+import * as conversations from '../../src/core/repos/conversations.ts'
+import { seedRegisteredConversation } from '../fixtures/conversation.ts'
 
 let home: string
 let oldHome: string | undefined
@@ -140,6 +142,7 @@ test('authenticated evaluator is side-effect free and block history is filtered 
     method: 'POST',
     headers: { ...auth, 'x-request-id': 'chat-denied' },
     body: JSON.stringify({
+      expectedSelection: conversations.selection(ctx.db, b.id),
       message: 'private prompt',
       attachments: [{ name: 'secret.txt', mimeType: 'text/plain', data: 'c2VjcmV0' }],
     }),
@@ -314,6 +317,7 @@ test('approving a scheduled occurrence grants its pending dispatch without runni
     message: 'approved scheduled work',
   })
   const dispatch = triggerDispatchRepo.materialize(ctx.db, {
+    conversationId: seedRegisteredConversation(ctx.db, ctx.paths, agent.id).id,
     triggerId: trigger.id,
     agentId: agent.id,
     scheduledAt: Date.now(),
@@ -346,7 +350,13 @@ test('approving a scheduled occurrence grants its pending dispatch without runni
     status: 'pending',
     attemptCount: 0,
   })
-  expect(readdirSync(join(agent.dir, 'sessions'))).toEqual([])
+  const files = readdirSync(join(agent.dir, 'sessions'))
+  expect(files).toHaveLength(1)
+  expect(
+    readFileSync(join(agent.dir, 'sessions', files[0]!), 'utf8')
+      .trim()
+      .split('\n'),
+  ).toHaveLength(1)
 })
 
 test('approval-required chat holds text and attachment before persistence or turn start', async () => {
@@ -377,6 +387,7 @@ test('approval-required chat holds text and attachment before persistence or tur
       'x-request-id': 'held-chat',
     },
     body: JSON.stringify({
+      expectedSelection: conversations.selection(ctx.db, agent.id),
       message: 'held prompt',
       attachments: [{ name: 'secret.txt', mimeType: 'text/plain', data: 'c2VjcmV0' }],
     }),
@@ -389,7 +400,13 @@ test('approval-required chat holds text and attachment before persistence or tur
   })
   expect(existsSync(join(agent.dir, 'uploads'))).toBe(false)
   expect(existsSync(join(agent.dir, 'sessions'))).toBe(true)
-  expect(readdirSync(join(agent.dir, 'sessions'))).toEqual([])
+  const files = readdirSync(join(agent.dir, 'sessions'))
+  expect(files).toHaveLength(1)
+  expect(
+    readFileSync(join(agent.dir, 'sessions', files[0]!), 'utf8')
+      .trim()
+      .split('\n'),
+  ).toHaveLength(1)
   expect(
     ctx.db.raw
       .query<{ count: number }, []>('SELECT COUNT(*) count FROM communication_approvals')
@@ -475,7 +492,11 @@ test('HTTP and Telegram approval replays preserve identity while failures stay s
   const held = await app.request(`/api/agents/${agent.id}/chat`, {
     method: 'POST',
     headers: { ...headers, 'x-request-id': 'stored-http-attempt' },
-    body: JSON.stringify({ message: 'approved prompt', attachments }),
+    body: JSON.stringify({
+      message: 'approved prompt',
+      attachments,
+      expectedSelection: conversations.selection(ctx.db, agent.id),
+    }),
   })
   const heldBody = (await held.json()) as { approvalId: string }
 
@@ -525,6 +546,7 @@ test('HTTP and Telegram approval replays preserve identity while failures stay s
     'telegram_ingress',
     {
       agentId: agent.id,
+      conversationId: conversations.selection(ctx.db, agent.id).conversationId,
       text: 'approved Telegram prompt',
       media: telegramMedia,
       chatId: -100,
@@ -632,7 +654,10 @@ test('HTTP and Telegram approval replays preserve identity while failures stay s
   const failedHeld = await app.request(`/api/agents/${agent.id}/chat`, {
     method: 'POST',
     headers: { ...headers, 'x-request-id': 'protected-preflight-failure' },
-    body: JSON.stringify({ message: 'must fail safely' }),
+    body: JSON.stringify({
+      message: 'must fail safely',
+      expectedSelection: conversations.selection(ctx.db, agent.id),
+    }),
   })
   const failedBody = (await failedHeld.json()) as { approvalId: string }
   protectedFailureAttemptId = 'protected-preflight-failure'
@@ -656,7 +681,10 @@ test('HTTP and Telegram approval replays preserve identity while failures stay s
   const invalidHeld = await app.request(`/api/agents/${agent.id}/chat`, {
     method: 'POST',
     headers: { ...headers, 'x-request-id': 'invalid-stored-tuple' },
-    body: JSON.stringify({ message: 'must not run' }),
+    body: JSON.stringify({
+      message: 'must not run',
+      expectedSelection: conversations.selection(ctx.db, agent.id),
+    }),
   })
   const invalidBody = (await invalidHeld.json()) as { approvalId: string }
   ctx.db.raw.run('UPDATE communication_approvals SET payload_kind = ? WHERE id = ?', [

@@ -243,6 +243,7 @@ async function createSessionForInput(
       : undefined
     const handle = await createBazilionSession({
       agent: input.agent,
+      conversation: input.conversation,
       paths,
       env: process.env,
       memory,
@@ -296,6 +297,7 @@ async function createSessionForInput(
   })
   const handle = await createProtectedBazilionSession({
     agent: input.agent,
+    conversation: input.conversation,
     runtime: input.runtime,
     paths: input.paths,
     scratch: input.scratch,

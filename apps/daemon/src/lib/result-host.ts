@@ -12,8 +12,9 @@ export function createResultHost(
   paths: Paths,
   agent: ResolvedAgent,
   signal: AbortSignal,
+  conversation: import('@bazilion/api-types').ConversationTarget,
 ): ResultHost {
-  const initialHead = loadSessionHead(agent, paths)
+  const initialHead = loadSessionHead(agent, paths, conversation)
   return {
     async publish(input: PublishResultArgs) {
       signal.throwIfAborted()
@@ -36,7 +37,9 @@ export function createResultHost(
       if (bytes.byteLength > results.MAX_RESULT_BYTES || bytes.toString('base64') !== input.data) {
         throw new Error('Invalid or oversized result bytes')
       }
-      const head = loadSessionHead(agent, paths)
+      if (input.sessionId !== conversation.id)
+        throw new Error('Result source does not match admitted conversation')
+      const head = loadSessionHead(agent, paths, conversation)
       if (!head.file || head.size > 64 * 1024 * 1024)
         throw new Error('Result source session is unavailable or too large')
       const entries = readResultSession(

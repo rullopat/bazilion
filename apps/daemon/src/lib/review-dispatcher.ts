@@ -8,6 +8,7 @@ import {
 } from '../runtime/index.ts'
 import { isActiveAgent, registerAgent, unregisterAgent } from './agent-cancel.ts'
 import { acquireAgentLifecycleLease } from './agent-lifecycle-lease.ts'
+import { selectedConversationTarget } from './conversation-target.ts'
 import { getCtx } from './ctx.ts'
 import { protectedFailureMessage } from './protected-failure.ts'
 import { buildReviewDigest, type ReviewTranscriptEntry } from './review-digest.ts'
@@ -62,10 +63,16 @@ export async function dispatchAgentReview(reviewId: string): Promise<void> {
 
   try {
     const resolved = resolveAgent(db, paths, claimed.agentId)
-    const sessionHead = loadSessionHead(resolved, paths)
+    const sessionHead = loadSessionHead(
+      resolved,
+      paths,
+      selectedConversationTarget(db, resolved.agent.id),
+    )
     const sessionId = sessionHead.file?.replace(/\.jsonl$/, '') ?? ''
     const previous = agentReviewRepo.getLatestCompleted(db, claimed.agentId)
-    const messages = piMessagesToProviderView(loadInitialMessages(resolved, paths))
+    const messages = piMessagesToProviderView(
+      loadInitialMessages(resolved, paths, selectedConversationTarget(db, resolved.agent.id)),
+    )
     const entries = transcriptEntries(messages, sessionId).filter(
       (entry) =>
         previous?.sourceSessionId !== sessionId ||

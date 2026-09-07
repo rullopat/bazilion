@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import { seedRegisteredConversation } from '../fixtures/conversation.ts'
 
 let home: string
 let oldHome: string | undefined
@@ -62,6 +63,7 @@ describe('GET /:id/dispatches limit', () => {
     const { triggerDispatchRepo } = await import('../../src/core/index.ts')
     for (let scheduledAt = 1; scheduledAt <= 101; scheduledAt += 1) {
       triggerDispatchRepo.materialize(ctx.db, {
+        conversationId: seedRegisteredConversation(ctx.db, ctx.paths, trigger.agentId).id,
         triggerId: trigger.id,
         agentId: trigger.agentId,
         scheduledAt,

@@ -1,7 +1,9 @@
+import { join } from 'node:path'
 import type { ChatFrame } from '@bazilion/api-types'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import * as agentRepo from '../../src/core/repos/agents.ts'
 import * as approvalRepo from '../../src/core/repos/communicationApprovals.ts'
+import * as conversations from '../../src/core/repos/conversations.ts'
 import * as messageRepo from '../../src/core/repos/messages.ts'
 import * as profileRepo from '../../src/core/repos/profiles.ts'
 import * as triggerDispatchRepo from '../../src/core/repos/triggerDispatches.ts'
@@ -9,6 +11,7 @@ import * as triggerRepo from '../../src/core/repos/triggers.ts'
 import { authorizeInSnapshot } from '../../src/core/team-policy/authorization.ts'
 import { registerAgent, unregisterAgent } from '../../src/lib/agent-cancel.ts'
 import { makeTestEnv, type TestEnv } from '../core/helpers.ts'
+import { seedConversationTarget, seedRegisteredConversation } from '../fixtures/conversation.ts'
 
 interface TurnPlan {
   frames?: ChatFrame[]
@@ -18,7 +21,7 @@ interface TurnPlan {
 
 interface PreparedTurnInput {
   invocation: {
-    turn: { agentId: string; message: string }
+    turn: { agentId: string; message: string; conversationId: string }
     claim?: { controller: AbortController; releaseLease: () => void }
   }
 }
@@ -26,6 +29,7 @@ interface PreparedTurnInput {
 describe('durable scheduler dispatches', () => {
   let env: TestEnv
   let scheduler: typeof import('../../src/lib/scheduler.ts')
+  let targets: string[]
   let turnPlans: TurnPlan[]
   let turnCalls: Array<{ agentId: string; message: string }>
   let protectedPreflightError: Error | null
@@ -60,6 +64,8 @@ describe('durable scheduler dispatches', () => {
       dir: env.paths.agentDir('a1'),
       teamId: env.teamId,
     })
+    seedRegisteredConversation(env.db, env.paths, 'a1')
+    targets = []
     turnPlans = []
     turnCalls = []
     protectedPreflightError = null
@@ -97,6 +103,7 @@ describe('durable scheduler dispatches', () => {
     }))
     vi.doMock('../../src/lib/agent-turn.ts', () => ({
       prepareAgentTurn: async (turn: PreparedTurnInput) => {
+        targets.push(turn.invocation.turn.conversationId)
         turnCalls.push({
           agentId: turn.invocation.turn.agentId,
           message: turn.invocation.turn.message,
@@ -155,6 +162,7 @@ describe('durable scheduler dispatches', () => {
       message: 'scheduled work',
     })
     const dispatch = triggerDispatchRepo.materialize(env.db, {
+      conversationId: seedRegisteredConversation(env.db, env.paths, 'a1').id,
       triggerId: trigger.id,
       agentId: 'a1',
       scheduledAt: now,
@@ -162,6 +170,27 @@ describe('durable scheduler dispatches', () => {
     })
     return { trigger, dispatch }
   }
+
+  test('delayed scheduled work keeps its materialized target after New conversation', async () => {
+    const { dispatch } = materialize()
+    const next = seedConversationTarget(join(env.paths.agentDir('a1'), 'sessions'), env.paths.home)
+    const created = conversations.create(
+      env.db,
+      'a1',
+      {
+        requestId: next.id,
+        expectedSelection: conversations.selection(env.db, 'a1'),
+      },
+      () => next.filename,
+    )
+    await scheduler._tickOnce()
+    expect(targets).toEqual([dispatch.conversationId])
+    expect(dispatch.conversationId).not.toBe(next.id)
+    expect(conversations.selection(env.db, 'a1')).toEqual(created.selection)
+    expect(triggerDispatchRepo.get(env.db, dispatch.id)?.conversationId).toBe(
+      dispatch.conversationId,
+    )
+  })
 
   test('records a successful turn as a succeeded dispatch', async () => {
     const { trigger } = materialize()
@@ -209,6 +238,45 @@ describe('durable scheduler dispatches', () => {
       status: 'succeeded',
       attemptCount: 2,
     })
+  })
+
+  test.each([
+    'off',
+    'on',
+  ])('inbox claim records its exact conversation with enforcement %s', async (enforcement) => {
+    process.env.BAZILION_TEAM_POLICY_ENFORCEMENT = enforcement
+    agentRepo.insert(env.db, {
+      id: 'a2',
+      profileId: 'p',
+      name: 'Sender',
+      modelOverride: null,
+      reasoningLevel: 'medium',
+      status: 'idle',
+      dir: env.paths.agentDir('a2'),
+      teamId: env.teamId,
+    })
+    env.db.raw.run(
+      `INSERT OR REPLACE INTO team_policy_edges
+      (team_id, source_kind, source_id, target_kind, target_id, posture)
+      VALUES (?, 'agent', 'a2', 'agent', 'a1', 'allow')`,
+      [env.teamId],
+    )
+    const message = messageRepo.send(env.db, {
+      from: 'a2',
+      to: 'a1',
+      payload: JSON.stringify({ text: 'inbox task' }),
+    })
+    const selection = conversations.selection(env.db, 'a1')
+    await scheduler._tickOnce()
+    expect(targets).toEqual([selection.conversationId])
+    expect(messageRepo.get(env.db, message.id)?.readAt).not.toBeNull()
+    expect(
+      env.db.raw
+        .query<{ conversation_id: string }, [string]>(
+          'SELECT conversation_id FROM messages WHERE id = ?',
+        )
+        .get(message.id)?.conversation_id,
+    ).toBe(selection.conversationId)
   })
 
   test('leaves inbox messages unread when protected readiness fails before claim', async () => {

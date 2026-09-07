@@ -57,12 +57,9 @@ const fetchAgent = createServerFn({ method: 'POST' })
       if (err instanceof ApiClientError && err.status === 404) return null
       throw err
     }
-    const [msgs, head, teams, skills, models, telegramConfig] = await Promise.all([
-      c.get<{ messages: ProviderMessage[] }>(
+    const [msgs, teams, skills, models, telegramConfig] = await Promise.all([
+      c.get<{ messages: ProviderMessage[]; head: SessionHeadResponse }>(
         `/api/agents/${encodeURIComponent(resolved.agent.id)}/sessions/messages`,
-      ),
-      c.get<SessionHeadResponse>(
-        `/api/agents/${encodeURIComponent(resolved.agent.id)}/sessions/head`,
       ),
       c.get<Team[]>('/api/teams'),
       c.get<SkillInfo[]>('/api/skills'),
@@ -74,7 +71,7 @@ const fetchAgent = createServerFn({ method: 'POST' })
     return {
       resolved,
       initialMessages: msgs.messages,
-      sessionHead: head,
+      sessionHead: msgs.head,
       teams,
       skills,
       modelGroups: models.teams,

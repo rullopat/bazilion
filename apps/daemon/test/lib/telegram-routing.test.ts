@@ -773,3 +773,51 @@ describe('routeUpdate classification', () => {
     expect(sends[0]?.text).toMatch(/Unknown command/)
   })
 })
+
+test('media ingress captures its conversation before an asynchronous download', async () => {
+  const { randomUUID } = await import('node:crypto')
+  const conversations = await import('../../src/core/repos/conversations.ts')
+  const { createConversationFile } = await import('../../src/lib/conversation-file.ts')
+  const media = await import('../../src/lib/telegram/media.ts')
+  const agent = spawnAgent(env.db, env.paths, { profileId: 'base', teamId: env.teamId })
+  agentRepo.setTelegramTopicId(env.db, agent.id, 42)
+  let finishDownload!: () => void
+  const gate = new Promise<void>((resolve) => {
+    finishDownload = resolve
+  })
+  const download = vi.spyOn(media, 'downloadMediaBytes').mockImplementation(async () => {
+    await gate
+    return { ok: true, data: 'eA==', mimeType: 'text/plain', name: 'input.txt' }
+  })
+  const queued = vi
+    .spyOn(inboundQueue, 'enqueueAgentMessage')
+    .mockImplementation(() => {})
+    .mockClear()
+  const { api } = makeReplyApi()
+  const update = messageUpdate({ threadId: 42, text: 'Read this file' })
+  Object.assign(update.message!, {
+    document: {
+      file_id: 'test-file',
+      file_unique_id: 'unique',
+      file_name: 'input.txt',
+      mime_type: 'text/plain',
+    },
+  })
+  const routing = routeUpdate(
+    { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID, botToken: 'fake' },
+    update,
+  )
+  await vi.waitFor(() => expect(download).toHaveBeenCalledOnce())
+  const original = conversations.selection(env.db, agent.id)
+  const next = conversations.create(
+    env.db,
+    agent.id,
+    { requestId: randomUUID(), expectedSelection: original },
+    (id) => createConversationFile(env.paths, agent.id, id, env.paths.teamDir(env.teamId)),
+  )
+  finishDownload()
+  await routing
+  expect(queued).toHaveBeenCalledOnce()
+  expect(queued.mock.calls[0]?.[3].approvalPayload.conversationId).toBe(original.conversationId)
+  expect(conversations.selection(env.db, agent.id)).toEqual(next.selection)
+})

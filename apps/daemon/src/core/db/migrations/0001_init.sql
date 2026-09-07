@@ -62,6 +62,7 @@ CREATE TABLE trigger_dispatches (
   id              TEXT PRIMARY KEY,
   trigger_id      TEXT NOT NULL REFERENCES agent_triggers(id) ON DELETE CASCADE,
   agent_id        TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+  conversation_id TEXT NOT NULL,
   scheduled_at    INTEGER NOT NULL,
   status          TEXT NOT NULL CHECK (status IN ('pending','running','retrying','succeeded','failed','cancelled')),
   attempt_count   INTEGER NOT NULL DEFAULT 0,
@@ -72,7 +73,8 @@ CREATE TABLE trigger_dispatches (
   last_error      TEXT,
   created_at      INTEGER NOT NULL,
   updated_at      INTEGER NOT NULL,
-  UNIQUE (trigger_id, scheduled_at)
+  UNIQUE (trigger_id, scheduled_at),
+  FOREIGN KEY (agent_id, conversation_id) REFERENCES agent_conversations(agent_id, id)
 );
 CREATE INDEX trigger_dispatches_claimable
   ON trigger_dispatches(status, next_attempt_at, scheduled_at);
@@ -87,7 +89,8 @@ CREATE TABLE messages (
   causal_hop    INTEGER NOT NULL DEFAULT 0 CHECK (causal_hop >= 0),
   payload       TEXT NOT NULL,
   created_at    INTEGER NOT NULL,
-  read_at       INTEGER
+  read_at       INTEGER,
+  conversation_id TEXT
 , policy_disposition TEXT NOT NULL DEFAULT 'deliverable'
   CHECK (policy_disposition IN ('deliverable', 'policy_blocked')), policy_blocked_at INTEGER, policy_claimed_at INTEGER, policy_delivered_at INTEGER);
 CREATE INDEX messages_to_unread ON messages(to_agent_id) WHERE read_at IS NULL;
@@ -551,3 +554,26 @@ WHEN NEW.baseline_instantiation_id IS NOT NULL AND NOT EXISTS (
 BEGIN
   SELECT RAISE(ABORT, 'baseline instantiation belongs to another Team');
 END;
+
+-- Conversation metadata never duplicates the canonical Pi transcript.
+CREATE TABLE agent_conversations (
+  id TEXT PRIMARY KEY,
+  agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+  filename TEXT NOT NULL,
+  title TEXT NOT NULL,
+  title_revision INTEGER NOT NULL DEFAULT 1,
+  initial_title TEXT,
+  creation_revision INTEGER NOT NULL,
+  creation_conversation_id TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  UNIQUE(agent_id, id),
+  UNIQUE(agent_id, filename)
+);
+CREATE INDEX agent_conversations_agent_time ON agent_conversations(agent_id, created_at DESC, id);
+CREATE TABLE agent_conversation_selection (
+  agent_id TEXT PRIMARY KEY REFERENCES agents(id) ON DELETE CASCADE,
+  conversation_id TEXT NOT NULL,
+  revision INTEGER NOT NULL CHECK(revision > 0),
+  FOREIGN KEY(agent_id, conversation_id) REFERENCES agent_conversations(agent_id, id)
+);

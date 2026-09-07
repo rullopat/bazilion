@@ -39,7 +39,7 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
       causalParentMessageId: turn.causalParentMessageId,
     })
     const userMdHost = createDbUserMdHost(db, paths)
-    const resultHost = createResultHost(db, paths, agent, turn.controller.signal)
+    const resultHost = createResultHost(db, paths, agent, turn.controller.signal, turn.conversation)
     let frames: AsyncGenerator<ChatFrame, void, void>
     if (turn.surface === 'configured_operator_http') {
       if (invocation.kind !== 'operator_http') {
@@ -58,6 +58,7 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
           kind: 'configured_operator_http',
           agent,
           message: turn.message,
+          conversation: turn.conversation,
           enabledProviders,
           apiKey,
           browserEnabled,
@@ -91,6 +92,7 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
           kind: 'protected',
           agent,
           message: turn.message,
+          conversation: turn.conversation,
           images: [...turn.images],
           turnId,
           bashApprovalMode: 'auto_deny',

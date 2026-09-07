@@ -28,6 +28,7 @@ function attempt(
     attemptId: `-100:${messageId}`,
     approvalPayloadKind: 'telegram_ingress',
     approvalPayload: {
+      conversationId: '11111111-1111-4111-8111-111111111111',
       agentId,
       text,
       media: attachment
@@ -99,7 +100,12 @@ describe('inbound-queue', () => {
         invocation: {
           kind: 'telegram',
           authorization: attempt('a1', 1, 'hello'),
-          turn: { agentId: 'a1', message: 'hello', attachments: [] },
+          turn: {
+            agentId: 'a1',
+            message: 'hello',
+            attachments: [],
+            conversationId: '11111111-1111-4111-8111-111111111111',
+          },
           bashApprovalMode: 'auto_deny',
         },
       },

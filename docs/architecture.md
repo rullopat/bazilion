@@ -319,7 +319,8 @@ Grouped by resource. Request/response shapes all live in `@bazilion/api-types`. 
 | PATCH | `/api/agents/:id/team` | Move to a different team. |
 | POST | `/api/agents/:id/chat` | **Streaming NDJSON** — the main turn endpoint. Calls `runAgentTurn()`. |
 | POST | `/api/agents/:id/cancel` | Abort the in-flight turn for this agent (keyed by agentId). 409 if the agent is idle. |
-| POST | `/api/agents/:id/chat/reset` | Drop the agent's pi session(s) so the next turn starts with an empty transcript. |
+| GET/POST | `/api/agents/:id/conversations` | List retained history or create/select an empty conversation with expected selection and an idempotent request ID. |
+| GET/PATCH | `/api/agents/:id/conversations/:conversationId` | Read or rename retained history without selecting it. |
 | GET | `/api/agents/:id/chat/context` | `ChatContextResponse` — system prompt / tools / skills / team / history breakdown. `?detail=1` or `?json=1` includes every entry. |
 | POST | `/api/agents/:id/chat/compact` | Pi-style compaction: summarize the head, preserve `keepTail` entries (default 10) verbatim, persist a compaction marker. |
 | POST | `/api/agents/:id/chat/truncate` | Keep first N entries. |

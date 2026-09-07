@@ -34,8 +34,7 @@ export function ResultSourceConversation({
         <ResultTranscript messages={source.messages} />
       ) : (
         <p role="status">
-          The originating conversation is unavailable. This Agent may have started a new
-          conversation.
+          The originating conversation is unavailable. Its history may be missing or the Agent may have been removed.
         </p>
       )}
       <a className="ghost-btn" href={`/agents/${encodeURIComponent(agentId)}`}>

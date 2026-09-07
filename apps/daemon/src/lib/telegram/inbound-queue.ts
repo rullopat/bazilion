@@ -50,7 +50,12 @@ export function enqueueAgentMessage(
   const invocation = createTrustedTurnInvocation({
     kind: 'telegram',
     authorization,
-    turn: { agentId, message: text, attachments },
+    turn: {
+      agentId,
+      message: text,
+      attachments,
+      conversationId: authorization.approvalPayload.conversationId,
+    },
     bashApprovalMode: 'auto_deny',
   }) as Extract<TrustedTurnInvocation, { kind: 'telegram' }>
   q.push({ invocation, notify })

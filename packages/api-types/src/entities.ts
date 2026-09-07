@@ -492,6 +492,7 @@ export type TriggerDispatchStatus =
   | 'cancelled'
 
 export interface TriggerDispatch {
+  conversationId: string
   id: string
   triggerId: string
   agentId: string

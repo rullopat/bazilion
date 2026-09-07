@@ -36,7 +36,10 @@ import {
   webSessionRepo,
   webTokenRepo,
 } from '../../daemon/src/core/index.ts'
+import * as conversations from '../../daemon/src/core/repos/conversations.ts'
 import * as resultRepo from '../../daemon/src/core/repos/results.ts'
+import { createConversationFile } from '../../daemon/src/lib/conversation-file.ts'
+import { resolveConversationTarget } from '../../daemon/src/lib/conversation-target.ts'
 import { installValidatedPayload, RestoreRecoveryRequiredError } from '../src/commands/backup.ts'
 import { acquireHomeRestoreLock, daemonLivenessPath } from '../src/daemon-liveness.ts'
 import { extractAgentId, makeHome, runCli, type TestHome } from './helpers.ts'
@@ -359,10 +362,26 @@ test('backup restore extracts the tar.gz into a fresh home', async () => {
   ).toBe(0)
   expect((await server.cli(['agent', 'review', agentId])).exitCode).toBe(0)
   const sourceDb = openDb(join(server.home, 'bazilion.db'))
+  const sourcePaths = resolvePaths(server.home)
+  const originalConversation = resolveConversationTarget(sourceDb, sourcePaths, agentId)
+  conversations.rename(sourceDb, agentId, originalConversation.id, 'Retained report', 1)
+  const selectedConversation = conversations.create(
+    sourceDb,
+    agentId,
+    {
+      requestId: randomUUID(),
+      expectedSelection: conversations.selection(sourceDb, agentId),
+      title: 'Next task',
+    },
+    (id) => createConversationFile(sourcePaths, agentId, id, sourcePaths.teamDir('default')),
+  )
+  const originalBytes = readFileSync(
+    join(sourcePaths.agentDir(agentId), 'sessions', originalConversation.filename),
+  )
   const savedResult = resultRepo.publish(sourceDb, {
     teamId: 'default',
     agentId,
-    sessionId: 'backup-session',
+    sessionId: originalConversation.id,
     toolCallId: 'deliver-report',
     name: 'report.txt',
     mimeType: 'text/plain',
@@ -438,10 +457,23 @@ test('backup restore extracts the tar.gz into a fresh home', async () => {
   expect(resultRepo.getReleased(restoredDb, savedResult.id)).toMatchObject({
     agentId,
     teamId: 'default',
-    sessionId: 'backup-session',
+    sessionId: originalConversation.id,
     toolCallId: 'deliver-report',
     sha256: savedResult.sha256,
   })
+  expect(conversations.list(restoredDb, agentId)).toMatchObject({
+    total: 2,
+    selection: selectedConversation.selection,
+  })
+  expect(conversations.get(restoredDb, agentId, originalConversation.id)?.title).toBe(
+    'Retained report',
+  )
+  expect(
+    readFileSync(join(target.home, 'agents', agentId, 'sessions', originalConversation.filename)),
+  ).toEqual(originalBytes)
+  expect(resultRepo.getReleased(restoredDb, savedResult.id)?.sessionId).toBe(
+    originalConversation.id,
+  )
   expect(resultRepo.readReleased(restoredDb, savedResult.id).toString()).toBe(
     'captured backup result',
   )

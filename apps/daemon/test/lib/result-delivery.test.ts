@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { writeFileSync } from 'node:fs'
+import { appendFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { ChatFrame } from '@bazilion/api-types'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
@@ -10,6 +10,7 @@ import * as agentRepo from '../../src/core/repos/agents.ts'
 import * as results from '../../src/core/repos/results.ts'
 import { registerAgent, unregisterAgent } from '../../src/lib/agent-cancel.ts'
 import { authorizeHttpChatFrame, CommunicationPendingError } from '../../src/lib/communication.ts'
+import { resolveConversationTarget } from '../../src/lib/conversation-target.ts'
 import { createResultHost } from '../../src/lib/result-host.ts'
 import { authorizeBackgroundResult } from '../../src/lib/result-library-delivery.ts'
 import {
@@ -48,17 +49,17 @@ beforeEach(() => {
     },
   })
   agentId = spawnAgent(env.db, env.paths, { profileId: 'producer', teamId: env.teamId }).id
-  sessionId = randomUUID()
+  sessionId = resolveConversationTarget(env.db, env.paths, agentId).id
   activeHost = createResultHost(
     env.db,
     env.paths,
     resolveAgent(env.db, env.paths, agentId),
     new AbortController().signal,
+    { id: sessionId, filename: `${sessionId}.jsonl` },
   )
-  writeFileSync(
-    join(env.paths.agentDir(agentId), 'sessions', 'current.jsonl'),
+  appendFileSync(
+    join(env.paths.agentDir(agentId), 'sessions', `${sessionId}.jsonl`),
     `${[
-      { type: 'session', id: sessionId },
       {
         type: 'message',
         message: {
@@ -77,7 +78,10 @@ afterEach(() => {
 })
 function host(signal?: AbortSignal) {
   return signal
-    ? createResultHost(env.db, env.paths, resolveAgent(env.db, env.paths, agentId), signal)
+    ? createResultHost(env.db, env.paths, resolveAgent(env.db, env.paths, agentId), signal, {
+        id: sessionId,
+        filename: `${sessionId}.jsonl`,
+      })
     : activeHost
 }
 function input() {
@@ -108,7 +112,9 @@ function held(frame: ChatFrame) {
 }
 
 test('publication validates canonical session/call identity and rejects cancelled or oversized requests', async () => {
-  await expect(host().publish({ ...input(), sessionId: randomUUID() })).rejects.toThrow('session')
+  await expect(host().publish({ ...input(), sessionId: randomUUID() })).rejects.toThrow(
+    'admitted conversation',
+  )
   await expect(host().publish({ ...input(), toolCallId: 'other' })).rejects.toThrow('tool call')
   await expect(host().publish({ ...input(), data: '!!!!' })).rejects.toThrow('bytes')
   await expect(host(AbortSignal.abort()).publish(input())).rejects.toThrow()
@@ -327,6 +333,7 @@ test('a newly started turn cannot publish against a tool call from its existing 
     env.paths,
     resolveAgent(env.db, env.paths, agentId),
     new AbortController().signal,
+    { id: sessionId, filename: `${sessionId}.jsonl` },
   )
   await expect(laterHost.publish(input())).rejects.toThrow('not in this turn')
   expect(results.listReleased(env.db).total).toBe(0)

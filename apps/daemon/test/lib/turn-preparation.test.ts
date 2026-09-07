@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { createProfile, spawnAgent } from '../../src/core/index.ts'
 import { makeTestEnv, type TestEnv } from '../core/helpers.ts'
+import { seedRegisteredConversation } from '../fixtures/conversation.ts'
 
 let env: TestEnv
 let agentId: string
@@ -139,6 +140,7 @@ test('cross-source busy rejection happens before Telegram final authorization', 
   const { prepareAgentTurn, releasePreparedAgentTurn } = await import(
     '../../src/lib/turn-preparation.ts'
   )
+  const conversationId = seedRegisteredConversation(env.db, env.paths, agentId).id
   const invocation = createTrustedTurnInvocation({
     kind: 'telegram',
     authorization: {
@@ -148,6 +150,7 @@ test('cross-source busy rejection happens before Telegram final authorization', 
       approvalPayloadKind: 'telegram_ingress',
       approvalPayload: {
         agentId,
+        conversationId,
         text: 'retained exact head',
         media: null,
         chatId: -100,
@@ -156,7 +159,7 @@ test('cross-source busy rejection happens before Telegram final authorization', 
       },
       requester: 'telegram:11',
     },
-    turn: { agentId, message: 'retained exact head', attachments: [] },
+    turn: { agentId, conversationId, message: 'retained exact head', attachments: [] },
     bashApprovalMode: 'auto_deny',
   })
   process.env.BAZILION_TEAM_POLICY_ENFORCEMENT = 'on'

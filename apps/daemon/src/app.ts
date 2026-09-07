@@ -12,6 +12,7 @@ import { attentionRouter } from './routes/attention.ts'
 import { authRouter } from './routes/auth-login.ts'
 import { communicationRouter } from './routes/communication.ts'
 import { configRouter } from './routes/config.ts'
+import { conversationsRouter } from './routes/conversations.ts'
 import { mcpRouter } from './routes/mcp.ts'
 import { messagesRouter } from './routes/messages.ts'
 import { miscRouter } from './routes/misc.ts'
@@ -32,6 +33,7 @@ export function createApp(): Hono {
   // provider-test paths are whitelisted inside the middleware itself.
   app.use('*', authMiddleware)
 
+  app.route('/api/agents', conversationsRouter)
   app.route('/api/agents', agentsRouter)
   app.route('/api/results', resultsRouter)
   app.route('/api/attention', attentionRouter)

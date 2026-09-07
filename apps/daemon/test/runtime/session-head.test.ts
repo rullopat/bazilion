@@ -1,9 +1,18 @@
-import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
+import {
+  appendFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test } from 'vitest'
 import { resolvePaths } from '../../src/core/index.ts'
 import { loadSessionHead } from '../../src/runtime/pi/session.ts'
+import { seedConversationTarget } from '../fixtures/conversation.ts'
 
 // Minimal ResolvedAgent shape loadSessionHead actually reads — we don't need
 // a real spawn + provider wiring for this unit test, only the agent.id (used
@@ -40,51 +49,46 @@ test('returns {file:null, size:0} when sessions dir is empty', () => {
   expect(head).toEqual({ file: null, size: 0 })
 })
 
-test('returns the newest .jsonl basename + its byte size', () => {
+test('head follows the explicit target despite newer unrelated files', () => {
   const paths = resolvePaths(home)
-  const sessionDir = join(paths.agentsDir, 'agent-c', 'sessions')
-  mkdirSync(sessionDir, { recursive: true })
-
-  writeFileSync(join(sessionDir, 'old.jsonl'), 'old entry\n', 'utf8')
-  const now = Date.now() / 1000
-  // Backdate 'old' so 'newer' is unambiguously most-recent regardless of the
-  // order mkdir stamps mtime.
-  utimesSync(join(sessionDir, 'old.jsonl'), now - 60, now - 60)
-
-  const newerContent = '{"type":"session"}\n{"type":"message"}\n'
-  writeFileSync(join(sessionDir, 'newer.jsonl'), newerContent, 'utf8')
-
-  const head = loadSessionHead(fakeAgent('agent-c', join(paths.agentsDir, 'agent-c')), paths)
-  expect(head.file).toBe('newer.jsonl')
-  expect(head.size).toBe(Buffer.byteLength(newerContent, 'utf8'))
+  const dir = join(paths.agentDir('agent-c'), 'sessions')
+  const target = seedConversationTarget(dir, home)
+  const file = join(dir, target.filename)
+  const original = readFileSync(file, 'utf8')
+  writeFileSync(join(dir, 'unrelated.jsonl'), 'untrusted discovery candidate')
+  const future = new Date(Date.now() + 60_000)
+  utimesSync(join(dir, 'unrelated.jsonl'), future, future)
+  const agent = fakeAgent('agent-c', paths.agentDir('agent-c'))
+  expect(loadSessionHead(agent, paths, target)).toEqual({
+    file: target.filename,
+    size: Buffer.byteLength(original),
+  })
+  expect(loadSessionHead(agent, paths)).toEqual({ file: null, size: 0 })
 })
 
-test('ignores non-jsonl files in the sessions dir', () => {
+test('head reports append growth for the same canonical file', () => {
   const paths = resolvePaths(home)
-  const sessionDir = join(paths.agentsDir, 'agent-d', 'sessions')
-  mkdirSync(sessionDir, { recursive: true })
-
-  writeFileSync(join(sessionDir, 'README.md'), 'not a session\n', 'utf8')
-  writeFileSync(join(sessionDir, '.DS_Store'), 'mac junk', 'utf8')
-  writeFileSync(join(sessionDir, 'real.jsonl'), 'entry\n', 'utf8')
-
-  const head = loadSessionHead(fakeAgent('agent-d', join(paths.agentsDir, 'agent-d')), paths)
-  expect(head.file).toBe('real.jsonl')
+  const dir = join(paths.agentDir('agent-e'), 'sessions')
+  const target = seedConversationTarget(dir, home)
+  const agent = fakeAgent('agent-e', paths.agentDir('agent-e'))
+  const before = loadSessionHead(agent, paths, target)
+  appendFileSync(
+    join(dir, target.filename),
+    JSON.stringify({ type: 'message', message: { role: 'user', content: 'hello' } }) + '\n',
+  )
+  const after = loadSessionHead(agent, paths, target)
+  expect(after.file).toBe(before.file)
+  expect(after.size).toBeGreaterThan(before.size)
 })
 
-test('size grows monotonically as entries are appended — matches poll signal', () => {
+test('missing or corrupt target fails instead of choosing another session', () => {
   const paths = resolvePaths(home)
-  const sessionDir = join(paths.agentsDir, 'agent-e', 'sessions')
-  mkdirSync(sessionDir, { recursive: true })
-  const file = join(sessionDir, 'session.jsonl')
-  writeFileSync(file, 'a\n', 'utf8')
-
-  const head1 = loadSessionHead(fakeAgent('agent-e', join(paths.agentsDir, 'agent-e')), paths)
-  // simulate pi appending another entry — ordinary append, no rename
-  writeFileSync(file, 'a\nb\n', 'utf8')
-  const head2 = loadSessionHead(fakeAgent('agent-e', join(paths.agentsDir, 'agent-e')), paths)
-
-  expect(head1.file).toBe('session.jsonl')
-  expect(head2.file).toBe('session.jsonl')
-  expect(head2.size).toBeGreaterThan(head1.size)
+  const dir = join(paths.agentDir('agent-f'), 'sessions')
+  const target = seedConversationTarget(dir, home)
+  seedConversationTarget(dir, home)
+  const agent = fakeAgent('agent-f', paths.agentDir('agent-f'))
+  writeFileSync(join(dir, target.filename), 'corrupt')
+  expect(() => loadSessionHead(agent, paths, target)).toThrow()
+  rmSync(join(dir, target.filename))
+  expect(() => loadSessionHead(agent, paths, target)).toThrow()
 })

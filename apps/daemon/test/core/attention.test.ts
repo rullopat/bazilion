@@ -7,6 +7,7 @@ import {
   projectAttention,
   runMigrations,
 } from '../../src/core/index.ts'
+import * as conversations from '../../src/core/repos/conversations.ts'
 
 const databases: ReturnType<typeof openInMemoryDb>[] = []
 afterEach(() => {
@@ -33,8 +34,17 @@ function fixture() {
   db.raw.run(
     "INSERT INTO agent_triggers (id,agent_id,kind,interval_sec,message,created_at) VALUES ('trigger','agent','interval',60,'run',1)",
   )
+  conversations.create(
+    db,
+    'agent',
+    {
+      requestId: '11111111-1111-4111-8111-111111111111',
+      expectedSelection: { conversationId: null, revision: 0 },
+    },
+    (id) => `${id}.jsonl`,
+  )
   db.raw.run(
-    "INSERT INTO trigger_dispatches (id,trigger_id,agent_id,scheduled_at,status,next_attempt_at,last_error,created_at,updated_at) VALUES ('dispatch','trigger','agent',12,'failed',12,'provider secret-free error',12,22)",
+    "INSERT INTO trigger_dispatches (id,trigger_id,agent_id,conversation_id,scheduled_at,status,next_attempt_at,last_error,created_at,updated_at) VALUES ('dispatch','trigger','agent','11111111-1111-4111-8111-111111111111',12,'failed',12,'provider secret-free error',12,22)",
   )
   db.raw.run(
     "INSERT INTO agent_loop_break_events (id,causal_chain_id,from_agent_id,to_agent_id,source_team_id,target_team_id,attempted_hop,max_hops,reason,origin,created_at) VALUES ('loop','chain','agent','agent','team','team',9,8,'causal_hop_limit_exceeded','test',13)",

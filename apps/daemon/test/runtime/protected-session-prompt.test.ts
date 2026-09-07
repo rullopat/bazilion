@@ -1,10 +1,10 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { ResolvedAgent } from '@bazilion/api-types'
 import type { Api, AssistantMessage, Model } from '@earendil-works/pi-ai'
 import { createAssistantMessageEventStream } from '@earendil-works/pi-ai'
-import type { ToolDefinition } from '@earendil-works/pi-coding-agent'
+import { SessionManager, type ToolDefinition } from '@earendil-works/pi-coding-agent'
 import { Type } from 'typebox'
 import { afterEach, describe, expect, test } from 'vitest'
 import type { MemoryBackend } from '../../src/runtime/memory/types.ts'
@@ -44,7 +44,16 @@ describe('protected provider prompt boundary', () => {
       apiKey: 'protected-prompt-access-token',
     }
     const hosts = scopedHosts()
+    const conversation = {
+      id: '11111111-1111-4111-8111-111111111111',
+      filename: '11111111-1111-4111-8111-111111111111.jsonl',
+    }
+    writeFileSync(
+      join(sessionDir, conversation.filename),
+      JSON.stringify(SessionManager.inMemory(teamDir, { id: conversation.id }).getHeader()) + '\n',
+    )
     const handle = await createProtectedBazilionSession({
+      conversation,
       agent,
       runtime,
       paths: {

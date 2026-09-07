@@ -10,7 +10,7 @@ does not change the saved file.
 - **Web:** open a Team and choose **Results**, or use the saved-file card in chat. Filter by the
   producing Agent ID and page through the list. Each entry identifies the producer, capture date,
   and source conversation. **Source conversation** opens a read-only view only while that exact
-  canonical conversation remains available; resetting chat does not make a newer chat its source.
+  canonical conversation remains available; starting a new conversation retains that source, and missing history never redirects to a newer chat.
 - **CLI:** list results, inspect their metadata and SHA-256 hash, and download to an explicit path.
   Downloads refuse to overwrite an existing file.
 - **Mobile:** the saved-file row opens the exact result page in your browser. Sign in with a device
@@ -72,7 +72,7 @@ contract. Agents publish through a turn-bound private IPC host; there is no publ
 | `GET /api/results/:id` | Metadata and provenance, including deletion state |
 | `GET /api/results/:id/download` | Verified captured bytes as an attachment |
 | `GET /api/results/:id/preview` | Bounded safe preview, or an explicit unsupported response |
-| `GET /api/results/:id/source` | Exact current source conversation, or `available: false` |
+| `GET /api/results/:id/source` | Exact retained source conversation, or `available: false` |
 | `DELETE /api/results/:id` | Remove bytes and preserve a deletion receipt |
 
 Private/missing IDs return 404; deleted downloads return 410; failed integrity checks return 409.

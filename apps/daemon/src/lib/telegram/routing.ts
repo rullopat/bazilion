@@ -1,3 +1,5 @@
+import { acquireAgentLifecycleLease } from '../agent-lifecycle-lease.ts'
+import { resolveConversationTarget } from '../conversation-target.ts'
 // Inbound update router. Classifies each Telegram update by
 // (chat_id, message_thread_id) and dispatches.
 //
@@ -295,6 +297,13 @@ export async function routeUpdate(deps: RouterDeps, update: Update): Promise<Rou
     // path-referenced for the agent to open with its tools).
     const caption = m.text ?? m.caption ?? ''
     const media = extractMedia(m)
+    const releaseConversationLease = await acquireAgentLifecycleLease(agent.id)
+    let conversationId: string
+    try {
+      conversationId = resolveConversationTarget(deps.db, deps.paths, agent.id).id
+    } finally {
+      releaseConversationLease()
+    }
     const ingressAttempt: TelegramIngressAttempt = {
       origin: 'telegram_agent_topic',
       attemptKind: 'telegram_ingress',
@@ -302,6 +311,7 @@ export async function routeUpdate(deps: RouterDeps, update: Update): Promise<Rou
       approvalPayloadKind: 'telegram_ingress',
       approvalPayload: {
         agentId: agent.id,
+        conversationId,
         text: caption,
         media,
         chatId: deps.chatId,

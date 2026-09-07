@@ -13,6 +13,17 @@ export function readResultSession(
 ): FileEntry[] {
   if (basename(filename) !== filename) throw new Error('Invalid result session filename')
   const directory = join(realpathSync(paths.agentsDir), agentId, 'sessions')
+  return readCanonicalSessionFile(directory, filename, sessionId, minimumEntryOffset)
+}
+
+/** Bounded canonical reader for an already Agent-bound session directory. */
+export function readCanonicalSessionFile(
+  directory: string,
+  filename: string,
+  sessionId: string,
+  minimumEntryOffset = 0,
+): FileEntry[] {
+  if (basename(filename) !== filename) throw new Error('Invalid session filename')
   if (realpathSync(directory) !== directory) throw new Error('Result session escaped its owner')
   const fd = openSync(
     join(directory, filename),

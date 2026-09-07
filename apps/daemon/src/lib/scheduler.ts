@@ -1,3 +1,4 @@
+import { resolveConversationTarget } from './conversation-target.ts'
 // In-process scheduler for interval/cron agent triggers and inbox
 // auto-delivery.
 //
@@ -216,7 +217,12 @@ async function fireTrigger(dispatch: TriggerDispatch): Promise<void> {
           attemptId,
           agentId: t.agentId,
         },
-        turn: { agentId: t.agentId, message: t.message, attachments: [] },
+        turn: {
+          agentId: t.agentId,
+          message: t.message,
+          attachments: [],
+          conversationId: claimedDispatch.conversationId,
+        },
         claim: createPreclaimedTurn({
           agentId: t.agentId,
           attemptId,
@@ -372,10 +378,16 @@ async function fireInboxWake(agentId: string): Promise<void> {
       resolveAgent(ctx.db, ctx.paths, agentId),
       { signal: controller.signal },
     )
-    const msgs = claimDeliverableInbox(ctx.db, agentId, () => {
-      registerAgent(agentId, controller)
-      registered = true
-    })
+    const conversation = resolveConversationTarget(ctx.db, ctx.paths, agentId)
+    const msgs = claimDeliverableInbox(
+      ctx.db,
+      agentId,
+      () => {
+        registerAgent(agentId, controller)
+        registered = true
+      },
+      conversation.id,
+    )
     if (msgs.length === 0) {
       // Raced with another consumer; nothing to do.
       releaseLease()
@@ -400,6 +412,7 @@ async function fireInboxWake(agentId: string): Promise<void> {
       turn: {
         agentId,
         message: prompt,
+        conversationId: conversation.id,
         attachments: [],
         causalParentMessageId: selectCausalParent(msgs),
       },
@@ -459,15 +472,32 @@ async function tick(): Promise<void> {
   for (const t of triggers) {
     if (isDue(t, now, s.cronCache)) {
       const occurrence = scheduledOccurrence(t, now)
-      if (!triggerDispatchRepo.hasOpenForTrigger(ctx.db, t.id)) {
-        triggerDispatchRepo.materialize(ctx.db, {
-          triggerId: t.id,
-          agentId: t.agentId,
-          scheduledAt: occurrence,
-          now,
-        })
+      const release = await acquireAgentLifecycleLease(t.agentId)
+      try {
+        if (!triggerDispatchRepo.hasOpenForTrigger(ctx.db, t.id)) {
+          const conversation = resolveConversationTarget(ctx.db, ctx.paths, t.agentId)
+          ctx.db.raw.transaction(() => {
+            triggerDispatchRepo.materialize(ctx.db, {
+              triggerId: t.id,
+              agentId: t.agentId,
+              conversationId: conversation.id,
+              scheduledAt: occurrence,
+              now,
+            })
+            triggerRepo.markFired(ctx.db, t.id, occurrence)
+          })()
+        } else triggerRepo.markFired(ctx.db, t.id, occurrence)
+      } catch (error) {
+        console.warn(
+          JSON.stringify({
+            event: 'trigger_conversation_unavailable',
+            triggerId: t.id,
+            errorName: error instanceof Error ? error.name : 'unknown',
+          }),
+        )
+      } finally {
+        release()
       }
-      triggerRepo.markFired(ctx.db, t.id, occurrence)
     }
   }
   const work: Promise<void>[] = []

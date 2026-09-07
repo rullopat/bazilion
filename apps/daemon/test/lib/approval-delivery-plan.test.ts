@@ -33,6 +33,7 @@ function approval(
     updatedAt: Date.now(),
     payload: {
       agentId: 'agent-1',
+      conversationId: '11111111-1111-4111-8111-111111111111',
       message: 'hello',
       attachments: [],
     },
@@ -74,6 +75,7 @@ describe('approval delivery planning', () => {
         payloadKind: 'telegram_ingress',
         payload: {
           agentId: 'agent-1',
+          conversationId: '11111111-1111-4111-8111-111111111111',
           text: 'caption',
           media: null,
           chatId: -100,
@@ -188,7 +190,17 @@ describe('approval delivery planning', () => {
     ['crossed origin', { origin: 'telegram_mirror' }],
     ['wrong attempt kind', { attemptKind: 'turn' }],
     ['wrong target', { target: { kind: 'agent', id: 'agent-2' } }],
-    ['untyped attachments', { payload: { agentId: 'agent-1', message: 'x', attachments: [{}] } }],
+    [
+      'untyped attachments',
+      {
+        payload: {
+          agentId: 'agent-1',
+          conversationId: '11111111-1111-4111-8111-111111111111',
+          message: 'x',
+          attachments: [{}],
+        },
+      },
+    ],
   ] satisfies Array<
     [string, Partial<CommunicationApprovalDetail>]
   >)('rejects $0 before delivery', (_name, overrides) => {
@@ -200,7 +212,14 @@ describe('approval delivery planning', () => {
   test('preserves exact HTTP attachments and Telegram media/attempt identity', () => {
     const attachments = [{ name: 'secret.txt', mimeType: 'text/plain', data: 'c2VjcmV0' }]
     const httpPlan = planApprovalDelivery(
-      approval({ payload: { agentId: 'agent-1', message: '', attachments } }),
+      approval({
+        payload: {
+          agentId: 'agent-1',
+          conversationId: '11111111-1111-4111-8111-111111111111',
+          message: '',
+          attachments,
+        },
+      }),
       context,
     )
     expect(httpPlan).toMatchObject({
@@ -224,6 +243,7 @@ describe('approval delivery planning', () => {
         payloadKind: 'telegram_ingress',
         payload: {
           agentId: 'agent-1',
+          conversationId: '11111111-1111-4111-8111-111111111111',
           text: 'caption',
           media,
           chatId: -100,

@@ -24,7 +24,7 @@ import {
 import { renderMd } from '../lib/md'
 import { Button } from './Button'
 import { ResultCard } from './ResultCard'
-import { ConfirmDialog } from './ConfirmDialog'
+import { ConversationLibrary } from './ConversationLibrary'
 
 const INBOX_WAKE_PREFIX = '[[bazilion:inbox-wake]]\n'
 const COMPACTION_REPLAY_PREFIX = '[conversation summary]'
@@ -89,7 +89,7 @@ const SLASH_HELP =
   'slash commands:\n' +
   '  /context           — context breakdown (system prompt, tools, skills, history)\n' +
   '  /compact [N]       — summarize the head; keep the last N messages verbatim (default 10)\n' +
-  '  /reset             — reset chat history for this agent\n' +
+  '  /new               — open the retained conversation library\n' +
   '  /help              — show this list'
 
 interface ChatContextResponse {
@@ -249,7 +249,8 @@ export function ChatPane({
   const [recoveredTurn, setRecoveredTurn] = useState(false)
   const [approvalBusy, setApprovalBusy] = useState<Record<string, boolean>>({})
   const [approvalErrors, setApprovalErrors] = useState<Record<string, string>>({})
-  const [resetConfirmOpen, setResetConfirmOpen] = useState(false)
+  const [libraryOpen, setLibraryOpen] = useState(false)
+  const [historyUnavailable, setHistoryUnavailable] = useState(initialSessionHead?.unavailable ?? false)
 
   const messagesRef = useRef<HTMLDivElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
@@ -284,6 +285,8 @@ export function ChatPane({
     setSystemBubbles([])
     setEditIdx(null)
     setInput('')
+    setAttachments([])
+    setHistoryUnavailable(initialSessionHead?.unavailable ?? false)
     setThinking(false)
     setStreaming(false)
     setStaleBanner(false)
@@ -361,7 +364,7 @@ export function ChatPane({
     function onVis() {
       if (document.visibilityState === 'visible' && sessionStorage.getItem(key)) {
         sessionStorage.removeItem(key)
-        window.location.reload()
+        setStaleBanner(true)
       }
     }
     document.addEventListener('visibilitychange', onVis)
@@ -384,7 +387,7 @@ export function ChatPane({
             const body = (await res.json()) as SessionHeadResponse
             if (typeof body.size === 'number') {
               const known = knownHeadRef.current
-              if (body.file !== known.file || body.size !== known.size) {
+              if (body.unavailable !== known.unavailable || body.file !== known.file || body.size !== known.size) {
                 setStaleBanner(true)
               }
             }
@@ -402,6 +405,24 @@ export function ChatPane({
     }
   }, [agentId, initialSessionHead, staleBanner])
 
+  async function refreshConversationHistory() {
+    if (streamingRef.current) return
+    try {
+      const response = await fetch(`/api/agents/${encodeURIComponent(agentId)}/sessions/messages`)
+      if (!response.ok) throw new Error('Conversation history is unavailable. Your draft is preserved.')
+      const body = await response.json() as { messages: ProviderMessage[]; head: SessionHeadResponse }
+      if (currentAgentIdRef.current !== agentId) return
+      setHistoryUnavailable(body.head.unavailable ?? false)
+      setServerMessages(body.messages)
+      setLiveEntries([])
+      setEditIdx(null)
+      knownHeadRef.current = body.head
+      setStaleBanner(false)
+    } catch (error) {
+      pushSystem(error instanceof Error ? error.message : 'Could not refresh conversation')
+    }
+  }
+
   async function refreshKnownHead() {
     if (currentAgentIdRef.current !== agentId) return
     try {
@@ -409,7 +430,10 @@ export function ChatPane({
       if (!res.ok) return
       const body = (await res.json()) as SessionHeadResponse
       if (currentAgentIdRef.current === agentId && typeof body.size === 'number') {
-        knownHeadRef.current = { file: body.file ?? null, size: body.size }
+        const prior = knownHeadRef.current.selection
+        if (prior?.conversationId && prior.conversationId !== body.selection?.conversationId) { setStaleBanner(true); return }
+        setHistoryUnavailable(body.unavailable ?? false)
+        knownHeadRef.current = body
       }
     } catch {
       // swallow
@@ -472,32 +496,6 @@ export function ChatPane({
     }
   }
 
-  async function performReset() {
-    exitEditMode()
-    const res = await fetch(`/api/agents/${encodeURIComponent(agentId)}/chat/reset`, {
-      method: 'POST',
-    })
-    if (!res.ok) {
-      let message = res.statusText
-      try {
-        message = ((await res.json()) as { error?: string }).error || message
-      } catch {}
-      throw new Error(message)
-    }
-    setServerMessages([])
-    setLiveEntries([])
-    setSystemBubbles([])
-    pushSystem('/reset: history wiped')
-  }
-
-  async function runResetCommand() {
-    if (serverMessages.length === 0) {
-      pushSystem('/reset: history already empty')
-      return
-    }
-    setResetConfirmOpen(true)
-  }
-
   async function runCompactCommand(rest: string) {
     if (serverMessages.length < 2) {
       pushSystem('/compact: need ≥2 messages to compact')
@@ -516,7 +514,7 @@ export function ChatPane({
       const res = await fetch(`/api/agents/${encodeURIComponent(agentId)}/chat/compact`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(keepTail !== undefined ? { keepTail } : {}),
+        body: JSON.stringify({ keepTail, expectedSelection: knownHeadRef.current.selection }),
       })
       if (!res.ok) {
         let msg = res.statusText
@@ -552,8 +550,8 @@ export function ChatPane({
       case '/context':
         await runContextCommand()
         return true
-      case '/reset':
-        await runResetCommand()
+      case '/new':
+        setLibraryOpen(true)
         return true
       case '/compact':
         await runCompactCommand(rest)
@@ -646,7 +644,7 @@ export function ChatPane({
             {
               method: 'POST',
               headers: { 'content-type': 'application/json' },
-              body: JSON.stringify({ keepCount: keep }),
+              body: JSON.stringify({ keepCount: keep, expectedSelection: knownHeadRef.current.selection }),
             },
           )
           if (!res.ok) {
@@ -696,7 +694,7 @@ export function ChatPane({
         const res = await fetch(`/api/agents/${encodeURIComponent(agentId)}/chat`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(interactiveChatRequest(text, atts)),
+          body: JSON.stringify({ ...interactiveChatRequest(text, atts), expectedSelection: knownHeadRef.current.selection }),
           signal: abort.signal,
         })
         if (res.status === 202) {
@@ -712,6 +710,15 @@ export function ChatPane({
             },
           ])
           sessionStorage.removeItem(`bz_pending_${agentId}`)
+          return
+        }
+        if (res.status === 409) {
+          setInput(text)
+          setAttachments(atts)
+          setLiveEntries([])
+          setStaleBanner(true)
+          sessionStorage.removeItem(`bz_pending_${agentId}`)
+          pushSystem('Conversation changed. Refresh history, then review and send your preserved draft.')
           return
         }
         if (!res.ok || !res.body) {
@@ -1063,6 +1070,10 @@ export function ChatPane({
           Manage agent →
         </a>
       </div>
+      <div className="mx-5 mt-2">
+        <Button variant="ghost" aria-expanded={libraryOpen} onClick={() => setLibraryOpen(value => !value)}>{libraryOpen ? 'Close conversations' : 'Conversations'}</Button>
+      </div>
+      {historyUnavailable && <p role="alert" className="mx-5 mt-2 text-sm">Selected conversation history is unavailable. Open Conversations to start a new one; retained history and files stay listed.</p>}
       {staleBanner && (
         <div
           role="status"
@@ -1081,7 +1092,7 @@ export function ChatPane({
           </span>
           <button
             type="button"
-            onClick={() => window.location.reload()}
+            onClick={() => void refreshConversationHistory()}
             className="rounded-sm bg-sapphire px-3 py-1 text-[0.92em] text-snow hover:opacity-90"
           >
             reload
@@ -1107,7 +1118,8 @@ export function ChatPane({
         aria-busy={turnBusy}
         className={`min-h-[240px] flex-1 overflow-y-auto px-5 py-5 ${editIdx !== null ? 'is-editing' : ''}`}
       >
-        {baseEntries.length === 0 && liveEntries.length === 0 && systemBubbles.length === 0 && (
+      {libraryOpen && <ConversationLibrary key={agentId} agentId={agentId} turnBusy={turnBusy} onCreated={refreshConversationHistory} renderHistory={messages => <ResultTranscript messages={messages} />} />}
+        {!historyUnavailable && baseEntries.length === 0 && liveEntries.length === 0 && systemBubbles.length === 0 && (
           <p className="py-12 text-center italic text-mocha-light">Start a conversation…</p>
         )}
         {(() => {
@@ -1324,26 +1336,7 @@ export function ChatPane({
           </button>
         )}
       </form>
-      <ConfirmDialog
-        open={resetConfirmOpen}
-        onOpenChange={setResetConfirmOpen}
-        title={`Reset chat with ${agentName}?`}
-        description={
-          <p>
-            This permanently wipes the persisted session history for this Agent. Agent files,
-            Team memory, and other Agent settings are not changed.
-          </p>
-        }
-        confirmLabel="Reset chat history"
-        onConfirm={async () => {
-          try {
-            await performReset()
-          } catch (error) {
-            pushSystem(`/reset failed: ${error instanceof Error ? error.message : String(error)}`)
-            throw error
-          }
-        }}
-      />
+
     </div>
   )
 }

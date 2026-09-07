@@ -102,6 +102,7 @@ export default function ChatScreen() {
   const [sending, setSending] = useState(false)
   const [canceling, setCanceling] = useState(false)
   const [failedMessage, setFailedMessage] = useState<string | null>(null)
+  const conversationSelection = useRef<import('@bazilion/api-types').ConversationSelection | undefined>(undefined)
   const streamAbort = useRef<AbortController | null>(null)
   const cancelRequested = useRef(false)
   const disposed = useRef(false)
@@ -125,9 +126,11 @@ export default function ChatScreen() {
         const client = clientFor(creds)
         const [agent, history] = await Promise.all([
           client.get<ResolvedAgent>(`/api/agents/${id}`),
-          client.get<{ messages: ProviderMessage[] }>(`/api/agents/${id}/sessions/messages`),
+          client.get<{ messages: ProviderMessage[]; head?: import('@bazilion/api-types').SessionHeadResponse; selection: import('@bazilion/api-types').ConversationSelection }>(`/api/agents/${id}/sessions/messages`),
         ])
         if (cancelled) return
+        if (history.head?.unavailable) throw new Error('Conversation history is unavailable. Start a new conversation in the web app or CLI.')
+        conversationSelection.current = history.selection
         setChat(chatStateFromHistory(history.messages))
         setLoad({ kind: 'ready', creds, agent })
       } catch (error) {
@@ -182,7 +185,7 @@ export default function ChatScreen() {
           // Native keeps dangerous shell commands fail-closed. Interactive
           // command approval requires a guaranteed streaming transport; the
           // web chat remains the supported approval surface.
-          body: JSON.stringify({ message, bashApprovalMode: 'auto_deny' }),
+          body: JSON.stringify({ message, bashApprovalMode: 'auto_deny', expectedSelection: conversationSelection.current }),
           signal: controller.signal,
         })
 
@@ -205,6 +208,12 @@ export default function ChatScreen() {
           terminalFrame = true
           return
         }
+        if (response.status === 409) {
+          const history = await clientFor(load.creds).get<{ messages: ProviderMessage[]; head?: import('@bazilion/api-types').SessionHeadResponse; selection: import('@bazilion/api-types').ConversationSelection }>(`/api/agents/${id}/sessions/messages`)
+          conversationSelection.current = history.selection
+          setChat(chatStateFromHistory(history.messages))
+          throw new Error('Conversation changed. Review the refreshed history and your preserved draft before retrying.')
+        }
         if (!response.ok) {
           const body = await response.json().catch(() => null)
           throw new Error(responseError(body, response.status, response.statusText))
@@ -222,6 +231,10 @@ export default function ChatScreen() {
           setChat((current) => applyChatFrame(current, frame))
         })
         if (!terminalFrame) throw new Error('Chat stream ended before a done or fatal frame.')
+        if (conversationSelection.current?.conversationId === null) {
+          const head = await clientFor(load.creds).get<import('@bazilion/api-types').SessionHeadResponse>(`/api/agents/${id}/sessions/head`)
+          conversationSelection.current = head.selection
+        }
       } catch (error) {
         if (error instanceof Error && error.name === 'AbortError' && disposed.current) {
           return

@@ -31,6 +31,7 @@ import {
   parseWorkerInput,
 } from '../../src/runtime/worker/runtime.ts'
 import { formatWorkerExitFailure, spawnWorkerTurn } from '../../src/runtime/worker/spawn.ts'
+import { seedConversationTarget } from '../fixtures/conversation.ts'
 
 const cleanup: string[] = []
 afterEach(() => {
@@ -540,6 +541,7 @@ function protectedSpec(root: string, accessToken = 'initial-access-token'): Prot
   const docker = fakeDockerRuntime(teamDir, memoryDir)
   return {
     kind: 'protected',
+    conversation: seedConversationTarget(sessionsDir, teamDir),
     agent,
     message: 'test protected runtime',
     turnId: 'turn-1',

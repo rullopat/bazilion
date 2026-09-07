@@ -294,6 +294,7 @@ async function deliver(plan: ApprovalDeliveryPlan): Promise<void> {
         turn: {
           agentId: plan.payload.agentId,
           message: plan.payload.message,
+          conversationId: plan.payload.conversationId,
           attachments: plan.payload.attachments,
         },
         bashApprovalMode: 'auto_deny',
@@ -368,6 +369,7 @@ async function deliver(plan: ApprovalDeliveryPlan): Promise<void> {
         turn: {
           agentId: plan.payload.agentId,
           message: plan.payload.text,
+          conversationId: plan.payload.conversationId,
           attachments,
         },
         bashApprovalMode: 'auto_deny',

@@ -6,7 +6,6 @@ import { getCtx } from '../lib/ctx.ts'
 import { reconcilePrivateResults } from '../lib/result-retention.ts'
 import { readResultSession } from '../lib/result-source.ts'
 import { piMessagesToProviderView } from '../runtime/pi/events.ts'
-import { loadSessionHead } from '../runtime/pi/session.ts'
 
 /** Operator-only projections; result publication is a turn-scoped IPC operation. */
 export const resultsRouter = new Hono()
@@ -82,15 +81,16 @@ resultsRouter.get('/:id/source', (c) => {
   const result = results.getReleased(db, c.req.param('id'))
   if (!result) return c.json({ error: 'Result not found' }, 404)
   try {
-    const agent = resolveAgent(db, paths, result.agentId)
-    const head = loadSessionHead(agent, paths)
-    if (!head.file?.endsWith(`_${result.sessionId}.jsonl`)) return c.json({ available: false })
-    const entries = readResultSession(paths, result.agentId, head.file, result.sessionId)
+    resolveAgent(db, paths, result.agentId)
+    const entries = readResultSession(
+      paths,
+      result.agentId,
+      `${result.sessionId}.jsonl`,
+      result.sessionId,
+    )
     const messages = piMessagesToProviderView(
       buildSessionContext(entries.filter((entry) => entry.type !== 'session')).messages,
     )
-    const after = loadSessionHead(agent, paths)
-    if (head.file !== after.file || head.size !== after.size) return c.json({ available: false })
     return c.json({
       available: true,
       agentId: result.agentId,

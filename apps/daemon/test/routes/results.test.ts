@@ -1,13 +1,19 @@
+import { randomUUID } from 'node:crypto'
+import { unlinkSync } from 'node:fs'
+import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { createApp } from '../../src/app.ts'
 import { resolveAgent } from '../../src/core/agent/resolve.ts'
 import { spawnAgent } from '../../src/core/agent/spawn.ts'
 import { createProfile } from '../../src/core/profile/create.ts'
+import * as conversations from '../../src/core/repos/conversations.ts'
 import * as providerModels from '../../src/core/repos/providerModels.ts'
 import * as providerState from '../../src/core/repos/providerState.ts'
 import * as results from '../../src/core/repos/results.ts'
 import * as webTokens from '../../src/core/repos/webTokens.ts'
-import { loadSessionHead, seedSessionForTest } from '../../src/runtime/pi/session.ts'
+import { createConversationFile } from '../../src/lib/conversation-file.ts'
+import { resolveConversationTarget } from '../../src/lib/conversation-target.ts'
+import { seedSessionForTest } from '../../src/runtime/pi/session.ts'
 import { makeTestEnv, type TestEnv } from '../core/helpers.ts'
 
 let env: TestEnv
@@ -151,15 +157,19 @@ test('browser sign-in preserves an exact saved-result destination without accept
   }
 })
 
-test('source navigation reports the original conversation then unavailable after chat reset', async () => {
+test('result source remains bound to retained history after New conversation and file loss', async () => {
   const resolved = resolveAgent(env.db, env.paths, agentId)
-  seedSessionForTest(resolved, env.paths, [
-    { role: 'user', text: 'Original conversation' },
-    { role: 'assistant', text: 'Original reply' },
-  ])
-  const head = loadSessionHead(resolved, env.paths)
-  const sessionId = head.file?.match(/_([a-f0-9-]{36})\.jsonl$/)?.[1]
-  if (!sessionId) throw new Error('Expected canonical session')
+  const target = resolveConversationTarget(env.db, env.paths, agentId)
+  seedSessionForTest(
+    resolved,
+    env.paths,
+    [
+      { role: 'user', text: 'Original conversation' },
+      { role: 'assistant', text: 'Original reply' },
+    ],
+    target,
+  )
+  const sessionId = target.id
   const result = results.publish(env.db, {
     teamId: env.teamId,
     agentId,
@@ -170,22 +180,16 @@ test('source navigation reports the original conversation then unavailable after
     bytes: Buffer.from('retained'),
   })
   results.release(env.db, result.id, agentId)
+  conversations.create(
+    env.db,
+    agentId,
+    { requestId: randomUUID(), expectedSelection: conversations.selection(env.db, agentId) },
+    (id) => createConversationFile(env.paths, agentId, id, env.paths.teamDir(env.teamId)),
+  )
   const source = await (await request(`/${result.id}/source`)).json()
   expect(source).toMatchObject({ available: true, sessionId })
   expect(JSON.stringify(source)).toContain('Original conversation')
-  expect(
-    (
-      await createApp().request(`/api/agents/${agentId}/chat/reset`, {
-        method: 'POST',
-        headers: { authorization: `Bearer ${token}` },
-      })
-    ).status,
-  ).toBe(200)
-  expect(await (await request(`/${result.id}/source`)).json()).toEqual({ available: false })
-  seedSessionForTest(resolved, env.paths, [
-    { role: 'user', text: 'New conversation' },
-    { role: 'assistant', text: 'New reply' },
-  ])
+  unlinkSync(join(env.paths.agentDir(agentId), 'sessions', target.filename))
   expect(await (await request(`/${result.id}/source`)).json()).toEqual({ available: false })
   expect(await (await request(`/${result.id}/download`)).text()).toBe('retained')
 })

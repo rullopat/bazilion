@@ -428,15 +428,16 @@ async function streamTurn(
   options: {
     bashApprovalMode: BashApprovalMode
     approvalPrompt?: CommandApprovalPrompt
+    expectedSelection?: import('@bazilion/api-types').ConversationSelection
   } = { bashApprovalMode: 'auto_deny' },
 ): Promise<void> {
+  const head = await client.get<SessionHeadResponse>(`/api/agents/${agentId}/sessions/head`)
   const state: PrintState = { inDeltaStream: false }
   const respondedApprovalIds = new Set<string>()
-  for await (const frame of client.stream<ChatFrame>(
-    'POST',
-    `/api/agents/${agentId}/chat`,
-    buildChatRequest(message, attachments, options.bashApprovalMode),
-  )) {
+  for await (const frame of client.stream<ChatFrame>('POST', `/api/agents/${agentId}/chat`, {
+    ...buildChatRequest(message, attachments, options.bashApprovalMode),
+    expectedSelection: options.expectedSelection ?? head.selection,
+  })) {
     if (frame.kind === 'event') {
       // A pending approval pauses rendering while we post a response on a
       // separate authenticated request; other events remain synchronous.
@@ -521,10 +522,19 @@ const chatCmd = defineCommand({
         // Sequential questions keep one readline instance as the sole stdin
         // owner. A command-approval question can safely run after the chat
         // question resolves; no async iterator is consuming lines in parallel.
+        let retryDraft = ''
         while (true) {
+          const observed = await client.get<SessionHeadResponse>(
+            `/api/agents/${resolved.agent.id}/sessions/head`,
+          )
           let line: string
           try {
-            line = await rl.question('> ')
+            const answer = rl.question('> ')
+            if (retryDraft) {
+              rl.write(retryDraft)
+              retryDraft = ''
+            }
+            line = await answer
           } catch {
             break
           }
@@ -534,13 +544,17 @@ const chatCmd = defineCommand({
           try {
             await streamTurn(client, resolved.agent.id, trimmed, undefined, {
               bashApprovalMode,
+              expectedSelection: observed.selection,
               approvalPrompt: {
                 question: (question) => rl.question(question),
                 write: (output) => console.log(output),
               },
             })
           } catch (err) {
-            console.error(`error: ${(err as Error).message}`)
+            retryDraft = trimmed
+            console.error(
+              `error: ${(err as Error).message}. Review the preserved draft before retrying.`,
+            )
           }
         }
       } else {
@@ -571,29 +585,6 @@ const chatCmd = defineCommand({
   },
 })
 
-const chatResetCmd = defineCommand({
-  meta: { name: 'chat-reset', description: "Reset an agent's chat history to empty" },
-  args: {
-    id: { type: 'positional', required: true },
-    force: { type: 'boolean', description: 'Skip the y/N prompt' },
-  },
-  async run({ args }) {
-    if (!args.force) {
-      process.stdout.write(`reset all chat history for ${args.id}? [y/N] `)
-      const answer = await new Promise<string>((resolve) => {
-        process.stdin.once('data', (d) => resolve(String(d).trim().toLowerCase()))
-      })
-      if (answer !== 'y' && answer !== 'yes') {
-        console.log('aborted')
-        return
-      }
-    }
-    const client = createClient()
-    await client.post(`/api/agents/${args.id}/chat/reset`)
-    console.log(`reset chat history for ${args.id}`)
-  },
-})
-
 const chatTrimCmd = defineCommand({
   meta: {
     name: 'chat-trim',
@@ -609,7 +600,8 @@ const chatTrimCmd = defineCommand({
       throw new Error('--keep must be a non-negative integer')
     }
     const client = createClient()
-    const body: TruncateChatRequest = { keepCount: n }
+    const head = await client.get<SessionHeadResponse>(`/api/agents/${args.id}/sessions/head`)
+    const body: TruncateChatRequest = { keepCount: n, expectedSelection: head.selection }
     const res = await client.post<TruncateChatResponse>(
       `/api/agents/${args.id}/chat/truncate`,
       body,
@@ -755,6 +747,8 @@ const chatCompactCmd = defineCommand({
     if (keepTailNum !== undefined) body.keepTail = Math.floor(keepTailNum)
     if (args.instructions) body.customInstructions = args.instructions
     const client = createClient()
+    const head = await client.get<SessionHeadResponse>(`/api/agents/${args.id}/sessions/head`)
+    body.expectedSelection = head.selection
     const res = await client.post<ChatCompactResponse>(`/api/agents/${args.id}/chat/compact`, body)
     console.log(
       `compacted: ${res.before} → ${res.after} entries (${res.summarized} summarized, ${res.keptTail} tail kept verbatim)`,
@@ -1067,7 +1061,6 @@ export const agentCommand = defineCommand({
     unarchive: unarchiveCmd,
     delete: deleteCmd,
     chat: chatCmd,
-    'chat-reset': chatResetCmd,
     'chat-trim': chatTrimCmd,
     'chat-context': chatContextCmd,
     'chat-compact': chatCompactCmd,

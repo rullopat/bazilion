@@ -75,7 +75,7 @@ abortSession = () => void session.abort()
 ```
 
 `createBazilionSession` (in `apps/daemon/src/runtime/pi/session.ts`) is the integration seam where Bazilion hands control to Pi's agent engine. It instantiates pi-coding-agent's `AgentSession` with:
-- A `SessionManager` rooted at `~/.bazilion/agents/<id>/sessions/` — pi owns the JSONL transcript, compaction, and replay. Resume-or-create: the worker walks the session dir for the newest `.jsonl`, opens it if found, otherwise creates a fresh session.
+- A `SessionManager` rooted at `~/.bazilion/agents/<id>/sessions/` — pi owns the JSONL transcript, compaction, and replay. The daemon resolves an explicit Agent-owned conversation before admission and passes its canonical ID/filename to the worker. Normal and protected workers validate and open that exact file; missing or corrupt history never falls back to directory activity.
 - A shell-policy-selected coding surface. With both controls off, Pi's original `read`/`bash`/`edit`/`write`/`grep`/`find`/`ls` surface remains unchanged. `BAZILION_BASH_APPROVAL=dangerous` replaces only `bash` with a same-name local wrapper that classifies before execution and asks the daemon for a one-shot decision. With `BAZILION_BASH_SANDBOX=docker`, none of the host-backed coding tools are enabled; Bazilion registers only a same-name custom `bash` backed by an ephemeral Docker container, optionally with the same approval wrapper.
 - Bazilion's custom tool list via `createBazilionCustomTools` (memory_*, home_*, web_*, bootstrap_done, optional messaging via the `messagingHost`) — see `apps/daemon/src/runtime/pi/tools.ts`.
 - The provider/model pair from the registry, with `apiKey` (caller-supplied for OAuth providers, env-derived for API-key ones), plus the agent's `reasoning_level`.
@@ -149,7 +149,7 @@ Per pi iteration:
 
 On clean exit, the worker emits `{kind:'done', messages}` carrying the full final `ProviderMessage[]` view (built from pi's session) so the consumer can reconcile its render with authoritative state.
 
-## 4b. `/compact`, `/context`, `/reset` — session commands
+## 4b. `/compact`, `/context`, `/new` — conversation commands
 
 These run **inside the daemon** (not in a worker subprocess) — they're short read/edit operations on pi's session, no LLM streaming.
 
@@ -163,9 +163,9 @@ CLI: `bazilion agent chat-compact <id> [--keep-tail N] [--instructions "..."]`.
 
 Implementation: calls `buildSystemPrompt(resolved)` for the total, re-renders the skills/team subsections inline for subsection sizes, opens `createBazilionSession` to enumerate tools and read pi's session stats. `?detail=1` (or `--json` on the CLI) emits the full `entries` arrays; default truncates to top 30.
 
-**`/reset`** drops the agent's session(s) so the next turn starts with an empty transcript. Endpoint: `POST /api/agents/:id/chat/reset`; CLI: `bazilion agent chat-reset <id>`; web slash: `/reset`.
+**New conversation** retains previous history and saved files, creates a durable empty canonical session, and selects it under the Agent lifecycle lease. Endpoint: `POST /api/agents/:id/conversations` with `{requestId, expectedSelection, title?}`; CLI: `bazilion conversation new <agent>`; web: Conversations → New conversation (`/new` opens that library). Destructive ordinary chat reset is removed. See [conversation operations](conversations.md) for stale-client recovery and exact retries.
 
-**`/truncate`** keeps the first N entries (`POST /api/agents/:id/chat/truncate {keepCount}`; CLI `bazilion agent chat-trim <id> --keep N`; web "edit last message" UI).
+**`/truncate`** keeps the first N entries (`POST /api/agents/:id/chat/truncate {keepCount, expectedSelection}`; CLI `bazilion agent chat-trim <id> --keep N`; web "edit last message" UI).
 
 ## 5. Provider layer (`providers/pi-adapter.ts` + `registry.ts`)
 
@@ -243,7 +243,7 @@ POST /api/agents/:id/cancel
 → parent's runAgentTurn unregisters the agent in `finally`
 ```
 
-There is no per-run row to update — pi's session JSONL records the partial assistant message + the error event as the last entries on the branch. The next chat turn picks up from there (or `bazilion agent chat-reset` clears it).
+There is no per-run row to update — pi's session JSONL records the partial assistant message + the error event as the last entries on the branch. The next chat turn picks up from there (or `bazilion conversation new <agent>` starts retained, separate history).
 
 ## 8. Scheduler (`apps/daemon/src/lib/scheduler.ts`)
 

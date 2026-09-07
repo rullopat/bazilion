@@ -6,6 +6,7 @@ interface RawDispatch {
   id: string
   trigger_id: string
   agent_id: string
+  conversation_id: string
   scheduled_at: number
   status: string
   attempt_count: number
@@ -23,6 +24,7 @@ function toDispatch(row: RawDispatch): TriggerDispatch {
     id: row.id,
     triggerId: row.trigger_id,
     agentId: row.agent_id,
+    conversationId: row.conversation_id,
     scheduledAt: row.scheduled_at,
     status: row.status as TriggerDispatchStatus,
     attemptCount: row.attempt_count,
@@ -38,16 +40,31 @@ function toDispatch(row: RawDispatch): TriggerDispatch {
 
 export function materialize(
   db: BazilionDb,
-  input: { triggerId: string; agentId: string; scheduledAt: number; now?: number },
+  input: {
+    triggerId: string
+    agentId: string
+    conversationId: string
+    scheduledAt: number
+    now?: number
+  },
 ): TriggerDispatch {
   const now = input.now ?? Date.now()
   db.raw.run(
     `INSERT INTO trigger_dispatches
-       (id, trigger_id, agent_id, scheduled_at, status, attempt_count, next_attempt_at,
+       (id, trigger_id, agent_id, conversation_id, scheduled_at, status, attempt_count, next_attempt_at,
         lease_expires_at, started_at, finished_at, last_error, created_at, updated_at)
-     VALUES (?, ?, ?, ?, 'pending', 0, ?, NULL, NULL, NULL, NULL, ?, ?)
+     VALUES (?, ?, ?, ?, ?, 'pending', 0, ?, NULL, NULL, NULL, NULL, ?, ?)
      ON CONFLICT(trigger_id, scheduled_at) DO NOTHING`,
-    [randomUUID(), input.triggerId, input.agentId, input.scheduledAt, now, now, now],
+    [
+      randomUUID(),
+      input.triggerId,
+      input.agentId,
+      input.conversationId,
+      input.scheduledAt,
+      now,
+      now,
+      now,
+    ],
   )
   const row = db.raw
     .query<RawDispatch, [string, number]>(

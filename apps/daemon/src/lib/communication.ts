@@ -562,11 +562,17 @@ export function claimDeliverableInbox(
   db: BazilionDb,
   agentId: string,
   onAllowed?: () => void,
+  conversationId?: string,
 ): Message[] {
   if (!teamPolicyEnforcementEnabled()) {
-    const messages = messageRepo.drainUnreadForAgent(db, agentId)
-    if (messages.length > 0) onAllowed?.()
-    return messages
+    return db.raw.transaction(() => {
+      const messages = messageRepo.drainUnreadForAgent(db, agentId)
+      for (const message of messages) {
+        if (conversationId) messageRepo.bindConversation(db, message.id, conversationId)
+      }
+      if (messages.length > 0) onAllowed?.()
+      return messages
+    })()
   }
   const outcome = db.raw.transaction(() => {
     const messages = messageRepo.listInbox(db, agentId, { unreadOnly: true })
@@ -594,6 +600,7 @@ export function claimDeliverableInbox(
           .get(message.id) !== null
       if (result.decision === 'allow' || (result.decision === 'approval_required' && granted)) {
         const claimedAt = Date.now()
+        if (conversationId) messageRepo.bindConversation(db, message.id, conversationId)
         messageRepo.markPolicyClaimed(db, message.id, claimedAt)
         allowed.push({ ...message, readAt: claimedAt })
       } else if (result.decision === 'approval_required') {

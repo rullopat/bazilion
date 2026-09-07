@@ -1,5 +1,6 @@
-import type { Attachment, ResolvedAgent } from '@bazilion/api-types'
+import type { Attachment, ConversationTarget, ResolvedAgent } from '@bazilion/api-types'
 import { mergeSecretsIntoEnv, resolveAgent } from '../core/index.ts'
+import { assertSelection } from '../core/repos/conversations.ts'
 import { resolveShellSecurityConfig } from '../runtime/shell/security.ts'
 import { SANDBOX_INPUTS_DIR } from '../runtime/shell/tooling.ts'
 import {
@@ -11,6 +12,7 @@ import {
 import { acquireAgentLifecycleLease } from './agent-lifecycle-lease.ts'
 import { saveInputFiles } from './attachments.ts'
 import { authorizeUserIngress } from './communication.ts'
+import { resolveConversationTarget } from './conversation-target.ts'
 import { getCtx } from './ctx.ts'
 import {
   consumePreparedProtectedExecution,
@@ -32,6 +34,7 @@ const preparedTurns = new WeakSet<object>()
 const consumedTurns = new WeakSet<object>()
 
 export interface PrepareAgentTurnInput {
+  expectedSelection?: import('@bazilion/api-types').ConversationSelection
   invocation: TrustedTurnInvocation
   /** Daemon-only inbox readiness result obtained before canonical messages were claimed. */
   protectedExecution?: PreparedProtectedExecution
@@ -44,6 +47,7 @@ export interface PrepareAgentTurnInput {
 export interface PreparedAgentTurn {
   readonly [preparedTurnBrand]: true
   readonly agent: ResolvedAgent
+  readonly conversation: ConversationTarget
   readonly message: string
   readonly images: readonly Attachment[]
   readonly invocation: TrustedTurnInvocation
@@ -80,6 +84,13 @@ export async function prepareAgentTurn(input: PrepareAgentTurnInput): Promise<Pr
       throw new AgentTurnActiveError(agentId)
     }
     const agent = resolveAgent(db, paths, agentId)
+    if (input.expectedSelection) assertSelection(db, agentId, input.expectedSelection)
+    const conversation = resolveConversationTarget(
+      db,
+      paths,
+      agentId,
+      input.invocation.turn.conversationId,
+    )
     if (invocationOwnsUserAuthorization(input.invocation)) {
       const attempt =
         input.invocation.kind === 'operator_http'
@@ -90,6 +101,7 @@ export async function prepareAgentTurn(input: PrepareAgentTurnInput): Promise<Pr
                 approvalPayloadKind: 'agent_turn',
                 approvalPayload: {
                   agentId,
+                  conversationId: conversation.id,
                   message: inputMessage,
                   attachments: [...attachments],
                 },
@@ -147,6 +159,7 @@ export async function prepareAgentTurn(input: PrepareAgentTurnInput): Promise<Pr
     const prepared = {
       [preparedTurnBrand]: true as const,
       agent,
+      conversation,
       message,
       images,
       invocation: input.invocation,

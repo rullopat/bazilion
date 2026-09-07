@@ -49,7 +49,7 @@ completed, obtained communication approval, or delivered a response.
 
 ## Dependencies
 
-- [BAZ-035](BAZ-035-conversation-library.md): agree its explicit session-targeting contract before
+- [BAZ-035](../in_progress/BAZ-035-conversation-library.md): agree its explicit session-targeting contract before
   implementing this queue; the full conversation search UI need not ship first. Freeze the target
   at acceptance; UI session changes cannot retarget it. Cross-session items serialize by Agent.
 - Reuse shipped BAZ-014 approval ownership, BAZ-019 scheduler admission, BAZ-027/031 protected

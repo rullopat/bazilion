@@ -10,6 +10,7 @@ import * as profileRepo from '../../src/core/repos/profiles.ts'
 import * as triggerDispatchRepo from '../../src/core/repos/triggerDispatches.ts'
 import * as triggerRepo from '../../src/core/repos/triggers.ts'
 import { registerTeam } from '../../src/core/team/register.ts'
+import { seedRegisteredConversation } from '../fixtures/conversation.ts'
 
 let home: string
 let paths: Paths
@@ -64,6 +65,7 @@ test('an expired running lease survives a database close and is claimable after 
     message: 'work',
   })
   const dispatch = triggerDispatchRepo.materialize(db, {
+    conversationId: seedRegisteredConversation(db, paths, 'a1').id,
     triggerId: trigger.id,
     agentId: 'a1',
     scheduledAt: 1_000,

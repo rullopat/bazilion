@@ -1,11 +1,12 @@
 ---
 id: BAZ-035
 title: Conversation library and safe new conversations
-status: draft
+status: in_progress
 size: L
 created: 2026-09-07
 priority: high
-note: Refine cross-channel conversation targeting and retained-session identity before moving to todo.
+refined: 2026-09-07
+note: Selected for PR 44; explicit conversation foundation implementation underway.
 ---
 
 # BAZ-035 — Conversation library and safe new conversations
@@ -28,9 +29,9 @@ accepted increments. Conversation branching is outside this story.
 
 ## Why and current baseline
 
-An Agent currently behaves as one persistent conversation. The session bridge opens the newest JSONL
+Before this story, an Agent behaved as one persistent conversation. The session bridge opened the newest JSONL
 by modification time in both normal and protected execution
-([session bridge](../../../apps/daemon/src/runtime/pi/session.ts)). That makes file activity an
+([session bridge](../../../apps/daemon/src/runtime/pi/session.ts)). That made file activity an
 implicit routing decision; it cannot safely represent a user-selected conversation library.
 
 The daemon exposes only current-session messages and a lightweight file/size head. Its chat reset
@@ -143,19 +144,34 @@ copy their storage, branching, or desktop architecture.
 - CLI/API parity and web/mobile recovery tests, plus keyboard and narrow-screen browser acceptance
   using isolated state. Run applicable repository typechecks, regression and security gates.
 
-## Dependencies and Open Questions
+## Refined implementation decisions (2026-09-07)
 
-- **Identity agreement:** coordinate immutable session/entry references with BAZ-034 before either
-  implementation settles its schema. Neither feature needs the other's complete UI to ship.
-- **Background targeting:** should scheduled/inbox work follow the currently selected conversation,
-  or retain its admission-time destination? Recommend pinning each admitted occurrence/attempt and
-  never retargeting accepted work; define pre-admission and delayed-approval behavior explicitly.
-- **Telegram selection:** it has no conversation picker today. Recommend exposing the active title
-  and an explicit new/resume action before shared selection ships; decide the minimum channel UX.
-- **Queued follow-ups:** coordinate with [BAZ-036](BAZ-036-visible-follow-up-queue.md). Recommend
-  capturing conversation identity when an item is accepted and preventing silent retargeting; decide
-  whether selection is blocked by waiting items or those items require explicit cancellation.
-- **First release boundary:** recommend library/read/rename/New conversation first; decide whether
-  exact text search or explicit resume warrants a separate story after the identity contract lands.
-- **Deletion and recovery:** recommend retaining history by default and leaving purge separate.
-  Specify missing-active-session recovery and metadata/file crash reconciliation before todo.
+- The Pi header ID is the immutable conversation ID. Daemon metadata owns the display title,
+  explicit file binding, creation request identity and active-selection revision. Creation persists
+  an empty canonical header before publishing selection; repeated requests return the same result.
+  Unreferenced staged files cannot be discovered as active history. Missing/corrupt referenced
+  files fail visibly; explicit New conversation is the recovery action.
+- Web/CLI/mobile foreground requests name the observed active conversation and revision. An empty
+  Agent is represented explicitly, and its first accepted turn creates the initial conversation
+  under the same lifecycle lease. Rejected stale requests retain the user's draft.
+- Telegram captures the active target at acceptance, before asynchronous media/download waiting.
+  Its queue and held-approval payload retain that exact target. Show active title and provide a
+  New conversation command; no retained-history resume command in this slice.
+- Scheduler occurrences pin their conversation when materialized and retain it across retry and
+  approval. Inbox wakes select at their atomic claim/admission boundary, recording the target with
+  the consumed source messages. Restricted reviews keep private sessions and cannot select history.
+- Delayed approvals carry the original target and never resolve a later active conversation. An
+  explicit pinned dispatch may address its captured retained conversation without changing the
+  operator's active selection. This is admitted-work execution, not a user-facing resume feature.
+- New conversation rejects an active Agent or nonterminal user follow-up/Telegram queue items.
+  Remove or reconcile waiting input first. Existing admitted scheduler/approval work retains its
+  pinned destination; selection never rewrites its provenance or dispatch contract.
+- List/read/rename/New conversation with safe selection metadata is this release's full first
+  slice. Text search, manual resume, branching and history purge remain follow-on work. Retain
+  source identities and BAZ-034 file links. No legacy session discovery/import compatibility.
+- All API and runtime paths resolve Agent-owned metadata and validate the canonical file identity;
+  latest-mtime discovery must disappear from production routing. Readers remain bounded and
+  exclude private review input. Backup/restore includes metadata and canonical files.
+
+Track implementation and per-criterion verification in
+[the milestone progress log](../BAZ-035-038-progress.md).

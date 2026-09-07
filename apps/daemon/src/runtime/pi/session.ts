@@ -1,3 +1,4 @@
+import { readCanonicalSessionFile } from '../../lib/result-source.ts'
 // Bazilion → pi-coding-agent session bridge.
 //
 // `createBazilionSession` returns a fully-wired `AgentSession` suitable for
@@ -36,7 +37,7 @@
 //   - inter-agent messaging, triggers, scheduler (core + apps/web)
 //   - memory backend (we wrap it as a pi customTool via `createBazilionCustomTools`)
 
-import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import type { ResolvedAgent } from '@bazilion/api-types'
 import type { AgentMessage, ThinkingLevel } from '@earendil-works/pi-agent-core'
@@ -47,6 +48,7 @@ import {
 } from '@earendil-works/pi-ai'
 import {
   type AgentSession,
+  buildSessionContext,
   createAgentSession,
   DefaultResourceLoader,
   SessionManager,
@@ -143,14 +145,7 @@ export interface CreateBazilionSessionOptions {
    * daemon-owned refresher through their private, turn-scoped IPC channel.
    */
   refreshApiKey?: (providerName: string) => Promise<string>
-  /**
-   * Session id to resume. When omitted, pi starts a fresh session file.
-   * `/reset` passes `undefined` to rotate; normal chat passes the agent's
-   * current session id (persisted on the Bazilion side as `agents.session_id`
-   * if we later add that column — today we just restore the most recent
-   * session file, which pi's SessionManager locates automatically).
-   */
-  sessionId?: string
+  conversation?: import('@bazilion/api-types').ConversationTarget
   /** Internal restricted mode used by the learning reviewer. */
   restricted?: {
     systemPrompt: string
@@ -167,6 +162,7 @@ export interface BazilionSessionHandle {
 }
 
 export interface CreateProtectedBazilionSessionOptions {
+  conversation: import('@bazilion/api-types').ConversationTarget
   agent: ResolvedAgent
   runtime: ProtectedProviderWorkerRuntime
   paths: ProtectedWorkerPaths
@@ -270,14 +266,10 @@ export async function createBazilionSession(
   // `agents/<id>/sessions/` makes `bazilion uninstall` (reset tier) already
   // clean them up without changes.
   //
-  // Resume-or-create: pi's SessionManager has no built-in "latest session"
-  // opener. We walk the session dir for the newest `.jsonl` and open it;
-  // fall back to `create()` when none exists (fresh agent or post-/reset).
-  // This is what makes turn-to-turn continuity work: each worker turn picks
-  // up where the last one left off.
+  // Normal sessions use the exact daemon-admitted target. Reviews remain private.
   const sessionDir = restricted?.sessionDir ?? join(paths.agentDir(agent.agent.id), 'sessions')
   mkdirSync(sessionDir, { recursive: true })
-  const existing = restricted ? null : findMostRecent(sessionDir)
+  const existing = restricted ? null : explicitConversationFile(sessionDir, opts.conversation)
   const sessionManager = existing
     ? SessionManager.open(existing, sessionDir, cwd)
     : SessionManager.create(cwd, sessionDir)
@@ -419,7 +411,7 @@ export async function createProtectedBazilionSession(
   )
 
   mkdirSync(opts.paths.sessionDir, { recursive: true })
-  const existing = findMostRecent(opts.paths.sessionDir)
+  const existing = explicitConversationFile(opts.paths.sessionDir, opts.conversation)
   const sessionManager = existing
     ? SessionManager.open(existing, opts.paths.sessionDir, opts.paths.teamDir)
     : SessionManager.create(opts.paths.teamDir, opts.paths.sessionDir)
@@ -732,28 +724,18 @@ export function loadEnabledRegistry(db: BazilionDb, authToken: string, env: Node
  * Returns an empty array when the agent has no prior session (fresh spawn,
  * or post-/reset).
  */
-export function loadInitialMessages(agent: ResolvedAgent, paths: Paths): AgentMessage[] {
-  const sessionDir = join(paths.agentDir(agent.agent.id), 'sessions')
-  if (!existsSync(sessionDir)) return []
-  const cwd = agent.team.path
-  if (!existsSync(cwd)) return []
-  const recent = findMostRecent(sessionDir)
-  if (!recent) return []
-  try {
-    const sm = SessionManager.open(recent, sessionDir)
-    const ctx = sm.buildSessionContext()
-    return ctx.messages
-  } catch (err) {
-    // Corrupt session file, stale format, or pi version bump — log loud
-    // enough that an operator noticing a blank chat can find the cause in
-    // server logs. The turn loop itself starts a fresh session on the
-    // next message, so this isn't load-bearing for writes, only reads.
-    console.error(
-      `[session] loadInitialMessages failed for agent ${agent.agent.id} (${recent}):`,
-      err instanceof Error ? (err.stack ?? err.message) : err,
-    )
-    return []
-  }
+export function loadInitialMessages(
+  agent: ResolvedAgent,
+  paths: Paths,
+  target?: import('@bazilion/api-types').ConversationTarget | null,
+): AgentMessage[] {
+  if (!target) return []
+  const entries = readCanonicalSessionFile(
+    join(paths.agentDir(agent.agent.id), 'sessions'),
+    target.filename,
+    target.id,
+  )
+  return buildSessionContext(entries.filter((entry) => entry.type !== 'session')).messages
 }
 
 /** Read one named canonical session for evidence display without creating a live session. */
@@ -782,10 +764,11 @@ export function loadSessionMessages(
 export function loadSessionHead(
   agent: ResolvedAgent,
   paths: Paths,
+  target?: import('@bazilion/api-types').ConversationTarget | null,
 ): { file: string | null; size: number } {
   const sessionDir = join(paths.agentDir(agent.agent.id), 'sessions')
   if (!existsSync(sessionDir)) return { file: null, size: 0 }
-  const recent = findMostRecent(sessionDir)
+  const recent = target ? explicitConversationFile(sessionDir, target) : null
   if (!recent) return { file: null, size: 0 }
   try {
     const s = statSync(recent)
@@ -806,12 +789,17 @@ export function seedSessionForTest(
   agent: ResolvedAgent,
   paths: Paths,
   messages: Array<{ role: 'user' | 'assistant'; text: string }>,
+  conversation: import('@bazilion/api-types').ConversationTarget,
 ): void {
   const cwd = agent.team.path
   if (!existsSync(cwd)) mkdirSync(cwd, { recursive: true })
   const sessionDir = join(paths.agentDir(agent.agent.id), 'sessions')
   mkdirSync(sessionDir, { recursive: true })
-  const sm = SessionManager.create(cwd, sessionDir)
+  const sm = SessionManager.open(
+    explicitConversationFile(sessionDir, conversation),
+    sessionDir,
+    cwd,
+  )
   const now = Date.now()
   messages.forEach((m, i) => {
     if (m.role === 'user') {
@@ -844,12 +832,16 @@ export function seedSessionForTest(
 
 /**
  * Test helper: count message entries on the current leaf's branch of the
- * agent's most-recent session file. Returns 0 when no session file exists.
+ * agent's explicitly selected session file. Returns 0 when no session file exists.
  */
-export function countSessionMessagesForTest(agent: ResolvedAgent, paths: Paths): number {
+export function countSessionMessagesForTest(
+  agent: ResolvedAgent,
+  paths: Paths,
+  conversation: import('@bazilion/api-types').ConversationTarget | null | undefined,
+): number {
   const sessionDir = join(paths.agentDir(agent.agent.id), 'sessions')
-  const recent = findMostRecent(sessionDir)
-  if (!recent) return 0
+  if (!conversation) return 0
+  const recent = explicitConversationFile(sessionDir, conversation)
   const cwd = agent.team.path
   try {
     const sm = SessionManager.open(recent, sessionDir, cwd)
@@ -859,19 +851,15 @@ export function countSessionMessagesForTest(agent: ResolvedAgent, paths: Paths):
   }
 }
 
-/** Newest `.jsonl` in a pi session directory by mtime, or null if empty. */
-function findMostRecent(sessionDir: string): string | null {
-  if (!existsSync(sessionDir)) return null
-  let newest: { path: string; mtimeMs: number } | null = null
-  for (const entry of readdirSync(sessionDir)) {
-    if (!entry.endsWith('.jsonl')) continue
-    const path = join(sessionDir, entry)
-    try {
-      const s = statSync(path)
-      if (!newest || s.mtimeMs > newest.mtimeMs) newest = { path, mtimeMs: s.mtimeMs }
-    } catch {
-      // ignore races
-    }
-  }
-  return newest?.path ?? null
+/** Never fall back to directory activity when an admitted session is unavailable. */
+function explicitConversationFile(
+  directory: string,
+  target: import('@bazilion/api-types').ConversationTarget | undefined,
+): string {
+  if (!target || !/^[0-9a-f-]{36}$/i.test(target.id) || target.filename !== `${target.id}.jsonl`)
+    throw new Error('Explicit conversation target is required')
+  const file = join(directory, target.filename)
+  // Validate bounded bytes before Pi can repair or recreate a session.
+  readCanonicalSessionFile(directory, target.filename, target.id)
+  return file
 }
