@@ -27,10 +27,48 @@ docs/backlog/
 
 ---
 
-## Draft (0)
+## Draft (13)
 
 | ID | Title | Size | Notes |
 |----|-------|------|-------|
+| [BAZ-034](draft/BAZ-034-durable-agent-deliverables.md) | Durable agent deliverables and a Team results library | M | First to refine and implement: preserve delivered files across completion, refresh, and restart |
+| [BAZ-035](draft/BAZ-035-conversation-library.md) | Conversation library and safe new conversations | L | Retained history and explicit session selection; settle routing before dependent queue work |
+| [BAZ-036](draft/BAZ-036-visible-follow-up-queue.md) | Visible, durable follow-up queue | L | Accepted pending messages across clients; active-turn steering deferred |
+| [BAZ-037](draft/BAZ-037-structured-agent-questions.md) | Structured agent questions across web, CLI, and Telegram | L | Bounded clarification and correlated answers; independent of authorization approvals |
+| [BAZ-038](draft/BAZ-038-telegram-attention-notifications.md) | Opt-in Telegram delivery of existing Attention items | M | Independent candidate: notification receipts, quiet hours, and canonical resolution links |
+| [BAZ-039](draft/BAZ-039-repository-coding-context.md) | Repository context and coding onboarding within a Team | M | Coding first slice: bounded repository instructions, provenance, and command suggestions |
+| [BAZ-040](draft/BAZ-040-coding-environment-readiness.md) | Prepared per-Team coding environments and truthful readiness | L | Prepared local toolchains and explicit finite probes under the actual execution posture |
+| [BAZ-041](draft/BAZ-041-coding-command-verification.md) | Live coding command output and snapshot-bound verification | L | Retained logs and executor-owned check outcomes with code/environment freshness |
+| [BAZ-042](draft/BAZ-042-git-change-review.md) | Git changes and review beside coding conversations | M | Read-only diffs, explicit dirty baselines, and revision-bound feedback |
+| [BAZ-043](draft/BAZ-043-isolated-coding-workspaces.md) | Isolated coding workspaces for parallel assignments | L | Later: canonical Team checkout ownership, writer coordination, and safe Git metadata access |
+| [BAZ-044](draft/BAZ-044-coding-review-handoff.md) | Revision-bound coding review and handoff | L | Later: captured changes, scoped reviewer access, and handoff exports; publication deferred |
+| [BAZ-045](draft/BAZ-045-specialist-verification-handoff.md) | Specialist verification of a captured code change | L | After the coding milestone: same-Team tester, captured checks, coordinated execution, and scoped evidence |
+| [BAZ-046](draft/BAZ-046-controlled-deployment-execution.md) | Controlled deployment execution and verified outcomes | L | After specialist testing: one configured backend, exact release authorization, and observed deployment/health |
+
+Drafted on 2026-09-07 from the OpenClaw 2.0 / Hermes desktop review and current Bazilion code.
+Recommended order: refine BAZ-034 first, then BAZ-035 and BAZ-036; BAZ-037 can be refined in
+parallel. BAZ-038 is an independent smaller candidate. Sizes are provisional; each draft records
+open decisions and boundaries to resolve before moving to `todo/`. Desktop packaging and Team
+conversation views remain later ideas rather than part of this initial slice.
+
+Coding drafts BAZ-039 through BAZ-044 were added on 2026-09-07. The initial coding milestone is
+BAZ-039 through BAZ-042: follow repository instructions, use a prepared environment, run the relevant
+finite checks, and return a persistent diff with verifiable results for a small real-repository bug.
+Refine context and environment first; command evidence and Git review can proceed in parallel once
+their shared snapshot contract is agreed. BAZ-034 supplies reusable durable-output primitives.
+BAZ-043 adds parallel workspace ownership later, followed by BAZ-044's review/handoff experience;
+static review itself does not require managed worktrees. Managed previews, language-server features,
+and automatic commit/push/PR publication are outside these first coding drafts.
+
+Specialist integration drafts BAZ-045 and BAZ-046 were added on 2026-09-07. Existing Profiles,
+Team Templates, and policy-controlled messaging already support specialist collaboration. Refine
+BAZ-045 after BAZ-039 through BAZ-042 for a coder-to-tester handoff with snapshot-bound check evidence;
+coordinated same-Team verification does not require BAZ-043's managed parallel workspaces or
+BAZ-044's static review UI. Follow with BAZ-046 for an explicitly authorized deployment through one
+configured backend, consuming an already published revision/artifact and verifying the actual
+outcome. Automatic Git publication and managed service/browser test environments remain separate
+later story candidates. Neither draft introduces a general pipeline engine or turns communication
+approval into permission to deploy.
 
 ## Todo (0)
 
