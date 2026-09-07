@@ -58,7 +58,7 @@ export function translatePiEvent(e: AgentSessionEvent): SessionEvent[] {
             type: 'tool_call',
             id: block.id,
             name: block.name,
-            arguments: JSON.stringify(block.arguments ?? {}),
+            arguments: block.name === 'ask_user' ? '{}' : JSON.stringify(block.arguments ?? {}),
           })
         }
       }
@@ -71,6 +71,16 @@ export function translatePiEvent(e: AgentSessionEvent): SessionEvent[] {
     }
 
     case 'tool_execution_end': {
+      if (e.toolName === 'ask_user')
+        return [
+          {
+            type: 'tool_result',
+            id: e.toolCallId,
+            name: e.toolName,
+            result:
+              'Question outcome is available through the question card or authorized conversation history.',
+          },
+        ]
       const text = extractToolResultText(e.result)
       if (e.isError) {
         return [{ type: 'tool_error', id: e.toolCallId, name: e.toolName, error: text }]
@@ -105,7 +115,11 @@ export function extractAssistantToolCalls(m: AssistantMessage): ToolCall[] {
   const out: ToolCall[] = []
   for (const block of m.content ?? []) {
     if (block.type === 'toolCall') {
-      out.push({ id: block.id, name: block.name, arguments: JSON.stringify(block.arguments ?? {}) })
+      out.push({
+        id: block.id,
+        name: block.name,
+        arguments: block.name === 'ask_user' ? '{}' : JSON.stringify(block.arguments ?? {}),
+      })
     }
   }
   return out
@@ -160,7 +174,10 @@ function stringifyContent(content: unknown): string {
  * `content` string (text blocks joined) or a `toolCalls` array (toolCall
  * blocks converted).
  */
-export function piMessagesToProviderView(messages: AgentMessage[]): ProviderMessage[] {
+export function piMessagesToProviderView(
+  messages: AgentMessage[],
+  questionResultVisible?: (message: AgentMessage) => boolean,
+): ProviderMessage[] {
   const out: ProviderMessage[] = []
   for (const m of messages) {
     // Custom Bazilion message types would land in this switch too, but we
@@ -187,6 +204,15 @@ export function piMessagesToProviderView(messages: AgentMessage[]): ProviderMess
       }
       case 'toolResult': {
         const tr = m as { content: unknown; toolCallId?: string; toolName?: string }
+        if (tr.toolName === 'ask_user' && !questionResultVisible?.(m)) {
+          out.push({
+            role: 'tool',
+            toolCallId: tr.toolCallId,
+            toolName: 'ask_user',
+            content: 'Question content has not been released for this view.',
+          })
+          break
+        }
         const images = extractToolResultImages({ content: tr.content })
         out.push({
           role: 'tool',

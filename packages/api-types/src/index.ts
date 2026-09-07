@@ -1,5 +1,18 @@
 import type { ConversationSelection } from './conversations.ts'
 
+export type {
+  AgentQuestion,
+  AgentQuestionAnswer,
+  AgentQuestionContinuation,
+  AgentQuestionInput,
+  AgentQuestionListResponse,
+  AgentQuestionNoAnswerReason,
+  AgentQuestionResponse,
+  AgentQuestionResponseInput,
+  AgentQuestionStatus,
+  AgentQuestionToolResult,
+} from './questions.ts'
+
 // Wire-shape package. Hermetic: depends on nothing from the daemon, so every
 // client (web, mobile, cli, future SDKs) can pull in API shapes without
 // dragging Node-only code (node:sqlite, undici, pi-ai, the worker spawner)
@@ -483,6 +496,8 @@ export interface ChatRequest {
   attachments?: Attachment[]
   /** Explicit client capability. Omitted callers fail closed instead of waiting for input. */
   bashApprovalMode?: BashApprovalMode
+  /** Live clarification support, independent of shell approvals. Omit for native/piped clients. */
+  questionMode?: 'web' | 'tty'
 }
 
 export interface CommandApprovalDecisionRequest {

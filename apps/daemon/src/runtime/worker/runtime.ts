@@ -54,6 +54,7 @@ export interface ProtectedWorkerPaths {
 }
 
 export interface ConfiguredOperatorHttpWorkerSpec {
+  questionEnabled?: boolean
   conversation: import('@bazilion/api-types').ConversationTarget
   kind: 'configured_operator_http'
   /** Pre-resolved agent record — the worker never queries the DB itself. */
@@ -69,6 +70,7 @@ export interface ConfiguredOperatorHttpWorkerSpec {
 }
 
 export interface ProtectedWorkerSpec {
+  questionEnabled?: boolean
   conversation: import('@bazilion/api-types').ConversationTarget
   kind: 'protected'
   agent: ResolvedAgent
@@ -127,6 +129,7 @@ const REASONING_LEVELS = new Set<ReasoningLevel>([
 ])
 
 const CONFIGURED_KEYS = new Set([
+  'questionEnabled',
   'conversation',
   'kind',
   'agent',
@@ -151,6 +154,7 @@ const CONFIGURED_REQUIRED_KEYS = new Set([
   'bashApprovalMode',
 ])
 const PROTECTED_KEYS = new Set([
+  'questionEnabled',
   'conversation',
   'kind',
   'agent',
@@ -165,7 +169,9 @@ const PROTECTED_KEYS = new Set([
   'apiKeyRefreshEnabled',
   'scratch',
 ])
-const PROTECTED_REQUIRED_KEYS = new Set([...PROTECTED_KEYS].filter((key) => key !== 'images'))
+const PROTECTED_REQUIRED_KEYS = new Set(
+  [...PROTECTED_KEYS].filter((key) => key !== 'images' && key !== 'questionEnabled'),
+)
 const REVIEW_KEYS = new Set([
   'kind',
   'agentId',
@@ -270,6 +276,8 @@ export function validateMinimalWorkerProcessEnv(
 export function parseWorkerInput(value: unknown): WorkerInput {
   const input = objectRecord(value, 'worker input')
   const kind = input.kind
+  if (input.questionEnabled !== undefined && typeof input.questionEnabled !== 'boolean')
+    throw new Error('Invalid worker question capability')
   if (kind === 'configured_operator_http') {
     assertExactKeys(input, CONFIGURED_KEYS, 'configured worker input', CONFIGURED_REQUIRED_KEYS)
     if (!isResolvedAgent(input.agent)) throw new Error('worker: configured input requires an agent')

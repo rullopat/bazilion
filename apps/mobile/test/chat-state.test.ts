@@ -16,6 +16,20 @@ function ids(): () => string {
 }
 
 describe('mobile chat state', () => {
+  it('shows an explicit unsupported question state without pretending to answer', () => {
+    const state = applyChatFrame(chatStateFromHistory([]), { kind: 'event', event: {
+      type: 'agent_question', question: {
+        id: 'question-1', agentId: 'agent-1', teamId: 'team-1', conversationId: 'conversation-1',
+        turnId: 'turn-1', toolCallId: 'tool-1', question: { prompt: 'Format?', choices: [{ label: 'Text' }, { label: 'JSON' }] },
+        status: 'pending', revision: 0, createdAt: 1, expiresAt: 2, settledAt: null, deliveredAt: 1,
+        answer: null, responseRequestId: null, noAnswerReason: null, continuation: 'waiting', consumedAt: null,
+        deliveryApprovalId: null, answerApprovalId: null,
+      },
+    } })
+    expect(state.items).toMatchObject([{ kind: 'notice', tone: 'info', text: expect.stringContaining('Native question controls are not supported') }])
+    expect(state.items[0]).toMatchObject({ webAgentId: 'agent-1', text: expect.stringContaining('question-1: pending') })
+    expect(state.terminal).toBe('idle')
+  })
   it('retains the optimistic user message when the first stream frame arrives', () => {
     const nextId = ids()
     let state = appendLocalUser(chatStateFromHistory([], nextId), 'hello', nextId)

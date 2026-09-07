@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { basename, extname } from 'node:path'
 import { stdin, stdout } from 'node:process'
@@ -35,6 +36,7 @@ import type {
 import { defineCommand } from 'citty'
 import { ApiClientError, createClient } from '../client.ts'
 import { columnize } from '../columnize.ts'
+import { promptForQuestion, type QuestionPrompt } from '../question-prompt.ts'
 
 const IMAGE_MIME: Record<string, string> = {
   '.png': 'image/png',
@@ -428,14 +430,17 @@ async function streamTurn(
   options: {
     bashApprovalMode: BashApprovalMode
     approvalPrompt?: CommandApprovalPrompt
+    questionPrompt?: QuestionPrompt
     expectedSelection?: import('@bazilion/api-types').ConversationSelection
   } = { bashApprovalMode: 'auto_deny' },
 ): Promise<void> {
   const head = await client.get<SessionHeadResponse>(`/api/agents/${agentId}/sessions/head`)
   const state: PrintState = { inDeltaStream: false }
   const respondedApprovalIds = new Set<string>()
+  const promptedQuestionIds = new Set<string>()
   for await (const frame of client.stream<ChatFrame>('POST', `/api/agents/${agentId}/chat`, {
     ...buildChatRequest(message, attachments, options.bashApprovalMode),
+    ...(options.questionPrompt ? { questionMode: 'tty' as const } : {}),
     expectedSelection: options.expectedSelection ?? head.selection,
   })) {
     if (frame.kind === 'event') {
@@ -452,6 +457,37 @@ async function streamTurn(
           }
         } else {
           printCommandApprovalStatus(approval)
+        }
+      } else if (event.type === 'agent_question') {
+        closeDeltaLine(state)
+        const item = event.question
+        if (item.agentId !== agentId || promptedQuestionIds.has(item.id)) continue
+        promptedQuestionIds.add(item.id)
+        if (!options.questionPrompt) {
+          console.log(
+            `Question ${item.id}: use bazilion question show ${agentId} ${item.id} in a separate terminal.`,
+          )
+          continue
+        }
+        const answer = await promptForQuestion(item, options.questionPrompt)
+        if (!answer) continue
+        const requestId = randomUUID()
+        console.error(
+          `Question request ${requestId}; exact retry uses bazilion question answer ${agentId} ${item.id} --request-id ${requestId} --conversation ${item.conversationId} and the same answer option.`,
+        )
+        try {
+          const result = await client
+            .questions(agentId)
+            .answer(item.id, { requestId, conversationId: item.conversationId, answer })
+          console.log(
+            result.kind === 'held'
+              ? 'Answer awaits communication approval; it has not reached the Agent.'
+              : 'Answer accepted; consumption and task completion are separate.',
+          )
+        } catch {
+          console.error(
+            'Answer acknowledgement unavailable. Inspect the question before retrying the exact request above.',
+          )
         }
       } else if (event.type !== 'user_message') {
         printEvent(event, state)
@@ -504,6 +540,10 @@ const chatCmd = defineCommand({
                   question: (question) => rl.question(question),
                   write: (line) => console.log(line),
                 },
+                questionPrompt: {
+                  question: (text, signal) => rl.question(text, { signal }),
+                  write: (line) => console.log(line),
+                },
               }
             : {}),
         })
@@ -545,6 +585,10 @@ const chatCmd = defineCommand({
             await streamTurn(client, resolved.agent.id, trimmed, undefined, {
               bashApprovalMode,
               expectedSelection: observed.selection,
+              questionPrompt: {
+                question: (text, signal) => rl.question(text, { signal }),
+                write: (line) => console.log(line),
+              },
               approvalPrompt: {
                 question: (question) => rl.question(question),
                 write: (output) => console.log(output),

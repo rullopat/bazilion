@@ -21,6 +21,8 @@ export interface AuthorizationInput {
   approvalPayloadKind?: string
   approvalPayload?: unknown
   requester?: string
+  /** Optional source-owned deadline; can shorten, never extend, approval lifetime. */
+  approvalExpiresAt?: number
 }
 
 export type PolicyRef = CommunicationPolicyRef

@@ -16,11 +16,13 @@ import {
   recordDenial,
   triggerRepo,
 } from '../core/index.ts'
+import * as questions from '../core/repos/questions.ts'
 import {
   AgentLoopLimitError,
   enforceMessageCausality,
   resolveMessageCausality,
 } from './agent-loop-guard.ts'
+import { questionVisible } from './question-visibility.ts'
 import { capturedResultFile, releaseResultFile } from './result-delivery.ts'
 import { teamPolicyEnforcementRequested } from './team-policy-contract.ts'
 
@@ -89,6 +91,7 @@ export interface CommunicationAttempt {
   approvalPayloadKind?: string
   approvalPayload?: unknown
   requester?: string
+  approvalExpiresAt?: number
 }
 
 function authorizeBoundary(
@@ -128,7 +131,7 @@ function authorizeBoundary(
       outcome,
       input.approvalPayloadKind ?? operation,
       input.approvalPayload ?? {},
-      { requester: input.requester ?? input.origin },
+      { requester: input.requester ?? input.origin, expiresAt: input.approvalExpiresAt },
     )
     throw new CommunicationPendingError(approval)
   }
@@ -181,6 +184,13 @@ export function authorizeHttpChatFrame(
   frameIndex: number,
   frame: ChatFrame,
 ): void {
+  if (frame.kind === 'event' && frame.event.type === 'agent_question') {
+    const current = questions.get(db, agentId, frame.event.question.id)
+    if (!current || !questionVisible(db, current))
+      throw new Error('Question is no longer available for delivery')
+    frame.event.question = current
+    return
+  }
   if (!isUserFacingFrame(frame)) return
   if (frame.kind === 'event' && frame.event.type === 'file') {
     Object.assign(frame.event, capturedResultFile(db, agentId, frame.event))

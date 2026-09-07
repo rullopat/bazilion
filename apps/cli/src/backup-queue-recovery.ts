@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { DatabaseSync } from 'node:sqlite'
 
 /** Offline staged-home mutation. A backup cannot prove which later side effects happened. */
@@ -16,6 +17,31 @@ export function pauseRestoredUserQueue(database: string): void {
         reason = 'restored_backup' WHERE agent_id IN
         (SELECT agent_id FROM user_queue_items WHERE ${unresolved})`)
       const now = Date.now()
+      db.prepare(`UPDATE agent_questions SET status = 'cancelled', no_answer_reason = 'restored_backup',
+        settled_at = ?, continuation = 'interrupted', revision = revision + 1 WHERE status = 'pending'`).run(
+        now,
+      )
+      db.exec(`UPDATE agent_questions SET continuation = 'interrupted', revision = revision + 1
+        WHERE continuation = 'unconfirmed'`)
+      // Offline restore cannot import daemon runtime. Mirror the canonical cancellation
+      // and audit event only for pending approvals owned by closed question records.
+      const questionApprovals = db
+        .prepare(`SELECT DISTINCT a.id FROM communication_approvals a
+        JOIN agent_questions q ON a.id IN (q.delivery_approval_id, q.answer_approval_id)
+        WHERE q.status != 'pending' AND a.status = 'pending'
+          AND a.payload_kind IN ('question_delivery', 'question_answer')`)
+        .all() as Array<{ id: string }>
+      for (const approval of questionApprovals) {
+        db.prepare(`UPDATE communication_approvals SET status = 'cancelled', decided_at = ?,
+          decided_by = 'system', decision_reason = 'Restored question has no live continuation',
+          updated_at = ? WHERE id = ? AND status = 'pending'`).run(now, now, approval.id)
+        db.prepare(`INSERT INTO communication_approval_events (id, approval_id, event, actor, detail, created_at)
+          VALUES (?, ?, 'cancelled', 'system', 'Restored question has no live continuation', ?)`).run(
+          randomUUID(),
+          approval.id,
+          now,
+        )
+      }
       db.prepare(`UPDATE user_queue_items SET status = 'uncertain', revision = revision + 1,
         diagnostic = 'Restored backup: this input may already have acted; reconcile before resuming',
         updated_at = ?, finished_at = ? WHERE ${unresolved}`).run(now, now)

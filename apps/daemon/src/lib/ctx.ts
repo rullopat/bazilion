@@ -9,6 +9,7 @@ import {
   runMigrations,
   webTokenRepo,
 } from '../core/index.ts'
+import { recoverInterrupted as recoverInterruptedQuestions } from '../core/repos/questions.ts'
 import {
   reconcileApprovalHolds,
   recoverInterrupted as recoverInterruptedQueue,
@@ -99,6 +100,7 @@ function bootstrap(paths: Paths): { db: BazilionDb; authToken: string } {
     }
 
     recoverInterruptedQueue(db)
+    recoverInterruptedQuestions(db)
     reconcileApprovalHolds(db)
     recoverInterruptedResultDeliveries(db)
     reconcilePrivateResults(db)

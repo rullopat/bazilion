@@ -13,6 +13,7 @@ import {
   triggerDispatchRepo,
   triggerRepo,
 } from '../core/index.ts'
+import { approvalSnapshot as questionApprovalSnapshot } from '../core/repos/questions.ts'
 import { getReceipt } from '../core/repos/results.ts'
 import { reconcileApprovalHolds } from '../core/repos/user-queue.ts'
 import {
@@ -29,6 +30,7 @@ import {
 } from '../lib/approval-delivery-plan.ts'
 import { getCtx } from '../lib/ctx.ts'
 import { approvalDeliveryFailureMessage, protectedFrameFailure } from '../lib/protected-failure.ts'
+import { questionServiceFor } from '../lib/question-service.ts'
 import { capturedResultFile, releaseResultFile } from '../lib/result-delivery.ts'
 import { reconcilePrivateResults } from '../lib/result-retention.ts'
 import { downloadMediaBytes } from '../lib/telegram/media.ts'
@@ -207,6 +209,14 @@ approvalsRouter.post('/:id/approve', async (c) => {
       }
       return c.json(granted.approval)
     }
+    if (pendingPlan.kind === 'question_delivery' || pendingPlan.kind === 'question_answer') {
+      try {
+        const { paths, authToken } = getCtx()
+        questionServiceFor(db, paths, authToken).assertApprovalReady(pending)
+      } catch {
+        return c.json({ error: 'Question is no longer waiting or its response route changed' }, 409)
+      }
+    }
     if (pendingPlan.kind === 'queued_user') {
       try {
         assertQueuedApprovalReady(pending)
@@ -244,6 +254,8 @@ approvalsRouter.post('/:id/approve', async (c) => {
 
 function approvalPlan(approval: CommunicationApprovalDetail): ApprovalDeliveryPlan {
   return planApprovalDelivery(approval, {
+    questionInput: (agentId, questionId) =>
+      questionApprovalSnapshot(getCtx().db, agentId, questionId),
     messageById: (messageId) => messageRepo.get(getCtx().db, messageId),
     queuedInput: queuedApprovalInput,
   })
@@ -273,6 +285,11 @@ function validateSchedulerGrant(
 }
 
 async function deliver(plan: ApprovalDeliveryPlan): Promise<void> {
+  if (plan.kind === 'question_delivery' || plan.kind === 'question_answer') {
+    const { db, paths, authToken } = getCtx()
+    await questionServiceFor(db, paths, authToken).releaseApproval(plan.approval)
+    return
+  }
   if (plan.kind === 'queued_user') {
     await deliverQueuedApproval(plan.approval)
     return

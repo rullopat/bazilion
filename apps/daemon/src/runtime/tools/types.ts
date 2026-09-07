@@ -20,6 +20,7 @@ export type ToolOutput =
   | string
   | ToolResultPart[]
   | { content: ToolResultPart[]; result: ResultReference }
+  | { content: ToolResultPart[]; questionReceipt: string }
 
 export interface ToolHandler {
   def: ToolDef

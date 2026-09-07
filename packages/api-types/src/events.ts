@@ -85,6 +85,7 @@ export interface CommandApproval {
 }
 
 export type SessionEvent =
+  | { type: 'agent_question'; question: import('./questions.ts').AgentQuestion }
   | { type: 'user_message'; text: string }
   | { type: 'assistant_delta'; delta: string }
   | { type: 'assistant_message'; text: string }

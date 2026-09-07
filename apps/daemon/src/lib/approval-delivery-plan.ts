@@ -6,6 +6,8 @@ import type {
   ToolResultImage,
   UserQueueItem,
 } from '@bazilion/api-types'
+import type { QuestionApprovalSnapshot } from '../core/repos/questions.ts'
+import { type QuestionApprovalReference, validateQuestionApproval } from './question-approval.ts'
 import {
   isTelegramIngressPayload,
   type TelegramIngressPayload,
@@ -72,6 +74,16 @@ export interface TelegramFileApprovalPayload extends TelegramTransportPayload {
 
 export type ApprovalDeliveryPlan =
   | {
+      kind: 'question_delivery'
+      approval: CommunicationApprovalDetail
+      payload: QuestionApprovalReference
+    }
+  | {
+      kind: 'question_answer'
+      approval: CommunicationApprovalDetail
+      payload: QuestionApprovalReference
+    }
+  | {
       kind: 'queued_user'
       approval: CommunicationApprovalDetail
       payload: QueuedUserApprovalPayload
@@ -134,6 +146,7 @@ export type ApprovalDeliveryPlan =
     }
 
 export interface ApprovalDeliveryPlanContext {
+  questionInput?: (agentId: string, questionId: string) => QuestionApprovalSnapshot | null
   messageById?: (messageId: string) => Message | null
   queuedInput?: Parameters<typeof validateQueuedUserApproval>[1]
 }
@@ -205,6 +218,24 @@ export function planApprovalDelivery(
   context: ApprovalDeliveryPlanContext = {},
 ): ApprovalDeliveryPlan {
   if (!isNonEmptyString(approval.attemptId)) invalid('attempt_id')
+  if (approval.payloadKind === 'question_delivery' || approval.payloadKind === 'question_answer') {
+    const payload = approval.payload
+    if (
+      !isRecord(payload) ||
+      typeof payload.agentId !== 'string' ||
+      typeof payload.questionId !== 'string'
+    )
+      return invalid('question_payload')
+    try {
+      const validated = validateQuestionApproval(
+        approval,
+        context.questionInput?.(payload.agentId, payload.questionId) ?? null,
+      )
+      return { kind: validated.kind, approval, payload: validated.reference }
+    } catch {
+      return invalid('question_binding')
+    }
+  }
 
   if (approval.payloadKind === 'queued_user') {
     const payload = validateQueuedUserApproval(approval, context.queuedInput ?? (() => null))

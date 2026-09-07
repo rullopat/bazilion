@@ -38,6 +38,7 @@ import type {
   MessagingHost,
   UserMdHost,
 } from './ipc-protocol.ts'
+import { sanitizeQuestionWorkerFrame } from './question-frames.ts'
 import {
   type ConfiguredOperatorHttpWorkerSpec,
   cleanupMinimalWorkerScratch,
@@ -139,6 +140,7 @@ interface CommonSpawnWorkerOpts {
 }
 
 export interface ConfiguredSpawnWorkerOpts extends CommonSpawnWorkerOpts {
+  questionHost?: import('./ipc-protocol.ts').QuestionHost
   /** Explicit legacy configured environment. There is intentionally no default. */
   env: NodeJS.ProcessEnv
   /**
@@ -170,6 +172,7 @@ export interface ConfiguredSpawnWorkerOpts extends CommonSpawnWorkerOpts {
 }
 
 export interface ProtectedSpawnWorkerOpts extends CommonSpawnWorkerOpts {
+  questionHost?: import('./ipc-protocol.ts').QuestionHost
   messagingHost: MessagingHost
   userMdHost: UserMdHost
   bashApprovalHost: BashApprovalHost
@@ -304,6 +307,13 @@ async function* spawnWorker(
         ),
       )
     },
+    (question) =>
+      frames.push(
+        redactJsonValue(
+          { kind: 'event', event: { type: 'agent_question', question } } as ChatFrame,
+          accessTokens,
+        ),
+      ),
     (token) => {
       if (!accessTokens.includes(token)) accessTokens.push(token)
       stderrRedactor?.add(token)
@@ -433,6 +443,13 @@ function assertSpawnCombination(
   opts: SpawnWorkerOpts,
 ): void {
   const record = opts as unknown as Record<string, unknown>
+  if (
+    spec.kind !== 'restricted_review' &&
+    (Boolean(spec.questionEnabled) !== Boolean(record.questionHost) ||
+      (record.questionHost &&
+        !hostHasMethods(record.questionHost, ['ask', 'close', 'subscribe', 'consumed'])))
+  )
+    throw new Error('Question capability requires its bound host')
   if (spec.kind === 'configured_operator_http') {
     if (!('env' in record) || !record.env || typeof record.env !== 'object') {
       throw new Error('configured operator worker requires an explicit environment')
@@ -464,6 +481,7 @@ function assertSpawnCombination(
     }
   } else {
     for (const forbidden of [
+      'questionHost',
       'messagingHost',
       'userMdHost',
       'bashApprovalHost',
@@ -486,13 +504,28 @@ function spawnHosts(
   opts: SpawnWorkerOpts,
   signal: AbortSignal,
   onBashApproval: NonNullable<IpcHosts['onBashApproval']>,
+  onQuestion: (question: import('@bazilion/api-types').AgentQuestion) => void,
   onApiKeyRefreshed: NonNullable<IpcHosts['onApiKeyRefreshed']>,
 ): IpcHosts {
   const configured = spec.kind === 'configured_operator_http'
   const protectedTurn = spec.kind === 'protected'
   const configuredOpts = configured ? (opts as ConfiguredSpawnWorkerOpts) : undefined
   const protectedOpts = protectedTurn ? (opts as ProtectedSpawnWorkerOpts) : undefined
+  const questionHost = configuredOpts?.questionHost ?? protectedOpts?.questionHost
+  if (questionHost) {
+    const unsubscribe = questionHost.subscribe(onQuestion)
+    signal.addEventListener(
+      'abort',
+      () => {
+        unsubscribe()
+        questionHost.close()
+      },
+      { once: true },
+    )
+    if (signal.aborted) questionHost.close()
+  }
   return {
+    questionHost,
     resultHost: spec.kind === 'restricted_review' ? undefined : opts.resultHost,
     messagingHost: configuredOpts?.messagingHost ?? protectedOpts?.messagingHost,
     userMdHost: configuredOpts?.userMdHost ?? protectedOpts?.userMdHost,
@@ -519,18 +552,19 @@ function spawnHosts(
 
 function parseFrame(line: string, accessTokens: readonly string[]): ChatFrame {
   try {
-    return normalizeWorkerDiagnosticFrame(
-      redactJsonValue(JSON.parse(line) as ChatFrame, accessTokens),
+    return sanitizeQuestionWorkerFrame(
+      normalizeWorkerDiagnosticFrame(redactJsonValue(JSON.parse(line) as ChatFrame, accessTokens)),
     )
   } catch {
     return {
       kind: 'fatal',
-      error: `worker emitted malformed frame: ${accessTokens.reduce(redactExactValue, line).slice(0, 200)}`,
+      error: 'worker emitted malformed frame',
     }
   }
 }
 
 interface IpcHosts {
+  questionHost?: import('./ipc-protocol.ts').QuestionHost
   resultHost?: import('./ipc-protocol.ts').ResultHost
   messagingHost?: MessagingHost
   userMdHost?: UserMdHost
@@ -583,6 +617,39 @@ async function dispatch(req: IpcRequest, hosts: IpcHosts): Promise<IpcReply> {
   try {
     let result: unknown
     switch (req.method) {
+      case 'questionConsumed':
+        hosts.ipcSignal?.throwIfAborted()
+        if (
+          !req.args ||
+          Object.keys(req.args).sort().join(',') !== 'questionId,toolCallId' ||
+          typeof req.args.questionId !== 'string' ||
+          typeof req.args.toolCallId !== 'string' ||
+          req.args.questionId.length > 64 ||
+          req.args.toolCallId.length > 256
+        )
+          throw new Error('Invalid question consumption IPC')
+        require(hosts.questionHost, 'question', req.method).consumed(
+          req.args.questionId,
+          req.args.toolCallId,
+        )
+        result = null
+        break
+      case 'askUser': {
+        hosts.ipcSignal?.throwIfAborted()
+        if (
+          !req.args ||
+          Object.keys(req.args).sort().join(',') !== 'question,toolCallId' ||
+          typeof req.args.toolCallId !== 'string' ||
+          !req.args.toolCallId ||
+          req.args.toolCallId.length > 256
+        )
+          throw new Error('Invalid question IPC request')
+        result = await require(hosts.questionHost, 'question', req.method).ask(
+          req.args.toolCallId,
+          req.args.question,
+        )
+        break
+      }
       case 'publishResult':
         hosts.ipcSignal?.throwIfAborted()
         result = await require(hosts.resultHost, 'result', req.method).publish(req.args)

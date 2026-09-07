@@ -93,6 +93,7 @@ import {
   revokeLessonProposal,
 } from '../lib/lesson-decisions.ts'
 import { createDbMessagingHost } from '../lib/messaging-host.ts'
+import { questionHistoryVisibility } from '../lib/question-history.ts'
 import { redactReviewText } from '../lib/review-digest.ts'
 import { getTelegramBotApi } from '../lib/telegram/bot.ts'
 import { notifyDirectoryDirty } from '../lib/telegram/directory.ts'
@@ -1061,7 +1062,10 @@ agentsRouter.get('/:id/sessions/messages', (c) => {
   const target = selectedConversationTarget(db, resolved.agent.id)
   const selection = conversationRepo.selection(db, resolved.agent.id)
   try {
-    const messages = piMessagesToProviderView(loadInitialMessages(resolved, paths, target))
+    const messages = piMessagesToProviderView(
+      loadInitialMessages(resolved, paths, target),
+      target ? questionHistoryVisibility(db, resolved.agent.id, target.id) : undefined,
+    )
     return c.json({
       messages,
       selection,
@@ -1094,6 +1098,13 @@ agentsRouter.post('/:id/chat', async (c) => {
     return c.json({ error: 'invalid JSON body' }, 400)
   }
   const message = body.message
+  if (
+    body.questionMode !== undefined &&
+    body.questionMode !== 'web' &&
+    body.questionMode !== 'tty'
+  ) {
+    return c.json({ error: 'questionMode must be "web" or "tty"' }, 400)
+  }
   if (typeof message !== 'string') {
     return c.json({ error: 'message is required' }, 400)
   }
@@ -1129,6 +1140,7 @@ agentsRouter.post('/:id/chat', async (c) => {
   try {
     preparedTurn = await prepareAgentTurn({
       expectedSelection: body.expectedSelection,
+      questionMode: body.questionMode,
       invocation: createTrustedTurnInvocation({
         kind: 'operator_http',
         authorization: {

@@ -26,6 +26,7 @@ import { Button } from './Button'
 import { ResultCard } from './ResultCard'
 import { ConversationLibrary } from './ConversationLibrary'
 import { UserQueuePanel, type UserQueueHandle } from './UserQueuePanel'
+import { AgentQuestions } from './AgentQuestions'
 
 const INBOX_WAKE_PREFIX = '[[bazilion:inbox-wake]]\n'
 const COMPACTION_REPLAY_PREFIX = '[conversation summary]'
@@ -79,7 +80,7 @@ export function interactiveChatRequest(
   message: string,
   attachments: Attachment[],
 ): ChatRequest {
-  return { message, attachments, bashApprovalMode: 'interactive' }
+  return { message, attachments, bashApprovalMode: 'interactive', questionMode: 'web' }
 }
 
 export function shellApprovalsUrl(agentId: string): string {
@@ -1266,6 +1267,7 @@ export function ChatPane({
       )}
 
       <UserQueuePanel onViewConversation={id => { setQueueConversation(id); setLibraryOpen(true) }} key={agentId} ref={queueRef} agentId={agentId} selection={() => knownHeadRef.current.selection} onQueueMode={mode => { setQueueMode(mode); setQueueReady(true) }} />
+      <AgentQuestions key={`questions-${agentId}`} agentId={agentId} />
       <form
         className="grid shrink-0 grid-cols-[auto_minmax(0,1fr)_auto] items-end gap-2 border-t border-frost bg-ivory px-3 py-3 sm:px-5"
         onSubmit={(e) => {

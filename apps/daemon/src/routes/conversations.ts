@@ -7,6 +7,7 @@ import { pendingCount } from '../core/repos/user-queue.ts'
 import { runAgentLifecycleMutation } from '../lib/agent-lifecycle-lease.ts'
 import { createConversationFile } from '../lib/conversation-file.ts'
 import { getCtx } from '../lib/ctx.ts'
+import { questionHistoryVisibility } from '../lib/question-history.ts'
 import { readResultSession } from '../lib/result-source.ts'
 import { piMessagesToProviderView } from '../runtime/pi/events.ts'
 
@@ -83,6 +84,7 @@ conversationsRouter.get('/:agentId/conversations/:id', (c) => {
     const entries = readResultSession(paths, agentId, conversations.filename(db, agentId, id), id)
     const messages = piMessagesToProviderView(
       buildSessionContext(entries.filter((entry) => entry.type !== 'session')).messages,
+      questionHistoryVisibility(db, agentId, id),
     )
     return c.json({ conversation, selection: conversations.selection(db, agentId), messages })
   } catch {

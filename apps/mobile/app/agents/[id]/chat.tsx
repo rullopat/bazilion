@@ -33,6 +33,7 @@ import {
   parseCommunicationPending,
 } from '@/src/chat-state'
 import { mobileErrorMessage } from '@/src/errors'
+import { questionWebHandoff } from '@/src/web-handoff'
 import { NdjsonDecoder } from '@/src/ndjson'
 import { useColors } from '@/src/theme-context'
 import { type Colors, fonts, radii } from '@/src/theme'
@@ -536,6 +537,13 @@ function Bubble({ item, server }: { item: ChatItem; server: string }) {
       <Text style={item.tone === 'error' ? styles.errorBubbleText : styles.infoBubbleText}>
         {item.text}
       </Text>
+      {item.webAgentId && questionWebHandoff(server, item.webAgentId) ? <>
+        <Text style={styles.infoBubbleText}>Sign in in your browser if prompted.</Text>
+        <Pressable accessibilityRole="link" accessibilityLabel="Open question in web chat" onPress={() => {
+          const url = questionWebHandoff(server, item.webAgentId ?? '')
+          if (url) void Linking.openURL(url).catch(() => Alert.alert('Could not open browser', 'Open this Agent in your paired Bazilion web app.'))
+        }}><Text style={styles.fileName}>Open web chat ↗</Text></Pressable>
+      </> : null}
     </View>
   )
 }

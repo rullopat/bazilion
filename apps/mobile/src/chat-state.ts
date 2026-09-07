@@ -22,7 +22,7 @@ export type ChatItem =
   | { id: string; kind: 'result'; resultId: string }
   | { id: string; kind: 'file'; name: string; mimeType: string; data: string }
   | { id: string; kind: 'approval'; approval: CommandApproval }
-  | { id: string; kind: 'notice'; tone: 'info' | 'error'; text: string }
+  | { id: string; kind: 'notice'; tone: 'info' | 'error'; text: string; webAgentId?: string }
 
 export interface ChatState {
   items: ChatItem[]
@@ -277,6 +277,12 @@ function applySessionEvent(
 
   if (event.type === 'command_approval') {
     return updateCommandApproval({ ...state, assistantDraftId: null }, event.approval)
+  }
+  if (event.type === 'agent_question') {
+    return { ...state, assistantDraftId: null, items: [...state.items, {
+      id: nextId(), kind: 'notice', tone: 'info', webAgentId: event.question.agentId,
+      text: `Question ${event.question.id}: ${event.question.status}. Native question controls are not supported. Open this Agent in the web app to inspect or answer it. An accepted answer does not prove the Agent continued.`,
+    }] }
   }
 
   return appendChatNotice(

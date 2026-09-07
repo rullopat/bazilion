@@ -33,6 +33,7 @@ import {
   CommunicationDeniedError,
   CommunicationPendingError,
 } from '../communication.ts'
+import { questionServiceFor } from '../question-service.ts'
 import { enqueueTelegramInput } from '../user-queue-admission.ts'
 import { dispatchCommand, parseCommand } from './commands/index.ts'
 import { namePrompt, SPAWN_PROFILE_CALLBACK_PREFIX, spawnAndBind } from './commands/spawn.ts'
@@ -45,11 +46,52 @@ import {
   shouldNotifyInboundThrottle,
 } from './loop-guard.ts'
 import { downloadMediaBytes, extractMedia } from './media.ts'
+import { parseTelegramQuestionReply, type QuestionReply } from './question-transport.ts'
 import { captureTelegramQueueBinding } from './queue-binding.ts'
 import { reactSeen } from './reactions.ts'
 import { setPendingSpawn, takePendingSpawn } from './spawn-state.ts'
 
 const SERVICE_TOPIC_KEY = 'TELEGRAM_SERVICE_TOPIC_ID'
+
+async function handleQuestionReply(
+  deps: RouterDeps,
+  reply: Exclude<QuestionReply, { kind: 'unrelated' }>,
+  callback?: CallbackQuery,
+  message?: Message,
+): Promise<RouteOutcome> {
+  let status: 'accepted' | 'held' | 'rejected' | 'other' =
+    reply.kind === 'other' ? 'other' : 'rejected'
+  if (reply.kind === 'answer') {
+    try {
+      const result = questionServiceFor(deps.db, deps.paths, deps.authToken).respond(
+        reply.agentId,
+        reply.questionId,
+        reply.input,
+      )
+      status =
+        result.kind === 'held' ? 'held' : result.kind === 'conflict' ? 'rejected' : 'accepted'
+    } catch {
+      status = 'rejected'
+    }
+  }
+  const text =
+    status === 'accepted'
+      ? 'Answer accepted. Consumption and task completion are separate.'
+      : status === 'held'
+        ? 'Answer awaits communication approval; the Agent has not received it.'
+        : status === 'other'
+          ? 'Reply to this question message with your answer, or use /answer followed by its question ID and your answer.'
+          : 'Question reply was not accepted. It may be expired, settled, or bound to another prompt.'
+  if (callback)
+    await deps.api
+      .answerCallbackQuery(callback.id, { text, show_alert: status === 'rejected' })
+      .catch(() => undefined)
+  else if (message)
+    await deps.api
+      .sendMessage(deps.chatId, text, { message_thread_id: message.message_thread_id })
+      .catch(() => undefined)
+  return { kind: 'question_reply', status }
+}
 
 /** Suppress duplicate General-topic redirects per chat. */
 const GENERAL_REDIRECT_SUPPRESS_MS = 60_000
@@ -121,6 +163,7 @@ export interface RouterDeps {
 }
 
 export type RouteOutcome =
+  | { kind: 'question_reply'; status: 'accepted' | 'held' | 'rejected' | 'other' }
   | { kind: 'service_command'; name: string; handled: boolean }
   | { kind: 'service_unknown_command'; name: string }
   | { kind: 'service_plain_text' }
@@ -175,6 +218,8 @@ export async function routeUpdate(deps: RouterDeps, update: Update): Promise<Rou
         .catch(() => undefined)
       return { kind: 'unauthorized', userId: q.from.id }
     }
+    const question = parseTelegramQuestionReply(deps.db, deps.authToken, { callback: q })
+    if (question.kind !== 'unrelated') return handleQuestionReply(deps, question, q)
     return handleCallbackQuery(deps, q)
   }
 
@@ -265,6 +310,10 @@ export async function routeUpdate(deps: RouterDeps, update: Update): Promise<Rou
     }
     return { kind: 'unauthorized', userId: m.from?.id ?? 0 }
   }
+
+  // General topic: outbound API rejects message_thread_id=1, and inbound
+  const question = parseTelegramQuestionReply(deps.db, deps.authToken, { message: m })
+  if (question.kind !== 'unrelated') return handleQuestionReply(deps, question, undefined, m)
 
   // General topic: outbound API rejects message_thread_id=1, and inbound
   // sometimes carries phantom thread ids ≤ 1 — collapse both cases into

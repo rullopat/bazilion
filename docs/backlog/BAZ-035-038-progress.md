@@ -8,7 +8,7 @@ commits/push and passing final CI. Merge, versioning, publication and deployment
 
 - [ ] Refine shared contracts and each story's open questions against current code.
 - [x] BAZ-035: retained conversations and safe explicit targeting (0af1061, CI passed).
-- [ ] BAZ-036: implementation and local acceptance passed; commit/push and CI pending.
+- [x] BAZ-036: durable follow-ups across web/CLI/Telegram (fa126ac, CI passed).
 - [ ] BAZ-037: correlated live clarification across supported human clients.
 - [ ] BAZ-038: opt-in notifications for existing Attention sources.
 - [ ] Integrated acceptance, security, client demos, full checks and final PR evidence.
@@ -500,3 +500,411 @@ BAZ-036–038 remain incomplete. Foundation tests do not establish an entire sto
 - Reconciled story baseline, added CLI quickstart entry and a pending minor Changeset. The story
   remains `in_progress` because the release is unshipped. Next commit/push this checkpoint and check
   its CI, then implement BAZ-037 and BAZ-038; the four-story goal remains active.
+
+### BAZ-036 PR checkpoint and BAZ-037 foundation
+
+- Committed and pushed BAZ-036 as **fa126acbdd315ccb6208da0bee7b69be1bd6ab3b**. Verified the
+  remote `release/0.15.0` SHA equals this local commit. PR #44 remains draft, with BAZ-034–036
+  checked and BAZ-037–038 plus integrated final validation still outstanding.
+- CI **34140914898** completed successfully at this SHA. Local full-suite/security/build evidence
+  remains above. Automatic push review initially required proof of destination ownership; verified
+  origin and GitHub's non-fork PR head matched `rullopat/bazilion` / `release/0.15.0`, after which the
+  same push was approved. No alternate destination or approval bypass was used.
+- Refined BAZ-037 against trusted invocation, final preparation, canonical approval planning,
+  worker IPC lifetime, the single CLI readline owner and pinned Pi persistence ordering. Moved the
+  story to `in_progress` and reconciled backlog counts. Full contract decisions are in the story.
+- Added hermetic question/answer/status types and daemon content validators: bounded UTF-8 prompt,
+  choices and text, normalized duplicate-choice rejection, exact answer conversation and UUID,
+  explicit Skip, and rejection of model-supplied authority fields. Three focused contract tests
+  passed (`/tmp/baz037-input-tests.log`); root typecheck and changed-file Biome checks passed.
+- This is only the BAZ-037 input foundation. No question schema, live registry, IPC tool, approval
+  release, HTTP/client methods, Telegram correlation or user controls exist yet. Next implement
+  bounded durable records and a turn-bound live host, then wire policy-owned delivery/answers,
+  transcript-backed consumption evidence and supported clients. BAZ-038 remains unimplemented.
+
+### BAZ-037 durable state and live waiter checkpoint
+
+- Added canonical `agent_questions` storage with exact Agent/conversation/turn/tool identity,
+  bounded question and private binding data, one pending question per turn, answer request identity,
+  terminal reason and separate continuation evidence. Per-turn/home capacity rejects excess input.
+  Terminal pruning preserves pending records and canonical approval references.
+- Answer settlement is transactional: one response wins, identical UUID/content retries return
+  its receipt, conflicting/late replies return authoritative state, and deadline expiry never
+  synthesizes the recommended choice. Recording an answer leaves consumption unconfirmed.
+- Startup closes prior pending questions and marks unconfirmed continuation interrupted. Offline
+  staged restore applies the same conservative closure with `restored_backup`; accepted answer
+  data remains inspectable. Canonical schema hash is now
+  `d851dad8face6ba127c41d55bd59326c2d1e2083ee2e2502675eb29181ac2abd`.
+- Added a process-local `QuestionWaiters` registry. Durable settlement wakes its one live waiter;
+  merely observing a still-pending approval hold cannot wake it. Deadlines, cancellation, worker
+  loss, already-aborted signals and wrong-Agent wake attempts are covered. This registry does not
+  authorize answers or advertise a worker capability; those boundaries still require integration.
+- **13 foundation tests passed** (`/tmp/baz037-foundation-tests.log`), including competing replies,
+  exact retry, no premature consumption, expiry, interrupted continuation, retention and an actual
+  staged SQLite restore preserving the source. **59 backup/queue approval regressions passed**
+  (`/tmp/baz037-backup-regressions.log`), plus **9 bootstrap/identity tests**
+  (`/tmp/baz037-bootstrap-tests.log`). Root typecheck, changed-file formatting and diff checks passed.
+- BAZ-037 remains local and incomplete. Next add the live turn-bound policy host, canonical
+  question delivery/answer approval plans, narrow worker IPC/tool selection, transcript-backed
+  consumption acknowledgement, authenticated API/client operations, web/TTY/Telegram interactions
+  and explicit mobile fallback. BAZ-038 remains unimplemented; the four-story goal stays active.
+
+### BAZ-037 policy approval ownership checkpoint
+
+- Added delivery acknowledgement metadata and immutable proposed replies to question storage.
+  Proposed input is not an accepted answer. Delivery and proposal digests bind the original
+  Agent/Team/conversation/turn/tool tuple, normalized content and private daemon-owned route.
+- `authorizeQuestionBoundary` now uses the existing Agent egress/user ingress authorizer to
+  atomically capture reference-only `question_delivery` / `question_answer` holds and link their
+  canonical owner. Denial retains shared block evidence; link/storage failure rolls the hold back.
+  An already-held boundary stays owned by that approval even if policy subsequently allows it.
+- Closed approval tuple validation checks payload keys/digest, source and target, Team, channel,
+  operation, origin, attempt identity and linked approval ID. The repository requires the matching
+  canonical `delivering` claim before releasing held delivery or settling its exact answer.
+  A competing answer cannot substitute content, and accepted answers remain unconfirmed until
+  separate transcript-backed consumption evidence exists.
+- **20 question contract/storage/waiter/policy tests passed** (`/tmp/baz037-policy-tests.log`),
+  including real canonical claim/finish ownership, altered metadata, policy denial, duplicate and
+  conflicting proposals, rollback and a maximum-size escaped answer. Root typecheck and diff
+  checks passed; changed production files pass Biome. The actual backup/restore round trip passed
+  again (`/tmp/baz037-policy-backup.log`, one selected test; 41 filtered tests not run).
+- Canonical schema hash is now
+  `7c8945acd53f7e1d239e8c3438be5b0754b3e3912b32fde93d1ba3f352f13714`.
+- These helpers are not yet wired into the shared approval plan/router or live worker host.
+  Next connect the prepared-turn response route, waiter readiness/deadline revalidation and
+  canonical dispatcher; then IPC/tool selection, transcript consumption evidence and clients.
+  BAZ-037 remains incomplete and uncommitted; BAZ-038 remains unimplemented. Goal remains active.
+
+### BAZ-037 prepared route, live host and canonical dispatch checkpoint
+
+- Added explicit authenticated foreground `questionMode` to chat preparation, separate from shell
+  approval mode. The prepared immutable route excludes unsupported clients and queued HTTP;
+  Telegram derives its captured owner/topic/credential binding, including canonical queued approval
+  delivery. Missing optional Telegram response configuration does not change normal turn admission.
+- Added `QuestionService`, attached only to a nominal prepared turn and its exact active-Agent
+  controller. A second host cannot attach to that turn. Replacing an Agent registration cannot take
+  over the old question. The service owns live waiters, delivery authorization, reply admission and
+  canonical approval release; it never starts another worker. Persisted Telegram route metadata
+  excludes the original inbound text/media, avoiding a second input copy or a large-message limit.
+- Integrated typed question plans and readiness checks into the existing approval router. Its
+  canonical claim remains the only owner of held delivery/answers. Expiry, worker loss, changed
+  membership/route or changed policy prevents release; approval cannot revive a closed question.
+  An answer stays unconfirmed after settlement until the still-outstanding transcript verification.
+- **61 tests across seven files passed** (`/tmp/baz037-service-integrated.log`): real prepared-turn
+  host settlement, exact-registration rejection, immutable routes, queued HTTP exclusion, canonical
+  HTTP approval dispatch for both directions, closed-turn rejection, and existing approval/storage
+  regressions. Root typecheck, changed-file formatting and diff checks passed.
+- BAZ-037 still needs worker IPC/tool selection and actual attachment in `runAgentTurn`, durable
+  transcript consumption acknowledgement, authenticated question API/client, web/TTY controls,
+  Telegram transport/correlation and mobile fallback. Also audit eager closure on policy/route
+  changes while no response request arrives, terminal card read authorization, and delivery failure
+  outcomes across paced transport. No question tool is advertised yet. BAZ-038 remains unimplemented.
+
+### BAZ-037 worker IPC and tool selection checkpoint
+
+- Added content-only `askUser` IPC, with exact outer request keys and the adapter's real tool-call
+  ID. The daemon's bound host supplies Agent/Team/conversation/turn/route identity. Unsupported
+  calls and forged outer authority fields cannot reach a host. A worker capability flag requires
+  its matching host; restricted review rejects the host and input field.
+- Added `ask_user` to configured/protected Pi tools only when that capability is present. The
+  prompt explicitly treats answers as information, not permission, and handles typed no-answer.
+  The protected tool test verifies that adding clarification changes only this one tool.
+- `runAgentTurn` now attaches the eligible prepared route's service host. Spawn subscribes to its
+  authorized `agent_question` events, and closes/unsubscribes on IPC lifetime end; turn cleanup
+  also closes the host. The existing Telegram mirror ignores this event because the dedicated
+  question transport must own its buttons and correlation. No Telegram question transport exists yet.
+- Added a real disposable worker fixture for valid, forged and unsupported requests, streamed
+  daemon question events and lifetime cleanup. **43 tests in five files passed**
+  (`/tmp/baz037-ipc-tests.log`), including existing protected/review/real preparation regressions.
+  Root/web/mobile typechecks and diff checks passed. Native state now shows an explicit unsupported
+  question notice; its dedicated state test passes, but clickable web handoff remains outstanding.
+- Remaining before BAZ-037 acceptance: canonical transcript-backed consumption acknowledgement;
+  gate question content in tool traces, completed-frame projections and recovered history as well
+  as cards (do not let raw ask_user arguments bypass a held delivery); authenticated list/detail/
+  response and client contracts; web/TTY interaction and reload/retry; Telegram prompt/callback/
+  free-text correlation; eager invalidation while nobody responds; full mobile handoff and demos.
+  The web/CLI still do not advertise questionMode, and no user-facing question workflow is complete.
+  All BAZ-037 work remains local/uncommitted. BAZ-038 remains unimplemented; goal stays active.
+
+### BAZ-037 consumption proof checkpoint
+
+- Worker acknowledgement now waits until after Pi's synchronous transcript append. A private
+  `questionConsumed` IPC call carries only question/tool-call IDs; the live daemon host checks
+  its exact active registration, originating turn and conversation before marking consumption.
+  Failed acknowledgement leaves the accepted outcome unconfirmed.
+- The bounded canonical transcript reader verifies the saved ask_user call and exact structured
+  result. Acceptance alone, a call without its result, a substituted question/answer, wrong
+  conversation, out-of-order result and duplicate result cannot establish consumption. This
+  verifier does not itself mutate the receipt.
+- Eight targeted transcript/worker tests passed, including the acknowledgement IPC round trip
+  (`/tmp/baz037-consumption-final.log`). Two sandbox runs failed because the disposable worker
+  received empty stdin; the same tests passed outside the sandbox, then passed again after adding
+  explicit acknowledgement assertions. No external services or personal state were used.
+- Still audit turn-scoped transcript offsets for repeated provider tool IDs and real Pi append
+  ordering end to end. This checkpoint does not close consumption acceptance. All earlier
+  content-visibility, API/client, web/TTY/Telegram, lifecycle and demo work remains outstanding;
+  BAZ-037 is local and BAZ-038 remains unimplemented.
+
+### BAZ-037 turn boundary and question API checkpoint
+
+- The live host captures the canonical transcript entry boundary before worker spawn under the
+  exclusive Agent registration. Consumption verification ignores earlier turns, allowing repeated
+  provider tool-call IDs while rejecting old results as proof for the current question. A dedicated
+  regression covers both directions. Real Pi end-to-end append ordering still needs demonstration.
+- Added authenticated Agent question list/detail/answer routes under the existing application
+  middleware and typed client methods. Responses use no-store; answer bodies are bounded to 32 KiB,
+  strictly parsed, and bind the question's conversation plus immutable request UUID. List results
+  are bounded to the latest 100, optionally filtering the conversation before applying the limit.
+- Read visibility requires actual prior delivery, unchanged Agent/Team ownership, and current
+  shared policy authorization. An approval-required edge additionally needs the source's canonical
+  delivery approval with matching policy evidence. Reads do not create competing delivery attempts.
+  Held questions remain absent from list/detail; their existing approval is the pending surface.
+- Integrated route tests exercise hidden holds, approved reload, wrong-conversation rejection,
+  held answers, canonical approval dispatch, identical retry, competing answer conflict, and
+  policy-edge removal preventing a later read. Root typecheck passed; 20 tests in storage,
+  consumption and preparation/API suites passed (`/tmp/baz037-question-api-final.log`).
+- Outstanding: question content in generic tool traces/completed frames/history still needs its
+  visibility gate and retention design; these API checks do not establish that broader boundary.
+  Web/TTY controls, Telegram transport/correlation, eager lifecycle invalidation, native handoff,
+  real Pi/browser demos and final gates remain. BAZ-037 stays local/uncommitted, BAZ-038 stays
+  unimplemented, and the full four-story PR goal remains active.
+
+### BAZ-037 web card checkpoint
+
+- Added the Agent question panel to ChatPane. It polls the authorized API without cache, keeps
+  pending/unconfirmed outcomes visible, and puts settled history in a disclosure. Cards show
+  their originating conversation and distinguish acceptance, consumption and task completion.
+- Controls use labelled native radios, Other text, explicit Send and Skip, expiry information
+  and the existing Button component. Recommendations are labelled but never selected/submitted
+  automatically. Answer submission retains its exact UUID and input in per-tab session storage
+  before sending; reload can retry that same input. A held answer freezes editing and links to
+  communication approvals. Terminal polling removes saved recovery data.
+- Isolated Chromium verification bundles the actual component and serves a fake loopback API:
+  `/tmp/baz037-card-demo/entry.tsx`, `check.mjs`, `check-verified.log`. Keyboard choice and submit,
+  unavailable acknowledgement, reload, exact request replay, a single accepted/unconfirmed
+  outcome, and absence of browser runtime errors passed. Chromium transparently retried the
+  original socket-drop fixture with the same UUID; the explicit 503 fixture exercises manual
+  recovery deterministically. This fixture excludes full application CSS and real worker/auth
+  integration, so it is not the final desktop/narrow release demo. Web typecheck passed.
+- Web questionMode intentionally remains unadvertised until question content in generic tool
+  traces, completed frames and saved history obeys delivery policy. TTY/Telegram, eager lifecycle
+  closure, native handoff and final integrated demos/gates remain outstanding. All BAZ-037 work
+  stays local and the full goal remains active.
+
+### BAZ-037 CLI commands and prompt checkpoint
+
+- Added `bazilion question list <agent> [--conversation <id>]`, `show <agent> <question>`,
+  and `answer <agent> <question>` with exactly one of `--choice <1-based number>`, `--text`,
+  or `--skip`. Output is JSON. New answers print their UUID and captured conversation to stderr
+  before submission; exact retries require both `--request-id` and `--conversation` plus the
+  identical answer. A recommendation never becomes an implicit selection.
+- The real CLI/server fixture verifies hidden unreleased questions, released reads, accepted
+  retry reconciliation without a waiting worker, changed-answer conflict, and rejection of a
+  retry missing its original target. Three tests passed in the command/input suites
+  (`/tmp/baz037-cli-question-integration.log`).
+- Added a sequential question prompt and attached it to the existing TTY readline owner in
+  both one-shot and interactive chat. It renders escaped terminal text, handles explicit Other
+  and Skip, and aborts readline on question expiry. EOF or expiry submits nothing. Stream handling
+  deduplicates question IDs and reports held versus accepted outcomes; a lost acknowledgement
+  prints exact manual-retry identity. Piped input does not acquire this prompt.
+- Twenty-two prompt/input/existing shell-approval tests passed
+  (`/tmp/baz037-cli-prompt-final.log`); final root typecheck passed
+  (`/tmp/baz037-cli-final-types.log`), and Biome passed on the touched CLI files. A real PTY/provider
+  end-to-end prompt demonstration is still required. CLI questionMode remains unadvertised,
+  alongside web, until the common tool-trace/history visibility boundary is complete.
+- BAZ-037 remains local/uncommitted. Telegram, history visibility/retention, eager lifecycle
+  invalidation, native handoff, integrated demos and final gates are still required; BAZ-038
+  remains unimplemented. The objective and completion boundary are unchanged.
+
+### BAZ-037 proactive lifecycle checkpoint
+
+- Each waiting question now owns a one-second, unref'ed recheck alongside its existing deadline.
+  It revalidates exact turn ownership, Agent/Team/conversation and Telegram route availability,
+  then checks both shared policy directions without creating another authorization attempt.
+  Removed edges, changed captured approval policy, and denied/cancelled/expired/failed approval
+  holds settle as typed no-answer. Final settlement clears the recheck timer.
+- Added real prepared-turn tests using fake time for policy removal, approval denial and
+  replacement of the owning Agent registration without any later response request. Each proves
+  cancellation, interrupted continuation and zero remaining timers. Sixteen lifecycle/waiter/
+  preparation tests passed (`/tmp/baz037-lifecycle-tests.log`), and root typecheck passed
+  (`/tmp/baz037-lifecycle-types.log`).
+- Still reconcile the linked approval's own expiry/cancellation metadata with source closure;
+  dispatch already rejects a dead waiter, but a pending approval should not remain presented as
+  actionable after its question dies. Telegram transport must also bound paced delivery so an
+  unresolved send cannot retain the ask invocation beyond its waiter. History visibility/retention,
+  Telegram correlation, native handoff, full demos and gates remain required. No BAZ-037 changes
+  have been committed/pushed; BAZ-038 remains pending and the goal stays active.
+
+### BAZ-037 source-owned approval lifetime checkpoint
+
+- Question delivery and answer holds now pass the immutable question deadline through the shared
+  communication boundary. The canonical approval repository caps its usual TTL at that deadline;
+  a source cannot extend the normal lifetime. Expired holds cannot reach delivery revalidation.
+- Question closure, turn loss and startup recovery now retire linked pending question approvals
+  through canonical cancellation and audit events in the same transaction. Already delivering or
+  terminal approvals retain their existing owner/state. Repeated cleanup produces one cancellation
+  event. An injected audit failure proves question and approval state roll back together.
+- Offline staged restore mirrors this narrow pending-question cancellation and event within its
+  existing SQLite transaction, without importing daemon runtime. Restoring twice preserves one
+  event and leaves the source database's live question/approval untouched.
+- Thirty question/storage/live-service tests passed (`/tmp/baz037-approval-restore-tests.log`),
+  then the final question-approval suite including rollback passed
+  (`/tmp/baz037-approval-final-tests.log`). Thirty-two existing approval storage/planning tests
+  passed (`/tmp/baz037-generic-approval-regressions.log`). The actual fresh-home backup restore
+  passed (`/tmp/baz037-approval-backup-roundtrip.log`, one test with 41 filtered out).
+  Root typecheck passed (`/tmp/baz037-approval-restore-types.log`); diff checks passed.
+- Remaining major BAZ-037 work is shared tool-trace/history visibility with durable provenance,
+  bounded Telegram delivery and exact reply correlation, native handoff, enabling eligible clients,
+  integrated provider/PTY/browser demonstrations and full final gates. BAZ-038 is still pending.
+  No release or PR completion is claimed; these changes remain local and the goal remains active.
+
+### BAZ-037 retained-history provenance checkpoint
+
+- Added a bounded opaque HMAC receipt for exact settled question results that were actually
+  released. It binds Agent, Team, conversation, tool-call, question, delivery time, result digest
+  and any canonical delivery-approval policy evidence. Undelivered questions cannot obtain proof;
+  substituted results and changed signatures are rejected. Verification alone grants no new
+  delivery: history consumers must still check current identity and policy.
+- The daemon's private singleton `question_receipt_key` table holds one 32-byte signing key. It
+  is outside configuration/secrets environment merging, remains stable across credential changes,
+  and is included in canonical backup schema. The clean-install schema and manifest now hash to
+  `6140f67b8098d86abe3b85b9eb801ba0ef97a02ad9e6bd62aaccbfbad60b5943`.
+- The live host signs only after waiter settlement. The ask_user adapter removes the receipt from
+  provider-facing text and places it in Pi tool details. Canonical question/answer text remains
+  unchanged, preserving consumption verification. Tests prove receipt verification after receipt-
+  record pruning and offline staged restore, foreign-home rejection, and no signing-key export
+  through merged provider environments. Twenty receipt/consumption/preparation tests and root
+  typecheck passed (`/tmp/baz037-receipt-final-tests.log`, `...final-types2.log`).
+- Still wire verified provenance into every public history projection and suppress raw question
+  arguments/results in generic live/done tool output. This checkpoint creates evidence; it does
+  not yet close that visibility boundary or enable client questionMode. Telegram, native handoff,
+  integrated demos and final gates remain. BAZ-038 remains pending; BAZ-037 remains local.
+
+### BAZ-037 live and retained question visibility checkpoint
+
+- Generic Pi tool-call arguments and tool results now withhold ask_user content. The public
+  ProviderMessage projection hides unsigned question results by default, including worker done
+  frames and review excerpts. The daemon independently sanitizes worker stdout, strips question
+  images/results, rejects worker-created question cards, and omits malformed raw frame bytes from
+  diagnostics. Authorized daemon host events remain the sole card source.
+- Selected-conversation, retained-conversation and BAZ-034 source-conversation reads verify the
+  signed tool details against exact result bytes, Agent, Team, conversation and tool-call identity,
+  then check current shared policy. Approval-required reads need matching signed approval policy
+  evidence. This works after domain-record pruning; unsigned, foreign, substituted or currently
+  denied content stays hidden. Question text remains available inside the authorized saved result.
+- HTTP card emission refreshes the canonical question and rechecks current visibility immediately
+  before delivery, without creating a second approval. Thirty-one focused history/frame/worker/
+  conversation/live-preparation tests and root typecheck passed
+  (`/tmp/baz037-history-final-tests.log`, `...types-final2.log`).
+- Enabled questionMode in web chat and in CLI streams only when the shared TTY prompt exists.
+  Piped/native consumers do not acquire that capability. Focused web/shell-approval/worker checks
+  and web typecheck ran after enabling; see `/tmp/baz037-question-enable-tests.log` and
+  `/tmp/baz037-question-enable-web-types.log` for results. Real provider/PTY/browser end-to-end
+  evidence remains necessary; these tests alone do not prove Pi persisted details or the complete
+  user workflow. Telegram transport/correlation, native handoff, final gates and BAZ-038 remain.
+  All BAZ-037 work remains local and the goal is active.
+
+### BAZ-037 Telegram transport and correlation checkpoint
+
+- Installed a live-bot question transport and made it the default optional Telegram route for
+  the question service. It sends bounded plain-text prompt chunks and a final numbered choice/
+  Other/Skip keyboard. Every paced send and 429 retry rechecks live bot, owner grant, topic binding,
+  Team, question lifetime and canonical delivery authorization. Sends receive a ten-second abort
+  bound; whole delivery is bounded by question expiry and turn cancellation. Queued callbacks
+  recheck before acting, so an aborted delivery cannot send after pacing unblocks.
+- A bounded per-home live prompt cache binds the final message ID to the original question and
+  transport identity. Buttons, exact replies to that final message, and explicit `/answer <id> text`
+  route before ordinary queue admission. Other buttons only explain the reply method. Wrong owner,
+  topic, prompt, changed binding, stale/unknown IDs and malformed question callbacks are rejected.
+  Callback/message identity derives a stable response UUID; ordinary unrelated text remains normal
+  follow-up input. The service still owns policy, approvals and single settlement.
+- Thirteen transport/queue-binding checks passed, then 36 maximum-size/router regressions passed
+  (`/tmp/baz037-telegram-question-tests.log`, `...question-router-tests.log`). The final five focused
+  transport tests also prove a stale correlated reply is handled by the real router without adding
+  any queue item (`/tmp/baz037-telegram-question-final-tests.log`). Final root typecheck and diff
+  checks passed. Every send used a fake API; no Telegram messages were sent externally.
+- Still exercise actual live Telegram prepared-turn settlement and held-answer release, expiry/
+  partial-send/uncertain-send outcomes and user-facing terminal prompt feedback end to end. Native
+  handoff, real provider/PTY/browser demos, all final gates and BAZ-038 remain required. BAZ-037
+  remains local/uncommitted and the full objective remains active.
+
+### BAZ-037 native handoff and real worker checkpoint
+
+- Native question notices now carry their originating Agent and expose an accessible Open web
+  chat link. The URL helper accepts only the paired exact HTTPS origin (or loopback HTTP for
+  development), rejects credentials/path/query/fragment injection and non-UUID Agent paths, and
+  never includes a device bearer. The browser performs its own login. Native requests still do
+  not advertise questionMode. Fourteen native state/handoff tests and mobile typecheck passed
+  (`/tmp/baz037-native-handoff-tests.log`, `...handoff-types.log`).
+- Added `scripts/check-question-flow.mts`, runnable with
+  `node --import tsx scripts/check-question-flow.mts`. It creates fresh disposable state, chooses
+  ephemeral loopback ports, runs real daemon/Pi worker subprocesses against a local provider
+  simulator, and submits choice, Other text and Skip through the authenticated question API.
+  All three prove actual persisted consumption and authorized retained history. The provider
+  deliberately reuses a tool-call ID across turns; generic done output contains no question text.
+  The repository check passed (`/tmp/baz037-e2e/repository-check.log`), preserving its fixture home
+  path in output for inspection. No real provider or Telegram traffic was used.
+- This proves Pi preserves signed tool details and the daemon's consumption acknowledgement
+  ordering for real workers. It does not replace desktop/narrow browser or real PTY interaction
+  evidence, nor live Telegram prepared-turn/approval integration. Those, final documentation/
+  changeset/gates and BAZ-038 remain. A first full repository regression run has been started;
+  inspect its actual completion before claiming it passed. All BAZ-037 work remains local.
+
+- Full-run completion: `pnpm test` exited successfully with **1,347 passed and 3 skipped**
+  across 171 passed files and one skipped file (`/tmp/baz037-full-tests-first.log`). The final root
+  typecheck also passed (`/tmp/baz037-full-root-types.log`). This is the current integration
+  baseline, not final release signoff; remaining acceptance demonstrations and BAZ-038 still apply.
+
+### BAZ-037 Telegram settlement and security checkpoint
+
+- Telegram settlement now schedules a best-effort edit of the exact captured final prompt,
+  removing the inline keyboard and showing minimal accepted/skipped/no-answer status. It includes
+  no answer payload, states that consumption/task completion are separate, and rechecks current
+  policy and route after outbound pacing. Failed or revoked-route edits do not change the durable
+  outcome and never restart a question.
+- Added a real trusted Telegram prepared-turn/service/router integration with fake protected
+  preflight and transport. Repeated callbacks create one held answer, canonical approval releases
+  it to the same waiter, the queue stays empty, and the final prompt updates. Nineteen focused
+  integration/transport tests passed (`/tmp/baz037-telegram-live-approval-tests.log`); root typecheck
+  passed (`/tmp/baz037-telegram-live-types.log`). This is live continuation/approval evidence,
+  not a claim of testing a real Telegram service or real Docker execution in this fixture.
+- `pnpm security:acceptance` passed all **60 required adversarial cases**
+  (`/tmp/baz037-security-acceptance.log`). `pnpm lint` exited successfully with 55 warnings and
+  three informational diagnostics (`/tmp/baz037-lint.log`). Later settlement changes passed their
+  focused tests; final release gates must cover the eventual complete PR head.
+- Remaining BAZ-037 work includes full browser desktop/narrow and real PTY demonstrations,
+  transport fault acceptance, final documentation/changeset and commit/push/CI. BAZ-038 remains
+  pending. The full goal is active, and BAZ-037 remains local/uncommitted.
+
+### BAZ-037 browser, terminal and transport fault acceptance
+
+- Full styled browser acceptance passed against a disposable daemon and real Pi workers with a
+  loopback model simulator: desktop 1365px, reload while pending, 390px native-radio keyboard
+  selection and keyboard submission, no horizontal overflow, persisted consumption, and no page
+  errors. Inspected desktop and narrow screenshots for readable labels, visible focus, explicit
+  selection and usable controls. Evidence: `/tmp/baz037-browser/check-ready.log`,
+  `desktop-pending.png`, `narrow-selected.png`, and `narrow-consumed.png` in that directory.
+- An actual PTY CLI one-shot chat selected Other, submitted free text, displayed the accepted
+  acknowledgement, exited successfully, and the daemon confirmed consumed continuation.
+  Repeatable local harness and transcript: `/tmp/baz037-browser/pty-check.py` and
+  `/tmp/baz037-browser/pty-transcript.log`. Credentials were disposable and were not printed.
+- Nine Telegram transport tests passed (`/tmp/baz037-telegram-fault-tests.log`), including partial
+  delivery/socket timeout without automatic resend or answer binding, destination revocation
+  before a 429 retry, and expiry while queued with no later send. All use fake transport APIs.
+- Added `docs/questions.md` for operator controls, exact retries, lifecycle meaning and the checked-in
+  disposable real-worker demo. BAZ-037 still needs final criterion reconciliation, changeset,
+  integrated gates and commit/push/CI. BAZ-038 remains pending; the full goal stays active.
+
+### BAZ-037 final local checkpoint
+
+- Final full suite passed: **1,352 passed, 3 skipped**, 171 passing files
+  (`/tmp/baz037-full-tests-final.log`). Root/web/mobile typechecks passed
+  (`/tmp/baz037-final-{root,web,mobile}-types.log`). Lint passed with 55 warnings and three
+  informational diagnostics (`/tmp/baz037-final-lint.log`).
+- All **60 required security acceptance cases** passed (`/tmp/baz037-final-security.log`),
+  including its production web build. Package/release builds passed serially afterward
+  (`/tmp/baz037-final-build.log`). Fresh disposable browser/PTY home inspection confirmed
+  `schema_migrations` contains only `0001_init`. Diff whitespace checks passed.
+- Added a pending minor Changeset for the fixed public package group and reconciled the story's
+  acceptance evidence. BAZ-037 is ready for commit/push and CI; it remains unshipped.
+  BAZ-038 and final integrated PR acceptance remain required by the active goal.

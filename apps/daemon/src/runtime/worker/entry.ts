@@ -256,6 +256,9 @@ async function createSessionForInput(
       mcpHost,
       mcpTools: input.mcpTools,
       bashApprovalHost,
+      askUser: input.questionEnabled
+        ? (toolCallId, question) => ipcCall('askUser', { toolCallId, question })
+        : undefined,
       fileSink: async (file, source) => {
         const result = await ipcCall<import('@bazilion/api-types').ResultReference>(
           'publishResult',
@@ -306,6 +309,9 @@ async function createSessionForInput(
     messagingHost,
     userMdHost,
     bashApprovalHost,
+    askUser: input.questionEnabled
+      ? (toolCallId, question) => ipcCall('askUser', { toolCallId, question })
+      : undefined,
     refreshApiKey,
     fileSink: async (file, source) => {
       const result = await ipcCall<import('@bazilion/api-types').ResultReference>('publishResult', {
@@ -350,7 +356,44 @@ async function main(): Promise<void> {
   const { handle, reviewState } = await createSessionForInput(input, ipcCall)
   session = handle.session
 
+  const consumptionAcks = new Set<Promise<void>>()
   const unsubscribe = session.subscribe((piEvent) => {
+    if (
+      input.kind !== 'restricted_review' &&
+      input.questionEnabled &&
+      piEvent.type === 'message_end' &&
+      piEvent.message.role === 'toolResult' &&
+      piEvent.message.toolName === 'ask_user' &&
+      !piEvent.message.isError
+    ) {
+      const message = piEvent.message
+      const content = message.content[0]
+      if (content?.type === 'text') {
+        try {
+          const result = JSON.parse(content.text) as { questionId?: unknown }
+          if (typeof result.questionId === 'string') {
+            // Pi notifies subscribers before synchronous session append. Wait for that
+            // append, then let the daemon verify the actual canonical bytes.
+            const ack = new Promise<void>((resolve) => setImmediate(resolve))
+              .then(() =>
+                ipcCall<void>('questionConsumed', {
+                  questionId: result.questionId,
+                  toolCallId: message.toolCallId,
+                }),
+              )
+              .catch(() => {
+                /* Missing evidence remains unconfirmed; never replay a tool. */
+              })
+              .finally(() => {
+                consumptionAcks.delete(ack)
+              })
+            consumptionAcks.add(ack)
+          }
+        } catch {
+          /* Invalid result cannot become consumption evidence. */
+        }
+      }
+    }
     if (
       reviewState &&
       piEvent.type === 'tool_execution_end' &&
@@ -382,6 +425,7 @@ async function main(): Promise<void> {
       promptImages.length > 0 ? { images: promptImages } : undefined,
     )
     await session.agent.waitForIdle()
+    await Promise.all(consumptionAcks)
 
     if (reviewState) {
       if (reviewState.validationFailures() >= 2) {

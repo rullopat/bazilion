@@ -388,6 +388,9 @@ function renderFrame(frame: ChatFrame, mode: TelegramMirrorMode): string | null 
       // Files are delivered as documents (handled in mirrorAgentTurnFrame), not
       // as a text line.
       return null
+    case 'agent_question':
+      // The question transport owns native buttons, exact correlation and policy release.
+      return null
     case 'command_approval':
       // Telegram turns are non-interactive and auto-deny. The following bash
       // tool error is sufficient; never mirror an unusable approval prompt.

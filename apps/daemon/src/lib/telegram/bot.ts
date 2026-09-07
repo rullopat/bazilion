@@ -23,6 +23,7 @@ import { type ActivationApi, runActivation } from './activation.ts'
 import { type DirectoryApi, installLiveDepsResolver } from './directory.ts'
 import { installMirrorDepsResolver, type MirrorApi } from './mirror.ts'
 import { installStickerApiResolver, type StickerApi } from './profile-emojis.ts'
+import { installQuestionTransport } from './question-transport.ts'
 import { installQueueNoticeTransport } from './queue-notice.ts'
 import { installReactionsDepsResolver, type ReactionsApi } from './reactions.ts'
 import { type ReplyApi, routeUpdate } from './routing.ts'
@@ -210,6 +211,30 @@ async function startInternal(
     api: handle.bot.api as unknown as MirrorApi,
     chatId: handle.chatId,
   }))
+  installQuestionTransport(() =>
+    handle.stopRequested || _handle !== handle
+      ? null
+      : {
+          db,
+          authToken,
+          botToken,
+          edit: (chatId, messageId, text, signal) =>
+            handle.bot.api.editMessageText(
+              chatId,
+              messageId,
+              text,
+              { reply_markup: { inline_keyboard: [] } },
+              signal as unknown as Parameters<typeof handle.bot.api.editMessageText>[4],
+            ),
+          send: (chatId, topicId, text, keyboard, signal) =>
+            handle.bot.api.sendMessage(
+              chatId,
+              text,
+              { message_thread_id: topicId, reply_markup: keyboard },
+              signal as unknown as Parameters<typeof handle.bot.api.sendMessage>[3],
+            ),
+        },
+  )
   installQueueNoticeTransport(() =>
     handle.stopRequested || _handle !== handle
       ? null

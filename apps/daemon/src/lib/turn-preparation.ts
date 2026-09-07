@@ -20,6 +20,7 @@ import {
   type PreparedProtectedExecution,
   prepareProtectedExecution,
 } from './protected-execution.ts'
+import { type QuestionResponseRoute, resolveQuestionRoute } from './question-route.ts'
 import { requireTelegramQueuedTurn } from './telegram/queue-binding.ts'
 import {
   assertTrustedTurnInvocation,
@@ -36,6 +37,8 @@ const preparedTurns = new WeakSet<object>()
 const consumedTurns = new WeakSet<object>()
 
 export interface PrepareAgentTurnInput {
+  /** Authenticated foreground client response support; never inherited by queued HTTP work. */
+  questionMode?: 'web' | 'tty'
   /** Daemon queue dispatcher reference, verified against the complete invocation below. */
   queuedItemId?: string
   expectedSelection?: import('@bazilion/api-types').ConversationSelection
@@ -49,6 +52,7 @@ export interface PrepareAgentTurnInput {
  * Only `prepareAgentTurn` can construct this nominal type.
  */
 export interface PreparedAgentTurn {
+  readonly questionRoute?: QuestionResponseRoute
   readonly [preparedTurnBrand]: true
   readonly agent: ResolvedAgent
   readonly conversation: ConversationTarget
@@ -162,6 +166,13 @@ export async function prepareAgentTurn(input: PrepareAgentTurnInput): Promise<Pr
     }
 
     const surface = executionSurfaceForInvocation(input.invocation)
+    const questionRoute = resolveQuestionRoute(
+      db,
+      authToken,
+      input.invocation,
+      input.questionMode,
+      input.queuedItemId,
+    )
     const images = attachments.filter((attachment) => attachment.mimeType.startsWith('image/'))
     const documents = attachments.filter((attachment) => !attachment.mimeType.startsWith('image/'))
     if (input.protectedExecution) {
@@ -199,6 +210,7 @@ export async function prepareAgentTurn(input: PrepareAgentTurnInput): Promise<Pr
         : fileNote
       : inputMessage
     const prepared = {
+      ...(questionRoute ? { questionRoute } : {}),
       [preparedTurnBrand]: true as const,
       agent,
       conversation,

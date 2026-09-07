@@ -153,11 +153,16 @@ export function request(
   authorization: CommunicationAuthorizationResult,
   payloadKind: string,
   payload: unknown,
-  options: { requester?: string; ttlMs?: number; now?: number } = {},
+  options: { requester?: string; ttlMs?: number; now?: number; expiresAt?: number } = {},
 ): CommunicationApproval {
   if (authorization.decision !== 'approval_required')
     throw new Error('approval_request_invalid: authorization does not require approval')
   const now = options.now ?? Date.now()
+  if (
+    options.expiresAt !== undefined &&
+    (!Number.isSafeInteger(options.expiresAt) || options.expiresAt < 0)
+  )
+    throw new Error('approval_request_invalid: invalid source deadline')
   const digest = fingerprint(input, operation, payloadKind, payload)
   try {
     return db.raw.transaction(() => {
@@ -170,7 +175,10 @@ export function request(
       }
       const id = randomUUID()
       const [sourceGroup, targetGroup] = teams(db, input)
-      const expiresAt = now + (options.ttlMs ?? DEFAULT_TTL_MS)
+      const expiresAt = Math.min(
+        now + (options.ttlMs ?? DEFAULT_TTL_MS),
+        options.expiresAt ?? Infinity,
+      )
       db.raw.run(
         `INSERT INTO communication_approvals
          (id, attempt_kind, attempt_id, fingerprint, operation, source_kind, source_id,

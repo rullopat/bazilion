@@ -1,4 +1,5 @@
 import { readCanonicalSessionFile } from '../../lib/result-source.ts'
+import type { AskUser } from '../tools/ask-user.ts'
 // Bazilion → pi-coding-agent session bridge.
 //
 // `createBazilionSession` returns a fully-wired `AgentSession` suitable for
@@ -127,6 +128,7 @@ export interface CreateBazilionSessionOptions {
   /** MCP tools discovered daemon-side, exposed as proxy tools alongside `mcpHost`. */
   mcpTools?: InjectedMcpTool[]
   /** If provided, enables the `deliver_file` tool — the agent's outbound file channel. */
+  askUser?: AskUser
   fileSink?: import('../tools/deliver-file.ts').FileSink
   /** Turn-scoped bridge for dangerous bash commands. Omit to fail closed. */
   bashApprovalHost?: BashApprovalHost
@@ -171,6 +173,7 @@ export interface CreateProtectedBazilionSessionOptions {
   memory: MemoryBackend
   messagingHost: MessagingHost
   userMdHost: UserMdHost
+  askUser?: AskUser
   fileSink: import('../tools/deliver-file.ts').FileSink
   bashApprovalHost: BashApprovalHost
   refreshApiKey: (providerName: string) => Promise<string>
@@ -210,6 +213,7 @@ export async function createBazilionSession(
     mcpHost,
     mcpTools,
     fileSink,
+    askUser,
     bashApprovalHost,
     refreshApiKey,
     restricted,
@@ -327,6 +331,7 @@ export async function createBazilionSession(
         mcpHost,
         mcpTools,
         fileSink,
+        askUser,
         sessionId: sessionManager.getSessionId(),
         env,
       })
@@ -444,6 +449,7 @@ export async function createProtectedBazilionSession(
     messagingHost: opts.messagingHost,
     userMdHost: opts.userMdHost,
     fileSink: opts.fileSink,
+    askUser: opts.askUser,
     sessionId: sessionManager.getSessionId(),
   })
   if (!shellTools.customBash) throw new Error('protected Docker bash tool is unavailable')

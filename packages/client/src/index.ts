@@ -1,4 +1,8 @@
 import type {
+  AgentQuestion,
+  AgentQuestionListResponse,
+  AgentQuestionResponse,
+  AgentQuestionResponseInput,
   ApiError,
   Attachment,
   EditQueuedInput,
@@ -130,6 +134,19 @@ export function createClient(cfg: ClientConfig) {
   }
 
   return {
+    questions: (agentId: string) => {
+      const base = `/api/agents/${encodeURIComponent(agentId)}/questions`
+      return {
+        list: (conversationId?: string) =>
+          request<AgentQuestionListResponse>(
+            'GET',
+            conversationId ? `${base}?conversationId=${encodeURIComponent(conversationId)}` : base,
+          ),
+        get: (id: string) => request<AgentQuestion>('GET', `${base}/${encodeURIComponent(id)}`),
+        answer: (id: string, input: AgentQuestionResponseInput) =>
+          request<AgentQuestionResponse>('POST', `${base}/${encodeURIComponent(id)}/answer`, input),
+      }
+    },
     queue: (agentId: string) => {
       const base = `/api/agents/${encodeURIComponent(agentId)}/queue`
       const item = (id: string) => `${base}/${encodeURIComponent(id)}`

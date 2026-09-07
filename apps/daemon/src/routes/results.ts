@@ -3,6 +3,7 @@ import { Hono } from 'hono'
 import { resolveAgent } from '../core/agent/resolve.ts'
 import * as results from '../core/repos/results.ts'
 import { getCtx } from '../lib/ctx.ts'
+import { questionHistoryVisibility } from '../lib/question-history.ts'
 import { reconcilePrivateResults } from '../lib/result-retention.ts'
 import { readResultSession } from '../lib/result-source.ts'
 import { piMessagesToProviderView } from '../runtime/pi/events.ts'
@@ -90,6 +91,7 @@ resultsRouter.get('/:id/source', (c) => {
     )
     const messages = piMessagesToProviderView(
       buildSessionContext(entries.filter((entry) => entry.type !== 'session')).messages,
+      questionHistoryVisibility(db, result.agentId, result.sessionId),
     )
     return c.json({
       available: true,

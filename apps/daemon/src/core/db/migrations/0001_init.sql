@@ -624,3 +624,40 @@ CREATE TABLE user_queue_attachments (
   bytes BLOB NOT NULL,
   UNIQUE(item_id, ordinal)
 );
+
+-- Narrow live clarification receipts; continuation ownership remains process-local.
+CREATE TABLE IF NOT EXISTS agent_questions (
+  id TEXT PRIMARY KEY,
+  agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+  team_id TEXT NOT NULL,
+  conversation_id TEXT NOT NULL,
+  turn_id TEXT NOT NULL,
+  tool_call_id TEXT NOT NULL,
+  question_json TEXT NOT NULL,
+  delivered_at INTEGER,
+  binding_json TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('pending','answered','skipped','expired','cancelled')),
+  revision INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL,
+  settled_at INTEGER,
+  answer_json TEXT,
+  response_request_id TEXT,
+  no_answer_reason TEXT,
+  continuation TEXT NOT NULL CHECK (continuation IN ('waiting','unconfirmed','consumed','interrupted')),
+  consumed_at INTEGER,
+  delivery_approval_id TEXT REFERENCES communication_approvals(id) ON DELETE SET NULL,
+  answer_approval_id TEXT REFERENCES communication_approvals(id) ON DELETE SET NULL,
+  proposal_json TEXT,
+  FOREIGN KEY (agent_id, conversation_id) REFERENCES agent_conversations(agent_id, id) ON DELETE CASCADE,
+  UNIQUE (turn_id, tool_call_id)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS agent_questions_one_pending ON agent_questions(turn_id) WHERE status = 'pending';
+CREATE INDEX IF NOT EXISTS agent_questions_agent_time ON agent_questions(agent_id, created_at, id);
+
+-- Daemon-only provenance key. Never merged into provider/worker environments.
+-- Stable across bootstrap credential rotation and included in canonical backups.
+CREATE TABLE question_receipt_key (
+  singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+  key BLOB NOT NULL CHECK (length(key) = 32)
+);
