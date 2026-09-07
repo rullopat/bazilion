@@ -2,6 +2,7 @@ import { defineCommand, runCommand, showUsage } from 'citty'
 import pkg from '../package.json' with { type: 'json' }
 import { ApiClientError } from './client.ts'
 import { conversationCommand } from './commands/conversation.ts'
+import { notificationCommand } from './commands/notification.ts'
 import { questionCommand } from './commands/question.ts'
 import { queueCommand } from './commands/queue.ts'
 
@@ -53,6 +54,7 @@ const main = defineCommand({
     conversation: conversationCommand,
     queue: queueCommand,
     question: questionCommand,
+    notification: notificationCommand,
     skill: skillCommand,
     memory: memoryCommand,
     mcp: mcpCommand,

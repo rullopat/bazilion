@@ -661,3 +661,39 @@ CREATE TABLE question_receipt_key (
   singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
   key BLOB NOT NULL CHECK (length(key) = 32)
 );
+
+-- Operator notification metadata only. Source content remains in its canonical tables.
+CREATE TABLE notification_settings (
+  singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+  revision INTEGER NOT NULL DEFAULT 0,
+  enabled INTEGER NOT NULL DEFAULT 0 CHECK (enabled IN (0, 1)),
+  restore_paused INTEGER NOT NULL DEFAULT 0 CHECK (restore_paused IN (0, 1)),
+  restore_history_uncertain INTEGER NOT NULL DEFAULT 0 CHECK (restore_history_uncertain IN (0, 1)),
+  kinds_json TEXT NOT NULL,
+  kind_cutoffs_json TEXT NOT NULL DEFAULT '{}',
+  timezone TEXT NOT NULL DEFAULT 'UTC',
+  quiet_json TEXT,
+  destination_json TEXT,
+  eligible_after INTEGER,
+  updated_at INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE notification_receipts (
+  id TEXT PRIMARY KEY,
+  source_kind TEXT NOT NULL CHECK (source_kind IN ('communication_approval','lesson_proposal','review_failure','trigger_failure','agent_loop_break')),
+  source_id TEXT NOT NULL,
+  agent_id TEXT,
+  team_id TEXT,
+  destination_id TEXT NOT NULL,
+  destination_json TEXT NOT NULL CHECK (length(destination_json) <= 4096),
+  state TEXT NOT NULL CHECK (state IN ('deferred','sending','delivered','failed','uncertain','suppressed')),
+  attempts INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  attempted_at INTEGER,
+  delivered_at INTEGER,
+  telegram_message_id INTEGER,
+  diagnostic TEXT CHECK (diagnostic IS NULL OR length(diagnostic) <= 160),
+  UNIQUE (source_kind, source_id, destination_id)
+);
+CREATE INDEX notification_receipts_state ON notification_receipts(state, created_at, id);
+CREATE INDEX notification_receipts_time ON notification_receipts(created_at, id);

@@ -22,6 +22,10 @@ import { openConfig, openSecrets, type Paths, resolvePaths } from '../../core/in
 import { type ActivationApi, runActivation } from './activation.ts'
 import { type DirectoryApi, installLiveDepsResolver } from './directory.ts'
 import { installMirrorDepsResolver, type MirrorApi } from './mirror.ts'
+import {
+  installNotificationTransport,
+  notificationDestinationAllowed,
+} from './notification-transport.ts'
 import { installStickerApiResolver, type StickerApi } from './profile-emojis.ts'
 import { installQuestionTransport } from './question-transport.ts'
 import { installQueueNoticeTransport } from './queue-notice.ts'
@@ -231,6 +235,45 @@ async function startInternal(
               chatId,
               text,
               { message_thread_id: topicId, reply_markup: keyboard },
+              signal as unknown as Parameters<typeof handle.bot.api.sendMessage>[3],
+            ),
+        },
+  )
+  installNotificationTransport(() =>
+    handle.stopRequested || _handle !== handle
+      ? null
+      : {
+          db,
+          authToken,
+          botToken,
+          async verify(chatId, ownerId, signal) {
+            const [chat, owner, botMember] = await Promise.all([
+              handle.bot.api.getChat(
+                chatId,
+                signal as unknown as Parameters<typeof handle.bot.api.getChat>[1],
+              ),
+              handle.bot.api.getChatMember(
+                chatId,
+                ownerId,
+                signal as unknown as Parameters<typeof handle.bot.api.getChatMember>[2],
+              ),
+              handle.bot.api.getChatMember(
+                chatId,
+                Number(botToken.split(':')[0]),
+                signal as unknown as Parameters<typeof handle.bot.api.getChatMember>[2],
+              ),
+            ])
+            return notificationDestinationAllowed(chat, owner, botMember)
+          },
+          send: (chatId, topicId, text, signal) =>
+            handle.bot.api.sendMessage(
+              chatId,
+              text,
+              {
+                message_thread_id: topicId,
+                parse_mode: 'HTML',
+                link_preview_options: { is_disabled: true },
+              },
               signal as unknown as Parameters<typeof handle.bot.api.sendMessage>[3],
             ),
         },

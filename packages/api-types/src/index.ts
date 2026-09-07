@@ -1,6 +1,20 @@
 import type { ConversationSelection } from './conversations.ts'
 
 export type {
+  NotificationDeliveryState,
+  NotificationDestination,
+  NotificationPreview,
+  NotificationQuietHours,
+  NotificationReadiness,
+  NotificationReceipt,
+  NotificationReceiptList,
+  NotificationRetryInput,
+  NotificationSettings,
+  NotificationSettingsInput,
+  NotificationSettingsResponse,
+} from './notifications.ts'
+
+export type {
   AgentQuestion,
   AgentQuestionAnswer,
   AgentQuestionContinuation,

@@ -5,8 +5,16 @@ import type {
   AgentQuestionResponseInput,
   ApiError,
   Attachment,
+  AttentionKind,
   EditQueuedInput,
   EnqueueUserInput,
+  NotificationPreview,
+  NotificationReceipt,
+  NotificationReceiptList,
+  NotificationRetryInput,
+  NotificationSettings,
+  NotificationSettingsInput,
+  NotificationSettingsResponse,
   UserQueueControl,
   UserQueueItem,
   UserQueueListResponse,
@@ -134,6 +142,30 @@ export function createClient(cfg: ClientConfig) {
   }
 
   return {
+    notifications: {
+      settings: () => request<NotificationSettingsResponse>('GET', '/api/notifications'),
+      configure: (input: NotificationSettingsInput) =>
+        request<NotificationSettings>('PUT', '/api/notifications', input),
+      preview: (kinds: AttentionKind[]) =>
+        request<NotificationPreview>('POST', '/api/notifications/preview', { kinds }),
+      list: (options: { cursor?: string; limit?: number } = {}) => {
+        const params = new URLSearchParams()
+        if (options.cursor) params.set('cursor', options.cursor)
+        if (options.limit !== undefined) params.set('limit', String(options.limit))
+        return request<NotificationReceiptList>('GET', `/api/notifications/receipts?${params}`)
+      },
+      get: (id: string) =>
+        request<NotificationReceipt>(
+          'GET',
+          `/api/notifications/receipts/${encodeURIComponent(id)}`,
+        ),
+      retry: (id: string, input: NotificationRetryInput) =>
+        request<NotificationReceipt>(
+          'POST',
+          `/api/notifications/receipts/${encodeURIComponent(id)}/retry`,
+          input,
+        ),
+    },
     questions: (agentId: string) => {
       const base = `/api/agents/${encodeURIComponent(agentId)}/questions`
       return {

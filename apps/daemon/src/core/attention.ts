@@ -56,7 +56,7 @@ const sources: Source[] = [
           BaseSourceRow,
           []
         >(`SELECT ca.id sourceId, ca.created_at occurredAt, ca.updated_at updatedAt,
-          COALESCE(ca.target_id, ca.source_id) agentId, a.name agentName,
+          COALESCE(NULLIF(ca.target_id,''), NULLIF(ca.source_id,'')) agentId, a.name agentName,
           COALESCE(ca.target_team_id, ca.source_team_id) teamId, t.name teamName,
           NULL acknowledged_at
           FROM communication_approvals ca

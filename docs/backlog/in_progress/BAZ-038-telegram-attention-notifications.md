@@ -1,9 +1,10 @@
 ---
 id: BAZ-038
 title: Opt-in Telegram delivery of existing Attention items
-status: draft
+status: in_progress
 size: M
 created: 2026-09-07
+refined: 2026-09-07
 priority: medium
 note: Independent candidate alongside BAZ-034 through BAZ-037; consumes the existing Attention projection.
 ---
@@ -141,7 +142,7 @@ multi-user notification preferences, and automatic replay of interrupted Agent w
   test missing private origin and inaccessible source destinations.
 - Check web/CLI settings parity and delivery status, including failed and uncertain outcomes.
 
-## Open Questions
+## Refinement inputs (resolved below)
 
 - **Destination and authorization:** use the existing service topic for operator notices, or each
   Agent topic? Recommended: one service topic, with explicit mapping to the shared authorization
@@ -156,3 +157,84 @@ multi-user notification preferences, and automatic replay of interrupted Agent w
 - **Restore reconciliation:** define the re-enable choice when Telegram has newer history than
   the restored receipts. Recommended: retain a restore pause and offer an explicit cutoff for
   future notices; including old open items requires a preview and a possible-duplicate explanation.
+
+## Refined implementation contract (2026-09-07)
+
+- **Destination:** one explicit selection of the existing configured private supergroup's service
+  topic. Capture chat/topic, owner grant and bot credential identity; never store the bot token in
+  a receipt. Enablement checks the live transport and existing private-group preflight. Revalidate
+  captured identity before dispatch and after pacing; configuration changes invalidate pending
+  notices instead of moving them to a new destination. No second bot or recipient registry.
+- **Authorization:** attribute each source to its canonical current Agent and Team. Missing or
+  changed relations suppress the notice. With Team Policy enforcement on, evaluate the existing
+  shared Agent-to-user egress path and send only on `allow`. Both `deny` and `approval_required`
+  suppress; notification dispatch never captures an approval. This avoids approval-notification
+  recursion while respecting Agent egress. Enforcement-off retains identity/destination checks.
+  Do not include source payloads or use an operator label to publish a denied Agent reply.
+- **Selection:** default disabled, all five existing kinds selected, no quiet window, UTC timezone.
+  Enabling or re-enabling normally sets a fresh future-eligibility cutoff. Including existing open
+  items requires an explicit count preview and confirmation bound to that preview. New kinds added
+  later must not silently replay old history. Use canonical source keys, and retain deduplication
+  keys even if a source is acknowledged then reopened. Source eligibility is rechecked at send time.
+- **Quiet hours:** local `HH:mm` start/end and an IANA timezone; equal endpoints are invalid rather
+  than ambiguous all-day silence. The interval includes start and excludes end. Overnight windows
+  are supported. Compare each actual instant's local clock, so both repeated DST hours are quiet
+  and nonexistent clock minutes create no fabricated delivery time. Re-evaluate on each tick.
+- **Receipts:** persist source kind/id, captured Agent/Team, destination identity, state, attempt
+  count, timestamps, bounded fixed diagnostics and known Telegram message ID only. Internal sending
+  claims become uncertain on restart; confirmed delivery survives restart without resend. Expose
+  deferred/delivered/failed/uncertain/suppressed states and explicit retry for failed/uncertain sends.
+  A retry warns of possible duplication and revalidates current source and original destination.
+- **Bounds:** at most 100,000 retained source/destination keys per home; fail admission visibly at
+  capacity rather than evicting deduplication keys for still-existing sources. Read lists in bounded
+  pages. Admit/process bounded batches and serialize actual sends through the existing per-chat
+  pacing queue. One known 429 retry is allowed; ambiguous send failures are never auto-retried.
+  Use a bounded API timeout. Notification failures remain metadata in settings, not Attention items.
+- **Restore:** staged backup recovery pauses notifications independently of ordinary restart,
+  preserving receipts and making any in-flight send uncertain. Explicit re-enable defaults to a
+  current cutoff and suppresses saved pending work. Including open items uses the same preview plus
+  a possible-duplicate explanation because external Telegram history may be newer than the backup.
+- **Messages:** fixed kind/action labels, authorized bounded display names and source IDs, with
+  escaped HTML and no raw diagnostic or content. Link only through the existing approved private
+  HTTPS gateway origin to canonical resolution paths; otherwise give web navigation instructions.
+  No inline decisions, credentials, local paths or localhost links. Opening a notice resolves nothing.
+- **Mirror overlap:** current turn mirrors do not persist reliable Attention source/message receipt
+  correlation. Preserve both surfaces and document possible intentional duplicate failure notices;
+  do not infer identity from matching text or suppress unrelated events.
+- **Management:** one daemon contract for authenticated web and CLI settings, destination readiness,
+  open-count preview, receipts and explicit retry. The daemon owns polling and all mutation; native
+  notification controls and a new Attention source remain out of scope.
+
+This contract is the implementation target, not completion evidence. All nine acceptance criteria
+and the original test scope above remain required.
+
+### Eligibility and client acceptance refinement
+
+Each selected kind retains its own eligibility cutoff. Adding a kind starts only that kind at the
+current cutoff; unchanged kinds retain admitted pending notices and missed eligible sources.
+Removing a kind suppresses its pending notices, and re-adding does not replay them automatically.
+Already-open items at the exact cutoff instant are retained as excluded baseline receipts, allowing
+a distinct new source in the same millisecond to be admitted safely. An explicit preview can include
+eligible baseline or configuration-suppressed records; confirmed receipts retain their deduplication.
+
+Web and actual CLI demonstrations now pass against a disposable daemon and fake Telegram transport.
+See [the progress log](../BAZ-035-038-progress.md) for exact evidence and remaining acceptance work,
+and [the operator guide](../../attention-notifications.md) for controls and recovery semantics.
+The story is still unshipped; local implementation does not yet prove final integrated acceptance.
+
+## Acceptance evidence for PR #44
+
+| Criterion | Evidence |
+| --- | --- |
+| 1. Disabled/invalid pairing sends nothing | Default-off authenticated route checks, transport owner/credential revocation tests, and browser future-only enablement. Live destination validation rejects public aliases, non-forum groups, absent/restricted non-member owners and insufficient bot permissions. |
+| 2. One confirmed notification without changing its source | `notification-source-acceptance.test.ts` exercises all five canonical kinds, repeated ticks and unchanged Attention projection/approval count. Receipt tests preserve delivery through restart and deduplicate stable source/destination keys. |
+| 3. Quiet hours and resolved sources | Timezone tests cover overnight windows and both DST transitions. Dispatcher tests defer and suppress a source resolved during quiet hours. Per-kind tests preserve unchanged pending notices through settings edits. |
+| 4. Current destination and policy after pacing | Dispatcher tests change source, policy and destination behind a blocked outbound queue. Control/transport tests revoke settings, credentials and pairing during validation; current Agent/Team attribution is checked before every send. |
+| 5. Confirmation versus uncertainty | Fake API tests distinguish known rejection, bounded 429 retry, ambiguous timeout and shutdown after possible send. Browser keyboard retry and receipt persistence demonstrate explicit duplicate acknowledgement. |
+| 6. Metadata and links only | All five template tests omit source payloads/diagnostics and source-provided URLs, escape display names and use canonical authenticated gateway paths. Missing, invalid, credential-bearing and loopback origins produce navigation guidance. |
+| 7. No recursive effects | Five-source dispatch leaves the source projection unchanged. Policy evaluation is read-only and tests assert no additional approval. Failures are terminal or deferred receipt/settings metadata; no notification source is added to Attention. |
+| 8. Web/CLI parity | Shared authenticated settings/preview/receipt/retry API and typed client. Styled desktop/390px browser and actual CLI demonstrations cover settings, quiet hours, inclusion preview, paginated receipts, reload and explicit retry. |
+| 9. Restore reconciliation | A snapshot taken before confirmed sends is restored: no automatic replay, fresh-cutoff re-enable still sends nothing old, and explicit preview includes a possible-duplicate warning before old-item inclusion. The historical uncertainty flag persists after re-enable. |
+
+The repeatable fixture is `scripts/demo-notifications.mts`; all external Telegram responses are
+simulated. Final integration logs, commit/push and CI status remain in the milestone progress log.

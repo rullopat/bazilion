@@ -9,7 +9,7 @@ commits/push and passing final CI. Merge, versioning, publication and deployment
 - [ ] Refine shared contracts and each story's open questions against current code.
 - [x] BAZ-035: retained conversations and safe explicit targeting (0af1061, CI passed).
 - [x] BAZ-036: durable follow-ups across web/CLI/Telegram (fa126ac, CI passed).
-- [ ] BAZ-037: correlated live clarification across supported human clients.
+- [x] BAZ-037: correlated live clarification across supported human clients (6e37e77, CI passed).
 - [ ] BAZ-038: opt-in notifications for existing Attention sources.
 - [ ] Integrated acceptance, security, client demos, full checks and final PR evidence.
 
@@ -908,3 +908,196 @@ BAZ-036–038 remain incomplete. Foundation tests do not establish an entire sto
 - Added a pending minor Changeset for the fixed public package group and reconciled the story's
   acceptance evidence. BAZ-037 is ready for commit/push and CI; it remains unshipped.
   BAZ-038 and final integrated PR acceptance remain required by the active goal.
+
+### BAZ-037 pushed checkpoint and BAZ-038 foundation
+
+- BAZ-037 committed/pushed as `6e37e77f4a9340253ef911b2803a9e33277e52f7`; local and remote
+  SHA matched and the worktree was clean before BAZ-038 started. PR #44 remains draft and its
+  body now includes BAZ-037. CI run **34149793100** completed successfully, including typecheck,
+  tests, build and publishable tarball verification. BAZ-037 remains unshipped.
+- Read the complete BAZ-038 story and existing Attention projection, shared authorizer, Telegram
+  activation/preflight, destination binding and mirrors. Moved BAZ-038 to in_progress and resolved
+  destination, approval recursion, first-enable/re-enable cutoff, quiet hours, receipt bounds,
+  ambiguous-send retry, restore pause and mirror-overlap decisions in its refined contract.
+- Added hermetic notification settings/preview/receipt/retry types; actual-instant IANA quiet-hour
+  evaluation; read-only Agent-to-user policy authorization that suppresses approval-required paths
+  without creating approvals; and escaped, deterministic metadata-only templates with canonical
+  private-gateway links or non-link guidance. No source diagnostics or source-supplied URLs enter
+  the message. These helpers are not yet wired into a live dispatcher.
+- Seven focused tests passed (`/tmp/baz038-foundation-tests.log`): overnight and DST quiet windows,
+  invalid zones, policy/membership suppression, no approval recursion, all five templates and
+  credential/loopback-link rejection. Root typecheck passed (`/tmp/baz038-foundation-types.log`),
+  focused Biome checks and diff checks passed.
+- Remaining BAZ-038 work: durable bounded storage and deduplication; live destination readiness;
+  preview-bound management, authenticated API/client/CLI/web; paced dispatch and uncertainty;
+  staged restore pause; full acceptance tests and desktop/narrow demos; documentation/changeset;
+  integration gates, commit/push and final PR CI. The full goal remains active.
+
+### BAZ-038 durable settings, receipt ownership and recovery
+
+- Added canonical `notification_settings` and `notification_receipts` tables and bounded indexes to
+  `0001_init.sql`; updated backup object validation and schema hash to
+  `623be2fe7e0427ada3c7af7f6b6f74751c391c2f75ec13e79d537d0d2609b41b`.
+  No compatibility migrations were added.
+- The daemon repository supplies default-off settings with optimistic revisions, private captured
+  destination binding, source/destination deduplication, bounded cursor pages and oldest-first
+  pending dispatch. One sender can claim a receipt; settlements bind its attempt number so a late
+  prior acknowledgement cannot overwrite a newer retry. Fixed diagnostic codes exclude source/API
+  payloads. Public settings/receipts omit owner grant and credential digest internals.
+- A 100,000-receipt cap rejects new admission without evicting confirmed deduplication keys.
+  Uncertain/failed retries require an explicit possible-duplicate acknowledgement and exact current
+  receipt version. Settings disablement/new destination/fresh cutoff suppress deferred receipts.
+- Ordinary daemon startup changes sending receipts to uncertain, preserving confirmed deliveries.
+  Offline staged restore always sets a notification pause (even without a prior settings row),
+  makes sending receipts uncertain and suppresses deferred records. The source database remains
+  unchanged. Live dispatch and management still need to enforce this state before sending.
+- Twenty-six storage/question/approval regression tests passed
+  (`/tmp/baz038-storage-regressions.log`), including capacity, claim ownership, explicit retries,
+  old-snapshot restore, stable pagination and oldest-first selection. The actual CLI fresh-home
+  backup/restore test passed (`/tmp/baz038-schema-backup-test.log`; 41 unrelated tests filtered).
+  Root typecheck and focused Biome checks passed (`/tmp/baz038-storage-types.log`,
+  `/tmp/baz038-storage-lint.log`); diff checks passed.
+- BAZ-038 is local/uncommitted and incomplete. Next: destination readiness and service binding,
+  preview-bound settings/API/client/CLI/web, paced dispatch with current-source checks, failure
+  handling and complete restore reconciliation. Full integration gates and final PR CI remain.
+
+### BAZ-038 Telegram binding, dispatch and explicit inclusion controls
+
+- Added a transport bound to the current daemon, owner grant, bot credential digest, configured
+  chat and service topic. The live bot verifies private supergroup/forum state, owner membership
+  and bot topic-management rights with bounded calls. A binding change during verification rejects
+  readiness; actual send checks the captured binding again. No external messages were sent in tests.
+- Added a single-flight dispatcher consuming the existing open Attention projection. Admission and
+  pending batches are bounded; source resolution, current Agent/Team, selected kinds, policy,
+  destination and quiet hours are checked again after pacing and after asynchronous readiness.
+  Metadata-only messages use the existing outbound queue and one structured 429 retry. Unknown
+  errors are replaced before entering its text-based fallback, preventing ambiguous automatic resend.
+  Settlement uses the owned attempt number; possible sends without confirmation remain uncertain.
+- Added strict settings input parsing and a daemon control class. First enable/re-enable defaults to
+  a current cutoff. Explicit old-item inclusion requires a bounded five-minute preview captured by
+  the daemon, matching revision/destination/kinds; resolution during the preview is rechecked. Five
+  live previews per controller bound memory. Restore/settings-suppressed pending items can be
+  reconsidered only through that explicit preview; confirmed and uncertain receipts are not reset.
+- Three transport tests, five dispatcher tests and four control tests passed
+  (`/tmp/baz038-transport-tests.log`, `/tmp/baz038-dispatch-tests.log`,
+  `/tmp/baz038-control-tests.log`). Root typechecks passed at each checkpoint, most recently
+  `/tmp/baz038-control-types.log`. Fixtures cover rebind/credential change, repeat polling,
+  quiet-hour source resolution, disablement during validation, ambiguous error no-retry, bounded
+  429 retry, future cutoffs, stale/expired preview and settings races.
+- These classes are not yet registered as a startup notification pump or exposed through management
+  routes. BAZ-038 remains local/uncommitted. Next: runtime lifecycle, authenticated API and retry
+  revalidation, typed client, CLI/web settings and receipts, complete fault/restore tests and demos,
+  documentation/changeset, integration gates and final PR verification.
+
+### BAZ-038 runtime, authenticated API and operator controls
+
+- Registered a single daemon notification pump with explicit shutdown cancellation. Queued callbacks
+  check shutdown before accessing the DB; a send interrupted during shutdown remains sending for
+  startup uncertainty reconciliation, never a fabricated confirmed receipt.
+- Added authenticated `/api/notifications` settings, preview, bounded receipt list/detail and explicit
+  retry endpoints under existing middleware, with no-store responses and a 32 KiB body limit. Fixed
+  the route error handler to preserve 413 rather than converting body-limit errors to generic 400.
+  Retry revalidates enabled/restore state, original destination, selected kind, canonical source and
+  captured membership/policy after asynchronous readiness before the revision-bound transition.
+- Added typed client methods and `bazilion notification settings|preview|configure|list|show|retry`.
+  Enabling requires an explicit destination ID; existing-open inclusion uses the preview ID;
+  retries require `--acknowledge-possible-duplicate`. CLI help was exercised locally
+  (`/tmp/baz038-cli-help.log`); end-to-end CLI acceptance remains pending.
+- Added the web Attention notifications card to Telegram integration settings: explicit destination,
+  kind checkboxes, IANA timezone and quiet window, default future-only save, preview confirmation,
+  restore guidance, paginated receipt metadata and explicit duplicate-warning retry confirmation.
+  This is implemented and typechecked, not yet browser-accepted.
+- Fifteen API/control/dispatcher tests passed (`/tmp/baz038-api-tests.log`), covering auth, body size,
+  invalid destination/settings, shutdown before/after possible send and retry disablement races.
+  Root and web typechecks passed (`/tmp/baz038-api-final-types.log`, `/tmp/baz038-web-types.log`);
+  focused Biome checks and diff checks passed. Formatted the new web component using repository
+  formatter settings through stdin because the web tree is excluded from root Biome traversal.
+- BAZ-038 remains local/uncommitted. Remaining: full source-kind and policy/rate-limit/pacing fault
+  coverage, explicit restore reconciliation tests, real CLI and desktop/narrow browser demos,
+  source eligibility/receipt retention audit, operator docs/Changeset and final integrated gates,
+  commit/push, remote SHA equality and passing final PR CI.
+
+### BAZ-038 audit: timestamp boundary, capacity and rate-limit shutdown
+
+- Fixed the 429 retry callback to check shutdown before its claim reset touches SQLite. A regression
+  spies on writes after shutdown and confirms no callback mutation or second send occurs.
+- Future-only enablement now records already-open items at the cutoff boundary as suppressed
+  `future_baseline` receipts, while dispatch permits a distinct source created later in the same
+  millisecond. Explicit previews can reconsider that baseline. This closes the prior strict-time
+  comparison gap without replaying already-open boundary sources.
+- Receipt-capacity rejection now stops new admission while allowing existing pending receipts to
+  dispatch, and exposes a fixed capacity diagnostic. Known 429 retry delay is capped at 30 seconds;
+  longer/invalid delays fail visibly. Other 4xx descriptions cannot activate the queue's text-based
+  retry fallback. Unknown transport errors continue to produce uncertainty without auto-retry.
+- Fifteen focused control/dispatcher tests passed (`/tmp/baz038-boundary-tests.log`), including the
+  new timestamp/shutdown/rate-limit cases. Root typecheck passed (`/tmp/baz038-boundary-types.log`),
+  focused Biome and diff checks passed.
+- **Open audit finding to fix next:** changing selected kinds currently resets the global cutoff
+  and suppresses all deferred notices, including unchanged kinds. Introduce per-kind eligibility
+  cutoffs (canonical schema/backup contract if persisted), preserve existing pending work for kinds
+  that stay enabled, and give newly added kinds a fresh cutoff/boundary snapshot. Removed kinds must
+  still suppress their pending notices. Test add/remove/re-add and unchanged-kind pending delivery.
+- BAZ-038 remains incomplete/local. Full source-kind, restore reconciliation and fault acceptance,
+  real CLI/browser demos, documentation/Changeset and final integration/PR checks remain required.
+
+### BAZ-038 per-kind cutoffs and manual client acceptance
+
+- Fixed the selected-kind audit finding: persisted `kind_cutoffs_json` preserves eligibility and
+  admitted notices for unchanged kinds, starts newly added kinds at a fresh cutoff, and suppresses
+  only removed kinds. Re-addition does not implicitly replay suppressed work. Canonical schema hash
+  is now `94bdce93baa8ac939e0ddb11de5baf6821d60b1cf794a83eebe8d900d3bfe99e`.
+- Twenty-four repository/control/dispatcher tests passed (`/tmp/baz038-kind-cutoff-tests.log`),
+  including missed eligibility for an unchanged kind and add/remove/re-add. Root typecheck passed
+  (`/tmp/baz038-kind-cutoff-types.log`). Actual fresh-home CLI backup/restore passed with the new
+  schema (`/tmp/baz038-kind-cutoff-backup.log`; unrelated tests filtered).
+- Full styled desktop/390px keyboard browser demo passed against a disposable live daemon and fake
+  Telegram transport (`/tmp/baz038-demo/browser-verified.log`). It checks no historical sends after
+  ordinary enablement, explicit two-item preview, one confirmed and one uncertain send, duplicate-
+  warning keyboard retry, confirmed final receipts, persisted settings after reload, no horizontal
+  overflow and no page errors. Inspected `desktop-enabled.png`, `narrow-preview.png` and
+  `narrow-delivered.png` in that directory for readability and focus/confirmation layout.
+- Browser troubleshooting identified an async predicate polling mistake in the demo; explicit
+  awaited polling fixed the premature refresh. The early refresh-overwrite diagnosis was not proved
+  as the cause. The UI now keeps inclusion/retry dialogs open until their refresh completes, which
+  also prevents user interaction while those operations settle. Final acceptance uses a fresh home.
+- Actual CLI demo passed settings, paginated receipt list/detail, quiet-hour mutation, deduplicated
+  preview, disablement and explicit-destination re-enable (`/tmp/baz038-demo/cli-verified.log`).
+  Harnesses are `/tmp/baz038-demo/{server.mts,browser.mjs,cli-check.py}`. Test credentials were kept
+  in a mode-0600 file and never printed; neither the fake bot nor preflight sends external requests.
+- Added the operator guide `docs/attention-notifications.md` and pending fixed-group minor Changeset.
+  Remaining BAZ-038 work: full five-source and policy/pacing fault audit, explicit restore
+  reconciliation/uncertainty tests, final criterion-by-criterion evidence and integrated gates,
+  commit/push/PR update, remote SHA equality and final CI. Work is still local and the goal active.
+
+### BAZ-038 complete source/recovery audit and integration gates
+
+- All five canonical Attention sources now have dispatch acceptance coverage, unchanged source
+  decisions, metadata-only output and repeated-tick deduplication. Fixed the existing projection's
+  outgoing-approval attribution: empty target IDs now fall back to the source Agent consistently
+  with its relation join. Expired approvals and deleted source relations are suppressed after waiting.
+- Restored-history uncertainty is now persistent after re-enable, so later old-item previews still
+  warn that Telegram may have newer receipts. Snapshot-before-send acceptance verifies pause,
+  future-only reconciliation without replay, then explicit old-item inclusion. Canonical schema hash
+  is `278a7649d6017011b97405306760af3fdd337f068693e24b18cab43421a0c723`.
+- Added tests for source/policy/destination changes behind outbound pacing, owner revocation, private
+  forum/public alias checks, restricted non-member owners and bot permissions. Final source and live
+  destination rerun passed eight tests (`/tmp/baz038-last-acceptance.log`).
+- The integrated suite passed **1,395 tests, 3 skipped** across 180 passing files before the final two
+  acceptance additions (`/tmp/baz035-038-final-tests.log`). A fresh whole-tree run is in progress for
+  the exact current implementation (`/tmp/baz035-038-current-tests.log`).
+- All **60 required security acceptance cases** passed, including its production web build
+  (`/tmp/baz035-038-final-security.log`); serialized package/release builds passed
+  (`/tmp/baz035-038-final-build.log`). Root/web/mobile typechecks and lint passed
+  (`/tmp/baz035-038-final-*-types.log`, `/tmp/baz035-038-final-lint.log`); lint retained 55 warnings
+  and three informational diagnostics. Fixed public versions remain 0.14.2.
+- Added checked-in `scripts/demo-notifications.mts` and reproduction instructions. Its smoke check
+  bootstrapped a fresh home, printed only a loopback URL and owner-only credential file path, and
+  stopped under the planned five-second timeout (`/tmp/baz038-checked-in-demo.log`, timeout exit 124).
+  The demo simulates Telegram/preflight and blocks Telegram configuration mutations.
+- All nine BAZ-038 acceptance criteria are reconciled in the story. Remaining work is final exact-tree
+  test completion, commit/push and PR scope/check updates, final docs reconciliation and CI/remote-SHA
+  verification. No release, versioning, merge or deployment is authorized by this goal.
+
+- Exact current-tree integration rerun passed: **1,397 tests, 3 skipped**, 180 passing files
+  (`/tmp/baz035-038-current-tests.log`). The checked-in demo's fresh home contains only the
+  `0001_init` migration. BAZ-038 is ready to commit and push; final remote CI remains outstanding.

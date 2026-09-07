@@ -17,6 +17,25 @@ export function pauseRestoredUserQueue(database: string): void {
         reason = 'restored_backup' WHERE agent_id IN
         (SELECT agent_id FROM user_queue_items WHERE ${unresolved})`)
       const now = Date.now()
+      // Telegram may retain sends newer than this snapshot. Restore always needs an
+      // explicit fresh cutoff, including when this snapshot had no settings row yet.
+      db.prepare(`INSERT INTO notification_settings
+        (singleton, restore_paused, restore_history_uncertain, kinds_json, updated_at) VALUES (1, 1, 1, ?, ?)
+        ON CONFLICT(singleton) DO UPDATE SET enabled=0, restore_paused=1, restore_history_uncertain=1,
+          revision=revision+1, updated_at=MAX(updated_at+1, excluded.updated_at)`).run(
+        JSON.stringify([
+          'communication_approval',
+          'lesson_proposal',
+          'review_failure',
+          'trigger_failure',
+          'agent_loop_break',
+        ]),
+        now,
+      )
+      db.prepare(`UPDATE notification_receipts SET state='uncertain', diagnostic='restored_backup',
+        updated_at=MAX(updated_at+1, ?) WHERE state='sending'`).run(now)
+      db.prepare(`UPDATE notification_receipts SET state='suppressed', diagnostic='restore_paused',
+        updated_at=MAX(updated_at+1, ?) WHERE state='deferred'`).run(now)
       db.prepare(`UPDATE agent_questions SET status = 'cancelled', no_answer_reason = 'restored_backup',
         settled_at = ?, continuation = 'interrupted', revision = revision + 1 WHERE status = 'pending'`).run(
         now,
