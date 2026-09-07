@@ -1,4 +1,12 @@
-import type { ApiError } from '@bazilion/api-types'
+import type {
+  ApiError,
+  Attachment,
+  EditQueuedInput,
+  EnqueueUserInput,
+  UserQueueControl,
+  UserQueueItem,
+  UserQueueListResponse,
+} from '@bazilion/api-types'
 
 export type TokenSource = string | (() => string | Promise<string>)
 
@@ -122,6 +130,33 @@ export function createClient(cfg: ClientConfig) {
   }
 
   return {
+    queue: (agentId: string) => {
+      const base = `/api/agents/${encodeURIComponent(agentId)}/queue`
+      const item = (id: string) => `${base}/${encodeURIComponent(id)}`
+      return {
+        list: (all = false, offset = 0) =>
+          request<UserQueueListResponse>('GET', `${base}?all=${all ? 1 : 0}&offset=${offset}`),
+        get: (id: string) => request<UserQueueItem>('GET', item(id)),
+        input: (id: string) =>
+          request<{ message: string; attachments: Attachment[] }>('GET', `${item(id)}/input`),
+        enqueue: (input: EnqueueUserInput) => request<UserQueueItem>('POST', base, input),
+        edit: (id: string, input: EditQueuedInput) =>
+          request<UserQueueItem>('PATCH', item(id), input),
+        remove: (id: string, expectedRevision: number) =>
+          request<UserQueueItem>('DELETE', item(id), { expectedRevision }),
+        pause: (paused: boolean, expectedRevision: number) =>
+          request<UserQueueControl>('POST', `${base}/control`, { paused, expectedRevision }),
+        stop: (expectedRevision: number) =>
+          request<{ control: UserQueueControl; cancelled: boolean }>('POST', `${base}/stop`, {
+            expectedRevision,
+          }),
+        reconcile: (id: string, expectedRevision: number) =>
+          request<UserQueueItem>('POST', `${item(id)}/reconcile`, {
+            expectedRevision,
+            acknowledged: true,
+          }),
+      }
+    },
     binary,
     get: <T>(p: string) => request<T>('GET', p),
     post: <T>(p: string, b?: unknown) => request<T>('POST', p, b),

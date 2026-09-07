@@ -27,11 +27,10 @@ docs/backlog/
 
 ---
 
-## Draft (11)
+## Draft (10)
 
 | ID | Title | Size | Notes |
 |----|-------|------|-------|
-| [BAZ-036](draft/BAZ-036-visible-follow-up-queue.md) | Visible, durable follow-up queue | L | Accepted pending messages across clients; active-turn steering deferred |
 | [BAZ-037](draft/BAZ-037-structured-agent-questions.md) | Structured agent questions across web, CLI, and Telegram | L | Bounded clarification and correlated answers; independent of authorization approvals |
 | [BAZ-038](draft/BAZ-038-telegram-attention-notifications.md) | Opt-in Telegram delivery of existing Attention items | M | Independent candidate: notification receipts, quiet hours, and canonical resolution links |
 | [BAZ-039](draft/BAZ-039-repository-coding-context.md) | Repository context and coding onboarding within a Team | M | Coding first slice: bounded repository instructions, provenance, and command suggestions |
@@ -44,8 +43,8 @@ docs/backlog/
 | [BAZ-046](draft/BAZ-046-controlled-deployment-execution.md) | Controlled deployment execution and verified outcomes | L | After specialist testing: one configured backend, exact release authorization, and observed deployment/health |
 
 Drafted on 2026-09-07 from the OpenClaw 2.0 / Hermes desktop review and current Bazilion code.
-BAZ-034 is committed in draft PR #44, pending release. BAZ-035 through BAZ-038 are selected for
-the same 0.15.0 PR; shared-contract refinement is underway. Track decisions and acceptance evidence
+BAZ-034 and BAZ-035 are committed in draft PR #44, pending release. BAZ-036 is in progress;
+BAZ-037 and BAZ-038 remain selected for the same 0.15.0 PR. Track decisions and acceptance evidence
 in [the milestone progress log](BAZ-035-038-progress.md). Sizes are provisional; each draft records
 open decisions and boundaries to resolve before moving to `todo/`. Desktop packaging and Team
 conversation views remain later ideas rather than part of this initial slice.
@@ -74,12 +73,13 @@ approval into permission to deploy.
 | ID | Title | Size | Notes |
 |----|-------|------|-------|
 
-## In Progress (2)
+## In Progress (3)
 
 | ID | Title | Size | Notes |
 |----|-------|------|-------|
 | [BAZ-034](in_progress/BAZ-034-durable-agent-deliverables.md) | Durable agent deliverables and a Team results library | M | Committed in PR #44; pending release |
 | [BAZ-035](in_progress/BAZ-035-conversation-library.md) | Conversation library and safe new conversations | L | Explicit session foundation; selected for PR #44 |
+| [BAZ-036](in_progress/BAZ-036-visible-follow-up-queue.md) | Visible, durable follow-up queue | L | Accepted pending messages across clients; active-turn steering deferred |
 
 ## Done (28)
 

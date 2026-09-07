@@ -2,11 +2,12 @@ import type { Conversation, ConversationListResponse, NewConversationInput, Prov
 import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { Button } from './Button'
 
-export function ConversationLibrary({ agentId, turnBusy, onCreated, renderHistory }: {
+export function ConversationLibrary({ agentId, turnBusy, onCreated, renderHistory, initialConversationId }: {
   agentId: string
   turnBusy: boolean
   onCreated: () => Promise<void>
   renderHistory: (messages: ProviderMessage[]) => ReactNode
+  initialConversationId?: string
 }) {
   const [library, setLibrary] = useState<ConversationListResponse | null>(null)
   const [offset, setOffset] = useState(0)
@@ -28,6 +29,18 @@ export function ConversationLibrary({ agentId, turnBusy, onCreated, renderHistor
     sessionStorage.removeItem(pendingKey)
   }
   const base = `/api/agents/${encodeURIComponent(agentId)}/conversations`
+
+  useEffect(() => {
+    if (!initialConversationId) return
+    const controller = new AbortController()
+    fetch(`${base}/${encodeURIComponent(initialConversationId)}`, { signal: controller.signal })
+      .then(async response => {
+        if (!response.ok) throw new Error('Retained conversation is unavailable')
+        const body = await response.json() as { conversation: Conversation }
+        if (!controller.signal.aborted) { setSelected(body.conversation); setTitle(body.conversation.title) }
+      }).catch(error => { if (!controller.signal.aborted) setError(error.message) })
+    return () => controller.abort()
+  }, [base, initialConversationId])
 
   useEffect(() => {
     const controller = new AbortController()

@@ -3,11 +3,11 @@ import { buildSessionContext } from '@earendil-works/pi-coding-agent'
 import { Hono } from 'hono'
 import { resolveAgent } from '../core/agent/resolve.ts'
 import * as conversations from '../core/repos/conversations.ts'
+import { pendingCount } from '../core/repos/user-queue.ts'
 import { runAgentLifecycleMutation } from '../lib/agent-lifecycle-lease.ts'
 import { createConversationFile } from '../lib/conversation-file.ts'
 import { getCtx } from '../lib/ctx.ts'
 import { readResultSession } from '../lib/result-source.ts'
-import { pendingMessageCount } from '../lib/telegram/inbound-queue.ts'
 import { piMessagesToProviderView } from '../runtime/pi/events.ts'
 
 export const conversationsRouter = new Hono()
@@ -63,7 +63,7 @@ conversationsRouter.post('/:agentId/conversations', async (c) => {
   }
   return c.json(
     await runAgentLifecycleMutation(agentId, () => {
-      if (pendingMessageCount(agentId) > 0)
+      if (pendingCount(db, agentId) > 0)
         throw new Error('Pending follow-ups must be resolved first')
       const agent = resolveAgent(db, paths, agentId)
       return conversations.create(db, agentId, input, (id) =>

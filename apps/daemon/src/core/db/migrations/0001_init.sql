@@ -37,7 +37,7 @@ CREATE TABLE agents (
   team_id        TEXT NOT NULL REFERENCES teams(id) ON DELETE RESTRICT,
   created_at      INTEGER NOT NULL,
   archived_at     INTEGER
-, telegram_topic_id INTEGER, telegram_topic_name_locked INTEGER NOT NULL DEFAULT 0, telegram_icon_emoji TEXT, telegram_mirror_mode TEXT NOT NULL DEFAULT 'minimal'
+, telegram_topic_id INTEGER, telegram_binding_id TEXT NOT NULL DEFAULT (lower(hex(randomblob(16)))), telegram_topic_name_locked INTEGER NOT NULL DEFAULT 0, telegram_icon_emoji TEXT, telegram_mirror_mode TEXT NOT NULL DEFAULT 'minimal'
   CHECK (telegram_mirror_mode IN ('minimal','verbose')));
 CREATE TABLE agent_skills (
   agent_id    TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
@@ -222,6 +222,7 @@ CREATE UNIQUE INDEX idx_agents_telegram_topic_id
   WHERE telegram_topic_id IS NOT NULL;
 CREATE TABLE telegram_allowed_users (
   user_id   INTEGER PRIMARY KEY,
+  grant_id  TEXT NOT NULL DEFAULT (lower(hex(randomblob(16)))),
   username  TEXT,
   label     TEXT,
   role      TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('owner','member')),
@@ -576,4 +577,50 @@ CREATE TABLE agent_conversation_selection (
   conversation_id TEXT NOT NULL,
   revision INTEGER NOT NULL CHECK(revision > 0),
   FOREIGN KEY(agent_id, conversation_id) REFERENCES agent_conversations(agent_id, id)
+);
+
+-- Retained user input only: canonical responses remain in Pi JSONL.
+CREATE TABLE user_queue_controls (
+  agent_id TEXT PRIMARY KEY REFERENCES agents(id) ON DELETE CASCADE,
+  paused INTEGER NOT NULL DEFAULT 0 CHECK(paused IN (0,1)),
+  revision INTEGER NOT NULL DEFAULT 0,
+  reason TEXT,
+  next_position INTEGER NOT NULL DEFAULT 1
+);
+CREATE TABLE user_queue_items (
+  id TEXT PRIMARY KEY,
+  agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+  team_id TEXT NOT NULL,
+  conversation_id TEXT NOT NULL,
+  source TEXT NOT NULL CHECK(source IN ('http','telegram')),
+  attempt_id TEXT NOT NULL,
+  input_digest TEXT NOT NULL,
+  provenance_json TEXT,
+  revision INTEGER NOT NULL DEFAULT 1,
+  position INTEGER NOT NULL,
+  status TEXT NOT NULL CHECK(status IN ('pending','claimed','running','held','completed','failed','cancelled','uncertain','superseded')),
+  text TEXT,
+  payload_retained INTEGER NOT NULL DEFAULT 1 CHECK(payload_retained IN (0,1)),
+  supersedes_id TEXT,
+  approval_id TEXT REFERENCES communication_approvals(id) ON DELETE SET NULL,
+  diagnostic TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  started_at INTEGER,
+  finished_at INTEGER,
+  UNIQUE(source, attempt_id),
+  FOREIGN KEY(agent_id, conversation_id) REFERENCES agent_conversations(agent_id, id) ON DELETE CASCADE
+);
+CREATE INDEX user_queue_agent_order ON user_queue_items(agent_id, position, created_at);
+CREATE INDEX user_queue_status ON user_queue_items(status, updated_at);
+CREATE TABLE user_queue_attachments (
+  id TEXT PRIMARY KEY,
+  item_id TEXT NOT NULL REFERENCES user_queue_items(id) ON DELETE CASCADE,
+  ordinal INTEGER NOT NULL,
+  name TEXT,
+  mime_type TEXT NOT NULL,
+  byte_length INTEGER NOT NULL,
+  sha256 TEXT NOT NULL,
+  bytes BLOB NOT NULL,
+  UNIQUE(item_id, ordinal)
 );

@@ -1,9 +1,10 @@
 ---
 id: BAZ-036
 title: Visible, durable follow-up queue
-status: draft
+status: in_progress
 size: L (1-2 weeks)
 created: 2026-09-07
+refined: 2026-09-07
 priority: high
 note: Depends on BAZ-035 explicit session targeting; extends user ingress without replacing scheduler or approval dispatch.
 ---
@@ -28,14 +29,14 @@ CLI, and Telegram, and execute each through the existing serialized Agent turn b
 An accepted queue item means its input is retained; it does not mean the Agent has started,
 completed, obtained communication approval, or delivered a response.
 
-## Why and current baseline
+## Why and implementation baseline
 
-- [ChatPane](../../../apps/web/src/components/ChatPane.tsx) disables the composer/attachments
-  while `turnBusy` and returns early from send. Its session-storage marker tracks an in-flight
-  request; it is not a durable follow-up queue.
-- [Telegram inbound queue](../../../apps/daemon/src/lib/telegram/inbound-queue.ts) already uses
-  a FIFO and waits for the Agent to become idle, including when another ingress owns the turn.
-  Both its items and drain state live in process-local Maps and disappear on daemon restart.
+- [ChatPane](../../../apps/web/src/components/ChatPane.tsx) now keeps the composer usable while
+  busy and offers **Queue follow-up**. Unacknowledged submissions and their attachment bytes are
+  retained in the browser with stable request identities for reconciliation after reload.
+- The previous process-local Telegram FIFO is replaced by the
+  [daemon-owned durable queue](../../../apps/daemon/src/core/repos/user-queue.ts). HTTP, CLI and
+  Telegram input share its retained bytes, ordering, controls and lifecycle receipts.
 - [Telegram ingress binding](../../../apps/daemon/src/lib/telegram/ingress-attempt.ts) binds
   each update to its exact `chatId:messageId`, original payload, and derived attachment input.
   Queue work must preserve this identity instead of concatenating messages under one attempt.
@@ -162,15 +163,56 @@ completed, obtained communication approval, or delivered a response.
   backup round-trip, and web rendering at desktop and narrow widths with keyboard navigation.
 - Run applicable full repository checks and adversarial security acceptance before release.
 
-## Open Questions and recommendations
+## Refined first-slice contract (2026-09-07)
 
-- **Dispatch fairness:** recommend FIFO for accepted user items and the current admission boundary
-  for other sources; document starvation risk before considering a broader fairness contract.
-- **Retention/limits:** recommend explicit bounded defaults and a short terminal-receipt lifetime;
-  select counts, bytes, and age during refinement using real attachment sizes and backup cost.
-- **Approval holds:** recommend removing held items from eligible FIFO and showing a linked hold;
-  decide whether later items may pass, making the loss of strict execution order explicit.
-- **Edit surface:** recommend full editing in web/CLI first, with Telegram status and lifecycle
-  controls; Telegram message edits must not silently rewrite an already accepted instruction.
-- **Interactive approvals:** refine responder presence/expiry behavior before implementation;
-  never preserve an unattended request's ability to bypass command review across restart.
+- **Ownership:** `user_queue_items`, per-Agent queue controls and attachment rows are daemon-owned
+  domain records. Attachment bytes live transactionally in SQLite with SHA-256/name/type metadata.
+  No second transcript or generic job scheduler is introduced. Pending drain resumes from daemon
+  bootstrap independently of the optional scheduled-trigger switch. A one-second pump checks the
+  existing Agent registration before claim and final preparation; it does not own another worker lock.
+- **Bounds:** 20 nonterminal items per Agent, 100 per home, 16 attachments per item, 25 MiB per file
+  and aggregate item, 256 MiB retained queue attachment bytes per home, and 64 KiB UTF-8 input text.
+  Invalid or over-limit attachments reject the entire request; do not silently omit them. Retain
+  terminal input for seven days, then compact to receipt/identity metadata. Pending, held and
+  unresolved uncertain inputs are never age-pruned. Cap compact identity receipts at 100,000 per
+  home and reject new acceptance at capacity; do not evict an idempotency key and later replay it.
+  Agent deletion cascades its queue storage. Canonical approvals prevent premature reclamation.
+- **Identity:** a stable UUID request identity for HTTP/CLI; Telegram keeps its exact transport
+  attempt. Store the original accepted Team, conversation, normalized input digest and Telegram
+  owner/chat/topic binding. Retried identical requests reconcile the receipt before checking a new
+  selection; different content under the same identity conflicts. Fresh authorization still applies
+  at execution. A Telegram-derived turn cannot be rebound by editing its original transport payload.
+- **Ordering/edits:** FIFO by immutable acceptance position. Editing a pending item creates a new
+  authenticated HTTP replacement attempt at that position and atomically supersedes the old receipt.
+  Compare input revision under the same transaction used for claim/remove. Held, claimed/running and
+  terminal content is immutable. No implicit reorder, concatenation or retry of external effects.
+- **Admission:** the existing lifecycle lease and `prepareAgentTurn` remain the only worker admission
+  boundary. A durable queue claim is not an Agent registration. If another source wins admission,
+  return the unstarted queue head to pending and await Agent idle. A claimed item surviving restart
+  is conservatively uncertain, even if a crash may have preceded worker spawn. It is not replayed.
+- **Approval handoff:** introduce a canonical typed `queued_user` approval payload containing the
+  queue receipt ID and immutable input binding. The approval dispatcher resolves retained bytes and
+  original provenance; only that canonical dispatcher can execute a held item. Queue drain observes
+  the linked outcome and never also runs it. Holds block later user items, preserving execution FIFO.
+- **Execution posture:** queued HTTP remains the configured operator surface; Telegram remains
+  protected. Both use `auto_deny` for dangerous-command approval because no connected approving
+  client can be assumed at dispatch or after restart. A future live question route must be verified
+  separately by BAZ-037; persisting a client capability claim does not grant one.
+- **Restore:** an older snapshot cannot prove its pending inputs have never acted. Restore pauses
+  nonterminal queue work for explicit reconciliation; canonical approval dispatch also rejects
+  uncertain restored inputs. Ordinary daemon restart can still resume unclaimed pending work.
+- **Controls/recovery:** Pause prevents future claims. Stop persists pause before invoking existing
+  Agent cancellation. Resume enables pending work but cannot replay uncertainty. Explicit resubmission
+  creates a fresh attempt and requires the operator to reconcile possible prior effects. A failure
+  remains visible; admission/credential/binding/attachment failures do not become silent text-only turns.
+- **Cross-client contract:** enqueue/list/show/edit/remove/pause/resume/Stop share authenticated API
+  and CLI operations. Telegram adds owner-validated status/pause/resume/remove controls and durable
+  queued receipts; send failures do not revoke acceptance. Web keeps text/attachments editable while
+  busy and labels acceptance **Queue follow-up**. Initial HTTP admission must expose the newly created
+  conversation selection before the first turn ends, so a first-turn follow-up has an observed target.
+- **Fairness/retention:** other sources retain their existing admission rules, so a continuously busy
+  non-queue source can delay user FIFO work. Retention is bounded storage, not a delivery guarantee;
+  inspectable terminal receipts do not mean Telegram delivery or external task success.
+
+Track implementation, races and acceptance evidence in
+[the milestone progress log](../BAZ-035-038-progress.md).

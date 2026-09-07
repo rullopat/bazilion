@@ -18,6 +18,7 @@ import {
   setTelegramAuthToken,
   stopTelegramBot,
 } from './lib/telegram/bot.ts'
+import { startUserQueuePump } from './lib/user-queue-pump.ts'
 
 const host = process.env.HOST ?? '127.0.0.1'
 const port = Number.parseInt(process.env.PORT ?? '4321', 10)
@@ -71,6 +72,7 @@ try {
 
 const app = createApp()
 let shuttingDown = false
+let queuePump: ReturnType<typeof startUserQueuePump> | undefined
 
 const server = serve({ fetch: app.fetch, hostname: host, port }, (info) => {
   console.log(`bazilion daemon listening at http://${info.address}:${info.port}`)
@@ -94,6 +96,7 @@ const server = serve({ fetch: app.fetch, hostname: host, port }, (info) => {
   // Background bot boot. Errors are logged but never crash the daemon — the
   // user can fix credentials via the web UI even if the bot can't start.
   const { db, authToken } = getCtx()
+  queuePump = startUserQueuePump()
   setTelegramAuthToken(authToken)
   maybeStartTelegramBot(db, authToken).catch((err) => {
     console.error('telegram: background start failed:', err instanceof Error ? err.message : err)
@@ -103,6 +106,7 @@ const server = serve({ fetch: app.fetch, hostname: host, port }, (info) => {
 const shutdown = (signal: NodeJS.Signals): void => {
   if (shuttingDown) return
   shuttingDown = true
+  const queueStop = queuePump?.stop() ?? Promise.resolve()
   console.log(`\nbazilion daemon caught ${signal}, shutting down…`)
   // Stop the telegram bot before HTTP server close — the in-flight getUpdates
   // long-poll can hold us for up to ~25s, so we run it in parallel with the
@@ -119,7 +123,7 @@ const shutdown = (signal: NodeJS.Signals): void => {
     console.error('resources: shutdown failed:', e instanceof Error ? e.message : e),
   )
   Promise.race([
-    Promise.all([botStop, resourcesStop]),
+    Promise.all([botStop, resourcesStop, queueStop]),
     new Promise((r) => setTimeout(r, 30_000)), // hard cap: don't wait forever
   ]).finally(() => {
     server.close((err) => {

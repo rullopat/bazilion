@@ -1,5 +1,7 @@
+import { randomUUID } from 'node:crypto'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { createProfile, spawnAgent } from '../../src/core/index.ts'
+import * as userQueue from '../../src/core/repos/user-queue.ts'
 import { makeTestEnv, type TestEnv } from '../core/helpers.ts'
 import { seedRegisteredConversation } from '../fixtures/conversation.ts'
 
@@ -8,11 +10,79 @@ let agentId: string
 let priorPolicy: string | undefined
 let priorSandbox: string | undefined
 
+test('queued preparation binds retained input and retains its reference when policy requires approval', async () => {
+  const { createTrustedTurnInvocation } = await import('../../src/lib/turn-invocation.ts')
+  const { prepareAgentTurn, releasePreparedAgentTurn } = await import(
+    '../../src/lib/turn-preparation.ts'
+  )
+  const { CommunicationPendingError } = await import('../../src/lib/communication.ts')
+  const target = seedRegisteredConversation(env.db, env.paths, agentId)
+  const id = randomUUID()
+  userQueue.accept(env.db, {
+    id,
+    agentId,
+    teamId: env.teamId,
+    conversationId: target.id,
+    source: 'http',
+    attemptId: id,
+    provenance: { requester: 'user' },
+    message: 'retained',
+    attachments: [],
+  })
+  userQueue.claim(env.db, agentId)
+  const invocation = (message: string) =>
+    createTrustedTurnInvocation({
+      kind: 'operator_http',
+      authorization: {
+        origin: 'http_chat',
+        attemptKind: 'http_chat_ingress',
+        attemptId: id,
+        requester: 'user',
+        agentId,
+      },
+      turn: { agentId, conversationId: target.id, message, attachments: [] },
+      bashApprovalMode: 'auto_deny',
+    })
+  await expect(
+    prepareAgentTurn({ queuedItemId: id, invocation: invocation('substituted') }),
+  ).rejects.toThrow('binding changed')
+  const prepared = await prepareAgentTurn({ queuedItemId: id, invocation: invocation('retained') })
+  releasePreparedAgentTurn(prepared)
+  process.env.BAZILION_TEAM_POLICY_ENFORCEMENT = 'on'
+  env.db.raw.run(
+    "UPDATE team_policy_edges SET posture = 'approval_required' WHERE team_id = ? AND source_kind = 'user' AND target_id = ?",
+    [env.teamId, agentId],
+  )
+  try {
+    await prepareAgentTurn({ queuedItemId: id, invocation: invocation('retained') })
+    throw new Error('Expected approval')
+  } catch (error) {
+    expect(error).toBeInstanceOf(CommunicationPendingError)
+    if (!(error instanceof CommunicationPendingError)) throw error
+    expect(error.approval.payloadKind).toBe('queued_user')
+    const row = env.db.raw
+      .query<{ payload_json: string }, [string]>(
+        'SELECT payload_json FROM communication_approvals WHERE id = ?',
+      )
+      .get(error.approval.id)
+    expect(JSON.parse(row?.payload_json ?? 'null')).toEqual(
+      userQueue.approvalReference(env.db, agentId, id),
+    )
+  }
+})
+
 beforeEach(() => {
   env = makeTestEnv()
   createProfile(env.db, env.paths, {
     id: 'turn-preparation-profile',
     defaultModel: 'openai-codex:gpt-5.6-sol',
+    communicationDefaults: {
+      userInput: true,
+      userOutput: true,
+      outsideTeamInput: false,
+      outsideTeamOutput: false,
+      peerDefault: 'allow_all',
+    },
   })
   agentId = spawnAgent(env.db, env.paths, {
     profileId: 'turn-preparation-profile',

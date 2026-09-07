@@ -100,6 +100,7 @@ bazilion agent move <id> <team>           # move an agent to a different team
 bazilion agent skill add|rm <id> <name>    # attach/detach a skill on an agent
 bazilion agent chat-trim|chat-context|chat-compact <id>
 bazilion conversation list|show|new|rename <agent>  # retained conversation library
+bazilion queue list|show|add|edit|remove|pause|resume|stop <agent>  # durable follow-ups
 bazilion skill list|import|rm              # skill library (import --from openclaw)
 bazilion memory write|read|search|list|rm <team>   # Team-shared memory
 bazilion send <from> <to> <message>        # mailbox send

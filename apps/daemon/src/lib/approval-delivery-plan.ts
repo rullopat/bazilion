@@ -4,6 +4,7 @@ import type {
   CommunicationApprovalDetail,
   Message,
   ToolResultImage,
+  UserQueueItem,
 } from '@bazilion/api-types'
 import {
   isTelegramIngressPayload,
@@ -71,6 +72,11 @@ export interface TelegramFileApprovalPayload extends TelegramTransportPayload {
 
 export type ApprovalDeliveryPlan =
   | {
+      kind: 'queued_user'
+      approval: CommunicationApprovalDetail
+      payload: QueuedUserApprovalPayload
+    }
+  | {
       kind: 'agent_result'
       approval: CommunicationApprovalDetail
       payload: { agentId: string; resultId: string }
@@ -129,6 +135,7 @@ export type ApprovalDeliveryPlan =
 
 export interface ApprovalDeliveryPlanContext {
   messageById?: (messageId: string) => Message | null
+  queuedInput?: Parameters<typeof validateQueuedUserApproval>[1]
 }
 
 export class ApprovalDeliveryValidationError extends Error {
@@ -136,6 +143,56 @@ export class ApprovalDeliveryValidationError extends Error {
     super(`approval_delivery_invalid: ${code}`)
     this.name = 'ApprovalDeliveryValidationError'
   }
+}
+
+export interface QueuedUserApprovalPayload {
+  agentId: string
+  itemId: string
+  inputDigest: string
+}
+
+/** Validate metadata before loading retained bytes or claiming a queued approval. */
+export function validateQueuedUserApproval(
+  approval: CommunicationApprovalDetail,
+  lookup: (
+    agentId: string,
+    itemId: string,
+  ) => {
+    item: UserQueueItem
+    inputDigest: string
+  } | null,
+): QueuedUserApprovalPayload {
+  const payload = approval.payload
+  if (
+    approval.operation !== 'user_to_agent' ||
+    approval.payloadKind !== 'queued_user' ||
+    !isRecord(payload) ||
+    Object.keys(payload).sort().join(',') !== 'agentId,inputDigest,itemId' ||
+    !isNonEmptyString(payload.agentId) ||
+    typeof payload.itemId !== 'string' ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(payload.itemId) ||
+    typeof payload.inputDigest !== 'string' ||
+    !/^[0-9a-f]{64}$/.test(payload.inputDigest)
+  )
+    return invalid('queued_user_payload')
+  requireUserToAgent(approval, payload.agentId)
+  const captured = lookup(payload.agentId, payload.itemId)
+  if (!captured) return invalid('queued_user_missing')
+  const { item } = captured
+  if (
+    item.id !== payload.itemId ||
+    item.agentId !== payload.agentId ||
+    item.teamId !== approval.sourceTeamId ||
+    item.approvalId !== approval.id ||
+    item.attemptId !== approval.attemptId ||
+    captured.inputDigest !== payload.inputDigest
+  )
+    return invalid('queued_user_binding')
+  const origin = item.source === 'http' ? 'http_chat' : 'telegram_agent_topic'
+  const attemptKind = item.source === 'http' ? 'http_chat_ingress' : 'telegram_ingress'
+  if (approval.origin !== origin || approval.attemptKind !== attemptKind)
+    return invalid('queued_user_source')
+  return { agentId: payload.agentId, itemId: payload.itemId, inputDigest: payload.inputDigest }
 }
 
 /**
@@ -148,6 +205,11 @@ export function planApprovalDelivery(
   context: ApprovalDeliveryPlanContext = {},
 ): ApprovalDeliveryPlan {
   if (!isNonEmptyString(approval.attemptId)) invalid('attempt_id')
+
+  if (approval.payloadKind === 'queued_user') {
+    const payload = validateQueuedUserApproval(approval, context.queuedInput ?? (() => null))
+    return { kind: 'queued_user', approval, payload }
+  }
 
   if (
     approval.operation === 'user_to_agent' &&

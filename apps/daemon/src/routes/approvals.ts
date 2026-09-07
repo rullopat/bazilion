@@ -14,6 +14,7 @@ import {
   triggerRepo,
 } from '../core/index.ts'
 import { getReceipt } from '../core/repos/results.ts'
+import { reconcileApprovalHolds } from '../core/repos/user-queue.ts'
 import {
   AgentLoopLimitError,
   enforceMessageCausality,
@@ -32,6 +33,11 @@ import { capturedResultFile, releaseResultFile } from '../lib/result-delivery.ts
 import { reconcilePrivateResults } from '../lib/result-retention.ts'
 import { downloadMediaBytes } from '../lib/telegram/media.ts'
 import { createTrustedTurnInvocation } from '../lib/turn-invocation.ts'
+import {
+  assertQueuedApprovalReady,
+  deliverQueuedApproval,
+  queuedApprovalInput,
+} from '../lib/user-queue-approved.ts'
 
 export const approvalsRouter = new Hono()
 
@@ -39,6 +45,7 @@ approvalsRouter.use('*', async (_c, next) => {
   try {
     await next()
   } finally {
+    reconcileApprovalHolds(getCtx().db)
     reconcilePrivateResults(getCtx().db)
   }
 })
@@ -200,6 +207,13 @@ approvalsRouter.post('/:id/approve', async (c) => {
       }
       return c.json(granted.approval)
     }
+    if (pendingPlan.kind === 'queued_user') {
+      try {
+        assertQueuedApprovalReady(pending)
+      } catch {
+        return c.json({ error: 'Queued approval is paused or waiting for earlier input' }, 409)
+      }
+    }
     const claimed = communicationApprovalRepo.claimDelivery(
       db,
       id,
@@ -231,6 +245,7 @@ approvalsRouter.post('/:id/approve', async (c) => {
 function approvalPlan(approval: CommunicationApprovalDetail): ApprovalDeliveryPlan {
   return planApprovalDelivery(approval, {
     messageById: (messageId) => messageRepo.get(getCtx().db, messageId),
+    queuedInput: queuedApprovalInput,
   })
 }
 
@@ -258,6 +273,10 @@ function validateSchedulerGrant(
 }
 
 async function deliver(plan: ApprovalDeliveryPlan): Promise<void> {
+  if (plan.kind === 'queued_user') {
+    await deliverQueuedApproval(plan.approval)
+    return
+  }
   if (plan.kind === 'agent_message') {
     const causality = resolveMessageCausality(getCtx().db, plan.payload)
     const loopBreak = enforceMessageCausality(getCtx().db, {

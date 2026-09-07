@@ -23,6 +23,7 @@ import { type ActivationApi, runActivation } from './activation.ts'
 import { type DirectoryApi, installLiveDepsResolver } from './directory.ts'
 import { installMirrorDepsResolver, type MirrorApi } from './mirror.ts'
 import { installStickerApiResolver, type StickerApi } from './profile-emojis.ts'
+import { installQueueNoticeTransport } from './queue-notice.ts'
 import { installReactionsDepsResolver, type ReactionsApi } from './reactions.ts'
 import { type ReplyApi, routeUpdate } from './routing.ts'
 
@@ -209,6 +210,22 @@ async function startInternal(
     api: handle.bot.api as unknown as MirrorApi,
     chatId: handle.chatId,
   }))
+  installQueueNoticeTransport(() =>
+    handle.stopRequested || _handle !== handle
+      ? null
+      : {
+          db,
+          authToken,
+          botToken,
+          send: (targetChatId, topicId, text, signal) =>
+            handle.bot.api.sendMessage(
+              targetChatId,
+              text,
+              { message_thread_id: topicId },
+              signal as unknown as Parameters<typeof handle.bot.api.sendMessage>[3],
+            ),
+        },
+  )
 
   // Reactions: 👀 "bot saw it" indicator on inbound user messages.
   installReactionsDepsResolver(() => ({

@@ -1177,6 +1177,9 @@ agentsRouter.post('/:id/chat', async (c) => {
   const stream = new ReadableStream({
     async start(controller) {
       const encoder = new TextEncoder()
+      // Flush admission headers before the first provider frame. NDJSON consumers
+      // already ignore blank lines; no unapproved content is released here.
+      controller.enqueue(encoder.encode('\n'))
       let frameIndex = 0
       try {
         for await (const frame of runAgentTurn(preparedTurn)) {
@@ -1219,6 +1222,9 @@ agentsRouter.post('/:id/chat', async (c) => {
   return new Response(stream, {
     headers: {
       'content-type': 'application/x-ndjson',
+      'x-bazilion-conversation-selection': JSON.stringify(
+        conversationRepo.selection(getCtx().db, id),
+      ),
       'cache-control': 'no-cache',
       'x-content-type-options': 'nosniff',
     },

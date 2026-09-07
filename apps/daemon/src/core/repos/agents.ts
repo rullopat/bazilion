@@ -264,7 +264,10 @@ export function findByTelegramTopicId(db: BazilionDb, topicId: number): Agent | 
  * have been deleted in Telegram).
  */
 export function setTelegramTopicId(db: BazilionDb, agentId: string, topicId: number | null): void {
-  db.raw.run('UPDATE agents SET telegram_topic_id = ? WHERE id = ?', [topicId, agentId])
+  db.raw.run(
+    'UPDATE agents SET telegram_topic_id = ?, telegram_binding_id = lower(hex(randomblob(16))) WHERE id = ?',
+    [topicId, agentId],
+  )
 }
 
 /**

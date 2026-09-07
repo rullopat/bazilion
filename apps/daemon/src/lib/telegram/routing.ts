@@ -20,29 +20,32 @@ import type { CallbackQuery, InlineKeyboardMarkup, Message, Update, User } from 
 import type { BazilionDb } from '../../core/db/client.ts'
 import {
   agentRepo,
+  authorizeInSnapshot,
   openConfig,
   profileRepo,
   telegramAclRepo,
   telegramPairingRepo,
 } from '../../core/index.ts'
 import type { Paths } from '../../core/paths.ts'
+import * as userQueue from '../../core/repos/user-queue.ts'
 import {
   authorizeUserIngress,
   CommunicationDeniedError,
   CommunicationPendingError,
 } from '../communication.ts'
+import { enqueueTelegramInput } from '../user-queue-admission.ts'
 import { dispatchCommand, parseCommand } from './commands/index.ts'
 import { namePrompt, SPAWN_PROFILE_CALLBACK_PREFIX, spawnAndBind } from './commands/spawn.ts'
 import { SPAWN_TEAM_CALLBACK_PREFIX, spawnTeamAndBind } from './commands/spawn-team.ts'
 import type { CommandApi, CommandResult } from './commands/types.ts'
-import { enqueueAgentMessage } from './inbound-queue.ts'
-import { type TelegramIngressAttempt, telegramMediaFailureTurnText } from './ingress-attempt.ts'
+import type { TelegramIngressAttempt } from './ingress-attempt.ts'
 import {
   _resetLoopGuardForTest,
   allowTelegramInbound,
   shouldNotifyInboundThrottle,
 } from './loop-guard.ts'
 import { downloadMediaBytes, extractMedia } from './media.ts'
+import { captureTelegramQueueBinding } from './queue-binding.ts'
 import { reactSeen } from './reactions.ts'
 import { setPendingSpawn, takePendingSpawn } from './spawn-state.ts'
 
@@ -283,24 +286,21 @@ export async function routeUpdate(deps: RouterDeps, update: Update): Promise<Rou
     if (parsed) {
       return await handleAgentTopicCommand(deps, m, agent, threadId, parsed.name, parsed.args)
     }
-    // Step 6: plain text in a bound agent topic queues into the agent's
-    // inbound queue. The queue's drain loop owns runAgentTurn calls — it
-    // serializes them so concurrent worker spawns don't corrupt agent
-    // state. Messages that arrive while a turn is in flight remain distinct
-    // FIFO items, each with its own Telegram attempt identity and turn.
-    // Resolve text + any media attachment (Phase 11). Media is downloaded to
-    // the agent's private home and referenced by path in the turn message, so
-    // an agent with file/bash tools can open it. Native provider multimodal
-    // (image content blocks) is the deferred follow-up.
-    // Download any inbound media as a generic attachment; the daemon's central
-    // classifier then routes it (image/* → vision; everything else → stored +
-    // path-referenced for the agent to open with its tools).
+    // Capture the transport's conversation and authority before downloading.
+    // Admission retains complete bytes atomically; the shared durable drain owns
+    // worker admission and classifies images versus filesystem input centrally.
     const caption = m.text ?? m.caption ?? ''
     const media = extractMedia(m)
+    if (!caption && !media)
+      return { kind: 'agent_topic', agentId: agent.id, topicId: threadId, queued: false }
     const releaseConversationLease = await acquireAgentLifecycleLease(agent.id)
     let conversationId: string
     try {
-      conversationId = resolveConversationTarget(deps.db, deps.paths, agent.id).id
+      const existing = userQueue.findAttempt(deps.db, 'telegram', `${deps.chatId}:${m.message_id}`)
+      conversationId =
+        existing?.agentId === agent.id
+          ? existing.conversationId
+          : resolveConversationTarget(deps.db, deps.paths, agent.id).id
     } finally {
       releaseConversationLease()
     }
@@ -321,7 +321,14 @@ export async function routeUpdate(deps: RouterDeps, update: Update): Promise<Rou
       requester: `telegram:${m.from?.id ?? 'unknown'}`,
     }
     try {
-      authorizeUserIngress(deps.db, agent.id, ingressAttempt)
+      const decision = authorizeInSnapshot(deps.db, {
+        source: { kind: 'user', teamId: agent.teamId },
+        target: { kind: 'agent', id: agent.id },
+        origin: ingressAttempt.origin,
+        attemptKind: ingressAttempt.attemptKind,
+        attemptId: ingressAttempt.attemptId,
+      })
+      if (decision.decision === 'deny') authorizeUserIngress(deps.db, agent.id, ingressAttempt)
     } catch (error) {
       if (error instanceof CommunicationPendingError) {
         await deps.api.sendMessage(
@@ -339,52 +346,82 @@ export async function routeUpdate(deps: RouterDeps, update: Update): Promise<Rou
       )
       return { kind: 'agent_topic', agentId: agent.id, topicId: threadId, queued: false }
     }
-    let userText = caption
-    const attachments: Attachment[] = []
-    if (media) {
-      if (deps.botToken) {
-        const result = await downloadMediaBytes(deps.api, deps.botToken, media)
-        if (result.ok) {
-          attachments.push({
-            mimeType: result.mimeType,
-            data: result.data,
-            ...(result.name ? { name: result.name } : {}),
-          })
+    try {
+      const binding = captureTelegramQueueBinding(
+        deps.db,
+        deps.authToken,
+        ingressAttempt,
+        deps.botToken,
+      )
+      const userText = caption
+      const attachments: Attachment[] = []
+      if (media) {
+        if (deps.botToken) {
+          const result = await downloadMediaBytes(deps.api, deps.botToken, media)
+          if (result.ok) {
+            attachments.push({
+              mimeType: result.mimeType,
+              data: result.data,
+              ...(result.name ? { name: result.name } : {}),
+            })
+          } else {
+            await deps.api.sendMessage(
+              deps.chatId,
+              'Attachment download failed. This input was not queued; send the complete input again.',
+              { message_thread_id: threadId },
+            )
+            return { kind: 'agent_topic', agentId: agent.id, topicId: threadId, queued: false }
+          }
         } else {
-          userText = telegramMediaFailureTurnText(ingressAttempt.approvalPayload, 'download_failed')
+          await deps.api.sendMessage(
+            deps.chatId,
+            'Attachment download is unavailable. This input was not queued.',
+            { message_thread_id: threadId },
+          )
+          return { kind: 'agent_topic', agentId: agent.id, topicId: threadId, queued: false }
         }
-      } else {
-        userText = telegramMediaFailureTurnText(
-          ingressAttempt.approvalPayload,
-          'download_unavailable',
-        )
       }
-    }
-    if (!userText && attachments.length === 0) {
-      // Non-text, non-media message (sticker, etc.) — skip.
+      if (!userText && attachments.length === 0) {
+        // Non-text, non-media message (sticker, etc.) — skip.
+        return { kind: 'agent_topic', agentId: agent.id, topicId: threadId, queued: false }
+      }
+      // Per-agent inbound rate budget — backstop against a human/script spamming
+      // a topic faster than the agent can answer. Over budget: drop the message
+      // and post a single cooldown notice (suppressed for the rest of the
+      // cooldown window).
+      if (
+        !userQueue.findAttempt(deps.db, 'telegram', ingressAttempt.attemptId) &&
+        !allowTelegramInbound(agent.id)
+      ) {
+        if (shouldNotifyInboundThrottle(agent.id)) {
+          await deps.api.sendMessage(
+            deps.chatId,
+            "Whoa — that's a lot of messages very fast. I'll pause new ones for a minute so I can catch up.",
+            { message_thread_id: threadId, parse_mode: 'HTML' },
+          )
+        }
+        return { kind: 'rate_limited', agentId: agent.id, topicId: threadId }
+      }
+      const accepted = await enqueueTelegramInput(binding, userText, attachments, deps)
+      await deps.api.sendMessage(
+        deps.chatId,
+        `Follow-up ${accepted.id}: ${accepted.status}. Use /queue to inspect pending input.`,
+        { message_thread_id: threadId },
+      )
+      // 👀 "I see this" indicator on the user's message. Cleared by the
+      // mirror when the agent's reply lands.
+      reactSeen(agent.id, deps.chatId, m.message_id)
+      return { kind: 'agent_topic', agentId: agent.id, topicId: threadId, queued: true }
+    } catch (error) {
+      const message =
+        error instanceof userQueue.QueueCapacityError
+          ? 'Queue capacity reached. This input was not accepted; inspect /queue before sending again.'
+          : error instanceof CommunicationDeniedError
+            ? 'Team Policy changed. This input was not queued.'
+            : 'Queue acceptance was not confirmed. Inspect /queue before sending a new attempt.'
+      await deps.api.sendMessage(deps.chatId, message, { message_thread_id: threadId })
       return { kind: 'agent_topic', agentId: agent.id, topicId: threadId, queued: false }
     }
-    // Per-agent inbound rate budget — backstop against a human/script spamming
-    // a topic faster than the agent can answer. Over budget: drop the message
-    // and post a single cooldown notice (suppressed for the rest of the
-    // cooldown window).
-    if (!allowTelegramInbound(agent.id)) {
-      if (shouldNotifyInboundThrottle(agent.id)) {
-        await deps.api.sendMessage(
-          deps.chatId,
-          "Whoa — that's a lot of messages very fast. I'll pause new ones for a minute so I can catch up.",
-          { message_thread_id: threadId, parse_mode: 'HTML' },
-        )
-      }
-      return { kind: 'rate_limited', agentId: agent.id, topicId: threadId }
-    }
-    enqueueAgentMessage(agent.id, userText, attachments, ingressAttempt, async (text) => {
-      await deps.api.sendMessage(deps.chatId, text, { message_thread_id: threadId })
-    })
-    // 👀 "I see this" indicator on the user's message. Cleared by the
-    // mirror when the agent's reply lands.
-    reactSeen(agent.id, deps.chatId, m.message_id)
-    return { kind: 'agent_topic', agentId: agent.id, topicId: threadId, queued: true }
   }
 
   // Orphan / unknown topic.

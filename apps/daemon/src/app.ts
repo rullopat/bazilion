@@ -24,6 +24,7 @@ import { teamTemplatesRouter } from './routes/team-templates.ts'
 import { teamsRouter } from './routes/teams.ts'
 import { telegramRouter } from './routes/telegram.ts'
 import { triggersRouter } from './routes/triggers.ts'
+import { userQueueRouter } from './routes/user-queue.ts'
 
 export function createApp(): Hono {
   const app = new Hono()
@@ -34,6 +35,7 @@ export function createApp(): Hono {
   app.use('*', authMiddleware)
 
   app.route('/api/agents', conversationsRouter)
+  app.route('/api/agents', userQueueRouter)
   app.route('/api/agents', agentsRouter)
   app.route('/api/results', resultsRouter)
   app.route('/api/attention', attentionRouter)

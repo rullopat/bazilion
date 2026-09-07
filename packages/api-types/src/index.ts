@@ -1067,3 +1067,13 @@ export type {
   ConversationTarget,
   NewConversationInput,
 } from './conversations.ts'
+
+export type {
+  EditQueuedInput,
+  EnqueueUserInput,
+  QueueAttachment,
+  UserQueueControl,
+  UserQueueItem,
+  UserQueueListResponse,
+  UserQueueStatus,
+} from './user-queue.ts'

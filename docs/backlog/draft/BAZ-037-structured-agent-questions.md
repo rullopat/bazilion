@@ -34,7 +34,7 @@ Question responses provide information; they never grant execution or communicat
   answer shell requests. These are useful interaction precedents, not a shared decision registry.
 - [Shell approvals](../../../apps/daemon/src/lib/bash-approval.ts) are ephemeral and distinct from
   durable Team Policy approvals. Neither represents a missing user preference.
-- [Telegram's FIFO](../../../apps/daemon/src/lib/telegram/inbound-queue.ts) waits for the active
+- [The durable user queue](../../../apps/daemon/src/lib/user-queue-drain.ts) waits for the active
   Agent turn to finish. Queuing an answer there would strand a worker waiting for that answer.
 - [Turn preparation](../../../apps/daemon/src/lib/turn-preparation.ts) and
   [trusted invocation](../../../apps/daemon/src/lib/turn-invocation.ts) own execution authority.

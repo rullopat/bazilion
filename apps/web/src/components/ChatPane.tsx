@@ -25,6 +25,7 @@ import { renderMd } from '../lib/md'
 import { Button } from './Button'
 import { ResultCard } from './ResultCard'
 import { ConversationLibrary } from './ConversationLibrary'
+import { UserQueuePanel, type UserQueueHandle } from './UserQueuePanel'
 
 const INBOX_WAKE_PREFIX = '[[bazilion:inbox-wake]]\n'
 const COMPACTION_REPLAY_PREFIX = '[conversation summary]'
@@ -250,6 +251,10 @@ export function ChatPane({
   const [approvalBusy, setApprovalBusy] = useState<Record<string, boolean>>({})
   const [approvalErrors, setApprovalErrors] = useState<Record<string, string>>({})
   const [libraryOpen, setLibraryOpen] = useState(false)
+  const [queueConversation, setQueueConversation] = useState<string | undefined>()
+  const [queueMode, setQueueMode] = useState(false)
+  const [queueReady, setQueueReady] = useState(false)
+  const queueRef = useRef<UserQueueHandle | null>(null)
   const [historyUnavailable, setHistoryUnavailable] = useState(initialSessionHead?.unavailable ?? false)
 
   const messagesRef = useRef<HTMLDivElement | null>(null)
@@ -285,6 +290,7 @@ export function ChatPane({
     setSystemBubbles([])
     setEditIdx(null)
     setInput('')
+    setQueueReady(false)
     setAttachments([])
     setHistoryUnavailable(initialSessionHead?.unavailable ?? false)
     setThinking(false)
@@ -587,7 +593,7 @@ export function ChatPane({
   // --- attachments (one generic list; the daemon classifies each: images →
   // vision, others → stored and referenced by path for the agent) ---
   async function addFiles(files: FileList | File[] | null) {
-    if (!files || turnBusy) return
+    if (!files) return
     const arr = Array.from(files)
     if (arr.length === 0) return
     const encoded = await Promise.all(arr.map(fileToAttachment))
@@ -605,10 +611,6 @@ export function ChatPane({
   function onDragOver(e: React.DragEvent) {
     if (!Array.from(e.dataTransfer.types).includes('Files')) return
     e.preventDefault()
-    if (turnBusy) {
-      setDragging(false)
-      return
-    }
     setDragging(true)
   }
   function onDragLeave(e: React.DragEvent) {
@@ -619,7 +621,6 @@ export function ChatPane({
     if (e.dataTransfer.files.length === 0) return
     e.preventDefault()
     setDragging(false)
-    if (turnBusy) return
     void addFiles(e.dataTransfer.files)
   }
 
@@ -627,7 +628,16 @@ export function ChatPane({
   const send = useCallback(
     async (text: string) => {
       const atts = attachments
-      if ((!text.trim() && atts.length === 0) || turnBusy) return
+      if (!text.trim() && atts.length === 0) return
+      if (!queueReady) { pushSystem('Queue status is loading. Your draft is preserved.'); return }
+      if (turnBusy || queueMode) {
+        const accepted = await queueRef.current?.enqueue(text, atts, knownHeadRef.current.selection)
+        if (accepted && currentAgentIdRef.current === agentId) {
+          setInput(current => current === text ? '' : current)
+          setAttachments(current => current === atts ? [] : current)
+        }
+        return
+      }
       setInput('')
 
       // Slash commands shortcut (text-only; leave any attachments pending).
@@ -729,6 +739,15 @@ export function ChatPane({
           setLiveEntries((prev) => [...prev, { type: 'error', content: `[error] ${err}` }])
           return
         }
+        const admittedSelection = res.headers.get('x-bazilion-conversation-selection')
+        if (admittedSelection) {
+          try {
+            const selection = JSON.parse(admittedSelection)
+            if (typeof selection.conversationId === 'string' && Number.isSafeInteger(selection.revision) && selection.revision >= 0) {
+              knownHeadRef.current = { ...knownHeadRef.current, selection }
+            }
+          } catch {}
+        }
         const reader = res.body.getReader()
         const decoder = new TextDecoder()
         let buffer = ''
@@ -780,7 +799,7 @@ export function ChatPane({
       }
     },
     // biome-ignore lint/correctness/useExhaustiveDependencies: stable refs intentional
-    [agentId, editIdx, serverMessages, turnBusy, attachments],
+    [agentId, editIdx, serverMessages, turnBusy, queueMode, queueReady, attachments],
   )
 
   function handleFrame(frame: ChatFrame) {
@@ -967,40 +986,9 @@ export function ChatPane({
   }
 
   async function cancel() {
-    const hasLocalStream = currentAbortRef.current !== null
-    try {
-      const res = await fetch(`/api/agents/${encodeURIComponent(agentId)}/cancel`, {
-        method: 'POST',
-      })
-      if (currentAgentIdRef.current !== agentId) return
-      if (res.ok || res.status === 204) {
-        if (!hasLocalStream) {
-          commandApprovalTurnRef.current = false
-          setLiveEntries((entries) =>
-            entries.map((entry) =>
-              entry.type === 'command_approval' && entry.approval.status === 'pending'
-                ? {
-                    type: 'command_approval',
-                    approval: { ...entry.approval, status: 'cancelled' },
-                  }
-                : entry,
-            ),
-          )
-          setRecoveredTurn(false)
-        }
-        return
-      }
-    } catch {
-      // fall through to local fetch abort
-    }
-    if (currentAgentIdRef.current !== agentId) return
-    if (hasLocalStream) {
-      currentAbortRef.current?.abort()
-    } else {
-      setLiveEntries((entries) => [
-        ...entries,
-        { type: 'error', content: '[cancel failed] could not reach the active turn' },
-      ])
+    const stopped = await queueRef.current?.stop()
+    if (!stopped && currentAgentIdRef.current === agentId) {
+      pushSystem('Stop was not confirmed. Check queue controls and try again; the active response may still be running.')
     }
   }
 
@@ -1116,9 +1104,9 @@ export function ChatPane({
         aria-live="polite"
         aria-relevant="additions"
         aria-busy={turnBusy}
-        className={`min-h-[240px] flex-1 overflow-y-auto px-5 py-5 ${editIdx !== null ? 'is-editing' : ''}`}
+        className={`min-h-0 flex-1 overflow-y-auto px-5 py-5 ${editIdx !== null ? 'is-editing' : ''}`}
       >
-      {libraryOpen && <ConversationLibrary key={agentId} agentId={agentId} turnBusy={turnBusy} onCreated={refreshConversationHistory} renderHistory={messages => <ResultTranscript messages={messages} />} />}
+      {libraryOpen && <ConversationLibrary initialConversationId={queueConversation} key={agentId} agentId={agentId} turnBusy={turnBusy} onCreated={refreshConversationHistory} renderHistory={messages => <ResultTranscript messages={messages} />} />}
         {!historyUnavailable && baseEntries.length === 0 && liveEntries.length === 0 && systemBubbles.length === 0 && (
           <p className="py-12 text-center italic text-mocha-light">Start a conversation…</p>
         )}
@@ -1237,7 +1225,7 @@ export function ChatPane({
       )}
 
       {attachments.length > 0 && (
-        <div className="flex flex-wrap gap-2 border-t border-frost bg-ivory px-5 pt-3">
+        <div className="flex max-h-24 shrink-0 flex-wrap gap-2 overflow-y-auto border-t border-frost bg-ivory px-5 pt-3">
           {attachments.map((a, i) => {
             const remove = () => setAttachments((prev) => prev.filter((_, j) => j !== i))
             return isImageMime(a.mimeType) ? (
@@ -1277,8 +1265,9 @@ export function ChatPane({
         </div>
       )}
 
+      <UserQueuePanel onViewConversation={id => { setQueueConversation(id); setLibraryOpen(true) }} key={agentId} ref={queueRef} agentId={agentId} selection={() => knownHeadRef.current.selection} onQueueMode={mode => { setQueueMode(mode); setQueueReady(true) }} />
       <form
-        className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-end gap-2 border-t border-frost bg-ivory px-3 py-3 sm:px-5"
+        className="grid shrink-0 grid-cols-[auto_minmax(0,1fr)_auto] items-end gap-2 border-t border-frost bg-ivory px-3 py-3 sm:px-5"
         onSubmit={(e) => {
           e.preventDefault()
           void send(input)
@@ -1297,7 +1286,6 @@ export function ChatPane({
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
-          disabled={turnBusy}
           title="attach images or files"
           aria-label="attach files"
           className="rounded-md border-[1.5px] border-frost bg-snow px-3 py-2 text-[1em] text-mocha transition-colors hover:border-sapphire hover:text-sapphire disabled:cursor-not-allowed disabled:opacity-50"
@@ -1311,30 +1299,17 @@ export function ChatPane({
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={onKeyDown}
           onPaste={onPaste}
-          disabled={turnBusy}
           placeholder="say something… (Shift+Enter for newline; paste or 📎 to attach images/files)"
           autoComplete="off"
           aria-label={`Message ${agentName}`}
           className="max-h-[200px] min-h-[2.4rem] flex-1 resize-none overflow-y-auto rounded-md border-[1.5px] border-frost bg-snow px-3 py-2 text-[0.93em] leading-[1.45] text-chocolate outline-none transition-colors focus:border-sapphire focus:shadow-[0_0_0_3px_var(--color-sapphire-glow)]"
         />
-        {turnBusy ? (
-          <button
-            type="button"
-            onClick={cancel}
-            aria-label="Cancel current response"
-            className="rounded-md border-[1.5px] border-danger bg-transparent px-3 py-2 text-[0.92em] font-medium text-danger hover:bg-danger/10"
-          >
-            Cancel
-          </button>
-        ) : (
-          <button
-            type="submit"
-            disabled={!input.trim() && attachments.length === 0}
-            className="rounded-md bg-sapphire px-4 py-2 text-[0.92em] font-semibold text-snow transition-colors hover:bg-sapphire-deep disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Send
-          </button>
-        )}
+        <div className="flex flex-col gap-1">
+          <Button variant="primary" type="submit" className="max-w-28 whitespace-normal text-center sm:max-w-none" disabled={!input.trim() && attachments.length === 0}>
+            {turnBusy || queueMode ? 'Queue follow-up' : 'Send'}
+          </Button>
+          {turnBusy && <Button variant="danger" onClick={() => void cancel()} aria-label="Stop response and pause queue">Stop</Button>}
+        </div>
       </form>
 
     </div>

@@ -34,6 +34,7 @@ import { pipeline } from 'node:stream/promises'
 import { Decrypter, Encrypter } from 'age-encryption'
 import { defineCommand } from 'citty'
 import { extract, list, type ReadEntry } from 'tar'
+import { pauseRestoredUserQueue } from '../backup-queue-recovery.ts'
 import { assertCanonicalBackupSchema } from '../backup-schema.ts'
 import { loadClientConfig } from '../client.ts'
 import { acquireHomeRestoreLock, DAEMON_LIVENESS_FILENAME } from '../daemon-liveness.ts'
@@ -911,6 +912,7 @@ const restoreCmd = defineCommand({
         validateDatabase(database, authToken)
         rebaseRestoredHomeDirectories(database, payload, targetHome)
         revokeRestoredBrowserSessions(database)
+        pauseRestoredUserQueue(database)
         // Recheck the canonical file after the controlled mutation. This also
         // proves the auth pairing and all schema/FK invariants still hold.
         validateDatabase(database, authToken)
