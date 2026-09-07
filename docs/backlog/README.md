@@ -41,8 +41,7 @@ docs/backlog/
 | [BAZ-046](draft/BAZ-046-controlled-deployment-execution.md) | Controlled deployment execution and verified outcomes | L | After specialist testing: one configured backend, exact release authorization, and observed deployment/health |
 
 Drafted on 2026-09-07 from the OpenClaw 2.0 / Hermes desktop review and current Bazilion code.
-BAZ-034 through BAZ-037 are committed in draft PR #44, pending release. BAZ-038 is in progress
-for the same 0.15.0 PR. Track decisions and acceptance evidence
+BAZ-034 through BAZ-038 are committed in draft PR #44 for 0.15.0, pending release. Track decisions and acceptance evidence
 in [the milestone progress log](BAZ-035-038-progress.md). Sizes are provisional; each draft records
 open decisions and boundaries to resolve before moving to `todo/`. Desktop packaging and Team
 conversation views remain later ideas rather than part of this initial slice.
@@ -76,11 +75,10 @@ approval into permission to deploy.
 | ID | Title | Size | Notes |
 |----|-------|------|-------|
 | [BAZ-034](in_progress/BAZ-034-durable-agent-deliverables.md) | Durable agent deliverables and a Team results library | M | Committed in PR #44; pending release |
-| [BAZ-035](in_progress/BAZ-035-conversation-library.md) | Conversation library and safe new conversations | L | Explicit session foundation; selected for PR #44 |
-| [BAZ-036](in_progress/BAZ-036-visible-follow-up-queue.md) | Visible, durable follow-up queue | L | Accepted pending messages across clients; active-turn steering deferred |
-| [BAZ-037](in_progress/BAZ-037-structured-agent-questions.md) | Structured agent questions across web, CLI, and Telegram | L | Bounded live clarification; separate policy approvals and consumption evidence |
-
-| [BAZ-038](in_progress/BAZ-038-telegram-attention-notifications.md) | Opt-in Telegram delivery of existing Attention items | M | Active: default-off service-topic notices, durable receipts and restore pause |
+| [BAZ-035](in_progress/BAZ-035-conversation-library.md) | Conversation library and safe new conversations | L | Committed in PR #44; retained conversations and explicit targeting |
+| [BAZ-036](in_progress/BAZ-036-visible-follow-up-queue.md) | Visible, durable follow-up queue | L | Committed in PR #44; durable follow-ups across clients |
+| [BAZ-037](in_progress/BAZ-037-structured-agent-questions.md) | Structured agent questions across web, CLI, and Telegram | L | Committed in PR #44; correlated live clarification and consumption evidence |
+| [BAZ-038](in_progress/BAZ-038-telegram-attention-notifications.md) | Opt-in Telegram delivery of existing Attention items | M | Committed in PR #44; opt-in notices, durable receipts and restore pause |
 
 ## Done (28)
 

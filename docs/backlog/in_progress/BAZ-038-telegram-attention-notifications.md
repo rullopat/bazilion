@@ -218,9 +218,10 @@ a distinct new source in the same millisecond to be admitted safely. An explicit
 eligible baseline or configuration-suppressed records; confirmed receipts retain their deduplication.
 
 Web and actual CLI demonstrations now pass against a disposable daemon and fake Telegram transport.
-See [the progress log](../BAZ-035-038-progress.md) for exact evidence and remaining acceptance work,
+See [the progress log](../BAZ-035-038-progress.md) for exact integrated acceptance evidence,
 and [the operator guide](../../attention-notifications.md) for controls and recovery semantics.
-The story is still unshipped; local implementation does not yet prove final integrated acceptance.
+The implementation is committed in PR #44 at `4f34efc`, with passing integrated checks and CI.
+The story remains unshipped.
 
 ## Acceptance evidence for PR #44
 

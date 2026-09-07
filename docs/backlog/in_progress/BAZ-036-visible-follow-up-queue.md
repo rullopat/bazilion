@@ -216,3 +216,15 @@ completed, obtained communication approval, or delivered a response.
 
 Track implementation, races and acceptance evidence in
 [the milestone progress log](../BAZ-035-038-progress.md).
+
+## Implementation and acceptance evidence
+
+Committed in draft PR #44 at `fa126ac`; pending release. See the
+[operator guide](../../follow-up-queue.md) and [milestone ledger](../BAZ-035-038-progress.md)
+for repeatable flows, detailed criterion evidence and passing integrated checks.
+
+| Acceptance area | Evidence |
+| --- | --- |
+| Durable FIFO and controls | `core/user-queue.test.ts` and `routes/user-queue.test.ts` cover idempotency, bounded attachments, edit/remove, pause/resume/Stop, claim races and restart uncertainty. |
+| Admission and canonical approvals | `user-queue-admission.test.ts` and `user-queue-approved.test.ts` cover exact targets, protected execution, policy holds and single dispatch ownership. |
+| Cross-client delivery and recovery | `telegram-queue-binding.test.ts` checks retained owner/topic identity. Web/CLI/Telegram evidence and staged-restore reconciliation are recorded in the milestone ledger; uncertain work is not automatically replayed. |

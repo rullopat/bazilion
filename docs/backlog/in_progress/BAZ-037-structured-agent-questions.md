@@ -220,8 +220,8 @@ on a persistent workflow engine or changing its single-operator model.
 
 ## Implementation and acceptance evidence
 
-The implementation is present locally for PR #44; this story remains unshipped. Final integration
-checks and commit references are tracked in [the milestone progress log](../BAZ-035-038-progress.md).
+The implementation is committed in PR #44 at `6e37e77`; this story remains unshipped. Passing
+integrated checks and commit references are tracked in [the milestone progress log](../BAZ-035-038-progress.md).
 See [Agent questions](../../questions.md) for operator instructions and the repeatable real-worker demo.
 
 | Acceptance | Evidence |

@@ -6,14 +6,25 @@ commits/push and passing final CI. Merge, versioning, publication and deployment
 
 ## Checkpoints
 
-- [ ] Refine shared contracts and each story's open questions against current code.
+- [x] Refine shared contracts and each story's open questions against current code.
 - [x] BAZ-035: retained conversations and safe explicit targeting (0af1061, CI passed).
 - [x] BAZ-036: durable follow-ups across web/CLI/Telegram (fa126ac, CI passed).
 - [x] BAZ-037: correlated live clarification across supported human clients (6e37e77, CI passed).
-- [ ] BAZ-038: opt-in notifications for existing Attention sources.
-- [ ] Integrated acceptance, security, client demos, full checks and final PR evidence.
+- [x] BAZ-038: opt-in notifications for existing Attention sources (4f34efc, CI passed).
+- [x] Integrated acceptance, security, client demos and full checks (4f34efc, CI passed).
+- Final documentation SHA and PR checklist are verified against GitHub after this ledger is committed.
 
-## Current evidence
+## Current status
+
+All four full first-slice implementations are committed and pushed into draft PR #44, preserving
+BAZ-034. BAZ-035 (`0af1061`), BAZ-036 (`fa126ac`), BAZ-037 (`6e37e77`) and BAZ-038
+(`4f34efc`) each passed CI. The final implementation run is
+[34154111191](https://github.com/rullopat/bazilion/actions/runs/34154111191).
+The final documentation commit and its exact-SHA CI are the remaining publication-to-PR check.
+Stories remain `in_progress` because `done` means shipped; package versions remain 0.14.2 with
+pending minor Changesets. Merge, versioning, release publication and deployment are excluded.
+
+## Starting evidence (historical)
 
 - Starting implementation commit: `624b731`; the release branch was clean.
 - `runtime/pi/session.ts` chooses the newest session by mtime in normal and protected session
@@ -52,7 +63,7 @@ marking the corresponding story refined.
   suppressed policy must not create notification approval recursion. Ambiguous sends require
   explicit retry; restored receipt state remains paused until operator reconciliation.
 
-## Outstanding refinement
+## Initial refinement questions (resolved in the checkpoints below)
 
 - Question policy delivery/answer attempt mapping, approval dispatch hooks and retention limits.
 - Notification source-to-policy mapping, destination generation, mirror correlation and restore
@@ -60,8 +71,8 @@ marking the corresponding story refined.
 
 ## Validation ledger
 
-BAZ-035 is verified and pushed at `0af1061`, with its local and CI evidence recorded below.
-BAZ-036–038 remain incomplete. Foundation tests do not establish an entire story's acceptance.
+The following entries preserve the chronological implementation evidence. Incomplete-state notes
+describe those earlier checkpoints; the current status above supersedes them.
 
 ### BAZ-035 foundation checkpoint
 
@@ -1101,3 +1112,23 @@ BAZ-036–038 remain incomplete. Foundation tests do not establish an entire sto
 - Exact current-tree integration rerun passed: **1,397 tests, 3 skipped**, 180 passing files
   (`/tmp/baz035-038-current-tests.log`). The checked-in demo's fresh home contains only the
   `0001_init` migration. BAZ-038 is ready to commit and push; final remote CI remains outstanding.
+
+### Final implementation acceptance and PR reconciliation
+
+- BAZ-038 was committed and pushed at `4f34efce254b3daa6744aae6b54209c5b683367d`.
+  Local and remote SHA equality and a clean worktree were verified. CI run `34154111191`
+  completed successfully at that exact implementation SHA.
+- The exact final code tree passed 1,397 tests (3 skipped), all 60 required security acceptance
+  cases, root/web/mobile typechecks, lint, web and package builds, and diff checks. Full-suite
+  evidence is `/tmp/baz035-038-current-tests.log`; other final gate logs use the
+  `/tmp/baz035-038-final-` prefix. Baseline lint warnings remain, with no lint errors.
+- Desktop/narrow keyboard browser flows, actual CLI/PTY interactions, real-worker question
+  consumption and fake Telegram notification delivery/retry were exercised in disposable homes.
+  Repeatable checked-in fixtures are `scripts/check-question-flow.mts` and
+  `scripts/demo-notifications.mts`. No personal data or live external messages were used.
+- Story acceptance mappings and this chronological ledger cover targeting, stale selection,
+  queue admission/approval/recovery, question correlation/consumption and notification
+  policy/destination/deduplication/restore boundaries. BAZ-034 stays in the same draft PR.
+- Final documentation reconciles the backlog table and distinguishes committed work from shipped
+  work. The PR checklist is finalized only after CI passes on that documentation commit, with
+  local/remote SHA equality and clean status checked again. No release or deployment is claimed.

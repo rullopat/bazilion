@@ -175,3 +175,15 @@ copy their storage, branching, or desktop architecture.
 
 Track implementation and per-criterion verification in
 [the milestone progress log](../BAZ-035-038-progress.md).
+
+## Implementation and acceptance evidence
+
+Committed in draft PR #44 at `0af1061`; pending release. See the
+[operator guide](../../conversations.md) and [milestone ledger](../BAZ-035-038-progress.md)
+for repeatable flows, detailed criterion evidence and passing integrated checks.
+
+| Acceptance area | Evidence |
+| --- | --- |
+| Library and explicit selection | Conversation repository, route and CLI tests cover retained list/read/rename/New, canonical identity, revision checks and idempotent creation. |
+| Exact routing and stale-client safety | `conversation-target.test.ts`, turn preparation and delayed-dispatch tests cover captured targets; browser acceptance exercises retained history and safe New conversation. |
+| Recovery and provenance | `conversation-file.test.ts` and source/history checks enforce bounded canonical reads, missing/corrupt-file failure and private review exclusion. Backup and result tests run in the integrated suite. |
