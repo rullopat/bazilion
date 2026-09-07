@@ -27,11 +27,10 @@ docs/backlog/
 
 ---
 
-## Draft (13)
+## Draft (12)
 
 | ID | Title | Size | Notes |
 |----|-------|------|-------|
-| [BAZ-034](draft/BAZ-034-durable-agent-deliverables.md) | Durable agent deliverables and a Team results library | M | First to refine and implement: preserve delivered files across completion, refresh, and restart |
 | [BAZ-035](draft/BAZ-035-conversation-library.md) | Conversation library and safe new conversations | L | Retained history and explicit session selection; settle routing before dependent queue work |
 | [BAZ-036](draft/BAZ-036-visible-follow-up-queue.md) | Visible, durable follow-up queue | L | Accepted pending messages across clients; active-turn steering deferred |
 | [BAZ-037](draft/BAZ-037-structured-agent-questions.md) | Structured agent questions across web, CLI, and Telegram | L | Bounded clarification and correlated answers; independent of authorization approvals |
@@ -46,7 +45,7 @@ docs/backlog/
 | [BAZ-046](draft/BAZ-046-controlled-deployment-execution.md) | Controlled deployment execution and verified outcomes | L | After specialist testing: one configured backend, exact release authorization, and observed deployment/health |
 
 Drafted on 2026-09-07 from the OpenClaw 2.0 / Hermes desktop review and current Bazilion code.
-Recommended order: refine BAZ-034 first, then BAZ-035 and BAZ-036; BAZ-037 can be refined in
+BAZ-034 is implemented and locally validated, pending release. Refine BAZ-035 and BAZ-036 next; BAZ-037 can be refined in
 parallel. BAZ-038 is an independent smaller candidate. Sizes are provisional; each draft records
 open decisions and boundaries to resolve before moving to `todo/`. Desktop packaging and Team
 conversation views remain later ideas rather than part of this initial slice.
@@ -75,10 +74,11 @@ approval into permission to deploy.
 | ID | Title | Size | Notes |
 |----|-------|------|-------|
 
-## In Progress (0)
+## In Progress (1)
 
 | ID | Title | Size | Notes |
 |----|-------|------|-------|
+| [BAZ-034](in_progress/BAZ-034-durable-agent-deliverables.md) | Durable agent deliverables and a Team results library | M | Implementation validated; pending commit and release |
 
 ## Done (28)
 

@@ -218,6 +218,13 @@ function ApprovalQueue() {
             ) : (
               <div className="space-y-5">
                 <dl className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+                  {selected.file && (
+                    <>
+                      <Fact label="File" value={selected.file.name} />
+                      <Fact label="File type" value={selected.file.mimeType} />
+                      <Fact label="Size" value={`${selected.file.byteLength.toLocaleString()} bytes`} />
+                    </>
+                  )}
                   <Fact label="Attempt" value={`${selected.attemptKind}:${selected.attemptId}`} />
                   <Fact label="Operation" value={selected.operation} />
                   <Fact

@@ -23,6 +23,7 @@ import {
   CommunicationDeniedError,
   CommunicationPendingError,
 } from '../communication.ts'
+import { capturedResultFile, releaseResultFile } from '../result-delivery.ts'
 import { _resetLoopGuardForTest, allowTelegramOutboundNoise } from './loop-guard.ts'
 import { renderTelegramMessages, stripTelegramHtml, TELEGRAM_SAFE_BUDGET } from './markdown.ts'
 import { enqueueOutbound } from './outbound-queue.ts'
@@ -289,19 +290,27 @@ async function mirrorFile(
   deps: MirrorDeps,
   topicId: number,
   agentId: string,
-  ev: { name: string; mimeType: string; data: string },
+  ev: {
+    name: string
+    mimeType: string
+    data: string
+    result?: import('@bazilion/api-types').ResultReference
+  },
   attemptId: string,
 ): Promise<void> {
+  ev = capturedResultFile(deps.db, agentId, ev)
   if (
     !telegramEgressAllowed(deps, agentId, attemptId, 'telegram_file', {
       chatId: deps.chatId,
       topicId,
       name: ev.name,
       mimeType: ev.mimeType,
-      data: ev.data,
+      data: ev.result ? '' : ev.data,
+      result: ev.result,
     })
   )
     return
+  releaseResultFile(deps.db, agentId, ev.result)
   const buf = Buffer.from(ev.data, 'base64')
   try {
     await enqueueOutbound(deps.chatId, () =>

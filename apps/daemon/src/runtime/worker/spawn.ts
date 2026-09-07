@@ -121,6 +121,7 @@ export async function spawnReviewWorker(
 }
 
 interface CommonSpawnWorkerOpts {
+  resultHost?: import('./ipc-protocol.ts').ResultHost
   /** Abort to kill the in-flight worker. */
   signal?: AbortSignal
   /** ms between SIGTERM and fallback SIGKILL (default 3000). */
@@ -492,6 +493,7 @@ function spawnHosts(
   const configuredOpts = configured ? (opts as ConfiguredSpawnWorkerOpts) : undefined
   const protectedOpts = protectedTurn ? (opts as ProtectedSpawnWorkerOpts) : undefined
   return {
+    resultHost: spec.kind === 'restricted_review' ? undefined : opts.resultHost,
     messagingHost: configuredOpts?.messagingHost ?? protectedOpts?.messagingHost,
     userMdHost: configuredOpts?.userMdHost ?? protectedOpts?.userMdHost,
     browserHost: configuredOpts?.browserHost,
@@ -529,6 +531,7 @@ function parseFrame(line: string, accessTokens: readonly string[]): ChatFrame {
 }
 
 interface IpcHosts {
+  resultHost?: import('./ipc-protocol.ts').ResultHost
   messagingHost?: MessagingHost
   userMdHost?: UserMdHost
   browserHost?: BrowserHost
@@ -580,6 +583,10 @@ async function dispatch(req: IpcRequest, hosts: IpcHosts): Promise<IpcReply> {
   try {
     let result: unknown
     switch (req.method) {
+      case 'publishResult':
+        hosts.ipcSignal?.throwIfAborted()
+        result = await require(hosts.resultHost, 'result', req.method).publish(req.args)
+        break
       case 'agentExists':
         result = await require(hosts.messagingHost, 'messaging', req.method).agentExists(
           req.args.agentId,

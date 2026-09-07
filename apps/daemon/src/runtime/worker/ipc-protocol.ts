@@ -34,6 +34,7 @@ export type RpcMethod =
   | 'mcpInvoke'
   | 'refreshApiKey'
   | 'bashApproval'
+  | 'publishResult'
 
 export interface AgentExistsArgs {
   agentId: string
@@ -139,7 +140,14 @@ export interface InjectedMcpTool {
   inputSchema: object
 }
 
+export type PublishResultArgs = import('@bazilion/api-types').ResultPublicationInput
+
+export interface ResultHost {
+  publish(input: PublishResultArgs): Promise<import('@bazilion/api-types').ResultReference>
+}
+
 export type RpcArgs =
+  | { method: 'publishResult'; args: PublishResultArgs }
   | { method: 'agentExists'; args: AgentExistsArgs }
   | { method: 'sendMessage'; args: SendMessageArgs }
   | { method: 'listInbox'; args: ListInboxArgs }

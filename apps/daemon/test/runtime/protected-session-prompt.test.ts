@@ -76,7 +76,7 @@ describe('protected provider prompt boundary', () => {
       userMdHost: hosts.userMdHost,
       bashApprovalHost: hosts.bashApprovalHost,
       refreshApiKey: async () => runtime.apiKey,
-      fileSink: () => {},
+      fileSink: async () => ({ resultId: 'fixture-result' }),
     })
     let providerSystemPrompt = ''
     handle.session.agent.streamFunction = (model, context) => {

@@ -19,6 +19,7 @@ export type ChatItem =
       error?: string
       images?: ToolResultImage[]
     }
+  | { id: string; kind: 'result'; resultId: string }
   | { id: string; kind: 'file'; name: string; mimeType: string; data: string }
   | { id: string; kind: 'approval'; approval: CommandApproval }
   | { id: string; kind: 'notice'; tone: 'info' | 'error'; text: string }
@@ -78,6 +79,13 @@ export function historyToChatItems(
       continue
     }
     if (message.role !== 'tool') continue
+    if (message.result) {
+      items.push({
+        id: `result-${message.result.resultId}`,
+        kind: 'result',
+        resultId: message.result.resultId,
+      })
+    }
 
     const index = items.findIndex(
       (item) => item.kind === 'tool' && item.id === message.toolCallId,
@@ -240,6 +248,17 @@ function applySessionEvent(
   }
 
   if (event.type === 'file') {
+    if (event.result) {
+      return {
+        ...state,
+        items: [...state.items, {
+          id: `result-${event.result.resultId}`,
+          kind: 'result',
+          resultId: event.result.resultId,
+        }],
+      }
+    }
+
     return {
       ...state,
       items: [

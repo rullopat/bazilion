@@ -1,23 +1,21 @@
 // `deliver_file` — the agent's outbound document channel.
 //
-// The agent produces a file in its workspace (write a report, render a chart,
-// zip something up) and calls deliver_file(path) to hand it to the user. The
-// file lives on the daemon's filesystem (the worker is a subprocess on the same
-// host), so we read it directly, base64-encode it, and emit it as a `file`
-// SessionEvent via an injected sink — the worker writes that frame to stdout,
-// the daemon forwards it, and each client surfaces it (web download link,
-// Telegram document, CLI save-to-disk).
+// The tool reads a confined workspace file and awaits daemon-owned publication.
+// The sink returns an opaque receipt only after bytes and provenance commit;
+// worker events and canonical Pi tool-result details carry that same reference.
+// Shared Agent-to-user authorization still owns release to operator surfaces.
 
 import {
   closeSync,
   constants,
   fstatSync,
   openSync,
-  readFileSync,
+  readSync,
   realpathSync,
   statSync,
 } from 'node:fs'
 import { basename, extname, isAbsolute, relative, resolve, sep } from 'node:path'
+import type { ResultReference } from '@bazilion/api-types'
 import type { ToolHandler } from './types.ts'
 
 const MAX_DELIVER_BYTES = 25 * 1024 * 1024
@@ -37,14 +35,23 @@ const MIME: Record<string, string> = {
   '.webp': 'image/webp',
 }
 
-export type FileSink = (file: { name: string; mimeType: string; data: string }) => void
+export interface DeliveredFile {
+  name: string
+  mimeType: string
+  data: string
+}
+export interface DeliverySource {
+  sessionId: string
+  toolCallId: string
+}
+export type FileSink = (file: DeliveredFile, source: DeliverySource) => Promise<ResultReference>
 
 function isWithin(root: string, candidate: string): boolean {
   const rel = relative(root, candidate)
   return rel === '' || (rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel))
 }
 
-export function deliverFileTool(cwd: string, sink: FileSink): ToolHandler {
+export function deliverFileTool(cwd: string, sink: FileSink, sessionId = ''): ToolHandler {
   const workspacePath = resolve(cwd)
   let workspaceRealPath: string | null = null
   try {
@@ -58,7 +65,7 @@ export function deliverFileTool(cwd: string, sink: FileSink): ToolHandler {
     def: {
       name: 'deliver_file',
       description:
-        'Send a file from your workspace to the user so they can download it (web), receive it as a document (Telegram), or save it (CLI). Use this to deliver reports, exports, or any artifact you produced. Max 25 MB.',
+        'Send a file from your workspace to the user so they can download it (web), receive it as a document (Telegram), or save it (CLI). Use this to deliver reports, exports, or any artifact you produced. Max 25 MiB. Saved delivery remains subject to Team Policy.',
       parameters: {
         type: 'object',
         properties: {
@@ -71,7 +78,7 @@ export function deliverFileTool(cwd: string, sink: FileSink): ToolHandler {
         additionalProperties: false,
       },
     },
-    async invoke(args) {
+    async invoke(args, context) {
       const p = String(args.path ?? '')
       if (!p) throw new Error('deliver_file: path is required')
       if (isAbsolute(p)) {
@@ -134,15 +141,38 @@ export function deliverFileTool(cwd: string, sink: FileSink): ToolHandler {
             `deliver_file: "${basename(abs)}" is too large (${(stat.size / 1024 / 1024).toFixed(1)} MB > 25 MB)`,
           )
         }
-        data = readFileSync(fd).toString('base64')
+        // Bound the read itself, including growth after fstat. Never allocate more
+        // than the limit plus one sentinel byte, even for a rapidly growing source.
+        const buffer = Buffer.alloc(MAX_DELIVER_BYTES + 1)
+        let length = 0
+        while (length < buffer.length) {
+          const count = readSync(fd, buffer, length, buffer.length - length, null)
+          if (count === 0) break
+          length += count
+        }
+        if (length > MAX_DELIVER_BYTES) throw new Error('deliver_file: file exceeds 25 MiB')
+        data = buffer.subarray(0, length).toString('base64')
       } finally {
         closeSync(fd)
       }
 
       const name = basename(abs)
       const mimeType = MIME[extname(abs).toLowerCase()] ?? 'application/octet-stream'
-      sink({ name, mimeType, data })
-      return `Delivered "${name}" (${mimeType}) to the user.`
+      if (!context?.toolCallId || !sessionId)
+        throw new Error('deliver_file: missing source operation')
+      const result = await sink(
+        { name, mimeType, data },
+        { sessionId, toolCallId: context.toolCallId },
+      )
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Saved "${name}" (${mimeType}) as result ${result.resultId}. Delivery is subject to Team Policy.`,
+          },
+        ],
+        result,
+      }
     },
   }
 }

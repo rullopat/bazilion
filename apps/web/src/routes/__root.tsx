@@ -40,7 +40,8 @@ export const Route = createRootRoute({
 
     const auth = await fetchAuthState()
     if (!auth.authed) {
-      throw redirect({ to: '/login', search: {} })
+      const resultId = /^\/results\/([a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12})$/.exec(path)?.[1]
+      throw redirect({ to: '/login', search: { resultId } })
     }
     if (!isSetupOpen(path) && !auth.setupComplete) {
       throw redirect({ to: '/welcome' })

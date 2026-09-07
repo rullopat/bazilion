@@ -115,7 +115,7 @@ Verified against Bazilion `13c3a63` (v0.14.2) on 2026-09-07:
 
 - Depends on [BAZ-042](BAZ-042-git-change-review.md) snapshot identity and
   [BAZ-041](BAZ-041-coding-command-verification.md) executor-owned verification.
-- Uses [BAZ-034](BAZ-034-durable-agent-deliverables.md) for durable exports and
+- Uses [BAZ-034](../in_progress/BAZ-034-durable-agent-deliverables.md) for durable exports and
   [BAZ-035](BAZ-035-conversation-library.md) for exact conversation references. No new chat store.
 - [BAZ-043](BAZ-043-isolated-coding-workspaces.md) enables parallel assignment ownership later;
   static review of an immutable snapshot must remain possible without managed worktrees.

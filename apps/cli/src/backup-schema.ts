@@ -2,12 +2,13 @@ import { createHash } from 'node:crypto'
 import type { DatabaseSync } from 'node:sqlite'
 
 const CANONICAL_MIGRATION = '0001_init'
-const CANONICAL_SCHEMA_HASH = '4bde209eb0bf9851bf1f01fc96263f165a1799c81e720ddea463169a0d6c0d51'
+const CANONICAL_SCHEMA_HASH = '331d0844c3140e0a7efac681295ca571d44a9b3bf36560fff93d4d7fa75862fe'
 
 // Explicit objects created by migrate.ts + 0001_init.sql. SQLite's implicit
 // auto-indexes have `sql = NULL` and are deliberately represented through the
 // table SQL that creates their UNIQUE/PRIMARY KEY constraints.
 const CANONICAL_OBJECTS = [
+  ['index', 'agent_results_team_time'],
   ['index', 'agent_triggers_agent'],
   ['index', 'agent_triggers_enabled'],
   ['index', 'agent_loop_break_events_agent_time'],
@@ -33,6 +34,7 @@ const CANONICAL_OBJECTS = [
   ['index', 'web_tokens_active'],
   ['index', 'web_sessions_active'],
   ['index', 'web_sessions_device'],
+  ['table', 'agent_results'],
   ['table', 'agent_skills'],
   ['table', 'agent_loop_break_events'],
   ['table', 'agent_lesson_proposals'],
@@ -135,5 +137,19 @@ export function assertCanonicalBackupSchema(db: DatabaseSync): void {
       'canonical schema fingerprint does not match this Bazilion release; ' +
         'restore a backup created from the current clean-install schema',
     )
+  }
+  // Result bytes are in the same SQLite snapshot as the provenance manifest.
+  // Validate before restore publishes the staged home; read at most one file at a time.
+  for (const row of db
+    .prepare('SELECT id, bytes, byte_length, sha256 FROM agent_results WHERE deleted_at IS NULL')
+    .iterate()) {
+    const bytes = row.bytes
+    if (
+      !(bytes instanceof Uint8Array) ||
+      bytes.byteLength !== row.byte_length ||
+      createHash('sha256').update(bytes).digest('hex') !== row.sha256
+    ) {
+      throw new Error(`Result snapshot integrity verification failed: ${row.id}`)
+    }
   }
 }

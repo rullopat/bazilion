@@ -23,6 +23,7 @@ import {
 } from 'react'
 import { renderMd } from '../lib/md'
 import { Button } from './Button'
+import { ResultCard } from './ResultCard'
 import { ConfirmDialog } from './ConfirmDialog'
 
 const INBOX_WAKE_PREFIX = '[[bazilion:inbox-wake]]\n'
@@ -54,6 +55,7 @@ export type RenderEntry =
   | { type: 'tool'; items: ToolItem[] }
   | { type: 'images'; images: { data: string; mimeType: string }[] }
   | { type: 'file'; name: string; mimeType: string; data: string }
+  | { type: 'result'; resultId: string }
   | { type: 'command_approval'; approval: CommandApproval }
   | { type: 'system'; content: string }
   | { type: 'error'; content: string }
@@ -195,6 +197,10 @@ function projectMessages(msgs: ProviderMessage[]): RenderEntry[] {
         name: m.toolName ?? '',
         body: m.content,
       })
+      if (m.result) {
+        entries.push({ type: 'result', resultId: m.result.resultId })
+        openTool = null
+      }
       // Images are deliverables — emit them as a standalone block OUTSIDE the
       // tool box (and close the team so they don't get visually nested).
       if (m.images && m.images.length > 0) {
@@ -864,6 +870,11 @@ export function ChatPane({
       return
     }
     if (ev.type === 'file') {
+      if (ev.result) {
+        const resultId = ev.result.resultId
+        setLiveEntries((prev) => [...prev, { type: 'result', resultId }])
+        return
+      }
       setLiveEntries((prev) => [
         ...prev,
         { type: 'file', name: ev.name, mimeType: ev.mimeType, data: ev.data },
@@ -1488,6 +1499,7 @@ function Bubble({
       </div>
     )
   }
+  if (entry.type === 'result') return <ResultCard resultId={entry.resultId} />
   if (entry.type === 'file') {
     const isImage = entry.mimeType.startsWith('image/')
     const href = `data:${entry.mimeType};base64,${entry.data}`
@@ -1746,5 +1758,19 @@ function Dot({ delay = '0s' }: { delay?: string }) {
       style={{ animationDelay: delay }}
       aria-hidden="true"
     />
+  )
+}
+
+/** Read-only projection used when opening the exact available source of a saved result. */
+export function ResultTranscript({ messages }: { messages: ProviderMessage[] }) {
+  const markdownReady = useSyncExternalStore(
+    subscribeToHydration, browserMarkdownReady, serverMarkdownReady,
+  )
+  return (
+    <div aria-label="Source conversation">
+      {projectMessages(messages).map((entry, index) => (
+        <Bubble key={index} entry={entry} markdownReady={markdownReady} />
+      ))}
+    </div>
   )
 }

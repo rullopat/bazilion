@@ -109,7 +109,20 @@ export function createClient(cfg: ClientConfig) {
     if (buffer.trim()) yield JSON.parse(buffer) as T
   }
 
+  async function binary(path: string): Promise<Uint8Array> {
+    const res = await fetch(`${cfg.serverUrl}${path}`, {
+      headers: await authHeaders(),
+      redirect: 'error',
+    })
+    if (!res.ok) {
+      const err = (await res.json().catch(() => ({ error: res.statusText }))) as ApiError
+      throw new ApiClientError(res.status, err)
+    }
+    return new Uint8Array(await res.arrayBuffer())
+  }
+
   return {
+    binary,
     get: <T>(p: string) => request<T>('GET', p),
     post: <T>(p: string, b?: unknown) => request<T>('POST', p, b),
     postMultipart,

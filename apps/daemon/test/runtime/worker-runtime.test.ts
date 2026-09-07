@@ -220,7 +220,7 @@ describe('minimal worker runtime', () => {
       memory,
       messagingHost: hosts.messagingHost,
       userMdHost: hosts.userMdHost,
-      fileSink: () => {},
+      fileSink: async () => ({ resultId: 'fixture-result' }),
     }).map((tool) => tool.name)
 
     expect(names).toContain('web_fetch')

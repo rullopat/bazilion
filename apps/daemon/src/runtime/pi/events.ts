@@ -82,6 +82,7 @@ export function translatePiEvent(e: AgentSessionEvent): SessionEvent[] {
           id: e.toolCallId,
           name: e.toolName,
           result: text,
+          resultReference: extractResultReference(e.result),
           ...(images.length > 0 ? { images } : {}),
         },
       ]
@@ -192,6 +193,7 @@ export function piMessagesToProviderView(messages: AgentMessage[]): ProviderMess
           content: stringifyContent(tr.content),
           toolCallId: tr.toolCallId,
           toolName: tr.toolName,
+          result: extractResultReference(m),
           ...(images.length > 0 ? { images } : {}),
         })
         break
@@ -203,4 +205,14 @@ export function piMessagesToProviderView(messages: AgentMessage[]): ProviderMess
     }
   }
   return out
+}
+
+/** Structured tool details are opaque references, never filesystem paths or inline bytes. */
+function extractResultReference(
+  value: unknown,
+): import('@bazilion/api-types').ResultReference | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const details = (value as { details?: { result?: { resultId?: unknown } } }).details
+  const id = details?.result?.resultId
+  return typeof id === 'string' && /^[a-f0-9-]{36}$/.test(id) ? { resultId: id } : undefined
 }

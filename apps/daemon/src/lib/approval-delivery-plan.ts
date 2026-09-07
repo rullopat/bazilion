@@ -61,6 +61,7 @@ export interface TelegramImageApprovalPayload extends TelegramTransportPayload {
 }
 
 export interface TelegramFileApprovalPayload extends TelegramTransportPayload {
+  result?: import('@bazilion/api-types').ResultReference
   data: string
   mimeType: string
   name: string
@@ -68,6 +69,11 @@ export interface TelegramFileApprovalPayload extends TelegramTransportPayload {
 }
 
 export type ApprovalDeliveryPlan =
+  | {
+      kind: 'agent_result'
+      approval: CommunicationApprovalDetail
+      payload: { agentId: string; resultId: string }
+    }
   | {
       kind: 'agent_turn'
       approval: CommunicationApprovalDetail
@@ -203,6 +209,29 @@ export function planApprovalDelivery(
     const payload = requireAgentMessagePayload(approval.payload)
     requireAgentToAgent(approval, payload.from, payload.to)
     return { kind: 'agent_message', approval, payload }
+  }
+
+  if (
+    approval.operation === 'agent_to_user' &&
+    approval.payloadKind === 'agent_result' &&
+    approval.origin === 'result_library'
+  ) {
+    requireAttemptKind(approval, 'result_publication')
+    const payload = approval.payload
+    if (
+      !isRecord(payload) ||
+      !isNonEmptyString(payload.agentId) ||
+      !isNonEmptyString(payload.resultId) ||
+      approval.attemptId !== payload.resultId
+    ) {
+      return invalid('agent_result_payload')
+    }
+    requireAgentToUser(approval, payload.agentId)
+    return {
+      kind: 'agent_result',
+      approval,
+      payload: { agentId: payload.agentId, resultId: payload.resultId },
+    }
   }
 
   if (
@@ -453,6 +482,9 @@ function requireTelegramFilePayload(value: unknown): TelegramFileApprovalPayload
     data: value.data,
     mimeType: value.mimeType,
     name: value.name,
+    ...(isRecord(value.result) && isNonEmptyString(value.result.resultId)
+      ? { result: { resultId: value.result.resultId } }
+      : {}),
     ...(value.caption !== undefined ? { caption: value.caption } : {}),
   }
 }

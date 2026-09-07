@@ -20,6 +20,7 @@ import { mcpCommand } from './commands/mcp.ts'
 import { memoryCommand } from './commands/memory.ts'
 import { profileCommand } from './commands/profile.ts'
 import { providerCommand } from './commands/provider.ts'
+import { resultCommand } from './commands/result.ts'
 import { sendCommand } from './commands/send.ts'
 import { serveCommand } from './commands/serve.ts'
 import { sessionCommand } from './commands/session.ts'
@@ -45,6 +46,7 @@ const main = defineCommand({
     agent: agentCommand,
     approval: approvalCommand,
     attention: attentionCommand,
+    result: resultCommand,
     skill: skillCommand,
     memory: memoryCommand,
     mcp: mcpCommand,

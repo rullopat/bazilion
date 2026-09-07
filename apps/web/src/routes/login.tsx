@@ -9,7 +9,8 @@ export const Route = createFileRoute('/login')({
   // actionable reason. The field stays optional for normal auth redirects.
   validateSearch: (
     search: Record<string, unknown>,
-  ): { error?: 'token' | 'origin' } => ({
+  ): { error?: 'token' | 'origin'; resultId?: string } => ({
+    resultId: typeof search.resultId === 'string' && /^[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(search.resultId) ? search.resultId : undefined,
     error:
       search.error === 'token' || search.error === 'origin' ? search.error : undefined,
   }),
@@ -17,7 +18,7 @@ export const Route = createFileRoute('/login')({
 })
 
 function LoginPage() {
-  const { error } = Route.useSearch()
+  const { error, resultId } = Route.useSearch()
   return (
     <main className="relative flex min-h-dvh items-center overflow-hidden bg-cream px-5 py-16 sm:px-8">
       <div
@@ -76,6 +77,7 @@ function LoginPage() {
             </div>
           )}
           <form method="POST" action="/api/login" className="mt-6 text-left">
+            {resultId && <input type="hidden" name="resultId" value={resultId} />}
             <label htmlFor="token" className="block text-[0.85em] font-semibold text-mocha">
               Access token
             </label>

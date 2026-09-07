@@ -21,6 +21,7 @@ import {
   enforceMessageCausality,
   resolveMessageCausality,
 } from './agent-loop-guard.ts'
+import { capturedResultFile, releaseResultFile } from './result-delivery.ts'
 import { teamPolicyEnforcementRequested } from './team-policy-contract.ts'
 
 export const communicationDecisionMetrics = { allowed: 0, denied: 0 }
@@ -181,14 +182,26 @@ export function authorizeHttpChatFrame(
   frame: ChatFrame,
 ): void {
   if (!isUserFacingFrame(frame)) return
+  if (frame.kind === 'event' && frame.event.type === 'file') {
+    Object.assign(frame.event, capturedResultFile(db, agentId, frame.event))
+  }
   authorizeAgentEgress(db, agentId, {
     origin: 'http_chat',
     attemptKind: 'http_chat_frame',
     attemptId: `${requestAttemptId}:${frameIndex}`,
     approvalPayloadKind: 'http_chat_frame',
-    approvalPayload: { agentId, frame },
+    approvalPayload: {
+      agentId,
+      frame:
+        frame.kind === 'event' && frame.event.type === 'file' && frame.event.result
+          ? { ...frame, event: { ...frame.event, data: '' } }
+          : frame,
+    },
     requester: agentId,
   })
+  if (frame.kind === 'event' && frame.event.type === 'file') {
+    releaseResultFile(db, agentId, frame.event.result)
+  }
 }
 
 function isUserFacingFrame(frame: ChatFrame): boolean {

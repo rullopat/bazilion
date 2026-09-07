@@ -113,7 +113,7 @@ Verified against Bazilion `13c3a63` (v0.14.2) on 2026-09-07:
 - Coordinate repository identity with [BAZ-039](BAZ-039-repository-coding-context.md) and the shared
   snapshot contract with [BAZ-041](BAZ-041-coding-command-verification.md) before implementation.
   Either presentation can ship first once the contract is settled.
-- [BAZ-034](BAZ-034-durable-agent-deliverables.md) supplies persistent patch exports;
+- [BAZ-034](../in_progress/BAZ-034-durable-agent-deliverables.md) supplies persistent patch exports;
   [BAZ-035](BAZ-035-conversation-library.md) supplies exact historic conversation navigation;
   [BAZ-036](BAZ-036-visible-follow-up-queue.md) supplies busy-turn feedback queueing.
 - [BAZ-043](BAZ-043-isolated-coding-workspaces.md) adds managed workspaces later. This first review

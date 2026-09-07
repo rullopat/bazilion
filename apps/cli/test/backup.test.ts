@@ -36,6 +36,7 @@ import {
   webSessionRepo,
   webTokenRepo,
 } from '../../daemon/src/core/index.ts'
+import * as resultRepo from '../../daemon/src/core/repos/results.ts'
 import { installValidatedPayload, RestoreRecoveryRequiredError } from '../src/commands/backup.ts'
 import { acquireHomeRestoreLock, daemonLivenessPath } from '../src/daemon-liveness.ts'
 import { extractAgentId, makeHome, runCli, type TestHome } from './helpers.ts'
@@ -358,6 +359,16 @@ test('backup restore extracts the tar.gz into a fresh home', async () => {
   ).toBe(0)
   expect((await server.cli(['agent', 'review', agentId])).exitCode).toBe(0)
   const sourceDb = openDb(join(server.home, 'bazilion.db'))
+  const savedResult = resultRepo.publish(sourceDb, {
+    teamId: 'default',
+    agentId,
+    sessionId: 'backup-session',
+    toolCallId: 'deliver-report',
+    name: 'report.txt',
+    mimeType: 'text/plain',
+    bytes: Buffer.from('captured backup result'),
+  })
+  resultRepo.release(sourceDb, savedResult.id, agentId)
   const review = sourceDb.raw
     .query<{ id: string }, [string]>('SELECT id FROM agent_reviews WHERE agent_id = ?')
     .get(agentId)
@@ -424,6 +435,16 @@ test('backup restore extracts the tar.gz into a fresh home', async () => {
     expect(existsSync(join(target.home, `bazilion.db${suffix}`))).toBe(false)
   }
   const restoredDb = openDb(join(target.home, 'bazilion.db'))
+  expect(resultRepo.getReleased(restoredDb, savedResult.id)).toMatchObject({
+    agentId,
+    teamId: 'default',
+    sessionId: 'backup-session',
+    toolCallId: 'deliver-report',
+    sha256: savedResult.sha256,
+  })
+  expect(resultRepo.readReleased(restoredDb, savedResult.id).toString()).toBe(
+    'captured backup result',
+  )
   const restoredPaths = resolvePaths(target.home)
   expect(
     restoredDb.raw

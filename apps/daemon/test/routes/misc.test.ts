@@ -173,9 +173,9 @@ test('health separates configured operator HTTP from protected unattended execut
   expect(protectedTurns.openaiCodex.refreshOnNextTurn).toBe(
     protectedTurns.openaiCodex.connected && !protectedTurns.openaiCodex.accessCurrent,
   )
-  expect(protectedTurns.baseRuntimeReady).toBe(
-    protectedTurns.docker.ready && protectedTurns.openaiCodex.baselineEligible,
-  )
+  // The provider-neutral baseline depends on Docker. OAuth readiness is a
+  // separate per-provider diagnostic, not a gate on other providers.
+  expect(protectedTurns.baseRuntimeReady).toBe(protectedTurns.docker.ready)
   expect(report.protectedWorkBaselineReady).toBe(protectedTurns.baseRuntimeReady)
   expect(Object.keys(protectedTurns.docker).sort()).toEqual(['image', 'ready', 'reason'])
   if (protectedTurns.remediation) {

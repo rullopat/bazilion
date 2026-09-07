@@ -255,7 +255,14 @@ async function createSessionForInput(
       mcpHost,
       mcpTools: input.mcpTools,
       bashApprovalHost,
-      fileSink: (file) => emit({ kind: 'event', event: { type: 'file', ...file } }),
+      fileSink: async (file, source) => {
+        const result = await ipcCall<import('@bazilion/api-types').ResultReference>(
+          'publishResult',
+          { ...file, ...source },
+        )
+        emit({ kind: 'event', event: { type: 'file', ...file, result } })
+        return result
+      },
     })
     return { handle }
   }
@@ -298,7 +305,14 @@ async function createSessionForInput(
     userMdHost,
     bashApprovalHost,
     refreshApiKey,
-    fileSink: (file) => emit({ kind: 'event', event: { type: 'file', ...file } }),
+    fileSink: async (file, source) => {
+      const result = await ipcCall<import('@bazilion/api-types').ResultReference>('publishResult', {
+        ...file,
+        ...source,
+      })
+      emit({ kind: 'event', event: { type: 'file', ...file, result } })
+      return result
+    },
   })
   return { handle }
 }

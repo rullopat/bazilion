@@ -167,7 +167,7 @@ Verified against Bazilion `13c3a63` (v0.14.2) on 2026-09-07:
   Reuse [BAZ-041](BAZ-041-coding-command-verification.md) receipts and
   [BAZ-042](BAZ-042-git-change-review.md) source identity. A passing specialist result is evidence,
   not a deployment grant. [BAZ-044](BAZ-044-coding-review-handoff.md) packets are optional context.
-- Use [BAZ-034](BAZ-034-durable-agent-deliverables.md) for durable evidence exports and current
+- Use [BAZ-034](../in_progress/BAZ-034-durable-agent-deliverables.md) for durable evidence exports and current
   Team Policy/authentication. [BAZ-043](BAZ-043-isolated-coding-workspaces.md) is not required to
   deploy an already published immutable input; deployment never mutates the coding workspace.
 - Publication remains an operator/existing-CI prerequisite. Automatic commit/push/PR creation and

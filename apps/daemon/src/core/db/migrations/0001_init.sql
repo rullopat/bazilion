@@ -520,6 +520,28 @@ WHEN NOT EXISTS (
 BEGIN
   SELECT RAISE(ABORT, 'Team Agent state does not match agents.team_id');
 END;
+-- Captured bytes and their publication receipt share one atomic SQLite commit.
+-- Agent identity is retained across deletion/transfer; Team deletion owns cleanup.
+CREATE TABLE agent_results (
+  id TEXT PRIMARY KEY,
+  team_id TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  agent_id TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  tool_call_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  mime_type TEXT NOT NULL,
+  byte_length INTEGER NOT NULL CHECK (byte_length BETWEEN 0 AND 26214400),
+  sha256 TEXT NOT NULL CHECK (length(sha256) = 64),
+  created_at INTEGER NOT NULL,
+  released_at INTEGER,
+  deleted_at INTEGER,
+  bytes BLOB,
+  UNIQUE (agent_id, session_id, tool_call_id),
+  CHECK ((deleted_at IS NULL AND bytes IS NOT NULL AND length(bytes) = byte_length)
+    OR (deleted_at IS NOT NULL AND bytes IS NULL))
+);
+CREATE INDEX agent_results_team_time ON agent_results(team_id, created_at DESC, id DESC);
+
 CREATE TRIGGER validate_team_policy_baseline_update
 BEFORE UPDATE OF baseline_instantiation_id ON team_policies
 WHEN NEW.baseline_instantiation_id IS NOT NULL AND NOT EXISTS (

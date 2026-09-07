@@ -1,11 +1,12 @@
 ---
 id: BAZ-034
 title: Durable agent deliverables and a Team results library
-status: draft
+status: in_progress
+refined: 2026-09-07
 size: M
 created: 2026-09-07
 priority: high
-note: First recommended implementation after refinement; preserve delivered outputs before adding richer desktop workflows.
+note: Implementation validated locally; pending commit and release. Evidence is in the implementation record.
 ---
 
 # BAZ-034 — Durable agent deliverables and a Team results library
@@ -24,6 +25,9 @@ note: First recommended implementation after refinement; preserve delivered outp
 Make an explicit `deliver_file` call publish a durable snapshot with a stable reference, and expose
 those results through authenticated downloads, conversation cards, and a small Team results view.
 
+Implementation checkpoints, decisions, and validation evidence are tracked in the
+[implementation record](../BAZ-034-progress.md).
+
 ## Why and current baseline
 
 Verified against Bazilion `13c3a63` (v0.14.2) on 2026-09-07:
@@ -34,8 +38,8 @@ Verified against Bazilion `13c3a63` (v0.14.2) on 2026-09-07:
 - [Worker delivery](../../../apps/daemon/src/runtime/worker/entry.ts) forwards a transient `file`
   event. [ChatPane](../../../apps/web/src/components/ChatPane.tsx) clears live entries on `done`;
   [ProviderMessage](../../../packages/api-types/src/events.ts) has no durable file reference.
-- Source inspection suggests download cards can disappear at completion as well as reload. This
-  has not been reproduced in a browser; reproduce it before changing the delivery contract.
+- The baseline disappearing card was reproduced in Chromium before implementation; the
+  implementation record contains the reproduction and retained-card verification evidence.
 - Telegram already sends documents through the existing authorized
   [outbound mirror](../../../apps/daemon/src/lib/telegram/mirror.ts).
 
@@ -143,17 +147,31 @@ packaging, and reconstructing unavailable historic output bytes.
   semantics. Verify content hashes after a backup/restore and every supported deletion lifecycle.
 - Inspect populated, empty, deleted, and failed-download UI states at desktop and narrow widths.
 
-## Open Questions
+## Refinement decisions
 
-- **Retention and deletion:** keep snapshots until explicit deletion, or impose a quota? Recommended:
-  no automatic expiry initially, a documented storage cap with visible failures, and explicit
-  deletion. Agree the cap and Agent/Team cascade behavior before implementation.
-- **Agent transfer:** should old results follow the Agent or remain with the producing Team?
-  Recommended: preserve the original Team provenance and do not silently widen Agent access.
-- **Storage placement and atomicity:** choose the daemon-owned location and publication journal
-  boundary, including what happens if bytes publish before the canonical transcript appends.
-  Recommended: a narrow result receipt and recoverable staging, not a new general execution log.
-- **Visibility and egress:** settle how the shared authorization decision governs later list,
-  detail, download, and history access, including policy changes after release. Recommended:
-  keep staged/held snapshots private and give the canonical approval path sole release ownership;
-  do not add a second authorization evaluator inside the results library.
+- Store immutable bytes and their receipts in SQLite BLOB rows in the daemon-owned
+  `Paths.db`, outside Team workspaces. One transaction publishes bytes, hash and identity;
+  SQLite rollback and WAL recovery own partial-write recovery. A receipt may survive an
+  interrupted transcript append without claiming that the transcript or a transport succeeded.
+- Limit retained bytes to 1 GiB per home and 25 MiB per file. Pending snapshots count toward
+  the cap. Capacity exhaustion fails visibly; there is no automatic expiry of released results.
+- Explicit deletion removes bytes and leaves a tombstone for truthful historic references.
+  Agent deletion retains the original Team's results; transfers do not move ownership. Team
+  deletion cascades all its result records. Reset/full uninstall remove them with the DB.
+- A result becomes operator-visible only when the shared Agent-to-user
+  authorizer allows HTTP, Telegram, or background library delivery, or the canonical approval dispatch releases the captured result.
+  A successful release is a retained operator receipt: later policy edits govern new delivery
+  attempts, not withdrawal of files already released to that same owner. Pending approval still
+  revalidates current policy/membership; expired, rejected or invalidated holds do not release.
+- Background turns use a reference-only `agent_result` attempt in the existing approval queue.
+  HTTP and Telegram retain their transport-owned approvals. Private snapshots are reclaimed
+  after the producer settles and no pending/delivering approval holds them. Startup reconciles
+  interrupted result dispatches as failed, without retrying an uncertain Telegram send. Cleanup
+  runs at startup, turn settlement, approval/result access, and before new publication; released
+  results never expire automatically. Tombstones prevent abandoned source operations resurrecting.
+- SQLite online backup includes result bytes and metadata in the same snapshot. The stored
+  size/hash is the result manifest; backup and restore validation check every retained blob.
+- Keep source session/tool-call references without requiring BAZ-035. Source navigation must
+  report unavailable history when the current chat is no longer the originating session.
+- Keep the complete story together; implement and validate in checkpoints. The provisional M
+  estimate is not a scope cap.

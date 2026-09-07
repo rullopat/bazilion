@@ -180,3 +180,14 @@ describe('mobile connection errors', () => {
     )
   })
 })
+
+it('preserves saved-result identity through live delivery, completion and history reload', () => {
+  const result = { resultId: 'saved-result' }
+  const messages: ProviderMessage[] = [{role:'tool',content:'Saved report',toolCallId:'call',toolName:'deliver_file',result}]
+  let state = chatStateFromHistory([])
+  state = applyChatFrame(state,{kind:'event',event:{type:'file',name:'report.txt',mimeType:'text/plain',data:'',result}})
+  expect(state.items).toContainEqual({id:'result-saved-result',kind:'result',resultId:'saved-result'})
+  state = applyChatFrame(state,{kind:'done',messages})
+  expect(state.items.filter(item=>item.kind==='result')).toHaveLength(1)
+  expect(chatStateFromHistory(messages).items).toContainEqual({id:'result-saved-result',kind:'result',resultId:'saved-result'})
+})

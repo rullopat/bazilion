@@ -8,6 +8,8 @@ import { Stack, router, useLocalSearchParams } from 'expo-router'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
+  Alert,
+  Linking,
   FlatList,
   Image,
   KeyboardAvoidingView,
@@ -333,7 +335,7 @@ export default function ChatScreen() {
         data={reversedItems}
         inverted
         keyExtractor={(item) => item.id}
-        renderItem={({ item }) => <Bubble item={item} />}
+        renderItem={({ item }) => <Bubble item={item} server={load.creds.server} />}
         contentContainerStyle={styles.listContent}
         keyboardShouldPersistTaps="handled"
         accessibilityLabel={`Conversation with ${load.agent.agent.name}`}
@@ -403,7 +405,7 @@ export default function ChatScreen() {
   )
 }
 
-function Bubble({ item }: { item: ChatItem }) {
+function Bubble({ item, server }: { item: ChatItem; server: string }) {
   const colors = useColors()
   const styles = useMemo(() => makeStyles(colors), [colors])
   const markdownStyles = useMemo(() => makeMarkdownStyles(colors), [colors])
@@ -459,6 +461,27 @@ function Bubble({ item }: { item: ChatItem }) {
             accessibilityLabel={`${item.name} result image ${index + 1}`}
           />
         ))}
+      </View>
+    )
+  }
+  if (item.kind === 'result') {
+    return (
+      <View style={styles.fileRow}>
+        <Text style={styles.fileName}>Saved file</Text>
+        <Text style={styles.fileType}>
+          Open in your browser to preview or download. Sign in there if prompted.
+        </Text>
+        <Pressable
+          accessibilityRole="link"
+          accessibilityLabel="Open saved file in browser"
+          onPress={() => {
+            void Linking.openURL(`${server}/results/${encodeURIComponent(item.resultId)}`).catch(() =>
+              Alert.alert('Could not open browser', 'Try again from a browser connected to your Bazilion server.'),
+            )
+          }}
+        >
+          <Text style={styles.fileName}>Open saved file ↗</Text>
+        </Pressable>
       </View>
     )
   }

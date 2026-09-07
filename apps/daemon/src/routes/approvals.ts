@@ -13,6 +13,7 @@ import {
   triggerDispatchRepo,
   triggerRepo,
 } from '../core/index.ts'
+import { getReceipt } from '../core/repos/results.ts'
 import {
   AgentLoopLimitError,
   enforceMessageCausality,
@@ -27,10 +28,20 @@ import {
 } from '../lib/approval-delivery-plan.ts'
 import { getCtx } from '../lib/ctx.ts'
 import { approvalDeliveryFailureMessage, protectedFrameFailure } from '../lib/protected-failure.ts'
+import { capturedResultFile, releaseResultFile } from '../lib/result-delivery.ts'
+import { reconcilePrivateResults } from '../lib/result-retention.ts'
 import { downloadMediaBytes } from '../lib/telegram/media.ts'
 import { createTrustedTurnInvocation } from '../lib/turn-invocation.ts'
 
 export const approvalsRouter = new Hono()
+
+approvalsRouter.use('*', async (_c, next) => {
+  try {
+    await next()
+  } finally {
+    reconcilePrivateResults(getCtx().db)
+  }
+})
 
 approvalsRouter.get('/', (c) => {
   const status = c.req.query('status') as CommunicationApprovalStatus | undefined
@@ -61,8 +72,29 @@ approvalsRouter.get('/', (c) => {
 approvalsRouter.get('/:id', (c) => {
   const detail = communicationApprovalRepo.get(getCtx().db, c.req.param('id'), true)
   if (!detail) return c.json({ error: 'approval not found' }, 404)
-  return c.json(detail)
+  return c.json({ ...detail, file: approvalFile(detail as CommunicationApprovalDetail) })
 })
+
+function approvalFile(detail: CommunicationApprovalDetail): CommunicationApprovalDetail['file'] {
+  try {
+    const plan = approvalPlan(detail)
+    let resultId: string | undefined
+    if (plan.kind === 'agent_result') resultId = plan.payload.resultId
+    if (plan.kind === 'telegram_file') resultId = plan.payload.result?.resultId
+    if (
+      plan.kind === 'http_chat_frame' &&
+      plan.payload.frame.kind === 'event' &&
+      plan.payload.frame.event.type === 'file'
+    )
+      resultId = plan.payload.frame.event.result?.resultId
+    if (!resultId || detail.source.kind !== 'agent') return undefined
+    const receipt = getReceipt(getCtx().db, resultId)
+    if (!receipt || receipt.agentId !== detail.source.id) return undefined
+    return { name: receipt.name, mimeType: receipt.mimeType, byteLength: receipt.byteLength }
+  } catch {
+    return undefined
+  }
+}
 
 approvalsRouter.post('/:id/deny', async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as { reason?: unknown }
@@ -274,7 +306,16 @@ async function deliver(plan: ApprovalDeliveryPlan): Promise<void> {
     if (failure) throw new Error(failure)
     return
   }
+  if (plan.kind === 'agent_result') {
+    releaseResultFile(getCtx().db, plan.payload.agentId, { resultId: plan.payload.resultId })
+    return
+  }
   if (plan.kind === 'http_chat_frame') {
+    const frame = plan.payload.frame
+    if (frame.kind === 'event' && frame.event.type === 'file') {
+      capturedResultFile(getCtx().db, plan.payload.agentId, frame.event)
+      releaseResultFile(getCtx().db, plan.payload.agentId, frame.event.result)
+    }
     // The polling caller retrieves the captured frame from approval detail after the
     // terminal delivered status; the original NDJSON response cannot be re-opened.
     return
@@ -341,6 +382,12 @@ async function deliver(plan: ApprovalDeliveryPlan): Promise<void> {
   }
 
   const { db, authToken } = getCtx()
+  if (plan.kind === 'telegram_file' && plan.payload.result) {
+    if (plan.approval.source.kind !== 'agent') throw new Error('Missing result producer')
+    const captured = capturedResultFile(db, plan.approval.source.id, plan.payload)
+    Object.assign(plan.payload, captured)
+    releaseResultFile(db, plan.approval.source.id, captured.result)
+  }
   const botToken = openSecrets(db, authToken).get('TELEGRAM_BOT_TOKEN') ?? ''
   if (!botToken) throw new Error('Telegram bot token is unavailable')
   const api = new Bot(botToken).api

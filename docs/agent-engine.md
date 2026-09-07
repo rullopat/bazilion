@@ -284,3 +284,12 @@ Three layers, one contract:
 - **NDJSON stdout** — what the worker writes is what the HTTP client reads, byte-for-byte. No translation between worker→daemon and daemon→client.
 
 Plumbing around those three is invisible to callers: both the HTTP route and the scheduler see the same `AsyncGenerator<ChatFrame>` shape from `runAgentTurn`. The subprocess + IPC boundaries are an implementation detail.
+
+## Durable file delivery
+
+`deliver_file` reads a confined workspace file and awaits the turn-bound daemon `publishResult`
+IPC host. The daemon validates the active canonical session/tool call and commits immutable bytes
+and provenance together in SQLite. Pi tool-result details, live file events, and hydrated messages
+carry the same opaque result reference. Publication starts private; the shared Agent-to-user
+authorizer and canonical approval dispatcher own release. See [saved results](results.md) for
+API, client surfaces, retention, cleanup, and backup guarantees.

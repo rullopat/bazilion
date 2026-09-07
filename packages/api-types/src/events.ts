@@ -1,3 +1,4 @@
+import type { ResultReference } from './results.ts'
 // Wire shapes for chat streaming and provider message exchange. The worker
 // emits `ChatFrame`s as NDJSON, the daemon forwards them verbatim, every UI
 // renders the contained `SessionEvent`s. `ProviderMessage` is the shape both
@@ -13,6 +14,7 @@ export interface ToolCall {
 }
 
 export interface ProviderMessage {
+  result?: ResultReference
   role: Role
   content: string
   toolCalls?: ToolCall[]
@@ -89,6 +91,7 @@ export type SessionEvent =
   | { type: 'tool_call'; id: string; name: string; arguments: string }
   | {
       type: 'tool_result'
+      resultReference?: ResultReference
       id: string
       name: string
       result: string
@@ -99,6 +102,7 @@ export type SessionEvent =
   | {
       /** A file the agent delivered to the user via the `deliver_file` tool. */
       type: 'file'
+      result?: ResultReference
       name: string
       mimeType: string
       /** base64-encoded file bytes. */

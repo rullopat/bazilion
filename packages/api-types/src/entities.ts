@@ -218,6 +218,8 @@ export interface CommunicationApproval {
 export interface CommunicationApprovalDetail extends CommunicationApproval {
   payload: unknown
   events: CommunicationApprovalEvent[]
+  /** Captured file metadata for review; does not grant access to held bytes. */
+  file?: { name: string; mimeType: string; byteLength: number }
 }
 
 export interface CommunicationApprovalEvent {

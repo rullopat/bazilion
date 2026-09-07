@@ -100,6 +100,13 @@ export type {
   ToolResultImage,
 } from './events.ts'
 export type { MemoryEntry, MemoryHit } from './memory.ts'
+export type {
+  AgentResult,
+  ResultListResponse,
+  ResultPublicationInput,
+  ResultReference,
+  ResultSourceResponse,
+} from './results.ts'
 
 import type {
   Agent,

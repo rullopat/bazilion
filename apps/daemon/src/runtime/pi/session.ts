@@ -335,6 +335,7 @@ export async function createBazilionSession(
         mcpHost,
         mcpTools,
         fileSink,
+        sessionId: sessionManager.getSessionId(),
         env,
       })
   const customTools = shellTools?.customBash
@@ -451,6 +452,7 @@ export async function createProtectedBazilionSession(
     messagingHost: opts.messagingHost,
     userMdHost: opts.userMdHost,
     fileSink: opts.fileSink,
+    sessionId: sessionManager.getSessionId(),
   })
   if (!shellTools.customBash) throw new Error('protected Docker bash tool is unavailable')
   const customTools = [...bazilionTools, shellTools.customBash]

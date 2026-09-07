@@ -16,6 +16,7 @@ import { mcpRouter } from './routes/mcp.ts'
 import { messagesRouter } from './routes/messages.ts'
 import { miscRouter } from './routes/misc.ts'
 import { profilesRouter } from './routes/profiles.ts'
+import { resultsRouter } from './routes/results.ts'
 import { shellApprovalsRouter } from './routes/shell-approvals.ts'
 import { skillsRouter } from './routes/skills.ts'
 import { teamTemplatesRouter } from './routes/team-templates.ts'
@@ -32,6 +33,7 @@ export function createApp(): Hono {
   app.use('*', authMiddleware)
 
   app.route('/api/agents', agentsRouter)
+  app.route('/api/results', resultsRouter)
   app.route('/api/attention', attentionRouter)
   app.route('/api/approvals', approvalsRouter)
   app.route('/api/shell-approvals', shellApprovalsRouter)

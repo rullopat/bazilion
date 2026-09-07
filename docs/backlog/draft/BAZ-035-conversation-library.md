@@ -92,7 +92,7 @@ copy their storage, branching, or desktop architecture.
   or routing record, never a second copy of chat history or a revived runs/events subsystem.
 - Establish an immutable, Agent-scoped conversation identity independent of display title and active
   selection. Preserve canonical transcript-entry identities through rename, viewing, and selection.
-- Coordinate with [BAZ-034](BAZ-034-durable-agent-deliverables.md): artifact provenance links to the
+- Coordinate with [BAZ-034](../in_progress/BAZ-034-durable-agent-deliverables.md): artifact provenance links to the
   original conversation and canonical source entry. New conversation, rename, or resume must not
   retarget a delivery, break an existing download, or confuse two same-named outputs.
 - Resolve requested identities through the owning Agent and validated canonical session metadata;

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -40,6 +41,20 @@ function assertSnapshotIntegrity(path: string): void {
     if (rows.length !== 1 || rows[0]?.integrity_check !== 'ok') {
       const detail = rows.map((row) => row.integrity_check).join('; ') || 'no result'
       throw new Error(`SQLite snapshot failed integrity_check: ${detail}`)
+    }
+    // The result receipt is also its snapshot manifest. Iterate one bounded blob at
+    // a time so validation does not load the complete results library into memory.
+    for (const row of snapshot
+      .prepare('SELECT id, bytes, byte_length, sha256 FROM agent_results WHERE deleted_at IS NULL')
+      .iterate()) {
+      const bytes = row.bytes
+      if (
+        !(bytes instanceof Uint8Array) ||
+        bytes.byteLength !== row.byte_length ||
+        createHash('sha256').update(bytes).digest('hex') !== row.sha256
+      ) {
+        throw new Error(`Result snapshot integrity verification failed: ${row.id}`)
+      }
     }
     const foreignKeyErrors = snapshot.prepare('PRAGMA foreign_key_check').all()
     if (foreignKeyErrors.length > 0) {
