@@ -13,6 +13,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { ResolvedAgent } from '@bazilion/api-types'
 import { afterEach, describe, expect, test, vi } from 'vitest'
+import { resolveRepositoryContext } from '../../src/lib/repository-context/index.ts'
 import type { MemoryBackend } from '../../src/runtime/memory/types.ts'
 import { createProtectedBazilionCustomTools } from '../../src/runtime/pi/tools.ts'
 import type { ProtectedDockerRuntime } from '../../src/runtime/shell/docker.ts'
@@ -30,8 +31,13 @@ import {
   type ProtectedWorkerSpec,
   parseWorkerInput,
 } from '../../src/runtime/worker/runtime.ts'
-import { formatWorkerExitFailure, spawnWorkerTurn } from '../../src/runtime/worker/spawn.ts'
+import {
+  formatWorkerExitFailure,
+  spawnReviewWorker,
+  spawnWorkerTurn,
+} from '../../src/runtime/worker/spawn.ts'
 import { seedConversationTarget } from '../fixtures/conversation.ts'
+import { emptyRepositoryContext } from '../fixtures/repository-context.ts'
 
 const cleanup: string[] = []
 afterEach(() => {
@@ -122,6 +128,23 @@ describe('minimal worker runtime', () => {
     }
     try {
       expect(parseWorkerInput(input)).toEqual(input)
+      const missingContext = structuredClone(input) as Record<string, unknown>
+      delete missingContext.repositoryContext
+      expect(() => parseWorkerInput(missingContext)).toThrow(
+        /missing required fields: repositoryContext/,
+      )
+      expect(() =>
+        parseWorkerInput({
+          ...input,
+          repositoryContext: { ...input.repositoryContext, teamId: 'other-team' },
+        }),
+      ).toThrow(/repository context/)
+      expect(() =>
+        parseWorkerInput({
+          ...input,
+          repositoryContext: { ...input.repositoryContext, extra: true },
+        }),
+      ).toThrow(/repository context/)
       const missing = structuredClone(input) as Record<string, unknown>
       delete missing.runtime
       expect(() => parseWorkerInput(missing)).toThrow(/missing required fields: runtime/)
@@ -246,6 +269,88 @@ describe('minimal worker runtime', () => {
     expect(withQuestion.filter((name) => name !== 'ask_user')).toEqual(names)
     expect(names.some((name) => name.startsWith('browser_'))).toBe(false)
     expect(names.some((name) => name.startsWith('mcp_'))).toBe(false)
+  })
+
+  test.each([
+    'configured',
+    'protected',
+  ] as const)('repository refresh IPC is scoped and rejects caller-supplied identity (%s)', async (surface) => {
+    const root = tempRoot()
+    const prepared = protectedSpec(root)
+    const teamRoot = prepared.agent.team.path
+    mkdirSync(join(teamRoot, 'nested'))
+    writeFileSync(join(teamRoot, 'nested', 'AGENTS.md'), 'IPC_NESTED_SENTINEL')
+    const initial = await resolveRepositoryContext({
+      teamId: prepared.agent.team.id,
+      root: teamRoot,
+    })
+    const host = vi.fn((target: string) =>
+      resolveRepositoryContext({
+        teamId: prepared.agent.team.id,
+        root: teamRoot,
+        target,
+        expectedRootIdentity: initial.rootIdentity ?? 'missing',
+      }),
+    )
+    for (const mode of ['valid', 'forged']) {
+      const frames = []
+      const options = {
+        ...scopedHosts(),
+        repositoryContextHost: host,
+        apiKeyRefreshHost: { refresh: async () => 'fixture-token' },
+        workerEntryPath: fileURLToPath(
+          new URL('../fixtures/worker-repository-context-entry.ts', import.meta.url),
+        ),
+      }
+      const iterator =
+        surface === 'protected'
+          ? spawnWorkerTurn({ ...prepared, repositoryContext: initial, message: mode }, options)
+          : spawnWorkerTurn(
+              {
+                kind: 'configured_operator_http',
+                repositoryContext: initial,
+                agent: prepared.agent,
+                conversation: prepared.conversation,
+                message: mode,
+                turnId: 'context-test',
+                enabledProviders: [],
+                apiKey: prepared.runtime.apiKey,
+                bashApprovalMode: 'auto_deny',
+              },
+              { ...options, env: {} },
+            )
+      for await (const frame of iterator) frames.push(frame)
+      if (mode === 'valid') {
+        expect(JSON.stringify(frames)).toContain('IPC_NESTED_SENTINEL')
+        expect(host).toHaveBeenCalledWith('nested/new.ts')
+      } else expect(JSON.stringify(frames)).toContain('Invalid repository context request')
+    }
+    expect(host).toHaveBeenCalledTimes(1)
+  })
+
+  test('restricted-review IPC never receives a repository context host', async () => {
+    const prepared = protectedSpec(tempRoot())
+    const host = vi.fn(async () => prepared.repositoryContext)
+    await expect(
+      spawnReviewWorker(
+        {
+          kind: 'restricted_review',
+          agentId: prepared.agent.agent.id,
+          message: 'valid',
+          turnId: 'review-context',
+          runtime: prepared.runtime,
+          review: { reviewId: 'review', evidence: [] },
+        },
+        {
+          repositoryContextHost: host,
+          apiKeyRefreshHost: { refresh: async () => 'fixture-token' },
+          workerEntryPath: fileURLToPath(
+            new URL('../fixtures/worker-repository-context-entry.ts', import.meta.url),
+          ),
+        },
+      ),
+    ).rejects.toThrow(/without a repositoryContextHost/)
+    expect(host).not.toHaveBeenCalled()
   })
 
   test('spawns with exact minimal env, closes stdin, redacts rotated diagnostics, and cleans scratch', async () => {
@@ -557,6 +662,7 @@ function protectedSpec(root: string, accessToken = 'initial-access-token'): Prot
   const docker = fakeDockerRuntime(teamDir, memoryDir)
   return {
     kind: 'protected',
+    repositoryContext: emptyRepositoryContext(agent.team.id),
     conversation: seedConversationTarget(sessionsDir, teamDir),
     agent,
     message: 'test protected runtime',

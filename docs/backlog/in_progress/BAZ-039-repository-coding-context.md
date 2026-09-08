@@ -1,9 +1,10 @@
 ---
 id: BAZ-039
 title: Repository context and coding onboarding within a Team
-status: draft
+status: in_progress
 size: M
 created: 2026-09-07
+refined: 2026-09-08
 priority: high
 ---
 
@@ -143,16 +144,80 @@ and snapshots private-home inputs. Repository context must preserve that boundar
   authorized worktree metadata roots before this resolver supports external `.git`/common-directory
   links.
 
-## Open questions
+Implementation checkpoints and acceptance evidence: [BAZ-039 progress](../BAZ-039-progress.md).
 
-- **Instructions:** recommend AGENTS.md only with targeted ancestry; define precedence before
-  adding other filenames or includes.
-- **Limits:** recommend 16 KiB per instruction file, 64 KiB total, and bounded target depth;
-  refine using Bazilion's monorepo and representative larger repositories.
-- **Incomplete instructions:** recommend inspect-only degraded reporting and an explicit failure to
-  prepare the affected coding scope, rather than silently proceeding without required guidance.
-- **Command sources:** recommend manifests and a small README/CONTRIBUTING allowlist; do not run
-  repository parsers or guess a definitive command when sources disagree.
+## Refinement decisions (2026-09-08)
+
+### Instruction contract and limits
+
+- Support `AGENTS.md` only. Apply platform/runtime policy first, explicit operator instructions
+  next, then applicable repository guidance over general private Agent preferences for repository
+  work. Within repository guidance, deeper directories specialize parent guidance for that subtree.
+  Team Policy remains an independent authorization boundary. Preserve conflicting source text and
+  provenance; the resolver orders documents, it does not claim to understand or resolve prose.
+- Root context is prepared for every normal coding-capable turn. When BAZ-040 selects a command
+  cwd, also prepare that directory's ancestry. Targeted `repository_context` calls resolve a new
+  existing directory or a new file's existing parent; targets never change the registered Team root.
+  Return the complete applicable ordered set as a replacement, with SHA-256 fingerprints, rather
+  than append repeated copies. Old transcript entries remain historical.
+- Initial hard limits: 64 KiB per instruction file, 128 KiB total instruction bytes, 16 directory
+  levels below the Team root, 32 command-source files at 64 KiB each / 256 KiB total, and 32 command
+  candidates. Bound the serialized report to 256 KiB and Git inspection to 5 seconds / 1 MiB output.
+  Report which limit was reached. Never truncate an applicable instruction into apparent completeness.
+  At refinement, Bazilion's root AGENTS.md was 37,581 bytes; the draft's 16 KiB proposal would reject it.
+- Read exact allowlisted source names only along the target ancestry: `package.json`,
+  `pnpm-workspace.yaml`, `README.md`, and `CONTRIBUTING.md`. The initial structured command extractor
+  supports Node package scripts and package-manager declarations. Markdown supplies labelled
+  command excerpts only; YAML is bounded source evidence, never an executable loader. Other stacks
+  still receive Git/instruction context and can use manually configured BAZ-040 commands.
+  Do not recursively enumerate workspace globs or auto-select an ambiguous package manager.
+- Distinguish instruction completeness from Git and command-discovery availability. Missing Git,
+  unsupported Git metadata, no package scripts, or command-source truncation do not invalidate
+  otherwise complete instructions. An unsafe/unreadable/oversized applicable instruction prevents
+  preparation of that coding scope before model execution. A failed mid-turn target resolution
+  returns a blocked scope with reasons and tells the Agent not to edit it; arbitrary Bash editing
+  is not mechanically policed by this feature. Inspection and unrelated management stay available.
+- Limit exclusions to actual Bazilion-owned paths and established dependency/generated locations
+  for command discovery. Do not discard an applicable AGENTS.md merely because an ancestor has a
+  common name such as `dist`. No ancestor-repository discovery, linked Git metadata, submodule
+  traversal, recursive scanning, or includes in this release.
+
+### API, ownership, and shared contract with BAZ-040
+
+- Canonical operator surface: `GET /api/teams/:id/repository-context?target=...` and
+  `bazilion team context <slug> [--target <relative-path>] [--json]`. Refresh is another bounded
+  read. Web presents the same response from the existing Team page. Inspection requires existing
+  management authentication and setup gates; it is not an Agent publication endpoint.
+- Put hermetic report/request types in `@bazilion/api-types`; add `@bazilion/client` parity.
+  The daemon owns resolution. The worker's `repository_context` tool uses a turn-bound IPC method
+  whose Team/root is derived by the daemon, never selected by worker-supplied Team ids or host paths.
+  Denied Agent egress cannot expose context tool results through replay or newly added surfaces.
+- A report identifies Team, canonical root identity, Team-relative target, capture time, source
+  hashes, ordered instruction scopes, command-source references, and separate availability reasons.
+  Hashes identify the captured inputs; they do not assert an atomic full-repository snapshot.
+  Do not persist another repository database or put host absolute paths into protected reports.
+- BAZ-039 owns instruction resolution and passive command suggestions. BAZ-040 copies a selected
+  suggestion into operator-reviewed configuration, retaining its source hash/path and cwd. A later
+  source edit marks that provenance changed; it never silently edits or executes the saved command.
+  Inspection alone cannot enable a coding environment or grant permission to run a probe.
+- BAZ-040 reuses the canonical root and context resolver, but owns environment revision, execution
+  identity, workspace coordination, and readiness evidence. BAZ-041/042 will separately define code
+  snapshots: neither a context fingerprint nor readiness evidence is a verified code revision.
+
+### Delivery and acceptance evidence
+
+1. Deliver the bounded resolver and fixtures, then prompt/typed IPC integration for normal and
+   protected turns, then matching API/CLI/Team inspection UI. No BAZ-040 dependency is needed to ship.
+2. Exercise Bazilion's root AGENTS.md plus a disposable monorepo with nested and contradictory
+   instructions. Show identical instruction bytes/scopes across CLI preview and both turn postures.
+3. Prove hostile Git helpers never execute, inspection leaves project bytes unchanged, limits
+   degrade the correct report section, and instruction failures block only the affected scope.
+4. Run relevant resolver, prompt, IPC, API, CLI and web checks plus repository typecheck/lint and
+   security acceptance before release. Record actual evidence; moving this story to todo is not
+   implementation or release acceptance.
+
+No unresolved product decisions remain for this slice. Limit changes require updating the contract
+and boundary fixtures together; additional instruction filenames and language extractors are later work.
 
 ## Reference
 

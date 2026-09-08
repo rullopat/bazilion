@@ -122,6 +122,7 @@ export async function spawnReviewWorker(
 }
 
 interface CommonSpawnWorkerOpts {
+  repositoryContextHost?: import('../pi/repository-context.ts').RepositoryContextHost
   resultHost?: import('./ipc-protocol.ts').ResultHost
   /** Abort to kill the in-flight worker. */
   signal?: AbortSignal
@@ -526,6 +527,8 @@ function spawnHosts(
   }
   return {
     questionHost,
+    repositoryContextHost:
+      spec.kind === 'restricted_review' ? undefined : opts.repositoryContextHost,
     resultHost: spec.kind === 'restricted_review' ? undefined : opts.resultHost,
     messagingHost: configuredOpts?.messagingHost ?? protectedOpts?.messagingHost,
     userMdHost: configuredOpts?.userMdHost ?? protectedOpts?.userMdHost,
@@ -564,6 +567,7 @@ function parseFrame(line: string, accessTokens: readonly string[]): ChatFrame {
 }
 
 interface IpcHosts {
+  repositoryContextHost?: import('../pi/repository-context.ts').RepositoryContextHost
   questionHost?: import('./ipc-protocol.ts').QuestionHost
   resultHost?: import('./ipc-protocol.ts').ResultHost
   messagingHost?: MessagingHost
@@ -617,6 +621,19 @@ async function dispatch(req: IpcRequest, hosts: IpcHosts): Promise<IpcReply> {
   try {
     let result: unknown
     switch (req.method) {
+      case 'repositoryContext':
+        hosts.ipcSignal?.throwIfAborted()
+        if (
+          !req.args ||
+          Object.keys(req.args).join(',') !== 'target' ||
+          typeof req.args.target !== 'string' ||
+          req.args.target.length > 4096
+        )
+          throw new Error('Invalid repository context request')
+        result = await require(hosts.repositoryContextHost, 'repositoryContext', req.method)(
+          req.args.target,
+        )
+        break
       case 'questionConsumed':
         hosts.ipcSignal?.throwIfAborted()
         if (

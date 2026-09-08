@@ -10,6 +10,7 @@ import { createServerFn } from '@tanstack/react-start'
 import { useEffect, useState } from 'react'
 import { Button } from '../../../components/Button'
 import { PageShell, SectionCard, StatusBadge } from '../../../components/Page'
+import { RepositoryContextCard } from '../../../components/RepositoryContextCard'
 import { TeamTabs } from '../../../components/TeamTabs'
 import { UnsavedChangesGuard } from '../../../components/UnsavedChangesGuard'
 import { daemonClient } from '../../../lib/daemon-client'
@@ -131,6 +132,8 @@ function TeamDetailPage() {
           {err && <span role="alert" className="text-xs text-danger">{err}</span>}
         </div>
       </section>
+
+      <RepositoryContextCard key={team.id} teamId={team.id} />
 
       <TopicNameFormatCard
         team={team}

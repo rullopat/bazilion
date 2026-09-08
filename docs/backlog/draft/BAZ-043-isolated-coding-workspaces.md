@@ -117,8 +117,8 @@ Verified against Bazilion `13c3a63` (v0.14.2) on 2026-09-07:
 
 ## Dependencies and sequencing
 
-- Later increment after [BAZ-039](BAZ-039-repository-coding-context.md),
-  [BAZ-040](BAZ-040-coding-environment-readiness.md), and
+- Later increment after [BAZ-039](../in_progress/BAZ-039-repository-coding-context.md),
+  [BAZ-040](../todo/BAZ-040-coding-environment-readiness.md), and
   [BAZ-042](BAZ-042-git-change-review.md) establish repository/environment/snapshot contracts.
 - Coordinate queued targeting with [BAZ-035](../done/BAZ-035-conversation-library.md) and
   [BAZ-036](../done/BAZ-036-visible-follow-up-queue.md); retained requests must never follow a changed cwd.

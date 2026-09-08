@@ -27,12 +27,10 @@ docs/backlog/
 
 ---
 
-## Draft (8)
+## Draft (6)
 
 | ID | Title | Size | Notes |
 |----|-------|------|-------|
-| [BAZ-039](draft/BAZ-039-repository-coding-context.md) | Repository context and coding onboarding within a Team | M | Coding first slice: bounded repository instructions, provenance, and command suggestions |
-| [BAZ-040](draft/BAZ-040-coding-environment-readiness.md) | Prepared per-Team coding environments and truthful readiness | L | Prepared local toolchains and explicit finite probes under the actual execution posture |
 | [BAZ-041](draft/BAZ-041-coding-command-verification.md) | Live coding command output and snapshot-bound verification | L | Retained logs and executor-owned check outcomes with code/environment freshness |
 | [BAZ-042](draft/BAZ-042-git-change-review.md) | Git changes and review beside coding conversations | M | Read-only diffs, explicit dirty baselines, and revision-bound feedback |
 | [BAZ-043](draft/BAZ-043-isolated-coding-workspaces.md) | Isolated coding workspaces for parallel assignments | L | Later: canonical Team checkout ownership, writer coordination, and safe Git metadata access |
@@ -42,14 +40,15 @@ docs/backlog/
 
 Drafted on 2026-09-07 from the OpenClaw 2.0 / Hermes desktop review and current Bazilion code.
 BAZ-034 through BAZ-038 shipped in v0.15.0 through PRs #44 and #45. Track decisions and acceptance evidence
-in [the milestone progress log](BAZ-035-038-progress.md). Sizes are provisional; each draft records
+in [the milestone progress log](BAZ-035-038-progress.md). Remaining draft sizes are provisional; each draft records
 open decisions and boundaries to resolve before moving to `todo/`. Desktop packaging and Team
 conversation views remain later ideas rather than part of this initial slice.
 
-Coding drafts BAZ-039 through BAZ-044 were added on 2026-09-07. The initial coding milestone is
+Coding stories BAZ-039 through BAZ-044 were added on 2026-09-07. The initial coding milestone is
 BAZ-039 through BAZ-042: follow repository instructions, use a prepared environment, run the relevant
 finite checks, and return a persistent diff with verifiable results for a small real-repository bug.
-Refine context and environment first; command evidence and Git review can proceed in parallel once
+BAZ-039 and BAZ-040 were refined together on 2026-09-08 and moved to `todo/`; implement
+BAZ-039 first, then BAZ-040. BAZ-039 entered `in_progress/` on 2026-09-08; BAZ-040 remains ready in `todo/`. Command evidence and Git review can proceed in parallel once
 their shared snapshot contract is agreed. BAZ-034 supplies reusable durable-output primitives.
 BAZ-043 adds parallel workspace ownership later, followed by BAZ-044's review/handoff experience;
 static review itself does not require managed worktrees. Managed previews, language-server features,
@@ -65,15 +64,17 @@ outcome. Automatic Git publication and managed service/browser test environments
 later story candidates. Neither draft introduces a general pipeline engine or turns communication
 approval into permission to deploy.
 
-## Todo (0)
+## Todo (1)
 
 | ID | Title | Size | Notes |
 |----|-------|------|-------|
+| [BAZ-040](todo/BAZ-040-coding-environment-readiness.md) | Prepared per-Team coding environments and truthful readiness | L | Refined 2026-09-08; after BAZ-039: Team images, Docker probes, workspace coordination and measured readiness |
 
-## In Progress (0)
+## In Progress (1)
 
 | ID | Title | Size | Notes |
 |----|-------|------|-------|
+| [BAZ-039](in_progress/BAZ-039-repository-coding-context.md) | Repository context and coding onboarding within a Team | M | Locally implemented and accepted 2026-09-08; unreleased; [evidence and platform limitation](BAZ-039-progress.md) |
 
 ## Done (33)
 

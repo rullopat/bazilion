@@ -21,6 +21,7 @@ import type {
 } from '../../src/runtime/worker/ipc-protocol.ts'
 import { spawnWorkerTurn } from '../../src/runtime/worker/spawn.ts'
 import { seedConversationTarget } from '../fixtures/conversation.ts'
+import { emptyRepositoryContext } from '../fixtures/repository-context.ts'
 
 const context: ApiKeyRefreshTurnContext = {
   providerName: 'openai-codex',
@@ -151,6 +152,7 @@ test('spawned worker refreshes end-to-end without putting either token in ChatFr
     for await (const frame of spawnWorkerTurn(
       {
         kind: 'configured_operator_http',
+        repositoryContext: emptyRepositoryContext(agent.team.id),
         conversation: {
           id: '11111111-1111-4111-8111-111111111111',
           filename: '11111111-1111-4111-8111-111111111111.jsonl',

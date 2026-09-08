@@ -23,6 +23,7 @@ import {
 import { validateSlug } from '../core/profile/validate.ts'
 import { getCtx } from '../lib/ctx.ts'
 import { sanitizeNativeModuleError } from '../lib/native-module-error.ts'
+import { resolveRepositoryContext } from '../lib/repository-context/index.ts'
 import { validateTopicNameFormat } from '../lib/telegram/naming.ts'
 import { syncGroupTopicNames } from '../lib/telegram/topic-rename.ts'
 import { qmdBackend } from '../runtime/index.ts'
@@ -57,6 +58,20 @@ teamsRouter.get('/:id', (c) => {
   const g = teamRepo.get(db, c.req.param('id'), paths)
   if (!g) return c.json({ error: `team not found: ${c.req.param('id')}` }, 404)
   return c.json(g)
+})
+
+teamsRouter.get('/:id/repository-context', async (c) => {
+  const { db, paths } = getCtx()
+  const team = teamRepo.get(db, c.req.param('id'), paths)
+  if (!team) return c.json({ error: 'Team not found' }, 404)
+  c.header('Cache-Control', 'no-store')
+  return c.json(
+    await resolveRepositoryContext({
+      teamId: team.id,
+      root: team.path,
+      target: c.req.query('target'),
+    }),
+  )
 })
 
 teamsRouter.get('/:id/policy', (c) => {

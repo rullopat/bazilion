@@ -1,3 +1,12 @@
+export type {
+  RepositoryCommandCandidate,
+  RepositoryCommandSource,
+  RepositoryContextIssue,
+  RepositoryContextReport,
+  RepositoryContextRequest,
+  RepositoryInstruction,
+} from './repository-context.ts'
+
 import type { ConversationSelection } from './conversations.ts'
 
 export type {

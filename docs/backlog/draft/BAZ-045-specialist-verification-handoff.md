@@ -130,7 +130,7 @@ Verified against Bazilion `13c3a63` (v0.14.2) on 2026-09-07:
 
 ## Dependencies and sequencing
 
-- Depends on [BAZ-040](BAZ-040-coding-environment-readiness.md) environment/check definitions and
+- Depends on [BAZ-040](../todo/BAZ-040-coding-environment-readiness.md) environment/check definitions and
   workspace coordination, [BAZ-041](BAZ-041-coding-command-verification.md) execution evidence, and
   [BAZ-042](BAZ-042-git-change-review.md) snapshot identity. Deliver after the first coding milestone.
 - Reuses [BAZ-034](../done/BAZ-034-durable-agent-deliverables.md) retained bytes; this story owns the narrow

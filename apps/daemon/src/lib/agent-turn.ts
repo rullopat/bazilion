@@ -1,6 +1,7 @@
 import type { ChatFrame } from '@bazilion/api-types'
 import { agentReviewRepo, mergeSecretsIntoEnv, providerStateRepo } from '../core/index.ts'
 import { spawnWorkerTurn } from '../runtime/index.ts'
+import { ownsActiveAgent } from './agent-cancel.ts'
 import { resolveAgentApiKey } from './api-key.ts'
 import { commandApprovalRegistry } from './bash-approval.ts'
 import { isBrowserEnabled, resolveBrowserConfig } from './browser/config.ts'
@@ -9,6 +10,10 @@ import { getCtx } from './ctx.ts'
 import { resolveMcpForTurn } from './mcp/resolve.ts'
 import { createDbMessagingHost } from './messaging-host.ts'
 import { type LiveQuestionHost, questionServiceFor } from './question-service.ts'
+import {
+  requireCompleteRepositoryContext,
+  resolveRepositoryContext,
+} from './repository-context/index.ts'
 import { createResultHost } from './result-host.ts'
 import { authorizeBackgroundResult } from './result-library-delivery.ts'
 import { reconcilePrivateResults } from './result-retention.ts'
@@ -45,6 +50,29 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
     })
     const userMdHost = createDbUserMdHost(db, paths)
     const resultHost = createResultHost(db, paths, agent, turn.controller.signal, turn.conversation)
+    let contextBusy = false
+    const repositoryContextHost = async (target: string) => {
+      turn.controller.signal.throwIfAborted()
+      if (!ownsActiveAgent(agent.agent.id, turn.controller) || contextBusy)
+        throw new Error('Repository context unavailable for this turn')
+      contextBusy = true
+      try {
+        const report = await resolveRepositoryContext({
+          teamId: agent.team.id,
+          root: agent.team.path,
+          target,
+          expectedRootIdentity: turn.repositoryContext.rootIdentity ?? 'unavailable',
+        })
+        turn.controller.signal.throwIfAborted()
+        if (!ownsActiveAgent(agent.agent.id, turn.controller))
+          throw new Error('Repository context turn ended')
+        return report
+      } finally {
+        contextBusy = false
+      }
+    }
+    const repositoryContext = await repositoryContextHost('.')
+    requireCompleteRepositoryContext(repositoryContext)
     let frames: AsyncGenerator<ChatFrame, void, void>
     if (turn.surface === 'configured_operator_http') {
       if (invocation.kind !== 'operator_http') {
@@ -61,6 +89,7 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
       frames = spawnWorkerTurn(
         {
           kind: 'configured_operator_http',
+          repositoryContext,
           agent,
           message: turn.message,
           conversation: turn.conversation,
@@ -76,6 +105,7 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
         {
           env,
           signal: turn.controller.signal,
+          repositoryContextHost,
           messagingHost,
           resultHost,
           userMdHost,
@@ -97,6 +127,7 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
       frames = spawnWorkerTurn(
         {
           kind: 'protected',
+          repositoryContext,
           agent,
           message: turn.message,
           conversation: turn.conversation,
@@ -111,6 +142,7 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
         },
         {
           signal: turn.controller.signal,
+          repositoryContextHost,
           messagingHost,
           resultHost,
           userMdHost,

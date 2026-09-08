@@ -1,5 +1,6 @@
 import { readCanonicalSessionFile } from '../../lib/result-source.ts'
 import type { AskUser } from '../tools/ask-user.ts'
+import { type RepositoryContextHost, repositoryContextIntegration } from './repository-context.ts'
 // Bazilion → pi-coding-agent session bridge.
 //
 // `createBazilionSession` returns a fully-wired `AgentSession` suitable for
@@ -88,6 +89,8 @@ import { protectedRuntimeSecrets, redactJsonValue } from '../worker/runtime.ts'
 import { createBazilionCustomTools, createProtectedBazilionCustomTools } from './tools.ts'
 
 export interface CreateBazilionSessionOptions {
+  repositoryContext?: import('@bazilion/api-types').RepositoryContextReport
+  repositoryContextHost?: RepositoryContextHost
   agent: ResolvedAgent
   paths: Paths
   /** Merged env (process.env + secrets) — produced via `mergeSecretsIntoEnv`. */
@@ -164,6 +167,8 @@ export interface BazilionSessionHandle {
 }
 
 export interface CreateProtectedBazilionSessionOptions {
+  repositoryContext?: import('@bazilion/api-types').RepositoryContextReport
+  repositoryContextHost?: RepositoryContextHost
   conversation: import('@bazilion/api-types').ConversationTarget
   agent: ResolvedAgent
   runtime: ProtectedProviderWorkerRuntime
@@ -301,6 +306,14 @@ export async function createBazilionSession(
       skills: promptSkills,
       sandboxMode: shellTools?.config.sandboxMode ?? 'off',
     })
+  const repository =
+    !restricted && opts.repositoryContext && opts.repositoryContextHost
+      ? repositoryContextIntegration(
+          opts.repositoryContext,
+          opts.repositoryContextHost,
+          shellTools?.config.sandboxMode === 'docker' ? '/workspace' : cwd,
+        )
+      : undefined
   const resourceLoader = new DefaultResourceLoader({
     cwd,
     agentDir: join(paths.home, 'pi'),
@@ -312,6 +325,7 @@ export async function createBazilionSession(
     noContextFiles: true,
     appendSystemPrompt: bazilionPrompt ? [bazilionPrompt] : undefined,
   })
+  if (repository) resourceLoader.getAgentsFiles = repository.files
   await resourceLoader.reload()
 
   // Tool allowlist: pi's `tools` option is exclusive when provided — only
@@ -335,6 +349,7 @@ export async function createBazilionSession(
         sessionId: sessionManager.getSessionId(),
         env,
       })
+  if (repository) bazilionTools.push(repository.tool)
   const customTools = shellTools?.customBash
     ? [...bazilionTools, shellTools.customBash]
     : bazilionTools
@@ -352,6 +367,8 @@ export async function createBazilionSession(
     modelRuntime,
     resourceLoader,
   })
+
+  repository?.bind(session, allowedTools)
 
   // OAuth providers: wire pi's per-request `getApiKey` callback so the JWT
   // gets refreshed *during* a long tool-execution loop, not just at the
@@ -429,6 +446,14 @@ export async function createProtectedBazilionSession(
     }),
     protectedRuntimeSecrets(opts.runtime),
   )
+  const repository =
+    opts.repositoryContext && opts.repositoryContextHost
+      ? repositoryContextIntegration(
+          redactJsonValue(opts.repositoryContext, protectedRuntimeSecrets(opts.runtime)),
+          opts.repositoryContextHost,
+          PROTECTED_MODEL_CWD,
+        )
+      : undefined
   const resourceLoader = new DefaultResourceLoader({
     cwd: PROTECTED_MODEL_CWD,
     agentDir: opts.scratch.piAgentDir,
@@ -441,6 +466,7 @@ export async function createProtectedBazilionSession(
     systemPrompt: PROTECTED_BASE_SYSTEM_PROMPT,
     appendSystemPrompt: bazilionPrompt ? [bazilionPrompt] : undefined,
   })
+  if (repository) resourceLoader.getAgentsFiles = repository.files
   await resourceLoader.reload()
 
   const bazilionTools = createProtectedBazilionCustomTools({
@@ -452,6 +478,7 @@ export async function createProtectedBazilionSession(
     askUser: opts.askUser,
     sessionId: sessionManager.getSessionId(),
   })
+  if (repository) bazilionTools.push(repository.tool)
   if (!shellTools.customBash) throw new Error('protected Docker bash tool is unavailable')
   const customTools = [...bazilionTools, shellTools.customBash]
   const { session } = await createAgentSession({
@@ -466,6 +493,10 @@ export async function createProtectedBazilionSession(
     modelRuntime,
     resourceLoader,
   })
+  repository?.bind(
+    session,
+    customTools.map((tool) => tool.name),
+  )
   installProtectedCredentialBoundary(
     session,
     opts.runtime.providerName,

@@ -220,6 +220,8 @@ async function createSessionForInput(
   input: WorkerInput,
   ipcCall: WorkerIpcCall,
 ): Promise<{ handle: BazilionSessionHandle; reviewState?: ReviewState }> {
+  if (input.kind !== 'restricted_review' && !input.repositoryContext)
+    throw new Error('Coding turn requires daemon-prepared repository context')
   if (input.kind === 'configured_operator_http') {
     const paths = resolvePaths()
     const memory = qmdBackend(`${input.agent.team.path}/memory`)
@@ -244,6 +246,8 @@ async function createSessionForInput(
     const handle = await createBazilionSession({
       agent: input.agent,
       conversation: input.conversation,
+      repositoryContext: input.repositoryContext,
+      repositoryContextHost: (target) => ipcCall('repositoryContext', { target }),
       paths,
       env: process.env,
       memory,
@@ -301,6 +305,8 @@ async function createSessionForInput(
   const handle = await createProtectedBazilionSession({
     agent: input.agent,
     conversation: input.conversation,
+    repositoryContext: input.repositoryContext,
+    repositoryContextHost: (target) => ipcCall('repositoryContext', { target }),
     runtime: input.runtime,
     paths: input.paths,
     scratch: input.scratch,

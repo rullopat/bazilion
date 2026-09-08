@@ -22,6 +22,7 @@ import type {
 import type { ToolResultPart } from '../tools/types.ts'
 
 export type RpcMethod =
+  | 'repositoryContext'
   | 'questionConsumed'
   | 'askUser'
   | 'agentExists'
@@ -149,6 +150,7 @@ export interface ResultHost {
 }
 
 export type RpcArgs =
+  | { method: 'repositoryContext'; args: { target: string } }
   | { method: 'questionConsumed'; args: { questionId: string; toolCallId: string } }
   | {
       method: 'askUser'
@@ -169,6 +171,7 @@ export type RpcArgs =
   | { method: 'bashApproval'; args: BashApprovalArgs }
 
 export type RpcResult =
+  | { method: 'repositoryContext'; value: import('@bazilion/api-types').RepositoryContextReport }
   | { method: 'questionConsumed'; value: null }
   | { method: 'askUser'; value: import('@bazilion/api-types').AgentQuestionToolResult }
   | { method: 'agentExists'; value: boolean }

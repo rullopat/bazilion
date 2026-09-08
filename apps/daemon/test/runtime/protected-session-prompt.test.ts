@@ -7,6 +7,7 @@ import { createAssistantMessageEventStream } from '@earendil-works/pi-ai'
 import { SessionManager, type ToolDefinition } from '@earendil-works/pi-coding-agent'
 import { Type } from 'typebox'
 import { afterEach, describe, expect, test } from 'vitest'
+import { resolveRepositoryContext } from '../../src/lib/repository-context/index.ts'
 import type { MemoryBackend } from '../../src/runtime/memory/types.ts'
 import {
   createProtectedBazilionSession,
@@ -50,9 +51,29 @@ describe('protected provider prompt boundary', () => {
     }
     writeFileSync(
       join(sessionDir, conversation.filename),
-      JSON.stringify(SessionManager.inMemory(teamDir, { id: conversation.id }).getHeader()) + '\n',
+      `${JSON.stringify(SessionManager.inMemory(teamDir, { id: conversation.id }).getHeader())}\n`,
     )
+    mkdirSync(join(teamDir, '.pi', 'extensions'), { recursive: true })
+    mkdirSync(join(teamDir, '.pi', 'skills', 'untrusted'), { recursive: true })
+    writeFileSync(
+      join(teamDir, '.pi', 'extensions', 'untrusted.ts'),
+      "throw new Error('REPOSITORY_EXTENSION_EXECUTED')",
+    )
+    writeFileSync(
+      join(teamDir, '.pi', 'skills', 'untrusted', 'SKILL.md'),
+      '---\nname: untrusted\ndescription: Untrusted fixture\n---\nAUTO_DISCOVERY_SKILL_SENTINEL',
+    )
+    writeFileSync(join(teamDir, 'AGENTS.md'), 'ROOT_REPOSITORY_SENTINEL\n')
+    mkdirSync(join(teamDir, 'application'))
+    writeFileSync(join(teamDir, 'application', 'AGENTS.md'), 'NESTED_REPOSITORY_SENTINEL\n')
+    const repositoryContext = await resolveRepositoryContext({
+      teamId: agent.team.id,
+      root: teamDir,
+    })
     const handle = await createProtectedBazilionSession({
+      repositoryContext,
+      repositoryContextHost: (target) =>
+        resolveRepositoryContext({ teamId: agent.team.id, root: teamDir, target }),
       conversation,
       agent,
       runtime,
@@ -88,8 +109,33 @@ describe('protected provider prompt boundary', () => {
       fileSink: async () => ({ resultId: 'fixture-result' }),
     })
     let providerSystemPrompt = ''
+    let initialPrompt = ''
+    let calls = 0
     handle.session.agent.streamFunction = (model, context) => {
       providerSystemPrompt = context.systemPrompt ?? ''
+      if (calls++ === 0) {
+        initialPrompt = providerSystemPrompt
+        const stream = createAssistantMessageEventStream()
+        queueMicrotask(() =>
+          stream.push({
+            type: 'done',
+            reason: 'toolUse',
+            message: {
+              ...assistantMessage(model),
+              stopReason: 'toolUse',
+              content: [
+                {
+                  type: 'toolCall',
+                  id: 'repository-context-fixture',
+                  name: 'repository_context',
+                  arguments: { target: 'application/new.ts' },
+                },
+              ],
+            },
+          }),
+        )
+        return stream
+      }
       return completedStream(model)
     }
 
@@ -100,6 +146,15 @@ describe('protected provider prompt boundary', () => {
       cleanupMinimalWorkerScratch(scratch)
     }
 
+    expect(calls).toBe(2)
+    expect(initialPrompt).toContain('ROOT_REPOSITORY_SENTINEL')
+    expect(initialPrompt).not.toContain('NESTED_REPOSITORY_SENTINEL')
+    expect(providerSystemPrompt).toContain('NESTED_REPOSITORY_SENTINEL')
+    expect(providerSystemPrompt).not.toContain('AUTO_DISCOVERY_SKILL_SENTINEL')
+    expect(providerSystemPrompt).toContain('# Agent instructions')
+    const transcript = readFileSync(join(sessionDir, conversation.filename), 'utf8')
+    expect(transcript).toContain('repository_context')
+    expect(transcript).toContain('NESTED_REPOSITORY_SENTINEL')
     expect(providerSystemPrompt).toContain('/workspace')
     expect(providerSystemPrompt).toContain('/skills/0-audit-skill')
     expect(providerSystemPrompt).not.toContain(root)
@@ -133,6 +188,9 @@ describe('protected provider prompt boundary', () => {
       tools: [proposalTool],
       refreshApiKey: async () => 'review-prompt-access-token',
     })
+    expect(
+      handle.session.agent.state.tools.some((tool) => tool.name === 'repository_context'),
+    ).toBe(false)
     let providerSystemPrompt = ''
     handle.session.agent.streamFunction = (model, context) => {
       providerSystemPrompt = context.systemPrompt ?? ''

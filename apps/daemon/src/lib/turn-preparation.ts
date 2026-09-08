@@ -21,6 +21,10 @@ import {
   prepareProtectedExecution,
 } from './protected-execution.ts'
 import { type QuestionResponseRoute, resolveQuestionRoute } from './question-route.ts'
+import {
+  requireCompleteRepositoryContext,
+  resolveRepositoryContext,
+} from './repository-context/index.ts'
 import { requireTelegramQueuedTurn } from './telegram/queue-binding.ts'
 import {
   assertTrustedTurnInvocation,
@@ -52,6 +56,7 @@ export interface PrepareAgentTurnInput {
  * Only `prepareAgentTurn` can construct this nominal type.
  */
 export interface PreparedAgentTurn {
+  readonly repositoryContext: import('@bazilion/api-types').RepositoryContextReport
   readonly questionRoute?: QuestionResponseRoute
   readonly [preparedTurnBrand]: true
   readonly agent: ResolvedAgent
@@ -180,6 +185,11 @@ export async function prepareAgentTurn(input: PrepareAgentTurnInput): Promise<Pr
         throw new Error('preflighted protected execution does not match this turn')
       }
     }
+    const repositoryContext = await resolveRepositoryContext({
+      teamId: agent.team.id,
+      root: agent.team.path,
+    })
+    requireCompleteRepositoryContext(repositoryContext)
     const protectedExecution =
       input.protectedExecution ??
       (surface === 'protected'
@@ -214,6 +224,7 @@ export async function prepareAgentTurn(input: PrepareAgentTurnInput): Promise<Pr
       [preparedTurnBrand]: true as const,
       agent,
       conversation,
+      repositoryContext,
       message,
       images,
       invocation: input.invocation,

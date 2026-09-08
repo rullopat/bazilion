@@ -17,6 +17,7 @@ import type {
   ReasoningLevel,
   ResolvedAgent,
 } from '@bazilion/api-types'
+import { assertRepositoryContext } from '../pi/repository-context-contract.ts'
 import {
   PROTECTED_PROVIDER_NAMES,
   PROVIDER_CREDENTIAL_ENV,
@@ -54,6 +55,7 @@ export interface ProtectedWorkerPaths {
 }
 
 export interface ConfiguredOperatorHttpWorkerSpec {
+  repositoryContext: import('@bazilion/api-types').RepositoryContextReport
   questionEnabled?: boolean
   conversation: import('@bazilion/api-types').ConversationTarget
   kind: 'configured_operator_http'
@@ -70,6 +72,7 @@ export interface ConfiguredOperatorHttpWorkerSpec {
 }
 
 export interface ProtectedWorkerSpec {
+  repositoryContext: import('@bazilion/api-types').RepositoryContextReport
   questionEnabled?: boolean
   conversation: import('@bazilion/api-types').ConversationTarget
   kind: 'protected'
@@ -129,6 +132,7 @@ const REASONING_LEVELS = new Set<ReasoningLevel>([
 ])
 
 const CONFIGURED_KEYS = new Set([
+  'repositoryContext',
   'questionEnabled',
   'conversation',
   'kind',
@@ -144,6 +148,7 @@ const CONFIGURED_KEYS = new Set([
   'bashApprovalMode',
 ])
 const CONFIGURED_REQUIRED_KEYS = new Set([
+  'repositoryContext',
   'conversation',
   'kind',
   'agent',
@@ -154,6 +159,7 @@ const CONFIGURED_REQUIRED_KEYS = new Set([
   'bashApprovalMode',
 ])
 const PROTECTED_KEYS = new Set([
+  'repositoryContext',
   'questionEnabled',
   'conversation',
   'kind',
@@ -281,6 +287,7 @@ export function parseWorkerInput(value: unknown): WorkerInput {
   if (kind === 'configured_operator_http') {
     assertExactKeys(input, CONFIGURED_KEYS, 'configured worker input', CONFIGURED_REQUIRED_KEYS)
     if (!isResolvedAgent(input.agent)) throw new Error('worker: configured input requires an agent')
+    assertRepositoryContext(input.repositoryContext, input.agent.team.id)
     requireString(input.message, 'message')
     if (!Array.isArray(input.enabledProviders) || !input.enabledProviders.every(isString)) {
       throw new Error('worker: configured input requires enabledProviders')
@@ -307,6 +314,7 @@ export function parseWorkerInput(value: unknown): WorkerInput {
   if (kind === 'protected') {
     assertExactKeys(input, PROTECTED_KEYS, 'protected worker input', PROTECTED_REQUIRED_KEYS)
     if (!isResolvedAgent(input.agent)) throw new Error('worker: protected input requires an agent')
+    assertRepositoryContext(input.repositoryContext, input.agent.team.id)
     requireString(input.message, 'message')
     requireString(input.turnId, 'turnId')
     assertConversationTarget(input.conversation)

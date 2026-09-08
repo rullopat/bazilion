@@ -15,6 +15,8 @@ import type {
   NotificationSettings,
   NotificationSettingsInput,
   NotificationSettingsResponse,
+  RepositoryContextReport,
+  RepositoryContextRequest,
   UserQueueControl,
   UserQueueItem,
   UserQueueListResponse,
@@ -142,6 +144,11 @@ export function createClient(cfg: ClientConfig) {
   }
 
   return {
+    repositoryContext: (teamId: string, options: RepositoryContextRequest = {}) =>
+      request<RepositoryContextReport>(
+        'GET',
+        `/api/teams/${encodeURIComponent(teamId)}/repository-context${options.target !== undefined ? `?target=${encodeURIComponent(options.target)}` : ''}`,
+      ),
     notifications: {
       settings: () => request<NotificationSettingsResponse>('GET', '/api/notifications'),
       configure: (input: NotificationSettingsInput) =>

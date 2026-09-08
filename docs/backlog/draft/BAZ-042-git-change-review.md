@@ -110,7 +110,7 @@ Verified against Bazilion `13c3a63` (v0.14.2) on 2026-09-07:
 
 ## Dependencies and sequencing
 
-- Coordinate repository identity with [BAZ-039](BAZ-039-repository-coding-context.md) and the shared
+- Coordinate repository identity with [BAZ-039](../in_progress/BAZ-039-repository-coding-context.md) and the shared
   snapshot contract with [BAZ-041](BAZ-041-coding-command-verification.md) before implementation.
   Either presentation can ship first once the contract is settled.
 - [BAZ-034](../done/BAZ-034-durable-agent-deliverables.md) supplies persistent patch exports;
