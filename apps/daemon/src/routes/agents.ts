@@ -1,3 +1,5 @@
+import * as conversationRepo from '../core/repos/conversations.ts'
+import { selectedConversationTarget } from '../lib/conversation-target.ts'
 // /api/agents/* — agent CRUD + lifecycle + sub-resources (team, skills,
 // triggers, messages, sessions, chat). Memory is per-team and lives on
 // the teams router.
@@ -7,7 +9,7 @@
 // chat streaming endpoint and chat/compact next to each other.
 
 import { randomUUID } from 'node:crypto'
-import { existsSync, readdirSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   type AgentLessonProposalResponse,
@@ -91,6 +93,7 @@ import {
   revokeLessonProposal,
 } from '../lib/lesson-decisions.ts'
 import { createDbMessagingHost } from '../lib/messaging-host.ts'
+import { questionHistoryVisibility } from '../lib/question-history.ts'
 import { redactReviewText } from '../lib/review-digest.ts'
 import { getTelegramBotApi } from '../lib/telegram/bot.ts'
 import { notifyDirectoryDirty } from '../lib/telegram/directory.ts'
@@ -1026,8 +1029,21 @@ agentsRouter.get('/:id/sessions/head', (c) => {
   } catch {
     return c.json({ error: `agent not found: ${c.req.param('id')}` }, 404)
   }
-  const head: SessionHeadResponse = loadSessionHead(resolved, paths)
-  return c.json(head)
+  const target = selectedConversationTarget(db, resolved.agent.id)
+  const selection = conversationRepo.selection(db, resolved.agent.id)
+  try {
+    return c.json({
+      ...loadSessionHead(resolved, paths, target),
+      selection,
+    } satisfies SessionHeadResponse)
+  } catch {
+    return c.json({
+      file: target?.filename ?? null,
+      size: 0,
+      selection,
+      unavailable: true,
+    } satisfies SessionHeadResponse)
+  }
 })
 
 /**
@@ -1043,8 +1059,25 @@ agentsRouter.get('/:id/sessions/messages', (c) => {
   } catch {
     return c.json({ error: `agent not found: ${c.req.param('id')}` }, 404)
   }
-  const messages = piMessagesToProviderView(loadInitialMessages(resolved, paths))
-  return c.json({ messages })
+  const target = selectedConversationTarget(db, resolved.agent.id)
+  const selection = conversationRepo.selection(db, resolved.agent.id)
+  try {
+    const messages = piMessagesToProviderView(
+      loadInitialMessages(resolved, paths, target),
+      target ? questionHistoryVisibility(db, resolved.agent.id, target.id) : undefined,
+    )
+    return c.json({
+      messages,
+      selection,
+      head: { ...loadSessionHead(resolved, paths, target), selection },
+    })
+  } catch {
+    return c.json({
+      messages: [],
+      selection,
+      head: { file: target?.filename ?? null, size: 0, selection, unavailable: true },
+    })
+  }
 })
 
 // ─── Chat ────────────────────────────────────────────────────────────────
@@ -1065,6 +1098,13 @@ agentsRouter.post('/:id/chat', async (c) => {
     return c.json({ error: 'invalid JSON body' }, 400)
   }
   const message = body.message
+  if (
+    body.questionMode !== undefined &&
+    body.questionMode !== 'web' &&
+    body.questionMode !== 'tty'
+  ) {
+    return c.json({ error: 'questionMode must be "web" or "tty"' }, 400)
+  }
   if (typeof message !== 'string') {
     return c.json({ error: 'message is required' }, 400)
   }
@@ -1075,6 +1115,20 @@ agentsRouter.post('/:id/chat', async (c) => {
   ) {
     return c.json({ error: 'bashApprovalMode must be "interactive" or "auto_deny"' }, 400)
   }
+  if (
+    !body.expectedSelection ||
+    !Number.isSafeInteger(body.expectedSelection.revision) ||
+    body.expectedSelection.revision < 0 ||
+    (body.expectedSelection.conversationId !== null &&
+      typeof body.expectedSelection.conversationId !== 'string')
+  )
+    return c.json(
+      {
+        error: 'Reload conversation state before sending. Your draft has not been sent.',
+        code: 'conversation_selection_required',
+      },
+      409,
+    )
   const attachments = sanitizeAttachments(body.attachments)
   // A turn needs *something* — text or at least one attachment.
   if (!message && attachments.length === 0) {
@@ -1085,6 +1139,8 @@ agentsRouter.post('/:id/chat', async (c) => {
   let preparedTurn: Awaited<ReturnType<typeof prepareAgentTurn>>
   try {
     preparedTurn = await prepareAgentTurn({
+      expectedSelection: body.expectedSelection,
+      questionMode: body.questionMode,
       invocation: createTrustedTurnInvocation({
         kind: 'operator_http',
         authorization: {
@@ -1099,6 +1155,8 @@ agentsRouter.post('/:id/chat', async (c) => {
       }),
     })
   } catch (error) {
+    if (error instanceof conversationRepo.ConversationConflictError)
+      return c.json({ error: error.message, code: error.code, selection: error.selection }, 409)
     if (error instanceof CommunicationPendingError) {
       return c.json(
         {
@@ -1131,6 +1189,9 @@ agentsRouter.post('/:id/chat', async (c) => {
   const stream = new ReadableStream({
     async start(controller) {
       const encoder = new TextEncoder()
+      // Flush admission headers before the first provider frame. NDJSON consumers
+      // already ignore blank lines; no unapproved content is released here.
+      controller.enqueue(encoder.encode('\n'))
       let frameIndex = 0
       try {
         for await (const frame of runAgentTurn(preparedTurn)) {
@@ -1173,6 +1234,9 @@ agentsRouter.post('/:id/chat', async (c) => {
   return new Response(stream, {
     headers: {
       'content-type': 'application/x-ndjson',
+      'x-bazilion-conversation-selection': JSON.stringify(
+        conversationRepo.selection(getCtx().db, id),
+      ),
       'cache-control': 'no-cache',
       'x-content-type-options': 'nosniff',
     },
@@ -1194,51 +1258,77 @@ agentsRouter.post('/:id/chat/compact', async (c) => {
   const id = resolveAgentIdParam(db, c.req.param('id'))
   if (!agentRepo.get(db, id)) return c.json({ error: 'agent not found' }, 404)
 
-  const resolved = resolveAgent(db, paths, id)
-  const env = mergeSecretsIntoEnv(db, authToken)
-  const memory = qmdBackend(join(resolved.team.path, 'memory'))
-  await memory.init()
-
-  const apiKeyResolution = await resolveAgentApiKey(db, authToken, resolved, {
-    withRefresher: true,
-  })
-  const handle = await createBazilionSession({
-    agent: resolved,
-    paths,
-    env,
-    memory,
-    enabledProviders: providerStateRepo.listEnabled(db),
-    messagingHost: createDbMessagingHost(db),
-    ...apiKeyResolution,
-  })
   try {
-    const entriesBefore = handle.session.sessionManager.getEntries().length
-    const result = await handle.session.compact(body.customInstructions)
-    const entriesAfter = handle.session.sessionManager.getEntries().length
+    return await runAgentLifecycleMutation(id, async () => {
+      conversationRepo.assertSelection(db, id, body.expectedSelection!)
+      const target = selectedConversationTarget(db, id)
+      if (!target)
+        return c.json(
+          {
+            error: 'Start a conversation before using this action.',
+            code: 'conversation_required',
+          },
+          409,
+        )
+      const resolved = resolveAgent(db, paths, id)
+      const env = mergeSecretsIntoEnv(db, authToken)
+      const memory = qmdBackend(join(resolved.team.path, 'memory'))
+      await memory.init()
 
-    let keptTail = 0
-    if (result.firstKeptEntryId) {
-      const branch = handle.session.sessionManager.getBranch()
-      const idx = branch.findIndex((e) => e.id === result.firstKeptEntryId)
-      if (idx >= 0) for (const e of branch.slice(idx)) if (e.type === 'message') keptTail++
-    }
+      const apiKeyResolution = await resolveAgentApiKey(db, authToken, resolved, {
+        withRefresher: true,
+      })
+      const handle = await createBazilionSession({
+        agent: resolved,
+        conversation: target,
+        paths,
+        env,
+        memory,
+        enabledProviders: providerStateRepo.listEnabled(db),
+        messagingHost: createDbMessagingHost(db),
+        ...apiKeyResolution,
+      })
+      try {
+        const entriesBefore = handle.session.sessionManager.getEntries().length
+        const result = await handle.session.compact(body.customInstructions)
+        const entriesAfter = handle.session.sessionManager.getEntries().length
 
-    const tokensAfter = handle.session.getContextUsage()?.tokens ?? 0
+        let keptTail = 0
+        if (result.firstKeptEntryId) {
+          const branch = handle.session.sessionManager.getBranch()
+          const idx = branch.findIndex((e) => e.id === result.firstKeptEntryId)
+          if (idx >= 0) for (const e of branch.slice(idx)) if (e.type === 'message') keptTail++
+        }
 
-    const resp: ChatCompactResponse = {
-      before: entriesBefore,
-      after: entriesAfter,
-      summarized: Math.max(0, entriesBefore - entriesAfter + 1),
-      keptTail,
-      tokensBefore: result.tokensBefore,
-      tokensAfter,
-      summary: result.summary,
-    }
-    return c.json(resp)
-  } catch (err) {
-    return c.json({ error: (err as Error).message }, 502)
-  } finally {
-    handle.dispose()
+        const tokensAfter = handle.session.getContextUsage()?.tokens ?? 0
+
+        const resp: ChatCompactResponse = {
+          before: entriesBefore,
+          after: entriesAfter,
+          summarized: Math.max(0, entriesBefore - entriesAfter + 1),
+          keptTail,
+          tokensBefore: result.tokensBefore,
+          tokensAfter,
+          summary: result.summary,
+        }
+        return c.json(resp)
+      } catch (err) {
+        return c.json({ error: (err as Error).message }, 502)
+      } finally {
+        handle.dispose()
+      }
+    })
+  } catch (error) {
+    return c.json(
+      {
+        error: error instanceof Error ? error.message : 'Conversation unavailable',
+        code:
+          error instanceof conversationRepo.ConversationConflictError
+            ? error.code
+            : 'conversation_unavailable',
+      },
+      409,
+    )
   }
 })
 
@@ -1247,178 +1337,181 @@ agentsRouter.get('/:id/chat/context', async (c) => {
   const id = resolveAgentIdParam(db, c.req.param('id'))
   if (!agentRepo.get(db, id)) return c.json({ error: 'agent not found' }, 404)
 
-  const resolved = resolveAgent(db, paths, id)
-  const env = mergeSecretsIntoEnv(db, authToken)
-  const shellSecurity = resolveShellSecurityConfig(env)
-  const promptSkills = loadPromptSkills(paths.skillsDir, resolved.skills)
-
-  const files: ContextFileEntry[] = []
-  for (const file of CONTEXT_FILE_ORDER) {
-    const path = join(resolved.agent.dir, file)
-    if (!existsSync(path)) continue
-    const content = readFileSync(path, 'utf8').trimEnd()
-    if (!content) continue
-    const chars = content.length + file.length + 6
-    files.push({ name: file, chars, tokens: estimateTokens(chars) })
-  }
-  const systemPromptText = buildSystemPrompt(resolved, {
-    skills: promptSkills,
-    sandboxMode: shellSecurity.sandboxMode,
-  })
-  const systemPromptChars = systemPromptText.length
-
-  const skillsListChars = promptSkills.reduce(
-    (total, skill) => total + skill.name.length + skill.description.length + skill.body.length,
-    0,
-  )
-  const teamLines = [
-    '# Team',
-    '',
-    `- ${resolved.team.id} (${resolved.team.name}): ${resolved.team.path}`,
-    '',
-    'Your team is where work product lives — code, docs, artefacts, shared scratch. It may be shared with other agents in the same team. Use the workspace tools currently exposed to work there. Never use workspace tools to edit your identity/soul/behaviour files — those live in your private home and are reached via `home_write` / `home_read`.',
-  ]
-  const teamListChars = teamLines.join('\n').length
-  const userMdChars = resolved.team.userMd.trim()
-    ? `# About the User\n\nRead-only context about the human you're working with in this team. You cannot edit this — if it's wrong, say so and they will update it.\n\n${resolved.team.userMd.trim()}`
-        .length
-    : 0
-  const memoryHintChars =
-    '# Memory\n\nYou have a persistent memory backend. Use `memory_write` to remember things across sessions, and `memory_search` / `memory_read` / `memory_list` to recall them. Always check memory at the start of a session if the user might have told you something important before.'
-      .length
-
-  const memory = qmdBackend(join(resolved.team.path, 'memory'))
-  await memory.init()
-  const apiKeyResolution = await resolveAgentApiKey(db, authToken, resolved, {
-    withRefresher: true,
-  })
-  const handle = await createBazilionSession({
-    agent: resolved,
-    paths,
-    env,
-    memory,
-    enabledProviders: providerStateRepo.listEnabled(db),
-    messagingHost: createDbMessagingHost(db),
-    ...apiKeyResolution,
-  })
-
   try {
-    const toolInfos = handle.session.getAllTools()
-    let toolsSchemaChars = 0
-    let toolsListChars = 0
-    const toolEntries: ContextToolEntry[] = []
-    for (const info of toolInfos) {
-      const schemaJson = JSON.stringify(info.parameters ?? {})
-      const schemaChars = schemaJson.length
-      const descriptionChars = info.description.length
-      toolsSchemaChars += schemaChars
-      toolsListChars += info.name.length + descriptionChars + 3
-      toolEntries.push({
-        name: info.name,
-        schemaChars,
-        descriptionChars,
-        paramCount: countProperties(info.parameters),
+    return await runAgentLifecycleMutation(id, async () => {
+      const target = selectedConversationTarget(db, id)
+      if (!target)
+        return c.json(
+          {
+            error: 'Start a conversation before using this action.',
+            code: 'conversation_required',
+          },
+          409,
+        )
+      const resolved = resolveAgent(db, paths, id)
+      const env = mergeSecretsIntoEnv(db, authToken)
+      const shellSecurity = resolveShellSecurityConfig(env)
+      const promptSkills = loadPromptSkills(paths.skillsDir, resolved.skills)
+
+      const files: ContextFileEntry[] = []
+      for (const file of CONTEXT_FILE_ORDER) {
+        const path = join(resolved.agent.dir, file)
+        if (!existsSync(path)) continue
+        const content = readFileSync(path, 'utf8').trimEnd()
+        if (!content) continue
+        const chars = content.length + file.length + 6
+        files.push({ name: file, chars, tokens: estimateTokens(chars) })
+      }
+      const systemPromptText = buildSystemPrompt(resolved, {
+        skills: promptSkills,
+        sandboxMode: shellSecurity.sandboxMode,
       })
-    }
-    toolEntries.sort((a, b) => b.schemaChars - a.schemaChars)
+      const systemPromptChars = systemPromptText.length
 
-    const installed = discoverSkills(paths)
-    const skillEntries: ContextSkillEntry[] = []
-    for (const name of resolved.skills) {
-      const match = installed.find((s) => s.name === name)
-      let blockChars = name.length + 2
-      if (match) {
-        try {
-          blockChars = readFileSync(match.skillFile, 'utf8').length
-        } catch {}
-      }
-      skillEntries.push({ name, blockChars })
-    }
-    skillEntries.sort((a, b) => b.blockChars - a.blockChars)
+      const skillsListChars = promptSkills.reduce(
+        (total, skill) => total + skill.name.length + skill.description.length + skill.body.length,
+        0,
+      )
+      const teamLines = [
+        '# Team',
+        '',
+        `- ${resolved.team.id} (${resolved.team.name}): ${resolved.team.path}`,
+        '',
+        'Your team is where work product lives — code, docs, artefacts, shared scratch. It may be shared with other agents in the same team. Use the workspace tools currently exposed to work there. Never use workspace tools to edit your identity/soul/behaviour files — those live in your private home and are reached via `home_write` / `home_read`.',
+      ]
+      const teamListChars = teamLines.join('\n').length
+      const userMdChars = resolved.team.userMd.trim()
+        ? `# About the User\n\nRead-only context about the human you're working with in this team. You cannot edit this — if it's wrong, say so and they will update it.\n\n${resolved.team.userMd.trim()}`
+            .length
+        : 0
+      const memoryHintChars =
+        '# Memory\n\nYou have a persistent memory backend. Use `memory_write` to remember things across sessions, and `memory_search` / `memory_read` / `memory_list` to recall them. Always check memory at the start of a session if the user might have told you something important before.'
+          .length
 
-    const team: ContextGroupEntry = {
-      id: resolved.team.id,
-      name: resolved.team.name,
-      path: resolved.team.path,
-      userMdChars: resolved.team.userMd.length,
-    }
+      const memory = qmdBackend(join(resolved.team.path, 'memory'))
+      await memory.init()
+      const apiKeyResolution = await resolveAgentApiKey(db, authToken, resolved, {
+        withRefresher: true,
+      })
+      const handle = await createBazilionSession({
+        agent: resolved,
+        conversation: target,
+        paths,
+        env,
+        memory,
+        enabledProviders: providerStateRepo.listEnabled(db),
+        messagingHost: createDbMessagingHost(db),
+        ...apiKeyResolution,
+      })
 
-    const stats = handle.session.getSessionStats()
-    const historyChars = stats.tokens.total * 4
-    const messageEntries = stats.userMessages + stats.assistantMessages + stats.toolResults
-    const compactionEntries = handle.session.sessionManager
-      .getEntries()
-      .filter((e) => e.type === 'compaction').length
-    const contextUsage = handle.session.getContextUsage()
-    const historyTokens = contextUsage?.tokens ?? stats.tokens.total
-
-    const detail = c.req.query('detail') === '1' || c.req.query('json') === '1'
-    const CAP = 30
-    const toolEntriesOut = detail ? toolEntries : toolEntries.slice(0, CAP)
-    const skillEntriesOut = detail ? skillEntries : skillEntries.slice(0, CAP)
-
-    const totalsChars = systemPromptChars + toolsSchemaChars + historyChars
-    const resp: ChatContextResponse = {
-      agentId: resolved.agent.id,
-      model: resolved.model,
-      systemPrompt: {
-        chars: systemPromptChars,
-        tokens: estimateTokens(systemPromptChars),
-        files,
-        skillsListChars,
-        teamListChars,
-        userMdChars,
-        memoryHintChars,
-      },
-      tools: {
-        count: toolInfos.length,
-        listChars: toolsListChars,
-        schemaChars: toolsSchemaChars,
-        entries: toolEntriesOut,
-      },
-      skills: {
-        count: resolved.skills.length,
-        entries: skillEntriesOut,
-      },
-      team,
-      history: {
-        messageEntries,
-        compactionEntries,
-        chars: historyChars,
-        bytes: historyChars,
-        tokensEstimate: historyTokens,
-      },
-      totals: {
-        chars: totalsChars,
-        tokens: estimateTokens(totalsChars),
-      },
-    }
-    return c.json(resp)
-  } finally {
-    handle.dispose()
-  }
-})
-
-agentsRouter.post('/:id/chat/reset', (c) => {
-  const { db, paths, authToken } = getCtx()
-  const id = resolveAgentIdParam(db, c.req.param('id'))
-  const agent = agentRepo.get(db, id)
-  if (!agent) return c.json({ error: 'agent not found' }, 404)
-
-  const sessionsDir = join(paths.agentDir(agent.id), 'sessions')
-  let deleted = 0
-  if (existsSync(sessionsDir)) {
-    for (const file of readdirSync(sessionsDir)) {
-      if (!file.endsWith('.jsonl')) continue
       try {
-        rmSync(join(sessionsDir, file))
-        deleted++
-      } catch {
-        // best-effort
+        const toolInfos = handle.session.getAllTools()
+        let toolsSchemaChars = 0
+        let toolsListChars = 0
+        const toolEntries: ContextToolEntry[] = []
+        for (const info of toolInfos) {
+          const schemaJson = JSON.stringify(info.parameters ?? {})
+          const schemaChars = schemaJson.length
+          const descriptionChars = info.description.length
+          toolsSchemaChars += schemaChars
+          toolsListChars += info.name.length + descriptionChars + 3
+          toolEntries.push({
+            name: info.name,
+            schemaChars,
+            descriptionChars,
+            paramCount: countProperties(info.parameters),
+          })
+        }
+        toolEntries.sort((a, b) => b.schemaChars - a.schemaChars)
+
+        const installed = discoverSkills(paths)
+        const skillEntries: ContextSkillEntry[] = []
+        for (const name of resolved.skills) {
+          const match = installed.find((s) => s.name === name)
+          let blockChars = name.length + 2
+          if (match) {
+            try {
+              blockChars = readFileSync(match.skillFile, 'utf8').length
+            } catch {}
+          }
+          skillEntries.push({ name, blockChars })
+        }
+        skillEntries.sort((a, b) => b.blockChars - a.blockChars)
+
+        const team: ContextGroupEntry = {
+          id: resolved.team.id,
+          name: resolved.team.name,
+          path: resolved.team.path,
+          userMdChars: resolved.team.userMd.length,
+        }
+
+        const stats = handle.session.getSessionStats()
+        const historyChars = stats.tokens.total * 4
+        const messageEntries = stats.userMessages + stats.assistantMessages + stats.toolResults
+        const compactionEntries = handle.session.sessionManager
+          .getEntries()
+          .filter((e) => e.type === 'compaction').length
+        const contextUsage = handle.session.getContextUsage()
+        const historyTokens = contextUsage?.tokens ?? stats.tokens.total
+
+        const detail = c.req.query('detail') === '1' || c.req.query('json') === '1'
+        const CAP = 30
+        const toolEntriesOut = detail ? toolEntries : toolEntries.slice(0, CAP)
+        const skillEntriesOut = detail ? skillEntries : skillEntries.slice(0, CAP)
+
+        const totalsChars = systemPromptChars + toolsSchemaChars + historyChars
+        const resp: ChatContextResponse = {
+          agentId: resolved.agent.id,
+          model: resolved.model,
+          systemPrompt: {
+            chars: systemPromptChars,
+            tokens: estimateTokens(systemPromptChars),
+            files,
+            skillsListChars,
+            teamListChars,
+            userMdChars,
+            memoryHintChars,
+          },
+          tools: {
+            count: toolInfos.length,
+            listChars: toolsListChars,
+            schemaChars: toolsSchemaChars,
+            entries: toolEntriesOut,
+          },
+          skills: {
+            count: resolved.skills.length,
+            entries: skillEntriesOut,
+          },
+          team,
+          history: {
+            messageEntries,
+            compactionEntries,
+            chars: historyChars,
+            bytes: historyChars,
+            tokensEstimate: historyTokens,
+          },
+          totals: {
+            chars: totalsChars,
+            tokens: estimateTokens(totalsChars),
+          },
+        }
+        return c.json(resp)
+      } finally {
+        handle.dispose()
       }
-    }
+    })
+  } catch (error) {
+    return c.json(
+      {
+        error: error instanceof Error ? error.message : 'Conversation unavailable',
+        code:
+          error instanceof conversationRepo.ConversationConflictError
+            ? error.code
+            : 'conversation_unavailable',
+      },
+      409,
+    )
   }
-  return c.json({ ok: true, deletedSessionFiles: deleted })
 })
 
 agentsRouter.post('/:id/chat/truncate', async (c) => {
@@ -1437,44 +1530,70 @@ agentsRouter.post('/:id/chat/truncate', async (c) => {
   const id = resolveAgentIdParam(db, c.req.param('id'))
   if (!agentRepo.get(db, id)) return c.json({ error: 'agent not found' }, 404)
 
-  const resolved = resolveAgent(db, paths, id)
-  const memory = qmdBackend(join(resolved.team.path, 'memory'))
-  await memory.init()
-  const env = mergeSecretsIntoEnv(db, authToken)
-
-  const apiKeyResolution = await resolveAgentApiKey(db, authToken, resolved, {
-    withRefresher: true,
-  })
-  const handle = await createBazilionSession({
-    agent: resolved,
-    paths,
-    env,
-    memory,
-    enabledProviders: providerStateRepo.listEnabled(db),
-    messagingHost: createDbMessagingHost(db),
-    ...apiKeyResolution,
-  })
   try {
-    const branch = handle.session.sessionManager.getBranch()
-    const messageEntries = branch.filter((e) => e.type === 'message')
-    const before = messageEntries.length
-    const target = Math.max(0, Math.min(keep, before))
+    return await runAgentLifecycleMutation(id, async () => {
+      conversationRepo.assertSelection(db, id, body.expectedSelection!)
+      const target = selectedConversationTarget(db, id)
+      if (!target)
+        return c.json(
+          {
+            error: 'Start a conversation before using this action.',
+            code: 'conversation_required',
+          },
+          409,
+        )
+      const resolved = resolveAgent(db, paths, id)
+      const memory = qmdBackend(join(resolved.team.path, 'memory'))
+      await memory.init()
+      const env = mergeSecretsIntoEnv(db, authToken)
 
-    if (target === before) {
-      return c.json({ before, after: before } satisfies TruncateChatResponse)
-    }
+      const apiKeyResolution = await resolveAgentApiKey(db, authToken, resolved, {
+        withRefresher: true,
+      })
+      const handle = await createBazilionSession({
+        agent: resolved,
+        conversation: target,
+        paths,
+        env,
+        memory,
+        enabledProviders: providerStateRepo.listEnabled(db),
+        messagingHost: createDbMessagingHost(db),
+        ...apiKeyResolution,
+      })
+      try {
+        const branch = handle.session.sessionManager.getBranch()
+        const messageEntries = branch.filter((e) => e.type === 'message')
+        const before = messageEntries.length
+        const target = Math.max(0, Math.min(keep, before))
 
-    if (target === 0) {
-      handle.session.sessionManager.resetLeaf()
-    } else {
-      const lastKept = messageEntries[target - 1]
-      if (!lastKept) return c.json({ error: 'internal: missing target entry' }, 500)
-      handle.session.sessionManager.branch(lastKept.id)
-    }
+        if (target === before) {
+          return c.json({ before, after: before } satisfies TruncateChatResponse)
+        }
 
-    return c.json({ before, after: target } satisfies TruncateChatResponse)
-  } finally {
-    handle.dispose()
+        if (target === 0) {
+          handle.session.sessionManager.resetLeaf()
+        } else {
+          const lastKept = messageEntries[target - 1]
+          if (!lastKept) return c.json({ error: 'internal: missing target entry' }, 500)
+          handle.session.sessionManager.branch(lastKept.id)
+        }
+
+        return c.json({ before, after: target } satisfies TruncateChatResponse)
+      } finally {
+        handle.dispose()
+      }
+    })
+  } catch (error) {
+    return c.json(
+      {
+        error: error instanceof Error ? error.message : 'Conversation unavailable',
+        code:
+          error instanceof conversationRepo.ConversationConflictError
+            ? error.code
+            : 'conversation_unavailable',
+      },
+      409,
+    )
   }
 })
 

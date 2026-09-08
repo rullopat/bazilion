@@ -8,6 +8,10 @@ import { createBrowserHost } from './browser/host.ts'
 import { getCtx } from './ctx.ts'
 import { resolveMcpForTurn } from './mcp/resolve.ts'
 import { createDbMessagingHost } from './messaging-host.ts'
+import { type LiveQuestionHost, questionServiceFor } from './question-service.ts'
+import { createResultHost } from './result-host.ts'
+import { authorizeBackgroundResult } from './result-library-delivery.ts'
+import { reconcilePrivateResults } from './result-retention.ts'
 import { mirrorAgentTurnFrame, mirrorTypingStart, mirrorTypingStop } from './telegram/mirror.ts'
 import { invocationRepresentsUserTurn } from './turn-invocation.ts'
 import {
@@ -29,13 +33,18 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
   consumePreparedAgentTurn(turn)
   const { agent, invocation } = turn
   const turnId = invocation.authorization.attemptId
+  let questionHost: LiveQuestionHost | undefined
 
   try {
     const { db, paths, authToken } = getCtx()
+    questionHost = turn.questionRoute
+      ? questionServiceFor(db, paths, authToken).attach(turn)
+      : undefined
     const messagingHost = createDbMessagingHost(db, {
       causalParentMessageId: turn.causalParentMessageId,
     })
     const userMdHost = createDbUserMdHost(db, paths)
+    const resultHost = createResultHost(db, paths, agent, turn.controller.signal, turn.conversation)
     let frames: AsyncGenerator<ChatFrame, void, void>
     if (turn.surface === 'configured_operator_http') {
       if (invocation.kind !== 'operator_http') {
@@ -54,6 +63,7 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
           kind: 'configured_operator_http',
           agent,
           message: turn.message,
+          conversation: turn.conversation,
           enabledProviders,
           apiKey,
           browserEnabled,
@@ -61,15 +71,18 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
           images: [...turn.images],
           turnId,
           bashApprovalMode: invocation.bashApprovalMode,
+          ...(questionHost ? { questionEnabled: true } : {}),
         },
         {
           env,
           signal: turn.controller.signal,
           messagingHost,
+          resultHost,
           userMdHost,
           browserHost,
           mcpHost: mcp?.host,
           bashApprovalHost: commandApprovalRegistry,
+          ...(questionHost ? { questionHost } : {}),
           apiKeyRefreshHost: refreshApiKey ? { refresh: refreshApiKey } : undefined,
           diagnosticSink: (diagnostic) => {
             console.warn(`[worker ${agent.agent.id}] ${diagnostic}`)
@@ -86,9 +99,11 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
           kind: 'protected',
           agent,
           message: turn.message,
+          conversation: turn.conversation,
           images: [...turn.images],
           turnId,
           bashApprovalMode: 'auto_deny',
+          ...(questionHost ? { questionEnabled: true } : {}),
           runtime: prepared.runtime,
           paths: prepared.paths,
           docker: prepared.docker,
@@ -97,8 +112,10 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
         {
           signal: turn.controller.signal,
           messagingHost,
+          resultHost,
           userMdHost,
           bashApprovalHost: commandApprovalRegistry,
+          ...(questionHost ? { questionHost } : {}),
           apiKeyRefreshHost: { refresh: prepared.refreshApiKey },
         },
       )
@@ -108,6 +125,9 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
     let mirrorFrameIndex = 0
     let completed = false
     for await (const frame of frames) {
+      if (invocation.kind !== 'operator_http') {
+        authorizeBackgroundResult(db, agent.agent.id, frame)
+      }
       void mirrorAgentTurnFrame(
         agent.agent.id,
         frame,
@@ -130,7 +150,9 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
       agentReviewRepo.recordSuccessfulUserTurn(db, agent.agent.id)
     }
   } finally {
+    questionHost?.close()
     mirrorTypingStop(agent.agent.id)
     releasePreparedAgentTurn(turn)
+    reconcilePrivateResults(getCtx().db)
   }
 }

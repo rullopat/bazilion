@@ -6,6 +6,7 @@ size: L
 created: 2026-08-23
 refined: 2026-08-27
 shipped: 2026-08-27
+release: v0.13.0
 priority: high
 note: Extend BAZ-027 across the complete pinned Pi provider catalog without restoring ambient environment or credential-file discovery.
 ---

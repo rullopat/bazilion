@@ -5,6 +5,7 @@ status: done
 size: M
 created: 2026-08-03
 shipped: 2026-08-03
+release: v0.12.0
 priority: high
 ---
 
@@ -54,4 +55,4 @@ Track durable causality on agent messages and reject a send before it can wake a
 - Operators can inspect recent stops through `GET /api/agents/:id/loop-breaks`,
   `bazilion inbox loop-breaks <agent>`, and the Agent inbox web page.
 - The canonical backup schema, API types, documentation, and release Changeset include the new
-  contract. The feature is merged for the next release and intentionally remains unreleased.
+  contract. The feature shipped in v0.12.0.

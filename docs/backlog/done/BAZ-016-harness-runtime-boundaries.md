@@ -5,14 +5,16 @@ status: done
 size: L (1-2 weeks)
 created: 2026-07-10
 refined: 2026-07-10
+shipped: 2026-07-11
+release: v0.9.0
 priority: high
 note: Complete BAZ-011 enforcement at every user, transport, scheduler, and turn boundary with atomic claims and lifecycle leases. Activation is release-coupled to BAZ-017 recovery UX.
 ---
 
 # BAZ-016 - TeamPolicy ingress, egress, scheduler, and turn-boundary enforcement
 
-**Status:** Refined and ready after BAZ-011 and BAZ-015. Enforcement may merge disabled;
-it may be released enabled only with BAZ-017. ADR 0001 is normative.
+**Status:** Done. Released enabled in v0.9.0 with the BAZ-017 management and recovery UX.
+ADR 0001 is normative.
 
 ## User stories
 

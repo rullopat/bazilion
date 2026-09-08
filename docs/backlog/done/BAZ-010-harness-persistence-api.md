@@ -7,13 +7,14 @@ created: 2026-07-10
 refined: 2026-07-10
 priority: high
 shipped: 2026-07-11
+release: v0.9.0
 note: Establish canonical Team-template and one-per-Team policy storage, migrate and remove legacy Profile Team tables, and preserve exact Open Team behavior through bounded adapters. Explicit policy/lifecycle APIs continue in BAZ-015.
 ---
 
 # BAZ-010 - Canonical teamPolicy storage and compatibility migration
 
-**Status:** Refined and ready after BAZ-009. ADR 0001 is normative. This is the first half
-of the former XL persistence story; BAZ-015 owns revisioned policy and lifecycle APIs.
+**Status:** Done. Released in v0.9.0. ADR 0001 is normative. This was the first half of the
+former XL persistence story; BAZ-015 completed revisioned policy and lifecycle APIs.
 
 ## User stories
 
@@ -192,7 +193,7 @@ The URLs remain permanent; BAZ-015 adds canonical revision/placement fields to t
   table access.
 - API type/client compilation, full repository suite, root/web typechecks, lint, and build.
 
-## As-built (2026-07-11, unreleased)
+## As-built (2026-07-11, released in v0.9.0)
 
 The canonical persistence and one-release compatibility foundation landed as specified:
 

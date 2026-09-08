@@ -16,6 +16,7 @@ import { handle as handleClose } from './close.ts'
 import { handle as handleHealth } from './health.ts'
 import { handle as handleHelp } from './help.ts'
 import { handle as handleList } from './list.ts'
+import { handle as handleQueue } from './queue.ts'
 import { handle as handleRebind } from './rebind.ts'
 import { handle as handleSpawn } from './spawn.ts'
 import { handle as handleSpawnTeam } from './spawn-team.ts'
@@ -63,6 +64,12 @@ export const ALL_COMMANDS: readonly CommandDescriptor[] = [
   { name: 'help', description: 'Command reference', handle: handleHelp, context: 'any' },
 
   // Topic-context surface — hidden from setMyCommands per doc decision.
+  {
+    name: 'queue',
+    description: 'Inspect and control durable follow-ups',
+    handle: handleQueue,
+    context: 'topic',
+  },
   { name: 'close', description: 'Close this agent topic', handle: handleClose, context: 'topic' },
   {
     name: 'rebind',

@@ -4,13 +4,17 @@ import type {
   CommunicationApprovalDetail,
   Message,
   ToolResultImage,
+  UserQueueItem,
 } from '@bazilion/api-types'
+import type { QuestionApprovalSnapshot } from '../core/repos/questions.ts'
+import { type QuestionApprovalReference, validateQuestionApproval } from './question-approval.ts'
 import {
   isTelegramIngressPayload,
   type TelegramIngressPayload,
 } from './telegram/ingress-attempt.ts'
 
 export interface AgentTurnApprovalPayload {
+  conversationId: string
   agentId: string
   message: string
   attachments: Attachment[]
@@ -61,6 +65,7 @@ export interface TelegramImageApprovalPayload extends TelegramTransportPayload {
 }
 
 export interface TelegramFileApprovalPayload extends TelegramTransportPayload {
+  result?: import('@bazilion/api-types').ResultReference
   data: string
   mimeType: string
   name: string
@@ -68,6 +73,26 @@ export interface TelegramFileApprovalPayload extends TelegramTransportPayload {
 }
 
 export type ApprovalDeliveryPlan =
+  | {
+      kind: 'question_delivery'
+      approval: CommunicationApprovalDetail
+      payload: QuestionApprovalReference
+    }
+  | {
+      kind: 'question_answer'
+      approval: CommunicationApprovalDetail
+      payload: QuestionApprovalReference
+    }
+  | {
+      kind: 'queued_user'
+      approval: CommunicationApprovalDetail
+      payload: QueuedUserApprovalPayload
+    }
+  | {
+      kind: 'agent_result'
+      approval: CommunicationApprovalDetail
+      payload: { agentId: string; resultId: string }
+    }
   | {
       kind: 'agent_turn'
       approval: CommunicationApprovalDetail
@@ -121,7 +146,9 @@ export type ApprovalDeliveryPlan =
     }
 
 export interface ApprovalDeliveryPlanContext {
+  questionInput?: (agentId: string, questionId: string) => QuestionApprovalSnapshot | null
   messageById?: (messageId: string) => Message | null
+  queuedInput?: Parameters<typeof validateQueuedUserApproval>[1]
 }
 
 export class ApprovalDeliveryValidationError extends Error {
@@ -129,6 +156,56 @@ export class ApprovalDeliveryValidationError extends Error {
     super(`approval_delivery_invalid: ${code}`)
     this.name = 'ApprovalDeliveryValidationError'
   }
+}
+
+export interface QueuedUserApprovalPayload {
+  agentId: string
+  itemId: string
+  inputDigest: string
+}
+
+/** Validate metadata before loading retained bytes or claiming a queued approval. */
+export function validateQueuedUserApproval(
+  approval: CommunicationApprovalDetail,
+  lookup: (
+    agentId: string,
+    itemId: string,
+  ) => {
+    item: UserQueueItem
+    inputDigest: string
+  } | null,
+): QueuedUserApprovalPayload {
+  const payload = approval.payload
+  if (
+    approval.operation !== 'user_to_agent' ||
+    approval.payloadKind !== 'queued_user' ||
+    !isRecord(payload) ||
+    Object.keys(payload).sort().join(',') !== 'agentId,inputDigest,itemId' ||
+    !isNonEmptyString(payload.agentId) ||
+    typeof payload.itemId !== 'string' ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(payload.itemId) ||
+    typeof payload.inputDigest !== 'string' ||
+    !/^[0-9a-f]{64}$/.test(payload.inputDigest)
+  )
+    return invalid('queued_user_payload')
+  requireUserToAgent(approval, payload.agentId)
+  const captured = lookup(payload.agentId, payload.itemId)
+  if (!captured) return invalid('queued_user_missing')
+  const { item } = captured
+  if (
+    item.id !== payload.itemId ||
+    item.agentId !== payload.agentId ||
+    item.teamId !== approval.sourceTeamId ||
+    item.approvalId !== approval.id ||
+    item.attemptId !== approval.attemptId ||
+    captured.inputDigest !== payload.inputDigest
+  )
+    return invalid('queued_user_binding')
+  const origin = item.source === 'http' ? 'http_chat' : 'telegram_agent_topic'
+  const attemptKind = item.source === 'http' ? 'http_chat_ingress' : 'telegram_ingress'
+  if (approval.origin !== origin || approval.attemptKind !== attemptKind)
+    return invalid('queued_user_source')
+  return { agentId: payload.agentId, itemId: payload.itemId, inputDigest: payload.inputDigest }
 }
 
 /**
@@ -141,6 +218,29 @@ export function planApprovalDelivery(
   context: ApprovalDeliveryPlanContext = {},
 ): ApprovalDeliveryPlan {
   if (!isNonEmptyString(approval.attemptId)) invalid('attempt_id')
+  if (approval.payloadKind === 'question_delivery' || approval.payloadKind === 'question_answer') {
+    const payload = approval.payload
+    if (
+      !isRecord(payload) ||
+      typeof payload.agentId !== 'string' ||
+      typeof payload.questionId !== 'string'
+    )
+      return invalid('question_payload')
+    try {
+      const validated = validateQuestionApproval(
+        approval,
+        context.questionInput?.(payload.agentId, payload.questionId) ?? null,
+      )
+      return { kind: validated.kind, approval, payload: validated.reference }
+    } catch {
+      return invalid('question_binding')
+    }
+  }
+
+  if (approval.payloadKind === 'queued_user') {
+    const payload = validateQueuedUserApproval(approval, context.queuedInput ?? (() => null))
+    return { kind: 'queued_user', approval, payload }
+  }
 
   if (
     approval.operation === 'user_to_agent' &&
@@ -203,6 +303,29 @@ export function planApprovalDelivery(
     const payload = requireAgentMessagePayload(approval.payload)
     requireAgentToAgent(approval, payload.from, payload.to)
     return { kind: 'agent_message', approval, payload }
+  }
+
+  if (
+    approval.operation === 'agent_to_user' &&
+    approval.payloadKind === 'agent_result' &&
+    approval.origin === 'result_library'
+  ) {
+    requireAttemptKind(approval, 'result_publication')
+    const payload = approval.payload
+    if (
+      !isRecord(payload) ||
+      !isNonEmptyString(payload.agentId) ||
+      !isNonEmptyString(payload.resultId) ||
+      approval.attemptId !== payload.resultId
+    ) {
+      return invalid('agent_result_payload')
+    }
+    requireAgentToUser(approval, payload.agentId)
+    return {
+      kind: 'agent_result',
+      approval,
+      payload: { agentId: payload.agentId, resultId: payload.resultId },
+    }
   }
 
   if (
@@ -328,6 +451,12 @@ function requireAgentToAgent(
 }
 
 function requireAgentTurnPayload(value: unknown): AgentTurnApprovalPayload {
+  if (
+    !isRecord(value) ||
+    typeof value.conversationId !== 'string' ||
+    !/^[0-9a-f-]{36}$/i.test(value.conversationId)
+  )
+    return invalid('agent_turn_conversation')
   if (!isRecord(value) || !isNonEmptyString(value.agentId) || typeof value.message !== 'string')
     return invalid('agent_turn_payload')
   if (!Array.isArray(value.attachments) || !value.attachments.every(isAttachment))
@@ -336,6 +465,7 @@ function requireAgentTurnPayload(value: unknown): AgentTurnApprovalPayload {
     return invalid('agent_turn_empty')
   return {
     agentId: value.agentId,
+    conversationId: value.conversationId,
     message: value.message,
     attachments: value.attachments,
   }
@@ -453,6 +583,9 @@ function requireTelegramFilePayload(value: unknown): TelegramFileApprovalPayload
     data: value.data,
     mimeType: value.mimeType,
     name: value.name,
+    ...(isRecord(value.result) && isNonEmptyString(value.result.resultId)
+      ? { result: { resultId: value.result.resultId } }
+      : {}),
     ...(value.caption !== undefined ? { caption: value.caption } : {}),
   }
 }

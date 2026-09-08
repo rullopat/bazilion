@@ -23,6 +23,7 @@ import { useEffect, useState } from 'react'
 import { Button } from '../../../components/Button'
 import { ConfirmDialog } from '../../../components/ConfirmDialog'
 import { ConfigPage } from '../../../components/ConfigPage'
+import { NotificationSettings } from '../../../components/NotificationSettings'
 import { daemonClient } from '../../../lib/daemon-client'
 
 const fetchTelegramConfig = createServerFn({ method: 'GET' }).handler(() =>
@@ -232,6 +233,7 @@ function TelegramIntegrationPage() {
       </section>
 
       {initial.configured && <OwnerPairingCard />}
+      <NotificationSettings />
       {initial.configured && <AccessControlCard />}
       <ConfirmDialog
         open={confirmDisconnect}

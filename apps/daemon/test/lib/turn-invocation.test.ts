@@ -16,7 +16,7 @@ import {
 const releaseLease = () => {}
 
 function turn(agentId = 'agent-1', message = 'hello', attachments: Attachment[] = []) {
-  return { agentId, message, attachments }
+  return { agentId, message, attachments, conversationId: '11111111-1111-4111-8111-111111111111' }
 }
 
 function claim(agentId: string, attemptId: string) {
@@ -63,6 +63,7 @@ const invocations: Array<{
         attemptId: '-42:7',
         approvalPayloadKind: 'telegram_ingress',
         approvalPayload: {
+          conversationId: '11111111-1111-4111-8111-111111111111',
           agentId: 'agent-1',
           text: 'hello',
           media: null,
@@ -220,6 +221,7 @@ test('the factory snapshots and freezes the exact message, attachments, and caus
   })
   attachments[0] = { mimeType: 'application/secret', data: 'secret' }
   expect(invocation.turn).toEqual({
+    conversationId: '11111111-1111-4111-8111-111111111111',
     agentId: 'agent-1',
     message: 'exact',
     attachments: [{ name: 'a.txt', mimeType: 'text/plain', data: 'YQ==' }],

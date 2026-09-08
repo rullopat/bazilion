@@ -7,6 +7,7 @@ created: 2026-08-04
 refined: 2026-08-04
 priority: high
 shipped: 2026-08-05
+release: v0.12.0
 note: Replaces the proposed mobile-approval story. Aggregate existing durable sources; do not build a second workflow or audit log.
 ---
 

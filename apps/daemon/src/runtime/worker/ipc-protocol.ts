@@ -22,6 +22,8 @@ import type {
 import type { ToolResultPart } from '../tools/types.ts'
 
 export type RpcMethod =
+  | 'questionConsumed'
+  | 'askUser'
   | 'agentExists'
   | 'sendMessage'
   | 'listInbox'
@@ -34,6 +36,7 @@ export type RpcMethod =
   | 'mcpInvoke'
   | 'refreshApiKey'
   | 'bashApproval'
+  | 'publishResult'
 
 export interface AgentExistsArgs {
   agentId: string
@@ -139,7 +142,19 @@ export interface InjectedMcpTool {
   inputSchema: object
 }
 
+export type PublishResultArgs = import('@bazilion/api-types').ResultPublicationInput
+
+export interface ResultHost {
+  publish(input: PublishResultArgs): Promise<import('@bazilion/api-types').ResultReference>
+}
+
 export type RpcArgs =
+  | { method: 'questionConsumed'; args: { questionId: string; toolCallId: string } }
+  | {
+      method: 'askUser'
+      args: { toolCallId: string; question: import('@bazilion/api-types').AgentQuestionInput }
+    }
+  | { method: 'publishResult'; args: PublishResultArgs }
   | { method: 'agentExists'; args: AgentExistsArgs }
   | { method: 'sendMessage'; args: SendMessageArgs }
   | { method: 'listInbox'; args: ListInboxArgs }
@@ -154,6 +169,8 @@ export type RpcArgs =
   | { method: 'bashApproval'; args: BashApprovalArgs }
 
 export type RpcResult =
+  | { method: 'questionConsumed'; value: null }
+  | { method: 'askUser'; value: import('@bazilion/api-types').AgentQuestionToolResult }
   | { method: 'agentExists'; value: boolean }
   | { method: 'sendMessage'; value: { messageId: string } }
   | { method: 'listInbox'; value: Message[] }
@@ -252,4 +269,15 @@ export interface BashApprovalHandle {
  */
 export interface BashApprovalHost {
   begin(input: BashApprovalArgs, signal?: AbortSignal): BashApprovalHandle
+}
+
+/** Bound by the daemon to one prepared human turn; the worker supplies content only. */
+export interface QuestionHost {
+  consumed(questionId: string, toolCallId: string): void
+  subscribe(listener: (question: import('@bazilion/api-types').AgentQuestion) => void): () => void
+  ask(
+    toolCallId: string,
+    question: import('@bazilion/api-types').AgentQuestionInput,
+  ): Promise<import('@bazilion/api-types').AgentQuestionToolResult>
+  close(): void
 }

@@ -12,16 +12,21 @@ import { attentionRouter } from './routes/attention.ts'
 import { authRouter } from './routes/auth-login.ts'
 import { communicationRouter } from './routes/communication.ts'
 import { configRouter } from './routes/config.ts'
+import { conversationsRouter } from './routes/conversations.ts'
 import { mcpRouter } from './routes/mcp.ts'
 import { messagesRouter } from './routes/messages.ts'
 import { miscRouter } from './routes/misc.ts'
+import { notificationsRouter } from './routes/notifications.ts'
 import { profilesRouter } from './routes/profiles.ts'
+import { questionsRouter } from './routes/questions.ts'
+import { resultsRouter } from './routes/results.ts'
 import { shellApprovalsRouter } from './routes/shell-approvals.ts'
 import { skillsRouter } from './routes/skills.ts'
 import { teamTemplatesRouter } from './routes/team-templates.ts'
 import { teamsRouter } from './routes/teams.ts'
 import { telegramRouter } from './routes/telegram.ts'
 import { triggersRouter } from './routes/triggers.ts'
+import { userQueueRouter } from './routes/user-queue.ts'
 
 export function createApp(): Hono {
   const app = new Hono()
@@ -31,8 +36,13 @@ export function createApp(): Hono {
   // provider-test paths are whitelisted inside the middleware itself.
   app.use('*', authMiddleware)
 
+  app.route('/api/agents', conversationsRouter)
+  app.route('/api/agents', userQueueRouter)
+  app.route('/api/agents', questionsRouter)
   app.route('/api/agents', agentsRouter)
+  app.route('/api/results', resultsRouter)
   app.route('/api/attention', attentionRouter)
+  app.route('/api/notifications', notificationsRouter)
   app.route('/api/approvals', approvalsRouter)
   app.route('/api/shell-approvals', shellApprovalsRouter)
   app.route('/api/teams', teamsRouter)

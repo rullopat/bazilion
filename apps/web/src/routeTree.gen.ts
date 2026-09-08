@@ -19,6 +19,7 @@ import { Route as ConfigIndexRouteImport } from './routes/config/index'
 import { Route as AttentionIndexRouteImport } from './routes/attention/index'
 import { Route as ApprovalsIndexRouteImport } from './routes/approvals/index'
 import { Route as AgentsIndexRouteImport } from './routes/agents/index'
+import { Route as ResultsIdRouteImport } from './routes/results/$id'
 import { Route as ConfigTokensRouteImport } from './routes/config/tokens'
 import { Route as ConfigServicesRouteImport } from './routes/config/services'
 import { Route as ConfigMcpRouteImport } from './routes/config/mcp'
@@ -27,6 +28,7 @@ import { Route as TemplatesTeamsIndexRouteImport } from './routes/templates/team
 import { Route as TemplatesAgentsIndexRouteImport } from './routes/templates/agents/index'
 import { Route as TeamsIdIndexRouteImport } from './routes/teams/$id/index'
 import { Route as AgentsIdIndexRouteImport } from './routes/agents/$id/index'
+import { Route as TeamsIdResultsRouteImport } from './routes/teams/$id/results'
 import { Route as TeamsIdPolicyRouteImport } from './routes/teams/$id/policy'
 import { Route as TeamsIdMemoryRouteImport } from './routes/teams/$id/memory'
 import { Route as TeamsIdMembersRouteImport } from './routes/teams/$id/members'
@@ -89,6 +91,11 @@ const AgentsIndexRoute = AgentsIndexRouteImport.update({
   path: '/agents/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ResultsIdRoute = ResultsIdRouteImport.update({
+  id: '/results/$id',
+  path: '/results/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ConfigTokensRoute = ConfigTokensRouteImport.update({
   id: '/config/tokens',
   path: '/config/tokens',
@@ -127,6 +134,11 @@ const TeamsIdIndexRoute = TeamsIdIndexRouteImport.update({
 const AgentsIdIndexRoute = AgentsIdIndexRouteImport.update({
   id: '/agents/$id/',
   path: '/agents/$id/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TeamsIdResultsRoute = TeamsIdResultsRouteImport.update({
+  id: '/teams/$id/results',
+  path: '/teams/$id/results',
   getParentRoute: () => rootRouteImport,
 } as any)
 const TeamsIdPolicyRoute = TeamsIdPolicyRouteImport.update({
@@ -194,6 +206,7 @@ export interface FileRoutesByFullPath {
   '/config/mcp': typeof ConfigMcpRoute
   '/config/services': typeof ConfigServicesRoute
   '/config/tokens': typeof ConfigTokensRoute
+  '/results/$id': typeof ResultsIdRoute
   '/agents/': typeof AgentsIndexRoute
   '/approvals/': typeof ApprovalsIndexRoute
   '/attention/': typeof AttentionIndexRoute
@@ -210,6 +223,7 @@ export interface FileRoutesByFullPath {
   '/teams/$id/members': typeof TeamsIdMembersRoute
   '/teams/$id/memory': typeof TeamsIdMemoryRoute
   '/teams/$id/policy': typeof TeamsIdPolicyRoute
+  '/teams/$id/results': typeof TeamsIdResultsRoute
   '/agents/$id/': typeof AgentsIdIndexRoute
   '/teams/$id/': typeof TeamsIdIndexRoute
   '/templates/agents/': typeof TemplatesAgentsIndexRoute
@@ -225,6 +239,7 @@ export interface FileRoutesByTo {
   '/config/mcp': typeof ConfigMcpRoute
   '/config/services': typeof ConfigServicesRoute
   '/config/tokens': typeof ConfigTokensRoute
+  '/results/$id': typeof ResultsIdRoute
   '/agents': typeof AgentsIndexRoute
   '/approvals': typeof ApprovalsIndexRoute
   '/attention': typeof AttentionIndexRoute
@@ -241,6 +256,7 @@ export interface FileRoutesByTo {
   '/teams/$id/members': typeof TeamsIdMembersRoute
   '/teams/$id/memory': typeof TeamsIdMemoryRoute
   '/teams/$id/policy': typeof TeamsIdPolicyRoute
+  '/teams/$id/results': typeof TeamsIdResultsRoute
   '/agents/$id': typeof AgentsIdIndexRoute
   '/teams/$id': typeof TeamsIdIndexRoute
   '/templates/agents': typeof TemplatesAgentsIndexRoute
@@ -257,6 +273,7 @@ export interface FileRoutesById {
   '/config/mcp': typeof ConfigMcpRoute
   '/config/services': typeof ConfigServicesRoute
   '/config/tokens': typeof ConfigTokensRoute
+  '/results/$id': typeof ResultsIdRoute
   '/agents/': typeof AgentsIndexRoute
   '/approvals/': typeof ApprovalsIndexRoute
   '/attention/': typeof AttentionIndexRoute
@@ -273,6 +290,7 @@ export interface FileRoutesById {
   '/teams/$id/members': typeof TeamsIdMembersRoute
   '/teams/$id/memory': typeof TeamsIdMemoryRoute
   '/teams/$id/policy': typeof TeamsIdPolicyRoute
+  '/teams/$id/results': typeof TeamsIdResultsRoute
   '/agents/$id/': typeof AgentsIdIndexRoute
   '/teams/$id/': typeof TeamsIdIndexRoute
   '/templates/agents/': typeof TemplatesAgentsIndexRoute
@@ -290,6 +308,7 @@ export interface FileRouteTypes {
     | '/config/mcp'
     | '/config/services'
     | '/config/tokens'
+    | '/results/$id'
     | '/agents/'
     | '/approvals/'
     | '/attention/'
@@ -306,6 +325,7 @@ export interface FileRouteTypes {
     | '/teams/$id/members'
     | '/teams/$id/memory'
     | '/teams/$id/policy'
+    | '/teams/$id/results'
     | '/agents/$id/'
     | '/teams/$id/'
     | '/templates/agents/'
@@ -321,6 +341,7 @@ export interface FileRouteTypes {
     | '/config/mcp'
     | '/config/services'
     | '/config/tokens'
+    | '/results/$id'
     | '/agents'
     | '/approvals'
     | '/attention'
@@ -337,6 +358,7 @@ export interface FileRouteTypes {
     | '/teams/$id/members'
     | '/teams/$id/memory'
     | '/teams/$id/policy'
+    | '/teams/$id/results'
     | '/agents/$id'
     | '/teams/$id'
     | '/templates/agents'
@@ -352,6 +374,7 @@ export interface FileRouteTypes {
     | '/config/mcp'
     | '/config/services'
     | '/config/tokens'
+    | '/results/$id'
     | '/agents/'
     | '/approvals/'
     | '/attention/'
@@ -368,6 +391,7 @@ export interface FileRouteTypes {
     | '/teams/$id/members'
     | '/teams/$id/memory'
     | '/teams/$id/policy'
+    | '/teams/$id/results'
     | '/agents/$id/'
     | '/teams/$id/'
     | '/templates/agents/'
@@ -384,6 +408,7 @@ export interface RootRouteChildren {
   ConfigMcpRoute: typeof ConfigMcpRoute
   ConfigServicesRoute: typeof ConfigServicesRoute
   ConfigTokensRoute: typeof ConfigTokensRoute
+  ResultsIdRoute: typeof ResultsIdRoute
   AgentsIndexRoute: typeof AgentsIndexRoute
   ApprovalsIndexRoute: typeof ApprovalsIndexRoute
   AttentionIndexRoute: typeof AttentionIndexRoute
@@ -400,6 +425,7 @@ export interface RootRouteChildren {
   TeamsIdMembersRoute: typeof TeamsIdMembersRoute
   TeamsIdMemoryRoute: typeof TeamsIdMemoryRoute
   TeamsIdPolicyRoute: typeof TeamsIdPolicyRoute
+  TeamsIdResultsRoute: typeof TeamsIdResultsRoute
   AgentsIdIndexRoute: typeof AgentsIdIndexRoute
   TeamsIdIndexRoute: typeof TeamsIdIndexRoute
   TemplatesAgentsIndexRoute: typeof TemplatesAgentsIndexRoute
@@ -480,6 +506,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AgentsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/results/$id': {
+      id: '/results/$id'
+      path: '/results/$id'
+      fullPath: '/results/$id'
+      preLoaderRoute: typeof ResultsIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/config/tokens': {
       id: '/config/tokens'
       path: '/config/tokens'
@@ -534,6 +567,13 @@ declare module '@tanstack/react-router' {
       path: '/agents/$id'
       fullPath: '/agents/$id/'
       preLoaderRoute: typeof AgentsIdIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/teams/$id/results': {
+      id: '/teams/$id/results'
+      path: '/teams/$id/results'
+      fullPath: '/teams/$id/results'
+      preLoaderRoute: typeof TeamsIdResultsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/teams/$id/policy': {
@@ -624,6 +664,7 @@ const rootRouteChildren: RootRouteChildren = {
   ConfigMcpRoute: ConfigMcpRoute,
   ConfigServicesRoute: ConfigServicesRoute,
   ConfigTokensRoute: ConfigTokensRoute,
+  ResultsIdRoute: ResultsIdRoute,
   AgentsIndexRoute: AgentsIndexRoute,
   ApprovalsIndexRoute: ApprovalsIndexRoute,
   AttentionIndexRoute: AttentionIndexRoute,
@@ -640,6 +681,7 @@ const rootRouteChildren: RootRouteChildren = {
   TeamsIdMembersRoute: TeamsIdMembersRoute,
   TeamsIdMemoryRoute: TeamsIdMemoryRoute,
   TeamsIdPolicyRoute: TeamsIdPolicyRoute,
+  TeamsIdResultsRoute: TeamsIdResultsRoute,
   AgentsIdIndexRoute: AgentsIdIndexRoute,
   TeamsIdIndexRoute: TeamsIdIndexRoute,
   TemplatesAgentsIndexRoute: TemplatesAgentsIndexRoute,

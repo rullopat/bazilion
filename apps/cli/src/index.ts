@@ -1,6 +1,10 @@
 import { defineCommand, runCommand, showUsage } from 'citty'
 import pkg from '../package.json' with { type: 'json' }
 import { ApiClientError } from './client.ts'
+import { conversationCommand } from './commands/conversation.ts'
+import { notificationCommand } from './commands/notification.ts'
+import { questionCommand } from './commands/question.ts'
+import { queueCommand } from './commands/queue.ts'
 
 const VERSION = pkg.version
 
@@ -20,6 +24,7 @@ import { mcpCommand } from './commands/mcp.ts'
 import { memoryCommand } from './commands/memory.ts'
 import { profileCommand } from './commands/profile.ts'
 import { providerCommand } from './commands/provider.ts'
+import { resultCommand } from './commands/result.ts'
 import { sendCommand } from './commands/send.ts'
 import { serveCommand } from './commands/serve.ts'
 import { sessionCommand } from './commands/session.ts'
@@ -45,6 +50,11 @@ const main = defineCommand({
     agent: agentCommand,
     approval: approvalCommand,
     attention: attentionCommand,
+    result: resultCommand,
+    conversation: conversationCommand,
+    queue: queueCommand,
+    question: questionCommand,
+    notification: notificationCommand,
     skill: skillCommand,
     memory: memoryCommand,
     mcp: mcpCommand,

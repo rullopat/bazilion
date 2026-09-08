@@ -31,6 +31,7 @@ import {
   parseWorkerInput,
 } from '../../src/runtime/worker/runtime.ts'
 import { formatWorkerExitFailure, spawnWorkerTurn } from '../../src/runtime/worker/spawn.ts'
+import { seedConversationTarget } from '../fixtures/conversation.ts'
 
 const cleanup: string[] = []
 afterEach(() => {
@@ -220,13 +221,29 @@ describe('minimal worker runtime', () => {
       memory,
       messagingHost: hosts.messagingHost,
       userMdHost: hosts.userMdHost,
-      fileSink: () => {},
+      fileSink: async () => ({ resultId: 'fixture-result' }),
     }).map((tool) => tool.name)
 
     expect(names).toContain('web_fetch')
     expect(names).toContain('deliver_file')
     expect(names).not.toContain('web_search')
     expect(names).not.toContain('propose_lesson')
+    expect(names).not.toContain('ask_user')
+    const withQuestion = createProtectedBazilionCustomTools({
+      agent: spec.agent,
+      memory,
+      messagingHost: hosts.messagingHost,
+      userMdHost: hosts.userMdHost,
+      fileSink: async () => ({ resultId: 'fixture-result' }),
+      askUser: async (_toolCallId, question) => ({
+        questionId: 'fixture-question',
+        question,
+        kind: 'no_answer',
+        reason: 'skipped',
+      }),
+    }).map((tool) => tool.name)
+    expect(withQuestion).toContain('ask_user')
+    expect(withQuestion.filter((name) => name !== 'ask_user')).toEqual(names)
     expect(names.some((name) => name.startsWith('browser_'))).toBe(false)
     expect(names.some((name) => name.startsWith('mcp_'))).toBe(false)
   })
@@ -540,6 +557,7 @@ function protectedSpec(root: string, accessToken = 'initial-access-token'): Prot
   const docker = fakeDockerRuntime(teamDir, memoryDir)
   return {
     kind: 'protected',
+    conversation: seedConversationTarget(sessionsDir, teamDir),
     agent,
     message: 'test protected runtime',
     turnId: 'turn-1',

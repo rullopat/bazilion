@@ -7,12 +7,13 @@ created: 2026-07-10
 refined: 2026-07-10
 priority: medium
 shipped: 2026-07-11
+release: v0.9.0
 note: Optional follow-up after BAZ-016 allow/deny enforcement and BAZ-017 production UI. Adds approval-required delivery without adding general workflow execution.
 ---
 
 # BAZ-014 - Human approval gates for teamPolicy communication
 
-**Status:** Done.
+**Status:** Done. Released in v0.9.0.
 
 ## User stories
 

@@ -81,7 +81,7 @@ test('web_fetch truncates at max_length', async () => {
     JSON.stringify({ url: `${base}/big`, max_length: 100 }),
   )
   expect(result).toContain('[truncated at 100 chars]')
-  expect(result.length).toBeLessThan(200)
+  expect(typeof result === 'string' && result.length).toBeLessThan(200)
 })
 
 test('web_fetch caps oversized bodies before extraction and flags truncation', async () => {

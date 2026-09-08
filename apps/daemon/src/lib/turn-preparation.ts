@@ -1,5 +1,7 @@
-import type { Attachment, ResolvedAgent } from '@bazilion/api-types'
+import type { Attachment, ConversationTarget, ResolvedAgent } from '@bazilion/api-types'
 import { mergeSecretsIntoEnv, resolveAgent } from '../core/index.ts'
+import { assertSelection } from '../core/repos/conversations.ts'
+import * as userQueue from '../core/repos/user-queue.ts'
 import { resolveShellSecurityConfig } from '../runtime/shell/security.ts'
 import { SANDBOX_INPUTS_DIR } from '../runtime/shell/tooling.ts'
 import {
@@ -11,12 +13,15 @@ import {
 import { acquireAgentLifecycleLease } from './agent-lifecycle-lease.ts'
 import { saveInputFiles } from './attachments.ts'
 import { authorizeUserIngress } from './communication.ts'
+import { resolveConversationTarget } from './conversation-target.ts'
 import { getCtx } from './ctx.ts'
 import {
   consumePreparedProtectedExecution,
   type PreparedProtectedExecution,
   prepareProtectedExecution,
 } from './protected-execution.ts'
+import { type QuestionResponseRoute, resolveQuestionRoute } from './question-route.ts'
+import { requireTelegramQueuedTurn } from './telegram/queue-binding.ts'
 import {
   assertTrustedTurnInvocation,
   consumePreclaimedTurn,
@@ -32,6 +37,11 @@ const preparedTurns = new WeakSet<object>()
 const consumedTurns = new WeakSet<object>()
 
 export interface PrepareAgentTurnInput {
+  /** Authenticated foreground client response support; never inherited by queued HTTP work. */
+  questionMode?: 'web' | 'tty'
+  /** Daemon queue dispatcher reference, verified against the complete invocation below. */
+  queuedItemId?: string
+  expectedSelection?: import('@bazilion/api-types').ConversationSelection
   invocation: TrustedTurnInvocation
   /** Daemon-only inbox readiness result obtained before canonical messages were claimed. */
   protectedExecution?: PreparedProtectedExecution
@@ -42,8 +52,10 @@ export interface PrepareAgentTurnInput {
  * Only `prepareAgentTurn` can construct this nominal type.
  */
 export interface PreparedAgentTurn {
+  readonly questionRoute?: QuestionResponseRoute
   readonly [preparedTurnBrand]: true
   readonly agent: ResolvedAgent
+  readonly conversation: ConversationTarget
   readonly message: string
   readonly images: readonly Attachment[]
   readonly invocation: TrustedTurnInvocation
@@ -80,6 +92,45 @@ export async function prepareAgentTurn(input: PrepareAgentTurnInput): Promise<Pr
       throw new AgentTurnActiveError(agentId)
     }
     const agent = resolveAgent(db, paths, agentId)
+    if (input.expectedSelection) assertSelection(db, agentId, input.expectedSelection)
+    const conversation = resolveConversationTarget(
+      db,
+      paths,
+      agentId,
+      input.invocation.turn.conversationId,
+    )
+    let queuedReference: ReturnType<typeof userQueue.approvalReference> | undefined
+    if (input.queuedItemId) {
+      const retained = userQueue.readInput(db, agentId, input.queuedItemId)
+      if (
+        !(
+          (input.invocation.kind === 'operator_http' && retained.item.source === 'http') ||
+          (input.invocation.kind === 'telegram' && retained.item.source === 'telegram')
+        ) ||
+        retained.item.status !== 'claimed' ||
+        agent.agent.status === 'archived' ||
+        retained.item.teamId !== agent.team.id ||
+        retained.item.conversationId !== conversation.id ||
+        retained.item.text !== inputMessage ||
+        retained.item.attemptId !== input.invocation.authorization.attemptId ||
+        JSON.stringify(retained.attachments) !== JSON.stringify(attachments) ||
+        userQueue.control(db, agentId).paused
+      )
+        throw new Error('Queued turn binding changed')
+      if (input.invocation.kind === 'telegram') {
+        const binding = requireTelegramQueuedTurn(
+          db,
+          authToken,
+          retained.provenance,
+          input.invocation.turn,
+        )
+        if (
+          JSON.stringify(binding.authorization) !== JSON.stringify(input.invocation.authorization)
+        )
+          throw new Error('Queued Telegram authorization changed')
+      }
+      queuedReference = userQueue.approvalReference(db, agentId, input.queuedItemId)
+    }
     if (invocationOwnsUserAuthorization(input.invocation)) {
       const attempt =
         input.invocation.kind === 'operator_http'
@@ -87,15 +138,22 @@ export async function prepareAgentTurn(input: PrepareAgentTurnInput): Promise<Pr
               const { agentId: _boundAgentId, ...authorization } = input.invocation.authorization
               return {
                 ...authorization,
-                approvalPayloadKind: 'agent_turn',
-                approvalPayload: {
+                approvalPayloadKind: queuedReference ? 'queued_user' : 'agent_turn',
+                approvalPayload: queuedReference ?? {
                   agentId,
+                  conversationId: conversation.id,
                   message: inputMessage,
                   attachments: [...attachments],
                 },
               }
             })()
-          : input.invocation.authorization
+          : queuedReference
+            ? {
+                ...input.invocation.authorization,
+                approvalPayloadKind: 'queued_user',
+                approvalPayload: queuedReference,
+              }
+            : input.invocation.authorization
       authorizeUserIngress(db, agentId, attempt, () => {
         registerAgent(agentId, controller)
         registered = true
@@ -108,6 +166,13 @@ export async function prepareAgentTurn(input: PrepareAgentTurnInput): Promise<Pr
     }
 
     const surface = executionSurfaceForInvocation(input.invocation)
+    const questionRoute = resolveQuestionRoute(
+      db,
+      authToken,
+      input.invocation,
+      input.questionMode,
+      input.queuedItemId,
+    )
     const images = attachments.filter((attachment) => attachment.mimeType.startsWith('image/'))
     const documents = attachments.filter((attachment) => !attachment.mimeType.startsWith('image/'))
     if (input.protectedExecution) {
@@ -145,8 +210,10 @@ export async function prepareAgentTurn(input: PrepareAgentTurnInput): Promise<Pr
         : fileNote
       : inputMessage
     const prepared = {
+      ...(questionRoute ? { questionRoute } : {}),
       [preparedTurnBrand]: true as const,
       agent,
+      conversation,
       message,
       images,
       invocation: input.invocation,

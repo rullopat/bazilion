@@ -36,6 +36,11 @@ import {
   webSessionRepo,
   webTokenRepo,
 } from '../../daemon/src/core/index.ts'
+import * as conversations from '../../daemon/src/core/repos/conversations.ts'
+import * as resultRepo from '../../daemon/src/core/repos/results.ts'
+import * as userQueue from '../../daemon/src/core/repos/user-queue.ts'
+import { createConversationFile } from '../../daemon/src/lib/conversation-file.ts'
+import { resolveConversationTarget } from '../../daemon/src/lib/conversation-target.ts'
 import { installValidatedPayload, RestoreRecoveryRequiredError } from '../src/commands/backup.ts'
 import { acquireHomeRestoreLock, daemonLivenessPath } from '../src/daemon-liveness.ts'
 import { extractAgentId, makeHome, runCli, type TestHome } from './helpers.ts'
@@ -358,6 +363,46 @@ test('backup restore extracts the tar.gz into a fresh home', async () => {
   ).toBe(0)
   expect((await server.cli(['agent', 'review', agentId])).exitCode).toBe(0)
   const sourceDb = openDb(join(server.home, 'bazilion.db'))
+  const sourcePaths = resolvePaths(server.home)
+  const originalConversation = resolveConversationTarget(sourceDb, sourcePaths, agentId)
+  conversations.rename(sourceDb, agentId, originalConversation.id, 'Retained report', 1)
+  const selectedConversation = conversations.create(
+    sourceDb,
+    agentId,
+    {
+      requestId: randomUUID(),
+      expectedSelection: conversations.selection(sourceDb, agentId),
+      title: 'Next task',
+    },
+    (id) => createConversationFile(sourcePaths, agentId, id, sourcePaths.teamDir('default')),
+  )
+  const originalBytes = readFileSync(
+    join(sourcePaths.agentDir(agentId), 'sessions', originalConversation.filename),
+  )
+  const savedResult = resultRepo.publish(sourceDb, {
+    teamId: 'default',
+    agentId,
+    sessionId: originalConversation.id,
+    toolCallId: 'deliver-report',
+    name: 'report.txt',
+    mimeType: 'text/plain',
+    bytes: Buffer.from('captured backup result'),
+  })
+  resultRepo.release(sourceDb, savedResult.id, agentId)
+  const queuedId = randomUUID()
+  const queuedInput = {
+    id: queuedId,
+    agentId,
+    teamId: 'default',
+    conversationId: selectedConversation.conversation.id,
+    source: 'http' as const,
+    attemptId: queuedId,
+    provenance: { requester: 'user' },
+    message: 'Input accepted before the snapshot',
+    attachments: [{ name: 'original.txt', mimeType: 'text/plain', data: 'eA==' }],
+  }
+  userQueue.setPaused(sourceDb, agentId, true, 0)
+  userQueue.accept(sourceDb, queuedInput)
   const review = sourceDb.raw
     .query<{ id: string }, [string]>('SELECT id FROM agent_reviews WHERE agent_id = ?')
     .get(agentId)
@@ -424,6 +469,50 @@ test('backup restore extracts the tar.gz into a fresh home', async () => {
     expect(existsSync(join(target.home, `bazilion.db${suffix}`))).toBe(false)
   }
   const restoredDb = openDb(join(target.home, 'bazilion.db'))
+  expect(userQueue.get(restoredDb, agentId, queuedId)).toMatchObject({
+    status: 'uncertain',
+    conversationId: selectedConversation.conversation.id,
+  })
+  expect(userQueue.control(restoredDb, agentId)).toMatchObject({
+    paused: true,
+    reason: 'restored_backup',
+  })
+  expect(userQueue.readInput(restoredDb, agentId, queuedId).attachments).toEqual(
+    queuedInput.attachments,
+  )
+  expect(userQueue.accept(restoredDb, queuedInput).status).toBe('uncertain')
+  expect(userQueue.claim(restoredDb, agentId)).toBeNull()
+  expect(() =>
+    userQueue.setPaused(
+      restoredDb,
+      agentId,
+      false,
+      userQueue.control(restoredDb, agentId).revision,
+    ),
+  ).toThrow('Reconcile uncertain')
+  expect(resultRepo.getReleased(restoredDb, savedResult.id)).toMatchObject({
+    agentId,
+    teamId: 'default',
+    sessionId: originalConversation.id,
+    toolCallId: 'deliver-report',
+    sha256: savedResult.sha256,
+  })
+  expect(conversations.list(restoredDb, agentId)).toMatchObject({
+    total: 2,
+    selection: selectedConversation.selection,
+  })
+  expect(conversations.get(restoredDb, agentId, originalConversation.id)?.title).toBe(
+    'Retained report',
+  )
+  expect(
+    readFileSync(join(target.home, 'agents', agentId, 'sessions', originalConversation.filename)),
+  ).toEqual(originalBytes)
+  expect(resultRepo.getReleased(restoredDb, savedResult.id)?.sessionId).toBe(
+    originalConversation.id,
+  )
+  expect(resultRepo.readReleased(restoredDb, savedResult.id).toString()).toBe(
+    'captured backup result',
+  )
   const restoredPaths = resolvePaths(target.home)
   expect(
     restoredDb.raw

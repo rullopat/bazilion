@@ -5,6 +5,7 @@ status: done
 size: S (1-2 days)
 created: 2026-07-02
 shipped: 2026-07-02
+release: v0.8.0
 priority: high
 note: Split from BAZ-006 Layer 1. This is static warning/confirmation only; sandboxing and command approval remain in BAZ-006.
 ---

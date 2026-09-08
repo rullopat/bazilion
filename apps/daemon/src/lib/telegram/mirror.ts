@@ -23,6 +23,7 @@ import {
   CommunicationDeniedError,
   CommunicationPendingError,
 } from '../communication.ts'
+import { capturedResultFile, releaseResultFile } from '../result-delivery.ts'
 import { _resetLoopGuardForTest, allowTelegramOutboundNoise } from './loop-guard.ts'
 import { renderTelegramMessages, stripTelegramHtml, TELEGRAM_SAFE_BUDGET } from './markdown.ts'
 import { enqueueOutbound } from './outbound-queue.ts'
@@ -289,19 +290,27 @@ async function mirrorFile(
   deps: MirrorDeps,
   topicId: number,
   agentId: string,
-  ev: { name: string; mimeType: string; data: string },
+  ev: {
+    name: string
+    mimeType: string
+    data: string
+    result?: import('@bazilion/api-types').ResultReference
+  },
   attemptId: string,
 ): Promise<void> {
+  ev = capturedResultFile(deps.db, agentId, ev)
   if (
     !telegramEgressAllowed(deps, agentId, attemptId, 'telegram_file', {
       chatId: deps.chatId,
       topicId,
       name: ev.name,
       mimeType: ev.mimeType,
-      data: ev.data,
+      data: ev.result ? '' : ev.data,
+      result: ev.result,
     })
   )
     return
+  releaseResultFile(deps.db, agentId, ev.result)
   const buf = Buffer.from(ev.data, 'base64')
   try {
     await enqueueOutbound(deps.chatId, () =>
@@ -378,6 +387,9 @@ function renderFrame(frame: ChatFrame, mode: TelegramMirrorMode): string | null 
     case 'file':
       // Files are delivered as documents (handled in mirrorAgentTurnFrame), not
       // as a text line.
+      return null
+    case 'agent_question':
+      // The question transport owns native buttons, exact correlation and policy release.
       return null
     case 'command_approval':
       // Telegram turns are non-interactive and auto-deny. The following bash

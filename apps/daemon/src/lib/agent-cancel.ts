@@ -69,6 +69,11 @@ export function isActiveAgent(agentId: string): boolean {
   return registry().active.has(agentId)
 }
 
+/** A live question belongs to this registration, not a later turn using the same Agent. */
+export function ownsActiveAgent(agentId: string, controller: AbortController): boolean {
+  return registry().active.get(agentId) === controller
+}
+
 /** Resolve when an existing cross-source turn releases this Agent. */
 export function waitForAgentIdle(agentId: string): Promise<void> {
   const state = registry()

@@ -7,12 +7,13 @@ created: 2026-07-10
 refined: 2026-07-10
 priority: high
 shipped: 2026-07-11
+release: v0.9.0
 note: Complete the second half of BAZ-010 with custom revisioned policy APIs, stable-slot operations, explicit placement, adoption/re-baselining, source workflows, and atomic Agent membership lifecycle.
 ---
 
 # BAZ-015 - Revisioned Team-template, Team-policy, and Agent lifecycle APIs
 
-**Status:** Refined and ready after BAZ-010. ADR 0001 is normative.
+**Status:** Done. Released in v0.9.0. ADR 0001 is normative.
 
 ## User stories
 
@@ -178,7 +179,7 @@ lineage, and files together.
   permanent Agent URLs, and one-release legacy payloads.
 - Full repository suite, root/web typechecks, lint, and build.
 
-## As-built (2026-07-11, unreleased)
+## As-built (2026-07-11, released in v0.9.0)
 
 BAZ-015 completed the custom/revisioned API and lifecycle layer on the sole BAZ-010
 Team-template roster and per-Team live policy:

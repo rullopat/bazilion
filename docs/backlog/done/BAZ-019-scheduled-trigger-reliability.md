@@ -6,13 +6,14 @@ size: L (1-2 weeks)
 created: 2026-07-19
 refined: 2026-07-19
 shipped: 2026-08-01
+release: v0.10.0 + v0.11.0
 priority: high
 note: Breaking alpha cleanup; HEARTBEAT.md is removed rather than deprecated.
 ---
 
 # BAZ-019 - Scheduled triggers without heartbeat files
 
-**Status:** Done. Unreleased.
+**Status:** Done. Released across v0.10.0 and v0.11.0.
 
 ## User stories
 
@@ -102,8 +103,8 @@ runs/events audit layer.
 
 ## As-built (2026-08-01)
 
-The heartbeat-file removal shipped in v0.10.0. The durable-dispatch closure is complete and
-verified locally, with its Changeset awaiting the next release. It adds:
+The heartbeat-file removal shipped in v0.10.0. The durable-dispatch closure shipped in v0.11.0.
+It adds:
 
 - clean-install `trigger_dispatches` persistence with idempotent `(trigger_id, scheduled_at)`
   occurrences;

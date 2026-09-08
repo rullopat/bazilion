@@ -1,4 +1,24 @@
-import type { ApiError } from '@bazilion/api-types'
+import type {
+  AgentQuestion,
+  AgentQuestionListResponse,
+  AgentQuestionResponse,
+  AgentQuestionResponseInput,
+  ApiError,
+  Attachment,
+  AttentionKind,
+  EditQueuedInput,
+  EnqueueUserInput,
+  NotificationPreview,
+  NotificationReceipt,
+  NotificationReceiptList,
+  NotificationRetryInput,
+  NotificationSettings,
+  NotificationSettingsInput,
+  NotificationSettingsResponse,
+  UserQueueControl,
+  UserQueueItem,
+  UserQueueListResponse,
+} from '@bazilion/api-types'
 
 export type TokenSource = string | (() => string | Promise<string>)
 
@@ -109,7 +129,84 @@ export function createClient(cfg: ClientConfig) {
     if (buffer.trim()) yield JSON.parse(buffer) as T
   }
 
+  async function binary(path: string): Promise<Uint8Array> {
+    const res = await fetch(`${cfg.serverUrl}${path}`, {
+      headers: await authHeaders(),
+      redirect: 'error',
+    })
+    if (!res.ok) {
+      const err = (await res.json().catch(() => ({ error: res.statusText }))) as ApiError
+      throw new ApiClientError(res.status, err)
+    }
+    return new Uint8Array(await res.arrayBuffer())
+  }
+
   return {
+    notifications: {
+      settings: () => request<NotificationSettingsResponse>('GET', '/api/notifications'),
+      configure: (input: NotificationSettingsInput) =>
+        request<NotificationSettings>('PUT', '/api/notifications', input),
+      preview: (kinds: AttentionKind[]) =>
+        request<NotificationPreview>('POST', '/api/notifications/preview', { kinds }),
+      list: (options: { cursor?: string; limit?: number } = {}) => {
+        const params = new URLSearchParams()
+        if (options.cursor) params.set('cursor', options.cursor)
+        if (options.limit !== undefined) params.set('limit', String(options.limit))
+        return request<NotificationReceiptList>('GET', `/api/notifications/receipts?${params}`)
+      },
+      get: (id: string) =>
+        request<NotificationReceipt>(
+          'GET',
+          `/api/notifications/receipts/${encodeURIComponent(id)}`,
+        ),
+      retry: (id: string, input: NotificationRetryInput) =>
+        request<NotificationReceipt>(
+          'POST',
+          `/api/notifications/receipts/${encodeURIComponent(id)}/retry`,
+          input,
+        ),
+    },
+    questions: (agentId: string) => {
+      const base = `/api/agents/${encodeURIComponent(agentId)}/questions`
+      return {
+        list: (conversationId?: string) =>
+          request<AgentQuestionListResponse>(
+            'GET',
+            conversationId ? `${base}?conversationId=${encodeURIComponent(conversationId)}` : base,
+          ),
+        get: (id: string) => request<AgentQuestion>('GET', `${base}/${encodeURIComponent(id)}`),
+        answer: (id: string, input: AgentQuestionResponseInput) =>
+          request<AgentQuestionResponse>('POST', `${base}/${encodeURIComponent(id)}/answer`, input),
+      }
+    },
+    queue: (agentId: string) => {
+      const base = `/api/agents/${encodeURIComponent(agentId)}/queue`
+      const item = (id: string) => `${base}/${encodeURIComponent(id)}`
+      return {
+        list: (all = false, offset = 0) =>
+          request<UserQueueListResponse>('GET', `${base}?all=${all ? 1 : 0}&offset=${offset}`),
+        get: (id: string) => request<UserQueueItem>('GET', item(id)),
+        input: (id: string) =>
+          request<{ message: string; attachments: Attachment[] }>('GET', `${item(id)}/input`),
+        enqueue: (input: EnqueueUserInput) => request<UserQueueItem>('POST', base, input),
+        edit: (id: string, input: EditQueuedInput) =>
+          request<UserQueueItem>('PATCH', item(id), input),
+        remove: (id: string, expectedRevision: number) =>
+          request<UserQueueItem>('DELETE', item(id), { expectedRevision }),
+        pause: (paused: boolean, expectedRevision: number) =>
+          request<UserQueueControl>('POST', `${base}/control`, { paused, expectedRevision }),
+        stop: (expectedRevision: number) =>
+          request<{ control: UserQueueControl; cancelled: boolean }>('POST', `${base}/stop`, {
+            expectedRevision,
+          }),
+        reconcile: (id: string, expectedRevision: number) =>
+          request<UserQueueItem>('POST', `${item(id)}/reconcile`, {
+            expectedRevision,
+            acknowledged: true,
+          }),
+      }
+    },
+    binary,
     get: <T>(p: string) => request<T>('GET', p),
     post: <T>(p: string, b?: unknown) => request<T>('POST', p, b),
     postMultipart,

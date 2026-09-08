@@ -1,3 +1,4 @@
+import { type AskUser, askUserTool } from '../tools/ask-user.ts'
 // Adapter: Bazilion ToolHandler → pi-coding-agent ToolDefinition.
 //
 // Pi expects tools to return `AgentToolResult<TDetails>` =
@@ -52,11 +53,16 @@ export function ourToolToPiTool(h: ToolHandler): ToolDefinition {
     label: h.def.name,
     description: h.def.description,
     parameters: Type.Unsafe<Record<string, unknown>>(h.def.parameters as Record<string, unknown>),
-    async execute(_toolCallId, params) {
-      const out = await h.invoke(params as Record<string, unknown>)
+    async execute(toolCallId, params) {
+      const out = await h.invoke(params as Record<string, unknown>, { toolCallId })
       return {
         content: toPiContent(out),
-        details: {},
+        details:
+          typeof out === 'object' && !Array.isArray(out)
+            ? 'result' in out
+              ? { result: out.result }
+              : { questionReceipt: out.questionReceipt }
+            : {},
       }
     },
   }
@@ -71,7 +77,7 @@ function toPiContent(
   out: ToolOutput,
 ): Array<{ type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string }> {
   if (typeof out === 'string') return [{ type: 'text', text: out }]
-  return out.map((p) =>
+  return (Array.isArray(out) ? out : out.content).map((p) =>
     p.type === 'text'
       ? { type: 'text', text: p.text }
       : { type: 'image', data: p.data, mimeType: p.mimeType },
@@ -79,6 +85,7 @@ function toPiContent(
 }
 
 export interface BazilionCustomToolsOpts {
+  askUser?: AskUser
   agent: ResolvedAgent
   memory: MemoryBackend
   /** If provided, enables inter-agent messaging tools. */
@@ -92,16 +99,19 @@ export interface BazilionCustomToolsOpts {
   /** MCP tools discovered daemon-side, exposed as proxy tools. */
   mcpTools?: InjectedMcpTool[]
   /** If provided, enables the `deliver_file` tool (emits a `file` event). */
+  sessionId?: string
   fileSink?: FileSink
   /** Merged env (process.env + secrets). */
   env?: NodeJS.ProcessEnv
 }
 
 export interface ProtectedBazilionCustomToolsOpts {
+  askUser?: AskUser
   agent: ResolvedAgent
   memory: MemoryBackend
   messagingHost: MessagingHost
   userMdHost: UserMdHost
+  sessionId?: string
   fileSink: FileSink
 }
 
@@ -135,8 +145,9 @@ export function createBazilionCustomTools(opts: BazilionCustomToolsOpts): ToolDe
     handlers.push(...mcpProxyTools(opts.mcpHost, opts.mcpTools))
   }
   if (opts.fileSink) {
-    handlers.push(deliverFileTool(opts.agent.team.path, opts.fileSink))
+    handlers.push(deliverFileTool(opts.agent.team.path, opts.fileSink, opts.sessionId))
   }
+  if (opts.askUser) handlers.push(askUserTool(opts.askUser))
   return handlers.map(ourToolToPiTool)
 }
 
@@ -155,7 +166,8 @@ export function createProtectedBazilionCustomTools(
     protectedWebFetchTool(),
     ...messagingTools(opts.messagingHost, opts.agent.agent.id),
     ...userMdTools(opts.userMdHost, opts.agent.team.id),
-    deliverFileTool(opts.agent.team.path, opts.fileSink),
+    deliverFileTool(opts.agent.team.path, opts.fileSink, opts.sessionId),
   ]
+  if (opts.askUser) handlers.push(askUserTool(opts.askUser))
   return handlers.map(ourToolToPiTool)
 }

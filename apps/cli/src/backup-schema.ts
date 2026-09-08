@@ -2,12 +2,29 @@ import { createHash } from 'node:crypto'
 import type { DatabaseSync } from 'node:sqlite'
 
 const CANONICAL_MIGRATION = '0001_init'
-const CANONICAL_SCHEMA_HASH = '4bde209eb0bf9851bf1f01fc96263f165a1799c81e720ddea463169a0d6c0d51'
+const CANONICAL_SCHEMA_HASH = '278a7649d6017011b97405306760af3fdd337f068693e24b18cab43421a0c723'
 
 // Explicit objects created by migrate.ts + 0001_init.sql. SQLite's implicit
 // auto-indexes have `sql = NULL` and are deliberately represented through the
 // table SQL that creates their UNIQUE/PRIMARY KEY constraints.
 const CANONICAL_OBJECTS = [
+  ['table', 'notification_settings'],
+  ['table', 'notification_receipts'],
+  ['index', 'notification_receipts_state'],
+  ['index', 'notification_receipts_time'],
+  ['table', 'agent_questions'],
+  ['table', 'question_receipt_key'],
+  ['index', 'agent_questions_one_pending'],
+  ['index', 'agent_questions_agent_time'],
+  ['table', 'user_queue_controls'],
+  ['table', 'user_queue_items'],
+  ['table', 'user_queue_attachments'],
+  ['index', 'user_queue_agent_order'],
+  ['index', 'user_queue_status'],
+  ['index', 'agent_conversations_agent_time'],
+  ['table', 'agent_conversations'],
+  ['table', 'agent_conversation_selection'],
+  ['index', 'agent_results_team_time'],
   ['index', 'agent_triggers_agent'],
   ['index', 'agent_triggers_enabled'],
   ['index', 'agent_loop_break_events_agent_time'],
@@ -33,6 +50,7 @@ const CANONICAL_OBJECTS = [
   ['index', 'web_tokens_active'],
   ['index', 'web_sessions_active'],
   ['index', 'web_sessions_device'],
+  ['table', 'agent_results'],
   ['table', 'agent_skills'],
   ['table', 'agent_loop_break_events'],
   ['table', 'agent_lesson_proposals'],
@@ -135,5 +153,19 @@ export function assertCanonicalBackupSchema(db: DatabaseSync): void {
       'canonical schema fingerprint does not match this Bazilion release; ' +
         'restore a backup created from the current clean-install schema',
     )
+  }
+  // Result bytes are in the same SQLite snapshot as the provenance manifest.
+  // Validate before restore publishes the staged home; read at most one file at a time.
+  for (const row of db
+    .prepare('SELECT id, bytes, byte_length, sha256 FROM agent_results WHERE deleted_at IS NULL')
+    .iterate()) {
+    const bytes = row.bytes
+    if (
+      !(bytes instanceof Uint8Array) ||
+      bytes.byteLength !== row.byte_length ||
+      createHash('sha256').update(bytes).digest('hex') !== row.sha256
+    ) {
+      throw new Error(`Result snapshot integrity verification failed: ${row.id}`)
+    }
   }
 }

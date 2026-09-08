@@ -5,13 +5,14 @@ status: done
 size: L (1-2 weeks)
 created: 2026-07-12
 shipped: 2026-07-12
+release: v0.9.0
 priority: high
 note: Breaking alpha cleanup; existing local data must be wiped and bootstrapped again.
 ---
 
 # BAZ-018 - Canonical Teams cleanup and clean-install schema
 
-**Status:** Done. Unreleased.
+**Status:** Done. Released in v0.9.0.
 
 ## User stories
 

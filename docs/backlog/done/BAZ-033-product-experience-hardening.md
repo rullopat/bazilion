@@ -6,6 +6,7 @@ size: L (1-2 weeks)
 created: 2026-08-29
 refined: 2026-08-29
 shipped: 2026-08-29
+release: v0.14.0
 priority: critical
 note: Shipped in v0.14.0 via PR #42; fixed first-run access, mobile chat correctness, data-loss risks, navigation and configuration overload, responsive overflow, accessibility, and destructive-action safety.
 ---

@@ -8,6 +8,8 @@ import { Stack, router, useLocalSearchParams } from 'expo-router'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
+  Alert,
+  Linking,
   FlatList,
   Image,
   KeyboardAvoidingView,
@@ -31,6 +33,7 @@ import {
   parseCommunicationPending,
 } from '@/src/chat-state'
 import { mobileErrorMessage } from '@/src/errors'
+import { questionWebHandoff } from '@/src/web-handoff'
 import { NdjsonDecoder } from '@/src/ndjson'
 import { useColors } from '@/src/theme-context'
 import { type Colors, fonts, radii } from '@/src/theme'
@@ -100,6 +103,7 @@ export default function ChatScreen() {
   const [sending, setSending] = useState(false)
   const [canceling, setCanceling] = useState(false)
   const [failedMessage, setFailedMessage] = useState<string | null>(null)
+  const conversationSelection = useRef<import('@bazilion/api-types').ConversationSelection | undefined>(undefined)
   const streamAbort = useRef<AbortController | null>(null)
   const cancelRequested = useRef(false)
   const disposed = useRef(false)
@@ -123,9 +127,11 @@ export default function ChatScreen() {
         const client = clientFor(creds)
         const [agent, history] = await Promise.all([
           client.get<ResolvedAgent>(`/api/agents/${id}`),
-          client.get<{ messages: ProviderMessage[] }>(`/api/agents/${id}/sessions/messages`),
+          client.get<{ messages: ProviderMessage[]; head?: import('@bazilion/api-types').SessionHeadResponse; selection: import('@bazilion/api-types').ConversationSelection }>(`/api/agents/${id}/sessions/messages`),
         ])
         if (cancelled) return
+        if (history.head?.unavailable) throw new Error('Conversation history is unavailable. Start a new conversation in the web app or CLI.')
+        conversationSelection.current = history.selection
         setChat(chatStateFromHistory(history.messages))
         setLoad({ kind: 'ready', creds, agent })
       } catch (error) {
@@ -180,7 +186,7 @@ export default function ChatScreen() {
           // Native keeps dangerous shell commands fail-closed. Interactive
           // command approval requires a guaranteed streaming transport; the
           // web chat remains the supported approval surface.
-          body: JSON.stringify({ message, bashApprovalMode: 'auto_deny' }),
+          body: JSON.stringify({ message, bashApprovalMode: 'auto_deny', expectedSelection: conversationSelection.current }),
           signal: controller.signal,
         })
 
@@ -203,6 +209,12 @@ export default function ChatScreen() {
           terminalFrame = true
           return
         }
+        if (response.status === 409) {
+          const history = await clientFor(load.creds).get<{ messages: ProviderMessage[]; head?: import('@bazilion/api-types').SessionHeadResponse; selection: import('@bazilion/api-types').ConversationSelection }>(`/api/agents/${id}/sessions/messages`)
+          conversationSelection.current = history.selection
+          setChat(chatStateFromHistory(history.messages))
+          throw new Error('Conversation changed. Review the refreshed history and your preserved draft before retrying.')
+        }
         if (!response.ok) {
           const body = await response.json().catch(() => null)
           throw new Error(responseError(body, response.status, response.statusText))
@@ -220,6 +232,10 @@ export default function ChatScreen() {
           setChat((current) => applyChatFrame(current, frame))
         })
         if (!terminalFrame) throw new Error('Chat stream ended before a done or fatal frame.')
+        if (conversationSelection.current?.conversationId === null) {
+          const head = await clientFor(load.creds).get<import('@bazilion/api-types').SessionHeadResponse>(`/api/agents/${id}/sessions/head`)
+          conversationSelection.current = head.selection
+        }
       } catch (error) {
         if (error instanceof Error && error.name === 'AbortError' && disposed.current) {
           return
@@ -333,7 +349,7 @@ export default function ChatScreen() {
         data={reversedItems}
         inverted
         keyExtractor={(item) => item.id}
-        renderItem={({ item }) => <Bubble item={item} />}
+        renderItem={({ item }) => <Bubble item={item} server={load.creds.server} />}
         contentContainerStyle={styles.listContent}
         keyboardShouldPersistTaps="handled"
         accessibilityLabel={`Conversation with ${load.agent.agent.name}`}
@@ -403,7 +419,7 @@ export default function ChatScreen() {
   )
 }
 
-function Bubble({ item }: { item: ChatItem }) {
+function Bubble({ item, server }: { item: ChatItem; server: string }) {
   const colors = useColors()
   const styles = useMemo(() => makeStyles(colors), [colors])
   const markdownStyles = useMemo(() => makeMarkdownStyles(colors), [colors])
@@ -462,6 +478,27 @@ function Bubble({ item }: { item: ChatItem }) {
       </View>
     )
   }
+  if (item.kind === 'result') {
+    return (
+      <View style={styles.fileRow}>
+        <Text style={styles.fileName}>Saved file</Text>
+        <Text style={styles.fileType}>
+          Open in your browser to preview or download. Sign in there if prompted.
+        </Text>
+        <Pressable
+          accessibilityRole="link"
+          accessibilityLabel="Open saved file in browser"
+          onPress={() => {
+            void Linking.openURL(`${server}/results/${encodeURIComponent(item.resultId)}`).catch(() =>
+              Alert.alert('Could not open browser', 'Try again from a browser connected to your Bazilion server.'),
+            )
+          }}
+        >
+          <Text style={styles.fileName}>Open saved file ↗</Text>
+        </Pressable>
+      </View>
+    )
+  }
   if (item.kind === 'file') {
     return (
       <View style={styles.fileRow} accessible accessibilityLabel={`Delivered file ${item.name}`}>
@@ -500,6 +537,13 @@ function Bubble({ item }: { item: ChatItem }) {
       <Text style={item.tone === 'error' ? styles.errorBubbleText : styles.infoBubbleText}>
         {item.text}
       </Text>
+      {item.webAgentId && questionWebHandoff(server, item.webAgentId) ? <>
+        <Text style={styles.infoBubbleText}>Sign in in your browser if prompted.</Text>
+        <Pressable accessibilityRole="link" accessibilityLabel="Open question in web chat" onPress={() => {
+          const url = questionWebHandoff(server, item.webAgentId ?? '')
+          if (url) void Linking.openURL(url).catch(() => Alert.alert('Could not open browser', 'Open this Agent in your paired Bazilion web app.'))
+        }}><Text style={styles.fileName}>Open web chat ↗</Text></Pressable>
+      </> : null}
     </View>
   )
 }

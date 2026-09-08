@@ -20,6 +20,7 @@ import { AgentAvatar } from '../../../components/AgentAvatar'
 import { AgentTabs } from '../../../components/AgentTabs'
 import { Button } from '../../../components/Button'
 import { ChatPane } from '../../../components/ChatPane'
+import { ResultSourceConversation } from '../../../components/ResultSourceConversation'
 import { ConfirmDialog } from '../../../components/ConfirmDialog'
 import { CopyButton } from '../../../components/CopyButton'
 import { PageShell, SectionCard } from '../../../components/Page'
@@ -56,12 +57,9 @@ const fetchAgent = createServerFn({ method: 'POST' })
       if (err instanceof ApiClientError && err.status === 404) return null
       throw err
     }
-    const [msgs, head, teams, skills, models, telegramConfig] = await Promise.all([
-      c.get<{ messages: ProviderMessage[] }>(
+    const [msgs, teams, skills, models, telegramConfig] = await Promise.all([
+      c.get<{ messages: ProviderMessage[]; head: SessionHeadResponse }>(
         `/api/agents/${encodeURIComponent(resolved.agent.id)}/sessions/messages`,
-      ),
-      c.get<SessionHeadResponse>(
-        `/api/agents/${encodeURIComponent(resolved.agent.id)}/sessions/head`,
       ),
       c.get<Team[]>('/api/teams'),
       c.get<SkillInfo[]>('/api/skills'),
@@ -73,7 +71,7 @@ const fetchAgent = createServerFn({ method: 'POST' })
     return {
       resolved,
       initialMessages: msgs.messages,
-      sessionHead: head,
+      sessionHead: msgs.head,
       teams,
       skills,
       modelGroups: models.teams,
@@ -82,7 +80,8 @@ const fetchAgent = createServerFn({ method: 'POST' })
   })
 
 export const Route = createFileRoute('/agents/$id/')({
-  validateSearch: (search: Record<string, unknown>): { mode?: 'settings'; teamPolicy?: string; view?: 'flow'|'matrix'; selected?: string; vx?: number; vy?: number; vz?: number } => ({
+  validateSearch: (search: Record<string, unknown>): { resultSource?: string; mode?: 'settings'; teamPolicy?: string; view?: 'flow'|'matrix'; selected?: string; vx?: number; vy?: number; vz?: number } => ({
+    ...(typeof search.resultSource === 'string' ? { resultSource: search.resultSource } : {}),
     ...(search.mode === 'settings' ? { mode: 'settings' as const } : {}),
     ...(typeof search.teamPolicy === 'string' && search.teamPolicy
       ? { teamPolicy: search.teamPolicy }
@@ -254,7 +253,7 @@ function AgentDetailPage() {
         archived={resolved.agent.status === 'archived'}
       />
 
-      {!settingsMode ? (
+      {search.resultSource ? <ResultSourceConversation resultId={search.resultSource} agentId={resolved.agent.id}/> : !settingsMode ? (
         <>
       <SectionTitle>Chat</SectionTitle>
       <div className="h-[70vh]">

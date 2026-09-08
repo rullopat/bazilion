@@ -16,11 +16,14 @@ import {
   recordDenial,
   triggerRepo,
 } from '../core/index.ts'
+import * as questions from '../core/repos/questions.ts'
 import {
   AgentLoopLimitError,
   enforceMessageCausality,
   resolveMessageCausality,
 } from './agent-loop-guard.ts'
+import { questionVisible } from './question-visibility.ts'
+import { capturedResultFile, releaseResultFile } from './result-delivery.ts'
 import { teamPolicyEnforcementRequested } from './team-policy-contract.ts'
 
 export const communicationDecisionMetrics = { allowed: 0, denied: 0 }
@@ -88,6 +91,7 @@ export interface CommunicationAttempt {
   approvalPayloadKind?: string
   approvalPayload?: unknown
   requester?: string
+  approvalExpiresAt?: number
 }
 
 function authorizeBoundary(
@@ -127,7 +131,7 @@ function authorizeBoundary(
       outcome,
       input.approvalPayloadKind ?? operation,
       input.approvalPayload ?? {},
-      { requester: input.requester ?? input.origin },
+      { requester: input.requester ?? input.origin, expiresAt: input.approvalExpiresAt },
     )
     throw new CommunicationPendingError(approval)
   }
@@ -180,15 +184,34 @@ export function authorizeHttpChatFrame(
   frameIndex: number,
   frame: ChatFrame,
 ): void {
+  if (frame.kind === 'event' && frame.event.type === 'agent_question') {
+    const current = questions.get(db, agentId, frame.event.question.id)
+    if (!current || !questionVisible(db, current))
+      throw new Error('Question is no longer available for delivery')
+    frame.event.question = current
+    return
+  }
   if (!isUserFacingFrame(frame)) return
+  if (frame.kind === 'event' && frame.event.type === 'file') {
+    Object.assign(frame.event, capturedResultFile(db, agentId, frame.event))
+  }
   authorizeAgentEgress(db, agentId, {
     origin: 'http_chat',
     attemptKind: 'http_chat_frame',
     attemptId: `${requestAttemptId}:${frameIndex}`,
     approvalPayloadKind: 'http_chat_frame',
-    approvalPayload: { agentId, frame },
+    approvalPayload: {
+      agentId,
+      frame:
+        frame.kind === 'event' && frame.event.type === 'file' && frame.event.result
+          ? { ...frame, event: { ...frame.event, data: '' } }
+          : frame,
+    },
     requester: agentId,
   })
+  if (frame.kind === 'event' && frame.event.type === 'file') {
+    releaseResultFile(db, agentId, frame.event.result)
+  }
 }
 
 function isUserFacingFrame(frame: ChatFrame): boolean {
@@ -549,11 +572,17 @@ export function claimDeliverableInbox(
   db: BazilionDb,
   agentId: string,
   onAllowed?: () => void,
+  conversationId?: string,
 ): Message[] {
   if (!teamPolicyEnforcementEnabled()) {
-    const messages = messageRepo.drainUnreadForAgent(db, agentId)
-    if (messages.length > 0) onAllowed?.()
-    return messages
+    return db.raw.transaction(() => {
+      const messages = messageRepo.drainUnreadForAgent(db, agentId)
+      for (const message of messages) {
+        if (conversationId) messageRepo.bindConversation(db, message.id, conversationId)
+      }
+      if (messages.length > 0) onAllowed?.()
+      return messages
+    })()
   }
   const outcome = db.raw.transaction(() => {
     const messages = messageRepo.listInbox(db, agentId, { unreadOnly: true })
@@ -581,6 +610,7 @@ export function claimDeliverableInbox(
           .get(message.id) !== null
       if (result.decision === 'allow' || (result.decision === 'approval_required' && granted)) {
         const claimedAt = Date.now()
+        if (conversationId) messageRepo.bindConversation(db, message.id, conversationId)
         messageRepo.markPolicyClaimed(db, message.id, claimedAt)
         allowed.push({ ...message, readAt: claimedAt })
       } else if (result.decision === 'approval_required') {

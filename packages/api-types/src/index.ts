@@ -1,3 +1,32 @@
+import type { ConversationSelection } from './conversations.ts'
+
+export type {
+  NotificationDeliveryState,
+  NotificationDestination,
+  NotificationPreview,
+  NotificationQuietHours,
+  NotificationReadiness,
+  NotificationReceipt,
+  NotificationReceiptList,
+  NotificationRetryInput,
+  NotificationSettings,
+  NotificationSettingsInput,
+  NotificationSettingsResponse,
+} from './notifications.ts'
+
+export type {
+  AgentQuestion,
+  AgentQuestionAnswer,
+  AgentQuestionContinuation,
+  AgentQuestionInput,
+  AgentQuestionListResponse,
+  AgentQuestionNoAnswerReason,
+  AgentQuestionResponse,
+  AgentQuestionResponseInput,
+  AgentQuestionStatus,
+  AgentQuestionToolResult,
+} from './questions.ts'
+
 // Wire-shape package. Hermetic: depends on nothing from the daemon, so every
 // client (web, mobile, cli, future SDKs) can pull in API shapes without
 // dragging Node-only code (node:sqlite, undici, pi-ai, the worker spawner)
@@ -100,6 +129,13 @@ export type {
   ToolResultImage,
 } from './events.ts'
 export type { MemoryEntry, MemoryHit } from './memory.ts'
+export type {
+  AgentResult,
+  ResultListResponse,
+  ResultPublicationInput,
+  ResultReference,
+  ResultSourceResponse,
+} from './results.ts'
 
 import type {
   Agent,
@@ -467,11 +503,15 @@ export interface Attachment {
 }
 
 export interface ChatRequest {
+  /** Required by chat admission; stale or absent selection is rejected before execution. */
+  expectedSelection?: import('./conversations.ts').ConversationSelection
   message: string
   /** Files attached to this message (images → vision; others → stored + referenced). */
   attachments?: Attachment[]
   /** Explicit client capability. Omitted callers fail closed instead of waiting for input. */
   bashApprovalMode?: BashApprovalMode
+  /** Live clarification support, independent of shell approvals. Omit for native/piped clients. */
+  questionMode?: 'web' | 'tty'
 }
 
 export interface CommandApprovalDecisionRequest {
@@ -539,6 +579,7 @@ export interface ResolvedSkillsResponse {
 }
 
 export interface TruncateChatRequest {
+  expectedSelection?: ConversationSelection
   /** Number of leading messages to preserve; everything after is dropped. */
   keepCount: number
 }
@@ -556,7 +597,10 @@ export interface TruncateChatResponse {
  * a bigger byte-count means new entries landed.
  */
 export interface SessionHeadResponse {
-  /** Basename of the most-recent `.jsonl` session file, or `null` if none. */
+  /** Canonical selected history exists in metadata but cannot be read. */
+  unavailable?: boolean
+  selection?: import('./conversations.ts').ConversationSelection
+  /** Basename of the selected `.jsonl` session file, or `null` if none. */
   file: string | null
   /** Byte size of that file (monotonically increasing while in use). */
   size: number
@@ -643,6 +687,7 @@ export interface ChatContextResponse {
 }
 
 export interface ChatCompactRequest {
+  expectedSelection?: ConversationSelection
   /** Number of trailing message entries to keep verbatim. Default 10. */
   keepTail?: number
   /** Optional freeform guidance prepended to the summarizer system prompt. */
@@ -1043,3 +1088,21 @@ export interface TelegramBindResponse {
   deepLink: string
   created: boolean
 }
+
+export type {
+  Conversation,
+  ConversationListResponse,
+  ConversationSelection,
+  ConversationTarget,
+  NewConversationInput,
+} from './conversations.ts'
+
+export type {
+  EditQueuedInput,
+  EnqueueUserInput,
+  QueueAttachment,
+  UserQueueControl,
+  UserQueueItem,
+  UserQueueListResponse,
+  UserQueueStatus,
+} from './user-queue.ts'

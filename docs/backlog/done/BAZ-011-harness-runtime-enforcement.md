@@ -5,14 +5,16 @@ status: done
 size: L (1-2 weeks)
 created: 2026-07-10
 refined: 2026-07-10
+shipped: 2026-07-11
+release: v0.9.0
 priority: high
 note: Build the single authorizer, immutable idempotent denial audit, diagnostics, and gated Agent-message/inbox integration. Full ingress, egress, scheduler, and release activation continue in BAZ-016.
 ---
 
 # BAZ-011 - TeamPolicy authorizer, denial audit, and gated Agent messaging
 
-**Status:** Refined and ready after BAZ-015. ADR 0001 is normative. This is the first half
-of the former XL enforcement story; BAZ-016 completes all remaining boundaries.
+**Status:** Done. Released in v0.9.0. ADR 0001 is normative. This was the first half of the
+former XL enforcement story; BAZ-016 completed the remaining boundaries.
 
 ## User stories
 

@@ -5,13 +5,15 @@ status: done
 size: M (~1 week)
 created: 2026-07-10
 refined: 2026-07-10
+shipped: 2026-07-11
+release: v0.9.0
 priority: medium
 note: Typed CLI management over BAZ-010/011 Team-template and Team-policy APIs. Import is validated and revision-aware; it does not bypass runtime enforcement or create a detached live-teamPolicy identity.
 ---
 
 # BAZ-013 - TeamPolicy CLI policy show, import/export, and block history
 
-**Status:** Done.
+**Status:** Done. Released in v0.9.0.
 
 ## User stories
 

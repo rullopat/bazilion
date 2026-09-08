@@ -10,13 +10,15 @@ import { createProfile } from '../../src/core/profile/create.ts'
 import * as agentRepo from '../../src/core/repos/agents.ts'
 import { openConfig } from '../../src/core/repos/config.ts'
 import * as telegramAclRepo from '../../src/core/repos/telegram-acl.ts'
-import * as inboundQueue from '../../src/lib/telegram/inbound-queue.ts'
+import * as userQueue from '../../src/core/repos/user-queue.ts'
+import { registerAgent, unregisterAgent } from '../../src/lib/agent-cancel.ts'
 import {
   _resetRouterStateForTest,
   type ReplyApi,
   routeUpdate,
 } from '../../src/lib/telegram/routing.ts'
 import { _resetSpawnStateForTest } from '../../src/lib/telegram/spawn-state.ts'
+import * as queueAdmission from '../../src/lib/user-queue-admission.ts'
 import { makeTestEnv, type TestEnv } from '../core/helpers.ts'
 
 const CHAT_ID = -1003964430972
@@ -92,6 +94,8 @@ function messageUpdate(opts: {
 let env: TestEnv
 beforeEach(() => {
   env = makeTestEnv()
+  vi.stubEnv('TELEGRAM_BOT_TOKEN', 'bot')
+  vi.stubEnv('TELEGRAM_CHAT_ID', String(CHAT_ID))
   // Stash the service topic id so routing can recognize the ⚙ bazilion chat.
   openConfig(env.db).set('TELEGRAM_SERVICE_TOPIC_ID', String(SERVICE_TOPIC))
   createProfile(env.db, env.paths, {
@@ -113,10 +117,53 @@ beforeEach(() => {
   // start from a fresh env (no seed) to exercise pairing + deny.
   telegramAclRepo.add(env.db, { userId: 11, role: 'owner', label: 'P' })
 })
-afterEach(() => env.cleanup())
+afterEach(() => {
+  vi.restoreAllMocks()
+  vi.unstubAllGlobals()
+  vi.unstubAllEnvs()
+  env.cleanup()
+})
 
 describe('routeUpdate classification', () => {
-  test('approval-required Telegram ingress holds media before lookup and returns pending status', async () => {
+  test('queue commands enforce owner identity, revisions and pause-before-cancel', async () => {
+    const agent = spawnAgent(env.db, env.paths, { profileId: 'base', teamId: env.teamId })
+    agentRepo.setTelegramTopicId(env.db, agent.id, 42)
+    const { api, sends } = makeReplyApi()
+    const deps = {
+      db: env.db,
+      paths: env.paths,
+      authToken: 't',
+      api,
+      chatId: CHAT_ID,
+      botToken: 'bot',
+    }
+    await routeUpdate(deps, messageUpdate({ threadId: 42, text: 'retained input' }))
+    const item = userQueue.list(env.db, agent.id).items[0]
+    if (!item) throw new Error('Expected accepted input')
+    telegramAclRepo.add(env.db, { userId: 22, role: 'member' })
+    await routeUpdate(deps, messageUpdate({ threadId: 42, text: '/queue pause 0', fromUserId: 22 }))
+    expect(sends.at(-1)?.text).toContain('paired owner')
+    expect(userQueue.control(env.db, agent.id).paused).toBe(false)
+    const controller = new AbortController()
+    registerAgent(agent.id, controller)
+    try {
+      await routeUpdate(deps, messageUpdate({ threadId: 42, text: '/queue stop 3' }))
+      expect(controller.signal.aborted).toBe(false)
+      await routeUpdate(deps, messageUpdate({ threadId: 42, text: '/queue stop 0' }))
+      expect(controller.signal.aborted).toBe(true)
+      expect(userQueue.control(env.db, agent.id)).toMatchObject({ paused: true, revision: 1 })
+      await routeUpdate(
+        deps,
+        messageUpdate({ threadId: 42, text: `/queue remove ${item.id} ${item.revision}` }),
+      )
+      expect(userQueue.get(env.db, agent.id, item.id)?.status).toBe('cancelled')
+      await routeUpdate(deps, messageUpdate({ threadId: 42, text: '/queue resume 1' }))
+      expect(userQueue.control(env.db, agent.id)).toMatchObject({ paused: false, revision: 2 })
+    } finally {
+      unregisterAgent(agent.id)
+    }
+  })
+  test('approval-required Telegram ingress retains complete media with its canonical hold', async () => {
     const agent = spawnAgent(env.db, env.paths, { profileId: 'base', teamId: env.teamId })
     agentRepo.setTelegramTopicId(env.db, agent.id, 42)
     env.db.raw.run(
@@ -133,6 +180,7 @@ describe('routeUpdate classification', () => {
       lookups++
       return { file_path: 'secret.jpg' }
     }
+    vi.stubGlobal('fetch', async () => new Response(new Uint8Array([1, 2, 3, 4])))
     const update = messageUpdate({ threadId: 42 })
     ;(
       update.message as never as {
@@ -144,10 +192,10 @@ describe('routeUpdate classification', () => {
         { db: env.db, paths: env.paths, authToken: 'token', botToken: 'bot', api, chatId: CHAT_ID },
         update,
       )
-      expect(outcome).toMatchObject({ kind: 'agent_topic', queued: false })
-      expect(lookups).toBe(0)
-      expect(inboundQueue.pendingMessageCount(agent.id)).toBe(0)
-      expect(sends.at(-1)?.text).toMatch(/pending approval/)
+      expect(outcome).toMatchObject({ kind: 'agent_topic', queued: true })
+      expect(lookups).toBe(1)
+      expect(userQueue.list(env.db, agent.id).items[0]?.status).toBe('held')
+      expect(sends.at(-1)?.text).toMatch(/held/)
       expect(
         env.db.raw
           .query<{ count: number }, []>('SELECT COUNT(*) count FROM communication_approvals')
@@ -186,7 +234,7 @@ describe('routeUpdate classification', () => {
       )
       expect(outcome).toMatchObject({ kind: 'agent_topic', queued: false })
       expect(lookups).toBe(0)
-      expect(inboundQueue.pendingMessageCount(agent.id)).toBe(0)
+      expect(userQueue.pendingCount(env.db, agent.id)).toBe(0)
       expect(sends.at(-1)?.text).toMatch(/blocked by Team policy/)
     } finally {
       if (previous === undefined) delete process.env.BAZILION_TEAM_POLICY_ENFORCEMENT
@@ -194,16 +242,12 @@ describe('routeUpdate classification', () => {
     }
   })
 
-  test('policy changes during media fetch preserve the exact queued attempt for final revalidation', async () => {
+  test('policy changes during media fetch deny acceptance and retain source-owned block evidence', async () => {
     const agent = spawnAgent(env.db, env.paths, { profileId: 'base', teamId: env.teamId })
     agentRepo.setTelegramTopicId(env.db, agent.id, 42)
     const previous = process.env.BAZILION_TEAM_POLICY_ENFORCEMENT
     process.env.BAZILION_TEAM_POLICY_ENFORCEMENT = 'on'
     const { api } = makeReplyApi()
-    const queued: unknown[][] = []
-    vi.spyOn(inboundQueue, 'enqueueAgentMessage').mockImplementation((...args) => {
-      queued.push(args)
-    })
     api.getFile = async () => ({ file_path: 'secret.jpg' })
     vi.stubGlobal('fetch', async () => {
       env.db.raw.run("DELETE FROM team_policy_edges WHERE team_id = ? AND source_kind = 'user'", [
@@ -222,38 +266,13 @@ describe('routeUpdate classification', () => {
         { db: env.db, paths: env.paths, authToken: 'token', botToken: 'bot', api, chatId: CHAT_ID },
         update,
       )
-      expect(outcome).toMatchObject({ kind: 'agent_topic', queued: true })
-      expect(queued).toHaveLength(1)
-      expect(queued[0]?.[0]).toBe(agent.id)
-      expect(queued[0]?.[1]).toBe('')
-      expect(queued[0]?.[2]).toEqual([{ mimeType: 'image/jpeg', data: 'AQID' }])
-      expect(queued[0]?.[3]).toMatchObject({
-        origin: 'telegram_agent_topic',
-        attemptKind: 'telegram_ingress',
-        attemptId: `${CHAT_ID}:1`,
-        approvalPayloadKind: 'telegram_ingress',
-        requester: 'telegram:11',
-        approvalPayload: {
-          agentId: agent.id,
-          text: '',
-          media: {
-            kind: 'photo',
-            fileId: 'secret',
-            fileName: null,
-            mimeType: 'image/jpeg',
-            fileSize: 3,
-          },
-          chatId: CHAT_ID,
-          threadId: 42,
-          messageId: 1,
-        },
-      })
-      expect(queued[0]?.[4]).toEqual(expect.any(Function))
+      expect(outcome).toMatchObject({ kind: 'agent_topic', queued: false })
+      expect(userQueue.pendingCount(env.db, agent.id)).toBe(0)
       expect(
         env.db.raw
           .query<{ count: number }, []>('SELECT COUNT(*) count FROM team_policy_block_events')
           .get()?.count,
-      ).toBe(0)
+      ).toBe(1)
     } finally {
       vi.unstubAllGlobals()
       if (previous === undefined) delete process.env.BAZILION_TEAM_POLICY_ENFORCEMENT
@@ -297,7 +316,7 @@ describe('routeUpdate classification', () => {
       name: 'identity-bound',
     })
     agentRepo.setTelegramTopicId(env.db, agent.id, 42)
-    const enqueue = vi.spyOn(inboundQueue, 'enqueueAgentMessage')
+    const enqueue = vi.spyOn(queueAdmission, 'enqueueTelegramInput')
     enqueue.mockClear()
     const { api, sends } = makeReplyApi()
 
@@ -519,7 +538,7 @@ describe('routeUpdate classification', () => {
     expect(agentRepo.list(env.db).find((a) => a.name === 'x')).toBeUndefined()
   })
 
-  test('agent-topic inbound identifies the agent but sends no reply (step 3 behavior)', async () => {
+  test('agent-topic inbound durably accepts input and acknowledges its receipt', async () => {
     const agent = spawnAgent(env.db, env.paths, {
       profileId: 'base',
       teamId: env.teamId,
@@ -534,7 +553,8 @@ describe('routeUpdate classification', () => {
     )
     expect(outcome.kind).toBe('agent_topic')
     if (outcome.kind === 'agent_topic') expect(outcome.agentId).toBe(agent.id)
-    expect(sends.length).toBe(0)
+    expect(sends.at(-1)?.text).toMatch(/Follow-up .*pending/)
+    expect(userQueue.pendingCount(env.db, agent.id)).toBe(1)
   })
 
   test('unknown topic (not service, not bound) gets a "not bound" reply', async () => {
@@ -772,4 +792,48 @@ describe('routeUpdate classification', () => {
     expect(outcome.kind).toBe('service_unknown_command')
     expect(sends[0]?.text).toMatch(/Unknown command/)
   })
+})
+
+test('media ingress captures its conversation before an asynchronous download', async () => {
+  const { randomUUID } = await import('node:crypto')
+  const conversations = await import('../../src/core/repos/conversations.ts')
+  const { createConversationFile } = await import('../../src/lib/conversation-file.ts')
+  const media = await import('../../src/lib/telegram/media.ts')
+  const agent = spawnAgent(env.db, env.paths, { profileId: 'base', teamId: env.teamId })
+  agentRepo.setTelegramTopicId(env.db, agent.id, 42)
+  let finishDownload!: () => void
+  const gate = new Promise<void>((resolve) => {
+    finishDownload = resolve
+  })
+  const download = vi.spyOn(media, 'downloadMediaBytes').mockImplementation(async () => {
+    await gate
+    return { ok: true, data: 'eA==', mimeType: 'text/plain', name: 'input.txt' }
+  })
+  const { api } = makeReplyApi()
+  const update = messageUpdate({ threadId: 42, text: 'Read this file' })
+  Object.assign(update.message!, {
+    document: {
+      file_id: 'test-file',
+      file_unique_id: 'unique',
+      file_name: 'input.txt',
+      mime_type: 'text/plain',
+    },
+  })
+  const routing = routeUpdate(
+    { db: env.db, paths: env.paths, authToken: 't', api, chatId: CHAT_ID, botToken: 'bot' },
+    update,
+  )
+  await vi.waitFor(() => expect(download).toHaveBeenCalledOnce())
+  const original = conversations.selection(env.db, agent.id)
+  const next = conversations.create(
+    env.db,
+    agent.id,
+    { requestId: randomUUID(), expectedSelection: original },
+    (id) => createConversationFile(env.paths, agent.id, id, env.paths.teamDir(env.teamId)),
+  )
+  finishDownload()
+  await routing
+  expect(userQueue.list(env.db, agent.id).items).toHaveLength(1)
+  expect(userQueue.list(env.db, agent.id).items[0]?.conversationId).toBe(original.conversationId)
+  expect(conversations.selection(env.db, agent.id)).toEqual(next.selection)
 })

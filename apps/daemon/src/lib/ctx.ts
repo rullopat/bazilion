@@ -9,6 +9,13 @@ import {
   runMigrations,
   webTokenRepo,
 } from '../core/index.ts'
+import { recoverInterrupted as recoverInterruptedNotifications } from '../core/repos/notifications.ts'
+import { recoverInterrupted as recoverInterruptedQuestions } from '../core/repos/questions.ts'
+import {
+  reconcileApprovalHolds,
+  recoverInterrupted as recoverInterruptedQueue,
+} from '../core/repos/user-queue.ts'
+import { reconcilePrivateResults, recoverInterruptedResultDeliveries } from './result-retention.ts'
 import { startScheduler } from './scheduler.ts'
 import { assertTeamPolicyEnforcementReleaseReady } from './team-policy-contract.ts'
 
@@ -92,6 +99,13 @@ function bootstrap(paths: Paths): { db: BazilionDb; authToken: string } {
         throw new IncompatibleBootstrapIdentityError()
       }
     }
+
+    recoverInterruptedQueue(db)
+    recoverInterruptedQuestions(db)
+    recoverInterruptedNotifications(db)
+    reconcileApprovalHolds(db)
+    recoverInterruptedResultDeliveries(db)
+    reconcilePrivateResults(db)
 
     // The `default` profile is bazilion-managed — keep its on-disk
     // template files in sync with the shipped defaults on every boot. Custom

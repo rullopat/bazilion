@@ -6,6 +6,7 @@ size: M
 created: 2026-05-23
 refined: 2026-08-03
 shipped: 2026-08-03
+release: v0.12.0
 priority: high
 note: Shipped implementation and real-provider calibration completed 2026-08-03. Opt-in, proposal-only, reversible MVP.
 ---

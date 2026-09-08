@@ -4,6 +4,7 @@ import type { MediaRef } from './media.ts'
 
 export interface TelegramIngressPayload {
   agentId: string
+  conversationId: string
   text: string
   media: MediaRef | null
   chatId: number
@@ -23,6 +24,8 @@ export function isTelegramIngressPayload(value: unknown): value is TelegramIngre
   if (!isRecord(value)) return false
   if (
     !isNonEmptyString(value.agentId) ||
+    typeof value.conversationId !== 'string' ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value.conversationId) ||
     typeof value.text !== 'string' ||
     !isGroupChatId(value.chatId) ||
     !isPositiveSafeInteger(value.messageId) ||
@@ -76,10 +79,16 @@ export function telegramMediaFailureTurnText(
  */
 export function isTelegramIngressTurnBinding(
   attempt: TelegramIngressAttempt,
-  turn: { agentId: string; message: string; attachments: readonly Attachment[] },
+  turn: {
+    agentId: string
+    conversationId?: string
+    message: string
+    attachments: readonly Attachment[]
+  },
 ): boolean {
   if (!isTelegramIngressAttempt(attempt, turn.agentId)) return false
   const payload = attempt.approvalPayload
+  if (turn.conversationId !== payload.conversationId) return false
   if (!payload.media) return turn.message === payload.text && turn.attachments.length === 0
 
   if (turn.attachments.length === 0) {

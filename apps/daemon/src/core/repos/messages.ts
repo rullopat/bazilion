@@ -179,3 +179,13 @@ export function drainUnreadForAgent(db: BazilionDb, agentId: string): Message[] 
     return rows.map((r) => toMessage({ ...r, read_at: now }))
   })()
 }
+
+/** Capture the destination in the same transaction that claims inbox delivery. */
+export function bindConversation(db: BazilionDb, id: string, conversationId: string): void {
+  const result = db.raw.run(
+    `UPDATE messages SET conversation_id = ? WHERE id = ? AND conversation_id IS NULL
+     AND EXISTS (SELECT 1 FROM agent_conversations c WHERE c.id = ? AND c.agent_id = messages.to_agent_id)`,
+    [conversationId, id, conversationId],
+  )
+  if (Number(result.changes) !== 1) throw new Error('inbox conversation binding failed')
+}

@@ -124,8 +124,8 @@
     {
       "id": "TELEGRAM-ATTEMPT-REPLAY",
       "owner": "BAZ-027",
-      "file": "apps/daemon/test/lib/telegram-inbound-queue.test.ts",
-      "test": "inbound-queue > rejects a queue item whose attempt identity does not match its Telegram update"
+      "file": "apps/daemon/test/lib/telegram-queue-binding.test.ts",
+      "test": "rejects mismatched Telegram attempt identity and substituted queued input"
     },
     {
       "id": "TELEGRAM-PAIR-ONCE",
@@ -256,8 +256,8 @@
     {
       "id": "PROTECTED-FAILURE-OUTCOME",
       "owner": "BAZ-027",
-      "file": "apps/daemon/test/lib/telegram-inbound-queue.test.ts",
-      "test": "inbound-queue > protected preflight failure sends one bounded secret-free owning-topic notice"
+      "file": "apps/daemon/test/lib/user-queue-approved.test.ts",
+      "test": "protected preflight failure sends one bounded secret-free owning-topic notice"
     },
     {
       "id": "PROTECTED-INVALID-REFRESH",

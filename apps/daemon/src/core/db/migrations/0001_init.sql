@@ -37,7 +37,7 @@ CREATE TABLE agents (
   team_id        TEXT NOT NULL REFERENCES teams(id) ON DELETE RESTRICT,
   created_at      INTEGER NOT NULL,
   archived_at     INTEGER
-, telegram_topic_id INTEGER, telegram_topic_name_locked INTEGER NOT NULL DEFAULT 0, telegram_icon_emoji TEXT, telegram_mirror_mode TEXT NOT NULL DEFAULT 'minimal'
+, telegram_topic_id INTEGER, telegram_binding_id TEXT NOT NULL DEFAULT (lower(hex(randomblob(16)))), telegram_topic_name_locked INTEGER NOT NULL DEFAULT 0, telegram_icon_emoji TEXT, telegram_mirror_mode TEXT NOT NULL DEFAULT 'minimal'
   CHECK (telegram_mirror_mode IN ('minimal','verbose')));
 CREATE TABLE agent_skills (
   agent_id    TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
@@ -62,6 +62,7 @@ CREATE TABLE trigger_dispatches (
   id              TEXT PRIMARY KEY,
   trigger_id      TEXT NOT NULL REFERENCES agent_triggers(id) ON DELETE CASCADE,
   agent_id        TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+  conversation_id TEXT NOT NULL,
   scheduled_at    INTEGER NOT NULL,
   status          TEXT NOT NULL CHECK (status IN ('pending','running','retrying','succeeded','failed','cancelled')),
   attempt_count   INTEGER NOT NULL DEFAULT 0,
@@ -72,7 +73,8 @@ CREATE TABLE trigger_dispatches (
   last_error      TEXT,
   created_at      INTEGER NOT NULL,
   updated_at      INTEGER NOT NULL,
-  UNIQUE (trigger_id, scheduled_at)
+  UNIQUE (trigger_id, scheduled_at),
+  FOREIGN KEY (agent_id, conversation_id) REFERENCES agent_conversations(agent_id, id)
 );
 CREATE INDEX trigger_dispatches_claimable
   ON trigger_dispatches(status, next_attempt_at, scheduled_at);
@@ -87,7 +89,8 @@ CREATE TABLE messages (
   causal_hop    INTEGER NOT NULL DEFAULT 0 CHECK (causal_hop >= 0),
   payload       TEXT NOT NULL,
   created_at    INTEGER NOT NULL,
-  read_at       INTEGER
+  read_at       INTEGER,
+  conversation_id TEXT
 , policy_disposition TEXT NOT NULL DEFAULT 'deliverable'
   CHECK (policy_disposition IN ('deliverable', 'policy_blocked')), policy_blocked_at INTEGER, policy_claimed_at INTEGER, policy_delivered_at INTEGER);
 CREATE INDEX messages_to_unread ON messages(to_agent_id) WHERE read_at IS NULL;
@@ -219,6 +222,7 @@ CREATE UNIQUE INDEX idx_agents_telegram_topic_id
   WHERE telegram_topic_id IS NOT NULL;
 CREATE TABLE telegram_allowed_users (
   user_id   INTEGER PRIMARY KEY,
+  grant_id  TEXT NOT NULL DEFAULT (lower(hex(randomblob(16)))),
   username  TEXT,
   label     TEXT,
   role      TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('owner','member')),
@@ -520,6 +524,28 @@ WHEN NOT EXISTS (
 BEGIN
   SELECT RAISE(ABORT, 'Team Agent state does not match agents.team_id');
 END;
+-- Captured bytes and their publication receipt share one atomic SQLite commit.
+-- Agent identity is retained across deletion/transfer; Team deletion owns cleanup.
+CREATE TABLE agent_results (
+  id TEXT PRIMARY KEY,
+  team_id TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  agent_id TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  tool_call_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  mime_type TEXT NOT NULL,
+  byte_length INTEGER NOT NULL CHECK (byte_length BETWEEN 0 AND 26214400),
+  sha256 TEXT NOT NULL CHECK (length(sha256) = 64),
+  created_at INTEGER NOT NULL,
+  released_at INTEGER,
+  deleted_at INTEGER,
+  bytes BLOB,
+  UNIQUE (agent_id, session_id, tool_call_id),
+  CHECK ((deleted_at IS NULL AND bytes IS NOT NULL AND length(bytes) = byte_length)
+    OR (deleted_at IS NOT NULL AND bytes IS NULL))
+);
+CREATE INDEX agent_results_team_time ON agent_results(team_id, created_at DESC, id DESC);
+
 CREATE TRIGGER validate_team_policy_baseline_update
 BEFORE UPDATE OF baseline_instantiation_id ON team_policies
 WHEN NEW.baseline_instantiation_id IS NOT NULL AND NOT EXISTS (
@@ -529,3 +555,145 @@ WHEN NEW.baseline_instantiation_id IS NOT NULL AND NOT EXISTS (
 BEGIN
   SELECT RAISE(ABORT, 'baseline instantiation belongs to another Team');
 END;
+
+-- Conversation metadata never duplicates the canonical Pi transcript.
+CREATE TABLE agent_conversations (
+  id TEXT PRIMARY KEY,
+  agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+  filename TEXT NOT NULL,
+  title TEXT NOT NULL,
+  title_revision INTEGER NOT NULL DEFAULT 1,
+  initial_title TEXT,
+  creation_revision INTEGER NOT NULL,
+  creation_conversation_id TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  UNIQUE(agent_id, id),
+  UNIQUE(agent_id, filename)
+);
+CREATE INDEX agent_conversations_agent_time ON agent_conversations(agent_id, created_at DESC, id);
+CREATE TABLE agent_conversation_selection (
+  agent_id TEXT PRIMARY KEY REFERENCES agents(id) ON DELETE CASCADE,
+  conversation_id TEXT NOT NULL,
+  revision INTEGER NOT NULL CHECK(revision > 0),
+  FOREIGN KEY(agent_id, conversation_id) REFERENCES agent_conversations(agent_id, id)
+);
+
+-- Retained user input only: canonical responses remain in Pi JSONL.
+CREATE TABLE user_queue_controls (
+  agent_id TEXT PRIMARY KEY REFERENCES agents(id) ON DELETE CASCADE,
+  paused INTEGER NOT NULL DEFAULT 0 CHECK(paused IN (0,1)),
+  revision INTEGER NOT NULL DEFAULT 0,
+  reason TEXT,
+  next_position INTEGER NOT NULL DEFAULT 1
+);
+CREATE TABLE user_queue_items (
+  id TEXT PRIMARY KEY,
+  agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+  team_id TEXT NOT NULL,
+  conversation_id TEXT NOT NULL,
+  source TEXT NOT NULL CHECK(source IN ('http','telegram')),
+  attempt_id TEXT NOT NULL,
+  input_digest TEXT NOT NULL,
+  provenance_json TEXT,
+  revision INTEGER NOT NULL DEFAULT 1,
+  position INTEGER NOT NULL,
+  status TEXT NOT NULL CHECK(status IN ('pending','claimed','running','held','completed','failed','cancelled','uncertain','superseded')),
+  text TEXT,
+  payload_retained INTEGER NOT NULL DEFAULT 1 CHECK(payload_retained IN (0,1)),
+  supersedes_id TEXT,
+  approval_id TEXT REFERENCES communication_approvals(id) ON DELETE SET NULL,
+  diagnostic TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  started_at INTEGER,
+  finished_at INTEGER,
+  UNIQUE(source, attempt_id),
+  FOREIGN KEY(agent_id, conversation_id) REFERENCES agent_conversations(agent_id, id) ON DELETE CASCADE
+);
+CREATE INDEX user_queue_agent_order ON user_queue_items(agent_id, position, created_at);
+CREATE INDEX user_queue_status ON user_queue_items(status, updated_at);
+CREATE TABLE user_queue_attachments (
+  id TEXT PRIMARY KEY,
+  item_id TEXT NOT NULL REFERENCES user_queue_items(id) ON DELETE CASCADE,
+  ordinal INTEGER NOT NULL,
+  name TEXT,
+  mime_type TEXT NOT NULL,
+  byte_length INTEGER NOT NULL,
+  sha256 TEXT NOT NULL,
+  bytes BLOB NOT NULL,
+  UNIQUE(item_id, ordinal)
+);
+
+-- Narrow live clarification receipts; continuation ownership remains process-local.
+CREATE TABLE IF NOT EXISTS agent_questions (
+  id TEXT PRIMARY KEY,
+  agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+  team_id TEXT NOT NULL,
+  conversation_id TEXT NOT NULL,
+  turn_id TEXT NOT NULL,
+  tool_call_id TEXT NOT NULL,
+  question_json TEXT NOT NULL,
+  delivered_at INTEGER,
+  binding_json TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('pending','answered','skipped','expired','cancelled')),
+  revision INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL,
+  settled_at INTEGER,
+  answer_json TEXT,
+  response_request_id TEXT,
+  no_answer_reason TEXT,
+  continuation TEXT NOT NULL CHECK (continuation IN ('waiting','unconfirmed','consumed','interrupted')),
+  consumed_at INTEGER,
+  delivery_approval_id TEXT REFERENCES communication_approvals(id) ON DELETE SET NULL,
+  answer_approval_id TEXT REFERENCES communication_approvals(id) ON DELETE SET NULL,
+  proposal_json TEXT,
+  FOREIGN KEY (agent_id, conversation_id) REFERENCES agent_conversations(agent_id, id) ON DELETE CASCADE,
+  UNIQUE (turn_id, tool_call_id)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS agent_questions_one_pending ON agent_questions(turn_id) WHERE status = 'pending';
+CREATE INDEX IF NOT EXISTS agent_questions_agent_time ON agent_questions(agent_id, created_at, id);
+
+-- Daemon-only provenance key. Never merged into provider/worker environments.
+-- Stable across bootstrap credential rotation and included in canonical backups.
+CREATE TABLE question_receipt_key (
+  singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+  key BLOB NOT NULL CHECK (length(key) = 32)
+);
+
+-- Operator notification metadata only. Source content remains in its canonical tables.
+CREATE TABLE notification_settings (
+  singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+  revision INTEGER NOT NULL DEFAULT 0,
+  enabled INTEGER NOT NULL DEFAULT 0 CHECK (enabled IN (0, 1)),
+  restore_paused INTEGER NOT NULL DEFAULT 0 CHECK (restore_paused IN (0, 1)),
+  restore_history_uncertain INTEGER NOT NULL DEFAULT 0 CHECK (restore_history_uncertain IN (0, 1)),
+  kinds_json TEXT NOT NULL,
+  kind_cutoffs_json TEXT NOT NULL DEFAULT '{}',
+  timezone TEXT NOT NULL DEFAULT 'UTC',
+  quiet_json TEXT,
+  destination_json TEXT,
+  eligible_after INTEGER,
+  updated_at INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE notification_receipts (
+  id TEXT PRIMARY KEY,
+  source_kind TEXT NOT NULL CHECK (source_kind IN ('communication_approval','lesson_proposal','review_failure','trigger_failure','agent_loop_break')),
+  source_id TEXT NOT NULL,
+  agent_id TEXT,
+  team_id TEXT,
+  destination_id TEXT NOT NULL,
+  destination_json TEXT NOT NULL CHECK (length(destination_json) <= 4096),
+  state TEXT NOT NULL CHECK (state IN ('deferred','sending','delivered','failed','uncertain','suppressed')),
+  attempts INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  attempted_at INTEGER,
+  delivered_at INTEGER,
+  telegram_message_id INTEGER,
+  diagnostic TEXT CHECK (diagnostic IS NULL OR length(diagnostic) <= 160),
+  UNIQUE (source_kind, source_id, destination_id)
+);
+CREATE INDEX notification_receipts_state ON notification_receipts(state, created_at, id);
+CREATE INDEX notification_receipts_time ON notification_receipts(created_at, id);

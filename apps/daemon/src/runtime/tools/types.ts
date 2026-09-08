@@ -1,4 +1,4 @@
-import type { ToolDef } from '@bazilion/api-types'
+import type { ResultReference, ToolDef } from '@bazilion/api-types'
 
 /**
  * One block of tool output. Mirrors pi's `TextContent | ImageContent` so the
@@ -16,11 +16,15 @@ export type ToolResultPart =
  * block — every legacy tool (memory_*, messaging, web_*, …) uses it. Tools
  * that emit images return an explicit part array.
  */
-export type ToolOutput = string | ToolResultPart[]
+export type ToolOutput =
+  | string
+  | ToolResultPart[]
+  | { content: ToolResultPart[]; result: ResultReference }
+  | { content: ToolResultPart[]; questionReceipt: string }
 
 export interface ToolHandler {
   def: ToolDef
-  invoke(args: Record<string, unknown>): Promise<ToolOutput>
+  invoke(args: Record<string, unknown>, context?: { toolCallId: string }): Promise<ToolOutput>
 }
 
 export interface ToolRegistry {

@@ -178,6 +178,7 @@ authRouter.post('/providers/test', async (c) => {
 authRouter.post('/login', async (c) => {
   const ct = c.req.header('content-type') ?? ''
   let token: string | null = null
+  let resultId: string | null = null
 
   if (ct.startsWith('application/json')) {
     const body = (await c.req.json().catch(() => null)) as { token?: unknown } | null
@@ -186,6 +187,13 @@ authRouter.post('/login', async (c) => {
     const form = await c.req.formData().catch(() => null)
     const v = form?.get('token')
     if (typeof v === 'string') token = v
+    const destination = form?.get('resultId')
+    if (
+      typeof destination === 'string' &&
+      /^[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(destination)
+    ) {
+      resultId = destination
+    }
   }
 
   const ctx = getCtx()
@@ -200,7 +208,7 @@ authRouter.post('/login', async (c) => {
     if (ct.startsWith('application/json')) {
       return c.json({ error: 'invalid token' }, 401)
     }
-    return c.redirect('/login?error=token', 302)
+    return c.redirect(`/login?error=token${resultId ? `&resultId=${resultId}` : ''}`, 302)
   }
 
   const created = webSessionRepo.create(ctx.db, deviceTokenId)
@@ -226,7 +234,10 @@ authRouter.post('/login', async (c) => {
   // Skip an avoidable redirect through the locked root on a fresh install.
   // Setup mutations seed the defaults synchronously, so completed installs
   // can still enter the workspace directly.
-  return c.redirect(isSetupComplete(ctx.db) ? '/' : '/welcome', 302)
+  return c.redirect(
+    isSetupComplete(ctx.db) ? (resultId ? `/results/${resultId}` : '/') : '/welcome',
+    302,
+  )
 })
 
 authRouter.post('/logout', (c) => {

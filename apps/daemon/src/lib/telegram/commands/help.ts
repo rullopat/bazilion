@@ -27,6 +27,8 @@ const SERVICE_BODY = [
   '/close — Close this topic (preserves the binding)',
   '/rebind &lt;agent&gt; — Point this topic at a different agent',
   '/unbind — Clear the binding (topic becomes orphan)',
+  '/queue — Durable follow-ups and pause/resume/Stop controls',
+  '/queue history [offset] — Completed and failed input receipts',
 ].join('\n')
 
 function topicBody(agentName: string, teamId: string): string {
@@ -37,6 +39,8 @@ function topicBody(agentName: string, teamId: string): string {
     '/close — Close this topic (preserves the binding)',
     '/rebind &lt;agent&gt; — Point this topic at a different agent',
     '/unbind — Clear the binding (topic becomes orphan)',
+    '/queue — Durable follow-ups and pause/resume/Stop controls',
+    '/queue history [offset] — Completed and failed input receipts',
     '/help — This message',
     '',
     '<b>From the ⚙ bazilion service chat:</b>',

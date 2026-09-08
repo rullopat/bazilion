@@ -23,6 +23,8 @@ export interface PreclaimedTurn {
 }
 
 export interface BoundAgentTurn {
+  /** Captured daemon target for delayed dispatch; never a filesystem path. */
+  conversationId?: string
   agentId: string
   message: string
   attachments: readonly Attachment[]
@@ -368,6 +370,7 @@ function cloneBoundTurn(value: BoundAgentTurn): BoundAgentTurn {
   const attachments = value.attachments.map((attachment) => Object.freeze({ ...attachment }))
   return Object.freeze({
     agentId: value.agentId,
+    ...(value.conversationId !== undefined ? { conversationId: value.conversationId } : {}),
     message: value.message,
     attachments: Object.freeze(attachments),
     ...(value.causalParentMessageId !== undefined
@@ -379,10 +382,14 @@ function cloneBoundTurn(value: BoundAgentTurn): BoundAgentTurn {
 function isBoundAgentTurn(value: unknown): value is BoundAgentTurn {
   if (!isRecord(value)) return false
   const expected = ['agentId', 'message', 'attachments']
+  if ('conversationId' in value) expected.push('conversationId')
   if ('causalParentMessageId' in value) expected.push('causalParentMessageId')
   assertExactKeys(value, expected)
   return (
     isNonEmptyString(value.agentId) &&
+    (value.conversationId === undefined ||
+      (typeof value.conversationId === 'string' &&
+        /^[0-9a-f-]{36}$/i.test(value.conversationId))) &&
     typeof value.message === 'string' &&
     Array.isArray(value.attachments) &&
     value.attachments.every(isAttachment) &&
@@ -409,6 +416,9 @@ function isPreclaimedTurn(value: unknown): value is PreclaimedTurn {
     isRecord(value) &&
     trustedClaims.has(value) &&
     isNonEmptyString(value.agentId) &&
+    (value.conversationId === undefined ||
+      (typeof value.conversationId === 'string' &&
+        /^[0-9a-f-]{36}$/i.test(value.conversationId))) &&
     isNonEmptyString(value.attemptId) &&
     value.registered === true &&
     typeof value.releaseLease === 'function' &&

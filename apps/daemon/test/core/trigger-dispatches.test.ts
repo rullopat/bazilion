@@ -3,6 +3,7 @@ import * as agentRepo from '../../src/core/repos/agents.ts'
 import * as profileRepo from '../../src/core/repos/profiles.ts'
 import * as triggerDispatchRepo from '../../src/core/repos/triggerDispatches.ts'
 import * as triggerRepo from '../../src/core/repos/triggers.ts'
+import { seedRegisteredConversation } from '../fixtures/conversation.ts'
 import { makeTestEnv, type TestEnv } from './helpers.ts'
 
 let env: TestEnv
@@ -40,12 +41,14 @@ afterEach(() => env.cleanup())
 
 test('materialization is idempotent per trigger occurrence', () => {
   const first = triggerDispatchRepo.materialize(env.db, {
+    conversationId: seedRegisteredConversation(env.db, env.paths, 'a1').id,
     triggerId,
     agentId: 'a1',
     scheduledAt: 1_000,
     now: 2_000,
   })
   const replay = triggerDispatchRepo.materialize(env.db, {
+    conversationId: seedRegisteredConversation(env.db, env.paths, 'a1').id,
     triggerId,
     agentId: 'a1',
     scheduledAt: 1_000,
@@ -58,6 +61,7 @@ test('materialization is idempotent per trigger occurrence', () => {
 
 test('claim is atomic and an expired running lease is recoverable', () => {
   const dispatch = triggerDispatchRepo.materialize(env.db, {
+    conversationId: seedRegisteredConversation(env.db, env.paths, 'a1').id,
     triggerId,
     agentId: 'a1',
     scheduledAt: 1_000,
@@ -78,6 +82,7 @@ test('claim is atomic and an expired running lease is recoverable', () => {
 
 test('fail retries with backoff and becomes terminal at the attempt bound', () => {
   const dispatch = triggerDispatchRepo.materialize(env.db, {
+    conversationId: seedRegisteredConversation(env.db, env.paths, 'a1').id,
     triggerId,
     agentId: 'a1',
     scheduledAt: 1_000,
@@ -110,6 +115,7 @@ test('fail retries with backoff and becomes terminal at the attempt bound', () =
 
 test('disabling a trigger cancels pending and retrying dispatches', () => {
   triggerDispatchRepo.materialize(env.db, {
+    conversationId: seedRegisteredConversation(env.db, env.paths, 'a1').id,
     triggerId,
     agentId: 'a1',
     scheduledAt: 1_000,
@@ -121,6 +127,7 @@ test('disabling a trigger cancels pending and retrying dispatches', () => {
 
 test('deleting a trigger cascades its dispatch diagnostics', () => {
   triggerDispatchRepo.materialize(env.db, {
+    conversationId: seedRegisteredConversation(env.db, env.paths, 'a1').id,
     triggerId,
     agentId: 'a1',
     scheduledAt: 1_000,

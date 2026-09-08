@@ -33,7 +33,7 @@ test('agent session-head --json emits the SessionHeadResponse shape', async () =
   r = await server.cli(['agent', 'session-head', agentId, '--json'])
   expect(r.exitCode).toBe(0)
   const body = JSON.parse(r.stdout) as { file: string | null; size: number }
-  expect(body).toEqual({ file: null, size: 0 })
+  expect(body).toEqual({ file: null, size: 0, selection: { conversationId: null, revision: 0 } })
 })
 
 test('agent session-head returns 404 for an unknown agent', async () => {

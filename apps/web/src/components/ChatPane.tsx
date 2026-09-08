@@ -23,7 +23,10 @@ import {
 } from 'react'
 import { renderMd } from '../lib/md'
 import { Button } from './Button'
-import { ConfirmDialog } from './ConfirmDialog'
+import { ResultCard } from './ResultCard'
+import { ConversationLibrary } from './ConversationLibrary'
+import { UserQueuePanel, type UserQueueHandle } from './UserQueuePanel'
+import { AgentQuestions } from './AgentQuestions'
 
 const INBOX_WAKE_PREFIX = '[[bazilion:inbox-wake]]\n'
 const COMPACTION_REPLAY_PREFIX = '[conversation summary]'
@@ -54,6 +57,7 @@ export type RenderEntry =
   | { type: 'tool'; items: ToolItem[] }
   | { type: 'images'; images: { data: string; mimeType: string }[] }
   | { type: 'file'; name: string; mimeType: string; data: string }
+  | { type: 'result'; resultId: string }
   | { type: 'command_approval'; approval: CommandApproval }
   | { type: 'system'; content: string }
   | { type: 'error'; content: string }
@@ -76,7 +80,7 @@ export function interactiveChatRequest(
   message: string,
   attachments: Attachment[],
 ): ChatRequest {
-  return { message, attachments, bashApprovalMode: 'interactive' }
+  return { message, attachments, bashApprovalMode: 'interactive', questionMode: 'web' }
 }
 
 export function shellApprovalsUrl(agentId: string): string {
@@ -87,7 +91,7 @@ const SLASH_HELP =
   'slash commands:\n' +
   '  /context           — context breakdown (system prompt, tools, skills, history)\n' +
   '  /compact [N]       — summarize the head; keep the last N messages verbatim (default 10)\n' +
-  '  /reset             — reset chat history for this agent\n' +
+  '  /new               — open the retained conversation library\n' +
   '  /help              — show this list'
 
 interface ChatContextResponse {
@@ -195,6 +199,10 @@ function projectMessages(msgs: ProviderMessage[]): RenderEntry[] {
         name: m.toolName ?? '',
         body: m.content,
       })
+      if (m.result) {
+        entries.push({ type: 'result', resultId: m.result.resultId })
+        openTool = null
+      }
       // Images are deliverables — emit them as a standalone block OUTSIDE the
       // tool box (and close the team so they don't get visually nested).
       if (m.images && m.images.length > 0) {
@@ -243,7 +251,12 @@ export function ChatPane({
   const [recoveredTurn, setRecoveredTurn] = useState(false)
   const [approvalBusy, setApprovalBusy] = useState<Record<string, boolean>>({})
   const [approvalErrors, setApprovalErrors] = useState<Record<string, string>>({})
-  const [resetConfirmOpen, setResetConfirmOpen] = useState(false)
+  const [libraryOpen, setLibraryOpen] = useState(false)
+  const [queueConversation, setQueueConversation] = useState<string | undefined>()
+  const [queueMode, setQueueMode] = useState(false)
+  const [queueReady, setQueueReady] = useState(false)
+  const queueRef = useRef<UserQueueHandle | null>(null)
+  const [historyUnavailable, setHistoryUnavailable] = useState(initialSessionHead?.unavailable ?? false)
 
   const messagesRef = useRef<HTMLDivElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
@@ -278,6 +291,9 @@ export function ChatPane({
     setSystemBubbles([])
     setEditIdx(null)
     setInput('')
+    setQueueReady(false)
+    setAttachments([])
+    setHistoryUnavailable(initialSessionHead?.unavailable ?? false)
     setThinking(false)
     setStreaming(false)
     setStaleBanner(false)
@@ -355,7 +371,7 @@ export function ChatPane({
     function onVis() {
       if (document.visibilityState === 'visible' && sessionStorage.getItem(key)) {
         sessionStorage.removeItem(key)
-        window.location.reload()
+        setStaleBanner(true)
       }
     }
     document.addEventListener('visibilitychange', onVis)
@@ -378,7 +394,7 @@ export function ChatPane({
             const body = (await res.json()) as SessionHeadResponse
             if (typeof body.size === 'number') {
               const known = knownHeadRef.current
-              if (body.file !== known.file || body.size !== known.size) {
+              if (body.unavailable !== known.unavailable || body.file !== known.file || body.size !== known.size) {
                 setStaleBanner(true)
               }
             }
@@ -396,6 +412,24 @@ export function ChatPane({
     }
   }, [agentId, initialSessionHead, staleBanner])
 
+  async function refreshConversationHistory() {
+    if (streamingRef.current) return
+    try {
+      const response = await fetch(`/api/agents/${encodeURIComponent(agentId)}/sessions/messages`)
+      if (!response.ok) throw new Error('Conversation history is unavailable. Your draft is preserved.')
+      const body = await response.json() as { messages: ProviderMessage[]; head: SessionHeadResponse }
+      if (currentAgentIdRef.current !== agentId) return
+      setHistoryUnavailable(body.head.unavailable ?? false)
+      setServerMessages(body.messages)
+      setLiveEntries([])
+      setEditIdx(null)
+      knownHeadRef.current = body.head
+      setStaleBanner(false)
+    } catch (error) {
+      pushSystem(error instanceof Error ? error.message : 'Could not refresh conversation')
+    }
+  }
+
   async function refreshKnownHead() {
     if (currentAgentIdRef.current !== agentId) return
     try {
@@ -403,7 +437,10 @@ export function ChatPane({
       if (!res.ok) return
       const body = (await res.json()) as SessionHeadResponse
       if (currentAgentIdRef.current === agentId && typeof body.size === 'number') {
-        knownHeadRef.current = { file: body.file ?? null, size: body.size }
+        const prior = knownHeadRef.current.selection
+        if (prior?.conversationId && prior.conversationId !== body.selection?.conversationId) { setStaleBanner(true); return }
+        setHistoryUnavailable(body.unavailable ?? false)
+        knownHeadRef.current = body
       }
     } catch {
       // swallow
@@ -466,32 +503,6 @@ export function ChatPane({
     }
   }
 
-  async function performReset() {
-    exitEditMode()
-    const res = await fetch(`/api/agents/${encodeURIComponent(agentId)}/chat/reset`, {
-      method: 'POST',
-    })
-    if (!res.ok) {
-      let message = res.statusText
-      try {
-        message = ((await res.json()) as { error?: string }).error || message
-      } catch {}
-      throw new Error(message)
-    }
-    setServerMessages([])
-    setLiveEntries([])
-    setSystemBubbles([])
-    pushSystem('/reset: history wiped')
-  }
-
-  async function runResetCommand() {
-    if (serverMessages.length === 0) {
-      pushSystem('/reset: history already empty')
-      return
-    }
-    setResetConfirmOpen(true)
-  }
-
   async function runCompactCommand(rest: string) {
     if (serverMessages.length < 2) {
       pushSystem('/compact: need ≥2 messages to compact')
@@ -510,7 +521,7 @@ export function ChatPane({
       const res = await fetch(`/api/agents/${encodeURIComponent(agentId)}/chat/compact`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(keepTail !== undefined ? { keepTail } : {}),
+        body: JSON.stringify({ keepTail, expectedSelection: knownHeadRef.current.selection }),
       })
       if (!res.ok) {
         let msg = res.statusText
@@ -546,8 +557,8 @@ export function ChatPane({
       case '/context':
         await runContextCommand()
         return true
-      case '/reset':
-        await runResetCommand()
+      case '/new':
+        setLibraryOpen(true)
         return true
       case '/compact':
         await runCompactCommand(rest)
@@ -583,7 +594,7 @@ export function ChatPane({
   // --- attachments (one generic list; the daemon classifies each: images →
   // vision, others → stored and referenced by path for the agent) ---
   async function addFiles(files: FileList | File[] | null) {
-    if (!files || turnBusy) return
+    if (!files) return
     const arr = Array.from(files)
     if (arr.length === 0) return
     const encoded = await Promise.all(arr.map(fileToAttachment))
@@ -601,10 +612,6 @@ export function ChatPane({
   function onDragOver(e: React.DragEvent) {
     if (!Array.from(e.dataTransfer.types).includes('Files')) return
     e.preventDefault()
-    if (turnBusy) {
-      setDragging(false)
-      return
-    }
     setDragging(true)
   }
   function onDragLeave(e: React.DragEvent) {
@@ -615,7 +622,6 @@ export function ChatPane({
     if (e.dataTransfer.files.length === 0) return
     e.preventDefault()
     setDragging(false)
-    if (turnBusy) return
     void addFiles(e.dataTransfer.files)
   }
 
@@ -623,7 +629,16 @@ export function ChatPane({
   const send = useCallback(
     async (text: string) => {
       const atts = attachments
-      if ((!text.trim() && atts.length === 0) || turnBusy) return
+      if (!text.trim() && atts.length === 0) return
+      if (!queueReady) { pushSystem('Queue status is loading. Your draft is preserved.'); return }
+      if (turnBusy || queueMode) {
+        const accepted = await queueRef.current?.enqueue(text, atts, knownHeadRef.current.selection)
+        if (accepted && currentAgentIdRef.current === agentId) {
+          setInput(current => current === text ? '' : current)
+          setAttachments(current => current === atts ? [] : current)
+        }
+        return
+      }
       setInput('')
 
       // Slash commands shortcut (text-only; leave any attachments pending).
@@ -640,7 +655,7 @@ export function ChatPane({
             {
               method: 'POST',
               headers: { 'content-type': 'application/json' },
-              body: JSON.stringify({ keepCount: keep }),
+              body: JSON.stringify({ keepCount: keep, expectedSelection: knownHeadRef.current.selection }),
             },
           )
           if (!res.ok) {
@@ -690,7 +705,7 @@ export function ChatPane({
         const res = await fetch(`/api/agents/${encodeURIComponent(agentId)}/chat`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(interactiveChatRequest(text, atts)),
+          body: JSON.stringify({ ...interactiveChatRequest(text, atts), expectedSelection: knownHeadRef.current.selection }),
           signal: abort.signal,
         })
         if (res.status === 202) {
@@ -708,6 +723,15 @@ export function ChatPane({
           sessionStorage.removeItem(`bz_pending_${agentId}`)
           return
         }
+        if (res.status === 409) {
+          setInput(text)
+          setAttachments(atts)
+          setLiveEntries([])
+          setStaleBanner(true)
+          sessionStorage.removeItem(`bz_pending_${agentId}`)
+          pushSystem('Conversation changed. Refresh history, then review and send your preserved draft.')
+          return
+        }
         if (!res.ok || !res.body) {
           let err = res.statusText
           try {
@@ -715,6 +739,15 @@ export function ChatPane({
           } catch {}
           setLiveEntries((prev) => [...prev, { type: 'error', content: `[error] ${err}` }])
           return
+        }
+        const admittedSelection = res.headers.get('x-bazilion-conversation-selection')
+        if (admittedSelection) {
+          try {
+            const selection = JSON.parse(admittedSelection)
+            if (typeof selection.conversationId === 'string' && Number.isSafeInteger(selection.revision) && selection.revision >= 0) {
+              knownHeadRef.current = { ...knownHeadRef.current, selection }
+            }
+          } catch {}
         }
         const reader = res.body.getReader()
         const decoder = new TextDecoder()
@@ -767,7 +800,7 @@ export function ChatPane({
       }
     },
     // biome-ignore lint/correctness/useExhaustiveDependencies: stable refs intentional
-    [agentId, editIdx, serverMessages, turnBusy, attachments],
+    [agentId, editIdx, serverMessages, turnBusy, queueMode, queueReady, attachments],
   )
 
   function handleFrame(frame: ChatFrame) {
@@ -864,6 +897,11 @@ export function ChatPane({
       return
     }
     if (ev.type === 'file') {
+      if (ev.result) {
+        const resultId = ev.result.resultId
+        setLiveEntries((prev) => [...prev, { type: 'result', resultId }])
+        return
+      }
       setLiveEntries((prev) => [
         ...prev,
         { type: 'file', name: ev.name, mimeType: ev.mimeType, data: ev.data },
@@ -949,40 +987,9 @@ export function ChatPane({
   }
 
   async function cancel() {
-    const hasLocalStream = currentAbortRef.current !== null
-    try {
-      const res = await fetch(`/api/agents/${encodeURIComponent(agentId)}/cancel`, {
-        method: 'POST',
-      })
-      if (currentAgentIdRef.current !== agentId) return
-      if (res.ok || res.status === 204) {
-        if (!hasLocalStream) {
-          commandApprovalTurnRef.current = false
-          setLiveEntries((entries) =>
-            entries.map((entry) =>
-              entry.type === 'command_approval' && entry.approval.status === 'pending'
-                ? {
-                    type: 'command_approval',
-                    approval: { ...entry.approval, status: 'cancelled' },
-                  }
-                : entry,
-            ),
-          )
-          setRecoveredTurn(false)
-        }
-        return
-      }
-    } catch {
-      // fall through to local fetch abort
-    }
-    if (currentAgentIdRef.current !== agentId) return
-    if (hasLocalStream) {
-      currentAbortRef.current?.abort()
-    } else {
-      setLiveEntries((entries) => [
-        ...entries,
-        { type: 'error', content: '[cancel failed] could not reach the active turn' },
-      ])
+    const stopped = await queueRef.current?.stop()
+    if (!stopped && currentAgentIdRef.current === agentId) {
+      pushSystem('Stop was not confirmed. Check queue controls and try again; the active response may still be running.')
     }
   }
 
@@ -1052,6 +1059,10 @@ export function ChatPane({
           Manage agent →
         </a>
       </div>
+      <div className="mx-5 mt-2">
+        <Button variant="ghost" aria-expanded={libraryOpen} onClick={() => setLibraryOpen(value => !value)}>{libraryOpen ? 'Close conversations' : 'Conversations'}</Button>
+      </div>
+      {historyUnavailable && <p role="alert" className="mx-5 mt-2 text-sm">Selected conversation history is unavailable. Open Conversations to start a new one; retained history and files stay listed.</p>}
       {staleBanner && (
         <div
           role="status"
@@ -1070,7 +1081,7 @@ export function ChatPane({
           </span>
           <button
             type="button"
-            onClick={() => window.location.reload()}
+            onClick={() => void refreshConversationHistory()}
             className="rounded-sm bg-sapphire px-3 py-1 text-[0.92em] text-snow hover:opacity-90"
           >
             reload
@@ -1094,9 +1105,10 @@ export function ChatPane({
         aria-live="polite"
         aria-relevant="additions"
         aria-busy={turnBusy}
-        className={`min-h-[240px] flex-1 overflow-y-auto px-5 py-5 ${editIdx !== null ? 'is-editing' : ''}`}
+        className={`min-h-0 flex-1 overflow-y-auto px-5 py-5 ${editIdx !== null ? 'is-editing' : ''}`}
       >
-        {baseEntries.length === 0 && liveEntries.length === 0 && systemBubbles.length === 0 && (
+      {libraryOpen && <ConversationLibrary initialConversationId={queueConversation} key={agentId} agentId={agentId} turnBusy={turnBusy} onCreated={refreshConversationHistory} renderHistory={messages => <ResultTranscript messages={messages} />} />}
+        {!historyUnavailable && baseEntries.length === 0 && liveEntries.length === 0 && systemBubbles.length === 0 && (
           <p className="py-12 text-center italic text-mocha-light">Start a conversation…</p>
         )}
         {(() => {
@@ -1214,7 +1226,7 @@ export function ChatPane({
       )}
 
       {attachments.length > 0 && (
-        <div className="flex flex-wrap gap-2 border-t border-frost bg-ivory px-5 pt-3">
+        <div className="flex max-h-24 shrink-0 flex-wrap gap-2 overflow-y-auto border-t border-frost bg-ivory px-5 pt-3">
           {attachments.map((a, i) => {
             const remove = () => setAttachments((prev) => prev.filter((_, j) => j !== i))
             return isImageMime(a.mimeType) ? (
@@ -1254,8 +1266,10 @@ export function ChatPane({
         </div>
       )}
 
+      <UserQueuePanel onViewConversation={id => { setQueueConversation(id); setLibraryOpen(true) }} key={agentId} ref={queueRef} agentId={agentId} selection={() => knownHeadRef.current.selection} onQueueMode={mode => { setQueueMode(mode); setQueueReady(true) }} />
+      <AgentQuestions key={`questions-${agentId}`} agentId={agentId} />
       <form
-        className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-end gap-2 border-t border-frost bg-ivory px-3 py-3 sm:px-5"
+        className="grid shrink-0 grid-cols-[auto_minmax(0,1fr)] items-end gap-2 border-t border-frost bg-ivory px-3 py-3 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:px-5"
         onSubmit={(e) => {
           e.preventDefault()
           void send(input)
@@ -1274,10 +1288,9 @@ export function ChatPane({
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
-          disabled={turnBusy}
           title="attach images or files"
           aria-label="attach files"
-          className="rounded-md border-[1.5px] border-frost bg-snow px-3 py-2 text-[1em] text-mocha transition-colors hover:border-sapphire hover:text-sapphire disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex h-11 items-center justify-center rounded-md border-[1.5px] border-frost bg-snow px-3 py-2 text-[1em] text-mocha transition-colors hover:border-sapphire hover:text-sapphire disabled:cursor-not-allowed disabled:opacity-50"
         >
           📎
         </button>
@@ -1288,51 +1301,20 @@ export function ChatPane({
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={onKeyDown}
           onPaste={onPaste}
-          disabled={turnBusy}
-          placeholder="say something… (Shift+Enter for newline; paste or 📎 to attach images/files)"
+          placeholder="Write a message…"
+          title="Shift+Enter for a new line. Paste or attach files with the paperclip."
           autoComplete="off"
           aria-label={`Message ${agentName}`}
-          className="max-h-[200px] min-h-[2.4rem] flex-1 resize-none overflow-y-auto rounded-md border-[1.5px] border-frost bg-snow px-3 py-2 text-[0.93em] leading-[1.45] text-chocolate outline-none transition-colors focus:border-sapphire focus:shadow-[0_0_0_3px_var(--color-sapphire-glow)]"
+          className="max-h-[200px] min-h-11 min-w-0 flex-1 resize-none overflow-y-auto rounded-md border-[1.5px] border-frost bg-snow px-3 py-2 text-[0.93em] leading-[1.45] text-chocolate outline-none transition-colors focus:border-sapphire focus:shadow-[0_0_0_3px_var(--color-sapphire-glow)]"
         />
-        {turnBusy ? (
-          <button
-            type="button"
-            onClick={cancel}
-            aria-label="Cancel current response"
-            className="rounded-md border-[1.5px] border-danger bg-transparent px-3 py-2 text-[0.92em] font-medium text-danger hover:bg-danger/10"
-          >
-            Cancel
-          </button>
-        ) : (
-          <button
-            type="submit"
-            disabled={!input.trim() && attachments.length === 0}
-            className="rounded-md bg-sapphire px-4 py-2 text-[0.92em] font-semibold text-snow transition-colors hover:bg-sapphire-deep disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Send
-          </button>
-        )}
+        <div className="col-span-2 flex flex-wrap justify-end gap-2 sm:col-span-1">
+          <Button variant="primary" type="submit" className="min-h-11 whitespace-normal text-center" disabled={!input.trim() && attachments.length === 0}>
+            {turnBusy || queueMode ? 'Queue follow-up' : 'Send'}
+          </Button>
+          {turnBusy && <Button variant="danger" className="min-h-11" onClick={() => void cancel()} aria-label="Stop response and pause queue">Stop</Button>}
+        </div>
       </form>
-      <ConfirmDialog
-        open={resetConfirmOpen}
-        onOpenChange={setResetConfirmOpen}
-        title={`Reset chat with ${agentName}?`}
-        description={
-          <p>
-            This permanently wipes the persisted session history for this Agent. Agent files,
-            Team memory, and other Agent settings are not changed.
-          </p>
-        }
-        confirmLabel="Reset chat history"
-        onConfirm={async () => {
-          try {
-            await performReset()
-          } catch (error) {
-            pushSystem(`/reset failed: ${error instanceof Error ? error.message : String(error)}`)
-            throw error
-          }
-        }}
-      />
+
     </div>
   )
 }
@@ -1488,6 +1470,7 @@ function Bubble({
       </div>
     )
   }
+  if (entry.type === 'result') return <ResultCard resultId={entry.resultId} />
   if (entry.type === 'file') {
     const isImage = entry.mimeType.startsWith('image/')
     const href = `data:${entry.mimeType};base64,${entry.data}`
@@ -1746,5 +1729,19 @@ function Dot({ delay = '0s' }: { delay?: string }) {
       style={{ animationDelay: delay }}
       aria-hidden="true"
     />
+  )
+}
+
+/** Read-only projection used when opening the exact available source of a saved result. */
+export function ResultTranscript({ messages }: { messages: ProviderMessage[] }) {
+  const markdownReady = useSyncExternalStore(
+    subscribeToHydration, browserMarkdownReady, serverMarkdownReady,
+  )
+  return (
+    <div aria-label="Source conversation">
+      {projectMessages(messages).map((entry, index) => (
+        <Bubble key={index} entry={entry} markdownReady={markdownReady} />
+      ))}
+    </div>
   )
 }

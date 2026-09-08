@@ -54,6 +54,8 @@ export interface ProtectedWorkerPaths {
 }
 
 export interface ConfiguredOperatorHttpWorkerSpec {
+  questionEnabled?: boolean
+  conversation: import('@bazilion/api-types').ConversationTarget
   kind: 'configured_operator_http'
   /** Pre-resolved agent record — the worker never queries the DB itself. */
   agent: ResolvedAgent
@@ -68,6 +70,8 @@ export interface ConfiguredOperatorHttpWorkerSpec {
 }
 
 export interface ProtectedWorkerSpec {
+  questionEnabled?: boolean
+  conversation: import('@bazilion/api-types').ConversationTarget
   kind: 'protected'
   agent: ResolvedAgent
   message: string
@@ -125,6 +129,8 @@ const REASONING_LEVELS = new Set<ReasoningLevel>([
 ])
 
 const CONFIGURED_KEYS = new Set([
+  'questionEnabled',
+  'conversation',
   'kind',
   'agent',
   'message',
@@ -138,6 +144,7 @@ const CONFIGURED_KEYS = new Set([
   'bashApprovalMode',
 ])
 const CONFIGURED_REQUIRED_KEYS = new Set([
+  'conversation',
   'kind',
   'agent',
   'message',
@@ -147,6 +154,8 @@ const CONFIGURED_REQUIRED_KEYS = new Set([
   'bashApprovalMode',
 ])
 const PROTECTED_KEYS = new Set([
+  'questionEnabled',
+  'conversation',
   'kind',
   'agent',
   'message',
@@ -160,7 +169,9 @@ const PROTECTED_KEYS = new Set([
   'apiKeyRefreshEnabled',
   'scratch',
 ])
-const PROTECTED_REQUIRED_KEYS = new Set([...PROTECTED_KEYS].filter((key) => key !== 'images'))
+const PROTECTED_REQUIRED_KEYS = new Set(
+  [...PROTECTED_KEYS].filter((key) => key !== 'images' && key !== 'questionEnabled'),
+)
 const REVIEW_KEYS = new Set([
   'kind',
   'agentId',
@@ -265,6 +276,8 @@ export function validateMinimalWorkerProcessEnv(
 export function parseWorkerInput(value: unknown): WorkerInput {
   const input = objectRecord(value, 'worker input')
   const kind = input.kind
+  if (input.questionEnabled !== undefined && typeof input.questionEnabled !== 'boolean')
+    throw new Error('Invalid worker question capability')
   if (kind === 'configured_operator_http') {
     assertExactKeys(input, CONFIGURED_KEYS, 'configured worker input', CONFIGURED_REQUIRED_KEYS)
     if (!isResolvedAgent(input.agent)) throw new Error('worker: configured input requires an agent')
@@ -273,6 +286,7 @@ export function parseWorkerInput(value: unknown): WorkerInput {
       throw new Error('worker: configured input requires enabledProviders')
     }
     requireString(input.turnId, 'turnId')
+    assertConversationTarget(input.conversation)
     if (input.bashApprovalMode !== 'interactive' && input.bashApprovalMode !== 'auto_deny') {
       throw new Error('worker: configured input requires a valid bashApprovalMode')
     }
@@ -295,6 +309,7 @@ export function parseWorkerInput(value: unknown): WorkerInput {
     if (!isResolvedAgent(input.agent)) throw new Error('worker: protected input requires an agent')
     requireString(input.message, 'message')
     requireString(input.turnId, 'turnId')
+    assertConversationTarget(input.conversation)
     if (input.bashApprovalMode !== 'auto_deny') {
       throw new Error('worker: protected input requires auto-deny shell approval')
     }
@@ -929,4 +944,15 @@ function lexicallyWithin(root: string, candidate: string): boolean {
 export async function checkMinimalWorkerScratch(scratch: MinimalWorkerScratch): Promise<void> {
   assertMinimalWorkerScratch(scratch)
   for (const path of Object.values(scratch)) await access(path, constants.R_OK | constants.W_OK)
+}
+
+function assertConversationTarget(value: unknown): void {
+  const target = objectRecord(value, 'conversation target')
+  assertExactKeys(target, new Set(['id', 'filename']), 'conversation target')
+  if (
+    typeof target.id !== 'string' ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(target.id) ||
+    target.filename !== `${target.id}.jsonl`
+  )
+    throw new Error('Invalid worker conversation target')
 }

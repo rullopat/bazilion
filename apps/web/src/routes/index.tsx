@@ -77,18 +77,13 @@ const fetchHomeData = createServerFn({ method: 'POST' })
         // 404 here so the pane goes empty. Hard-deleted agents already
         // 404 from the GET above and are caught below.
         if (resolved.agent.status !== 'archived') {
-          const [msgs, head] = await Promise.all([
-            client.get<{ messages: ProviderMessage[] }>(
-              `/api/agents/${encodeURIComponent(resolved.agent.id)}/sessions/messages`,
-            ),
-            client.get<SessionHeadResponse>(
-              `/api/agents/${encodeURIComponent(resolved.agent.id)}/sessions/head`,
-            ),
-          ])
+          const msgs = await client.get<{ messages: ProviderMessage[]; head: SessionHeadResponse }>(
+            `/api/agents/${encodeURIComponent(resolved.agent.id)}/sessions/messages`,
+          )
           selected = {
             resolved,
             initialMessages: msgs.messages,
-            sessionHead: head,
+            sessionHead: msgs.head,
           }
         }
       } catch (err) {

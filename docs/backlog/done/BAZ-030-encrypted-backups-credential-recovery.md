@@ -6,6 +6,7 @@ size: L
 created: 2026-08-23
 refined: 2026-08-26
 shipped: 2026-08-26
+release: v0.13.0
 priority: medium
 note: Protect the complete auth.json plus database credential bundle produced by BAZ-024 and define bounded recovery for a personal Telegram, web, and mobile server.
 ---

@@ -4,6 +4,10 @@ import { join } from 'node:path'
 import type { ChatFrame, CommandApproval } from '@bazilion/api-types'
 import { afterAll, beforeAll, beforeEach, expect, test } from 'vitest'
 import { openDb, resolveAgent, resolvePaths } from '../../daemon/src/core/index.ts'
+import {
+  resolveConversationTarget,
+  selectedConversationTarget,
+} from '../../daemon/src/lib/conversation-target.ts'
 import { countSessionMessagesForTest, seedSessionForTest } from '../../daemon/src/runtime/index.ts'
 import { extractAgentId } from './helpers.ts'
 import { startTestServer, type TestServer } from './server-fixture.ts'
@@ -263,7 +267,11 @@ async function runInteractiveBashDecision(decision: 'allow' | 'deny'): Promise<{
   const response = await fetch(`${server.url}/api/agents/${agentId}/chat`, {
     method: 'POST',
     headers: authHeaders(true),
-    body: JSON.stringify({ message: 'run the requested command', bashApprovalMode: 'interactive' }),
+    body: JSON.stringify({
+      message: 'run the requested command',
+      bashApprovalMode: 'interactive',
+      expectedSelection: { conversationId: null, revision: 0 },
+    }),
   })
   expect(response.status).toBe(200)
   expect(response.body).not.toBeNull()
@@ -397,7 +405,11 @@ test('cancelling a turn releases its pending approval and never executes the com
   const response = await fetch(`${server.url}/api/agents/${agentId}/chat`, {
     method: 'POST',
     headers: authHeaders(true),
-    body: JSON.stringify({ message: 'run it', bashApprovalMode: 'interactive' }),
+    body: JSON.stringify({
+      message: 'run it',
+      bashApprovalMode: 'interactive',
+      expectedSelection: { conversationId: null, revision: 0 },
+    }),
   })
   const reader = response.body?.getReader()
   const decoder = new TextDecoder()
@@ -686,7 +698,7 @@ function seedChatHistory(home: string, agentId: string, n: number): void {
         ? { role: 'user' as const, text: `msg ${i}` }
         : { role: 'assistant' as const, text: `reply ${i}` },
     )
-    seedSessionForTest(resolved, paths, messages)
+    seedSessionForTest(resolved, paths, messages, resolveConversationTarget(db, paths, agentId))
   } finally {
     db.close()
   }
@@ -697,20 +709,24 @@ function readChatLen(home: string, agentId: string): number {
   const db = openDb(paths.db)
   try {
     const resolved = resolveAgent(db, paths, agentId)
-    return countSessionMessagesForTest(resolved, paths)
+    return countSessionMessagesForTest(resolved, paths, selectedConversationTarget(db, agentId))
   } finally {
     db.close()
   }
 }
 
-test('agent chat-reset --force wipes history without prompting', async () => {
+test('New conversation retains prior history while starting empty', async () => {
   const agentId = await spawnLmStudioAgent()
   seedChatHistory(server.home, agentId, 6)
   expect(readChatLen(server.home, agentId)).toBe(6)
 
-  const r = await server.cli(['agent', 'chat-reset', agentId, '--force'])
+  const old = JSON.parse((await server.cli(['conversation', 'list', agentId, '--json'])).stdout)
+    .selection.conversationId
+  const r = await server.cli(['conversation', 'new', agentId])
   expect(r.exitCode).toBe(0)
-  expect(r.stdout).toContain('reset')
+  expect(r.stdout).toContain('Conversation')
+  const retained = await server.cli(['conversation', 'show', agentId, old, '--json'])
+  expect(JSON.parse(retained.stdout).messages).toHaveLength(6)
   expect(readChatLen(server.home, agentId)).toBe(0)
 })
 
@@ -774,6 +790,7 @@ test('agent chat-context --json emits the structured ChatContextResponse', async
 
 test('agent chat-context on an empty history returns zero history entries', async () => {
   const agentId = await spawnLmStudioAgent()
+  seedChatHistory(server.home, agentId, 0)
   const r = await server.cli(['agent', 'chat-context', agentId, '--json'])
   expect(r.exitCode).toBe(0)
   const body = JSON.parse(r.stdout)

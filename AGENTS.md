@@ -155,6 +155,16 @@ API in `apps/daemon/src/core/`: `openSecrets(db, password)` and `openConfig(db)`
 
 ## Implemented for the next release (don't re-implement)
 
+- **BAZ-034: durable Agent results.** Explicit `deliver_file` calls await turn-bound daemon IPC
+  publication into `agent_results` in `Paths.db`. Bytes, SHA-256 and source provenance commit
+  together; canonical Pi tool-result details retain the opaque reference. Private receipts become
+  owner-visible only through the shared Agent-to-user authorizer/approval dispatcher. Background
+  library delivery uses the closed `agent_result` approval tuple; HTTP and Telegram retain their
+  transport-owned attempts. Results use `/api/results`, `bazilion result`, persistent chat cards,
+  Team Results and native browser handoff. Limits are 25 MiB/file and 1 GiB retained bytes/home.
+  Deletion tombstones cannot resurrect; Agent transfer/deletion retain original Team provenance,
+  Team deletion cascades, and backup/restore verifies blob hashes. See `docs/results.md`.
+
 - **BAZ-031: provider-neutral protected runtime.** Every provider id in Bazilion's pinned Pi
   registry is exhaustively accounted for. Protected and restricted-review workers receive only the
   selected model id, reasoning level, selected API/OAuth credential, optional validated endpoint,

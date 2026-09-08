@@ -36,6 +36,7 @@ describe('inline shell command approval', () => {
       message: 'run it',
       attachments: [],
       bashApprovalMode: 'interactive',
+      questionMode: 'web',
     })
     expect(shellApprovalsUrl('agent/one')).toBe(
       '/api/shell-approvals?agentId=agent%2Fone',
