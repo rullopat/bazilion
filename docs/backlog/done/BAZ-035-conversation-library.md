@@ -1,12 +1,14 @@
 ---
 id: BAZ-035
 title: Conversation library and safe new conversations
-status: in_progress
+status: done
+shipped: 2026-09-08
+release: v0.15.0
 size: L
 created: 2026-09-07
 priority: high
 refined: 2026-09-07
-note: Selected for PR 44; explicit conversation foundation implementation underway.
+note: Shipped in v0.15.0 through PRs 44 and 45; includes guided acceptance and UI follow-up.
 ---
 
 # BAZ-035 — Conversation library and safe new conversations
@@ -93,7 +95,7 @@ copy their storage, branching, or desktop architecture.
   or routing record, never a second copy of chat history or a revived runs/events subsystem.
 - Establish an immutable, Agent-scoped conversation identity independent of display title and active
   selection. Preserve canonical transcript-entry identities through rename, viewing, and selection.
-- Coordinate with [BAZ-034](../in_progress/BAZ-034-durable-agent-deliverables.md): artifact provenance links to the
+- Coordinate with [BAZ-034](../done/BAZ-034-durable-agent-deliverables.md): artifact provenance links to the
   original conversation and canonical source entry. New conversation, rename, or resume must not
   retarget a delivery, break an existing download, or confuse two same-named outputs.
 - Resolve requested identities through the owning Agent and validated canonical session metadata;
@@ -178,7 +180,7 @@ Track implementation and per-criterion verification in
 
 ## Implementation and acceptance evidence
 
-Committed in draft PR #44 at `0af1061`; pending release. See the
+Committed in draft PR #44 at `0af1061`; released in v0.15.0. See the
 [operator guide](../../conversations.md) and [milestone ledger](../BAZ-035-038-progress.md)
 for repeatable flows, detailed criterion evidence and passing integrated checks.
 
@@ -187,3 +189,10 @@ for repeatable flows, detailed criterion evidence and passing integrated checks.
 | Library and explicit selection | Conversation repository, route and CLI tests cover retained list/read/rename/New, canonical identity, revision checks and idempotent creation. |
 | Exact routing and stale-client safety | `conversation-target.test.ts`, turn preparation and delayed-dispatch tests cover captured targets; browser acceptance exercises retained history and safe New conversation. |
 | Recovery and provenance | `conversation-file.test.ts` and source/history checks enforce bounded canonical reads, missing/corrupt-file failure and private review exclusion. Backup and result tests run in the integrated suite. |
+
+## As-built release record
+
+Shipped in [v0.15.0](https://github.com/rullopat/bazilion/releases/tag/v0.15.0) on 2026-09-08
+through PR #44 and version PR #45. Earlier implementation checkpoint notes are historical.
+The complete first-slice scope above is delivered; stated exclusions remain deferred.
+See the milestone ledger for integrated, guided browser and release verification evidence.

@@ -16,13 +16,11 @@ commits/push and passing final CI. Merge, versioning, publication and deployment
 
 ## Current status
 
-All four full first-slice implementations are committed and pushed into draft PR #44, preserving
-BAZ-034. BAZ-035 (`0af1061`), BAZ-036 (`fa126ac`), BAZ-037 (`6e37e77`) and BAZ-038
-(`4f34efc`) each passed CI. The final implementation run is
-[34154111191](https://github.com/rullopat/bazilion/actions/runs/34154111191).
-The final documentation commit and its exact-SHA CI are the remaining publication-to-PR check.
-Stories remain `in_progress` because `done` means shipped; package versions remain 0.14.2 with
-pending minor Changesets. Merge, versioning, release publication and deployment are excluded.
+BAZ-034 through BAZ-038 shipped in [v0.15.0](https://github.com/rullopat/bazilion/releases/tag/v0.15.0)
+on 2026-09-08. PR #44 delivered implementation and guided UI fixes; PR #45 versioned the three public
+packages together. Both passed CI before merge, followed by successful npm publication and independent
+published-package verification. The stories now live in `done/`; earlier checkpoint notes below are
+historical. The initial goal excluded publication; the operator authorized this release separately.
 
 ## Starting evidence (historical)
 
@@ -1152,3 +1150,17 @@ Desktop and 390px browser checks covered alignment, wrapping, keyboard selection
 expanded receipt details and the duplicate warning without submitting additional work. Screenshots
 and verification scripts are under `/tmp/baz-semi-auto/`. Web typechecking, the production web build and diff checks passed on the final local follow-up.
 CI is checked at its pushed SHA before reporting PR delivery complete.
+
+### 2026-09-08 release signoff
+
+PR #44 merged after CI passed at `b213880`; PR #45 passed CI at `0f1b69d` before merging.
+All public packages published as 0.15.0, with umbrella release `v0.15.0`. Fresh-home verification
+found only `0001_init`. The website adds five feature guides and a 0.15.0 announcement, and
+reconciles older web, Telegram, backup, mobile, operations and upgrade documentation.
+Website validation passed 1,097 internal links/anchors and eight routes at desktop/390px.
+Publication, final repository SHAs and live deployment are verified separately from these local gates.
+
+Release commit: `9f8276a70f8047863dea7c486713989f18313e83`; successful publication run
+[34207761525](https://github.com/rullopat/bazilion/actions/runs/34207761525). All three npm
+latest tags and annotated package tags were independently checked. A fresh temporary npm install
+reported CLI version `0.15.0`. Website commit: `a82948c1af9cda9224ddb46cf319d3aac24bce52`.

@@ -120,8 +120,8 @@ Verified against Bazilion `13c3a63` (v0.14.2) on 2026-09-07:
 - Later increment after [BAZ-039](BAZ-039-repository-coding-context.md),
   [BAZ-040](BAZ-040-coding-environment-readiness.md), and
   [BAZ-042](BAZ-042-git-change-review.md) establish repository/environment/snapshot contracts.
-- Coordinate queued targeting with [BAZ-035](../in_progress/BAZ-035-conversation-library.md) and
-  [BAZ-036](../in_progress/BAZ-036-visible-follow-up-queue.md); retained requests must never follow a changed cwd.
+- Coordinate queued targeting with [BAZ-035](../done/BAZ-035-conversation-library.md) and
+  [BAZ-036](../done/BAZ-036-visible-follow-up-queue.md); retained requests must never follow a changed cwd.
 - Refine layout and cleanup before moving to todo. If metadata mediation and lifecycle exceed L,
   split workspace admission/ownership from managed checkout creation into separate implementation
   stories. The initial coding milestone does not wait for this feature.

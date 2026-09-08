@@ -1,12 +1,14 @@
 ---
 id: BAZ-034
 title: Durable agent deliverables and a Team results library
-status: in_progress
+status: done
+shipped: 2026-09-08
+release: v0.15.0
 refined: 2026-09-07
 size: M
 created: 2026-09-07
 priority: high
-note: Implementation validated locally; pending commit and release. Evidence is in the implementation record.
+note: Shipped in v0.15.0 through PRs 44 and 45; includes guided acceptance and UI follow-up.
 ---
 
 # BAZ-034 — Durable agent deliverables and a Team results library
@@ -175,3 +177,10 @@ packaging, and reconstructing unavailable historic output bytes.
   report unavailable history when the current chat is no longer the originating session.
 - Keep the complete story together; implement and validate in checkpoints. The provisional M
   estimate is not a scope cap.
+
+## As-built release record
+
+Shipped in [v0.15.0](https://github.com/rullopat/bazilion/releases/tag/v0.15.0) on 2026-09-08
+through PR #44 and version PR #45. Earlier implementation checkpoint notes are historical.
+The complete first-slice scope above is delivered; stated exclusions remain deferred.
+See the milestone ledger for integrated, guided browser and release verification evidence.

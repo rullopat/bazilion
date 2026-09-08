@@ -1,12 +1,14 @@
 ---
 id: BAZ-036
 title: Visible, durable follow-up queue
-status: in_progress
+status: done
+shipped: 2026-09-08
+release: v0.15.0
 size: L (1-2 weeks)
 created: 2026-09-07
 refined: 2026-09-07
 priority: high
-note: Depends on BAZ-035 explicit session targeting; extends user ingress without replacing scheduler or approval dispatch.
+note: Shipped in v0.15.0 through PRs 44 and 45; includes guided acceptance and UI follow-up.
 ---
 
 # BAZ-036 — Visible, durable follow-up queue
@@ -50,7 +52,7 @@ completed, obtained communication approval, or delivered a response.
 
 ## Dependencies
 
-- [BAZ-035](../in_progress/BAZ-035-conversation-library.md): agree its explicit session-targeting contract before
+- [BAZ-035](../done/BAZ-035-conversation-library.md): agree its explicit session-targeting contract before
   implementing this queue; the full conversation search UI need not ship first. Freeze the target
   at acceptance; UI session changes cannot retarget it. Cross-session items serialize by Agent.
 - Reuse shipped BAZ-014 approval ownership, BAZ-019 scheduler admission, BAZ-027/031 protected
@@ -219,7 +221,7 @@ Track implementation, races and acceptance evidence in
 
 ## Implementation and acceptance evidence
 
-Committed in draft PR #44 at `fa126ac`; pending release. See the
+Committed in draft PR #44 at `fa126ac`; released in v0.15.0. See the
 [operator guide](../../follow-up-queue.md) and [milestone ledger](../BAZ-035-038-progress.md)
 for repeatable flows, detailed criterion evidence and passing integrated checks.
 
@@ -228,3 +230,10 @@ for repeatable flows, detailed criterion evidence and passing integrated checks.
 | Durable FIFO and controls | `core/user-queue.test.ts` and `routes/user-queue.test.ts` cover idempotency, bounded attachments, edit/remove, pause/resume/Stop, claim races and restart uncertainty. |
 | Admission and canonical approvals | `user-queue-admission.test.ts` and `user-queue-approved.test.ts` cover exact targets, protected execution, policy holds and single dispatch ownership. |
 | Cross-client delivery and recovery | `telegram-queue-binding.test.ts` checks retained owner/topic identity. Web/CLI/Telegram evidence and staged-restore reconciliation are recorded in the milestone ledger; uncertain work is not automatically replayed. |
+
+## As-built release record
+
+Shipped in [v0.15.0](https://github.com/rullopat/bazilion/releases/tag/v0.15.0) on 2026-09-08
+through PR #44 and version PR #45. Earlier implementation checkpoint notes are historical.
+The complete first-slice scope above is delivered; stated exclusions remain deferred.
+See the milestone ledger for integrated, guided browser and release verification evidence.

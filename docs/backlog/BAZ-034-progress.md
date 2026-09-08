@@ -283,3 +283,9 @@ BAZ-034 is the first implementation in the draft `release/0.15.0` collection bra
 pre-PR full-suite run passed: **1,223 tests passed, 3 skipped**, 148 test files passed and one skipped
 (`/tmp/baz034-pr-tests.log`). The minor Changeset remains pending while additional stories are
 selected and implemented; package versioning and publication follow the existing release workflow.
+
+## Release signoff — 2026-09-08
+
+BAZ-034 shipped with BAZ-035–038 in [v0.15.0](https://github.com/rullopat/bazilion/releases/tag/v0.15.0),
+release commit `9f8276a`, after green PR #44 and version PR #45. npm publication, package tags and
+a fresh published CLI invocation were verified. Earlier pending-release checkpoints are historical.

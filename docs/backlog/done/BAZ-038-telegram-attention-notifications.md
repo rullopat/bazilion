@@ -1,12 +1,14 @@
 ---
 id: BAZ-038
 title: Opt-in Telegram delivery of existing Attention items
-status: in_progress
+status: done
+shipped: 2026-09-08
+release: v0.15.0
 size: M
 created: 2026-09-07
 refined: 2026-09-07
 priority: medium
-note: Independent candidate alongside BAZ-034 through BAZ-037; consumes the existing Attention projection.
+note: Shipped in v0.15.0 through PRs 44 and 45; includes guided acceptance and UI follow-up.
 ---
 
 # BAZ-038 — Opt-in Telegram delivery of existing Attention items
@@ -221,7 +223,7 @@ Web and actual CLI demonstrations now pass against a disposable daemon and fake 
 See [the progress log](../BAZ-035-038-progress.md) for exact integrated acceptance evidence,
 and [the operator guide](../../attention-notifications.md) for controls and recovery semantics.
 The implementation is committed in PR #44 at `4f34efc`, with passing integrated checks and CI.
-The story remains unshipped.
+The story shipped in v0.15.0.
 
 ## Acceptance evidence for PR #44
 
@@ -239,3 +241,10 @@ The story remains unshipped.
 
 The repeatable fixture is `scripts/demo-notifications.mts`; all external Telegram responses are
 simulated. Final integration logs, commit/push and CI status remain in the milestone progress log.
+
+## As-built release record
+
+Shipped in [v0.15.0](https://github.com/rullopat/bazilion/releases/tag/v0.15.0) on 2026-09-08
+through PR #44 and version PR #45. Earlier implementation checkpoint notes are historical.
+The complete first-slice scope above is delivered; stated exclusions remain deferred.
+See the milestone ledger for integrated, guided browser and release verification evidence.

@@ -1,7 +1,9 @@
 ---
 id: BAZ-037
 title: Structured agent questions across web, CLI, and Telegram
-status: in_progress
+status: done
+shipped: 2026-09-08
+release: v0.15.0
 size: L
 created: 2026-09-07
 refined: 2026-09-07
@@ -220,7 +222,7 @@ on a persistent workflow engine or changing its single-operator model.
 
 ## Implementation and acceptance evidence
 
-The implementation is committed in PR #44 at `6e37e77`; this story remains unshipped. Passing
+The implementation is committed in PR #44 at `6e37e77`; this story shipped in v0.15.0. Passing
 integrated checks and commit references are tracked in [the milestone progress log](../BAZ-035-038-progress.md).
 See [Agent questions](../../questions.md) for operator instructions and the repeatable real-worker demo.
 
@@ -237,3 +239,10 @@ See [Agent questions](../../questions.md) for operator instructions and the repe
 Browser evidence includes desktop and 390px layouts, keyboard focus/submission and no horizontal
 overflow. Telegram evidence uses fake APIs and protected preflight; no live external Telegram
 message was sent. These checks do not claim native question controls or real-device acceptance.
+
+## As-built release record
+
+Shipped in [v0.15.0](https://github.com/rullopat/bazilion/releases/tag/v0.15.0) on 2026-09-08
+through PR #44 and version PR #45. Earlier implementation checkpoint notes are historical.
+The complete first-slice scope above is delivered; stated exclusions remain deferred.
+See the milestone ledger for integrated, guided browser and release verification evidence.

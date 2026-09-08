@@ -133,10 +133,10 @@ Verified against Bazilion `13c3a63` (v0.14.2) on 2026-09-07:
 - Depends on [BAZ-040](BAZ-040-coding-environment-readiness.md) environment/check definitions and
   workspace coordination, [BAZ-041](BAZ-041-coding-command-verification.md) execution evidence, and
   [BAZ-042](BAZ-042-git-change-review.md) snapshot identity. Deliver after the first coding milestone.
-- Reuses [BAZ-034](../in_progress/BAZ-034-durable-agent-deliverables.md) retained bytes; this story owns the narrow
-  Agent-to-Agent access extension. [BAZ-035](../in_progress/BAZ-035-conversation-library.md) supplies exact source
+- Reuses [BAZ-034](../done/BAZ-034-durable-agent-deliverables.md) retained bytes; this story owns the narrow
+  Agent-to-Agent access extension. [BAZ-035](../done/BAZ-035-conversation-library.md) supplies exact source
   conversation identity without requiring a second chat store.
-- Align with [BAZ-036](../in_progress/BAZ-036-visible-follow-up-queue.md) for admission/visibility; its user-input
+- Align with [BAZ-036](../done/BAZ-036-visible-follow-up-queue.md) for admission/visibility; its user-input
   queue must not take ownership of specialist or approval dispatch. Its complete UI is not required.
 - [BAZ-043](BAZ-043-isolated-coding-workspaces.md) enables parallel checkouts later, not a prerequisite
   for coordinated same-Team checks. [BAZ-044](BAZ-044-coding-review-handoff.md) can consume these

@@ -131,7 +131,7 @@ and [Pi shell implementation at v0.85.1](https://github.com/earendil-works/pi/bl
   checks; generic live output/receipt plumbing can land first with deterministic fixture commands.
 - [BAZ-042](BAZ-042-git-change-review.md) shares snapshot identity, exclusions, and freshness
   semantics. Agree that contract first; neither story requires the other's full presentation UI.
-- [BAZ-034](../in_progress/BAZ-034-durable-agent-deliverables.md) informs retained-byte lifecycle and access.
+- [BAZ-034](../done/BAZ-034-durable-agent-deliverables.md) informs retained-byte lifecycle and access.
   Resolve log-specific expiry and internal Agent access without making every log a published result.
 - Deliver bounded streaming and retention first, then snapshot-bound check execution and clients.
   Split implementation if both cannot fit L without weakening admission, evidence, or access rules.

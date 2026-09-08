@@ -41,7 +41,7 @@ docs/backlog/
 | [BAZ-046](draft/BAZ-046-controlled-deployment-execution.md) | Controlled deployment execution and verified outcomes | L | After specialist testing: one configured backend, exact release authorization, and observed deployment/health |
 
 Drafted on 2026-09-07 from the OpenClaw 2.0 / Hermes desktop review and current Bazilion code.
-BAZ-034 through BAZ-038 are committed in draft PR #44 for 0.15.0, pending release. Track decisions and acceptance evidence
+BAZ-034 through BAZ-038 shipped in v0.15.0 through PRs #44 and #45. Track decisions and acceptance evidence
 in [the milestone progress log](BAZ-035-038-progress.md). Sizes are provisional; each draft records
 open decisions and boundaries to resolve before moving to `todo/`. Desktop packaging and Team
 conversation views remain later ideas rather than part of this initial slice.
@@ -70,20 +70,20 @@ approval into permission to deploy.
 | ID | Title | Size | Notes |
 |----|-------|------|-------|
 
-## In Progress (5)
+## In Progress (0)
 
 | ID | Title | Size | Notes |
 |----|-------|------|-------|
-| [BAZ-034](in_progress/BAZ-034-durable-agent-deliverables.md) | Durable agent deliverables and a Team results library | M | Committed in PR #44; pending release |
-| [BAZ-035](in_progress/BAZ-035-conversation-library.md) | Conversation library and safe new conversations | L | Committed in PR #44; retained conversations and explicit targeting |
-| [BAZ-036](in_progress/BAZ-036-visible-follow-up-queue.md) | Visible, durable follow-up queue | L | Committed in PR #44; durable follow-ups across clients |
-| [BAZ-037](in_progress/BAZ-037-structured-agent-questions.md) | Structured agent questions across web, CLI, and Telegram | L | Committed in PR #44; correlated live clarification and consumption evidence |
-| [BAZ-038](in_progress/BAZ-038-telegram-attention-notifications.md) | Opt-in Telegram delivery of existing Attention items | M | Committed in PR #44; opt-in notices, durable receipts and restore pause |
 
-## Done (28)
+## Done (33)
 
 | ID | Title | Size | Shipped | Release | Notes |
 |----|-------|------|---------|---------|-------|
+| [BAZ-034](done/BAZ-034-durable-agent-deliverables.md) | Durable agent deliverables and a Team results library | M | 2026-09-08 | [v0.15.0](https://github.com/rullopat/bazilion/releases/tag/v0.15.0) | Implemented in PR #44; guided acceptance and release verified |
+| [BAZ-035](done/BAZ-035-conversation-library.md) | Conversation library and safe new conversations | L | 2026-09-08 | [v0.15.0](https://github.com/rullopat/bazilion/releases/tag/v0.15.0) | Implemented in PR #44; guided acceptance and release verified |
+| [BAZ-036](done/BAZ-036-visible-follow-up-queue.md) | Visible, durable follow-up queue | L (1-2 weeks) | 2026-09-08 | [v0.15.0](https://github.com/rullopat/bazilion/releases/tag/v0.15.0) | Implemented in PR #44; guided acceptance and release verified |
+| [BAZ-037](done/BAZ-037-structured-agent-questions.md) | Structured agent questions across web, CLI, and Telegram | L | 2026-09-08 | [v0.15.0](https://github.com/rullopat/bazilion/releases/tag/v0.15.0) | Implemented in PR #44; guided acceptance and release verified |
+| [BAZ-038](done/BAZ-038-telegram-attention-notifications.md) | Opt-in Telegram delivery of existing Attention items | M | 2026-09-08 | [v0.15.0](https://github.com/rullopat/bazilion/releases/tag/v0.15.0) | Implemented in PR #44; guided acceptance and release verified |
 | [BAZ-033](done/BAZ-033-product-experience-hardening.md) | Product experience hardening across web and mobile | L | 2026-08-29 | [v0.14.0](https://github.com/rullopat/bazilion/releases/tag/v0.14.0) | First-run, chat, navigation, configuration, responsive, accessibility, and destructive-action UX hardening |
 | [BAZ-031](done/BAZ-031-protected-runtime-provider-expansion.md) | Provider-neutral protected runtime | L | 2026-08-27 | [v0.13.0](https://github.com/rullopat/bazilion/releases/tag/v0.13.0) | Exhaustive credential-minimal protected execution for every provider in the pinned Pi catalog |
 | [BAZ-032](done/BAZ-032-personal-server-security-acceptance.md) | Personal-server adversarial security acceptance gate | M | 2026-08-26 | [v0.13.0](https://github.com/rullopat/bazilion/releases/tag/v0.13.0) | 60-case deterministic cross-boundary release gate for BAZ-027 through BAZ-031, with live posture evidence kept separate |
