@@ -24,7 +24,7 @@ export function AgentQuestions({ agentId }: { agentId: string }) {
     return () => { live = false; clearInterval(timer) }
   }, [agentId])
   if (!items.length && !error) return null
-  return <section aria-label="Agent questions" className="max-h-[45vh] shrink-0 overflow-auto border-t border-frost p-3">
+  return <section aria-label="Agent questions" className="max-h-[40vh] min-w-0 shrink-0 space-y-3 overflow-y-auto border-t border-frost px-5 py-3">
     {error && <p role="status">{error}</p>}
     {items.filter(item => item.status === 'pending' || item.continuation === 'unconfirmed').map(item =>
       <QuestionCard key={item.id} item={item} />)}
@@ -82,22 +82,22 @@ function QuestionCard({ item }: { item: AgentQuestion }) {
     finally { locked.current = false; setBusy(false) }
   }
   const disabled = !ready || busy || !!pending || item.status !== 'pending' || !!item.answerApprovalId
-  return <article className="my-2 min-w-0 rounded-md border border-frost p-3">
-    <p className="break-words font-medium">{item.question.prompt}</p>
-    <p className="break-all text-xs">Conversation {item.conversationId} · {item.status} · {item.continuation}</p>
-    {item.status === 'pending' ? <form onSubmit={event => {
+  return <article className="flex min-w-0 flex-col gap-3 rounded-lg border border-frost bg-ivory p-3">
+    <p className="m-0 break-words font-medium">{item.question.prompt}</p>
+    <details className="text-xs text-mocha"><summary className="cursor-pointer">Question details · {item.status}</summary><p className="mt-2 break-all">Conversation {item.conversationId} · {item.continuation}</p></details>
+    {item.status === 'pending' ? <form className="flex min-w-0 flex-col gap-3" onSubmit={event => {
       event.preventDefault()
       if (choice === 'other') void submit({ kind: 'text', text })
       else if (choice !== '') void submit({ kind: 'choice', index: Number(choice) })
     }}>
-      <fieldset disabled={disabled} className="grid gap-2 py-2">
+      <fieldset disabled={disabled} className="m-0 grid min-w-0 gap-2 border-0 p-0 sm:grid-cols-2">
         <legend className="sr-only">Answer this question</legend>
-        {item.question.choices.map((option, index) => <label key={index} className="flex items-start gap-2 break-words">
-          <input type="radio" name={`question-${item.id}`} value={index} checked={choice === String(index)} onChange={() => setChoice(String(index))} />
-          <span className="min-w-0">{option.label}{item.question.recommendedIndex === index ? ' (Recommended)' : ''}{option.description && <small className="block">{option.description}</small>}</span>
+        {item.question.choices.map((option, index) => <label key={index} className="m-0 flex min-w-0 cursor-pointer items-center gap-2 rounded-md border border-frost px-3 py-2.5 has-[:checked]:border-sapphire has-[:checked]:bg-sapphire-glow">
+          <input className="m-0 h-4 w-4 shrink-0 accent-sapphire" type="radio" name={`question-${item.id}`} value={index} checked={choice === String(index)} onChange={() => setChoice(String(index))} />
+          <span className="min-w-0 break-words [overflow-wrap:anywhere]">{option.label}{item.question.recommendedIndex === index ? ' (Recommended)' : ''}{option.description && <small className="block">{option.description}</small>}</span>
         </label>)}
-        <label><input type="radio" name={`question-${item.id}`} checked={choice === 'other'} onChange={() => setChoice('other')} /> Other</label>
-        {choice === 'other' && <label>Your answer<textarea className="w-full" value={text} maxLength={4096} onChange={event => setText(event.target.value)} /></label>}
+        <label className="m-0 flex min-w-0 cursor-pointer items-center gap-2 rounded-md border border-frost px-3 py-2.5 has-[:checked]:border-sapphire has-[:checked]:bg-sapphire-glow"><input className="m-0 h-4 w-4 shrink-0 accent-sapphire" type="radio" name={`question-${item.id}`} checked={choice === 'other'} onChange={() => setChoice('other')} /><span>Other</span></label>
+        {choice === 'other' && <label className="m-0 grid gap-2 sm:col-span-2">Your answer<textarea rows={2} className="w-full resize-y" value={text} maxLength={4096} onChange={event => setText(event.target.value)} /></label>}
       </fieldset>
       {pending && <p className="break-words">Saved answer: {pending.answer.kind === 'choice' ? item.question.choices[pending.answer.index]?.label : pending.answer.kind === 'text' ? pending.answer.text : 'Skip'}</p>}
       <div className="flex flex-wrap gap-2">
@@ -105,7 +105,7 @@ function QuestionCard({ item }: { item: AgentQuestion }) {
         <Button variant="ghost" disabled={disabled} onClick={() => { void submit({ kind: 'skip' }) }}>Skip</Button>
         {pending && !item.answerApprovalId && <Button variant="ghost" disabled={busy} onClick={() => { void submit() }}>Retry same answer</Button>}
       </div>
-      <p className="text-xs">Clarification does not grant permission. This question expires at {new Date(item.expiresAt).toLocaleTimeString()}.</p>
+      <p className="m-0 text-xs text-mocha">Clarification does not grant permission. This question expires at {new Date(item.expiresAt).toLocaleTimeString()}.</p>
       {item.answerApprovalId && <a href="/approvals">View communication approvals</a>}
     </form> : <p>{item.answer?.kind === 'choice' ? item.question.choices[item.answer.index]?.label : item.answer?.kind === 'text' ? item.answer.text : `No answer: ${item.noAnswerReason ?? item.status}`}. {item.continuation === 'consumed' ? 'Saved in the originating conversation; task completion is separate.' : item.continuation === 'interrupted' ? 'The waiting turn ended.' : 'Consumption has not been confirmed.'}</p>}
     {notice && <p role="status">{notice}</p>}

@@ -144,8 +144,7 @@ export function NotificationSettings() {
                   <option value="">Choose the paired service topic</option>
                   {state.readiness.destination && (
                     <option value={state.readiness.destination.id}>
-                      Chat {state.readiness.destination.chatId}, service topic{' '}
-                      {state.readiness.destination.topicId}
+                      Paired group · Bazilion service topic
                     </option>
                   )}
                   {state.settings.destination &&
@@ -156,6 +155,11 @@ export function NotificationSettings() {
                     )}
                 </select>
               </label>
+              <p className="m-0 text-sm text-mocha">Notices go to the operational thread in your paired Telegram group.</p>
+              {state.readiness.destination && <details className="mt-2 text-xs text-mocha">
+                <summary className="cursor-pointer">Telegram destination IDs</summary>
+                <p className="mt-2 break-all">Group {state.readiness.destination.chatId} · Topic {state.readiness.destination.topicId}</p>
+              </details>}
               <fieldset style={{ marginBlock: '1rem', minWidth: 0 }}>
                 <legend>Include these Attention kinds</legend>
                 {(Object.keys(kinds) as AttentionKind[]).map((kind) => (
@@ -241,44 +245,48 @@ export function NotificationSettings() {
               </div>
             </fieldset>
           </form>
-          <h3 style={{ marginTop: '1.5rem' }}>Delivery receipts</h3>
-          <p className="muted">
-            A confirmed delivery is a Telegram receipt, not an approval or acknowledgement.
-            Uncertain sends need an explicit retry that may duplicate a message.
-          </p>
-          <Button
-            variant="ghost"
-            disabled={busy}
-            onClick={() =>
+          <section aria-label="Delivery receipts" className="mt-6 flex min-w-0 flex-col gap-4 border-t border-frost pt-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h3 className="m-0">Delivery receipts</h3>
+            <Button variant="ghost" disabled={busy} onClick={() =>
               void action(async () => setPage(await request<NotificationReceiptList>('/receipts')))
-            }
-          >
-            Refresh receipts
-          </Button>
-          {page.receipts.length === 0 && <p>No notification receipts yet.</p>}
-          <ul style={{ paddingLeft: '1.2rem' }}>
+            }>Refresh receipts</Button>
+          </div>
+          <p className="m-0 text-sm text-mocha">
+            Delivery confirms Telegram received the notice. It does not approve or resolve the Attention item.
+          </p>
+          {page.receipts.length === 0 && <p className="m-0">No notification receipts yet.</p>}
+          <ul className="m-0 grid list-none gap-3 p-0">
             {page.receipts.map((item) => (
-              <li key={item.id} style={{ marginBlock: '.85rem', overflowWrap: 'anywhere' }}>
-                <strong>{kinds[item.sourceKind]}</strong> — {item.state}
-                <div>Source {item.sourceId}</div>
-                <div>Receipt {item.id}</div>
-                <div>
-                  {new Date(item.updatedAt).toLocaleString()} · {item.attempts} attempts
-                  {item.telegramMessageId ? ` · Telegram message ${item.telegramMessageId}` : ''}
+              <li key={item.id} className="flex min-w-0 flex-col gap-3 rounded-lg border border-frost bg-ivory p-4 [overflow-wrap:anywhere]">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <strong>{kinds[item.sourceKind]}</strong>
+                  <span className="rounded-full bg-frost px-2 py-1 text-xs font-semibold capitalize">{item.state}</span>
                 </div>
-                {item.diagnostic && <div>{item.diagnostic}</div>}
+                <p className="m-0 text-xs text-mocha">
+                  {new Date(item.updatedAt).toLocaleString()} · {item.attempts} {item.attempts === 1 ? 'attempt' : 'attempts'}
+                </p>
+                {item.state === 'uncertain' && <p className="m-0 text-sm">Telegram may have received this notice. Retrying could send a duplicate.</p>}
+                {item.state === 'deferred' && <p className="m-0 text-sm">Waiting for an eligible delivery opportunity.</p>}
+                {item.state === 'failed' && <p className="m-0 text-sm">Delivery failed. Check the details before retrying.</p>}
+                <details className="text-xs text-mocha">
+                  <summary className="cursor-pointer">Technical details</summary>
+                  <dl className="mt-3 grid min-w-0 gap-2">
+                    <div><dt className="font-semibold">Source</dt><dd className="m-0">{item.sourceId}</dd></div>
+                    <div><dt className="font-semibold">Receipt</dt><dd className="m-0">{item.id}</dd></div>
+                    {item.telegramMessageId && <div><dt className="font-semibold">Telegram message</dt><dd className="m-0">{item.telegramMessageId}</dd></div>}
+                    {item.diagnostic && <div><dt className="font-semibold">Diagnostic</dt><dd className="m-0">{item.diagnostic}</dd></div>}
+                  </dl>
+                </details>
                 {['failed', 'uncertain'].includes(item.state) && (
-                  <Button
-                    variant="ghost"
-                    disabled={busy || !state.settings.enabled || state.settings.restorePaused}
-                    onClick={() => setRetry(item)}
-                  >
-                    Retry notice
-                  </Button>
+                  <div className="flex flex-wrap gap-2">
+                    <Button variant="ghost" disabled={busy || !state.settings.enabled || state.settings.restorePaused} onClick={() => setRetry(item)}>Retry notice</Button>
+                  </div>
                 )}
               </li>
             ))}
           </ul>
+          </section>
           {page.nextCursor && (
             <Button
               variant="ghost"
@@ -300,7 +308,7 @@ export function NotificationSettings() {
           )}
         </>
       )}
-      <Button variant="ghost" disabled={busy} onClick={() => void action(refresh)}>
+      <Button variant="ghost" className="mt-4" disabled={busy} onClick={() => void action(refresh)}>
         Refresh settings and destination
       </Button>
       <ConfirmDialog

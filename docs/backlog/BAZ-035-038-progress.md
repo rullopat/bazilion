@@ -1132,3 +1132,23 @@ describe those earlier checkpoints; the current status above supersedes them.
 - Final documentation reconciles the backlog table and distinguishes committed work from shipped
   work. The PR checklist is finalized only after CI passes on that documentation commit, with
   local/remote SHA equality and clean status checked again. No release or deployment is claimed.
+
+### 2026-09-08 guided acceptance and UI follow-up
+
+The operator completed the visible walkthrough in a disposable home with a loopback model simulator
+and fake Telegram transport. Retained `Fruit report` stayed readable after a new active conversation;
+a paused apples follow-up was replaced with pears, and resuming completed only the replacement.
+The JSON question answer was accepted and canonically consumed in its originating conversation.
+Notification enablement sent no old items; explicit inclusion produced one delivered and one uncertain
+receipt. Explicit retry delivered the uncertain notice on attempt 2, while the confirmed notice
+remained at attempt 1. No live external message was sent.
+
+The walkthrough exposed presentation issues corrected in the five web components: aligned title and
+composer controls, responsive conversation rows, spaced queue/edit cards with one queue scrollbar,
+compact keyboard-selectable question choices, and clear notification receipt cards. IDs remain
+available in expandable details; the destination label explains the paired group's service topic.
+Existing request identities, answer settlement, authorization and dispatch behavior are unchanged.
+Desktop and 390px browser checks covered alignment, wrapping, keyboard selection, Other input,
+expanded receipt details and the duplicate warning without submitting additional work. Screenshots
+and verification scripts are under `/tmp/baz-semi-auto/`. Web typechecking, the production web build and diff checks passed on the final local follow-up.
+CI is checked at its pushed SHA before reporting PR delivery complete.

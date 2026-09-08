@@ -1269,7 +1269,7 @@ export function ChatPane({
       <UserQueuePanel onViewConversation={id => { setQueueConversation(id); setLibraryOpen(true) }} key={agentId} ref={queueRef} agentId={agentId} selection={() => knownHeadRef.current.selection} onQueueMode={mode => { setQueueMode(mode); setQueueReady(true) }} />
       <AgentQuestions key={`questions-${agentId}`} agentId={agentId} />
       <form
-        className="grid shrink-0 grid-cols-[auto_minmax(0,1fr)_auto] items-end gap-2 border-t border-frost bg-ivory px-3 py-3 sm:px-5"
+        className="grid shrink-0 grid-cols-[auto_minmax(0,1fr)] items-end gap-2 border-t border-frost bg-ivory px-3 py-3 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:px-5"
         onSubmit={(e) => {
           e.preventDefault()
           void send(input)
@@ -1290,7 +1290,7 @@ export function ChatPane({
           onClick={() => fileInputRef.current?.click()}
           title="attach images or files"
           aria-label="attach files"
-          className="rounded-md border-[1.5px] border-frost bg-snow px-3 py-2 text-[1em] text-mocha transition-colors hover:border-sapphire hover:text-sapphire disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex h-11 items-center justify-center rounded-md border-[1.5px] border-frost bg-snow px-3 py-2 text-[1em] text-mocha transition-colors hover:border-sapphire hover:text-sapphire disabled:cursor-not-allowed disabled:opacity-50"
         >
           📎
         </button>
@@ -1301,16 +1301,17 @@ export function ChatPane({
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={onKeyDown}
           onPaste={onPaste}
-          placeholder="say something… (Shift+Enter for newline; paste or 📎 to attach images/files)"
+          placeholder="Write a message…"
+          title="Shift+Enter for a new line. Paste or attach files with the paperclip."
           autoComplete="off"
           aria-label={`Message ${agentName}`}
-          className="max-h-[200px] min-h-[2.4rem] flex-1 resize-none overflow-y-auto rounded-md border-[1.5px] border-frost bg-snow px-3 py-2 text-[0.93em] leading-[1.45] text-chocolate outline-none transition-colors focus:border-sapphire focus:shadow-[0_0_0_3px_var(--color-sapphire-glow)]"
+          className="max-h-[200px] min-h-11 min-w-0 flex-1 resize-none overflow-y-auto rounded-md border-[1.5px] border-frost bg-snow px-3 py-2 text-[0.93em] leading-[1.45] text-chocolate outline-none transition-colors focus:border-sapphire focus:shadow-[0_0_0_3px_var(--color-sapphire-glow)]"
         />
-        <div className="flex flex-col gap-1">
-          <Button variant="primary" type="submit" className="max-w-28 whitespace-normal text-center sm:max-w-none" disabled={!input.trim() && attachments.length === 0}>
+        <div className="col-span-2 flex flex-wrap justify-end gap-2 sm:col-span-1">
+          <Button variant="primary" type="submit" className="min-h-11 whitespace-normal text-center" disabled={!input.trim() && attachments.length === 0}>
             {turnBusy || queueMode ? 'Queue follow-up' : 'Send'}
           </Button>
-          {turnBusy && <Button variant="danger" onClick={() => void cancel()} aria-label="Stop response and pause queue">Stop</Button>}
+          {turnBusy && <Button variant="danger" className="min-h-11" onClick={() => void cancel()} aria-label="Stop response and pause queue">Stop</Button>}
         </div>
       </form>
 

@@ -114,32 +114,40 @@ export const UserQueuePanel = forwardRef<UserQueueHandle, {
       setEditing(item); setText(input.message); setEditFiles(input.attachments)
     } catch (e) { setError(e instanceof Error ? e.message : 'Could not edit') }
   }
-  return <section aria-label="Follow-up queue" className="max-h-[45%] shrink-0 overflow-y-auto border-t border-frost px-3 py-2 text-sm">
-    <div className="flex flex-wrap items-center gap-2">
-      <strong>Follow-ups {state?.control.paused ? '· Paused' : ''}</strong>
+  return <section aria-label="Follow-up queue" className="max-h-[45%] min-w-0 shrink-0 space-y-3 overflow-y-auto border-t border-frost px-5 py-4 text-sm">
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <strong className="shrink-0">Follow-ups {state?.control.paused ? '· Paused' : ''}</strong>
+      <div className="flex flex-wrap items-center gap-2">
       {state && <Button variant="ghost" disabled={busy} onClick={() => void action('/control', { paused: !state.control.paused, expectedRevision: state.control.revision })}>{state.control.paused ? 'Resume queue' : 'Pause queue'}</Button>}
       {state && <Button variant="danger" disabled={busy} onClick={() => void action('/stop', { expectedRevision: state.control.revision })}>Stop and pause</Button>}
       <Button variant="ghost" onClick={() => { setHistory(!history); setOffset(0) }}>{history ? 'Pending' : 'History'}</Button>
+      </div>
     </div>
-    {error && <p role="alert" className="text-danger">{error}</p>}
-    {notice && <p role="status">{notice}</p>}
-    {pending && <div role="status" className="my-2 rounded border border-frost p-2"><p>A queue request has no confirmed acknowledgement. Retrying uses the same request and files.</p><p className="truncate">{pending.input.message}</p><Button variant="primary" disabled={busy} onClick={() => void submit(pending, true)}>Retry saved request</Button></div>}
-    <div className="max-h-48 overflow-y-auto">
-      {state?.items.map(item => <article key={item.id} className="my-2 rounded border border-frost p-2">
-        <div className="flex flex-wrap gap-2"><strong>{item.status}</strong><span>{item.source}</span><Button variant="ghost" onClick={() => onViewConversation(item.conversationId)}>View conversation</Button></div>
-        <p className="whitespace-pre-wrap break-words">{item.text ?? 'Input retention expired'}</p>
-        {item.attachments.map(file => <p key={file.id} className="break-all">{file.name ?? 'Attachment'} · {file.byteLength} bytes</p>)}
-        {item.diagnostic && <p>{item.diagnostic}</p>}
+    {error && <p role="alert" className="m-0 break-words text-danger">{error}</p>}
+    {notice && <p role="status" className="m-0 text-mocha">{notice}</p>}
+    {pending && <div role="status" className="flex min-w-0 flex-col gap-3 rounded-lg border border-frost bg-ivory p-3"><p>A queue request has no confirmed acknowledgement. Retrying uses the same request and files.</p><p className="truncate">{pending.input.message}</p><Button variant="primary" disabled={busy} onClick={() => void submit(pending, true)}>Retry saved request</Button></div>}
+    <div className="min-w-0 space-y-3">
+      {state?.items.map(item => <article key={item.id} className="flex min-w-0 flex-col gap-3 rounded-lg border border-frost bg-ivory p-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <strong className="rounded-full bg-frost px-2 py-1 text-xs capitalize">{item.status}</strong>
+            <span className="text-xs text-mocha">{item.source === 'telegram' ? 'Telegram' : 'Web / API'}</span>
+          </div>
+          <Button variant="ghost" onClick={() => onViewConversation(item.conversationId)}>View conversation</Button>
+        </div>
+        <p className="m-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{item.text ?? 'Input retention expired'}</p>
+        {item.attachments.map(file => <p key={file.id} className="m-0 break-all text-xs text-mocha">{file.name ?? 'Attachment'} · {file.byteLength} bytes</p>)}
+        {item.diagnostic && <p className="m-0 break-words">{item.diagnostic}</p>}
         {item.approvalId && <a href={`/approvals`}>Review communication approval</a>}
-        {item.status === 'pending' && <div className="flex gap-2"><Button variant="ghost" disabled={busy || !!pending} onClick={() => void edit(item)}>Edit</Button><Button variant="danger" disabled={busy} onClick={() => void action(`/${item.id}`, { expectedRevision: item.revision }, 'DELETE')}>Remove</Button></div>}
+        {item.status === 'pending' && <div className="flex flex-wrap items-center gap-2"><Button variant="ghost" disabled={busy || !!pending} onClick={() => void edit(item)}>Edit</Button><Button variant="danger" disabled={busy} onClick={() => void action(`/${item.id}`, { expectedRevision: item.revision }, 'DELETE')}>Remove</Button></div>}
         {item.status === 'uncertain' && <div><p>This input may already have acted. Review its conversation before closing it. Closing never retries it.</p><Button variant="danger" disabled={busy} onClick={() => void action(`/${item.id}/reconcile`, { expectedRevision: item.revision, acknowledged: true })}>Acknowledge and close</Button></div>}
       </article>)}
-      {editing && <form onSubmit={e => { e.preventDefault(); const expectedSelection = selection(); if (expectedSelection) void submit({ agentId, replacementId: editing.id, input: { requestId: crypto.randomUUID(), expectedRevision: editing.revision, expectedSelection, message: text, attachments: editFiles } }) }}>
-        <label>Edit queued input<textarea aria-label="Edit queued input" className="w-full" value={text} onChange={e => setText(e.target.value)} /></label>
+      {editing && <form className="flex min-w-0 flex-col gap-3 rounded-lg border border-frost bg-ivory p-3" onSubmit={e => { e.preventDefault(); const expectedSelection = selection(); if (expectedSelection) void submit({ agentId, replacementId: editing.id, input: { requestId: crypto.randomUUID(), expectedRevision: editing.revision, expectedSelection, message: text, attachments: editFiles } }) }}>
+        <label className="m-0 grid gap-2">Edit queued input<textarea aria-label="Edit queued input" rows={3} className="w-full resize-y" value={text} onChange={e => setText(e.target.value)} /></label>
         {editFiles.map((file, index) => <div key={index}>{file.name ?? 'Attachment'} <Button variant="ghost" onClick={() => setEditFiles(files => files.filter((_, i) => i !== index))}>Remove attachment</Button></div>)}
-        <Button variant="primary" type="submit" disabled={busy || !!pending}>Save replacement</Button><Button variant="ghost" onClick={() => setEditing(null)}>Cancel edit</Button>
+        <div className="flex flex-wrap items-center gap-2"><Button variant="primary" type="submit" disabled={busy || !!pending}>Save replacement</Button><Button variant="ghost" onClick={() => setEditing(null)}>Cancel edit</Button></div>
       </form>}
     </div>
-    {state && (offset > 0 || offset + state.items.length < state.total) && <div className="flex gap-2"><Button variant="ghost" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - 20))}>Previous</Button><Button variant="ghost" disabled={offset + state.items.length >= state.total} onClick={() => setOffset(offset + 20)}>Next</Button></div>}
+    {state && (offset > 0 || offset + state.items.length < state.total) && <div className="flex flex-wrap items-center gap-2"><Button variant="ghost" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - 20))}>Previous</Button><Button variant="ghost" disabled={offset + state.items.length >= state.total} onClick={() => setOffset(offset + 20)}>Next</Button></div>}
   </section>
 })
