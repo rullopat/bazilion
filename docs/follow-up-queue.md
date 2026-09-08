@@ -1,7 +1,6 @@
 # Follow-up queue
 
-This describes BAZ-036 in the next-release draft PR. Web, CLI, HTTP and Telegram controls are
-implemented and locally verified. Publication and deployment remain separate release steps.
+Available in Bazilion 0.15.0 across web, CLI, HTTP and Telegram.
 
 Each Agent has one durable FIFO queue. Accepted input retains its text, original attachment
 names/types/bytes, Team, conversation and request identity. Acknowledgement means the input was

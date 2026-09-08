@@ -1,5 +1,43 @@
 # @bazilion/api-types
 
+## 0.15.0
+
+### Minor Changes
+
+- [#44](https://github.com/rullopat/bazilion/pull/44) [`624b731`](https://github.com/rullopat/bazilion/commit/624b7318babf8bba4fc68a132983f1c831dfd0b1) Thanks [@rullopat](https://github.com/rullopat)! - Save explicitly delivered Agent files as immutable Team-owned results. Chat cards survive completion,
+  reload and restart; the Team Results view and `bazilion result` commands provide authenticated lookup,
+  safe previews, downloads and explicit deletion. Native chat preserves the browser handoff, and Telegram
+  sends the captured bytes through existing communication authorization and approvals.
+
+  Results retain source provenance and verified hashes in backup/restore. Released bytes remain until
+  explicit deletion, within a 25 MiB per-file and 1 GiB retained-byte limit. This changes the canonical alpha
+  database schema and requires the existing clean-install/reset workflow for older homes.
+
+- [#44](https://github.com/rullopat/bazilion/pull/44) [`fa126ac`](https://github.com/rullopat/bazilion/commit/fa126acbdd315ccb6208da0bee7b69be1bd6ab3b) Thanks [@rullopat](https://github.com/rullopat)! - Queue follow-up instructions while an Agent works, with durable input and original attachment
+  bytes shared across web, CLI and Telegram. Inspect, edit or remove pending input; pause, resume,
+  or stop without losing the remaining queue. Stable request identities reconcile lost acknowledgements.
+  Interrupted and restored work remains visibly uncertain until reviewed, with no automatic replay.
+  The canonical alpha schema changes require the documented clean-install workflow for older homes.
+
+- [#44](https://github.com/rullopat/bazilion/pull/44) [`0af1061`](https://github.com/rullopat/bazilion/commit/0af106176d01ecb958162e5bd81aec879ebaca13) Thanks [@rullopat](https://github.com/rullopat)! - Retain Agent conversations with list, read, rename and New conversation controls in web and CLI.
+  Daemon-owned selection and explicit foreground/background targets prevent stale clients or file
+  activity from redirecting work. Saved results keep their original conversation links. Missing history
+  has an explicit recovery path; ordinary destructive chat reset is removed. The canonical alpha
+  schema changes and older homes require the documented clean-install workflow.
+
+- [#44](https://github.com/rullopat/bazilion/pull/44) [`6e37e77`](https://github.com/rullopat/bazilion/commit/6e37e77f4a9340253ef911b2803a9e33277e52f7) Thanks [@rullopat](https://github.com/rullopat)! - Let eligible interactive Agents ask a bounded question with choices, Other and Skip across web,
+  terminal and paired-owner Telegram. Recover live cards after reload, reconcile exact answer retries,
+  and distinguish accepted answers from verified consumption in the original conversation. Existing
+  communication approvals remain authoritative; expired, interrupted and restored questions never
+  restart a turn. Native mobile shows an explicit web handoff. The canonical alpha schema changes
+  require the documented clean-install workflow for older homes.
+
+- [#44](https://github.com/rullopat/bazilion/pull/44) [`4f34efc`](https://github.com/rullopat/bazilion/commit/4f34efce254b3daa6744aae6b54209c5b683367d) Thanks [@rullopat](https://github.com/rullopat)! - Add opt-in Telegram notifications for existing Attention items, with explicit service-topic
+  selection, quiet hours, old-item previews and shared web/CLI controls. Durable receipts distinguish
+  confirmed, failed and uncertain sends; explicit retries acknowledge possible duplication. Current
+  source, pairing and egress policy remain authoritative, and restored backups pause notifications
+  for reconciliation. The canonical alpha schema changes require the documented clean-install workflow.
+
 ## 0.14.2
 
 ## 0.14.1
