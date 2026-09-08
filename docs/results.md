@@ -48,8 +48,7 @@ with the same filename create separate results.
 **Delete saved file** removes captured bytes and leaves a deletion receipt for old chat cards.
 It does not delete the workspace source. Deleting an Agent or moving it to another Team retains
 its released files under the original Team. Deleting that original Team removes its result records;
-Team deletion first requires moving or deleting its members. Resetting chat retains results but
-makes the removed conversation unavailable. Reset/full uninstall removes results with the DB.
+Team deletion first requires moving or deleting its members. Starting a new conversation retains results and their source history. Reset/full uninstall removes results with the DB.
 Linked external Team source directories are never traversed to clean result storage.
 
 Private snapshots without an active producing turn or pending/delivering approval are reclaimed
