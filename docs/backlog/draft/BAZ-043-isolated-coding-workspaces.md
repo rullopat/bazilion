@@ -58,7 +58,8 @@ Verified against Bazilion `13c3a63` (v0.14.2) on 2026-09-07:
   test/review evidence stale; do not claim an OS-enforced lock on everything writing the directory.
 - Record only workspace ownership and lifecycle metadata needed for recovery. Keep Pi sessions as
   transcripts and Teams as the collaboration owner; no generic runs/jobs table or new Project model.
-- Provision dependencies through the selected BAZ-040 environment. The new checkout must not
+- Discover and prepare dependencies through BAZ-040 in the admitted environment during the task.
+  A saved operator checklist is not required. The new checkout must not
   silently inherit credential files, arbitrary host caches, or another Team's memory.
 
 ### Git and protected execution
@@ -118,7 +119,7 @@ Verified against Bazilion `13c3a63` (v0.14.2) on 2026-09-07:
 ## Dependencies and sequencing
 
 - Later increment after [BAZ-039](../in_progress/BAZ-039-repository-coding-context.md),
-  [BAZ-040](../todo/BAZ-040-coding-environment-readiness.md), and
+  [BAZ-040](../in_progress/BAZ-040-coding-environment-readiness.md), and
   [BAZ-042](BAZ-042-git-change-review.md) establish repository/environment/snapshot contracts.
 - Coordinate queued targeting with [BAZ-035](../done/BAZ-035-conversation-library.md) and
   [BAZ-036](../done/BAZ-036-visible-follow-up-queue.md); retained requests must never follow a changed cwd.

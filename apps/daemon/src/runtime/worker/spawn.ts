@@ -121,7 +121,15 @@ export async function spawnReviewWorker(
   throw new Error('review worker exited without a result')
 }
 
+export interface WorkerResourceLifecycle {
+  beforeInput(pid: number, hostCommands?: boolean): void
+  afterExit(observedNormalExit?: boolean): Promise<boolean>
+}
+
 interface CommonSpawnWorkerOpts {
+  containerHost?: import('./ipc-protocol.ts').ContainerLifecycleHost
+  resourceLifecycle?: WorkerResourceLifecycle
+  codingHost?: import('../pi/coding-contract.ts').CodingHost
   repositoryContextHost?: import('../pi/repository-context.ts').RepositoryContextHost
   resultHost?: import('./ipc-protocol.ts').ResultHost
   /** Abort to kill the in-flight worker. */
@@ -283,10 +291,18 @@ async function* spawnWorker(
   const stderrRedactor =
     accessTokens.length > 0 ? new ExactValueStreamRedactor(accessTokens) : undefined
 
+  const resourceLifecycle = spec.kind === 'restricted_review' ? undefined : opts.resourceLifecycle
+  let resourceCleanup: Promise<boolean> | undefined
+  const cleanupResources = () =>
+    (resourceCleanup ??=
+      resourceLifecycle
+        ?.afterExit(child.exitCode !== null && child.signalCode === null)
+        .catch(() => false) ?? Promise.resolve(true))
   let child: ChildProcess
   try {
     child = spawn(process.execPath, workerSpawnArgs(requestedEntry), {
       env,
+      detached: resourceLifecycle !== undefined,
       stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
     })
   } catch (error) {
@@ -294,6 +310,23 @@ async function* spawnWorker(
     throw error
   }
 
+  if (resourceLifecycle)
+    child.once('exit', () => {
+      void cleanupResources().then((confirmed) => {
+        if (confirmed) return
+        // A descendant outside the worker's process group may still own its output
+        // endpoints. End this transport without treating local pipe closure as proof
+        // of cleanup; the persisted resource identity keeps recovery blocked.
+        child.stdout?.destroy()
+        child.stderr?.destroy()
+        child.stdin?.destroy()
+        frames.push({
+          kind: 'fatal',
+          error: 'Worker cleanup unconfirmed; workspace recovery required',
+        })
+        frames.end()
+      })
+    })
   const frames = new AsyncFrameQueue<WorkerOutputFrame>()
   const ipcLifetime = new AbortController()
   const hosts = spawnHosts(
@@ -378,6 +411,13 @@ async function* spawnWorker(
 
   try {
     if (!child.stdout) throw new Error('worker spawn: stdout pipe missing')
+    if (resourceLifecycle) {
+      if (!child.pid) throw new Error('Worker PID unavailable')
+      resourceLifecycle.beforeInput(
+        child.pid,
+        spec.kind === 'configured_operator_http' && env.BAZILION_BASH_SANDBOX !== 'docker',
+      )
+    }
     child.stdin?.write(serializedInput)
     child.stdin?.end()
     const stdoutTask = pumpWorkerFrames(
@@ -421,6 +461,7 @@ async function* spawnWorker(
     // child's scratch tree out from under a still-running process: terminate
     // it first, wait for descriptor closure, then erase the per-turn tree.
     if (child.exitCode === null && child.signalCode === null) onAbort()
+    const resourcesConfirmed = await cleanupResources()
     try {
       await waitForExit
     } catch {}
@@ -436,6 +477,9 @@ async function* spawnWorker(
       child.disconnect()
     } catch {}
     if (scratch) cleanupMinimalWorkerScratch(scratch)
+    if (!resourcesConfirmed)
+      // biome-ignore lint/correctness/noUnsafeFinally: Unconfirmed resource teardown must override a successful worker result.
+      throw new Error('Worker cleanup could not be confirmed; workspace recovery required')
   }
 }
 
@@ -527,6 +571,8 @@ function spawnHosts(
   }
   return {
     questionHost,
+    containerHost: spec.kind === 'restricted_review' ? undefined : opts.containerHost,
+    codingHost: spec.kind === 'restricted_review' ? undefined : opts.codingHost,
     repositoryContextHost:
       spec.kind === 'restricted_review' ? undefined : opts.repositoryContextHost,
     resultHost: spec.kind === 'restricted_review' ? undefined : opts.resultHost,
@@ -567,6 +613,8 @@ function parseFrame(line: string, accessTokens: readonly string[]): ChatFrame {
 }
 
 interface IpcHosts {
+  containerHost?: import('./ipc-protocol.ts').ContainerLifecycleHost
+  codingHost?: import('../pi/coding-contract.ts').CodingHost
   repositoryContextHost?: import('../pi/repository-context.ts').RepositoryContextHost
   questionHost?: import('./ipc-protocol.ts').QuestionHost
   resultHost?: import('./ipc-protocol.ts').ResultHost
@@ -621,6 +669,28 @@ async function dispatch(req: IpcRequest, hosts: IpcHosts): Promise<IpcReply> {
   try {
     let result: unknown
     switch (req.method) {
+      case 'containerBeforeCreate':
+      case 'containerAfterCreate':
+      case 'containerAfterRemove': {
+        hosts.ipcSignal?.throwIfAborted()
+        if (
+          !req.args ||
+          Object.keys(req.args).join(',') !== 'containerName' ||
+          typeof req.args.containerName !== 'string' ||
+          req.args.containerName.length > 180
+        )
+          throw new Error('Invalid container lifecycle request')
+        const host = require(hosts.containerHost, 'container', req.method)
+        if (req.method === 'containerBeforeCreate') await host.beforeCreate(req.args.containerName)
+        else if (req.method === 'containerAfterCreate')
+          await host.afterCreate(req.args.containerName)
+        else await host.afterRemove(req.args.containerName)
+        result = null
+        break
+      }
+      case 'coding':
+        result = await require(hosts.codingHost, 'coding', req.method).invoke(req.args)
+        break
       case 'repositoryContext':
         hosts.ipcSignal?.throwIfAborted()
         if (

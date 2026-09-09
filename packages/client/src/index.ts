@@ -144,6 +144,22 @@ export function createClient(cfg: ClientConfig) {
   }
 
   return {
+    codingEnvironment: {
+      show: (teamId: string) =>
+        request<import('@bazilion/api-types').CodingEnvironmentStatus>(
+          'GET',
+          `/api/teams/${encodeURIComponent(teamId)}/coding-environment`,
+        ),
+      configure: (
+        teamId: string,
+        input: import('@bazilion/api-types').ConfigureCodingEnvironmentRequest,
+      ) =>
+        request<import('@bazilion/api-types').TeamCodingEnvironment>(
+          'PUT',
+          `/api/teams/${encodeURIComponent(teamId)}/coding-environment`,
+          input,
+        ),
+    },
     repositoryContext: (teamId: string, options: RepositoryContextRequest = {}) =>
       request<RepositoryContextReport>(
         'GET',

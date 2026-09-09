@@ -38,7 +38,9 @@ Verified against Bazilion `13c3a63` (v0.14.2) on 2026-09-07:
 - The [invocation resolver](../../../apps/daemon/src/lib/turn-invocation.ts) makes inbox and other
   background turns protected. Their shell has no network or deployment credentials; a local host
   check is not evidence that the delegated tester has a usable protected environment.
-- BAZ-040–042 draft prepared environments, command receipts, and immutable change identity.
+- Revised BAZ-040 includes ordinary same-Team preparation help through existing messaging.
+  This story adds formal snapshot-bound specialist verification; it is not required for that help.
+- BAZ-040–042 define task-driven environments, command receipts, and immutable change identity.
   BAZ-044 covers static review and excludes reviewer-run commands. Specialist test execution needs
   its own request, dispatch, workspace coordination, and evidence-access contract.
 
@@ -130,7 +132,7 @@ Verified against Bazilion `13c3a63` (v0.14.2) on 2026-09-07:
 
 ## Dependencies and sequencing
 
-- Depends on [BAZ-040](../todo/BAZ-040-coding-environment-readiness.md) environment/check definitions and
+- Depends on [BAZ-040](../in_progress/BAZ-040-coding-environment-readiness.md) environment/check definitions and
   workspace coordination, [BAZ-041](BAZ-041-coding-command-verification.md) execution evidence, and
   [BAZ-042](BAZ-042-git-change-review.md) snapshot identity. Deliver after the first coding milestone.
 - Reuses [BAZ-034](../done/BAZ-034-durable-agent-deliverables.md) retained bytes; this story owns the narrow

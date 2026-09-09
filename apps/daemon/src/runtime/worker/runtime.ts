@@ -24,6 +24,7 @@ import {
   type ProtectedProviderName,
 } from '../providers/pi-runtime.ts'
 import type { PromptSkill, ProtectedHomeDocuments } from '../session/prompt.ts'
+import { validateDockerCodingSelection } from '../shell/coding.ts'
 import type { ProtectedDockerRuntime } from '../shell/docker.ts'
 import type { InjectedMcpTool } from './ipc-protocol.ts'
 
@@ -55,6 +56,8 @@ export interface ProtectedWorkerPaths {
 }
 
 export interface ConfiguredOperatorHttpWorkerSpec {
+  containerNamespace?: string
+  configuredDocker?: { paths: ProtectedWorkerPaths; docker: ProtectedDockerRuntime }
   repositoryContext: import('@bazilion/api-types').RepositoryContextReport
   questionEnabled?: boolean
   conversation: import('@bazilion/api-types').ConversationTarget
@@ -72,6 +75,7 @@ export interface ConfiguredOperatorHttpWorkerSpec {
 }
 
 export interface ProtectedWorkerSpec {
+  containerNamespace?: string
   repositoryContext: import('@bazilion/api-types').RepositoryContextReport
   questionEnabled?: boolean
   conversation: import('@bazilion/api-types').ConversationTarget
@@ -132,6 +136,8 @@ const REASONING_LEVELS = new Set<ReasoningLevel>([
 ])
 
 const CONFIGURED_KEYS = new Set([
+  'containerNamespace',
+  'configuredDocker',
   'repositoryContext',
   'questionEnabled',
   'conversation',
@@ -159,6 +165,7 @@ const CONFIGURED_REQUIRED_KEYS = new Set([
   'bashApprovalMode',
 ])
 const PROTECTED_KEYS = new Set([
+  'containerNamespace',
   'repositoryContext',
   'questionEnabled',
   'conversation',
@@ -176,7 +183,9 @@ const PROTECTED_KEYS = new Set([
   'scratch',
 ])
 const PROTECTED_REQUIRED_KEYS = new Set(
-  [...PROTECTED_KEYS].filter((key) => key !== 'images' && key !== 'questionEnabled'),
+  [...PROTECTED_KEYS].filter(
+    (key) => key !== 'images' && key !== 'questionEnabled' && key !== 'containerNamespace',
+  ),
 )
 const REVIEW_KEYS = new Set([
   'kind',
@@ -282,11 +291,24 @@ export function validateMinimalWorkerProcessEnv(
 export function parseWorkerInput(value: unknown): WorkerInput {
   const input = objectRecord(value, 'worker input')
   const kind = input.kind
+  if (
+    input.containerNamespace !== undefined &&
+    (typeof input.containerNamespace !== 'string' ||
+      !/^[a-f0-9-]{36}$/.test(input.containerNamespace))
+  )
+    throw new Error('Invalid container namespace')
   if (input.questionEnabled !== undefined && typeof input.questionEnabled !== 'boolean')
     throw new Error('Invalid worker question capability')
   if (kind === 'configured_operator_http') {
     assertExactKeys(input, CONFIGURED_KEYS, 'configured worker input', CONFIGURED_REQUIRED_KEYS)
     if (!isResolvedAgent(input.agent)) throw new Error('worker: configured input requires an agent')
+    if (input.configuredDocker !== undefined) {
+      const prepared = objectRecord(input.configuredDocker, 'configured Docker inputs')
+      const keys = new Set(['paths', 'docker'])
+      assertExactKeys(prepared, keys, 'configured Docker inputs', keys)
+      assertProtectedWorkerPaths(prepared.paths, input.agent)
+      assertProtectedDockerRuntime(prepared.docker, prepared.paths as ProtectedWorkerPaths)
+    }
     assertRepositoryContext(input.repositoryContext, input.agent.team.id)
     requireString(input.message, 'message')
     if (!Array.isArray(input.enabledProviders) || !input.enabledProviders.every(isString)) {
@@ -645,6 +667,7 @@ function assertProtectedDockerRuntime(
       'workspace',
       'readOnlyMounts',
       'containerEnv',
+      'coding',
     ]),
     'protected Docker runtime',
     new Set([
@@ -767,6 +790,7 @@ function assertProtectedDockerRuntime(
     runtime.readOnlyMounts as ProtectedDockerRuntime['readOnlyMounts'],
     paths,
   )
+  if (runtime.coding !== undefined) validateDockerCodingSelection(runtime.coding)
   const containerEnv = objectRecord(runtime.containerEnv, 'protected Docker container environment')
   const expectedContainerEnv = {
     PATH: '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',

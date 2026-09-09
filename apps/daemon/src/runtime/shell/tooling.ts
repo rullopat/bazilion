@@ -7,10 +7,12 @@ import {
   type ToolDefinition,
 } from '@earendil-works/pi-coding-agent'
 import { type BashApprovalHost, createApprovalGatedBashTool } from './approval.ts'
+import { codingContainerCwd } from './coding.ts'
 import {
   createDockerBashOperations,
   createPreparedDockerBashOperations,
   type DockerReadOnlyMount,
+  type DockerResourceLifecycle,
   type ProtectedDockerRuntime,
 } from './docker.ts'
 import {
@@ -27,6 +29,8 @@ export const SANDBOX_INPUTS_DIR = '/inputs'
 export const SANDBOX_MEMORY_DIR = '/workspace/memory'
 
 export interface SessionShellToolOptions {
+  dockerLifecycle?: DockerResourceLifecycle
+  preparedDocker?: ProtectedDockerRuntime
   /** Agent-private uploaded documents, exposed read-only at /inputs when present. */
   inputsDir?: string
   /** Attached skill directories, each mapped to a stable read-only container path. */
@@ -48,14 +52,25 @@ export function createProtectedSessionShellTools(
   cwd: string,
   runtime: ProtectedDockerRuntime,
   approvalHost: BashApprovalHost,
+  lifecycle?: DockerResourceLifecycle,
 ): SessionShellTools {
+  const operations = createPreparedDockerBashOperations(runtime, lifecycle)
+  const modelCwd = codingContainerCwd(runtime.coding?.cwd ?? '.')
   const base = createBashToolDefinition(cwd, {
-    operations: createPreparedDockerBashOperations(runtime),
+    operations: {
+      exec(command, requestedCwd, options) {
+        // Pi supplies its model-facing session cwd to operations. Keep that virtual
+        // container path separate from the daemon-preflighted host mount identity.
+        if (requestedCwd !== modelCwd && requestedCwd !== cwd)
+          throw new Error('Protected command working directory differs from the admitted scope')
+        return operations.exec(command, cwd, options)
+      },
+    },
   })
   const dockerBash = defineTool({
     ...base,
     label: 'bash (protected Docker sandbox)',
-    description: `${base.description} Runs in an ephemeral, network-disabled Docker container with the Team workspace mounted read/write plus only the preflighted read-only memory, skill, and attachment mounts. Host files, host tools, and host credentials are unavailable.`,
+    description: `${base.description} Default working directory: ${codingContainerCwd(runtime.coding?.cwd ?? '.')}. Runs in an ephemeral, network-disabled Docker container with the Team workspace mounted read/write plus only the preflighted read-only memory, skill, and attachment mounts. Host files, host tools, and host credentials are unavailable.`,
   })
   return {
     config: {
@@ -105,6 +120,27 @@ export function createSessionShellTools(
   options: SessionShellToolOptions = {},
 ): SessionShellTools {
   const config = resolveShellSecurityConfig(env)
+  if (options.preparedDocker) {
+    if (config.sandboxMode !== 'docker')
+      throw new Error('Prepared coding environment cannot execute on the host')
+    const runtime = options.preparedDocker
+    const base = createBashToolDefinition(cwd, {
+      operations: createPreparedDockerBashOperations(runtime, options.dockerLifecycle),
+    })
+    const tool = defineTool({
+      ...base,
+      label: 'bash (prepared Docker sandbox)',
+      description: `${base.description} Default working directory: ${codingContainerCwd(runtime.coding?.cwd ?? '.')}. Fresh network-disabled Docker container with the Team workspace and preflighted read-only mounts.`,
+    })
+    return {
+      config: { ...config, sandboxImage: runtime.image, envAllowlist: [] },
+      hostToolNames: [],
+      customBash:
+        config.approvalMode === 'dangerous'
+          ? createApprovalGatedBashTool(tool, options.approvalHost)
+          : tool,
+    }
+  }
   if (config.sandboxMode === 'off' && config.approvalMode === 'off') {
     return { config, hostToolNames: HOST_CODING_TOOL_NAMES }
   }
@@ -118,6 +154,7 @@ export function createSessionShellTools(
   }
 
   const operations = createDockerBashOperations({
+    lifecycle: options.dockerLifecycle,
     image: config.sandboxImage,
     env: buildSandboxContainerEnv(env, config.envAllowlist),
     readOnlyMounts: [

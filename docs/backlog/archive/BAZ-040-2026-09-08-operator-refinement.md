@@ -1,15 +1,18 @@
 ---
 id: BAZ-040
 title: Prepared per-Team coding environments and truthful readiness
-status: todo
+status: in_progress
 size: L
 created: 2026-09-07
 refined: 2026-09-08
 priority: high
-note: Implement after BAZ-039; Docker-only readiness probes and prepared Node/pnpm recipe.
+note: Implemented and locally validated 2026-09-09; unpublished changes and release pending.
 ---
 
 # BAZ-040 — Prepared per-Team coding environments and truthful readiness
+
+> Historical refinement, superseded on 2026-09-09 by the Agent-led stories.
+> Frontmatter and completion statements below describe the former scope only.
 
 ## User stories
 
@@ -294,3 +297,5 @@ hooks, host credential forwarding, remote Docker, and a general environment orch
 No unresolved product decisions remain for this slice. It remains L because shared-workspace
 admission and recovery are required for truthful probes; persistent services, expanded approval UX,
 and additional environment orchestration must be separate stories rather than absorbed here.
+
+Implementation checkpoints and acceptance evidence: [BAZ-040 progress](../BAZ-040-progress.md).

@@ -1,8 +1,12 @@
 # Repository context
 
-BAZ-039 adds passive repository inspection to **Team → Context → Repository context**.
-The implementation is not yet released. Inspection uses the Team's registered workspace; it does
-not clone a repository, install dependencies, execute project commands, or start an Agent.
+BAZ-039 gives an Agent applicable repository instructions and source-backed command discovery
+while it works. Ask for the task in chat; no repository setup form is required. The Agent receives
+root instructions automatically and uses `repository_context` for deeper scopes. See
+[coding during an Agent task](coding-environments.md) for preparation, checks and teammate handoff.
+
+The Team page retains passive inspection under **Advanced repository diagnostics**. Inspection
+itself never runs project commands. These changes are implemented in this PR and not released.
 
 ```sh
 bazilion team context my-team

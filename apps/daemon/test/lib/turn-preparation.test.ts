@@ -124,7 +124,7 @@ test('Telegram callback answers a live protected question through its canonical 
     expect(userQueue.list(env.db, agentId).total).toBe(0)
   } finally {
     host.close()
-    releasePreparedAgentTurn(prepared)
+    await releasePreparedAgentTurn(prepared)
     installQuestionTransport(null)
     vi.unstubAllEnvs()
   }
@@ -180,7 +180,7 @@ test.each([
       if (!item.deliveryApprovalId) throw new Error('Missing hold')
       approvals.decide(env.db, item.deliveryApprovalId, 'deny', 'test-operator')
     } else {
-      releasePreparedAgentTurn(prepared)
+      await releasePreparedAgentTurn(prepared)
       registerAgent(agentId, new AbortController())
     }
     await vi.advanceTimersByTimeAsync(1000)
@@ -195,7 +195,7 @@ test.each([
     expect(vi.getTimerCount()).toBe(0)
   } finally {
     host.close()
-    releasePreparedAgentTurn(prepared)
+    await releasePreparedAgentTurn(prepared)
     if (change === 'owner_replaced') unregisterAgent(agentId)
     vi.useRealTimers()
   }
@@ -297,7 +297,7 @@ test('canonical approval routes release only a live question and its captured an
     expect(await next).toMatchObject({ kind: 'no_answer', reason: 'worker_lost' })
   } finally {
     host.close()
-    releasePreparedAgentTurn(prepared)
+    await releasePreparedAgentTurn(prepared)
   }
 })
 
@@ -351,7 +351,7 @@ test('live question host resumes once and cannot move to a replacement Agent reg
     const next = host.ask('next', { prompt: 'Another?', choices: [{ label: 'A' }, { label: 'B' }] })
     const second = questions.list(env.db, agentId).find((q) => q.id !== item.id)
     if (!second) throw new Error('Missing next question')
-    releasePreparedAgentTurn(prepared)
+    await releasePreparedAgentTurn(prepared)
     registerAgent(agentId, new AbortController())
     expect(() => service.ready(agentId, second.id)).toThrow('closed')
     host.close()
@@ -383,10 +383,10 @@ test('foreground question support is independently bound and queued HTTP cannot 
   expect(prepared.questionRoute).toEqual({ kind: 'web' })
   expect(prepared.invocation.bashApprovalMode).toBe('auto_deny')
   expect(Object.isFrozen(prepared.questionRoute)).toBe(true)
-  releasePreparedAgentTurn(prepared)
+  await releasePreparedAgentTurn(prepared)
   const unsupported = await prepareAgentTurn({ invocation })
   expect(unsupported.questionRoute).toBeUndefined()
-  releasePreparedAgentTurn(unsupported)
+  await releasePreparedAgentTurn(unsupported)
 })
 
 test('queued preparation binds retained input and retains its reference when policy requires approval', async () => {
@@ -429,7 +429,7 @@ test('queued preparation binds retained input and retains its reference when pol
     prepareAgentTurn({ queuedItemId: id, invocation: invocation('retained'), questionMode: 'web' }),
   ).rejects.toThrow('not eligible')
   const prepared = await prepareAgentTurn({ queuedItemId: id, invocation: invocation('retained') })
-  releasePreparedAgentTurn(prepared)
+  await releasePreparedAgentTurn(prepared)
   process.env.BAZILION_TEAM_POLICY_ENFORCEMENT = 'on'
   env.db.raw.run(
     "UPDATE team_policy_edges SET posture = 'approval_required' WHERE team_id = ? AND source_kind = 'user' AND target_id = ?",
@@ -532,7 +532,7 @@ test('prepared Agent turns are immutable, clone-resistant, and consumable exactl
     expect(() => consumePreparedAgentTurn(prepared)).not.toThrow()
     expect(() => consumePreparedAgentTurn(prepared)).toThrow(/already been executed/)
   } finally {
-    releasePreparedAgentTurn(prepared)
+    await releasePreparedAgentTurn(prepared)
   }
 })
 
@@ -569,7 +569,7 @@ test('an internally created protected preflight is consumed before it leaves pre
   const first = await prepareAgentTurn({ invocation: invocation('attempt-1') })
   expect(consumed).toBe(true)
   expect(first.protectedExecution).toBe(preflight)
-  releasePreparedAgentTurn(first)
+  await releasePreparedAgentTurn(first)
 
   await expect(
     prepareAgentTurn({
@@ -634,7 +634,7 @@ test('cross-source busy rejection happens before Telegram final authorization', 
 
   const prepared = await prepareAgentTurn({ invocation })
   expect(communicationDecisionMetrics.allowed).toBe(allowedBefore + 1)
-  releasePreparedAgentTurn(prepared)
+  await releasePreparedAgentTurn(prepared)
 })
 
 test.each([
@@ -702,5 +702,5 @@ test.each([
     /preclaimed Agent turn has already been prepared/,
   )
   expect(releaseLease).toHaveBeenCalledTimes(1)
-  releasePreparedAgentTurn(first)
+  await releasePreparedAgentTurn(first)
 })

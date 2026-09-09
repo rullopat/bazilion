@@ -1,5 +1,7 @@
 import { readCanonicalSessionFile } from '../../lib/result-source.ts'
 import type { AskUser } from '../tools/ask-user.ts'
+import { codingTools } from './coding.ts'
+import type { CodingHost } from './coding-contract.ts'
 import { type RepositoryContextHost, repositoryContextIntegration } from './repository-context.ts'
 // Bazilion → pi-coding-agent session bridge.
 //
@@ -71,6 +73,7 @@ import {
 import { createProviderRegistry, loadProviderConfigFromEnv } from '../providers/registry.ts'
 import { buildSystemPrompt, loadPromptSkills } from '../session/prompt.ts'
 import type { BashApprovalHost } from '../shell/approval.ts'
+import { codingContainerCwd } from '../shell/coding.ts'
 import type { ProtectedDockerRuntime } from '../shell/docker.ts'
 import { createProtectedSessionShellTools, createSessionShellTools } from '../shell/tooling.ts'
 import type {
@@ -89,7 +92,10 @@ import { protectedRuntimeSecrets, redactJsonValue } from '../worker/runtime.ts'
 import { createBazilionCustomTools, createProtectedBazilionCustomTools } from './tools.ts'
 
 export interface CreateBazilionSessionOptions {
+  dockerLifecycle?: import('../shell/docker.ts').DockerResourceLifecycle
+  preparedDocker?: ProtectedDockerRuntime
   repositoryContext?: import('@bazilion/api-types').RepositoryContextReport
+  codingHost?: CodingHost
   repositoryContextHost?: RepositoryContextHost
   agent: ResolvedAgent
   paths: Paths
@@ -167,7 +173,9 @@ export interface BazilionSessionHandle {
 }
 
 export interface CreateProtectedBazilionSessionOptions {
+  dockerLifecycle?: import('../shell/docker.ts').DockerResourceLifecycle
   repositoryContext?: import('@bazilion/api-types').RepositoryContextReport
+  codingHost?: CodingHost
   repositoryContextHost?: RepositoryContextHost
   conversation: import('@bazilion/api-types').ConversationTarget
   agent: ResolvedAgent
@@ -263,6 +271,8 @@ export async function createBazilionSession(
   const shellTools = restricted
     ? null
     : createSessionShellTools(cwd, env, {
+        preparedDocker: opts.preparedDocker,
+        dockerLifecycle: opts.dockerLifecycle,
         ...(existsSync(uploadsDir) ? { inputsDir: uploadsDir } : {}),
         skillMounts: promptSkills.map((skill) => ({
           source: skill.hostDir,
@@ -350,6 +360,29 @@ export async function createBazilionSession(
         env,
       })
   if (repository) bazilionTools.push(repository.tool)
+  if (
+    repository &&
+    opts.codingHost &&
+    shellTools &&
+    shellTools.config.sandboxMode === 'docker' &&
+    !opts.preparedDocker
+  )
+    throw new Error('Coding commands require the admitted Docker runtime')
+  if (repository && opts.codingHost && shellTools)
+    bazilionTools.push(
+      ...codingTools({
+        host: opts.codingHost,
+        root: cwd,
+        context: repository.resolve,
+        docker: opts.preparedDocker,
+        lifecycle: opts.dockerLifecycle,
+        approval: shellTools.config.approvalMode === 'dangerous',
+        approvalHost: bashApprovalHost,
+        secrets: Object.entries(env)
+          .filter(([key]) => /KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL|AUTH/i.test(key))
+          .map(([, value]) => value ?? ''),
+      }),
+    )
   const customTools = shellTools?.customBash
     ? [...bazilionTools, shellTools.customBash]
     : bazilionTools
@@ -430,7 +463,9 @@ export async function createProtectedBazilionSession(
     opts.paths.teamDir,
     opts.docker,
     opts.bashApprovalHost,
+    opts.dockerLifecycle,
   )
+  const modelCwd = codingContainerCwd(opts.docker.coding?.cwd ?? '.')
 
   mkdirSync(opts.paths.sessionDir, { recursive: true })
   const existing = explicitConversationFile(opts.paths.sessionDir, opts.conversation)
@@ -455,7 +490,7 @@ export async function createProtectedBazilionSession(
         )
       : undefined
   const resourceLoader = new DefaultResourceLoader({
-    cwd: PROTECTED_MODEL_CWD,
+    cwd: modelCwd,
     agentDir: opts.scratch.piAgentDir,
     settingsManager,
     noExtensions: true,
@@ -479,10 +514,23 @@ export async function createProtectedBazilionSession(
     sessionId: sessionManager.getSessionId(),
   })
   if (repository) bazilionTools.push(repository.tool)
+  if (repository && opts.codingHost)
+    bazilionTools.push(
+      ...codingTools({
+        host: opts.codingHost,
+        root: opts.paths.teamDir,
+        context: repository.resolve,
+        docker: opts.docker,
+        lifecycle: opts.dockerLifecycle,
+        approval: true,
+        approvalHost: opts.bashApprovalHost,
+        secrets: protectedRuntimeSecrets(opts.runtime),
+      }),
+    )
   if (!shellTools.customBash) throw new Error('protected Docker bash tool is unavailable')
   const customTools = [...bazilionTools, shellTools.customBash]
   const { session } = await createAgentSession({
-    cwd: PROTECTED_MODEL_CWD,
+    cwd: modelCwd,
     agentDir: opts.scratch.piAgentDir,
     model,
     thinkingLevel: toPiThinkingLevel(opts.runtime.reasoningLevel),

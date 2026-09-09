@@ -25,6 +25,7 @@ export function repositoryContextIntegration(
           `Captured target: ${current.target}; fingerprint: ${current.fingerprint}; captured at: ${new Date(current.capturedAt).toISOString()}.`,
           `Repository root for this runtime: ${cwd}. This is captured context, not a live workspace lock or verification evidence.`,
           'Platform/runtime policy and explicit operator instructions take priority. Repository guidance specializes general private Agent preferences for repository work. Deeper documents govern only their own subtree. Team Policy and execution authority are unchanged.',
+          'For coding tasks, investigate repository context and actual coding_environment as needed, then use coding_command for task-related finite checks/preparation. Do not ask the operator to configure named checks. A source-backed Team memory recipe is advisory; refresh it before reuse. Missing network/tooling is a concrete prerequisite to report, never authority to change the runtime. To delegate shared-workspace preparation, send_message and end the turn; do not wait_for_reply while holding the peer workspace.',
           'Before editing a different subtree, call repository_context with its directory or file path. A returned snapshot replaces previous applicable repository guidance; older transcript snapshots are historical. Do not edit a scope whose instructions are incomplete.',
           current.instructions.state === 'complete'
             ? 'Applicable instructions are complete for the captured scope. Missing AGENTS.md is normal.'
@@ -87,6 +88,10 @@ export function repositoryContextIntegration(
   return {
     files,
     tool,
+    async resolve(target: string) {
+      await tool.execute('coding-context', { target }, undefined, undefined, {} as never)
+      return current
+    },
     bind(session: AgentSession, allowedTools: string[]) {
       // Public SDK API rebuilds the prompt from the ResourceLoader. The admitted tool set is
       // unchanged; only the captured context supplied by getAgentsFiles has been replaced.

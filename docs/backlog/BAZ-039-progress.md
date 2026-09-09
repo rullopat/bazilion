@@ -1,5 +1,10 @@
 # BAZ-039 implementation goal
 
+> Scope revised 2026-09-09: [Agent-led coding design](design/agent-led-coding.md).
+> Prior completion and acceptance entries below describe the previous scope. Revised Agent-led
+> acceptance is pending; this refinement does not reopen or create a durable implementation goal.
+
+
 Started: 2026-09-08. Status: implementation accepted locally; unreleased.
 
 Story: [BAZ-039](in_progress/BAZ-039-repository-coding-context.md).
@@ -153,3 +158,7 @@ BAZ-039 and the related coding-story work. PR scope includes the completed imple
 BAZ-040 refinement and dependency-link corrections in BAZ-041/042/043/045; subsequent stories remain
 unimplemented. Upstream `main` matched the starting HEAD before branching. Commit/push/PR creation
 are now authorized; merge, release and deployment remain separate.
+
+## Agent-led remake — 2026-09-09
+
+The operator-probe scope above is superseded. The replacement is implemented and validated locally: [Agent-led acceptance](BAZ-039-040-agent-led-acceptance.md). No new goal, merge or release is claimed.

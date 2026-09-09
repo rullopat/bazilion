@@ -3,11 +3,31 @@ import { createServer } from 'node:http'
 import { join } from 'node:path'
 import type { RepositoryContextReport } from '@bazilion/api-types'
 import { afterAll, beforeAll, expect, test } from 'vitest'
+import { openDb } from '../../daemon/src/core/db/client.ts'
 import { extractAgentId } from './helpers.ts'
 import { startTestServer, type TestServer } from './server-fixture.ts'
 
 let server: TestServer
 const capturedPrompts: string[] = []
+const capturedOwnership: Array<{ writers: number; workers: number }> = []
+function ownership() {
+  const db = openDb(join(server.home, 'bazilion.db'))
+  try {
+    return {
+      writers:
+        db.raw.query<{ count: number }, []>('SELECT COUNT(*) AS count FROM workspace_writers').get()
+          ?.count ?? 0,
+      workers:
+        db.raw
+          .query<{ count: number }, []>(
+            "SELECT COUNT(*) AS count FROM workspace_resources WHERE kind = 'worker'",
+          )
+          .get()?.count ?? 0,
+    }
+  } finally {
+    db.close()
+  }
+}
 const fake = createServer(async (request, response) => {
   try {
     let input = ''
@@ -16,6 +36,7 @@ const fake = createServer(async (request, response) => {
       messages: Array<{ role: string; content?: unknown }>
       tools: Array<{ function: { name: string } }>
     }
+    capturedOwnership.push(ownership())
     capturedPrompts.push(
       JSON.stringify(
         body.messages.filter(
@@ -128,6 +149,11 @@ test('actual configured worker receives root instructions and refreshes nested c
   expect(result.exitCode).toBe(0)
   expect(result.stdout).toContain('CONTEXT_ROUND_TRIP_COMPLETE')
   expect(capturedPrompts).toHaveLength(2)
+  expect(capturedOwnership).toEqual([
+    { writers: 1, workers: 1 },
+    { writers: 1, workers: 1 },
+  ])
+  await expect.poll(ownership).toEqual({ writers: 0, workers: 0 })
   expect(capturedPrompts[0]).toContain('INITIAL_PROVIDER_CONTEXT_SENTINEL')
   expect(capturedPrompts[0]).not.toContain('NESTED_PROVIDER_CONTEXT_SENTINEL')
   expect(capturedPrompts[1]).toContain('NESTED_PROVIDER_CONTEXT_SENTINEL')

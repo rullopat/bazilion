@@ -127,8 +127,8 @@ and [Pi shell implementation at v0.85.1](https://github.com/earendil-works/pi/bl
 
 - [BAZ-039](../in_progress/BAZ-039-repository-coding-context.md) may supply command suggestions; manually selected
   checks do not require its full context UI. Command discovery never grants execution permission.
-- [BAZ-040](../todo/BAZ-040-coding-environment-readiness.md) supplies readiness for protected repository
-  checks; generic live output/receipt plumbing can land first with deterministic fixture commands.
+- [BAZ-040](../in_progress/BAZ-040-coding-environment-readiness.md) supplies Agent-selected commands and preparation in the admitted environment
+  without a saved operator checklist; generic live output/receipt plumbing can land first with deterministic fixture commands.
 - [BAZ-042](BAZ-042-git-change-review.md) shares snapshot identity, exclusions, and freshness
   semantics. Agree that contract first; neither story requires the other's full presentation UI.
 - [BAZ-034](../done/BAZ-034-durable-agent-deliverables.md) informs retained-byte lifecycle and access.

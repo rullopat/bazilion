@@ -1,3 +1,4 @@
+import { CodingDefaultsCard } from '../../../components/CodingDefaultsCard'
 import { ApiClientError } from '@bazilion/client'
 import type {
   Agent,
@@ -133,7 +134,7 @@ function TeamDetailPage() {
         </div>
       </section>
 
-      <RepositoryContextCard key={team.id} teamId={team.id} />
+      <details className="mb-6 rounded-lg border bg-card p-4"><summary className="cursor-pointer text-sm">Advanced repository diagnostics</summary><RepositoryContextCard key={team.id} teamId={team.id} /><CodingDefaultsCard teamId={team.id} /></details>
 
       <TopicNameFormatCard
         team={team}

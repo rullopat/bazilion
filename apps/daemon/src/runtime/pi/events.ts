@@ -207,13 +207,17 @@ export function piMessagesToProviderView(
         // A Pi tool transcript is private execution evidence, not proof that its transport
         // frame was released. Existing HTTP/Telegram approvals own captured publication.
         // Do not reconstruct a new repository snapshot publication from history or done frames.
-        if (tr.toolName === 'repository_context') {
+        if (
+          ['repository_context', 'coding_environment', 'coding_command', 'coding_receipt'].includes(
+            tr.toolName ?? '',
+          )
+        ) {
           out.push({
             role: 'tool',
             toolCallId: tr.toolCallId,
             toolName: tr.toolName,
             content:
-              'Repository context snapshot retained privately. Inspect the Team repository for a fresh report; captured transport output follows its communication approval.',
+              'Coding context or command evidence retained privately. Captured transport output follows its communication approval; ask the Agent for the relevant result.',
           })
           break
         }

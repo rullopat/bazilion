@@ -1,3 +1,5 @@
+import { inboxUpdateLabel } from '../lib/coding-presentation'
+import { CodingToolResult } from './CodingToolResult'
 // Chat panel: renders the running transcript, sends messages, consumes the
 // daemon's NDJSON ChatFrame stream. Initial messages come from the route
 // loader; new ones land via fetch + ReadableStream consume.
@@ -238,6 +240,8 @@ export function ChatPane({
   )
   const [serverMessages, setServerMessages] = useState<ProviderMessage[]>(initialMessages)
   const [liveEntries, setLiveEntries] = useState<RenderEntry[]>([])
+  // Only output delivered to this mounted conversation. Never load private evidence from history.
+  const deliveredCoding = useRef(new Map<string, string>())
   const [systemBubbles, setSystemBubbles] = useState<
     Array<{ id: number; content: string; afterIdx: number }>
   >([])
@@ -286,6 +290,7 @@ export function ChatPane({
     currentAbortRef.current?.abort()
     currentAbortRef.current = null
     commandApprovalTurnRef.current = false
+    deliveredCoding.current.clear()
     setServerMessages(initialMessages)
     setLiveEntries([])
     setSystemBubbles([])
@@ -880,6 +885,10 @@ export function ChatPane({
           : ev.type === 'tool_result'
             ? { kind: 'result', id: ev.id, name: ev.name, body: ev.result }
             : { kind: 'error', id: ev.id, name: ev.name, body: ev.error }
+      if (ev.type === 'tool_result' && ['repository_context', 'coding_environment', 'coding_command', 'coding_receipt'].includes(ev.name)) {
+        deliveredCoding.current.set(`${ev.name}:${ev.id}`, ev.result)
+        while (deliveredCoding.current.size > 20) deliveredCoding.current.delete(deliveredCoding.current.keys().next().value!)
+      }
       const images = ev.type === 'tool_result' ? ev.images : undefined
       setLiveEntries((prev) => {
         const next = [...prev]
@@ -1001,7 +1010,11 @@ export function ChatPane({
   }
 
   // --- render projection ---
-  const baseEntries = projectMessages(serverMessages)
+  const baseEntries = projectMessages(serverMessages.map(message => {
+    if (message.role !== 'tool' || !message.toolCallId || !message.toolName) return message
+    const body = deliveredCoding.current.get(`${message.toolName}:${message.toolCallId}`)
+    return body === undefined ? message : { ...message, content: body }
+  }))
   // Update the anchor reference so the next pushSystem() captures the current
   // count. Writing to a ref during render is supported by React.
   visibleEntryCountRef.current = baseEntries.length + liveEntries.length
@@ -1348,14 +1361,11 @@ function Bubble({
     if (entry.content.startsWith(INBOX_WAKE_PREFIX)) {
       const body = entry.content.slice(INBOX_WAKE_PREFIX.length)
       return (
-        <div className={`my-4 flex flex-col items-end ${dropCls}`}>
-          <span className="mb-1 text-[0.72em] font-semibold uppercase tracking-wider text-mocha opacity-90">
-            inbox
-          </span>
-          <div className="bubble-content max-w-[85%] whitespace-pre-wrap break-words rounded-[14px_14px_4px_14px] border border-fawn border-l-[3px] border-l-mocha-light bg-ivory px-3 py-2 font-mono text-[0.88em] leading-[1.5] text-mocha">
-            {body}
-          </div>
-        </div>
+        <details className={`my-3 rounded-lg border border-fawn bg-ivory px-3 py-2 text-sm text-mocha ${dropCls}`} aria-label="Teammate update">
+          <summary className="cursor-pointer font-medium">{inboxUpdateLabel(body)}</summary>
+          <p className="mt-2 text-xs">Original message and Agent instructions</p>
+          <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-words text-xs">{body}</pre>
+        </details>
       )
     }
     return (
@@ -1642,6 +1652,9 @@ function commandApprovalStatusFromConflict(
 }
 
 function ToolGroup({ items, dropCls }: { items: ToolItem[]; dropCls: string }) {
+  const codingNames = ['repository_context', 'coding_command', 'coding_environment', 'coding_receipt', 'send_message']
+  const hasCoding = items.some(item => codingNames.includes(item.name))
+  const visibleItems = items.filter(item => !(item.kind === 'call' && codingNames.includes(item.name) && items.some(other => other.id === item.id && other.kind !== 'call')))
   const [expanded, setExpanded] = useState(false)
   const contentRef = useRef<HTMLDivElement | null>(null)
   const [overflows, setOverflows] = useState(false)
@@ -1658,12 +1671,12 @@ function ToolGroup({ items, dropCls }: { items: ToolItem[]; dropCls: string }) {
       <div
         ref={contentRef}
         className="relative overflow-hidden"
-        style={{ maxHeight: expanded ? 'none' : `${TOOL_GROUP_MAX_HEIGHT_PX}px` }}
+        style={{ maxHeight: expanded || hasCoding ? 'none' : `${TOOL_GROUP_MAX_HEIGHT_PX}px` }}
       >
-        {items.map((it, i) => (
+        {visibleItems.map((it, i) => (
           <ToolLine key={i} item={it} />
         ))}
-        {overflows && !expanded && (
+        {overflows && !expanded && !hasCoding && (
           <div
             className="pointer-events-none absolute inset-x-0 bottom-0 h-10"
             style={{
@@ -1673,7 +1686,7 @@ function ToolGroup({ items, dropCls }: { items: ToolItem[]; dropCls: string }) {
           />
         )}
       </div>
-      {overflows && (
+      {overflows && !hasCoding && (
         <button
           type="button"
           onClick={() => setExpanded((v) => !v)}
@@ -1687,6 +1700,13 @@ function ToolGroup({ items, dropCls }: { items: ToolItem[]; dropCls: string }) {
 }
 
 function ToolLine({ item }: { item: ToolItem }) {
+  if (item.name === 'send_message' && item.kind !== 'error') return (
+    <details className="py-1 font-sans text-sm">
+      <summary className="cursor-pointer">{item.kind === 'call' ? 'Sending teammate message…' : item.body.startsWith('sent message ') ? 'Teammate message sent' : 'Teammate message status'}</summary>
+      <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-words text-xs">{item.body}</pre>
+    </details>
+  )
+  if (item.kind !== 'error' && ['repository_context', 'coding_command', 'coding_environment', 'coding_receipt'].includes(item.name)) return <CodingToolResult name={item.name} body={item.body} pending={item.kind === 'call'} />
   if (item.kind === 'call') {
     const args = prettyArgs(item.body)
     const multiLine = args.includes('\n')

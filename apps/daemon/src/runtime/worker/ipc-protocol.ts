@@ -22,7 +22,11 @@ import type {
 import type { ToolResultPart } from '../tools/types.ts'
 
 export type RpcMethod =
+  | 'coding'
   | 'repositoryContext'
+  | 'containerBeforeCreate'
+  | 'containerAfterCreate'
+  | 'containerAfterRemove'
   | 'questionConsumed'
   | 'askUser'
   | 'agentExists'
@@ -150,6 +154,11 @@ export interface ResultHost {
 }
 
 export type RpcArgs =
+  | { method: 'coding'; args: import('../pi/coding-contract.ts').CodingRequest }
+  | {
+      method: 'containerBeforeCreate' | 'containerAfterCreate' | 'containerAfterRemove'
+      args: { containerName: string }
+    }
   | { method: 'repositoryContext'; args: { target: string } }
   | { method: 'questionConsumed'; args: { questionId: string; toolCallId: string } }
   | {
@@ -171,6 +180,11 @@ export type RpcArgs =
   | { method: 'bashApproval'; args: BashApprovalArgs }
 
 export type RpcResult =
+  | { method: 'coding'; value: import('../pi/coding-contract.ts').CodingResponse }
+  | {
+      method: 'containerBeforeCreate' | 'containerAfterCreate' | 'containerAfterRemove'
+      value: null
+    }
   | { method: 'repositoryContext'; value: import('@bazilion/api-types').RepositoryContextReport }
   | { method: 'questionConsumed'; value: null }
   | { method: 'askUser'; value: import('@bazilion/api-types').AgentQuestionToolResult }
@@ -283,4 +297,10 @@ export interface QuestionHost {
     question: import('@bazilion/api-types').AgentQuestionInput,
   ): Promise<import('@bazilion/api-types').AgentQuestionToolResult>
   close(): void
+}
+
+export interface ContainerLifecycleHost {
+  beforeCreate(containerName: string): Promise<void>
+  afterCreate(containerName: string): Promise<void>
+  afterRemove(containerName: string): Promise<void>
 }

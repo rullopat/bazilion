@@ -3,6 +3,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  readFileSync,
   realpathSync,
   rmSync,
   symlinkSync,
@@ -13,6 +14,9 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { ResolvedAgent } from '@bazilion/api-types'
 import { afterEach, describe, expect, test, vi } from 'vitest'
+import { openDb } from '../../src/core/db/client.ts'
+import { runMigrations } from '../../src/core/db/migrate.ts'
+import { workspaceLifecycle } from '../../src/lib/coding-environment/lifecycle.ts'
 import { resolveRepositoryContext } from '../../src/lib/repository-context/index.ts'
 import type { MemoryBackend } from '../../src/runtime/memory/types.ts'
 import { createProtectedBazilionCustomTools } from '../../src/runtime/pi/tools.ts'
@@ -45,6 +49,137 @@ afterEach(() => {
 })
 
 describe('minimal worker runtime', () => {
+  test('lost host worker cannot release ownership of Pi detached shell work after restart', async () => {
+    const root = tempRoot()
+    const prepared = protectedSpec(root)
+    const dbPath = join(root, 'host-recovery.db')
+    let db = openDb(dbPath)
+    runMigrations(db)
+    let workerPid: number | undefined
+    let shellPid: number | undefined
+    const marker = join(prepared.paths.teamDir, 'fixture-host-shell-pid')
+    try {
+      const lifecycle = workspaceLifecycle(db)
+      const lease = await lifecycle.claim(prepared.agent.team.id, prepared.paths.teamDir, 'agent')
+      const worker = lifecycle.worker(lease)
+      const collect = async () => {
+        for await (const _frame of spawnWorkerTurn(
+          {
+            kind: 'configured_operator_http',
+            agent: prepared.agent,
+            repositoryContext: prepared.repositoryContext,
+            conversation: prepared.conversation,
+            message: 'Fixture host command',
+            enabledProviders: ['openai-codex'],
+            turnId: 'host-recovery-fixture',
+            bashApprovalMode: 'auto_deny',
+          },
+          {
+            env: { ...process.env, BAZILION_BASH_SANDBOX: 'off' },
+            resourceLifecycle: {
+              beforeInput(pid, hostCommands) {
+                workerPid = pid
+                expect(hostCommands).toBe(true)
+                worker.beforeInput(pid, hostCommands)
+              },
+              afterExit: (normal) => worker.afterExit(normal),
+            },
+            workerEntryPath: fileURLToPath(
+              new URL('../fixtures/worker-host-detached-entry.ts', import.meta.url),
+            ),
+          },
+        )) {
+          /* Consume through the observed worker failure. */
+        }
+      }
+      const result = expect(collect()).rejects.toThrow('Worker cleanup could not be confirmed')
+      await vi.waitFor(() => expect(existsSync(marker)).toBe(true), { timeout: 10000 })
+      shellPid = Number(readFileSync(marker, 'utf8'))
+      if (!workerPid || !shellPid) throw new Error('Fixture process identity missing')
+      process.kill(-workerPid, 'SIGKILL')
+      await result
+      process.kill(shellPid, 0)
+      await lifecycle.release(lease)
+      db.close()
+      db = openDb(dbPath)
+      const restarted = workspaceLifecycle(db)
+      await expect(
+        restarted.claim(prepared.agent.team.id, prepared.paths.teamDir, 'agent'),
+      ).rejects.toThrow('workspace_recovery_required')
+      process.kill(shellPid, 0)
+      process.kill(-shellPid, 'SIGKILL')
+      // Absence of known PIDs still cannot prove the entire lost host command tree stopped.
+      await expect(
+        restarted.claim(prepared.agent.team.id, prepared.paths.teamDir, 'agent'),
+      ).rejects.toThrow('workspace_recovery_required')
+    } finally {
+      if (!shellPid) {
+        try {
+          shellPid = Number(readFileSync(marker, 'utf8'))
+        } catch {}
+      }
+      for (const pid of [workerPid, shellPid]) {
+        if (pid) {
+          try {
+            process.kill(-pid, 'SIGKILL')
+          } catch {}
+        }
+      }
+      db.close()
+    }
+  })
+  test('unconfirmed descendant output ends the transport but remains blocked after database reopen', async () => {
+    const root = tempRoot()
+    const spec = protectedSpec(root)
+    const dbPath = join(root, 'recovery.db')
+    let db = openDb(dbPath)
+    runMigrations(db)
+    let descendant: number | undefined
+    try {
+      const lifecycle = workspaceLifecycle(db)
+      const lease = await lifecycle.claim(spec.agent.team.id, spec.paths.teamDir, 'agent')
+      const collect = async () => {
+        for await (const _frame of spawnWorkerTurn(spec, {
+          ...scopedHosts(),
+          apiKeyRefreshHost: { refresh: async () => 'rotated' },
+          resourceLifecycle: lifecycle.worker(lease),
+          workerEntryPath: fileURLToPath(
+            new URL('../fixtures/worker-output-holder-entry.ts', import.meta.url),
+          ),
+        })) {
+          /* Consume the transport through termination, including a possible done frame. */
+        }
+      }
+      await expect(collect()).rejects.toThrow('Worker cleanup could not be confirmed')
+      descendant = Number(readFileSync(join(spec.paths.teamDir, 'fixture-descendant-pid'), 'utf8'))
+      process.kill(descendant, 0)
+      await lifecycle.release(lease)
+      db.close()
+      db = openDb(dbPath)
+      const restarted = workspaceLifecycle(db)
+      await expect(
+        restarted.claim(spec.agent.team.id, spec.paths.teamDir, 'agent'),
+      ).rejects.toThrow('workspace_recovery_required')
+      process.kill(descendant, 0)
+      process.kill(-descendant, 'SIGKILL')
+      const next = await restarted.claim(spec.agent.team.id, spec.paths.teamDir, 'agent')
+      await restarted.release(next)
+    } finally {
+      if (!descendant) {
+        try {
+          descendant = Number(
+            readFileSync(join(spec.paths.teamDir, 'fixture-descendant-pid'), 'utf8'),
+          )
+        } catch {}
+      }
+      if (descendant) {
+        try {
+          process.kill(-descendant, 'SIGKILL')
+        } catch {}
+      }
+      db.close()
+    }
+  })
   test('constructs an exact POSIX environment with no ambient startup or credential values', () => {
     const scratch = createMinimalWorkerScratch()
     try {

@@ -1,6 +1,7 @@
 import * as queue from '../core/repos/user-queue.ts'
 import { isActiveAgent, isAgentTurnActiveError } from './agent-cancel.ts'
 import { prepareAgentTurn, runAgentTurn } from './agent-turn.ts'
+import { WorkspaceBusyError } from './coding-environment/workspace.ts'
 import { CommunicationPendingError } from './communication.ts'
 import { getCtx } from './ctx.ts'
 import { protectedFailureMessage } from './protected-failure.ts'
@@ -61,13 +62,13 @@ export async function drainUserQueueHead(agentId: string): Promise<boolean> {
     try {
       if (queue.control(db, agentId).paused) {
         queue.transition(db, agentId, item.id, 'claimed', 'pending')
-        releasePreparedAgentTurn(prepared)
+        await releasePreparedAgentTurn(prepared)
         return false
       }
       if (telegram) requireTelegramQueuedTurn(db, authToken, input.provenance, turn)
       queue.transition(db, agentId, item.id, 'claimed', 'running')
     } catch (error) {
-      releasePreparedAgentTurn(prepared)
+      await releasePreparedAgentTurn(prepared)
       throw error
     }
     started = true
@@ -91,7 +92,10 @@ export async function drainUserQueueHead(agentId: string): Promise<boolean> {
     )
     return true
   } catch (error) {
-    if (!started && isAgentTurnActiveError(error, agentId)) {
+    if (
+      !started &&
+      (isAgentTurnActiveError(error, agentId) || error instanceof WorkspaceBusyError)
+    ) {
       queue.transition(db, agentId, item.id, 'claimed', 'pending')
       return false
     }

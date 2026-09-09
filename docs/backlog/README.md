@@ -44,12 +44,14 @@ in [the milestone progress log](BAZ-035-038-progress.md). Remaining draft sizes 
 open decisions and boundaries to resolve before moving to `todo/`. Desktop packaging and Team
 conversation views remain later ideas rather than part of this initial slice.
 
-Coding stories BAZ-039 through BAZ-044 were added on 2026-09-07. The initial coding milestone is
-BAZ-039 through BAZ-042: follow repository instructions, use a prepared environment, run the relevant
-finite checks, and return a persistent diff with verifiable results for a small real-repository bug.
-BAZ-039 and BAZ-040 were refined together on 2026-09-08 and moved to `todo/`; implement
-BAZ-039 first, then BAZ-040. BAZ-039 entered `in_progress/` on 2026-09-08; BAZ-040 remains ready in `todo/`. Command evidence and Git review can proceed in parallel once
-their shared snapshot contract is agreed. BAZ-034 supplies reusable durable-output primitives.
+Coding stories BAZ-039 through BAZ-044 were added on 2026-09-07. The initial milestone is
+BAZ-039 through BAZ-042: Agents discover repository instructions, prepare/check their actual
+execution environment while working, run relevant tests, and review changes. BAZ-039/040 were
+revised on 2026-09-09 after manual acceptance exposed an operator-driven product mismatch.
+Their existing implementation is reusable infrastructure; the revised Agent-led acceptance is
+pending. See the [concrete solution and adaptation plan](design/agent-led-coding.md).
+Implement revised BAZ-039 discovery first, then BAZ-040 admitted commands, preparation and normal
+same-Team handoff. BAZ-041 adds stronger command evidence and BAZ-042 adds Git review.
 BAZ-043 adds parallel workspace ownership later, followed by BAZ-044's review/handoff experience;
 static review itself does not require managed worktrees. Managed previews, language-server features,
 and automatic commit/push/PR publication are outside these first coding drafts.
@@ -64,17 +66,17 @@ outcome. Automatic Git publication and managed service/browser test environments
 later story candidates. Neither draft introduces a general pipeline engine or turns communication
 approval into permission to deploy.
 
-## Todo (1)
+## Todo (0)
 
 | ID | Title | Size | Notes |
 |----|-------|------|-------|
-| [BAZ-040](todo/BAZ-040-coding-environment-readiness.md) | Prepared per-Team coding environments and truthful readiness | L | Refined 2026-09-08; after BAZ-039: Team images, Docker probes, workspace coordination and measured readiness |
 
-## In Progress (1)
+## In Progress (2)
 
 | ID | Title | Size | Notes |
 |----|-------|------|-------|
-| [BAZ-039](in_progress/BAZ-039-repository-coding-context.md) | Repository context and coding onboarding within a Team | M | Locally implemented and accepted 2026-09-08; unreleased; [evidence and platform limitation](BAZ-039-progress.md) |
+| [BAZ-039](in_progress/BAZ-039-repository-coding-context.md) | Agents discover repository context while working | M | Agent-led remake validated locally; review/release pending. [Acceptance](BAZ-039-040-agent-led-acceptance.md) |
+| [BAZ-040](in_progress/BAZ-040-coding-environment-readiness.md) | Agents prepare and check their environment during a task | L | Agent tools, offline preparation and inbox handoff validated locally; review/release pending. [Acceptance](BAZ-039-040-agent-led-acceptance.md) |
 
 ## Done (33)
 

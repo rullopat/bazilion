@@ -68,11 +68,16 @@ test('text repository results use the existing HTTP egress approval tuple', () =
   )
 })
 
-test('public history and done projections never independently release private context results', () => {
+test.each([
+  'repository_context',
+  'coding_environment',
+  'coding_command',
+  'coding_receipt',
+])('public history and done projections never independently release %s results', (toolName) => {
   const messages = [
     {
       role: 'toolResult',
-      toolName: 'repository_context',
+      toolName,
       toolCallId: 'context-call',
       isError: false,
       content: [{ type: 'text', text: 'PRIVATE_REPOSITORY_SENTINEL' }],
@@ -82,7 +87,7 @@ test('public history and done projections never independently release private co
   ] as AgentMessage[]
   const projected = piMessagesToProviderView(messages)
   expect(JSON.stringify(projected)).not.toContain('PRIVATE_REPOSITORY_SENTINEL')
-  expect(projected[0]?.toolName).toBe('repository_context')
+  expect(projected[0]?.toolName).toBe(toolName)
   expect(projected[0]?.content).toContain('retained privately')
   expect(JSON.stringify(messages)).toContain('PRIVATE_REPOSITORY_SENTINEL')
 })

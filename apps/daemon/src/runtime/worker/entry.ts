@@ -1,3 +1,4 @@
+import type { DockerResourceLifecycle } from '../shell/docker.ts'
 // One-shot worker entry. Configured operator HTTP retains its legacy runtime;
 // protected normal turns and restricted reviews use closed typed inputs.
 
@@ -96,6 +97,25 @@ function createIpcMessagingHost(call: WorkerIpcCall): MessagingHost {
     },
     findReplies: (agentId, replyTo) => call('findReplies', { agentId, replyTo }),
     approvalStatus: (agentId, approvalId) => call('approvalStatus', { agentId, approvalId }),
+  }
+}
+
+function createIpcDockerLifecycle(
+  namespace: string | undefined,
+  call: WorkerIpcCall,
+): DockerResourceLifecycle | undefined {
+  if (!namespace) return undefined
+  return {
+    name: (kind) => `bazilion-${namespace}-${kind}-${randomUUID()}`,
+    beforeCreate: async (identity) => {
+      await call('containerBeforeCreate', { containerName: identity.containerName })
+    },
+    afterCreate: async (containerName) => {
+      await call('containerAfterCreate', { containerName })
+    },
+    afterRemove: async (containerName) => {
+      await call('containerAfterRemove', { containerName })
+    },
   }
 }
 
@@ -245,9 +265,12 @@ async function createSessionForInput(
       : undefined
     const handle = await createBazilionSession({
       agent: input.agent,
+      preparedDocker: input.configuredDocker?.docker,
+      dockerLifecycle: createIpcDockerLifecycle(input.containerNamespace, ipcCall),
       conversation: input.conversation,
       repositoryContext: input.repositoryContext,
       repositoryContextHost: (target) => ipcCall('repositoryContext', { target }),
+      codingHost: { invoke: (request) => ipcCall('coding', request) },
       paths,
       env: process.env,
       memory,
@@ -307,10 +330,12 @@ async function createSessionForInput(
     conversation: input.conversation,
     repositoryContext: input.repositoryContext,
     repositoryContextHost: (target) => ipcCall('repositoryContext', { target }),
+    codingHost: { invoke: (request) => ipcCall('coding', request) },
     runtime: input.runtime,
     paths: input.paths,
     scratch: input.scratch,
     docker: input.docker,
+    dockerLifecycle: createIpcDockerLifecycle(input.containerNamespace, ipcCall),
     memory,
     messagingHost,
     userMdHost,

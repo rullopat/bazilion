@@ -1099,13 +1099,26 @@ export interface TelegramBindResponse {
 }
 
 export type {
+  CodingCommandInput,
+  CodingCommandOutcome,
+  CodingCommandReceipt,
+  CodingCommandState,
+  CodingEnvironmentConfig,
+  CodingEnvironmentSnapshot,
+  CodingEnvironmentStatus,
+  CodingEnvironmentValues,
+  CodingPurpose,
+  CodingReceiptView,
+  ConfigureCodingEnvironmentRequest,
+  TeamCodingEnvironment,
+} from './coding-environment.ts'
+export type {
   Conversation,
   ConversationListResponse,
   ConversationSelection,
   ConversationTarget,
   NewConversationInput,
 } from './conversations.ts'
-
 export type {
   EditQueuedInput,
   EnqueueUserInput,
