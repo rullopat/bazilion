@@ -107,6 +107,18 @@ Path resolution is centralized in `apps/daemon/src/core/paths.ts`. The `Paths` s
 
 Teams always live at `~/.bazilion/teams/<slug>/`. The CLI (`bazilion team add <slug> [--link <target>]`) and the web `/teams` create form pass only the slug + optional name + optional link target; the daemon decides where the slot goes. `--link <abs-path>` materializes the slot as a symlink to an existing directory (the "agents working on my existing project tree" path); the target must exist and be a directory. Without `--link`, a fresh real directory is created. `teamRepo.get/list/insert(db, ..., paths)` derive `Team.path` from `paths.teamDir(id)` at read time — there is no `path` column anymore.
 
+### Repository context (BAZ-039, implemented and unreleased)
+
+The daemon resolver under `src/lib/repository-context/` prepares bounded Team-relative repository
+instructions and passive Git/command context. `GET /api/teams/:id/repository-context`,
+`bazilion team context`, and the Team page share hermetic report types. Normal/protected coding
+workers receive admission snapshots and can request targeted refresh through `repositoryContext`
+IPC / Pi's `repository_context` tool. Pi's public resource-loader interface consumes supplied
+context; automatic context/extension/skill discovery remains disabled. Private Agent documents
+are labelled Agent instructions, separately from repository guidance. Restricted reviews gain no
+repository capability. See `docs/repository-context.md` and `docs/backlog/BAZ-039-progress.md` for
+limits, acceptance status and remaining work. Do not treat context fingerprints as code checks.
+
 ### Memory model
 
 Memory is **per-team**, shared across every agent in the team. The qmd backend lives at `<team.path>/memory/`; each turn's worker calls `qmdBackend(join(agent.team.path, 'memory'))`. The `memory_*` tool descriptions explicitly tell the LLM the store is shared and direct personal notes (persona quirks, preferences) to `home_write IDENTITY.md` instead. The schema's per-agent memory dir is gone — `spawnAgent` only creates `agents/<id>/sessions/`. External surfaces match the ownership: HTTP at `/api/teams/:slug/memory*`, web UI at `/teams/:slug/memory`, CLI at `bazilion memory <write|read|list|search|rm> <team-slug> ...`. There are no `/api/agents/:id/memory*` routes — clients always address the team.

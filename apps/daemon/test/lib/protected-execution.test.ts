@@ -61,6 +61,7 @@ describe('protected execution preparation', () => {
             },
             endpoint: 'unix:///var/run/docker.sock',
             image: input.image,
+            ...(input.coding ? { coding: input.coding } : {}),
             imageId: 'sha256:protected-image',
             uid: 1000,
             gid: 1000,
@@ -107,6 +108,33 @@ describe('protected execution preparation', () => {
     })
     expect(preflightInputs).toHaveLength(1)
     expect(preflightInputs[0]?.readOnlyMounts?.map((mount) => mount.target)).toContain('/inputs')
+  })
+
+  test('configured and protected preparation select identical Team image, cwd, environment and mounts', async () => {
+    const { putCodingEnvironment } = await import('../../src/core/repos/coding-environment.ts')
+    const { prepareAgentDockerInputs, prepareProtectedExecution } = await import(
+      '../../src/lib/protected-execution.ts'
+    )
+    const resolved = resolveAgent(env.db, env.paths, agentId)
+    mkdirSync(join(resolved.team.path, 'app'))
+    putCodingEnvironment(env.db, env.teamId, 0, {
+      image: 'prepared/node:24',
+      cwd: 'app',
+      env: { CI: 'true', NO_COLOR: '1' },
+    })
+    const configured = await prepareAgentDockerInputs(resolved, { includeUploads: true })
+    const protectedTurn = await prepareProtectedExecution(resolved, { includeUploads: true })
+    expect(preflightInputs).toHaveLength(2)
+    expect(preflightInputs[0]).toEqual(preflightInputs[1])
+    expect(configured.docker).toEqual(protectedTurn.docker)
+    expect(configured.docker.coding).toEqual({
+      revision: 1,
+      cwd: 'app',
+      env: { CI: 'true', NO_COLOR: '1' },
+    })
+    expect(configured.docker.image).toBe('prepared/node:24')
+    expect(configured).not.toHaveProperty('runtime')
+    expect(configured).not.toHaveProperty('refreshApiKey')
   })
 
   test.each([

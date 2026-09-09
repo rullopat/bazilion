@@ -204,6 +204,23 @@ export function piMessagesToProviderView(
       }
       case 'toolResult': {
         const tr = m as { content: unknown; toolCallId?: string; toolName?: string }
+        // A Pi tool transcript is private execution evidence, not proof that its transport
+        // frame was released. Existing HTTP/Telegram approvals own captured publication.
+        // Do not reconstruct a new repository snapshot publication from history or done frames.
+        if (
+          ['repository_context', 'coding_environment', 'coding_command', 'coding_receipt'].includes(
+            tr.toolName ?? '',
+          )
+        ) {
+          out.push({
+            role: 'tool',
+            toolCallId: tr.toolCallId,
+            toolName: tr.toolName,
+            content:
+              'Coding context or command evidence retained privately. Captured transport output follows its communication approval; ask the Agent for the relevant result.',
+          })
+          break
+        }
         if (tr.toolName === 'ask_user' && !questionResultVisible?.(m)) {
           out.push({
             role: 'tool',

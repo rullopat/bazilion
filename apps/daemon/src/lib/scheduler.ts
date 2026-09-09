@@ -1,3 +1,5 @@
+import { workspaceLifecycle } from './coding-environment/lifecycle.ts'
+import { WorkspaceBusyError, type WorkspaceLease } from './coding-environment/workspace.ts'
 import { resolveConversationTarget } from './conversation-target.ts'
 // In-process scheduler for interval/cron agent triggers and inbox
 // auto-delivery.
@@ -203,6 +205,7 @@ async function fireTrigger(dispatch: TriggerDispatch): Promise<void> {
     }
 
     let failure: string | null = null
+    let workspaceDeferred = false
     try {
       const attemptId = `${t.id}:${claimedDispatch.scheduledAt}`
       const ownedRelease = releaseOwnedLease
@@ -264,9 +267,14 @@ async function fireTrigger(dispatch: TriggerDispatch): Promise<void> {
           errorName: err instanceof Error ? err.name : 'unknown',
         }),
       )
-      failure = protectedFailureMessage(err)
+      if (err instanceof WorkspaceBusyError) {
+        workspaceDeferred = true
+        triggerDispatchRepo.defer(ctx.db, claimedDispatch.id)
+      } else failure = protectedFailureMessage(err)
     } finally {
-      if (controller.signal.aborted) {
+      if (workspaceDeferred) {
+        // Existing durable occurrence retries under its normal deferral policy.
+      } else if (controller.signal.aborted) {
         triggerDispatchRepo.cancelRunning(ctx.db, claimedDispatch.id, 'agent turn cancelled')
       } else if (failure) triggerDispatchRepo.fail(ctx.db, claimedDispatch.id, failure)
       else triggerDispatchRepo.succeed(ctx.db, claimedDispatch.id)
@@ -370,13 +378,23 @@ async function fireInboxWake(agentId: string): Promise<void> {
   const controller = new AbortController()
   let registered = false
   let handoffStarted = false
+  let workspaceLease: WorkspaceLease | undefined
   try {
     // Readiness must be established before `claimDeliverableInbox` marks the
     // canonical messages read. The branded result is handed directly into
     // final preparation under this same lifecycle lease.
+    const resolvedAgent = resolveAgent(ctx.db, ctx.paths, agentId)
+    workspaceLease = await workspaceLifecycle(ctx.db).claim(
+      resolvedAgent.team.id,
+      resolvedAgent.team.path,
+      'agent',
+    )
     const protectedExecution = await prepareProtectedExecution(
       resolveAgent(ctx.db, ctx.paths, agentId),
-      { signal: controller.signal },
+      {
+        signal: controller.signal,
+        dockerLifecycle: workspaceLifecycle(ctx.db).containers(workspaceLease),
+      },
     )
     const conversation = resolveConversationTarget(ctx.db, ctx.paths, agentId)
     const msgs = claimDeliverableInbox(
@@ -428,6 +446,7 @@ async function fireInboxWake(agentId: string): Promise<void> {
     handoffStarted = true
     const preparedTurn = await prepareAgentTurn({
       protectedExecution,
+      workspaceLease,
       invocation,
     })
     for await (const frame of runAgentTurn(preparedTurn)) {
@@ -450,6 +469,7 @@ async function fireInboxWake(agentId: string): Promise<void> {
       }),
     )
   } finally {
+    if (workspaceLease) await workspaceLifecycle(ctx.db).release(workspaceLease)
     s.firing.delete(key)
   }
 }

@@ -1,3 +1,12 @@
+export type {
+  RepositoryCommandCandidate,
+  RepositoryCommandSource,
+  RepositoryContextIssue,
+  RepositoryContextReport,
+  RepositoryContextRequest,
+  RepositoryInstruction,
+} from './repository-context.ts'
+
 import type { ConversationSelection } from './conversations.ts'
 
 export type {
@@ -1090,13 +1099,26 @@ export interface TelegramBindResponse {
 }
 
 export type {
+  CodingCommandInput,
+  CodingCommandOutcome,
+  CodingCommandReceipt,
+  CodingCommandState,
+  CodingEnvironmentConfig,
+  CodingEnvironmentSnapshot,
+  CodingEnvironmentStatus,
+  CodingEnvironmentValues,
+  CodingPurpose,
+  CodingReceiptView,
+  ConfigureCodingEnvironmentRequest,
+  TeamCodingEnvironment,
+} from './coding-environment.ts'
+export type {
   Conversation,
   ConversationListResponse,
   ConversationSelection,
   ConversationTarget,
   NewConversationInput,
 } from './conversations.ts'
-
 export type {
   EditQueuedInput,
   EnqueueUserInput,

@@ -1,3 +1,4 @@
+import { CodingDefaultsCard } from '../../../components/CodingDefaultsCard'
 import { ApiClientError } from '@bazilion/client'
 import type {
   Agent,
@@ -10,6 +11,7 @@ import { createServerFn } from '@tanstack/react-start'
 import { useEffect, useState } from 'react'
 import { Button } from '../../../components/Button'
 import { PageShell, SectionCard, StatusBadge } from '../../../components/Page'
+import { RepositoryContextCard } from '../../../components/RepositoryContextCard'
 import { TeamTabs } from '../../../components/TeamTabs'
 import { UnsavedChangesGuard } from '../../../components/UnsavedChangesGuard'
 import { daemonClient } from '../../../lib/daemon-client'
@@ -131,6 +133,8 @@ function TeamDetailPage() {
           {err && <span role="alert" className="text-xs text-danger">{err}</span>}
         </div>
       </section>
+
+      <details className="mb-6 rounded-lg border bg-card p-4"><summary className="cursor-pointer text-sm">Advanced repository diagnostics</summary><RepositoryContextCard key={team.id} teamId={team.id} /><CodingDefaultsCard teamId={team.id} /></details>
 
       <TopicNameFormatCard
         team={team}

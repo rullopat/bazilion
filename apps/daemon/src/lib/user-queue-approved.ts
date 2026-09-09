@@ -5,6 +5,7 @@ import * as queue from '../core/repos/user-queue.ts'
 import { isAgentTurnActiveError, waitForAgentIdle } from './agent-cancel.ts'
 import { prepareAgentTurn, runAgentTurn } from './agent-turn.ts'
 import { validateQueuedUserApproval } from './approval-delivery-plan.ts'
+import { WorkspaceBusyError } from './coding-environment/workspace.ts'
 import { getCtx } from './ctx.ts'
 import { protectedFailureMessage } from './protected-failure.ts'
 import { requireTelegramQueuedTurn } from './telegram/queue-binding.ts'
@@ -94,6 +95,10 @@ export async function deliverQueuedApproval(approval: CommunicationApprovalDetai
           }),
         })
       } catch (error) {
+        if (error instanceof WorkspaceBusyError && !error.recoveryRequired) {
+          await new Promise((resolve) => setTimeout(resolve, 1000))
+          continue
+        }
         if (isAgentTurnActiveError(error, ref.agentId)) continue
         throw error
       }
@@ -115,7 +120,7 @@ export async function deliverQueuedApproval(approval: CommunicationApprovalDetai
         if (telegram) requireTelegramQueuedTurn(db, authToken, input.provenance, turn)
         queue.transition(db, ref.agentId, ref.itemId, 'claimed', 'running')
       } catch (error) {
-        releasePreparedAgentTurn(prepared)
+        await releasePreparedAgentTurn(prepared)
         throw error
       }
       started = true

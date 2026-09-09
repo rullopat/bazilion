@@ -10,6 +10,7 @@ import type {
 import { defineCommand } from 'citty'
 import { createClient } from '../client.ts'
 import { columnize } from '../columnize.ts'
+import { teamEnvironmentCommand } from './team-environment.ts'
 import { teamPolicyCommand } from './team-policy.ts'
 
 const addCmd = defineCommand({
@@ -188,9 +189,65 @@ const topicFormatCmd = defineCommand({
   },
 })
 
+const contextCmd = defineCommand({
+  meta: {
+    name: 'context',
+    description: 'Inspect repository instructions, Git state and command suggestions',
+  },
+  args: {
+    id: { type: 'positional', required: true, description: 'Team slug' },
+    target: { type: 'string', description: 'Contained relative file or directory' },
+    json: { type: 'boolean', description: 'Print the complete captured report as JSON' },
+  },
+  async run({ args }) {
+    const report = await createClient().repositoryContext(args.id, { target: args.target })
+    if (args.json) {
+      console.log(JSON.stringify(report, null, 2))
+      return
+    }
+    // Repository text is untrusted terminal data. Keep controls inert in readable summaries.
+    const safe = (value: string): string =>
+      [...value]
+        .map((char) =>
+          char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127
+            ? JSON.stringify(char).slice(1, -1)
+            : char,
+        )
+        .join('')
+    console.log(
+      `Team ${safe(report.teamId)} · target ${safe(report.target)} · captured ${new Date(report.capturedAt).toISOString()}`,
+    )
+    console.log(`Repository instructions: ${report.instructions.state}`)
+    for (const file of report.instructions.files)
+      console.log(
+        `  ${safe(file.path)} (scope ${safe(file.scope)}, precedence ${file.precedence}, SHA-256 ${file.sha256})`,
+      )
+    console.log(
+      `Git: ${report.git.state}${report.git.headState ? ` · ${report.git.headState} ${safe(report.git.branch ?? report.git.head ?? '')}` : ''}`,
+    )
+    if (report.git.state === 'available')
+      console.log(
+        `  staged ${report.git.staged}, unstaged ${report.git.unstaged}, untracked ${report.git.untracked}, conflicted ${report.git.conflicted}`,
+      )
+    console.log(`Command suggestions: ${report.commands.state} (not executed)`)
+    for (const candidate of report.commands.candidates)
+      console.log(
+        `  ${safe(candidate.command)} — ${safe(candidate.source)} ${safe(candidate.location)}, cwd ${safe(candidate.cwd)}`,
+      )
+    for (const issue of [
+      ...report.instructions.issues,
+      ...report.commands.issues,
+      ...report.git.issues,
+    ])
+      console.log(`  ${issue.code}${issue.path ? `: ${safe(issue.path)}` : ''} — ${issue.message}`)
+  },
+})
+
 export const teamCommand = defineCommand({
   meta: { name: 'team', description: 'Manage teams (collaboration contexts)' },
   subCommands: {
+    environment: teamEnvironmentCommand,
+    context: contextCmd,
     add: addCmd,
     list: listCmd,
     rm: rmCmd,

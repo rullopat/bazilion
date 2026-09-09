@@ -221,7 +221,8 @@ function isUserFacingFrame(frame: ChatFrame): boolean {
     frame.event.type === 'assistant_message' ||
     frame.event.type === 'assistant_delta' ||
     frame.event.type === 'file' ||
-    (frame.event.type === 'tool_result' && Boolean(frame.event.images?.length)) ||
+    (frame.event.type === 'tool_result' &&
+      (frame.event.name === 'repository_context' || Boolean(frame.event.images?.length))) ||
     frame.event.type === 'error'
   )
 }

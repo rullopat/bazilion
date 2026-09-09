@@ -7,6 +7,7 @@ import { askUserTool } from '../../src/runtime/tools/ask-user.ts'
 import { spawnWorkerTurn } from '../../src/runtime/worker/spawn.ts'
 import { makeTestEnv } from '../core/helpers.ts'
 import { seedRegisteredConversation } from '../fixtures/conversation.ts'
+import { emptyRepositoryContext } from '../fixtures/repository-context.ts'
 
 test.each([
   'valid',
@@ -52,6 +53,7 @@ test.each([
     for await (const frame of spawnWorkerTurn(
       {
         kind: 'configured_operator_http',
+        repositoryContext: emptyRepositoryContext(agent.teamId),
         agent: resolveAgent(env.db, env.paths, agent.id),
         conversation: { id: target.id, filename: `${target.id}.jsonl` },
         message: mode,
