@@ -142,10 +142,10 @@ and snapshots private-home inputs. Repository context must preserve that boundar
 
 - Builds on existing Team registration and protected execution; no new draft is a prerequisite.
 - BAZ-040/041 can use environment/command suggestions while establishing execution and evidence
-  separately. BAZ-044 can cite snapshot fingerprints; none treats the report as live state or proof.
-- BAZ-042 Git review must capture its own state before comparison or feedback. BAZ-043 must define
-  authorized worktree metadata roots before this resolver supports external `.git`/common-directory
-  links.
+  separately. BAZ-043 can cite snapshot fingerprints; none treats the report as live state or proof.
+- BAZ-042 Git review must capture its own state before comparison or feedback. Any future managed
+  workspace feature must define authorized worktree metadata roots before this resolver supports
+  external `.git`/common-directory links.
 
 Implementation checkpoints and acceptance evidence: [BAZ-039 progress](../BAZ-039-progress.md).
 

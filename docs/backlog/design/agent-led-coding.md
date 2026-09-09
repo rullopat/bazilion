@@ -222,5 +222,7 @@ production acceptance remain separate from this revised design.
    validation. Record the new criteria separately from the old operator-probe acceptance.
 
 Completion means the Agent-driven task and cooperative variation are demonstrated, not merely
-that the previous dashboard can still run commands. BAZ-041 remains the next stronger verification
-slice; BAZ-045 is formal snapshot-bound tester delegation rather than a dependency for basic help.
+that the previous dashboard can still run commands. The
+[successor review](coding-successors-review.md) narrows BAZ-041 to live progress and retained
+diagnostics; BAZ-042 owns source snapshots and applicability; BAZ-043 adds static review; and
+BAZ-044 is formal snapshot-bound tester delegation rather than a dependency for basic help.

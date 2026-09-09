@@ -60,7 +60,7 @@ Final full regression run: 1,491 passed, seven opt-in cases skipped (191 files p
 - Already-delivered command cards remain visible in the mounted chat. Reloading history does not
   independently release private command output; ask the Agent for retained evidence through its
   normal authorized turn. The browser does not store receipts in local/session storage.
-- Same-workspace Agents cooperate sequentially. Separate parallel workspaces remain BAZ-043.
+- Same-workspace Agents cooperate sequentially. Managed parallel checkouts remain outside scope.
 - Clean-install alpha schema only; no migration/importer for the removed unpublished design.
 
 ## Semiauto presentation follow-up

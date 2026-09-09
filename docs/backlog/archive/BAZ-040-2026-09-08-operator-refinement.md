@@ -73,7 +73,7 @@ Extend that distinction instead of replacing it with an unqualified “coding re
   startup hooks, credential fields, unsafe path overrides, and Docker/provider control variables.
   Do not inherit image ENV, daemon secrets, user dotfiles, credential helpers, or ambient caches.
 - A selected cwd must remain inside the canonical Team execution root and map to its container
-  path, including BAZ-043 workspaces later. No arbitrary host paths or additional mounts here.
+  path, including any future managed workspaces. No arbitrary host paths or additional mounts here.
 
 ### Readiness information and explicit probes
 
@@ -94,7 +94,7 @@ Extend that distinction instead of replacing it with an unqualified “coding re
   applicable lifecycle coordination, and make busy/cancelled/timeout outcomes explicit.
   Existing per-Agent exclusion alone is insufficient for a shared Team root: add the minimal
   canonical-workspace coordination needed for enabled coding Teams and probes in this slice.
-  BAZ-043 can extend that contract to managed parallel checkouts without blocking finite probes.
+  A future story can extend that contract to managed parallel checkouts without blocking finite probes.
 - Record narrow evidence: check identity and revision, execution posture, workspace identity,
   resolved image, environment revision, relevant manifest/lockfile identity, timestamps, exit status,
   and bounded safe diagnostics. Keep no second transcript or general runs/events subsystem.
@@ -141,7 +141,7 @@ Extend that distinction instead of replacing it with an unqualified “coding re
 
 - Implement after BAZ-039 establishes repository context and command provenance; do not duplicate its
   instruction discovery. Existing runtime preflight remains mandatory independently of this story.
-- [BAZ-041](../draft/BAZ-041-coding-command-verification.md) can provide richer live output and durable check
+- [BAZ-041](../todo/BAZ-041-coding-command-verification.md) can provide richer live output and durable check
   evidence later. It is optional for bounded readiness probes; neither story depends on the other's
   completed UI. Agree shared command identity and result shapes before implementing overlapping code.
 - First deliver Team selection, passive status, finite probes, and preparation guidance. Split

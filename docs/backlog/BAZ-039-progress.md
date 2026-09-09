@@ -155,8 +155,8 @@ operator; this was not a release or production deployment.
 
 The operator approved the compact UI after the guided walkthrough and requested a PR containing
 BAZ-039 and the related coding-story work. PR scope includes the completed implementation, the
-BAZ-040 refinement and dependency-link corrections in BAZ-041/042/043/045; subsequent stories remain
-unimplemented. Upstream `main` matched the starting HEAD before branching. Commit/push/PR creation
+BAZ-040 refinement and dependency-link corrections in BAZ-041 through BAZ-044; subsequent stories
+remain unimplemented. Upstream `main` matched the starting HEAD before branching. Commit/push/PR creation
 are now authorized; merge, release and deployment remain separate.
 
 ## Agent-led remake — 2026-09-09

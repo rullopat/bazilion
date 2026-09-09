@@ -28,7 +28,8 @@ The authenticated API is `GET /api/teams/:id/repository-context?target=...`. The
 
 Every report has a capture time and fingerprint. Files may change afterward. A context fingerprint
 is not a full code snapshot, environment-readiness result or test receipt. BAZ-040 owns prepared
-coding environments; BAZ-041/042 will own code verification and review.
+coding environments; BAZ-041 will own live/retained diagnostics and BAZ-042 will own
+source-bound verification and review.
 
 ## Agent behavior
 

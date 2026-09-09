@@ -89,8 +89,8 @@ Full design and implementation mapping: [Agent-led coding](../design/agent-led-c
 ## Shared-Team coordination and evidence
 
 - Reuse canonical workspace writer ownership across every ingress. No overlapping mutating turns
-  in the same/aliased root. Different existing workspaces can proceed independently; BAZ-043 remains
-  the separate-checkout feature. No claim of concurrent editing inside one Team root.
+  in the same/aliased root. Different existing workspaces can proceed independently; managed
+  parallel checkout lifecycle remains outside scope. No claim of concurrent editing inside one Team root.
 - A blocked peer handoff must not use `wait_for_reply` while retaining the lease the peer needs.
   Add a clear tool guard/guidance for this condition. Existing message delivery/pending approvals
   and inbox dispatch own continuation; denied delivery is not a successful handoff.
@@ -164,7 +164,7 @@ No implementation goal is created or reopened merely by this refinement.
 
 BAZ-039 supplies context and source provenance. Existing Pi turns, shell approval, messaging, Team
 memory and workspace admission supply execution/continuation. BAZ-041 adds stronger command-log and
-code-verification evidence; BAZ-045 adds a formal tester contract, not basic teammate cooperation.
-BAZ-043 adds separate parallel workspaces. None is required to demonstrate this story's same-Team
-sequential handoff. Exclude automatic images/downloads, new network brokers, service supervision,
+code-verification evidence; BAZ-044 adds a formal tester contract, not basic teammate cooperation.
+Managed parallel checkouts remain outside scope. None is required to demonstrate this story's
+same-Team sequential handoff. Exclude automatic images/downloads, new network brokers, service supervision,
 new agent roles/rosters, dependency-update bots, Git publication and arbitrary devcontainer hooks.

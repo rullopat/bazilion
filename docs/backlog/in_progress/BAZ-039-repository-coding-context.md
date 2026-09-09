@@ -108,6 +108,6 @@ The revised Agent task and same-Team reuse are demonstrated in the [remake accep
 ## Dependencies and exclusions
 
 Ship discovery independently; complete the task-driven acceptance alongside BAZ-040. BAZ-041 owns
-retained live command logs and code-bound verification; BAZ-042 owns Git review; BAZ-043 owns
-separate parallel checkouts; BAZ-045 owns formal specialist verification of a captured change.
+retained live command logs and code-bound verification; BAZ-042 owns Git review; BAZ-044 owns
+formal specialist verification of a captured change. Managed parallel checkouts remain outside scope.
 This story adds no cloning, installation, Git publication, new role/roster or automatic plugin trust.

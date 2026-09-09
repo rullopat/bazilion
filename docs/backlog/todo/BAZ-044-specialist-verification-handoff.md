@@ -1,14 +1,15 @@
 ---
-id: BAZ-045
+id: BAZ-044
 title: Specialist verification of a captured code change
-status: draft
+status: todo
 size: L
 created: 2026-09-07
+refined: 2026-09-09
 priority: high
 note: Follow the first coding milestone; delegate finite checks to an existing tester without a general workflow engine.
 ---
 
-# BAZ-045 — Specialist verification of a captured code change
+# BAZ-044 — Specialist verification of a captured code change
 
 ## User stories
 
@@ -28,7 +29,7 @@ request and existing runtime controls, never from the Profile's name or a messag
 
 ## Why and current baseline
 
-Verified against Bazilion `13c3a63` (v0.14.2) on 2026-09-07:
+Reviewed against the BAZ-039/040 remake at `81aaa31` on 2026-09-09:
 
 - [Messaging tools](../../../apps/daemon/src/runtime/tools/messaging.ts) already provide delegation,
   inbox reads, reply correlation, and communication-approval status. Profiles and Team Templates
@@ -38,11 +39,20 @@ Verified against Bazilion `13c3a63` (v0.14.2) on 2026-09-07:
 - The [invocation resolver](../../../apps/daemon/src/lib/turn-invocation.ts) makes inbox and other
   background turns protected. Their shell has no network or deployment credentials; a local host
   check is not evidence that the delegated tester has a usable protected environment.
-- Revised BAZ-040 includes ordinary same-Team preparation help through existing messaging.
+- Implemented BAZ-040 includes same-Team preparation/testing help, yield/resume coordination,
+  and authorized peer receipt reads through existing messaging.
   This story adds formal snapshot-bound specialist verification; it is not required for that help.
 - BAZ-040–042 define task-driven environments, command receipts, and immutable change identity.
-  BAZ-044 covers static review and excludes reviewer-run commands. Specialist test execution needs
+  BAZ-043 covers static review and excludes reviewer-run commands. Specialist test execution needs
   its own request, dispatch, workspace coordination, and evidence-access contract.
+
+## Task experience and incremental value
+
+“Have our tester verify this fix” lets the coder capture the current change and relevant commands,
+send one authorized request, and yield. The tester returns actual outcomes for that capture. No
+Team checks setup or mandatory human command-selection step is added. Preparation or exploratory
+checks can already happen in ordinary BAZ-040 turns; this stricter request is useful when the caller
+needs evidence that the selected specialist tested exactly the agreed change and finite commands.
 
 ## Scope
 
@@ -51,12 +61,15 @@ Verified against Bazilion `13c3a63` (v0.14.2) on 2026-09-07:
 - An authenticated operator or authorized coding Agent selects an existing same-Team tester and
   creates one typed request through canonical messaging/Team Policy. Capture requester, recipient,
   Team, source conversation/message, BAZ-042 snapshot and coverage, and an optional acceptance summary.
-- Bind the exact BAZ-040 environment revision, named finite checks and their definitions, cwd,
+- Capture the actual BAZ-040 admitted environment (including optional defaults if present),
+  task-selected finite exact commands, cwd,
   output/time bounds, and relevant BAZ-041 receipts. Resolve the image and dependency facts at
   admission; changed or unavailable requested inputs produce a blocker, never silent substitution.
-- Only operator-reviewed check definitions are executable. A tester may recommend additional
-  checks, but changing commands, parameters, environment, or snapshot requires a new request and
-  applicable authorization. No arbitrary shell text hidden in a test label or model-generated hook.
+- Only the captured commands admitted by existing execution policy are executable; an operator
+  does not need to save or review a check catalog. The requester may select commands during the
+  task. A tester may recommend additional checks, but changing commands, parameters, environment,
+  or snapshot requires a new request and applicable authorization. No arbitrary shell text hidden
+  in a test label or model-generated hook.
 - Keep the typed metadata and immutable references in the daemon. Pi JSONL remains the transcript;
   retain only the finite request's ownership, state, and evidence references, with bounded retention.
   Do not add generic runs/events tables, workflow stages, or an alternative Team membership system.
@@ -70,7 +83,7 @@ Verified against Bazilion `13c3a63` (v0.14.2) on 2026-09-07:
   before execution. Communication approval releases its captured attempt; it does not authorize
   arbitrary shell execution or override dangerous-command approval, isolation, or output policy.
 - Use BAZ-040's canonical-workspace coordination alongside existing per-Agent admission. Reserve
-  the workspace for the verification interval, preventing another Bazilion Agent/probe from writing
+  the workspace for the verification interval, preventing another Bazilion Agent from writing
   through another ingress or alias. Waiting for a tester must not keep the coder's turn or workspace
   claim occupied indefinitely; release the requesting turn before the tester can take ownership.
 - Validate that the coordinated live workspace matches the captured snapshot before checks start.
@@ -96,9 +109,10 @@ Verified against Bazilion `13c3a63` (v0.14.2) on 2026-09-07:
 - Attach actual BAZ-041 command receipts to this request/snapshot; tester findings are labelled
   interpretation. Keep successful exit, failed check, skipped/not executed, timeout, cancellation,
   missing evidence, and interrupted/unknown outcomes distinct. A final chat sentence proves none.
-- Define explicit per-request access for the selected tester to captured inputs and for the
-  requester to returned receipts/logs/artifacts. BAZ-034 does not itself grant Agent-to-Agent result
-  sharing: add only this bounded reference/byte access, checked by daemon identity and Team Policy.
+- Extend BAZ-040 authorized message/receipt access with explicit per-request access for the selected
+  tester to captured inputs and for the requester to returned receipts/logs/artifacts. BAZ-034 does
+  not itself grant Agent-to-Agent result sharing: add only this bounded reference/byte access,
+  checked by daemon identity and Team Policy.
   Do not make another Agent's private logs, transcript, home, or all Team results generally readable.
 - Reuse BAZ-034 captured-byte storage/retention and BAZ-041 log access where applicable. Sending
   request inputs, peer results, and operator-visible output each honors its own source authorization;
@@ -132,22 +146,24 @@ Verified against Bazilion `13c3a63` (v0.14.2) on 2026-09-07:
 
 ## Dependencies and sequencing
 
-- Depends on [BAZ-040](../in_progress/BAZ-040-coding-environment-readiness.md) environment/check definitions and
-  workspace coordination, [BAZ-041](BAZ-041-coding-command-verification.md) execution evidence, and
+- Depends on [BAZ-040](../in_progress/BAZ-040-coding-environment-readiness.md) admitted
+  environment/command contracts and workspace coordination,
+  [BAZ-041](BAZ-041-coding-command-verification.md) execution evidence, and
   [BAZ-042](BAZ-042-git-change-review.md) snapshot identity. Deliver after the first coding milestone.
-- Reuses [BAZ-034](../done/BAZ-034-durable-agent-deliverables.md) retained bytes; this story owns the narrow
-  Agent-to-Agent access extension. [BAZ-035](../done/BAZ-035-conversation-library.md) supplies exact source
-  conversation identity without requiring a second chat store.
+- Reuses [BAZ-034](../done/BAZ-034-durable-agent-deliverables.md) retained bytes; extend existing
+  BAZ-040 peer receipt access only for captured request inputs and additional BAZ-041 logs.
+  [BAZ-035](../done/BAZ-035-conversation-library.md) supplies exact source conversation identity
+  without requiring a second chat store.
 - Align with [BAZ-036](../done/BAZ-036-visible-follow-up-queue.md) for admission/visibility; its user-input
   queue must not take ownership of specialist or approval dispatch. Its complete UI is not required.
-- [BAZ-043](BAZ-043-isolated-coding-workspaces.md) enables parallel checkouts later, not a prerequisite
-  for coordinated same-Team checks. [BAZ-044](BAZ-044-coding-review-handoff.md) can consume these
+- Managed parallel checkouts are not a prerequisite for coordinated same-Team checks.
+  [BAZ-043](BAZ-043-coding-review-handoff.md) can consume these
   receipts; it remains a distinct static-review capability. No automatic pipeline is introduced.
 
 ## Out of scope
 
 Cross-Team runnable snapshot transfer, managed databases/services/browser test environments,
-new testing tools/framework parsers, automatic check selection or retries, changing source to fix
+new testing tools/framework parsers, uncaptured check substitution or automatic retries, changing source to fix
 failures, per-conversation cwd, another roster, general workflow orchestration, automatic
 commit/push/PR creation, deployment, and treating a tester's conclusion as execution authorization.
 
@@ -155,7 +171,7 @@ commit/push/PR creation, deployment, and treating a tester's conclusion as execu
 
 - Hand a small real-repository bug to a tester; verify one passing and one failing finite check,
   recorded environment/snapshot identity, retained output, and accurate operator/peer results.
-- Race coder/tester/probe writes, aliases, stale input before claim, external edits, test-mutated
+- Race coder/tester writes, aliases, stale input before claim, external edits, test-mutated
   source, generated files, busy recipients, and requester waiting without workspace deadlock.
 - Race inbox wake, communication approval, cancellation, duplicate delivery, and restart; prove
   one restricted dispatch owner, no privilege expansion, and no replay after uncertain execution.
@@ -163,13 +179,17 @@ commit/push/PR creation, deployment, and treating a tester's conclusion as execu
   held peer/user egress, expiry, missing bytes, and API/CLI/web/Telegram consistency.
 - Verify lifecycle/backup contracts and applicable protected-execution security acceptance checks.
 
-## Open Questions
+## Refinement decisions
 
-- **Check capability:** choose the exact daemon-bound invocation/tool contract and allowed command
-  parameters. Recommend captured named checks only, with a new request for any changed definition.
-- **Coordination and writes:** agree reservation scope, wait ordering, output/cache declarations,
-  and before/after coverage. Recommend sequential same-Team execution and conservative stale states.
-- **Evidence sharing:** define request-scoped grants and revocation/expiry across peer and operator
-  delivery. Recommend immutable selected references only; private transcript access stays excluded.
-- **Size:** if restricted dispatch and evidence sharing exceed L, split these implementation slices
-  before todo while retaining one end-to-end acceptance case; do not defer their access boundaries.
+- Capture up to eight exact task-selected commands with cwd, purpose and timeout through a typed
+  request. The specialist can inspect the request and invoke each command once through the admitted
+  protected executor; changed or additional commands require a new request.
+- Release the coder's turn and workspace claim before specialist admission. Hold one exclusive
+  workspace lease for snapshot revalidation and sequential checks. Declare only bounded temporary
+  and known cache paths; any detected source mutation yields unknown applicability.
+- Grant the selected specialist read access only to immutable request inputs and grant the requester
+  access only to returned receipt/log references. Bind both to request identity, Team Policy and
+  seven-day expiry. Private transcripts and unrelated Agent evidence remain inaccessible.
+- Keep one L story because restricted dispatch, execution and evidence return form one security
+  boundary and one end-to-end user outcome. Split implementation commits if useful, without shipping
+  a path that routes the typed request through an ordinary unrestricted inbox turn.
