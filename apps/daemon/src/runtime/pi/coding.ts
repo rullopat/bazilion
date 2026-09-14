@@ -30,8 +30,15 @@ export function codingTools(input: {
   lifecycle?: DockerResourceLifecycle
   approval: boolean
   approvalHost?: BashApprovalHost
-  secrets?: readonly string[]
+  /**
+   * Credentials known when a command starts. Accepts a supplier so a credential
+   * refreshed later in the same turn joins the redaction set before the next
+   * command (and its live/retained diagnostics) is created.
+   */
+  secrets?: readonly string[] | (() => readonly string[])
 }): ToolDefinition[] {
+  const readSecrets = (): readonly string[] =>
+    typeof input.secrets === 'function' ? input.secrets() : (input.secrets ?? [])
   const hostOperations = input.docker ? null : createLocalBashOperations()
   return [
     {
@@ -85,7 +92,7 @@ export function codingTools(input: {
           toolCallId,
           input: command,
         })) as CodingCommandReceipt
-        const output = new CodingDiagnostics(input.secrets ?? [])
+        const output = new CodingDiagnostics(readSecrets())
         // Live progress shares the same redaction pipeline as the retained log, so a
         // credential split across chunks cannot reach chat. Updates are cumulative
         // (each replaces the last) and throttled so a chatty command cannot flood clients.

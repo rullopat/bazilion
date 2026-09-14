@@ -7,6 +7,11 @@ import { spawnAgent } from '../../src/core/agent/spawn.ts'
 import { createProfile } from '../../src/core/profile/create.ts'
 import * as agentRepo from '../../src/core/repos/agents.ts'
 import {
+  getCodingCommandLog,
+  saveCodingCommandLog,
+} from '../../src/core/repos/coding-command-logs.ts'
+import { saveCodingCommand } from '../../src/core/repos/coding-commands.ts'
+import {
   _resetMirrorDepsForTest,
   installMirrorDepsResolver,
   type MirrorApi,
@@ -523,6 +528,67 @@ describe('mirrorAgentTurnFrame', () => {
     await mirrorAgentTurnFrame(a.id, { kind: 'fatal', error: 'worker crashed' })
     expect(sends[0]?.text).toMatch(/💥 Turn crashed/)
     expect(sends[0]?.text).toMatch(/worker crashed/)
+  })
+
+  test('a mirrored terminal coding result releases the retained log; a suppressed one does not', async () => {
+    const { api } = makeApi()
+    installMirrorDepsResolver(() => ({ db: env.db, api, chatId: CHAT_ID }))
+    const agent = spawnAgent(env.db, env.paths, { profileId: 'base', teamId: env.teamId })
+    agentRepo.setTelegramTopicId(env.db, agent.id, 42)
+    const now = Date.now()
+    const receipt = {
+      id: 'command-release',
+      agentId: agent.id,
+      teamId: env.teamId,
+      turnId: 'turn-1',
+      toolCallId: 'call-1',
+      input: { command: 'run', cwd: '.', purpose: 'test' as const, timeoutSeconds: 30 },
+      environment: {
+        posture: 'host' as const,
+        imageId: null,
+        cwd: '.',
+        rootIdentity: 'root-1',
+        inputFingerprint: 'fingerprint-1',
+        capturedAt: now,
+        restrictions: [],
+      },
+      startedAt: now,
+      finishedAt: now,
+      state: 'failed' as const,
+      exitCode: 1,
+      diagnostic: 'boom',
+      truncated: false,
+      reason: null,
+    }
+    saveCodingCommand(env.db, receipt)
+    saveCodingCommandLog(env.db, {
+      commandId: receipt.id,
+      teamId: env.teamId,
+      agentId: agent.id,
+      turnId: receipt.turnId,
+      toolCallId: receipt.toolCallId,
+      diagnostic: 'boom',
+      observedBytes: 4,
+      redacted: false,
+      truncated: false,
+    })
+    expect(getCodingCommandLog(env.db, receipt.id).releasedAt).toBeNull()
+    const frame = {
+      kind: 'event' as const,
+      event: {
+        type: 'tool_result' as const,
+        id: 'call-1',
+        name: 'coding_command',
+        result: JSON.stringify(receipt),
+      },
+    }
+    // Minimal mode suppresses tool lines: no disclosure, no release.
+    await mirrorAgentTurnFrame(agent.id, frame, 'coding:minimal')
+    expect(getCodingCommandLog(env.db, receipt.id).releasedAt).toBeNull()
+    // Verbose mode sends the concise outcome and releases the captured bytes.
+    agentRepo.setTelegramMirrorMode(env.db, agent.id, 'verbose')
+    await mirrorAgentTurnFrame(agent.id, frame, 'coding:verbose')
+    expect(getCodingCommandLog(env.db, receipt.id).releasedAt).not.toBeNull()
   })
 
   test('done frames never mirror', async () => {

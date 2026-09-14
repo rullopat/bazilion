@@ -1,7 +1,7 @@
 # BAZ-041 implementation progress
 
-Started: 2026-09-14 (resumed). Status: daemon/API/CLI complete and locally green;
-web reopen control and Telegram disclosure remain.
+Started: 2026-09-14 (resumed). Status: daemon/API/CLI/Telegram complete and locally green;
+the web reopen control remains.
 
 Story: [BAZ-041](in_progress/BAZ-041-coding-command-verification.md).
 Branch: `feat/baz-041-042-coding-evidence`.
@@ -45,6 +45,10 @@ push is included; BAZ-041 stays unshipped.
   `SessionEvent` (later updates replace earlier ones for the same tool call). Tests in
   `apps/daemon/test/runtime/coding-progress.test.ts`.
 - Telegram deliberately does not stream every chunk (`coding_progress` renders to `null`).
+- The worker's `codingTools` accepts a secret *supplier* read at command start. `session.ts`
+  shares one mutable redaction set between the coding tools and the provider refresher, and the
+  protected credential boundary appends refreshed tokens to that same set — so a credential
+  learned mid-turn is redacted before the next command's live and retained output is built.
 
 ### Agent and peer access
 
@@ -68,11 +72,13 @@ push is included; BAZ-041 stays unshipped.
 - `coding_progress` and the terminal `coding_command` tool result are user-facing frames, so they
   pass the same shared authorizer as assistant output. Terminal operator delivery releases the
   retained log; live progress never releases. A held result stays unreadable.
+- Telegram releases the retained log only when a terminal coding result is actually mirrored and
+  its egress is authorized. A minimal-mode-suppressed or policy-denied outcome does not release.
 
 ## Validation
 
 - `pnpm typecheck` clean; `pnpm lint` no errors; `pnpm format` applied.
-- `pnpm test`: 1523 passed, 7 skipped (194 files).
+- `pnpm test`: 1525 passed, 7 skipped (194 files).
 - `pnpm security:acceptance`: 60 required adversarial cases passed.
 - `pnpm --filter @bazilion/web typecheck` clean.
 
@@ -81,22 +87,19 @@ push is included; BAZ-041 stays unshipped.
 1. **Web reopen control.** The API/client/CLI can reopen a released log after navigation and
    restart, but the web chat has no button yet; history replay still shows the masked placeholder.
    A TanStack server function plus a small control in `CodingToolResult` is required, and the
-   Vite import-protection boundary for a component-imported server function needs verifying.
-2. **Telegram disclosure.** Terminal coding outcomes still mirror through the existing verbose
-   tool-result path; they do not yet trigger `releaseCodingCommandLog`.
-3. **Peer message egress does not itself release.** Release happens when an authorized peer reads
-   the log or the operator receives the terminal result. Confirm this matches the intended
+   history projection must carry the opaque receipt/team id. The `lib/auth.ts` precedent de-risks
+   the import-protection boundary.
+2. **Peer message egress does not itself release.** Release happens when an authorized peer reads
+   the log or the operator/Telegram receives the terminal result. Confirm this matches the intended
    "source-owned egress" moment for `send_message`.
-4. **Mid-turn credential refresh** does not join the redaction set after turn start; redaction
-   covers the credentials known at spawn.
-5. **BAZ-042 linkage.** Snapshot-bound applicability/invalidations are out of scope here.
+3. **BAZ-042 linkage.** Snapshot-bound applicability/invalidations are out of scope here.
 
 ## Acceptance map
 
 1. Live changing output without a setup form — implemented (executor `onUpdate`, daemon/event/web).
    Real-Docker manual observation still required.
-2. Failure diagnostics after scratch cleanup; operator reopen — retention + API/CLI done; web
-   reopen control outstanding.
+2. Failure diagnostics after scratch cleanup; operator reopen — retention + API/CLI/Telegram done;
+   web reopen control outstanding.
 3. Distinct terminal states; no replay on disconnect — BAZ-040 behavior preserved; progress is
    cumulative so reconnect cannot duplicate output.
 4. Held output inaccessible; redaction/control bytes/hostile markup — audience gate, redaction

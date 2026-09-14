@@ -1,3 +1,4 @@
+import { codingSecrets } from '../../lib/coding-environment/diagnostics.ts'
 import { readCanonicalSessionFile } from '../../lib/result-source.ts'
 import type { AskUser } from '../tools/ask-user.ts'
 import { codingTools } from './coding.ts'
@@ -368,6 +369,10 @@ export async function createBazilionSession(
     !opts.preparedDocker
   )
     throw new Error('Coding commands require the admitted Docker runtime')
+  // One mutable redaction set shared by the coding tools and the provider
+  // refresher: a token refreshed mid-turn is added here before the next command
+  // builds its diagnostics, so live and retained output can never leak it.
+  const redactionSecrets = uniqueSecrets(codingSecrets(env))
   if (repository && opts.codingHost && shellTools)
     bazilionTools.push(
       ...codingTools({
@@ -378,9 +383,7 @@ export async function createBazilionSession(
         lifecycle: opts.dockerLifecycle,
         approval: shellTools.config.approvalMode === 'dangerous',
         approvalHost: bashApprovalHost,
-        secrets: Object.entries(env)
-          .filter(([key]) => /KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL|AUTH/i.test(key))
-          .map(([, value]) => value ?? ''),
+        secrets: () => redactionSecrets,
       }),
     )
   const customTools = shellTools?.customBash
@@ -413,7 +416,9 @@ export async function createBazilionSession(
     session.agent.getApiKey = async (requestedProvider) => {
       if (requestedProvider !== piProviderName(providerName)) return undefined
       try {
-        return await refreshApiKey(providerName)
+        const token = await refreshApiKey(providerName)
+        if (token && !redactionSecrets.includes(token)) redactionSecrets.push(token)
+        return token
       } catch {
         // Stale/removed credentials mid-session → return undefined so pi
         // surfaces a "no auth" error cleanly instead of us throwing out of
@@ -514,6 +519,9 @@ export async function createProtectedBazilionSession(
     sessionId: sessionManager.getSessionId(),
   })
   if (repository) bazilionTools.push(repository.tool)
+  // Shared with the protected credential boundary below: refreshed tokens are
+  // appended there and observed here before each command builds its diagnostics.
+  const redactionSecrets = uniqueSecrets(protectedRuntimeSecrets(opts.runtime))
   if (repository && opts.codingHost)
     bazilionTools.push(
       ...codingTools({
@@ -524,7 +532,7 @@ export async function createProtectedBazilionSession(
         lifecycle: opts.dockerLifecycle,
         approval: true,
         approvalHost: opts.bashApprovalHost,
-        secrets: protectedRuntimeSecrets(opts.runtime),
+        secrets: () => redactionSecrets,
       }),
     )
   if (!shellTools.customBash) throw new Error('protected Docker bash tool is unavailable')
@@ -548,7 +556,7 @@ export async function createProtectedBazilionSession(
   installProtectedCredentialBoundary(
     session,
     opts.runtime.providerName,
-    protectedRuntimeSecrets(opts.runtime),
+    redactionSecrets,
     opts.refreshApiKey,
   )
   return sessionHandle(session)
@@ -604,10 +612,15 @@ export async function createRestrictedReviewSession(
   installProtectedCredentialBoundary(
     session,
     opts.runtime.providerName,
-    protectedRuntimeSecrets(opts.runtime),
+    uniqueSecrets(protectedRuntimeSecrets(opts.runtime)),
     opts.refreshApiKey,
   )
   return sessionHandle(session)
+}
+
+/** Dedupe credential values once, preserving the mutable identity callers share. */
+function uniqueSecrets(values: readonly string[]): string[] {
+  return [...new Set(values.filter(Boolean))]
 }
 
 function materializeProtectedCredentialFile(
@@ -644,10 +657,10 @@ function createInMemorySettingsManager(): SettingsManager {
 export function installProtectedCredentialBoundary(
   session: AgentSession,
   providerName: string,
-  initialSecrets: string[],
+  /** Mutable: refreshed tokens are appended so every redaction site sees them. */
+  activeTokens: string[],
   refreshApiKey: (providerName: string) => Promise<string>,
 ): void {
-  const activeTokens = [...new Set(initialSecrets.filter(Boolean))]
   session.agent.state.messages = redactJsonValue(session.agent.state.messages, activeTokens)
   const originalStream = session.agent.streamFunction
   session.agent.streamFunction = async (model, context, options) => {

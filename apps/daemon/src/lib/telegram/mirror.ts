@@ -18,6 +18,7 @@ import type { ChatFrame, TelegramMirrorMode, ToolResultImage } from '@bazilion/a
 import { InputFile } from 'grammy'
 import type { BazilionDb } from '../../core/db/client.ts'
 import { agentRepo } from '../../core/index.ts'
+import { releaseCodingCommandLog } from '../../core/repos/coding-command-logs.ts'
 import {
   authorizeAgentEgress,
   CommunicationDeniedError,
@@ -93,6 +94,17 @@ export async function mirrorAgentTurnFrame(
   const topicId = agentRepo.getTelegramTopicId(deps.db, agent.id)
   if (topicId === null) return
 
+  // A terminal coding result mirrored to the operator is source-owned disclosure of
+  // that command's captured bytes. Release only if the frame is actually sent, so a
+  // noise-suppressed or denied outcome never unlocks the retained log.
+  const codingReleaseId =
+    frame.kind === 'event' &&
+    frame.event.type === 'tool_result' &&
+    frame.event.name === 'coding_command'
+      ? codingReceiptId(frame.event.result)
+      : null
+  let codingReleased = false
+
   // Images (browser screenshots, MCP image results) are user-facing
   // deliverables — NOT tool-call noise. Send them as photos regardless of
   // mirror mode, otherwise a 'minimal'-mode Telegram user who asks for a
@@ -150,6 +162,10 @@ export async function mirrorAgentTurnFrame(
           ...(isReply ? { parse_mode: 'HTML' as const } : {}),
         }),
       )
+      if (codingReleaseId && !codingReleased) {
+        releaseCodingCommandLog(deps.db, codingReleaseId)
+        codingReleased = true
+      }
     } catch (e) {
       if (isThreadGoneError(e)) {
         console.warn(
@@ -191,6 +207,16 @@ export async function mirrorAgentTurnFrame(
       }
       logMirrorAdapterFailure('telegram_mirror_text_failed', agent.id)
     }
+  }
+}
+
+/** Opaque Bazilion command id from a live terminal coding result, or null. */
+function codingReceiptId(result: string): string | null {
+  try {
+    const parsed = JSON.parse(result) as { id?: unknown }
+    return typeof parsed.id === 'string' && parsed.id.length > 0 ? parsed.id : null
+  } catch {
+    return null
   }
 }
 

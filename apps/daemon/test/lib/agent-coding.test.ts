@@ -304,6 +304,36 @@ test('diagnostics bound huge output and redact credentials split across chunks',
   expect(result.diagnostic).toContain('[redacted]')
   expect(result.diagnostic).not.toContain('SECRET_VALUE')
 })
+test('a credential learned mid-turn joins coding redaction', async () => {
+  const secrets = ['FIRST_SECRET_VALUE']
+  const tools = codingTools({
+    host: host(),
+    root,
+    context: async () => emptyRepositoryContext(env.teamId),
+    approval: false,
+    secrets: () => secrets,
+  })
+  const run = tools.find((t) => t.name === 'coding_command')!
+  async function execute(id: string, command: string) {
+    const result = await run.execute(
+      id,
+      { command, cwd: '.', purpose: 'test', timeoutSeconds: 5 },
+      undefined,
+      undefined,
+      {} as never,
+    )
+    return JSON.parse((result.content[0] as { text: string }).text) as CodingCommandReceipt
+  }
+  const first = await execute('call-a', `node -e "process.stdout.write('FIRST_SECRET_VALUE')"`)
+  expect(first.diagnostic).toContain('[redacted]')
+  // The token was not known when the session started: the supplier must be read
+  // at command start so a mid-turn refresh redacts subsequent output.
+  secrets.push('SECOND_SECRET_VALUE')
+  const second = await execute('call-b', `node -e "process.stdout.write('SECOND_SECRET_VALUE')"`)
+  expect(second.diagnostic).toContain('[redacted]')
+  expect(second.diagnostic).not.toContain('SECOND_SECRET_VALUE')
+})
+
 test('dangerous command approval remains mandatory and does not execute on denial', async () => {
   writeFileSync(join(root, 'keep'), 'preserve')
   const tool = codingTools({
