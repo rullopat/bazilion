@@ -91,12 +91,40 @@ Read retained output: `bazilion team log default <commandId>`, or
 - The CLI prints a misleading "check that `BAZILION_SERVER` matches" hint on a 403 on top of the
   correct error message. Cosmetic, but it points at the wrong cause.
 
+## Finding: held coding evidence could not complete an approval (fixed)
+
+Pursuing the *real* withholding path (a Team Policy `approval_required` edge) exposed two defects
+that a staged release could not reach:
+
+1. `approval-delivery-plan.ts:isChatFrame` required `images` on **every** `tool_result`, while
+   `communication.ts:isUserFacingFrame` captures `repository_context` and `coding_command` results
+   that carry no images. A held coding result therefore became an approval that could never be
+   dispatched: `POST /api/approvals/:id/approve` returned
+   `500 approval_delivery_invalid: http_chat_frame_payload`.
+2. `routes/approvals.ts` released captured result **files** on dispatch but never the retained
+   coding log, so even a dispatched coding frame would have left the bytes unreadable — directly
+   contradicting the story's "Approval releases the captured bytes".
+
+Both are fixed: the validator now mirrors the capture predicate (images are validated only when
+present), and dispatch releases the retained log like it already released file bytes. The opaque id
+parse now lives in one place (`codingCommandIdFromResult`), which also removed the duplicated
+parsers in `communication.ts` and `telegram/mirror.ts`.
+
+Scope note: defect 1 **predates BAZ-041** — it was introduced for BAZ-039's `repository_context`,
+which the same predicate admits. Repository-context evidence under an approval posture was broken
+the same way and is fixed by the same change.
+
+Evidence: `apps/daemon/test/lib/coding-log-disclosure.test.ts` (held → approve → released;
+held → deny → still held; direct delivery → released), pinned in the release gate as
+`RETAINED-LOG-APPROVAL-RELEASE` and `RETAINED-LOG-DENIAL-NO-RELEASE`.
+
 ## Caveats
 
-1. **Criterion 4's withheld state was staged.** An existing retained row was un-released
-   (`UPDATE coding_command_logs SET released_at = NULL`). That exercises the read surface end to
-   end — route, proxy and UI copy — but it is not genuine egress withholding. The real paths are a
-   Team Policy `approval_required` edge or a worker loss before any terminal frame.
+1. **Criterion 4's withheld state was staged in this run.** An existing retained row was
+   un-released (`UPDATE coding_command_logs SET released_at = NULL`), which exercises the read
+   surface end to end — route, proxy and UI copy — but is not genuine egress withholding. The real
+   path is a Team Policy `approval_required` edge; the round trip is now covered by tests, but it
+   was not re-run manually here.
 2. **No real-model turn.** The fake provider scripts the `coding_command` call, so "a real model
    chooses to run a command from an ordinary prompt" is not established by this record.
 3. **Criterion 5's edges are unobserved.** Quota eviction, expiry/deletion tombstones and

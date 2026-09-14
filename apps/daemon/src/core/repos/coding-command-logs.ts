@@ -201,6 +201,20 @@ export function saveCodingCommandLog(
   return getCodingCommandLog(db, input.commandId, now)
 }
 
+/**
+ * The opaque command id carried by a terminal `coding_command` tool result.
+ * Only the executor's own JSON shape is accepted; a malformed or forged payload
+ * yields null so it can never unlock captured bytes.
+ */
+export function codingCommandIdFromResult(result: string): string | null {
+  try {
+    const parsed = JSON.parse(result) as { id?: unknown }
+    return typeof parsed.id === 'string' && parsed.id.length > 0 ? parsed.id : null
+  } catch {
+    return null
+  }
+}
+
 export function releaseCodingCommandLog(db: BazilionDb, commandId: string, now = Date.now()): void {
   db.raw.run(
     `UPDATE coding_command_logs SET released_at = COALESCE(released_at, ?)

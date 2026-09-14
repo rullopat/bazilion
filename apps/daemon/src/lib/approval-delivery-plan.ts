@@ -602,13 +602,16 @@ function isChatFrame(value: unknown): value is ChatFrame {
     return isNonEmptyString(event.name) && isNonEmptyString(event.mimeType) && isBase64(event.data)
   }
   if (event.type === 'tool_result') {
+    // Capture (`isUserFacingFrame`) is the gate on which tool results may be held:
+    // it admits named evidence tools (repository_context, coding_command) as well as
+    // any image-bearing result. Mirroring that here keeps a captured frame
+    // dispatchable instead of stranding it as an approval that can never deliver.
     return (
       isNonEmptyString(event.id) &&
       isNonEmptyString(event.name) &&
       typeof event.result === 'string' &&
-      Array.isArray(event.images) &&
-      event.images.length > 0 &&
-      event.images.every(isToolResultImage)
+      (event.images === undefined ||
+        (Array.isArray(event.images) && event.images.every(isToolResultImage)))
     )
   }
   return false

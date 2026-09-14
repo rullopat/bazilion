@@ -13,6 +13,10 @@ import {
   triggerDispatchRepo,
   triggerRepo,
 } from '../core/index.ts'
+import {
+  codingCommandIdFromResult,
+  releaseCodingCommandLog,
+} from '../core/repos/coding-command-logs.ts'
 import { approvalSnapshot as questionApprovalSnapshot } from '../core/repos/questions.ts'
 import { getReceipt } from '../core/repos/results.ts'
 import { reconcileApprovalHolds } from '../core/repos/user-queue.ts'
@@ -352,6 +356,17 @@ async function deliver(plan: ApprovalDeliveryPlan): Promise<void> {
     if (frame.kind === 'event' && frame.event.type === 'file') {
       capturedResultFile(getCtx().db, plan.payload.agentId, frame.event)
       releaseResultFile(getCtx().db, plan.payload.agentId, frame.event.result)
+    }
+    // A terminal coding result is the same disclosure decision as a file: the
+    // approval is the source-owned egress, so the retained log opens with it.
+    // A denied or failed delivery never reaches here, so held bytes stay held.
+    if (
+      frame.kind === 'event' &&
+      frame.event.type === 'tool_result' &&
+      frame.event.name === 'coding_command'
+    ) {
+      const id = codingCommandIdFromResult(frame.event.result)
+      if (id) releaseCodingCommandLog(getCtx().db, id)
     }
     // The polling caller retrieves the captured frame from approval detail after the
     // terminal delivered status; the original NDJSON response cannot be re-opened.

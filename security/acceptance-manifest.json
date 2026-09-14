@@ -420,6 +420,18 @@
       "owner": "BAZ-041",
       "file": "apps/web/test/coding-log.test.ts",
       "test": "a held log is not-shared, never an empty page"
+    },
+    {
+      "id": "RETAINED-LOG-APPROVAL-RELEASE",
+      "owner": "BAZ-041",
+      "file": "apps/daemon/test/lib/coding-log-disclosure.test.ts",
+      "test": "an approved terminal coding result releases the captured bytes"
+    },
+    {
+      "id": "RETAINED-LOG-DENIAL-NO-RELEASE",
+      "owner": "BAZ-041",
+      "file": "apps/daemon/test/lib/coding-log-disclosure.test.ts",
+      "test": "a denied terminal coding result releases nothing"
     }
   ]
 }

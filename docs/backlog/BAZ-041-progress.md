@@ -85,24 +85,28 @@ push is included; BAZ-041 stays unshipped.
   retained log; live progress never releases. A held result stays unreadable.
 - Telegram releases the retained log only when a terminal coding result is actually mirrored and
   its egress is authorized. A minimal-mode-suppressed or policy-denied outcome does not release.
+- An approved held frame releases the retained log, like it already released captured result file
+  bytes; a denied or failed delivery releases nothing. Reaching this required fixing two defects
+  found via a Team Policy `approval_required` edge — see
+  [the acceptance record](BAZ-041-acceptance.md#finding-held-coding-evidence-could-not-complete-an-approval-fixed).
 - A peer read *is* the peer's delivery, so it releases; a `send_message` that merely names the
   receipt moves no bytes and correctly releases nothing. This matches the story's "source-owned
   user or peer delivery" refinement decision, so it is settled rather than open.
 
 ### Adversarial release gate
 
-- 10 BAZ-041 cases were added to `security/acceptance-manifest.json` (gate total 60 → 70). Before
+- 12 BAZ-041 cases now sit in `security/acceptance-manifest.json` (gate total 60 → 72). Before
   this, the gate exercised no BAZ-041 boundary at all — it passed, but proved nothing about
-  retained-evidence disclosure. The new cases pin the disclosure gate, release non-inheritance,
+  retained-evidence disclosure. The cases pin the disclosure gate, release non-inheritance,
   truthful expiry, split-credential redaction, opaque references, pointer-without-bytes history
   projection, producer-only peer authorization, mid-turn credential redaction, no-fetch masked
-  card, and held-log-is-not-empty.
+  card, held-log-is-not-empty, and approval-release vs. denial-no-release.
 
 ## Validation
 
 - `pnpm typecheck` clean; `pnpm lint` no errors; `pnpm format` applied.
-- `pnpm test`: 1544 passed, 7 skipped (196 files).
-- `pnpm security:acceptance`: 70 required adversarial cases passed, 10 owned by BAZ-041.
+- `pnpm test`: 1547 passed, 7 skipped (197 files).
+- `pnpm security:acceptance`: 72 required adversarial cases passed, 12 owned by BAZ-041.
 - `pnpm --filter @bazilion/web typecheck` clean.
 - Local acceptance on a disposable home with a fake provider and real Docker: see
   [BAZ-041-acceptance.md](BAZ-041-acceptance.md). Criteria 1, 2 and 6 observed; 3 and 4 partly
@@ -118,10 +122,9 @@ push is included; BAZ-041 stays unshipped.
 
 **Optional strengthening:**
 
-2. **Genuine withholding evidence.** Criterion 4's withheld state was staged by un-releasing a
-   retained row. A Team Policy `approval_required` edge (or a worker loss before any terminal
-   frame) would prove the real egress path. The boundary is already pinned by a gate case, so this
-   strengthens the record rather than closing a gap.
+2. **One manual approval round trip.** The `approval_required` release path is now implemented and
+   gate-pinned (see the acceptance record), but nobody has yet watched an approval release a held
+   card in a browser end to end.
 3. **Scripted browser check.** The browser steps were driven manually. The repo pattern to extend
    is `scripts/check-repository-context-ui.mjs` (inline fake provider + `startTestServer` +
    Playwright).

@@ -16,7 +16,10 @@ import {
   recordDenial,
   triggerRepo,
 } from '../core/index.ts'
-import { releaseCodingCommandLog } from '../core/repos/coding-command-logs.ts'
+import {
+  codingCommandIdFromResult,
+  releaseCodingCommandLog,
+} from '../core/repos/coding-command-logs.ts'
 import * as questions from '../core/repos/questions.ts'
 import {
   AgentLoopLimitError,
@@ -221,7 +224,7 @@ export function authorizeHttpChatFrame(
     frame.event.type === 'tool_result' &&
     frame.event.name === 'coding_command'
   ) {
-    const id = codingCommandId(frame.event.result)
+    const id = codingCommandIdFromResult(frame.event.result)
     if (id) releaseCodingCommandLog(db, id)
   }
 }
@@ -240,19 +243,6 @@ function isUserFacingFrame(frame: ChatFrame): boolean {
         Boolean(frame.event.images?.length))) ||
     frame.event.type === 'error'
   )
-}
-
-/**
- * The opaque Bazilion command id carried by a live `coding_command` tool result.
- * Only the executor's own JSON shape is accepted; a malformed payload releases nothing.
- */
-function codingCommandId(result: string): string | null {
-  try {
-    const parsed = JSON.parse(result) as { id?: unknown }
-    return typeof parsed.id === 'string' && parsed.id.length > 0 ? parsed.id : null
-  } catch {
-    return null
-  }
 }
 
 export function sendAgentMessage(db: BazilionDb, input: SendAgentMessageInput): Message {

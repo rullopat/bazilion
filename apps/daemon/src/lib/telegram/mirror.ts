@@ -18,7 +18,10 @@ import type { ChatFrame, TelegramMirrorMode, ToolResultImage } from '@bazilion/a
 import { InputFile } from 'grammy'
 import type { BazilionDb } from '../../core/db/client.ts'
 import { agentRepo } from '../../core/index.ts'
-import { releaseCodingCommandLog } from '../../core/repos/coding-command-logs.ts'
+import {
+  codingCommandIdFromResult,
+  releaseCodingCommandLog,
+} from '../../core/repos/coding-command-logs.ts'
 import {
   authorizeAgentEgress,
   CommunicationDeniedError,
@@ -101,7 +104,7 @@ export async function mirrorAgentTurnFrame(
     frame.kind === 'event' &&
     frame.event.type === 'tool_result' &&
     frame.event.name === 'coding_command'
-      ? codingReceiptId(frame.event.result)
+      ? codingCommandIdFromResult(frame.event.result)
       : null
   let codingReleased = false
 
@@ -207,16 +210,6 @@ export async function mirrorAgentTurnFrame(
       }
       logMirrorAdapterFailure('telegram_mirror_text_failed', agent.id)
     }
-  }
-}
-
-/** Opaque Bazilion command id from a live terminal coding result, or null. */
-function codingReceiptId(result: string): string | null {
-  try {
-    const parsed = JSON.parse(result) as { id?: unknown }
-    return typeof parsed.id === 'string' && parsed.id.length > 0 ? parsed.id : null
-  } catch {
-    return null
   }
 }
 
