@@ -1,6 +1,6 @@
 # BAZ-042 implementation progress
 
-Started: 2026-09-14. Status: in progress — slices 1–3 landed. Branch
+Started: 2026-09-14. Status: in progress — slices 1–4 landed. Branch
 `feat/baz-041-042-coding-evidence`, continuing from the completed BAZ-041 work. Commits are batched
 locally and pushed when the story is further along, not per slice.
 
@@ -74,11 +74,35 @@ So BAZ-042 adds **readers over that harness**, not another harness.
    which compares working tree to *index* and silently hid every staged change.
    The review types stay daemon-local for now; promote them to hermetic `api-types` in slice 4,
    where the snapshot fields they must carry are decided, to avoid committing the shape twice.
-4. **Snapshot manifests.** Bounded before/after manifests (HEAD, index, dirty tracked bytes,
-   explicitly included untracked content) with recorded exclusions and limits, plus the immutable
-   snapshot reference shared with BAZ-041/BAZ-043 for applicability.
+4. **Snapshot manifests and the immutable reference (done).** `lib/git-review/snapshot.ts`:
+   - A snapshot covers four layers, because HEAD alone never identifies a dirty tree: the HEAD oid
+     (all committed content), a digest over the **index** entries (blob ids are content-addressed,
+     so the staged bytes are identified exactly without reading any file), sha256 of every path that
+     differs from the pinned base, and sha256 of each **explicitly selected** untracked file. Nothing
+     is included implicitly.
+   - `id` is content-addressed over that state and deliberately excludes `capturedAt`, so an
+     identical tree yields an identical id. `complete` *is* part of it, so an incomplete manifest can
+     never collide with a complete one. Modification times are never consulted: a test reverts bytes
+     and asserts the identity returns even though mtime moved on.
+   - `snapshotReference()` is the small handoff BAZ-041 receipts and BAZ-043 carry, and
+     `compareSnapshots()` is the applicability primitive: `identical` / `changed` / `unknown`, with
+     `unknown` whenever either side is incomplete. An incomplete snapshot is never reported as
+     unchanged.
+   - Content problems never throw. Oversized files, non-regular paths (symlinks and special files,
+     refused rather than followed), a changed file that moved under the reader, an oversized index
+     and a missing included path each mark the snapshot incomplete and are recorded per entry, with
+     `withheld` counts and named issue codes — an omission is never visible only in prose.
+   - A coherence re-check re-reads the index after all content work, so another writer touching the
+     repository mid-capture is detected. Stated limit: that detects a moved index, not a transient
+     edit reverted before the check, and the doc comment says so rather than implying proof.
+   - Scope refusals are recorded in `exclusions` (path + reason), so credential-shaped and
+     Bazilion-owned paths are visibly withheld rather than silently absent.
+4b. **Persist snapshots.** Not yet done: a narrow seven-day store (schema + repo, in the shape
+   `coding_command_logs` already uses) plus linking BAZ-041 receipts to a snapshot reference, the
+   turn-bound capture tool and the operator-requested capture, and promoting the review + snapshot
+   types into hermetic `api-types`.
 5. **Surfaces.** Team-scoped HTTP routes, `@bazilion/client`, CLI list/show/diff parity, then the web
-   review panel beside chat (over the wire types promoted in slice 3).
+   review panel beside chat (over the wire types promoted in slice 4b).
 6. **Feedback.** File/hunk selection carrying repository + snapshot + path + original line context,
    stale-hunk refresh, reuse of BAZ-036 for busy-turn queueing.
 
@@ -110,5 +134,11 @@ So BAZ-042 adds **readers over that harness**, not another harness.
   untracked entries never receiving content, tab and unicode paths surviving the NUL parse, the file
   limit reporting an incomplete list, and ten scope decisions including `src/memory/` staying
   included while Team-root `memory/` does not.
-- Whole-tree after slice 3: typecheck, format and lint clean; full suite 1590 passed / 7 skipped
-  (204 files); security acceptance 74 cases passed (slices 1–2 measured 1556 / 1574).
+- Slice 4 additions: `apps/daemon/test/core/git-review-snapshot.test.ts` covers a clean tree,
+  stable ids for identical state, ids changing on edit and returning on revert (mtimes ignored),
+  staged state moving the index digest, untracked content included only on selection, a refused
+  credential-shaped path recorded as an exclusion, a missing included path reporting incompleteness,
+  an oversized file refused instead of truncated into a misleading digest, a symlinked path refused,
+  a deleted path recorded as deleted, the file bound, and the emitted reference.
+- Whole-tree after slice 4: typecheck, format and lint clean; full suite 1600 passed / 7 skipped
+  (205 files); security acceptance 74 cases passed (slices 1–3 measured 1556 / 1574 / 1590).
