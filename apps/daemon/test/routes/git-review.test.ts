@@ -1,0 +1,183 @@
+import { execFileSync } from 'node:child_process'
+import { writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import type {
+  RepositoryReviewResponse,
+  SourceSnapshot,
+  SourceSnapshotListResponse,
+  SourceSnapshotResponse,
+} from '@bazilion/api-types'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
+import { registerTeam } from '../../src/core/index.ts'
+import { teamsRouter } from '../../src/routes/teams.ts'
+import { makeTestEnv, type TestEnv } from '../core/helpers.ts'
+
+// BAZ-042 slice 5: Team-scoped review and snapshot routes.
+
+let env: TestEnv
+vi.mock('../../src/lib/ctx.ts', () => ({
+  getCtx: () => ({ db: env.db, paths: env.paths, authToken: 'test-only' }),
+}))
+
+beforeEach(() => {
+  env = makeTestEnv()
+})
+afterEach(() => {
+  env.cleanup()
+})
+
+function teamDir(id = env.teamId): string {
+  return env.paths.teamDir(id)
+}
+
+function git(...args: string[]): string {
+  return execFileSync('git', ['-C', teamDir(), ...args], {
+    encoding: 'utf8',
+    env: {
+      PATH: '/usr/bin:/bin',
+      HOME: env.home,
+      GIT_CONFIG_NOSYSTEM: '1',
+      GIT_CONFIG_GLOBAL: '/dev/null',
+      GIT_AUTHOR_NAME: 'Test',
+      GIT_AUTHOR_EMAIL: 'test@example.invalid',
+      GIT_COMMITTER_NAME: 'Test',
+      GIT_COMMITTER_EMAIL: 'test@example.invalid',
+    },
+  }).trim()
+}
+
+function repo(): void {
+  git('init', '-q', '-b', 'main')
+  writeFileSync(join(teamDir(), 'app.txt'), 'one\ntwo\n')
+  git('add', '.')
+  git('commit', '-qm', 'base')
+}
+
+test('the review reports changes since the pinned baseline', async () => {
+  repo()
+  writeFileSync(join(teamDir(), 'app.txt'), 'one\ntwo\nthree\n')
+  const response = await teamsRouter.request(`/${env.teamId}/review`)
+  expect(response.status).toBe(200)
+  const body = (await response.json()) as RepositoryReviewResponse
+  expect(body.teamId).toBe(env.teamId)
+  expect(body.changes.identity).toMatchObject({ branch: 'main', headState: 'branch' })
+  expect(body.changes.base).toEqual({
+    requestedRef: 'HEAD',
+    resolvedOid: git('rev-parse', 'HEAD'),
+  })
+  expect(body.changes.changes).toEqual([
+    expect.objectContaining({ path: 'app.txt', status: 'modified', addedLines: 1, patch: null }),
+  ])
+  expect(response.headers.get('cache-control')).toBe('no-store')
+})
+
+test('patches are opt-in and bounded when requested', async () => {
+  repo()
+  writeFileSync(join(teamDir(), 'app.txt'), 'one\ntwo\nthree\n')
+  const withPatches = await teamsRouter.request(`/${env.teamId}/review?patches=1`)
+  const body = (await withPatches.json()) as RepositoryReviewResponse
+  expect(body.changes.changes[0]?.patch).toContain('+three')
+})
+
+test('an unusable base is refused with a machine-readable code', async () => {
+  repo()
+  const injected = await teamsRouter.request(
+    `/${env.teamId}/review?base=${encodeURIComponent('--upload-pack=/tmp/evil')}`,
+  )
+  expect(injected.status).toBe(400)
+  expect((await injected.json()) as { code?: string }).toMatchObject({ code: 'invalid_base' })
+
+  const unknown = await teamsRouter.request(`/${env.teamId}/review?base=no-such-branch`)
+  expect(unknown.status).toBe(400)
+  expect((await unknown.json()) as { code?: string }).toMatchObject({ code: 'unknown_base' })
+})
+
+test('a Team that is not a repository says so instead of returning an empty review', async () => {
+  const response = await teamsRouter.request(`/${env.teamId}/review`)
+  expect(response.status).toBe(409)
+  expect((await response.json()) as { code?: string }).toMatchObject({ code: 'not_repository' })
+})
+
+test('an unknown Team is a 404, not a review of something else', async () => {
+  const response = await teamsRouter.request('/missing-team/review')
+  expect(response.status).toBe(404)
+  expect((await response.json()) as { code?: string }).toMatchObject({ code: 'team_not_found' })
+})
+
+test('an operator capture stores a snapshot and returns its reference', async () => {
+  repo()
+  writeFileSync(join(teamDir(), 'app.txt'), 'changed\n')
+  writeFileSync(join(teamDir(), 'notes.txt'), 'scratch\n')
+  const response = await teamsRouter.request(`/${env.teamId}/review/snapshots`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ includeUntracked: ['notes.txt'] }),
+  })
+  expect(response.status).toBe(200)
+  const body = (await response.json()) as SourceSnapshotResponse
+  expect(body.snapshot.complete).toBe(true)
+  expect(body.snapshot.untrackedIncluded).toEqual(['notes.txt'])
+  expect(body.reference).toEqual({
+    id: body.snapshot.id,
+    complete: true,
+    capturedAt: body.snapshot.capturedAt,
+  })
+
+  const list = (await (
+    await teamsRouter.request(`/${env.teamId}/review/snapshots`)
+  ).json()) as SourceSnapshotListResponse
+  expect(list.snapshots).toEqual([
+    expect.objectContaining({
+      snapshotId: body.snapshot.id,
+      capturedBy: 'operator',
+      agentId: null,
+      turnId: null,
+      entryCount: 2,
+    }),
+  ])
+
+  const one = await teamsRouter.request(`/${env.teamId}/review/snapshots/${body.snapshot.id}`)
+  expect(one.status).toBe(200)
+  expect(((await one.json()) as { snapshot: SourceSnapshot }).snapshot.id).toBe(body.snapshot.id)
+})
+
+test('an unknown snapshot id is a 404', async () => {
+  repo()
+  const response = await teamsRouter.request(`/${env.teamId}/review/snapshots/no-such-snapshot`)
+  expect(response.status).toBe(404)
+})
+
+test('a snapshot reference means nothing in another Team', async () => {
+  repo()
+  const other = registerTeam(env.db, { id: 'other-team', name: 'other' }, env.paths)
+  const captured = (await (
+    await teamsRouter.request(`/${env.teamId}/review/snapshots`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+  ).json()) as SourceSnapshotResponse
+  expect(captured.reference.id).toBeTruthy()
+  const across = await teamsRouter.request(`/${other.id}/review/snapshots/${captured.reference.id}`)
+  expect(across.status).toBe(404)
+  const listed = (await (
+    await teamsRouter.request(`/${other.id}/review/snapshots`)
+  ).json()) as SourceSnapshotListResponse
+  expect(listed.snapshots).toEqual([])
+})
+
+test.each([
+  ['an unexpected key', { base: 'HEAD', agentId: 'x' }],
+  ['a non-array untracked selection', { includeUntracked: 'notes.txt' }],
+  ['an over-long untracked path', { includeUntracked: ['x'.repeat(4097)] }],
+  ['too many untracked paths', { includeUntracked: Array.from({ length: 1001 }, () => 'a') }],
+  ['a non-string base', { base: 5 }],
+])('a capture request with %s is refused', async (_label, body) => {
+  repo()
+  const response = await teamsRouter.request(`/${env.teamId}/review/snapshots`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  expect(response.status).toBe(400)
+})

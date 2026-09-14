@@ -9,12 +9,16 @@ import type { BazilionDb } from '../db/client.ts'
 /** Snapshots and review metadata are retained for seven days. */
 export const SOURCE_SNAPSHOT_TTL_MS = 7 * 24 * 60 * 60 * 1000
 
+/** Where a capture came from. An operator capture has no turn, and says so rather than faking one. */
+export type SnapshotCaptureOrigin = 'agent' | 'operator'
+
 export interface SourceSnapshotInput {
   snapshotId: string
   teamId: string
-  agentId: string
-  turnId: string
-  toolCallId: string
+  capturedBy: SnapshotCaptureOrigin
+  agentId: string | null
+  turnId: string | null
+  toolCallId: string | null
   complete: boolean
   head: string | null
   baseOid: string
@@ -27,9 +31,10 @@ export interface SourceSnapshotInput {
 export interface SourceSnapshotRecord {
   snapshotId: string
   teamId: string
-  agentId: string
-  turnId: string
-  toolCallId: string
+  capturedBy: SnapshotCaptureOrigin
+  agentId: string | null
+  turnId: string | null
+  toolCallId: string | null
   complete: boolean
   head: string | null
   baseOid: string
@@ -43,9 +48,10 @@ export interface SourceSnapshotRecord {
 interface Row {
   snapshot_id: string
   team_id: string
-  agent_id: string
-  turn_id: string
-  tool_call_id: string
+  captured_by: string
+  agent_id: string | null
+  turn_id: string | null
+  tool_call_id: string | null
   complete: number
   head: string | null
   base_oid: string
@@ -57,13 +63,14 @@ interface Row {
 }
 
 const COLUMNS =
-  'snapshot_id, team_id, agent_id, turn_id, tool_call_id, complete, head, base_oid, ' +
+  'snapshot_id, team_id, captured_by, agent_id, turn_id, tool_call_id, complete, head, base_oid, ' +
   'entry_count, captured_content_bytes, manifest_json, created_at, expires_at'
 
 function toRecord(row: Row): SourceSnapshotRecord {
   return {
     snapshotId: row.snapshot_id,
     teamId: row.team_id,
+    capturedBy: row.captured_by === 'agent' ? 'agent' : 'operator',
     agentId: row.agent_id,
     turnId: row.turn_id,
     toolCallId: row.tool_call_id,
@@ -89,11 +96,12 @@ export function saveSourceSnapshot(db: BazilionDb, input: SourceSnapshotInput): 
   const now = input.now ?? Date.now()
   db.raw.run(
     `INSERT INTO source_snapshots (${COLUMNS})
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(snapshot_id, team_id) DO NOTHING`,
     [
       input.snapshotId,
       input.teamId,
+      input.capturedBy,
       input.agentId,
       input.turnId,
       input.toolCallId,

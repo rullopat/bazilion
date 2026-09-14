@@ -154,13 +154,17 @@ export interface SnapshotReference {
  */
 export type SnapshotComparison = 'identical' | 'changed' | 'unknown'
 
+/** Where a capture came from. An operator capture has no turn, and says so rather than faking one. */
+export type SnapshotCaptureOrigin = 'agent' | 'operator'
+
 /** Operator-visible snapshot record, without the manifest body. */
 export interface SourceSnapshotSummary {
   snapshotId: string
   teamId: string
-  agentId: string
-  turnId: string
-  toolCallId: string
+  capturedBy: SnapshotCaptureOrigin
+  agentId: string | null
+  turnId: string | null
+  toolCallId: string | null
   complete: boolean
   head: string | null
   baseOid: string

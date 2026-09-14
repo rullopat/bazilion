@@ -785,9 +785,11 @@ CREATE INDEX coding_command_logs_team_time ON coding_command_logs(team_id, creat
 CREATE TABLE source_snapshots (
   snapshot_id TEXT NOT NULL,
   team_id TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
-  agent_id TEXT NOT NULL,
-  turn_id TEXT NOT NULL,
-  tool_call_id TEXT NOT NULL,
+  -- Operator captures have no turn: provenance is explicit rather than faked with sentinel ids.
+  captured_by TEXT NOT NULL CHECK (captured_by IN ('agent', 'operator')),
+  agent_id TEXT,
+  turn_id TEXT,
+  tool_call_id TEXT,
   complete INTEGER NOT NULL CHECK (complete IN (0, 1)),
   head TEXT,
   base_oid TEXT NOT NULL,
@@ -798,6 +800,8 @@ CREATE TABLE source_snapshots (
   created_at INTEGER NOT NULL,
   expires_at INTEGER NOT NULL,
   CHECK (expires_at > created_at),
+  CHECK ((captured_by = 'agent') = (agent_id IS NOT NULL AND turn_id IS NOT NULL
+      AND tool_call_id IS NOT NULL)),
   PRIMARY KEY (snapshot_id, team_id)
 );
 CREATE INDEX source_snapshots_retention ON source_snapshots(expires_at, snapshot_id);

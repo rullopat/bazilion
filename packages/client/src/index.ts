@@ -160,6 +160,31 @@ export function createClient(cfg: ClientConfig) {
           input,
         ),
     },
+    /** Read-only Git change review and bounded source snapshots (BAZ-042). */
+    repositoryReview: (teamId: string) => {
+      const base = `/api/teams/${encodeURIComponent(teamId)}/review`
+      return {
+        changes: (
+          options: { base?: string; patches?: boolean } = {},
+        ): Promise<import('@bazilion/api-types').RepositoryReviewResponse> => {
+          const params = new URLSearchParams()
+          if (options.base !== undefined) params.set('base', options.base)
+          if (options.patches) params.set('patches', '1')
+          const suffix = params.size ? `?${params}` : ''
+          return request('GET', `${base}${suffix}`)
+        },
+        snapshots: (): Promise<import('@bazilion/api-types').SourceSnapshotListResponse> =>
+          request('GET', `${base}/snapshots`),
+        snapshot: (
+          snapshotId: string,
+        ): Promise<{ snapshot: import('@bazilion/api-types').SourceSnapshot }> =>
+          request('GET', `${base}/snapshots/${encodeURIComponent(snapshotId)}`),
+        capture: (
+          input: import('@bazilion/api-types').CaptureSourceSnapshotRequest,
+        ): Promise<import('@bazilion/api-types').SourceSnapshotResponse> =>
+          request('POST', `${base}/snapshots`, input),
+      }
+    },
     /** Operator retained-diagnostic access for BAZ-041 receipts. */
     codingLogs: (teamId: string) => {
       const base = `/api/teams/${encodeURIComponent(teamId)}/coding-commands`

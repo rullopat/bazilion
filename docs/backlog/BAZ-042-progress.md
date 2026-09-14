@@ -108,8 +108,12 @@ So BAZ-042 adds **readers over that harness**, not another harness.
      nothing to disclose after its window.
    - `manifest_json` is bounded to 2 MiB by CHECK, and the row carries only paths and digests — never
      file content. An over-bound manifest is refused rather than truncated.
+   - Provenance is explicit: `captured_by` is `agent` or `operator`, with agent/turn/tool-call ids
+     nullable and a CHECK tying them to an agent capture. An operator capture has no turn, and says
+     so rather than being faked with sentinel ids (this refined the table after its first cut, while
+     everything is still unreleased and clean-install only).
    - Backup: the three new objects are listed in `CANONICAL_OBJECTS` and the canonical fingerprint
-     was recomputed (`2d8a15dc…` → `ff856ed0…`). Restore keeps snapshots at their **original**
+     was recomputed (`2d8a15dc…` → `8454a37b…`). Restore keeps snapshots at their **original**
      expiry and drops the ones already past it, so a restored copy never serves evidence whose
      window closed.
 4c. **Still open from this slice:** the turn-bound Agent capture tool and the operator-requested
@@ -121,8 +125,16 @@ So BAZ-042 adds **readers over that harness**, not another harness.
      snapshot entries, `SourceSnapshot`, `SnapshotReference`, comparison, scope reason and the
      request/response envelopes). The daemon modules re-export what they previously declared, so
      callers keep one import path and this stayed a pure move.
-   - Still to do: Team-scoped HTTP routes, `@bazilion/client`, CLI list/show/diff parity, then the web
-     review panel beside chat.
+   - **Daemon, routes, client and CLI done.** `lib/git-review/service.ts` resolves a Team, opens its
+     workspace through an fd-pinned directory, captures Git and runs the review; `teamsRouter` adds
+     `GET /:id/review[?base=&patches=1]`, `GET|POST /:id/review/snapshots` and
+     `GET /:id/review/snapshots/:snapshotId`; `@bazilion/client` gains `repositoryReview(teamId)`;
+     the CLI gains `team review <slug> [--base --patch --json]`, `team review capture|snapshots|snapshot`.
+     Patches stay opt-in so a caller that wants the file list does not pay for content. Errors map to
+     machine codes: `invalid_base`/`unknown_base` → 400, `not_repository`/`unsupported_layout` → 409,
+     `team_not_found` → 404. Untracked selection is validated and bounded before anything is read.
+   - Still to do: the web review panel beside chat (slice 5b), plus the tablet/phone narrow view,
+     keyboard feedback selection and the file/hunk feedback flow (slice 6).
 6. **Feedback.** File/hunk selection carrying repository + snapshot + path + original line context,
    stale-hunk refresh, reuse of BAZ-036 for busy-turn queueing.
 
@@ -165,5 +177,10 @@ So BAZ-042 adds **readers over that harness**, not another harness.
   expiry reading as absent (and pruning), an out-of-Team reference being meaningless, an incomplete
   snapshot never widening what is treated as exact, an over-bound manifest refused, and newest-first
   Team-scoped listing. The backup recovery suite covers the restore clause.
-- Whole-tree after slice 4b: typecheck, format and lint clean; full suite 1607 passed / 7 skipped
-  (206 files); security acceptance 74 cases passed (slice 4 measured 1600 / 205 files).
+- Slice 5 additions: `apps/daemon/test/routes/git-review.test.ts` covers the change list against a
+  pinned baseline, opt-in patches, refused bases (option injection and unknown refs) with their
+  codes, a non-repository Team returning 409 rather than an empty review, an unknown Team 404, an
+  operator capture returning a reference plus its listing and single read, an unknown snapshot id
+  404, a reference being meaningless in another Team, and five refused capture payloads.
+- Whole-tree after slice 5: typecheck, format and lint clean; full suite 1620 passed / 7 skipped
+  (207 files); security acceptance 74 cases passed (slice 4b measured 1607 / 206 files).

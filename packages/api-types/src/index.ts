@@ -1140,6 +1140,7 @@ export type {
   ReviewIssueCode,
   ReviewLimits,
   ReviewScopeReason,
+  SnapshotCaptureOrigin,
   SnapshotComparison,
   SnapshotEntry,
   SnapshotEntryKind,

@@ -3,11 +3,12 @@
 // `<team.path>/memory/` and is shared by every agent in the team.
 
 import { join } from 'node:path'
-import type {
-  CodingCommandLogView,
-  RegisterTeamRequest,
-  SetTeamTopicFormatRequest,
-  SetTeamUserMdRequest,
+import {
+  type CodingCommandLogView,
+  REVIEW_LIMITS,
+  type RegisterTeamRequest,
+  type SetTeamTopicFormatRequest,
+  type SetTeamUserMdRequest,
 } from '@bazilion/api-types'
 import { type Context, Hono } from 'hono'
 import { CodingEnvironmentValidationError } from '../core/coding-environment/config.ts'
@@ -38,6 +39,14 @@ import {
 } from '../lib/coding-environment/management.ts'
 import { WorkspaceBusyError } from '../lib/coding-environment/workspace.ts'
 import { getCtx } from '../lib/ctx.ts'
+import {
+  captureTeamSnapshot,
+  listTeamSnapshots,
+  ReviewBaseError,
+  ReviewUnavailableError,
+  readTeamReview,
+  readTeamSnapshot,
+} from '../lib/git-review/service.ts'
 import { sanitizeNativeModuleError } from '../lib/native-module-error.ts'
 import { resolveRepositoryContext } from '../lib/repository-context/index.ts'
 import { validateTopicNameFormat } from '../lib/telegram/naming.ts'
@@ -136,6 +145,105 @@ teamsRouter.get('/:id/coding-commands/:commandId/log/search', (c) => {
   })
   c.header('Cache-Control', 'no-store')
   return c.json({ view: resolved.view, result })
+})
+
+// BAZ-042: read-only Git change review and bounded source snapshots.
+// Inspection never mutates the repository, and a snapshot stores a manifest of paths and digests —
+// no file content ever enters this store.
+function reviewFailure(
+  c: Context<{ Variables: AuthVariables }>,
+  error: unknown,
+): Response | Promise<never> {
+  if (error instanceof ReviewBaseError)
+    return c.json({ error: error.message, code: error.code }, 400)
+  if (error instanceof ReviewUnavailableError) {
+    return c.json(
+      { error: error.message, code: error.code },
+      error.code === 'team_not_found' ? 404 : 409,
+    )
+  }
+  throw error
+}
+
+teamsRouter.get('/:id/review', async (c) => {
+  const { db, paths } = getCtx()
+  c.header('Cache-Control', 'no-store')
+  const base = c.req.query('base')
+  const patches = c.req.query('patches') === '1'
+  try {
+    const review = await readTeamReview(db, paths, c.req.param('id'), {
+      ...(base === undefined ? {} : { base }),
+      patches,
+    })
+    return c.json(review)
+  } catch (error) {
+    return reviewFailure(c, error)
+  }
+})
+
+teamsRouter.get('/:id/review/snapshots', (c) => {
+  const { db, paths } = getCtx()
+  c.header('Cache-Control', 'no-store')
+  try {
+    return c.json({ snapshots: listTeamSnapshots(db, paths, c.req.param('id')) })
+  } catch (error) {
+    return reviewFailure(c, error)
+  }
+})
+
+teamsRouter.get('/:id/review/snapshots/:snapshotId', (c) => {
+  const { db, paths } = getCtx()
+  c.header('Cache-Control', 'no-store')
+  try {
+    const snapshot = readTeamSnapshot(db, paths, c.req.param('id'), c.req.param('snapshotId'))
+    if (!snapshot) return c.json({ error: 'Snapshot not found' }, 404)
+    return c.json({ snapshot })
+  } catch (error) {
+    return reviewFailure(c, error)
+  }
+})
+
+teamsRouter.post('/:id/review/snapshots', async (c) => {
+  const { db, paths } = getCtx()
+  c.header('Cache-Control', 'no-store')
+  const body: unknown = await c.req.json().catch(() => null)
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return c.json({ error: 'Invalid snapshot request' }, 400)
+  }
+  const input = body as { base?: unknown; includeUntracked?: unknown }
+  if (Object.keys(input).some((key) => !['base', 'includeUntracked'].includes(key))) {
+    return c.json({ error: 'Invalid snapshot request' }, 400)
+  }
+  if (input.base !== undefined && (typeof input.base !== 'string' || input.base.length > 4096)) {
+    return c.json({ error: 'Invalid comparison base' }, 400)
+  }
+  // Untracked content is opt-in per path, and the list is bounded before anything is read.
+  let includeUntracked: string[] | undefined
+  if (input.includeUntracked !== undefined) {
+    if (
+      !Array.isArray(input.includeUntracked) ||
+      input.includeUntracked.length > REVIEW_LIMITS.files
+    ) {
+      return c.json({ error: 'Invalid untracked selection' }, 400)
+    }
+    includeUntracked = []
+    for (const entry of input.includeUntracked) {
+      if (typeof entry !== 'string' || entry.length === 0 || entry.length > 4096) {
+        return c.json({ error: 'Invalid untracked selection' }, 400)
+      }
+      includeUntracked.push(entry)
+    }
+  }
+  try {
+    const captured = await captureTeamSnapshot(db, paths, c.req.param('id'), {
+      capturedBy: 'operator',
+      ...(input.base === undefined ? {} : { base: input.base as string }),
+      ...(includeUntracked ? { includeUntracked } : {}),
+    })
+    return c.json(captured)
+  } catch (error) {
+    return reviewFailure(c, error)
+  }
 })
 
 teamsRouter.get('/:id/coding-environment', async (c) => {

@@ -13,6 +13,7 @@ import { columnize } from '../columnize.ts'
 import { teamCodingLogCommand } from './team-coding-log.ts'
 import { teamEnvironmentCommand } from './team-environment.ts'
 import { teamPolicyCommand } from './team-policy.ts'
+import { teamReviewCommand } from './team-review.ts'
 
 const addCmd = defineCommand({
   meta: {
@@ -249,6 +250,7 @@ export const teamCommand = defineCommand({
   subCommands: {
     environment: teamEnvironmentCommand,
     log: teamCodingLogCommand,
+    review: teamReviewCommand,
     context: contextCmd,
     add: addCmd,
     list: listCmd,

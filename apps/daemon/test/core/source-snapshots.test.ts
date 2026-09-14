@@ -15,6 +15,7 @@ function input(overrides: Partial<SourceSnapshotInput> = {}): SourceSnapshotInpu
   return {
     snapshotId: 'snap-a',
     teamId: '',
+    capturedBy: 'agent',
     agentId: 'agent-1',
     turnId: 'turn-1',
     toolCallId: 'call-1',
