@@ -1,9 +1,10 @@
 # BAZ-041 implementation progress
 
-Started: 2026-09-14 (resumed). Status: daemon/API/CLI/Telegram/web complete, locally green, and
-covered by 10 BAZ-041 cases in the adversarial release gate. What remains before delivery is
-manual acceptance — real-Docker observation of live progress — not feature code.
-The retained-log browser read is deliberately first-page-only (no search/pagination) in this pass.
+Started: 2026-09-14 (resumed). Status: daemon/API/CLI/Telegram/web complete, locally green,
+covered by 10 BAZ-041 cases in the adversarial release gate, and observed in real Docker — see
+[the acceptance record](BAZ-041-acceptance.md). What remains before delivery is one real-model turn,
+not feature code. The retained-log browser read is deliberately first-page-only (no
+search/pagination) in this pass.
 
 Story: [BAZ-041](in_progress/BAZ-041-coding-command-verification.md).
 Branch: `feat/baz-041-042-coding-evidence`.
@@ -103,41 +104,59 @@ push is included; BAZ-041 stays unshipped.
 - `pnpm test`: 1544 passed, 7 skipped (196 files).
 - `pnpm security:acceptance`: 70 required adversarial cases passed, 10 owned by BAZ-041.
 - `pnpm --filter @bazilion/web typecheck` clean.
+- Local acceptance on a disposable home with a fake provider and real Docker: see
+  [BAZ-041-acceptance.md](BAZ-041-acceptance.md). Criteria 1, 2 and 6 observed; 3 and 4 partly
+  observed; 5 proven locally.
 
 ## Remaining work
 
-**Blocking delivery — acceptance exercise, not code:**
+**Blocking delivery — one acceptance run, not code:**
 
-1. **Manual acceptance.** Real-Docker observation of live progress (criterion 1) and the story's
-   manual-semiauto walkthrough, run against a disposable home with fake providers. No feature code
-   is outstanding.
+1. **A real-model turn.** Live progress, retention, restart persistence and web/CLI parity were
+   observed with a *scripted* fake provider, so criterion 1's "a real model chooses the command
+   from an ordinary prompt" is still unproven. One run on a disposable home closes it.
+
+**Optional strengthening:**
+
+2. **Genuine withholding evidence.** Criterion 4's withheld state was staged by un-releasing a
+   retained row. A Team Policy `approval_required` edge (or a worker loss before any terminal
+   frame) would prove the real egress path. The boundary is already pinned by a gate case, so this
+   strengthens the record rather than closing a gap.
+3. **Scripted browser check.** The browser steps were driven manually. The repo pattern to extend
+   is `scripts/check-repository-context-ui.mjs` (inline fake provider + `startTestServer` +
+   Playwright).
 
 **Optional polish — not required by any acceptance criterion:**
 
-2. **Retained-log search and paging in the web.** The browser control reads the first 64 KiB page
+4. **Retained-log search and paging in the web.** The browser control reads the first 64 KiB page
    only; `hasMore` is surfaced as a note. The search route and offset paging already exist on the
    API/client/CLI, so this is UI-only follow-up.
-3. **`coding_log` masked cards carry no pointer.** `CodingCommandLogPage` has a `commandId` but no
+5. **`coding_log` masked cards carry no pointer.** `CodingCommandLogPage` has a `commandId` but no
    `teamId`, so a masked `coding_log` page degrades to the plain placeholder. This is cosmetic:
    such a card only exists in a transcript that also holds the terminal `coding_command` card,
    which does carry the pointer.
 
 **Out of scope here:**
 
-4. **BAZ-042 linkage.** Snapshot-bound applicability/invalidations are owned by BAZ-042.
+6. **BAZ-042 linkage.** Snapshot-bound applicability/invalidations are owned by BAZ-042.
 
 ## Acceptance map
 
-1. Live changing output without a setup form — implemented (executor `onUpdate`, daemon/event/web).
-   Real-Docker manual observation still required.
+1. Live changing output without a setup form — implemented (executor `onUpdate`, daemon/event/web)
+   and **observed in real Docker** (10 cumulative frames, no duplication, no setup form).
+   Real-model command selection still unproven.
 2. Failure diagnostics after scratch cleanup; operator reopen — retention + API/CLI/Telegram/web
-   control done (first page only; search/paging deferred).
+   control done (first page only; search/paging deferred) and **observed**: container gone, 61
+   bytes read back, unchanged across a daemon restart, reopened from a reloaded chat card.
 3. Distinct terminal states; no replay on disconnect — BAZ-040 behavior preserved; progress is
-   cumulative so reconnect cannot duplicate output.
+   cumulative so reconnect cannot duplicate output. **Succeeded vs. cancelled observed**; timeout,
+   worker loss and preflight failure remain suite-covered only.
 4. Held output inaccessible; redaction/control bytes/hostile markup — audience gate, redaction
-   pipeline, React-escaped rendering; pinned by the 10 new BAZ-041 adversarial cases in
-   `security/acceptance-manifest.json` plus the existing unit coverage.
+   pipeline, React-escaped rendering; pinned by the 10 BAZ-041 adversarial cases in
+   `security/acceptance-manifest.json` plus unit coverage, and **observed at the read surface**
+   (403, CLI refusal, "hasn't been shared" card) with the withheld state staged.
 5. Quota/truncation/expiry/deletion/persistence failure truthful — explicit truncation flag,
-   tombstones, lazy expiry, best-effort persistence.
+   tombstones, lazy expiry, best-effort persistence; metadata truthfulness **observed**, the quota
+   and expiry/deletion edges remain suite-covered only.
 6. Web/CLI consistent outcomes; no exit-code inference of coverage — preserved; CLI log command
    reports availability honestly.
