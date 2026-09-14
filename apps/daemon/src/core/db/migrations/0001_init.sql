@@ -776,3 +776,29 @@ CREATE TABLE coding_command_logs (
 );
 CREATE INDEX coding_command_logs_retention ON coding_command_logs(expires_at, command_id);
 CREATE INDEX coding_command_logs_team_time ON coding_command_logs(team_id, created_at, command_id);
+
+-- BAZ-042: bounded source snapshots — code evidence, not another conversation store.
+-- A snapshot is identified by the content-addressed id of its manifest, so identical trees
+-- collapse onto one row per Team. That row keeps the *first* capture's provenance and its
+-- original window: capturing the same state again must not extend retention. Manifests hold
+-- paths and digests only; no file content is stored here.
+CREATE TABLE source_snapshots (
+  snapshot_id TEXT NOT NULL,
+  team_id TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  agent_id TEXT NOT NULL,
+  turn_id TEXT NOT NULL,
+  tool_call_id TEXT NOT NULL,
+  complete INTEGER NOT NULL CHECK (complete IN (0, 1)),
+  head TEXT,
+  base_oid TEXT NOT NULL,
+  entry_count INTEGER NOT NULL CHECK (entry_count BETWEEN 0 AND 4096),
+  captured_content_bytes INTEGER NOT NULL
+    CHECK (captured_content_bytes BETWEEN 0 AND 16777216),
+  manifest_json TEXT NOT NULL CHECK (length(CAST(manifest_json AS BLOB)) <= 2097152),
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL,
+  CHECK (expires_at > created_at),
+  PRIMARY KEY (snapshot_id, team_id)
+);
+CREATE INDEX source_snapshots_retention ON source_snapshots(expires_at, snapshot_id);
+CREATE INDEX source_snapshots_team_time ON source_snapshots(team_id, created_at, snapshot_id);

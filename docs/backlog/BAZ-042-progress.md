@@ -97,10 +97,24 @@ So BAZ-042 adds **readers over that harness**, not another harness.
      edit reverted before the check, and the doc comment says so rather than implying proof.
    - Scope refusals are recorded in `exclusions` (path + reason), so credential-shaped and
      Bazilion-owned paths are visibly withheld rather than silently absent.
-4b. **Persist snapshots.** Not yet done: a narrow seven-day store (schema + repo, in the shape
-   `coding_command_logs` already uses) plus linking BAZ-041 receipts to a snapshot reference, the
-   turn-bound capture tool and the operator-requested capture, and promoting the review + snapshot
-   types into hermetic `api-types`.
+4b. **Persist snapshots (store landed).** `source_snapshots` in the canonical schema (clean-install
+   only, no ALTER), `core/repos/source-snapshots.ts`, and the backup contract:
+   - Seven-day retention. The id is content-addressed, so an identical capture collides on the same
+     row and writes nothing — the first capture's provenance and its original `expires_at` survive,
+     because re-capturing the same state must not extend a retention window.
+   - Team-scoped rows with `ON DELETE CASCADE`, so a reference is meaningless outside the Team that
+     captured it. Expired rows read as **absent**, the same answer as never-captured, because both
+     mean applicability cannot be established. No tombstone: unlike retained bytes, a manifest has
+     nothing to disclose after its window.
+   - `manifest_json` is bounded to 2 MiB by CHECK, and the row carries only paths and digests — never
+     file content. An over-bound manifest is refused rather than truncated.
+   - Backup: the three new objects are listed in `CANONICAL_OBJECTS` and the canonical fingerprint
+     was recomputed (`2d8a15dc…` → `ff856ed0…`). Restore keeps snapshots at their **original**
+     expiry and drops the ones already past it, so a restored copy never serves evidence whose
+     window closed.
+4c. **Still open from this slice:** the turn-bound Agent capture tool and the operator-requested
+   capture, linking BAZ-041 receipts to a before/after snapshot reference, and promoting the review
+   and snapshot types into hermetic `api-types` (done at the start of slice 5, which needs them).
 5. **Surfaces.** Team-scoped HTTP routes, `@bazilion/client`, CLI list/show/diff parity, then the web
    review panel beside chat (over the wire types promoted in slice 4b).
 6. **Feedback.** File/hunk selection carrying repository + snapshot + path + original line context,
@@ -140,5 +154,10 @@ So BAZ-042 adds **readers over that harness**, not another harness.
   credential-shaped path recorded as an exclusion, a missing included path reporting incompleteness,
   an oversized file refused instead of truncated into a misleading digest, a symlinked path refused,
   a deleted path recorded as deleted, the file bound, and the emitted reference.
-- Whole-tree after slice 4: typecheck, format and lint clean; full suite 1600 passed / 7 skipped
-  (205 files); security acceptance 74 cases passed (slices 1–3 measured 1556 / 1574 / 1590).
+- Slice 4b additions: `apps/daemon/test/core/source-snapshots.test.ts` covers the round trip with
+  provenance and window, a re-capture keeping the first provenance without extending retention,
+  expiry reading as absent (and pruning), an out-of-Team reference being meaningless, an incomplete
+  snapshot never widening what is treated as exact, an over-bound manifest refused, and newest-first
+  Team-scoped listing. The backup recovery suite covers the restore clause.
+- Whole-tree after slice 4b: typecheck, format and lint clean; full suite 1607 passed / 7 skipped
+  (206 files); security acceptance 74 cases passed (slice 4 measured 1600 / 205 files).

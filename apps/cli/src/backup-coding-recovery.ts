@@ -33,6 +33,10 @@ export function invalidateRestoredCodingEvidence(
     `UPDATE coding_command_logs SET state = 'expired', text = NULL, byte_length = 0, retired_at = ?
      WHERE state = 'retained' AND expires_at <= ?`,
   ).run(restoredAt, restoredAt)
+  // BAZ-042 source snapshots keep their original window across the round-trip and have no
+  // tombstone: a manifest past its window is simply absent, which reads as unknown applicability
+  // rather than as evidence. Snapshots inside the window are preserved as captured.
+  db.prepare('DELETE FROM source_snapshots WHERE expires_at <= ?').run(restoredAt)
   // A copied registration can miss resources launched later in the original daemon. Never infer
   // safety from an empty copied resource list or kill a process belonging to another live home.
   db.prepare("UPDATE workspace_writers SET state = 'recovery', recovery_mode = 'restored'").run()
