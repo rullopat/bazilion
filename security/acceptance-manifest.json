@@ -360,6 +360,66 @@
       "owner": "BAZ-027",
       "file": "apps/daemon/test/runtime/shell-docker.test.ts",
       "test": "createDockerBashOperations > rejects images that declare implicit writable volumes"
+    },
+    {
+      "id": "RETAINED-LOG-DISCLOSURE-GATE",
+      "owner": "BAZ-041",
+      "file": "apps/daemon/test/core/coding-command-logs.test.ts",
+      "test": "disclosure reads refuse bytes that source-owned egress has not released"
+    },
+    {
+      "id": "RETAINED-LOG-RELEASE-NOT-INHERITED",
+      "owner": "BAZ-041",
+      "file": "apps/daemon/test/core/coding-command-logs.test.ts",
+      "test": "changed output cannot inherit an earlier release"
+    },
+    {
+      "id": "RETAINED-LOG-EXPIRY-TRUTHFUL",
+      "owner": "BAZ-041",
+      "file": "apps/daemon/test/core/coding-command-logs.test.ts",
+      "test": "expiry clears the bytes and leaves a truthful tombstone"
+    },
+    {
+      "id": "RETAINED-LOG-SPLIT-CREDENTIAL",
+      "owner": "BAZ-041",
+      "file": "apps/daemon/test/core/coding-command-logs.test.ts",
+      "test": "redacts a credential split across two output chunks"
+    },
+    {
+      "id": "RETAINED-LOG-REFERENCE-OPAQUE",
+      "owner": "BAZ-041",
+      "file": "apps/daemon/test/lib/coding-log-reference.test.ts",
+      "test": "never returns captured output"
+    },
+    {
+      "id": "RETAINED-LOG-POINTER-NO-BYTES",
+      "owner": "BAZ-041",
+      "file": "apps/daemon/test/lib/repository-context-egress.test.ts",
+      "test": "masked history carries the retained-log pointer without the captured bytes"
+    },
+    {
+      "id": "RETAINED-LOG-PEER-AUTHORIZATION",
+      "owner": "BAZ-041",
+      "file": "apps/daemon/test/lib/agent-coding.test.ts",
+      "test": "retained logs are readable by the producer and only by an authorized peer"
+    },
+    {
+      "id": "RETAINED-LOG-MIDTURN-CREDENTIAL",
+      "owner": "BAZ-041",
+      "file": "apps/daemon/test/lib/agent-coding.test.ts",
+      "test": "a credential learned mid-turn joins coding redaction"
+    },
+    {
+      "id": "RETAINED-LOG-MASKED-CARD-NO-FETCH",
+      "owner": "BAZ-041",
+      "file": "apps/web/test/coding-presentation.test.ts",
+      "test": "a masked history card offers retained output only when it carries a pointer"
+    },
+    {
+      "id": "RETAINED-LOG-HELD-NOT-EMPTY",
+      "owner": "BAZ-041",
+      "file": "apps/web/test/coding-log.test.ts",
+      "test": "a held log is not-shared, never an empty page"
     }
   ]
 }

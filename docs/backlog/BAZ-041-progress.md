@@ -1,6 +1,8 @@
 # BAZ-041 implementation progress
 
-Started: 2026-09-14 (resumed). Status: daemon/API/CLI/Telegram/web complete and locally green.
+Started: 2026-09-14 (resumed). Status: daemon/API/CLI/Telegram/web complete, locally green, and
+covered by 10 BAZ-041 cases in the adversarial release gate. What remains before delivery is
+manual acceptance — real-Docker observation of live progress — not feature code.
 The retained-log browser read is deliberately first-page-only (no search/pagination) in this pass.
 
 Story: [BAZ-041](in_progress/BAZ-041-coding-command-verification.md).
@@ -82,26 +84,47 @@ push is included; BAZ-041 stays unshipped.
   retained log; live progress never releases. A held result stays unreadable.
 - Telegram releases the retained log only when a terminal coding result is actually mirrored and
   its egress is authorized. A minimal-mode-suppressed or policy-denied outcome does not release.
+- A peer read *is* the peer's delivery, so it releases; a `send_message` that merely names the
+  receipt moves no bytes and correctly releases nothing. This matches the story's "source-owned
+  user or peer delivery" refinement decision, so it is settled rather than open.
+
+### Adversarial release gate
+
+- 10 BAZ-041 cases were added to `security/acceptance-manifest.json` (gate total 60 → 70). Before
+  this, the gate exercised no BAZ-041 boundary at all — it passed, but proved nothing about
+  retained-evidence disclosure. The new cases pin the disclosure gate, release non-inheritance,
+  truthful expiry, split-credential redaction, opaque references, pointer-without-bytes history
+  projection, producer-only peer authorization, mid-turn credential redaction, no-fetch masked
+  card, and held-log-is-not-empty.
 
 ## Validation
 
 - `pnpm typecheck` clean; `pnpm lint` no errors; `pnpm format` applied.
 - `pnpm test`: 1544 passed, 7 skipped (196 files).
-- `pnpm security:acceptance`: 60 required adversarial cases passed.
+- `pnpm security:acceptance`: 70 required adversarial cases passed, 10 owned by BAZ-041.
 - `pnpm --filter @bazilion/web typecheck` clean.
 
-## Remaining work (not done in this pass)
+## Remaining work
 
-1. **Retained-log search and paging in the web.** The browser control reads the first 64 KiB page
+**Blocking delivery — acceptance exercise, not code:**
+
+1. **Manual acceptance.** Real-Docker observation of live progress (criterion 1) and the story's
+   manual-semiauto walkthrough, run against a disposable home with fake providers. No feature code
+   is outstanding.
+
+**Optional polish — not required by any acceptance criterion:**
+
+2. **Retained-log search and paging in the web.** The browser control reads the first 64 KiB page
    only; `hasMore` is surfaced as a note. The search route and offset paging already exist on the
    API/client/CLI, so this is UI-only follow-up.
-2. **`coding_log` masked cards carry no pointer.** `CodingCommandLogPage` has a `commandId` but no
-   `teamId`, so a masked `coding_log` page degrades to the plain placeholder. Adding the team to the
-   page shape would let those cards reopen too.
-3. **Peer message egress does not itself release.** Release happens when an authorized peer reads
-   the log or the operator/Telegram receives the terminal result. Confirm this matches the intended
-   "source-owned egress" moment for `send_message`.
-4. **BAZ-042 linkage.** Snapshot-bound applicability/invalidations are out of scope here.
+3. **`coding_log` masked cards carry no pointer.** `CodingCommandLogPage` has a `commandId` but no
+   `teamId`, so a masked `coding_log` page degrades to the plain placeholder. This is cosmetic:
+   such a card only exists in a transcript that also holds the terminal `coding_command` card,
+   which does carry the pointer.
+
+**Out of scope here:**
+
+4. **BAZ-042 linkage.** Snapshot-bound applicability/invalidations are owned by BAZ-042.
 
 ## Acceptance map
 
@@ -112,7 +135,8 @@ push is included; BAZ-041 stays unshipped.
 3. Distinct terminal states; no replay on disconnect — BAZ-040 behavior preserved; progress is
    cumulative so reconnect cannot duplicate output.
 4. Held output inaccessible; redaction/control bytes/hostile markup — audience gate, redaction
-   pipeline, React-escaped rendering; `security:acceptance` green.
+   pipeline, React-escaped rendering; pinned by the 10 new BAZ-041 adversarial cases in
+   `security/acceptance-manifest.json` plus the existing unit coverage.
 5. Quota/truncation/expiry/deletion/persistence failure truthful — explicit truncation flag,
    tombstones, lazy expiry, best-effort persistence.
 6. Web/CLI consistent outcomes; no exit-code inference of coverage — preserved; CLI log command
