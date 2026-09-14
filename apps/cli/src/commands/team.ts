@@ -10,6 +10,7 @@ import type {
 import { defineCommand } from 'citty'
 import { createClient } from '../client.ts'
 import { columnize } from '../columnize.ts'
+import { teamCodingLogCommand } from './team-coding-log.ts'
 import { teamEnvironmentCommand } from './team-environment.ts'
 import { teamPolicyCommand } from './team-policy.ts'
 
@@ -247,6 +248,7 @@ export const teamCommand = defineCommand({
   meta: { name: 'team', description: 'Manage teams (collaboration contexts)' },
   subCommands: {
     environment: teamEnvironmentCommand,
+    log: teamCodingLogCommand,
     context: contextCmd,
     add: addCmd,
     list: listCmd,

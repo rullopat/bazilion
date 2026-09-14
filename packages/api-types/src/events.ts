@@ -110,6 +110,25 @@ export type SessionEvent =
       data: string
     }
   | { type: 'command_approval'; approval: CommandApproval }
+  | {
+      /**
+       * A bounded, cumulative live update from an admitted coding command. Every
+       * update for the same `id` replaces the previous one, so a reconnect can
+       * replay the latest tail without duplicating output. The tail is redacted
+       * before it is emitted and may stop short of the command's retained log.
+       */
+      type: 'coding_progress'
+      /** Pi tool-call id; the renderer keys on this to replace prior updates. */
+      id: string
+      /** Opaque Bazilion receipt id for the command. */
+      commandId: string
+      /** Cumulative redacted output tail. */
+      output: string
+      /** True when `output` does not reach the beginning of the command's output. */
+      truncated: boolean
+      /** Milliseconds elapsed since the command started. */
+      elapsedMs: number
+    }
   | { type: 'error'; error: string }
 
 /**

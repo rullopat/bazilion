@@ -744,3 +744,35 @@ CREATE TABLE coding_commands (
   UNIQUE(agent_id, turn_id, tool_call_id)
 );
 CREATE INDEX coding_command_history ON coding_commands(team_id, created_at, id);
+
+-- BAZ-041: bounded retained diagnostic evidence, subordinate to its receipt.
+-- Text lives in the database so the encrypted backup contract carries it, and its
+-- original expiry, without a side store. A row without retained bytes is a truthful
+-- tombstone: expired (past its own window) or deleted (deliberately erased).
+-- Quota eviction drops the row instead, which clients read as unavailable.
+CREATE TABLE coding_command_logs (
+  command_id TEXT PRIMARY KEY REFERENCES coding_commands(id) ON DELETE CASCADE,
+  team_id TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  agent_id TEXT NOT NULL,
+  turn_id TEXT NOT NULL,
+  tool_call_id TEXT NOT NULL,
+  state TEXT NOT NULL CHECK (state IN ('retained', 'expired', 'deleted')),
+  text TEXT,
+  byte_length INTEGER NOT NULL CHECK (byte_length BETWEEN 0 AND 2097152),
+  observed_bytes INTEGER NOT NULL CHECK (observed_bytes >= 0),
+  redacted INTEGER NOT NULL DEFAULT 0 CHECK (redacted IN (0, 1)),
+  -- Explicit: redaction can shorten or lengthen bytes, so truncation is never
+  -- inferred by comparing observed_bytes with the retained byte_length.
+  truncated INTEGER NOT NULL DEFAULT 0 CHECK (truncated IN (0, 1)),
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL,
+  released_at INTEGER,
+  retired_at INTEGER,
+  CHECK (expires_at >= created_at),
+  CHECK ((state = 'retained') = (retired_at IS NULL)),
+  CHECK ((state = 'retained' AND text IS NOT NULL
+      AND length(CAST(text AS BLOB)) = byte_length)
+    OR (state != 'retained' AND text IS NULL AND byte_length = 0))
+);
+CREATE INDEX coding_command_logs_retention ON coding_command_logs(expires_at, command_id);
+CREATE INDEX coding_command_logs_team_time ON coding_command_logs(team_id, created_at, command_id);

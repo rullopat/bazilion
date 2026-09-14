@@ -1,5 +1,8 @@
 import type {
   CodingCommandInput,
+  CodingCommandLogPage,
+  CodingCommandLogSearchResult,
+  CodingCommandLogView,
   CodingCommandOutcome,
   CodingCommandReceipt,
   CodingEnvironmentSnapshot,
@@ -10,7 +13,15 @@ export type CodingRequest =
   | { action: 'start'; toolCallId: string; input: CodingCommandInput }
   | { action: 'finish'; id: string; outcome: CodingCommandOutcome }
   | { action: 'read'; id: string; messageId?: string }
-export type CodingResponse = CodingEnvironmentSnapshot | CodingCommandReceipt | CodingReceiptView
+  | { action: 'log'; id: string; messageId?: string; offset?: number; limit?: number }
+  | { action: 'log-search'; id: string; messageId?: string; query: string }
+export type CodingResponse =
+  | CodingEnvironmentSnapshot
+  | CodingCommandReceipt
+  | CodingReceiptView
+  | CodingCommandLogView
+  | CodingCommandLogPage
+  | CodingCommandLogSearchResult
 export interface CodingHost {
   invoke(request: CodingRequest): Promise<CodingResponse>
 }

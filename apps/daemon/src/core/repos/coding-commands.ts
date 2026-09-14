@@ -1,14 +1,24 @@
 import type { CodingCommandReceipt } from '@bazilion/api-types'
 import type { BazilionDb } from '../db/client.ts'
 
+/** Matches the retained-diagnostic window so a log cannot outlive its receipt. */
+export const CODING_COMMAND_TTL_MS = 7 * 86400000
+/**
+ * Safety valve, not the governing limit. The seven-day clock is what actually bounds
+ * retention; this only stops one very busy Team from growing receipt bytes without
+ * bound. BAZ-041 widened this from 20 so a coding session's earlier commands keep
+ * their diagnostics for the documented window instead of minutes.
+ */
+export const CODING_COMMAND_MAX_PER_TEAM = 200
+
 export function pruneCodingCommands(db: BazilionDb, teamId: string) {
   db.raw.run(
     "DELETE FROM coding_commands WHERE team_id = ? AND state != 'running' AND created_at < ?",
-    [teamId, Date.now() - 7 * 86400000],
+    [teamId, Date.now() - CODING_COMMAND_TTL_MS],
   )
   db.raw.run(
-    "DELETE FROM coding_commands WHERE id IN (SELECT id FROM coding_commands WHERE team_id = ? AND state != 'running' ORDER BY created_at DESC, id DESC LIMIT -1 OFFSET 20)",
-    [teamId],
+    "DELETE FROM coding_commands WHERE id IN (SELECT id FROM coding_commands WHERE team_id = ? AND state != 'running' ORDER BY created_at DESC, id DESC LIMIT -1 OFFSET ?)",
+    [teamId, CODING_COMMAND_MAX_PER_TEAM],
   )
 }
 export function saveCodingCommand(db: BazilionDb, receipt: CodingCommandReceipt) {

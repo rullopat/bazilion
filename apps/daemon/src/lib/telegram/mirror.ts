@@ -395,6 +395,10 @@ function renderFrame(frame: ChatFrame, mode: TelegramMirrorMode): string | null 
       // Telegram turns are non-interactive and auto-deny. The following bash
       // tool error is sufficient; never mirror an unusable approval prompt.
       return null
+    case 'coding_progress':
+      // Live coding output is a bounded chat tail, not a Telegram stream. The
+      // concise authorized outcome is mirrored from the terminal tool result.
+      return null
     case 'user_message':
     case 'assistant_delta':
       return null

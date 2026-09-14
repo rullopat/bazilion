@@ -160,6 +160,34 @@ export function createClient(cfg: ClientConfig) {
           input,
         ),
     },
+    /** Operator retained-diagnostic access for BAZ-041 receipts. */
+    codingLogs: (teamId: string) => {
+      const base = `/api/teams/${encodeURIComponent(teamId)}/coding-commands`
+      const item = (commandId: string) => `${base}/${encodeURIComponent(commandId)}/log`
+      return {
+        page: (
+          commandId: string,
+          options: { offset?: number; limit?: number } = {},
+        ): Promise<import('@bazilion/api-types').CodingCommandLogResponse> => {
+          const params = new URLSearchParams()
+          if (options.offset !== undefined) params.set('offset', String(options.offset))
+          if (options.limit !== undefined) params.set('limit', String(options.limit))
+          const suffix = params.size ? `?${params}` : ''
+          return request<import('@bazilion/api-types').CodingCommandLogResponse>(
+            'GET',
+            `${item(commandId)}${suffix}`,
+          )
+        },
+        search: (
+          commandId: string,
+          query: string,
+        ): Promise<import('@bazilion/api-types').CodingCommandLogSearchResponse> =>
+          request<import('@bazilion/api-types').CodingCommandLogSearchResponse>(
+            'GET',
+            `${item(commandId)}/search?q=${encodeURIComponent(query)}`,
+          ),
+      }
+    },
     repositoryContext: (teamId: string, options: RepositoryContextRequest = {}) =>
       request<RepositoryContextReport>(
         'GET',

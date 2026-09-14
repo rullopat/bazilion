@@ -1,9 +1,10 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { CodingCommandReceipt } from '@bazilion/api-types'
+import type { CodingCommandLogPage, CodingCommandReceipt } from '@bazilion/api-types'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { createProfile, spawnAgent } from '../../src/core/index.ts'
 import {
+  CODING_COMMAND_MAX_PER_TEAM,
   getCodingCommand,
   interruptCodingCommands,
   saveCodingCommand,
@@ -163,7 +164,7 @@ test('turn ownership, duplicate calls and bounded redacted outcomes are enforced
 })
 test('retention caps terminal evidence and never prunes an active command', async () => {
   const r = await receipt()
-  for (let i = 0; i < 25; i++)
+  for (let i = 0; i < CODING_COMMAND_MAX_PER_TEAM + 5; i++)
     saveCodingCommand(env.db, {
       ...r,
       id: `receipt-${i}`,
@@ -175,9 +176,10 @@ test('retention caps terminal evidence and never prunes an active command', asyn
     toolCallId: 'active',
     input: command,
   })) as CodingCommandReceipt
+  // Oldest finished receipts are pruned to the cap; the running command is preserved.
   expect(
     env.db.raw.query<{ n: number }, []>('SELECT count(*) AS n FROM coding_commands').get()?.n,
-  ).toBe(21)
+  ).toBe(CODING_COMMAND_MAX_PER_TEAM + 1)
   expect(getCodingCommand(env.db, active.id)?.state).toBe('running')
 })
 test('same-workspace handoff returns promptly instead of waiting on its own lease', async () => {
@@ -234,6 +236,58 @@ test('the real host executor records failure, offline preparation, success and t
     env.db.raw.query<{ n: number }, []>('SELECT count(*) AS n FROM team_coding_environments').get()
       ?.n,
   ).toBe(0)
+})
+
+test('retained logs are readable by the producer and only by an authorized peer', async () => {
+  const h = host(owner, 'turn', ['SECRET_VALUE'])
+  const started = (await h.invoke({
+    action: 'start',
+    toolCallId: 'log-call',
+    input: { ...command, command: 'run' },
+  })) as CodingCommandReceipt
+  await h.invoke({
+    action: 'finish',
+    id: started.id,
+    outcome: {
+      state: 'failed',
+      exitCode: 1,
+      diagnostic: 'boom SECRET_VALUE',
+      truncated: false,
+      reason: null,
+    },
+  })
+  // The producing Agent reads its own retained bytes, redacted at capture time.
+  const page = (await host(owner, 'read-turn').invoke({
+    action: 'log',
+    id: started.id,
+  })) as CodingCommandLogPage
+  expect(page.availability).toBe('available')
+  expect(page.text).toContain('[redacted]')
+  expect(page.text).not.toContain('SECRET_VALUE')
+  // A peer is refused until the source-owned message authorizes disclosure.
+  await expect(host(peer, 'peer-turn').invoke({ action: 'log', id: started.id })).rejects.toThrow(
+    'authorized producer message',
+  )
+  const messages = createDbMessagingHost(env.db)
+  const message = await messages.sendMessage({
+    from: owner,
+    to: peer,
+    replyTo: null,
+    payload: `Check coding-receipt:${started.id}`,
+  })
+  const peerPage = (await host(peer, 'peer-turn').invoke({
+    action: 'log',
+    id: started.id,
+    messageId: message.messageId,
+  })) as CodingCommandLogPage
+  expect(peerPage.text).toContain('[redacted]')
+  // Bounded search pages over the same retained tail.
+  const found = (await host(owner, 'search-turn').invoke({
+    action: 'log-search',
+    id: started.id,
+    query: 'boom',
+  })) as { matches: { line: number }[]; bounded: boolean }
+  expect(found.matches).toHaveLength(1)
 })
 
 test('diagnostics bound huge output and redact credentials split across chunks', () => {

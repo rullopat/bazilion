@@ -1100,6 +1100,13 @@ export interface TelegramBindResponse {
 
 export type {
   CodingCommandInput,
+  CodingCommandLogAvailability,
+  CodingCommandLogMatch,
+  CodingCommandLogPage,
+  CodingCommandLogResponse,
+  CodingCommandLogSearchResponse,
+  CodingCommandLogSearchResult,
+  CodingCommandLogView,
   CodingCommandOutcome,
   CodingCommandReceipt,
   CodingCommandState,

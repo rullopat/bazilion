@@ -64,6 +64,30 @@ export function CodingToolResult({
       </details>
     )
   }
+  if (name === 'coding_log') {
+    const page = parsed as {
+      availability?: unknown
+      text?: unknown
+      offset?: unknown
+      hasMore?: unknown
+      byteLength?: unknown
+    }
+    if (typeof page.text !== 'string' || typeof page.availability !== 'string') return <span>{body}</span>
+    return (
+      <details className="py-1" aria-label="Retained command output">
+        <summary className="cursor-pointer">
+          Retained output: {page.availability}
+          {page.hasMore ? ' · more available' : ''}
+        </summary>
+        <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words">{page.text}</pre>
+        <p className="text-xs">
+          bytes {typeof page.offset === 'number' ? page.offset : 0}–
+          {(typeof page.offset === 'number' ? page.offset : 0) + page.text.length} of{' '}
+          {typeof page.byteLength === 'number' ? page.byteLength : 0}
+        </p>
+      </details>
+    )
+  }
   if (name === 'coding_environment') {
     const value = parsed as CodingEnvironmentSnapshot
     if (typeof value.posture !== 'string') return <span>{body}</span>

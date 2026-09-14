@@ -26,6 +26,13 @@ export function invalidateRestoredCodingEvidence(
       row.id,
     )
   }
+  // Retained BAZ-041 logs keep their original expiry across the backup round-trip. A
+  // restored copy must not serve bytes whose retention window has already passed.
+  const restoredAt = Date.now()
+  db.prepare(
+    `UPDATE coding_command_logs SET state = 'expired', text = NULL, byte_length = 0, retired_at = ?
+     WHERE state = 'retained' AND expires_at <= ?`,
+  ).run(restoredAt, restoredAt)
   // A copied registration can miss resources launched later in the original daemon. Never infer
   // safety from an empty copied resource list or kill a process belonging to another live home.
   db.prepare("UPDATE workspace_writers SET state = 'recovery', recovery_mode = 'restored'").run()

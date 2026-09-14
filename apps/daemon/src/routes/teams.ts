@@ -4,6 +4,7 @@
 
 import { join } from 'node:path'
 import type {
+  CodingCommandLogView,
   RegisterTeamRequest,
   SetTeamTopicFormatRequest,
   SetTeamUserMdRequest,
@@ -22,6 +23,12 @@ import {
   updateTeamPolicySource,
 } from '../core/index.ts'
 import { validateSlug } from '../core/profile/validate.ts'
+import {
+  getCodingCommandLog,
+  readCodingCommandLog,
+  searchCodingCommandLog,
+} from '../core/repos/coding-command-logs.ts'
+import { getCodingCommand } from '../core/repos/coding-commands.ts'
 import { CodingEnvironmentRevisionError } from '../core/repos/coding-environment.ts'
 import type { AuthVariables } from '../lib/auth.ts'
 import {
@@ -81,6 +88,54 @@ teamsRouter.get('/:id/repository-context', async (c) => {
       target: c.req.query('target'),
     }),
   )
+})
+
+// Operator retained-diagnostic access (BAZ-041). Retained bytes stay private until
+// source-owned egress releases them; a held log is 403, never an empty-looking page.
+// Paths and sizes are opaque ids and UTF-8 byte offsets — never host paths.
+function codingLogCommand(
+  c: Context<{ Variables: AuthVariables }>,
+):
+  | { error: string; status: 403 | 404 }
+  | { db: ReturnType<typeof getCtx>['db']; commandId: string; view: CodingCommandLogView } {
+  const { db, paths } = getCtx()
+  const team = teamRepo.get(db, c.req.param('id') ?? '', paths)
+  if (!team) return { error: 'Team not found', status: 404 }
+  const commandId = c.req.param('commandId') ?? ''
+  const receipt = getCodingCommand(db, commandId)
+  if (!receipt || receipt.teamId !== team.id)
+    return { error: 'Coding command not found', status: 404 }
+  const view = getCodingCommandLog(db, commandId)
+  if (view.releasedAt === null) return { error: 'Coding log has not been shared', status: 403 }
+  return { db, commandId, view }
+}
+
+teamsRouter.get('/:id/coding-commands/:commandId/log', (c) => {
+  const resolved = codingLogCommand(c)
+  if ('error' in resolved) return c.json({ error: resolved.error }, resolved.status)
+  const offset = Number(c.req.query('offset') ?? '0')
+  const limit = Number(c.req.query('limit') ?? '65536')
+  if (!Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(limit))
+    return c.json({ error: 'Invalid page request' }, 400)
+  const page = readCodingCommandLog(resolved.db, resolved.commandId, {
+    offset,
+    limit,
+    audience: 'disclosure',
+  })
+  c.header('Cache-Control', 'no-store')
+  return c.json({ view: resolved.view, page })
+})
+
+teamsRouter.get('/:id/coding-commands/:commandId/log/search', (c) => {
+  const resolved = codingLogCommand(c)
+  if ('error' in resolved) return c.json({ error: resolved.error }, resolved.status)
+  const query = c.req.query('q') ?? ''
+  if (!query || query.length > 256) return c.json({ error: 'Invalid search query' }, 400)
+  const result = searchCodingCommandLog(resolved.db, resolved.commandId, query, {
+    audience: 'disclosure',
+  })
+  c.header('Cache-Control', 'no-store')
+  return c.json({ view: resolved.view, result })
 })
 
 teamsRouter.get('/:id/coding-environment', async (c) => {

@@ -6,7 +6,7 @@ import {
 } from '@earendil-works/pi-coding-agent'
 import { Type } from 'typebox'
 import { validateCodingCommand } from '../../core/coding-environment/config.ts'
-import { CodingDiagnostics } from '../../lib/coding-environment/diagnostics.ts'
+import { CODING_LIVE_BYTES, CodingDiagnostics } from '../../lib/coding-environment/diagnostics.ts'
 import { resolveCodingDirectory } from '../coding-directory.ts'
 import {
   BashApprovalDeniedError,
@@ -74,7 +74,7 @@ export function codingTools(input: {
         { additionalProperties: false },
       ),
       executionMode: 'sequential',
-      async execute(toolCallId, params, signal) {
+      async execute(toolCallId, params, signal, onUpdate) {
         const command = validateCodingCommand(params)
         // Refresh Pi's effective instruction set as well as the daemon's receipt evidence.
         const context = await input.context(command.cwd)
@@ -86,6 +86,29 @@ export function codingTools(input: {
           input: command,
         })) as CodingCommandReceipt
         const output = new CodingDiagnostics(input.secrets ?? [])
+        // Live progress shares the same redaction pipeline as the retained log, so a
+        // credential split across chunks cannot reach chat. Updates are cumulative
+        // (each replaces the last) and throttled so a chatty command cannot flood clients.
+        let lastProgressAt = 0
+        const emitProgress = (force: boolean) => {
+          if (!onUpdate) return
+          const now = Date.now()
+          if (!force && now - lastProgressAt < 400) return
+          lastProgressAt = now
+          const preview = output.preview(CODING_LIVE_BYTES)
+          onUpdate({
+            content: [{ type: 'text', text: preview.text }],
+            details: {
+              codingProgress: {
+                id: toolCallId,
+                commandId: started.id,
+                output: preview.text,
+                truncated: preview.truncated,
+                elapsedMs: Math.max(0, now - started.startedAt),
+              },
+            },
+          })
+        }
         let outcome: CodingCommandOutcome
         try {
           if (input.approval)
@@ -108,8 +131,16 @@ export function codingTools(input: {
           const result = await operations.exec(
             command.command,
             input.docker ? input.root : cwd.path,
-            { onData: (bytes) => output.append(bytes), signal, timeout: command.timeoutSeconds },
+            {
+              onData: (bytes) => {
+                output.append(bytes)
+                emitProgress(false)
+              },
+              signal,
+              timeout: command.timeoutSeconds,
+            },
           )
+          emitProgress(true)
           outcome = {
             state:
               result.exitCode === 0
@@ -167,6 +198,55 @@ export function codingTools(input: {
         return {
           content: [{ type: 'text', text: JSON.stringify(value) }],
           details: { codingEvidence: value },
+        }
+      },
+    },
+    {
+      name: 'coding_log',
+      label: 'Read retained command output',
+      description:
+        'Read a bounded page of retained diagnostic output for a coding receipt, or search it. Producing Agents may read their own logs; a teammate must pass the id of the policy-authorized message that carried coding-receipt:<id>. Output is bounded and may be truncated, expired, deleted or unavailable — report that state honestly and do not infer completeness from an exit code.',
+      parameters: Type.Object(
+        {
+          id: Type.String({ maxLength: 64 }),
+          messageId: Type.Optional(Type.String({ maxLength: 64 })),
+          search: Type.Optional(Type.String({ minLength: 1, maxLength: 256 })),
+          offset: Type.Optional(Type.Integer({ minimum: 0 })),
+          limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 65536 })),
+        },
+        { additionalProperties: false },
+      ),
+      executionMode: 'sequential',
+      async execute(_id, params) {
+        const values = params as {
+          id: string
+          messageId?: string
+          search?: string
+          offset?: number
+          limit?: number
+        }
+        if (values.search !== undefined) {
+          const result = await input.host.invoke({
+            action: 'log-search',
+            id: values.id,
+            query: values.search,
+            ...(values.messageId !== undefined ? { messageId: values.messageId } : {}),
+          })
+          return {
+            content: [{ type: 'text', text: JSON.stringify(result) }],
+            details: { codingLogSearch: result },
+          }
+        }
+        const value = await input.host.invoke({
+          action: 'log',
+          id: values.id,
+          ...(values.messageId !== undefined ? { messageId: values.messageId } : {}),
+          ...(values.offset !== undefined ? { offset: values.offset } : {}),
+          ...(values.limit !== undefined ? { limit: values.limit } : {}),
+        })
+        return {
+          content: [{ type: 'text', text: JSON.stringify(value) }],
+          details: { codingLog: value },
         }
       },
     },

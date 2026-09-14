@@ -1,4 +1,8 @@
 export const CODING_OUTPUT_BYTES = 64 * 1024
+/** BAZ-041: how much diagnostic text Bazilion retains for a single command. */
+export const CODING_RETAINED_BYTES = 2 * 1024 * 1024
+/** BAZ-041: cumulative live tail shipped per chat progress update. */
+export const CODING_LIVE_BYTES = 8 * 1024
 
 /** A UTF-8 tail with no partial leading codepoint. */
 export function diagnosticTail(value: string, limit: number): { text: string; truncated: boolean } {
@@ -14,18 +18,23 @@ export class CodingDiagnostics {
   private readonly decoder = new TextDecoder()
   private readonly secrets: string[]
   private readonly lookbehind: number
+  private readonly retainBytes: number
   private pending = ''
   private text = ''
   private truncated = false
+  private observedBytes = 0
+  private redactions = 0
   private finished = false
 
-  constructor(secrets: readonly string[]) {
+  constructor(secrets: readonly string[], retainBytes = CODING_OUTPUT_BYTES) {
     this.secrets = [...new Set(secrets.filter(Boolean))].sort((a, b) => b.length - a.length)
     this.lookbehind = Math.max(1, ...this.secrets.map((secret) => secret.length)) - 1
+    this.retainBytes = retainBytes
   }
 
   append(bytes: Uint8Array): void {
     if (this.finished) throw new Error('Coding diagnostics already finalized')
+    this.observedBytes += bytes.length
     // Bound temporary decoded strings even if a producer supplies one enormous chunk.
     for (let offset = 0; offset < bytes.length; offset += 8192) {
       this.pending += this.decoder.decode(bytes.subarray(offset, offset + 8192), { stream: true })
@@ -33,13 +42,35 @@ export class CodingDiagnostics {
     }
   }
 
-  finish(): { diagnostic: string; truncated: boolean } {
+  /**
+   * Redacted cumulative tail for a live update. Unlike `finish()` this does not seal
+   * the diagnostics: more output may follow. It deliberately excludes the trailing
+   * lookbehind bytes so a credential split across chunks cannot leak before the next
+   * chunk resolves it.
+   */
+  preview(limit = CODING_LIVE_BYTES): { text: string; truncated: boolean } {
+    return diagnosticTail(this.text, limit)
+  }
+
+  finish(): {
+    diagnostic: string
+    truncated: boolean
+    /** Bytes observed before retention, which stops at `retainBytes`. */
+    observedBytes: number
+    /** True when at least one known credential was rewritten. */
+    redacted: boolean
+  } {
     if (!this.finished) {
       this.pending += this.decoder.decode()
       this.flush(true)
       this.finished = true
     }
-    return { diagnostic: this.text, truncated: this.truncated }
+    return {
+      diagnostic: this.text,
+      truncated: this.truncated,
+      observedBytes: this.observedBytes,
+      redacted: this.redactions > 0,
+    }
   }
 
   private flush(final: boolean): void {
@@ -53,6 +84,7 @@ export class CodingDiagnostics {
       const secret = this.secrets.find((value) => this.pending.startsWith(value, offset))
       if (secret) {
         safe += '[redacted]'
+        this.redactions++
         offset += secret.length
       } else {
         const code = this.pending.charCodeAt(offset)
@@ -65,7 +97,7 @@ export class CodingDiagnostics {
       }
     }
     this.pending = this.pending.slice(offset)
-    const tail = diagnosticTail(this.text + safe, CODING_OUTPUT_BYTES)
+    const tail = diagnosticTail(this.text + safe, this.retainBytes)
     this.text = tail.text
     this.truncated ||= tail.truncated
   }

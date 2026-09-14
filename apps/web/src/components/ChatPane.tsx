@@ -42,10 +42,14 @@ const browserMarkdownReady = () => true
 const serverMarkdownReady = () => false
 
 type ToolItem = {
-  kind: 'call' | 'result' | 'error'
+  kind: 'call' | 'result' | 'error' | 'progress'
   id: string
   name: string
   body: string
+  /** Live coding progress only: milliseconds since the command started. */
+  elapsedMs?: number
+  /** Live coding progress only: true when `body` omits earlier output. */
+  truncated?: boolean
 }
 
 export type RenderEntry =
@@ -877,6 +881,12 @@ export function ChatPane({
       setLiveEntries((entries) => upsertCommandApprovalEntry(entries, ev.approval))
       return
     }
+    if (ev.type === 'coding_progress') {
+      // Cumulative: each update replaces the previous tail for this tool call, so a
+      // reconnect or a slow client never sees duplicated output.
+      setLiveEntries((prev) => upsertCodingProgress(prev, ev))
+      return
+    }
     if (ev.type === 'tool_call' || ev.type === 'tool_result' || ev.type === 'tool_error') {
       setThinking(ev.type !== 'tool_call')
       const item: ToolItem =
@@ -885,13 +895,19 @@ export function ChatPane({
           : ev.type === 'tool_result'
             ? { kind: 'result', id: ev.id, name: ev.name, body: ev.result }
             : { kind: 'error', id: ev.id, name: ev.name, body: ev.error }
-      if (ev.type === 'tool_result' && ['repository_context', 'coding_environment', 'coding_command', 'coding_receipt'].includes(ev.name)) {
+      if (ev.type === 'tool_result' && ['repository_context', 'coding_environment', 'coding_command', 'coding_receipt', 'coding_log'].includes(ev.name)) {
         deliveredCoding.current.set(`${ev.name}:${ev.id}`, ev.result)
         while (deliveredCoding.current.size > 20) deliveredCoding.current.delete(deliveredCoding.current.keys().next().value!)
       }
       const images = ev.type === 'tool_result' ? ev.images : undefined
       setLiveEntries((prev) => {
-        const next = [...prev]
+        // Terminal evidence supersedes the live progress tail for the same call.
+        const cleared = prev.map((entry) =>
+          entry.type === 'tool'
+            ? { ...entry, items: entry.items.filter((i) => !(i.kind === 'progress' && i.id === ev.id)) }
+            : entry,
+        )
+        const next = [...cleared]
         const last = next[next.length - 1]
         if (last?.type === 'tool') {
           next[next.length - 1] = { type: 'tool', items: [...last.items, item] }
@@ -1651,8 +1667,37 @@ function commandApprovalStatusFromConflict(
   }
 }
 
+/** Insert or replace the live progress tail for one coding tool call. */
+function upsertCodingProgress(
+  entries: RenderEntry[],
+  ev: { id: string; commandId: string; output: string; truncated: boolean; elapsedMs: number },
+): RenderEntry[] {
+  const progress: ToolItem = {
+    kind: 'progress',
+    id: ev.id,
+    name: 'coding_command',
+    body: ev.output,
+    elapsedMs: ev.elapsedMs,
+    truncated: ev.truncated,
+  }
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const entry = entries[i]
+    if (entry?.type !== 'tool') continue
+    const at = entry.items.findIndex((item) => item.id === ev.id)
+    if (at < 0) continue
+    const items = [...entry.items]
+    items[at] = progress
+    const next = [...entries]
+    next[i] = { type: 'tool', items }
+    return next
+  }
+  const last = entries[entries.length - 1]
+  if (last?.type === 'tool') return [...entries.slice(0, -1), { type: 'tool', items: [...last.items, progress] }]
+  return [...entries, { type: 'tool', items: [progress] }]
+}
+
 function ToolGroup({ items, dropCls }: { items: ToolItem[]; dropCls: string }) {
-  const codingNames = ['repository_context', 'coding_command', 'coding_environment', 'coding_receipt', 'send_message']
+  const codingNames = ['repository_context', 'coding_command', 'coding_environment', 'coding_receipt', 'coding_log', 'send_message']
   const hasCoding = items.some(item => codingNames.includes(item.name))
   const visibleItems = items.filter(item => !(item.kind === 'call' && codingNames.includes(item.name) && items.some(other => other.id === item.id && other.kind !== 'call')))
   const [expanded, setExpanded] = useState(false)
@@ -1706,7 +1751,17 @@ function ToolLine({ item }: { item: ToolItem }) {
       <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-words text-xs">{item.body}</pre>
     </details>
   )
-  if (item.kind !== 'error' && ['repository_context', 'coding_command', 'coding_environment', 'coding_receipt'].includes(item.name)) return <CodingToolResult name={item.name} body={item.body} pending={item.kind === 'call'} />
+  if (item.kind === 'progress')
+    return (
+      <div className="py-1" aria-label="Live coding progress">
+        <p className="font-sans">
+          Running coding command · {Math.max(0, Math.round((item.elapsedMs ?? 0) / 1000))}s
+        </p>
+        <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words">{item.body}</pre>
+        {item.truncated && <p>Earlier output omitted; the retained log holds more.</p>}
+      </div>
+    )
+  if (item.kind !== 'error' && ['repository_context', 'coding_command', 'coding_environment', 'coding_receipt', 'coding_log'].includes(item.name)) return <CodingToolResult name={item.name} body={item.body} pending={item.kind === 'call'} />
   if (item.kind === 'call') {
     const args = prettyArgs(item.body)
     const multiLine = args.includes('\n')

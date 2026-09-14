@@ -7,6 +7,13 @@ import type {
 import { codingRelativePath, validateCodingCommand } from '../../core/coding-environment/config.ts'
 import { agentRepo, type BazilionDb } from '../../core/index.ts'
 import {
+  pruneCodingCommandLogs,
+  readCodingCommandLog,
+  releaseCodingCommandLog,
+  saveCodingCommandLog,
+  searchCodingCommandLog,
+} from '../../core/repos/coding-command-logs.ts'
+import {
   getCodingCommand,
   pruneCodingCommands,
   saveCodingCommand,
@@ -17,7 +24,12 @@ import type { RepositoryContextHost } from '../../runtime/pi/repository-context.
 import { deliverableInbox } from '../communication.ts'
 import { ContextDirectory } from '../repository-context/files.ts'
 import { requireCompleteRepositoryContext } from '../repository-context/index.ts'
-import { CodingDiagnostics } from './diagnostics.ts'
+import {
+  CODING_OUTPUT_BYTES,
+  CODING_RETAINED_BYTES,
+  CodingDiagnostics,
+  diagnosticTail,
+} from './diagnostics.ts'
 
 export function createCodingHost(input: {
   db: BazilionDb
@@ -35,6 +47,37 @@ export function createCodingHost(input: {
   const active = new Set<string>()
   const calls = new Set<string>()
   let starting = false
+  /**
+   * Shared receipt/log authorization. A producing Agent may read its own evidence; any
+   * other Team member must present the exact policy-authorized message that carried
+   * `coding-receipt:<id>`. Authorization to read a peer's evidence is itself the egress
+   * decision, so a successful peer read releases the captured bytes for disclosure.
+   */
+  function authorizeEvidence(
+    id: string,
+    messageId: string | undefined,
+  ): { receipt: CodingCommandReceipt; producer: boolean } {
+    const receipt = getCodingCommand(input.db, id)
+    if (
+      agentRepo.get(input.db, input.agentId)?.teamId !== input.teamId ||
+      !receipt ||
+      receipt.teamId !== input.teamId ||
+      agentRepo.get(input.db, receipt.agentId)?.teamId !== input.teamId
+    )
+      throw new Error('Coding receipt unavailable')
+    if (receipt.agentId === input.agentId) return { receipt, producer: true }
+    const message = deliverableInbox(input.db, input.agentId, false).find(
+      (candidate) => candidate.id === messageId,
+    )
+    if (
+      !message ||
+      message.fromAgentId !== receipt.agentId ||
+      !message.payload.includes(`coding-receipt:${receipt.id}`) ||
+      receipt.state === 'running'
+    )
+      throw new Error('Coding receipt requires an authorized producer message')
+    return { receipt, producer: false }
+  }
   async function snapshot(target: string): Promise<CodingEnvironmentSnapshot> {
     input.assertActive()
     codingRelativePath(target)
@@ -161,45 +204,46 @@ export function createCodingHost(input: {
           (value.state === 'failed' && (value.exitCode === null || value.exitCode === 0))
         )
           throw new Error('Invalid coding terminal evidence')
-        const diagnostic = new CodingDiagnostics(input.secrets)
+        // Retain up to the BAZ-041 window, but keep the receipt's established 64 KiB tail.
+        const diagnostic = new CodingDiagnostics(input.secrets, CODING_RETAINED_BYTES)
         diagnostic.append(Buffer.from(value.diagnostic))
-        const safe = diagnostic.finish()
+        const retained = diagnostic.finish()
+        const tail = diagnosticTail(retained.diagnostic, CODING_OUTPUT_BYTES)
         const reason = new CodingDiagnostics(input.secrets)
         reason.append(Buffer.from(value.reason ?? ''))
         Object.assign(receipt, {
           state: value.state,
           exitCode: value.exitCode,
-          diagnostic: safe.diagnostic,
-          truncated: safe.truncated || value.truncated,
+          diagnostic: tail.text,
+          truncated: tail.truncated || value.truncated,
           reason: reason.finish().diagnostic || null,
           finishedAt: Date.now(),
         })
         saveCodingCommand(input.db, receipt)
+        // Retention is best-effort evidence maintenance. A persistence failure must not
+        // turn a completed command into a failed one; the log simply reads unavailable.
+        try {
+          saveCodingCommandLog(input.db, {
+            commandId: receipt.id,
+            teamId: input.teamId,
+            agentId: input.agentId,
+            turnId: input.turnId,
+            toolCallId: receipt.toolCallId,
+            diagnostic: retained.diagnostic,
+            observedBytes: retained.observedBytes,
+            redacted: retained.redacted,
+            truncated: retained.truncated || value.truncated,
+          })
+        } catch {
+          /* Missing evidence must not appear complete; the log reads unavailable. */
+        }
         active.delete(raw.id)
         return receipt
       }
       if (raw.action === 'read') {
         pruneCodingCommands(input.db, input.teamId)
-        const receipt = getCodingCommand(input.db, raw.id)
-        if (
-          agentRepo.get(input.db, input.agentId)?.teamId !== input.teamId ||
-          !receipt ||
-          receipt.teamId !== input.teamId ||
-          agentRepo.get(input.db, receipt.agentId)?.teamId !== input.teamId
-        )
-          throw new Error('Coding receipt unavailable')
-        if (receipt.agentId !== input.agentId) {
-          const message = deliverableInbox(input.db, input.agentId, false).find(
-            (message) => message.id === raw.messageId,
-          )
-          if (
-            !message ||
-            message.fromAgentId !== receipt.agentId ||
-            !message.payload.includes(`coding-receipt:${receipt.id}`) ||
-            receipt.state === 'running'
-          )
-            throw new Error('Coding receipt requires an authorized producer message')
-        }
+        pruneCodingCommandLogs(input.db)
+        const { receipt } = authorizeEvidence(raw.id, raw.messageId)
         let current: CodingEnvironmentSnapshot
         try {
           current = await snapshot(receipt.input.cwd)
@@ -220,6 +264,28 @@ export function createCodingHost(input: {
               ? 'stale'
               : 'fresh'
         return { receipt, applicability }
+      }
+      if (raw.action === 'log') {
+        pruneCodingCommandLogs(input.db)
+        const { producer } = authorizeEvidence(raw.id, raw.messageId)
+        if (!producer) releaseCodingCommandLog(input.db, raw.id)
+        const page = readCodingCommandLog(input.db, raw.id, {
+          audience: producer ? 'producer' : 'disclosure',
+          ...(raw.offset !== undefined ? { offset: raw.offset } : {}),
+          ...(raw.limit !== undefined ? { limit: raw.limit } : {}),
+        })
+        if (!page) throw new Error('Coding log unavailable')
+        return page
+      }
+      if (raw.action === 'log-search') {
+        pruneCodingCommandLogs(input.db)
+        const { producer } = authorizeEvidence(raw.id, raw.messageId)
+        if (!producer) releaseCodingCommandLog(input.db, raw.id)
+        const result = searchCodingCommandLog(input.db, raw.id, raw.query, {
+          audience: producer ? 'producer' : 'disclosure',
+        })
+        if (!result) throw new Error('Coding log unavailable')
+        return result
       }
       throw new Error('Unknown coding operation')
     },

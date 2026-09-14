@@ -70,6 +70,40 @@ export function translatePiEvent(e: AgentSessionEvent): SessionEvent[] {
       return out
     }
 
+    case 'tool_execution_update': {
+      // Only the Bazilion coding executor publishes structured progress. Pi's native
+      // tools may emit their own updates; those stay internal for now.
+      if (e.toolName !== 'coding_command') return []
+      const progress = (e.partialResult as { details?: { codingProgress?: unknown } } | undefined)
+        ?.details?.codingProgress as
+        | {
+            id?: unknown
+            commandId?: unknown
+            output?: unknown
+            truncated?: unknown
+            elapsedMs?: unknown
+          }
+        | undefined
+      if (
+        !progress ||
+        typeof progress.id !== 'string' ||
+        typeof progress.commandId !== 'string' ||
+        typeof progress.output !== 'string' ||
+        typeof progress.elapsedMs !== 'number'
+      )
+        return []
+      return [
+        {
+          type: 'coding_progress',
+          id: progress.id,
+          commandId: progress.commandId,
+          output: progress.output,
+          truncated: progress.truncated === true,
+          elapsedMs: Math.max(0, Math.floor(progress.elapsedMs)),
+        },
+      ]
+    }
+
     case 'tool_execution_end': {
       if (e.toolName === 'ask_user')
         return [
@@ -208,9 +242,13 @@ export function piMessagesToProviderView(
         // frame was released. Existing HTTP/Telegram approvals own captured publication.
         // Do not reconstruct a new repository snapshot publication from history or done frames.
         if (
-          ['repository_context', 'coding_environment', 'coding_command', 'coding_receipt'].includes(
-            tr.toolName ?? '',
-          )
+          [
+            'repository_context',
+            'coding_environment',
+            'coding_command',
+            'coding_receipt',
+            'coding_log',
+          ].includes(tr.toolName ?? '')
         ) {
           out.push({
             role: 'tool',

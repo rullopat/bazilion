@@ -16,6 +16,7 @@ import {
   recordDenial,
   triggerRepo,
 } from '../core/index.ts'
+import { releaseCodingCommandLog } from '../core/repos/coding-command-logs.ts'
 import * as questions from '../core/repos/questions.ts'
 import {
   AgentLoopLimitError,
@@ -212,6 +213,17 @@ export function authorizeHttpChatFrame(
   if (frame.kind === 'event' && frame.event.type === 'file') {
     releaseResultFile(db, agentId, frame.event.result)
   }
+  // A coding result authorized for the operator's own stream is source-owned
+  // disclosure of that command's captured bytes. Terminal delivery releases the
+  // retained log; live progress never does, so a held result stays unreadable.
+  if (
+    frame.kind === 'event' &&
+    frame.event.type === 'tool_result' &&
+    frame.event.name === 'coding_command'
+  ) {
+    const id = codingCommandId(frame.event.result)
+    if (id) releaseCodingCommandLog(db, id)
+  }
 }
 
 function isUserFacingFrame(frame: ChatFrame): boolean {
@@ -220,11 +232,27 @@ function isUserFacingFrame(frame: ChatFrame): boolean {
   return (
     frame.event.type === 'assistant_message' ||
     frame.event.type === 'assistant_delta' ||
+    frame.event.type === 'coding_progress' ||
     frame.event.type === 'file' ||
     (frame.event.type === 'tool_result' &&
-      (frame.event.name === 'repository_context' || Boolean(frame.event.images?.length))) ||
+      (frame.event.name === 'repository_context' ||
+        frame.event.name === 'coding_command' ||
+        Boolean(frame.event.images?.length))) ||
     frame.event.type === 'error'
   )
+}
+
+/**
+ * The opaque Bazilion command id carried by a live `coding_command` tool result.
+ * Only the executor's own JSON shape is accepted; a malformed payload releases nothing.
+ */
+function codingCommandId(result: string): string | null {
+  try {
+    const parsed = JSON.parse(result) as { id?: unknown }
+    return typeof parsed.id === 'string' && parsed.id.length > 0 ? parsed.id : null
+  } catch {
+    return null
+  }
 }
 
 export function sendAgentMessage(db: BazilionDb, input: SendAgentMessageInput): Message {
