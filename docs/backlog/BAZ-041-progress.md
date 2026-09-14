@@ -1,6 +1,9 @@
 # BAZ-041 implementation progress
 
-Started: 2026-09-14 (resumed). Status: complete against the story's acceptance criteria. Feature
+Started: 2026-09-14 (resumed). Status: complete against the story's acceptance criteria, and
+awaiting release. It is deliberately still in `in_progress/`: every story under `docs/backlog/done/`
+carries `shipped:` and `release:`, and BAZ-041 has not been released — move it there, with those two
+fields, as part of the release step. Feature
 work, the adversarial gate (14 BAZ-041 cases) and local acceptance are done, including a real-model
 turn on real Docker — see [the acceptance record](BAZ-041-acceptance.md). Every acceptance
 criterion is observed or suite-proven; nothing blocks delivery. The retained-log browser read is
