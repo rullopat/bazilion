@@ -1,13 +1,11 @@
 import type { CapturedGit } from '../git/capture.ts'
+import type { ReviewIssueCode } from './issue.ts'
 import { isCommitOid, ReviewRefError, validateRefName } from './refs.ts'
 
 // Repository identity and comparison-base resolution for Git change review (BAZ-042).
 //
 // Every read goes through the shared hardened capture, so no repository config, hook, filter,
 // credential helper or external metadata link can influence what is reported here.
-
-/** Machine-readable issue codes a review surface can render without exposing host detail. */
-export type ReviewIssueCode = 'unborn_head' | 'invalid_base' | 'unknown_base' | 'git_output_limit'
 
 export interface RepositoryIdentity {
   /** Current branch name, or null when HEAD is detached. */

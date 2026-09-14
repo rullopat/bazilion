@@ -1,6 +1,6 @@
 # BAZ-042 implementation progress
 
-Started: 2026-09-14. Status: in progress — slices 1 and 2 landed. Branch
+Started: 2026-09-14. Status: in progress — slices 1–3 landed. Branch
 `feat/baz-041-042-coding-evidence`, continuing from the completed BAZ-041 work. Commits are batched
 locally and pushed when the story is further along, not per slice.
 
@@ -51,10 +51,29 @@ So BAZ-042 adds **readers over that harness**, not another harness.
    change what that review sees, and a refresh needs a new capture. That is a stronger guarantee
    than pinning alone, but it means slice 4's snapshot must record the capture instant rather than
    assume it can re-read live refs later.
-3. **Change inventory and bounded diffs.** Tracked modified/added/deleted/renamed, untracked
-   *names* only (content needs explicit selection), rename/mode/binary indicators, per-file and total
-   size caps, visible truncation, `incomplete` states. Once the document shape stops moving, promote
-   the review types into hermetic `api-types` so routes, client and web share one definition.
+3. **Change inventory and bounded diffs (done).** `lib/git-review/changes.ts` plus `scope.ts`:
+   - `listChanges` merges one `--raw -M -z` read (status letter, modes, rename source) with one
+     `--numstat -M -z` read (line counts, binary markers) by destination path, then adds in-scope
+     untracked names from `ls-files --others --exclude-standard`. Both diff reads compare the pinned
+     commit against the **working tree**, so staged and unstaged edits appear together.
+   - Statuses are A/M/D/R/C/T/U (plus `untracked`), with rename source, mode fields, binary markers
+     and line counts. Parsing splits numbers on the first two tabs only, so a path containing a tab
+     or non-ASCII bytes cannot shift the parse; both are covered by tests.
+   - `readChangePatch` returns a bounded per-file diff and marks visible truncation instead of
+     throwing. `attachPatches` walks the list under the total cap and marks the rest `total_limit`.
+     Binary, excluded and untracked entries never receive content, each with a named reason.
+   - `REVIEW_LIMITS` carries the refinement caps (1,000 files / 1 MiB per file / 16 MiB total /
+     256 KiB per patch). Exceeding the file cap sets `truncated` and raises `file_limit` rather than
+     returning a partial list that looks whole.
+   - `scope.ts` decides what may be captured: Bazilion-owned state (the Team-root `memory/` store
+     only — never a directory merely *named* `memory`, `dist` or similar) and credential-shaped
+     paths (`.env*`, `*.pem`/`*.key`/…, `id_rsa*`, `credentials*`, `.ssh`/`.aws` segments). Tracked
+     excluded files are still listed (the change is real) but never read; untracked excluded names
+     are withheld entirely and only counted in `withheld`.
+   Writing the tests caught a real bug: the first version omitted the base commit from `git diff`,
+   which compares working tree to *index* and silently hid every staged change.
+   The review types stay daemon-local for now; promote them to hermetic `api-types` in slice 4,
+   where the snapshot fields they must carry are decided, to avoid committing the shape twice.
 4. **Snapshot manifests.** Bounded before/after manifests (HEAD, index, dirty tracked bytes,
    explicitly included untracked content) with recorded exclusions and limits, plus the immutable
    snapshot reference shared with BAZ-041/BAZ-043 for applicability.
@@ -86,5 +105,10 @@ So BAZ-042 adds **readers over that harness**, not another harness.
   unborn identity, tag and raw-oid bases, a blob refused as a base, a tip that moves between two
   captures, the single-capture freeze, and twelve unsafe ref shapes that must be refused before Git
   runs (asserted with a recording wrapper, not inferred).
-- Whole-tree after slice 2: typecheck, format and lint clean; full suite 1574 passed / 7 skipped
-  (203 files); security acceptance 74 cases passed (slice 1 measured 1556 / 202 files).
+- Slice 3 additions: `apps/daemon/test/core/git-review-changes.test.ts` covers every change kind
+  with counts, rename source, ignored files staying unlisted, bounded/truncated patches, binary and
+  untracked entries never receiving content, tab and unicode paths surviving the NUL parse, the file
+  limit reporting an incomplete list, and ten scope decisions including `src/memory/` staying
+  included while Team-root `memory/` does not.
+- Whole-tree after slice 3: typecheck, format and lint clean; full suite 1590 passed / 7 skipped
+  (204 files); security acceptance 74 cases passed (slices 1–2 measured 1556 / 1574).
