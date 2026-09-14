@@ -1,7 +1,7 @@
 # BAZ-041 implementation progress
 
 Started: 2026-09-14 (resumed). Status: complete against the story's acceptance criteria. Feature
-work, the adversarial gate (12 BAZ-041 cases) and local acceptance are done, including a real-model
+work, the adversarial gate (14 BAZ-041 cases) and local acceptance are done, including a real-model
 turn on real Docker — see [the acceptance record](BAZ-041-acceptance.md). Every acceptance
 criterion is observed or suite-proven; nothing blocks delivery. The retained-log browser read is
 deliberately first-page-only (no search/pagination) in this pass.
@@ -95,7 +95,7 @@ push is included; BAZ-041 stays unshipped.
 
 ### Adversarial release gate
 
-- 12 BAZ-041 cases now sit in `security/acceptance-manifest.json` (gate total 60 → 72). Before
+- 14 BAZ-041 cases now sit in `security/acceptance-manifest.json` (gate total 60 → 74). Before
   this, the gate exercised no BAZ-041 boundary at all — it passed, but proved nothing about
   retained-evidence disclosure. The cases pin the disclosure gate, release non-inheritance,
   truthful expiry, split-credential redaction, opaque references, pointer-without-bytes history
@@ -105,8 +105,8 @@ push is included; BAZ-041 stays unshipped.
 ## Validation
 
 - `pnpm typecheck` clean; `pnpm lint` no errors; `pnpm format` applied.
-- `pnpm test`: 1547 passed, 7 skipped (197 files).
-- `pnpm security:acceptance`: 72 required adversarial cases passed, 12 owned by BAZ-041.
+- `pnpm test`: 1551 passed, 7 skipped (201 files).
+- `pnpm security:acceptance`: 74 required adversarial cases passed, 14 owned by BAZ-041.
 - `pnpm --filter @bazilion/web typecheck` clean.
 - Real-model turn on real Docker (Fireworks `deepseek-v4-flash-0731`): chose `coding_command`
   unprompted; `succeeded` and `failed` receipts; retained diagnostics readable across a restart.
@@ -122,10 +122,11 @@ ordinary sentence on a real Docker turn.
 
 **Related defects found while accepting (outside this story):**
 
-1. **An unknown model id misroutes credentials to another vendor** — a `fireworks:` id absent from
-   pi-ai's catalog was sent to OpenAI's endpoint carrying the Fireworks key, so a typo discloses a
-   provider API key to a different provider. Fails open; needs a ticket of its own. Reproduction and
-   mechanism in the acceptance record.
+1. ~~An unknown model id misroutes credentials to another vendor~~ **Fixed.** `resolvePiModel` now
+   throws `UnknownModelError` for an id absent from the provider's catalog when no endpoint applies,
+   instead of building a model with an empty base URL that resolves to OpenAI's default. Verified
+   live, pinned by `pi-model-routing.test.ts` and two gate cases. It is not BAZ-041 work — it was
+   found while accepting BAZ-041, and its gate cases sit under that owner until it gets a ticket.
 
 **Optional strengthening:**
 
@@ -169,7 +170,7 @@ ordinary sentence on a real Docker turn.
    `failed` (exitCode 1) observed**; timeout, worker loss and preflight failure remain
    suite-covered only.
 4. Held output inaccessible; redaction/control bytes/hostile markup — audience gate, redaction
-   pipeline, React-escaped rendering; pinned by the 12 BAZ-041 adversarial cases in
+   pipeline, React-escaped rendering; pinned by the 14 BAZ-041 adversarial cases in
    `security/acceptance-manifest.json` plus unit coverage, and **observed at the read surface**
    (403, CLI refusal, "hasn't been shared" card) with the withheld state staged.
 5. Quota/truncation/expiry/deletion/persistence failure truthful — explicit truncation flag,

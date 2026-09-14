@@ -432,6 +432,18 @@
       "owner": "BAZ-041",
       "file": "apps/daemon/test/lib/coding-log-disclosure.test.ts",
       "test": "a denied terminal coding result releases nothing"
+    },
+    {
+      "id": "MODEL-RESOLUTION-FAIL-CLOSED",
+      "owner": "BAZ-041",
+      "file": "apps/daemon/test/runtime/pi-model-routing.test.ts",
+      "test": "an uncatalogued model id with no endpoint is refused instead of misrouted"
+    },
+    {
+      "id": "MODEL-ROUTING-OWN-ENDPOINT",
+      "owner": "BAZ-041",
+      "file": "apps/daemon/test/runtime/pi-model-routing.test.ts",
+      "test": "a catalogued model resolves to its own provider endpoint"
     }
   ]
 }

@@ -208,6 +208,31 @@ function fallbackApi(providerName: string): Api {
   }
 }
 
+/**
+ * Raised when a model id is neither in the provider's catalog nor sent to a
+ * configured endpoint.
+ *
+ * This is deliberately fatal rather than a fallback: an uncatalogued id with no
+ * base URL would be built with `baseUrl: ''`, which resolves to a provider
+ * default elsewhere in the stack — carrying this provider's credential to
+ * whatever endpoint that happens to be.
+ */
+export class UnknownModelError extends Error {
+  readonly providerName: string
+  readonly modelId: string
+
+  // Fields are declared explicitly, not as constructor parameter properties:
+  // worker subprocesses run Node's strip-only TypeScript, which rejects them.
+  constructor(providerName: string, modelId: string) {
+    super(
+      `Unknown model "${modelId}" for provider "${providerName}": it is not in that provider's catalog, and no endpoint is configured for it. Choose a catalogued model, or configure an endpoint for a custom one.`,
+    )
+    this.name = 'UnknownModelError'
+    this.providerName = providerName
+    this.modelId = modelId
+  }
+}
+
 export function fallbackPiModel(
   providerName: string,
   modelId: string,
@@ -327,5 +352,11 @@ export function resolvePiModel(
 ): Model<Api> {
   const known = runtime.getModel(piProviderName(providerName), modelId)
   if (known) return baseUrl ? { ...known, baseUrl } : known
+  // Fail closed. A model absent from the catalog is only safe to build when this
+  // provider has a concrete endpoint; without one the request would inherit a
+  // default base URL (OpenAI's) while still carrying this provider's API key, so
+  // a typo in a model string would disclose a credential to another vendor.
+  // Local/compat providers are unaffected — they always supply a base URL.
+  if (!baseUrl) throw new UnknownModelError(providerName, modelId)
   return fallbackPiModel(providerName, modelId, baseUrl)
 }

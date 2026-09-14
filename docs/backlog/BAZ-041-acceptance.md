@@ -175,7 +175,7 @@ deliberately **not** done here: it is a second change to a security-relevant sto
 an opt-in posture, and the intended semantics (should approving a one-line summary disclose the
 whole retained log?) deserve an explicit decision.
 
-## Finding: an unknown model id routes credentials to a different vendor (open)
+## Finding: an unknown model id routes credentials to a different vendor (fixed)
 
 Discovered while setting up the real-model run, and **not** fixed here because it is unrelated to
 BAZ-041. Two model ids on the same configured provider, same key:
@@ -205,9 +205,27 @@ endpoint — transmitting whichever provider credential was configured. Local/co
 unaffected because they supply a real base URL.
 
 Impact: a typo in a model string silently discloses that provider's API key to a different vendor.
-It fails **open** where it should fail closed. A fix would make `resolvePiModel` reject an id that is
-absent from the provider's catalog when no explicit base URL applies, with a clear error naming the
-provider.
+It failed **open** where it should fail closed.
+
+**Fix**: `resolvePiModel` now throws `UnknownModelError` when the id is absent from the provider's
+catalog and no base URL applies, so resolution fails before any request is built. Local/compat
+providers are unaffected because they always publish a base URL (`LMSTUDIO_URL`/`OLLAMA_URL`/
+`LLAMACPP_URL` and their loopback defaults) — which is also what made the gate safe to apply: only
+`lmstudio`, `ollama` and `llamacpp` have empty catalogs, and all three supply an endpoint.
+
+Verified live against the same daemon that reproduced the leak:
+
+```
+fireworks:deepseek-flash-latest
+  -> error: Unknown model "deepseek-flash-latest" for provider "fireworks":
+     it is not in that provider's catalog and no endpoint is configured for it.
+
+fireworks:accounts/fireworks/models/deepseek-v4-flash-0731
+  -> <- STILL-OK                      (real key, still reaches Fireworks)
+```
+
+Pinned by `apps/daemon/test/runtime/pi-model-routing.test.ts` and the release gate
+(`MODEL-RESOLUTION-FAIL-CLOSED`, `MODEL-ROUTING-OWN-ENDPOINT`).
 
 ## Caveats
 
