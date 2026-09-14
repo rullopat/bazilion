@@ -122,26 +122,32 @@ push is included; BAZ-041 stays unshipped.
 
 **Optional strengthening:**
 
-2. **One manual approval round trip.** The `approval_required` release path is now implemented and
-   gate-pinned (see the acceptance record), but nobody has yet watched an approval release a held
-   card in a browser end to end.
-3. **Scripted browser check.** The browser steps were driven manually. The repo pattern to extend
+2. **Telegram approval posture cannot release a retained log.** A mirrored coding line held as
+   `telegram_text` delivers its text on approval but cannot release the log, because the stored
+   payload carries only rendered text. Needs an opaque command reference on the payload, optional
+   validation, and a release on dispatch — plus a decision on whether approving a one-line summary
+   should disclose the whole retained log. Measured and recorded in the acceptance record.
+3. **The chat approval posture cannot reach a coding result at all.** `approval_required` on the
+   agent→user edge holds the first user-facing frame and ends the turn, so no command runs. The
+   dispatch release is therefore defence in depth rather than a reachable path. Worth deciding
+   whether that posture is intended to be usable for chat turns.
+4. **Scripted browser check.** The browser steps were driven manually. The repo pattern to extend
    is `scripts/check-repository-context-ui.mjs` (inline fake provider + `startTestServer` +
    Playwright).
 
 **Optional polish — not required by any acceptance criterion:**
 
-4. **Retained-log search and paging in the web.** The browser control reads the first 64 KiB page
+5. **Retained-log search and paging in the web.** The browser control reads the first 64 KiB page
    only; `hasMore` is surfaced as a note. The search route and offset paging already exist on the
    API/client/CLI, so this is UI-only follow-up.
-5. **`coding_log` masked cards carry no pointer.** `CodingCommandLogPage` has a `commandId` but no
+6. **`coding_log` masked cards carry no pointer.** `CodingCommandLogPage` has a `commandId` but no
    `teamId`, so a masked `coding_log` page degrades to the plain placeholder. This is cosmetic:
    such a card only exists in a transcript that also holds the terminal `coding_command` card,
    which does carry the pointer.
 
 **Out of scope here:**
 
-6. **BAZ-042 linkage.** Snapshot-bound applicability/invalidations are owned by BAZ-042.
+7. **BAZ-042 linkage.** Snapshot-bound applicability/invalidations are owned by BAZ-042.
 
 ## Acceptance map
 

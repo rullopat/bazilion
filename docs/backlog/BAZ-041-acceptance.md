@@ -118,6 +118,31 @@ Evidence: `apps/daemon/test/lib/coding-log-disclosure.test.ts` (held → approve
 held → deny → still held; direct delivery → released), pinned in the release gate as
 `RETAINED-LOG-APPROVAL-RELEASE` and `RETAINED-LOG-DENIAL-NO-RELEASE`.
 
+### Reachability of that path (measured, not assumed)
+
+Running a real turn with `approval_required` on the agent→user edge showed how the posture behaves:
+
+- The **first** user-facing frame was captured — the assistant delta, not the coding result — the
+  response ended `202` with a `communication_pending` fatal carrying the approval id, and **no
+  command ever ran** (no new `coding_commands` row).
+- Each approval therefore yields one frame and the turn does not resume: the original NDJSON stream
+  cannot be re-opened, and nothing replays the held frame on approval.
+
+So the chat-posture "approval releases the captured bytes" path is **not reachable for coding
+evidence today**: `coding_progress` and assistant deltas are held first and abort the turn, so the
+terminal coding result is never produced. The dispatch-release fix is therefore defence in depth —
+correct if such a frame is ever captured, and exercised in tests by capturing the terminal frame
+directly rather than through a turn.
+
+The **Telegram** mirror has the same class of gap and it *is* reachable, because mirroring does not
+abort the turn: under an approval posture an approved `telegram_text` frame delivers the rendered
+line but cannot release the log, since `TelegramTextApprovalPayload` carries only rendered text and
+transport (`{chatId, topicId, text, parseMode}`) — no opaque command reference. Closing it means
+adding that reference to the payload, validating it as optional, and releasing on dispatch. It is
+deliberately **not** done here: it is a second change to a security-relevant stored payload under
+an opt-in posture, and the intended semantics (should approving a one-line summary disclose the
+whole retained log?) deserve an explicit decision.
+
 ## Caveats
 
 1. **Criterion 4's withheld state was staged in this run.** An existing retained row was
@@ -130,7 +155,8 @@ held → deny → still held; direct delivery → released), pinned in the relea
 3. **Criterion 5's edges are unobserved.** Quota eviction, expiry/deletion tombstones and
    persistence failure are covered by `apps/daemon/test/core/coding-command-logs.test.ts` and the
    release gate, not by this run.
-4. The browser steps were driven manually. There is no scripted browser check yet; the repo
+4. The Telegram approval posture cannot release a retained log (see the reachability notes above).
+5. The browser steps were driven manually. There is no scripted browser check yet; the repo
    pattern for one is [`scripts/check-repository-context-ui.mjs`](../../scripts/check-repository-context-ui.mjs)
    (inline fake provider + `startTestServer` + Playwright), which is the natural place to extend if
    these steps should run unattended.
