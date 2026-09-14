@@ -146,7 +146,7 @@ needs evidence that the selected specialist tested exactly the agreed change and
 
 ## Dependencies and sequencing
 
-- Depends on [BAZ-040](../in_progress/BAZ-040-coding-environment-readiness.md) admitted
+- Depends on [BAZ-040](../done/BAZ-040-coding-environment-readiness.md) admitted
   environment/command contracts and workspace coordination,
   [BAZ-041](BAZ-041-coding-command-verification.md) execution evidence, and
   [BAZ-042](BAZ-042-git-change-review.md) snapshot identity. Deliver after the first coding milestone.

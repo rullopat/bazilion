@@ -1,12 +1,14 @@
 ---
 id: BAZ-039
 title: Agents discover repository context while working
-status: in_progress
+status: done
+shipped: 2026-09-14
+release: v0.16.0
 size: M
 created: 2026-09-07
 refined: 2026-09-09
 priority: high
-note: Agent-led remake implemented and validated locally; PR review, merge and release remain pending.
+note: Agent-led remake shipped in v0.16.0 through PR #46 and version PR #47.
 ---
 
 # BAZ-039 — Agents discover repository context while working
@@ -111,3 +113,10 @@ Ship discovery independently; complete the task-driven acceptance alongside BAZ-
 retained live command logs and code-bound verification; BAZ-042 owns Git review; BAZ-044 owns
 formal specialist verification of a captured change. Managed parallel checkouts remain outside scope.
 This story adds no cloning, installation, Git publication, new role/roster or automatic plugin trust.
+
+## As-built release record
+
+Shipped in [v0.16.0](https://github.com/rullopat/bazilion/releases/tag/v0.16.0) on 2026-09-14
+through PR #46 and version PR #47. Earlier pre-remake checkpoint notes are historical; the
+agent-led remake scope above is the delivered behaviour. BAZ-041, BAZ-042 and BAZ-044 carry the
+deferred increments named above.

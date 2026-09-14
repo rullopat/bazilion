@@ -1,12 +1,14 @@
 ---
 id: BAZ-040
 title: Agents prepare and check their environment during a task
-status: in_progress
+status: done
+shipped: 2026-09-14
+release: v0.16.0
 size: L
 created: 2026-09-07
 refined: 2026-09-09
 priority: high
-note: Agent-led remake implemented and validated locally; PR review, merge and release remain pending.
+note: Agent-led remake shipped in v0.16.0 through PR #46 and version PR #47; changes the clean-install alpha schema.
 ---
 
 # BAZ-040 — Agents prepare and check their environment during a task
@@ -168,3 +170,12 @@ code-verification evidence; BAZ-044 adds a formal tester contract, not basic tea
 Managed parallel checkouts remain outside scope. None is required to demonstrate this story's
 same-Team sequential handoff. Exclude automatic images/downloads, new network brokers, service supervision,
 new agent roles/rosters, dependency-update bots, Git publication and arbitrary devcontainer hooks.
+
+## As-built release record
+
+Shipped in [v0.16.0](https://github.com/rullopat/bazilion/releases/tag/v0.16.0) on 2026-09-14
+through PR #46 and version PR #47. Earlier pre-remake checkpoint notes are historical; the
+agent-led remake scope above is the delivered behaviour. This release changes the canonical alpha
+schema (`team_coding_environments`, `workspace_writers`, `workspace_resources`, `coding_commands`),
+so older 0.15.x homes require the documented clean-install/reset workflow. BAZ-041 and BAZ-044 carry
+the deferred command-log and specialist-verification increments.

@@ -1,8 +1,8 @@
 # Agent-led repository work
 
 Decision date: 2026-09-09. Product design for revised
-[BAZ-039](../in_progress/BAZ-039-repository-coding-context.md) and
-[BAZ-040](../in_progress/BAZ-040-coding-environment-readiness.md).
+[BAZ-039](../done/BAZ-039-repository-coding-context.md) and
+[BAZ-040](../done/BAZ-040-coding-environment-readiness.md).
 The remake is implemented locally; see [acceptance evidence](../BAZ-039-040-agent-led-acceptance.md). Merge and release remain separate.
 
 ## The experience

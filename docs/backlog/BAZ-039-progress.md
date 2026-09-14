@@ -7,7 +7,7 @@
 
 Started: 2026-09-08. Status: implementation accepted locally; unreleased.
 
-Story: [BAZ-039](in_progress/BAZ-039-repository-coding-context.md).
+Story: [BAZ-039](done/BAZ-039-repository-coding-context.md).
 Durable goal thread: `01a08060-5816-7022-9c28-934c27bbaf70`.
 Starting HEAD: `5b884e765de6514312c22c5b7524dc1c6d88dd36`.
 

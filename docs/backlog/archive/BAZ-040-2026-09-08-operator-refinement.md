@@ -58,7 +58,7 @@ Extend that distinction instead of replacing it with an unqualified “coding re
   installed image reference, expected runtimes, bounded non-secret environment values, contained
   working-directory selection, and named probe/build/test commands with time/output bounds.
 - Commands and runtime expectations are operator-reviewed configuration. Repository manifests and
-  [BAZ-039](../in_progress/BAZ-039-repository-coding-context.md) can suggest candidates, but reading a repository,
+  [BAZ-039](../done/BAZ-039-repository-coding-context.md) can suggest candidates, but reading a repository,
   opening settings, or receiving an Agent message never activates executable hooks automatically.
 - Resolve Team selection and `BAZILION_BASH_SANDBOX_IMAGE` through one documented precedence rule.
   An enabled explicit Team image overrides the global default for that Team's Docker execution;

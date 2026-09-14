@@ -7,7 +7,7 @@
 
 Started: 2026-09-08. Local implementation and acceptance completed: 2026-09-09.
 Publication, merge and release remain pending. Final audit: [BAZ-040 acceptance](BAZ-040-acceptance.md).
-Story: [BAZ-040](in_progress/BAZ-040-coding-environment-readiness.md).
+Story: [BAZ-040](done/BAZ-040-coding-environment-readiness.md).
 Durable goal thread: `01a08060-5816-7022-9c28-934c27bbaf70`.
 Starting commit: `0832ce9b2ddd78d9c30d9ad9195775d6ec0971a3` on
 `feat/baz-039-coding-context`, published in [PR #46](https://github.com/rullopat/bazilion/pull/46).

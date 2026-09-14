@@ -113,7 +113,7 @@ Reviewed against the BAZ-039/040 remake at `81aaa31` on 2026-09-09:
 ## Dependencies and sequencing
 
 - Coordinate repository identity with
-  [BAZ-039](../in_progress/BAZ-039-repository-coding-context.md) and the receipt extension with
+  [BAZ-039](../done/BAZ-039-repository-coding-context.md) and the receipt extension with
   [BAZ-041](BAZ-041-coding-command-verification.md). This story owns snapshot identity and
   applicability; BAZ-041 progress can ship independently.
 - [BAZ-034](../done/BAZ-034-durable-agent-deliverables.md) supplies persistent patch exports;

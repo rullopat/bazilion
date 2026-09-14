@@ -5,7 +5,7 @@ and [durable goal](BAZ-040-progress.md). This records local implementation evide
 deployment, merge or additional publication to PR #46. BAZ-039 remains preserved on the same branch.
 
 The story was revised on 2026-09-09 to Agent-led preparation. This audit does **not** establish
-acceptance of the [revised criteria](in_progress/BAZ-040-coding-environment-readiness.md).
+acceptance of the [revised criteria](done/BAZ-040-coding-environment-readiness.md).
 
 ## Acceptance criteria
 

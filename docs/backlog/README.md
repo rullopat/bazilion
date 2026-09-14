@@ -38,9 +38,9 @@ acceptance evidence remain in [the milestone progress log](BAZ-035-038-progress.
 packaging and Team conversation views remain later ideas rather than part of this coding sequence.
 
 Coding stories BAZ-039 through BAZ-044 were reviewed on 2026-09-09 after the Agent-led
-BAZ-039/040 remake. The remake is implemented and manually accepted; PR #46 commit `81aaa31`
-passed CI. Merge/release remain separate. See [acceptance](BAZ-039-040-agent-led-acceptance.md)
-and the [successor-story review](design/coding-successors-review.md).
+BAZ-039/040 remake. The remake shipped in v0.16.0 through PR #46 and version PR #47. See
+[acceptance](BAZ-039-040-agent-led-acceptance.md) and the
+[successor-story review](design/coding-successors-review.md).
 
 The next sequence is **041 → 042 → 043 or 044**, based on whether the next task needs static review or
 specialist testing. BAZ-041 makes ordinary commands observable and diagnostics recoverable.
@@ -63,17 +63,17 @@ extension loading remain separate, uncommitted scope.
 | [BAZ-043](todo/BAZ-043-coding-review-handoff.md) | Revision-bound coding review and handoff | L | Agent-requested static review of captured changes; enforced read-only scope; publication deferred |
 | [BAZ-044](todo/BAZ-044-specialist-verification-handoff.md) | Specialist verification of a captured code change | L | After 042: formal captured-change testing; reuse existing same-Team delegation and receipts |
 
-## In Progress (2)
+## In Progress (0)
 
 | ID | Title | Size | Notes |
 |----|-------|------|-------|
-| [BAZ-039](in_progress/BAZ-039-repository-coding-context.md) | Agents discover repository context while working | M | Agent-led remake validated locally; review/release pending. [Acceptance](BAZ-039-040-agent-led-acceptance.md) |
-| [BAZ-040](in_progress/BAZ-040-coding-environment-readiness.md) | Agents prepare and check their environment during a task | L | Agent tools, offline preparation and inbox handoff validated locally; review/release pending. [Acceptance](BAZ-039-040-agent-led-acceptance.md) |
 
-## Done (33)
+## Done (35)
 
 | ID | Title | Size | Shipped | Release | Notes |
 |----|-------|------|---------|---------|-------|
+| [BAZ-039](done/BAZ-039-repository-coding-context.md) | Agents discover repository context while working | M | 2026-09-14 | [v0.16.0](https://github.com/rullopat/bazilion/releases/tag/v0.16.0) | Agent-led repository discovery, scoped AGENTS.md context and passive command suggestions; implemented in PR #46 |
+| [BAZ-040](done/BAZ-040-coding-environment-readiness.md) | Agents prepare and check their environment during a task | L | 2026-09-14 | [v0.16.0](https://github.com/rullopat/bazilion/releases/tag/v0.16.0) | Admitted runtime inspection, scoped coding commands and workspace coordination; changes the alpha schema. Implemented in PR #46 |
 | [BAZ-034](done/BAZ-034-durable-agent-deliverables.md) | Durable agent deliverables and a Team results library | M | 2026-09-08 | [v0.15.0](https://github.com/rullopat/bazilion/releases/tag/v0.15.0) | Implemented in PR #44; guided acceptance and release verified |
 | [BAZ-035](done/BAZ-035-conversation-library.md) | Conversation library and safe new conversations | L | 2026-09-08 | [v0.15.0](https://github.com/rullopat/bazilion/releases/tag/v0.15.0) | Implemented in PR #44; guided acceptance and release verified |
 | [BAZ-036](done/BAZ-036-visible-follow-up-queue.md) | Visible, durable follow-up queue | L (1-2 weeks) | 2026-09-08 | [v0.15.0](https://github.com/rullopat/bazilion/releases/tag/v0.15.0) | Implemented in PR #44; guided acceptance and release verified |
