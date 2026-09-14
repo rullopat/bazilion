@@ -1,5 +1,24 @@
 # bazilion
 
+## 0.16.0
+
+### Minor Changes
+
+- [#46](https://github.com/rullopat/bazilion/pull/46) [`81aaa31`](https://github.com/rullopat/bazilion/commit/81aaa31d115b777c948473de35aac5564a596c78) Thanks [@rullopat](https://github.com/rullopat)! - Let Agents inspect their admitted runtime, prepare local prerequisites and run scoped coding commands
+  during ordinary tasks. Bounded command results appear in chat, and policy-authorized teammates can
+  share receipts through existing messages. Team runtime defaults are optional; there is no operator
+  check dashboard.
+
+  Coordinate overlapping Agent workspaces through cancellation and restart recovery. Restored active work
+  is interrupted, and copied resource identities cannot terminate the original home's workers. This
+  changes the canonical alpha database schema and requires the existing clean-install/reset workflow for
+  older homes.
+
+- [#46](https://github.com/rullopat/bazilion/pull/46) [`0832ce9`](https://github.com/rullopat/bazilion/commit/0832ce9b2ddd78d9c30d9ad9195775d6ec0971a3) Thanks [@rullopat](https://github.com/rullopat)! - Add Team repository inspection, scoped AGENTS.md context for coding Agents, and passive command
+  suggestions with source provenance. Inspect and refresh through the Team page, `bazilion team
+context`, or the authenticated client/API. Repository discovery remains daemon-owned, bounded, and
+  separate from execution permission.
+
 ## 0.15.0
 
 ### Minor Changes
