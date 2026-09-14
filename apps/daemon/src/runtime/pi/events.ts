@@ -28,6 +28,7 @@ import type { ProviderMessage, SessionEvent, ToolCall, ToolResultImage } from '@
 import type { AgentMessage, AgentToolResult } from '@earendil-works/pi-agent-core'
 import type { AssistantMessage } from '@earendil-works/pi-ai'
 import type { AgentSessionEvent } from '@earendil-works/pi-coding-agent'
+import { codingLogReference } from '../../lib/coding-environment/receipt-reference.ts'
 
 export function translatePiEvent(e: AgentSessionEvent): SessionEvent[] {
   switch (e.type) {
@@ -250,12 +251,18 @@ export function piMessagesToProviderView(
             'coding_log',
           ].includes(tr.toolName ?? '')
         ) {
+          // The transcript still holds the executor's raw result here, so the
+          // opaque {commandId, teamId} pointer can be lifted without releasing
+          // any captured bytes. The pointer alone unlocks nothing: the operator
+          // route enforces Team membership and a released log.
+          const codingLog = codingLogReference(tr.content)
           out.push({
             role: 'tool',
             toolCallId: tr.toolCallId,
             toolName: tr.toolName,
             content:
               'Coding context or command evidence retained privately. Captured transport output follows its communication approval; ask the Agent for the relevant result.',
+            ...(codingLog ? { codingLog } : {}),
           })
           break
         }

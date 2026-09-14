@@ -1,7 +1,7 @@
 # BAZ-041 implementation progress
 
-Started: 2026-09-14 (resumed). Status: daemon/API/CLI/Telegram complete and locally green;
-the web reopen control remains.
+Started: 2026-09-14 (resumed). Status: daemon/API/CLI/Telegram/web complete and locally green.
+The retained-log browser read is deliberately first-page-only (no search/pagination) in this pass.
 
 Story: [BAZ-041](in_progress/BAZ-041-coding-command-verification.md).
 Branch: `feat/baz-041-042-coding-evidence`.
@@ -66,6 +66,14 @@ push is included; BAZ-041 stays unshipped.
 - `@bazilion/client` `codingLogs(teamId).page/search`.
 - CLI `bazilion team log <team> <commandId> [--offset --limit] [--search]`.
 - Web chat renders live progress tails and `coding_log` pages inline.
+- **Web reopen control.** A masked history card carries an opaque `{commandId, teamId}`
+  `codingLog` pointer on the wire `ProviderMessage`. The projection lifts it from the raw tool
+  result while masking (`apps/daemon/src/lib/coding-environment/receipt-reference.ts`), so no Team
+  context has to be threaded through `piMessagesToProviderView`. `CodingToolResult` renders a
+  ghost button that reads one bounded page through the same-origin `/api` proxy
+  (`apps/web/src/lib/coding-log.ts`). Holding the pointer discloses nothing: the read is an
+  explicit click and the daemon re-checks Team membership *and* release on every call. A held log
+  renders as "hasn't been shared yet" (403 / null page), never as an empty result.
 
 ### Egress
 
@@ -78,28 +86,29 @@ push is included; BAZ-041 stays unshipped.
 ## Validation
 
 - `pnpm typecheck` clean; `pnpm lint` no errors; `pnpm format` applied.
-- `pnpm test`: 1525 passed, 7 skipped (194 files).
+- `pnpm test`: 1544 passed, 7 skipped (196 files).
 - `pnpm security:acceptance`: 60 required adversarial cases passed.
 - `pnpm --filter @bazilion/web typecheck` clean.
 
 ## Remaining work (not done in this pass)
 
-1. **Web reopen control.** The API/client/CLI can reopen a released log after navigation and
-   restart, but the web chat has no button yet; history replay still shows the masked placeholder.
-   A TanStack server function plus a small control in `CodingToolResult` is required, and the
-   history projection must carry the opaque receipt/team id. The `lib/auth.ts` precedent de-risks
-   the import-protection boundary.
-2. **Peer message egress does not itself release.** Release happens when an authorized peer reads
+1. **Retained-log search and paging in the web.** The browser control reads the first 64 KiB page
+   only; `hasMore` is surfaced as a note. The search route and offset paging already exist on the
+   API/client/CLI, so this is UI-only follow-up.
+2. **`coding_log` masked cards carry no pointer.** `CodingCommandLogPage` has a `commandId` but no
+   `teamId`, so a masked `coding_log` page degrades to the plain placeholder. Adding the team to the
+   page shape would let those cards reopen too.
+3. **Peer message egress does not itself release.** Release happens when an authorized peer reads
    the log or the operator/Telegram receives the terminal result. Confirm this matches the intended
    "source-owned egress" moment for `send_message`.
-3. **BAZ-042 linkage.** Snapshot-bound applicability/invalidations are out of scope here.
+4. **BAZ-042 linkage.** Snapshot-bound applicability/invalidations are out of scope here.
 
 ## Acceptance map
 
 1. Live changing output without a setup form — implemented (executor `onUpdate`, daemon/event/web).
    Real-Docker manual observation still required.
-2. Failure diagnostics after scratch cleanup; operator reopen — retention + API/CLI/Telegram done;
-   web reopen control outstanding.
+2. Failure diagnostics after scratch cleanup; operator reopen — retention + API/CLI/Telegram/web
+   control done (first page only; search/paging deferred).
 3. Distinct terminal states; no replay on disconnect — BAZ-040 behavior preserved; progress is
    cumulative so reconnect cannot duplicate output.
 4. Held output inaccessible; redaction/control bytes/hostile markup — audience gate, redaction

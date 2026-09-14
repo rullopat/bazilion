@@ -1,25 +1,37 @@
+import { useState } from 'react'
 import { codingFailureSummary, PRIVATE_CODING_HISTORY } from '../lib/coding-presentation'
+import { fetchRetainedCodingLog, type RetainedCodingLog } from '../lib/coding-log'
+import { Button } from './Button'
 import type {
   CodingCommandReceipt,
   CodingEnvironmentSnapshot,
+  CodingLogReference,
   CodingReceiptView,
   RepositoryContextReport,
 } from '@bazilion/api-types'
 
-/** Presents only already-authorized chat text; never fetches private receipt records. */
+/**
+ * Presents already-authorized chat text. A masked history card may additionally
+ * offer retained output, but that read is an explicit operator action through
+ * the daemon's releasing route — nothing is disclosed by rendering the card.
+ */
 export function CodingToolResult({
   name,
   body,
   pending = false,
+  log,
 }: {
   name: string
   body: string
   pending?: boolean
+  /** Opaque pointer carried by a masked history projection. */
+  log?: CodingLogReference
 }) {
   if (!pending && body === PRIVATE_CODING_HISTORY) return (
     <details className="py-1 text-xs font-sans" aria-label="Private command details">
       <summary className="cursor-pointer">Detailed output isn’t included in this history view</summary>
       <p className="mt-1">The Agent’s summary is shown in the conversation. Ask the Agent to summarize its retained command result if you need more detail.</p>
+      {log && <RetainedLogControl reference={log} />}
     </details>
   )
   let parsed: unknown
@@ -140,6 +152,58 @@ export function CodingToolResult({
         <p className="break-all">coding-receipt:{receipt.id}</p>
         {receipt.environment?.imageId && <p className="break-all">{receipt.environment.imageId}</p>}
       </details>
+    </div>
+  )
+}
+
+/**
+ * Explicit operator read of a retained log. Loads a single bounded first page
+ * on demand; the daemon re-authorizes every call and reports a held log as
+ * `not-shared` so it can never be mistaken for an empty result.
+ */
+function RetainedLogControl({ reference }: { reference: CodingLogReference }) {
+  const [result, setResult] = useState<RetainedCodingLog | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  async function load() {
+    setLoading(true)
+    try {
+      setResult(await fetchRetainedCodingLog(reference))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (result === null)
+    return (
+      <p className="mt-2">
+        <Button variant="ghost" disabled={loading} onClick={() => void load()}>
+          {loading ? 'Loading…' : 'Show retained output'}
+        </Button>
+      </p>
+    )
+
+  if (result.status === 'not-shared')
+    return <p className="mt-2">This command’s output hasn’t been shared with the conversation yet.</p>
+  if (result.status === 'missing')
+    return <p className="mt-2">This retained output is no longer available.</p>
+  if (result.status === 'unavailable')
+    return (
+      <p className="mt-2" role="alert">
+        {result.message}
+      </p>
+    )
+
+  return (
+    <div className="mt-2">
+      <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-sm bg-[rgba(42,31,22,0.04)] p-2">
+        {result.page.text}
+      </pre>
+      <p>
+        Retained output: {result.page.availability}
+        {result.page.hasMore ? ' · earlier output omitted' : ''} · bytes {result.page.offset}–
+        {result.page.offset + result.page.text.length} of {result.page.byteLength}
+      </p>
     </div>
   )
 }

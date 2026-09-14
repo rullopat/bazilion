@@ -1114,6 +1114,7 @@ export type {
   CodingEnvironmentSnapshot,
   CodingEnvironmentStatus,
   CodingEnvironmentValues,
+  CodingLogReference,
   CodingPurpose,
   CodingReceiptView,
   ConfigureCodingEnvironmentRequest,

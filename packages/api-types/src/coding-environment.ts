@@ -73,6 +73,19 @@ export interface CodingReceiptView {
   applicability: 'fresh' | 'stale' | 'unknown'
 }
 
+/**
+ * Opaque pointer to a retained coding-command log, carried by a masked history
+ * projection so an operator can ask for the retained bytes.
+ *
+ * It holds ids only — never captured output. Possessing a reference discloses
+ * nothing: the operator route still requires Team membership *and* a released
+ * log, so an unreleased command stays unreadable.
+ */
+export interface CodingLogReference {
+  commandId: string
+  teamId: string
+}
+
 /** BAZ-041: truthful retention state for captured diagnostic evidence. */
 export type CodingCommandLogAvailability =
   | 'available'

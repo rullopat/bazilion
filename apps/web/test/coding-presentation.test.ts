@@ -27,3 +27,27 @@ test('failure details render an escaped error outside the collapsed output', asy
   expect(html).not.toContain('<script>')
   expect(html).not.toContain('<details open')
 })
+
+test('a masked history card offers retained output only when it carries a pointer', async () => {
+  const { createElement } = await import('react')
+  const { renderToStaticMarkup } = await import('react-dom/server')
+  const { CodingToolResult } = await import('../src/components/CodingToolResult.tsx')
+  const { PRIVATE_CODING_HISTORY } = await import('../src/lib/coding-presentation.ts')
+
+  const withReference = renderToStaticMarkup(createElement(CodingToolResult, {
+    name: 'coding_command',
+    body: PRIVATE_CODING_HISTORY,
+    log: { commandId: 'command-1', teamId: 'team-1' },
+  }))
+  expect(withReference).toContain('Show retained output')
+  expect(withReference).toContain('Detailed output isn’t included in this history view')
+  // Rendering the card discloses nothing: the read needs an explicit click.
+  expect(withReference).not.toContain('<pre')
+
+  const withoutReference = renderToStaticMarkup(createElement(CodingToolResult, {
+    name: 'coding_command',
+    body: PRIVATE_CODING_HISTORY,
+  }))
+  expect(withoutReference).not.toContain('Show retained output')
+  expect(withoutReference).toContain('Detailed output isn’t included in this history view')
+})

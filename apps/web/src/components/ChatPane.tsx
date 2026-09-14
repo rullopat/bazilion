@@ -8,6 +8,7 @@ import type {
   Attachment,
   ChatFrame,
   ChatRequest,
+  CodingLogReference,
   CommandApproval,
   CommandApprovalDecisionResponse,
   ListCommandApprovalsResponse,
@@ -50,6 +51,8 @@ type ToolItem = {
   elapsedMs?: number
   /** Live coding progress only: true when `body` omits earlier output. */
   truncated?: boolean
+  /** Masked history only: opaque pointer for an explicit retained-output read. */
+  codingLog?: CodingLogReference
 }
 
 export type RenderEntry =
@@ -204,6 +207,7 @@ function projectMessages(msgs: ProviderMessage[]): RenderEntry[] {
         id: m.toolCallId ?? '',
         name: m.toolName ?? '',
         body: m.content,
+        ...(m.codingLog ? { codingLog: m.codingLog } : {}),
       })
       if (m.result) {
         entries.push({ type: 'result', resultId: m.result.resultId })
@@ -1761,7 +1765,7 @@ function ToolLine({ item }: { item: ToolItem }) {
         {item.truncated && <p>Earlier output omitted; the retained log holds more.</p>}
       </div>
     )
-  if (item.kind !== 'error' && ['repository_context', 'coding_command', 'coding_environment', 'coding_receipt', 'coding_log'].includes(item.name)) return <CodingToolResult name={item.name} body={item.body} pending={item.kind === 'call'} />
+  if (item.kind !== 'error' && ['repository_context', 'coding_command', 'coding_environment', 'coding_receipt', 'coding_log'].includes(item.name)) return <CodingToolResult name={item.name} body={item.body} pending={item.kind === 'call'} log={item.codingLog} />
   if (item.kind === 'call') {
     const args = prettyArgs(item.body)
     const multiLine = args.includes('\n')

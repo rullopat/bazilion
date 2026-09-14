@@ -91,3 +91,52 @@ test.each([
   expect(projected[0]?.content).toContain('retained privately')
   expect(JSON.stringify(messages)).toContain('PRIVATE_REPOSITORY_SENTINEL')
 })
+
+test('masked history carries the retained-log pointer without the captured bytes', () => {
+  const messages = [
+    {
+      role: 'toolResult',
+      toolName: 'coding_command',
+      toolCallId: 'call-1',
+      isError: false,
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({
+            id: 'command-1',
+            teamId: 'team-1',
+            diagnostic: 'PRIVATE_CODING_SENTINEL',
+          }),
+        },
+      ],
+      details: {},
+      timestamp: 1,
+    },
+  ] as AgentMessage[]
+  const projected = piMessagesToProviderView(messages)
+  expect(projected[0]?.codingLog).toEqual({ commandId: 'command-1', teamId: 'team-1' })
+  expect(projected[0]?.content).toContain('retained privately')
+  expect(JSON.stringify(projected)).not.toContain('PRIVATE_CODING_SENTINEL')
+})
+
+test('a masked coding_log page carries no pointer when the result has no team', () => {
+  const messages = [
+    {
+      role: 'toolResult',
+      toolName: 'coding_log',
+      toolCallId: 'call-2',
+      isError: false,
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({ commandId: 'command-2', text: 'PRIVATE_CODING_SENTINEL' }),
+        },
+      ],
+      details: {},
+      timestamp: 1,
+    },
+  ] as AgentMessage[]
+  const projected = piMessagesToProviderView(messages)
+  expect(projected[0]?.codingLog).toBeUndefined()
+  expect(JSON.stringify(projected)).not.toContain('PRIVATE_CODING_SENTINEL')
+})

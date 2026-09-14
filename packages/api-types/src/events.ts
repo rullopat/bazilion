@@ -1,3 +1,4 @@
+import type { CodingLogReference } from './coding-environment.ts'
 import type { ResultReference } from './results.ts'
 // Wire shapes for chat streaming and provider message exchange. The worker
 // emits `ChatFrame`s as NDJSON, the daemon forwards them verbatim, every UI
@@ -24,6 +25,12 @@ export interface ProviderMessage {
   toolName?: string
   /** for role='tool': images the tool emitted (browser screenshots, MCP image results). */
   images?: ToolResultImage[]
+  /**
+   * for role='tool': opaque reference to a retained coding-command log. History
+   * projections carry this so a reloaded chat can offer the retained output;
+   * it never carries bytes and never releases anything on its own.
+   */
+  codingLog?: CodingLogReference
 }
 
 export interface ToolDef {
