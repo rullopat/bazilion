@@ -1,4 +1,5 @@
 import * as conversationRepo from '../core/repos/conversations.ts'
+import { WorkspaceBusyError } from '../lib/coding-environment/workspace.ts'
 import { selectedConversationTarget } from '../lib/conversation-target.ts'
 // /api/agents/* — agent CRUD + lifecycle + sub-resources (team, skills,
 // triggers, messages, sessions, chat). Memory is per-team and lives on
@@ -9,7 +10,7 @@ import { selectedConversationTarget } from '../lib/conversation-target.ts'
 // chat streaming endpoint and chat/compact next to each other.
 
 import { randomUUID } from 'node:crypto'
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   type AgentLessonProposalResponse,
@@ -1155,6 +1156,8 @@ agentsRouter.post('/:id/chat', async (c) => {
       }),
     })
   } catch (error) {
+    if (error instanceof WorkspaceBusyError)
+      return c.json({ error: error.message, code: error.message }, 409)
     if (error instanceof conversationRepo.ConversationConflictError)
       return c.json({ error: error.message, code: error.code, selection: error.selection }, 409)
     if (error instanceof CommunicationPendingError) {

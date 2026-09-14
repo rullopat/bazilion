@@ -7,20 +7,29 @@ import { SANDBOX_INPUTS_DIR } from '../runtime/shell/tooling.ts'
 import {
   AgentTurnActiveError,
   isActiveAgent,
+  ownsActiveAgent,
   registerAgent,
   unregisterAgent,
 } from './agent-cancel.ts'
 import { acquireAgentLifecycleLease } from './agent-lifecycle-lease.ts'
 import { saveInputFiles } from './attachments.ts'
+import { workspaceLifecycle } from './coding-environment/lifecycle.ts'
+import { resolveTeamCodingEnvironment } from './coding-environment/resolve.ts'
+import type { WorkspaceLease } from './coding-environment/workspace.ts'
 import { authorizeUserIngress } from './communication.ts'
 import { resolveConversationTarget } from './conversation-target.ts'
 import { getCtx } from './ctx.ts'
 import {
   consumePreparedProtectedExecution,
   type PreparedProtectedExecution,
+  prepareAgentDockerInputs,
   prepareProtectedExecution,
 } from './protected-execution.ts'
 import { type QuestionResponseRoute, resolveQuestionRoute } from './question-route.ts'
+import {
+  requireCompleteRepositoryContext,
+  resolveRepositoryContext,
+} from './repository-context/index.ts'
 import { requireTelegramQueuedTurn } from './telegram/queue-binding.ts'
 import {
   assertTrustedTurnInvocation,
@@ -35,8 +44,11 @@ import {
 const preparedTurnBrand: unique symbol = Symbol('bazilion.prepared-agent-turn')
 const preparedTurns = new WeakSet<object>()
 const consumedTurns = new WeakSet<object>()
+const workspaceLeases = new WeakMap<object, WorkspaceLease>()
 
 export interface PrepareAgentTurnInput {
+  /** Daemon scheduler claim acquired before consuming inbox inputs. */
+  workspaceLease?: WorkspaceLease
   /** Authenticated foreground client response support; never inherited by queued HTTP work. */
   questionMode?: 'web' | 'tty'
   /** Daemon queue dispatcher reference, verified against the complete invocation below. */
@@ -52,6 +64,8 @@ export interface PrepareAgentTurnInput {
  * Only `prepareAgentTurn` can construct this nominal type.
  */
 export interface PreparedAgentTurn {
+  readonly configuredDocker?: Awaited<ReturnType<typeof prepareAgentDockerInputs>>
+  readonly repositoryContext: import('@bazilion/api-types').RepositoryContextReport
   readonly questionRoute?: QuestionResponseRoute
   readonly [preparedTurnBrand]: true
   readonly agent: ResolvedAgent
@@ -82,6 +96,7 @@ export async function prepareAgentTurn(input: PrepareAgentTurnInput): Promise<Pr
   const controller = preclaimed?.controller ?? new AbortController()
   const releaseLease = preclaimed?.releaseLease ?? (await acquireAgentLifecycleLease(agentId))
   let registered = preclaimedInvocation !== undefined
+  let workspaceLease: WorkspaceLease | undefined
 
   try {
     // Scheduler/inbox claims are already this Agent's active registration.
@@ -92,6 +107,15 @@ export async function prepareAgentTurn(input: PrepareAgentTurnInput): Promise<Pr
       throw new AgentTurnActiveError(agentId)
     }
     const agent = resolveAgent(db, paths, agentId)
+    if (input.workspaceLease) {
+      workspaceLifecycle(db).coordinator.assertLease(
+        input.workspaceLease,
+        agent.team.id,
+        agent.team.path,
+      )
+      workspaceLease = input.workspaceLease
+    } else
+      workspaceLease = await workspaceLifecycle(db).claim(agent.team.id, agent.team.path, 'agent')
     if (input.expectedSelection) assertSelection(db, agentId, input.expectedSelection)
     const conversation = resolveConversationTarget(
       db,
@@ -180,18 +204,38 @@ export async function prepareAgentTurn(input: PrepareAgentTurnInput): Promise<Pr
         throw new Error('preflighted protected execution does not match this turn')
       }
     }
+    const mergedEnv = mergeSecretsIntoEnv(db, authToken)
+    const usesDocker =
+      surface === 'protected' || resolveShellSecurityConfig(mergedEnv).sandboxMode === 'docker'
+    const selectedCoding = usesDocker
+      ? resolveTeamCodingEnvironment(db, agent.team.id, mergedEnv).coding
+      : undefined
+    const repositoryContext = await resolveRepositoryContext({
+      teamId: agent.team.id,
+      root: agent.team.path,
+      target: selectedCoding?.cwd ?? '.',
+    })
+    requireCompleteRepositoryContext(repositoryContext)
     const protectedExecution =
       input.protectedExecution ??
       (surface === 'protected'
         ? await prepareProtectedExecution(agent, {
             includeUploads: documents.length > 0,
             signal: controller.signal,
+            dockerLifecycle: workspaceLifecycle(db).containers(workspaceLease),
           })
         : undefined)
     if (protectedExecution) consumePreparedProtectedExecution(protectedExecution, agent)
     const configuredUsesDocker =
       surface === 'configured_operator_http' &&
       resolveShellSecurityConfig(mergeSecretsIntoEnv(db, authToken)).sandboxMode === 'docker'
+    const configuredDocker = configuredUsesDocker
+      ? await prepareAgentDockerInputs(agent, {
+          includeUploads: documents.length > 0,
+          signal: controller.signal,
+          dockerLifecycle: workspaceLifecycle(db).containers(workspaceLease),
+        })
+      : undefined
     const fileNote = saveInputFiles(
       agent.agent.dir,
       documents,
@@ -214,6 +258,8 @@ export async function prepareAgentTurn(input: PrepareAgentTurnInput): Promise<Pr
       [preparedTurnBrand]: true as const,
       agent,
       conversation,
+      repositoryContext,
+      ...(configuredDocker ? { configuredDocker } : {}),
       message,
       images,
       invocation: input.invocation,
@@ -226,9 +272,11 @@ export async function prepareAgentTurn(input: PrepareAgentTurnInput): Promise<Pr
     }
     Object.defineProperty(prepared, preparedTurnBrand, { enumerable: false })
     deepFreezePreparedTurn(prepared)
+    workspaceLeases.set(prepared, workspaceLease)
     preparedTurns.add(prepared)
     return prepared
   } catch (error) {
+    if (workspaceLease) await workspaceLifecycle(db).release(workspaceLease)
     if (registered) unregisterAgent(agentId)
     throw error
   } finally {
@@ -236,8 +284,25 @@ export async function prepareAgentTurn(input: PrepareAgentTurnInput): Promise<Pr
   }
 }
 
-export function releasePreparedAgentTurn(turn: PreparedAgentTurn): void {
-  unregisterAgent(turn.agent.agent.id)
+export function preparedContainerLease(turn: PreparedAgentTurn): WorkspaceLease {
+  const lease = workspaceLeases.get(turn)
+  if (!lease) throw new Error('Prepared workspace ownership is unavailable')
+  return lease
+}
+
+export function preparedWorkerLifecycle(turn: PreparedAgentTurn) {
+  const lease = workspaceLeases.get(turn)
+  if (!lease) throw new Error('Prepared workspace ownership is unavailable')
+  return workspaceLifecycle(getCtx().db).worker(lease)
+}
+
+export async function releasePreparedAgentTurn(turn: PreparedAgentTurn): Promise<void> {
+  const lease = workspaceLeases.get(turn)
+  if (lease) {
+    workspaceLeases.delete(turn)
+    await workspaceLifecycle(getCtx().db).release(lease)
+  }
+  if (ownsActiveAgent(turn.agent.agent.id, turn.controller)) unregisterAgent(turn.agent.agent.id)
 }
 
 export function assertPreparedAgentTurn(value: unknown): asserts value is PreparedAgentTurn {

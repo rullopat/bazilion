@@ -3,18 +3,20 @@ import type { ResolvedAgent } from '@bazilion/api-types'
 import { mergeSecretsIntoEnv } from '../core/index.ts'
 import { loadPromptSkills, loadProtectedHomeDocuments } from '../runtime/index.ts'
 import { ensureContainedRealDirectory, resolveRealDirectory } from '../runtime/safe-files.ts'
+import type { DockerCodingSelection } from '../runtime/shell/coding.ts'
 import {
   type DockerReadOnlyMount,
+  type DockerResourceLifecycle,
   type ProtectedDockerRuntime,
   preflightProtectedDockerRuntime,
 } from '../runtime/shell/docker.ts'
-import { resolveShellSecurityConfig } from '../runtime/shell/security.ts'
 import { SANDBOX_INPUTS_DIR, SANDBOX_MEMORY_DIR } from '../runtime/shell/tooling.ts'
 import type {
   ProtectedProviderWorkerRuntime,
   ProtectedWorkerPaths,
 } from '../runtime/worker/runtime.ts'
 import { prepareInputFilesDirectory } from './attachments.ts'
+import { resolveTeamCodingEnvironment } from './coding-environment/resolve.ts'
 import { getCtx } from './ctx.ts'
 import {
   ProtectedExecutionUnavailableError,
@@ -36,6 +38,7 @@ export interface PreparedProtectedExecution {
 }
 
 export interface PrepareProtectedExecutionOptions {
+  dockerLifecycle?: DockerResourceLifecycle
   includeUploads?: boolean
   signal?: AbortSignal
 }
@@ -47,10 +50,30 @@ export async function prepareProtectedExecution(
 ): Promise<PreparedProtectedExecution> {
   const signal = options.signal
   if (signal?.aborted) throw new Error('cancelled')
-  const { db, paths, authToken } = getCtx()
+  const { db, authToken } = getCtx()
   const provider = await resolveProtectedProviderRuntime(db, authToken, agent)
   if (signal?.aborted) throw new Error('cancelled')
 
+  const inputs = await prepareAgentDockerInputs(agent, options)
+  if (signal?.aborted) throw new Error('cancelled')
+  const prepared = {
+    [preparedProtectedExecutionBrand]: true as const,
+    ...provider,
+    ...inputs,
+  }
+  Object.defineProperty(prepared, preparedProtectedExecutionBrand, { enumerable: false })
+  deepFreezePreparedProtectedExecution(prepared)
+  preparedProtectedExecutions.add(prepared)
+  return prepared
+}
+
+/** Shared inspected mounts and Docker selection for configured/protected coding turns. */
+export async function prepareAgentDockerInputs(
+  agent: ResolvedAgent,
+  options: PrepareProtectedExecutionOptions = {},
+): Promise<{ paths: ProtectedWorkerPaths; docker: ProtectedDockerRuntime }> {
+  options.signal?.throwIfAborted()
+  const { db, paths, authToken } = getCtx()
   let memoryDir: string
   let sessionDir: string
   let uploadsDir: string | undefined
@@ -83,11 +106,18 @@ export async function prepareProtectedExecution(
   }
 
   let image: string
+  let coding: DockerCodingSelection | undefined
   try {
     // The configured mode and allowlist never select the protected surface.
     // Parsing still fails closed on invalid configuration; only the validated
     // image name is carried into the forced Docker policy.
-    image = resolveShellSecurityConfig(mergeSecretsIntoEnv(db, authToken)).sandboxImage
+    const selection = resolveTeamCodingEnvironment(
+      db,
+      agent.team.id,
+      mergeSecretsIntoEnv(db, authToken),
+    )
+    image = selection.image
+    coding = selection.coding
   } catch {
     throw new ProtectedExecutionUnavailableError(
       'Protected Docker configuration is invalid. Run `bazilion doctor` for remediation.',
@@ -110,6 +140,8 @@ export async function prepareProtectedExecution(
   try {
     docker = await preflightProtectedDockerRuntime({
       image,
+      lifecycle: options.dockerLifecycle,
+      ...(coding ? { coding } : {}),
       workspaceDir: agent.team.path,
       workspaceRoot: agent.team.path,
       readOnlyMounts,
@@ -119,17 +151,8 @@ export async function prepareProtectedExecution(
       'Protected Docker runtime is unavailable. Run `bazilion doctor` for remediation.',
     )
   }
-  if (signal?.aborted) throw new Error('cancelled')
-  const prepared = {
-    [preparedProtectedExecutionBrand]: true as const,
-    ...provider,
-    paths: workerPaths,
-    docker,
-  }
-  Object.defineProperty(prepared, preparedProtectedExecutionBrand, { enumerable: false })
-  deepFreezePreparedProtectedExecution(prepared)
-  preparedProtectedExecutions.add(prepared)
-  return prepared
+  options.signal?.throwIfAborted()
+  return { paths: workerPaths, docker }
 }
 
 export function assertPreparedProtectedExecution(

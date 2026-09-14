@@ -112,7 +112,7 @@ export function messagingTools(host: MessagingHost, fromAgentId: string): ToolHa
       def: {
         name: 'wait_for_reply',
         description:
-          'Block until a reply to a message you sent arrives, or until the timeout expires.',
+          'Wait for a reply only when the peer does not need your current workspace. For shared-workspace preparation, send_message and end this turn; the inbox reply resumes work after cleanup releases ownership.',
         parameters: {
           type: 'object',
           properties: {

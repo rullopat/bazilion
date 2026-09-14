@@ -113,7 +113,7 @@ export function buildSystemPrompt(
     contextBlocks.push(`## ${file}\n\n${content}`)
   }
   if (contextBlocks.length > 0) {
-    parts.push(`# Project Context\n\n${contextBlocks.join('\n\n')}`)
+    parts.push(`# Agent instructions\n\n${contextBlocks.join('\n\n')}`)
   }
 
   // First-Run Ritual block — only emitted while BOOTSTRAP.md exists on disk.

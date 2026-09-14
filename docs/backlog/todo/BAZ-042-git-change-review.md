@@ -1,9 +1,10 @@
 ---
 id: BAZ-042
 title: Git changes and review beside coding conversations
-status: draft
+status: todo
 size: M
 created: 2026-09-07
+refined: 2026-09-09
 priority: high
 note: Initial coding milestone; read-only change inspection with explicit baselines and truthful attribution.
 ---
@@ -27,7 +28,7 @@ Preserve the source identity used by review comments and verification receipts.
 
 ## Why and current baseline
 
-Verified against Bazilion `13c3a63` (v0.14.2) on 2026-09-07:
+Reviewed against the BAZ-039/040 remake at `81aaa31` on 2026-09-09:
 
 - A [Team can link to an existing directory](../../../apps/daemon/src/core/team/register.ts), but
   [Team routes](../../../apps/daemon/src/routes/teams.ts) expose no Git source-review contract.
@@ -36,9 +37,8 @@ Verified against Bazilion `13c3a63` (v0.14.2) on 2026-09-07:
   exposes edit-result patches, while Bazilion's
   [event adapter](../../../apps/daemon/src/runtime/pi/events.ts) flattens tool results. Individual
   edit patches alone cannot cover changes made through shell commands or an external editor.
-- [Active-turn protection](../../../apps/daemon/src/lib/agent-cancel.ts) is keyed by Agent. Two
-  Agents in one Team can touch the same working tree; a before/after comparison does not prove
-  which actor authored each line.
+- BAZ-040 already serializes Bazilion writers by canonical overlapping workspace roots. External
+  editors and changes between turns still exist; a baseline comparison cannot prove line authorship.
 - Hermes's [release-tagged Git review](https://github.com/NousResearch/hermes-agent/blob/v2026.8.31/website/docs/user-guide/desktop.md#git-review--worktrees)
   demonstrates the value of inspecting source changes alongside chat. Bazilion needs its own
   attribution and workspace rules for the shared Team model.
@@ -51,14 +51,16 @@ Verified against Bazilion `13c3a63` (v0.14.2) on 2026-09-07:
   revision, tracked changes, and untracked filenames, including an explicit non-Git/unavailable state.
 - Offer working-tree and branch/base views. Resolve a movable branch to a concrete commit before
   comparison and display it; changing a branch tip must not silently rewrite an existing review.
-- Capture a starting snapshot on an explicit coding request or operator action. Include the tracked
-  content/index state and the agreed untracked-file scope, not only HEAD or modification timestamps.
+- Let the Agent capture a starting snapshot when beginning a coding request, before source edits.
+  An optional operator capture uses the same capability; no separate task setup is required. Include
+  the tracked content/index state and the agreed untracked-file scope, not only HEAD or modification
+  timestamps.
 - Preserve pre-existing changes in that baseline. Identify generated files and Bazilion-owned
   state through explicit exclusions; do not hide legitimate source merely because its name is
   `memory`, `dist`, or another common generated-directory label.
 - Bound enumeration and content size. If concurrent writers or limits prevent a coherent capture,
   report an incomplete/unstable snapshot; do not call it exact or attach current verification to it.
-- Define an immutable snapshot reference shared with BAZ-041 and BAZ-044. Snapshots are code
+- Define an immutable snapshot reference shared with BAZ-041 and BAZ-043. Snapshots are code
   evidence, not another conversation store or generic runs/events subsystem.
 
 ### Review and feedback
@@ -73,8 +75,8 @@ Verified against Bazilion `13c3a63` (v0.14.2) on 2026-09-07:
   context. Show the selected excerpt before sending it through normal authenticated chat ingress.
 - Recheck source identity before submitting feedback. A stale hunk remains linked to its original
   snapshot and offers refresh; it cannot silently point at different current lines.
-- Reuse BAZ-036 when feedback must queue during a busy turn. Before that feature ships, preserve
-  the feedback draft and explain that the Agent is busy; do not create a hidden second queue.
+- Reuse BAZ-036 when feedback must queue during a busy turn. Preserve the captured feedback
+  identity through that shipped queue; do not create a second queue.
 - Display linked BAZ-041 checks when available. A change after testing marks those results stale
   for the current view; absence of checks is **Not checked**, never a passing indicator.
 
@@ -87,13 +89,13 @@ Verified against Bazilion `13c3a63` (v0.14.2) on 2026-09-07:
   in the daemon or invoke credential helpers/network fetches.
 - Validate filenames and repository identities without shell interpolation. Handle symlinks,
   submodules, linked-worktree Git directories, and paths outside the Team boundary explicitly;
-  unsupported layouts fail with guidance until the BAZ-043 metadata contract supports them.
+  unsupported layouts fail with explicit guidance.
 - Direct operator inspection uses the existing authenticated workspace-read boundary defined for
   this feature. Agent-initiated publication and Telegram mirrors retain shared egress authorization;
   the review panel cannot release BAZ-034 approval-held results or grant Agents new file access.
 - Keep file content escaped and inert. No HTML execution, external resource loading, or fetching
-  private paths from a browser-provided URL. Exported patches use authorized durable delivery once
-  BAZ-034 is available; live inspection must not depend on the entire results-library UI.
+  private paths from a browser-provided URL. Exported patches use authorized durable delivery through
+  the existing BAZ-034 contract; live inspection must not depend on the entire results-library UI.
 
 ## Acceptance criteria
 
@@ -110,14 +112,29 @@ Verified against Bazilion `13c3a63` (v0.14.2) on 2026-09-07:
 
 ## Dependencies and sequencing
 
-- Coordinate repository identity with [BAZ-039](BAZ-039-repository-coding-context.md) and the shared
-  snapshot contract with [BAZ-041](BAZ-041-coding-command-verification.md) before implementation.
-  Either presentation can ship first once the contract is settled.
+- Coordinate repository identity with
+  [BAZ-039](../in_progress/BAZ-039-repository-coding-context.md) and the receipt extension with
+  [BAZ-041](BAZ-041-coding-command-verification.md). This story owns snapshot identity and
+  applicability; BAZ-041 progress can ship independently.
 - [BAZ-034](../done/BAZ-034-durable-agent-deliverables.md) supplies persistent patch exports;
   [BAZ-035](../done/BAZ-035-conversation-library.md) supplies exact historic conversation navigation;
   [BAZ-036](../done/BAZ-036-visible-follow-up-queue.md) supplies busy-turn feedback queueing.
-- [BAZ-043](BAZ-043-isolated-coding-workspaces.md) adds managed workspaces later. This first review
-  slice works with an existing supported repository and makes shared-write limitations visible.
+- This first review slice works with an existing supported repository and makes external-write and
+  unsupported Git-layout limitations visible.
+
+## Snapshot-bound verification added by this story
+
+- Extend existing BAZ-040/041 receipts with bounded before/after source manifests, including HEAD,
+  index, dirty tracked bytes and explicitly included untracked content. Record exclusions and limits.
+- Capture checks at their actual execution boundary. Earlier receipts without source manifests stay
+  historical outcomes with unknown code applicability; never backfill proof from the current tree.
+- Match the command, cwd, actual admitted environment/image and known dependency identities as well
+  as source coverage. Optional Team-default revision alone is not the execution environment identity.
+- Relevant edits, changed coverage, source-mutating tests, incomplete captures or unstable external
+  writes produce stale/unknown applicability. Before/after equality is not proof no transient edits
+  occurred; state that limit. A successful command does not establish whole-project correctness.
+- Present the result beside chat: “3 files changed; app test passed for this captured version,” with
+  expandable diff and evidence. Agent capture and command execution require no operator checklist.
 
 ## Out of scope
 
@@ -133,15 +150,18 @@ an embedded editor, semantic code search, public sharing, and attributing every 
   symlink boundaries, source egress holds, and zero Git/workspace mutation during inspection.
 - Check API/CLI parity, keyboard feedback selection, narrow layouts, empty and truncated views.
 
-## Open Questions
+## Refinement decisions
 
-- **Snapshot format:** agree tracked/index/untracked capture and stable identity with BAZ-041.
-  Recommended: a bounded content manifest and captured diff/base, with explicit exclusions and
-  an incomplete state; never infer identity from HEAD alone in a dirty repository.
-- **Sensitive and generated files:** choose inclusion defaults and the treatment of Team memory
-  inside a linked repository. Recommended: list untracked names, require selection for their
-  content, and never automatically include credential files or Bazilion-owned private state.
-- **Capture trigger and retention:** recommend an explicit start-of-assignment baseline and a
-  bounded retention policy. Decide how ordinary chats request capture without a new task engine.
-- **Git metadata layouts:** define read-only access for linked worktrees/submodules before todo;
-  do not grant general access to a parent checkout merely to make Git commands succeed.
+- Use a bounded content manifest plus captured base/index/working-tree diff. Cap initial coverage at
+  1,000 files, 1 MiB per text file and 16 MiB total captured content. Any exceeded limit produces an
+  incomplete snapshot and unknown applicability; HEAD alone never identifies a dirty tree.
+- Include tracked content by default. List untracked names, but require the Agent or operator to
+  select their content explicitly. Never automatically capture Team memory, Bazilion private state,
+  ignored files, credential-shaped filenames or repository content outside the selected paths.
+- Add a turn-bound snapshot tool that the Agent invokes before editing; the operator may request the
+  same capture through chat. Retain snapshots and review metadata for seven days. Deliberate patch
+  exports use BAZ-034 retention instead of extending snapshot lifetime silently.
+- Support ordinary repositories whose work tree and required Git metadata are safely reachable from
+  the registered Team root. Reject submodules, linked-worktree common directories outside that
+  boundary and other unsupported layouts with guidance in the first slice. Never broaden mounts or
+  execute repository-configured helpers to make inspection work.

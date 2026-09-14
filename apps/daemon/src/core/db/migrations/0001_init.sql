@@ -697,3 +697,50 @@ CREATE TABLE notification_receipts (
 );
 CREATE INDEX notification_receipts_state ON notification_receipts(state, created_at, id);
 CREATE INDEX notification_receipts_time ON notification_receipts(created_at, id);
+
+-- BAZ-040: operator-reviewed settings; changes never launch project commands.
+CREATE TABLE team_coding_environments (
+  team_id TEXT PRIMARY KEY REFERENCES teams(id) ON DELETE CASCADE,
+  revision INTEGER NOT NULL CHECK (revision > 0),
+  config_json TEXT NOT NULL CHECK (json_valid(config_json)),
+  updated_at INTEGER NOT NULL
+);
+
+-- Active writer ownership survives restart and Team deletion until teardown is proven.
+-- Deliberately no cascading Team FK: orphaned writers must still block overlapping roots.
+CREATE TABLE workspace_writers (
+  id TEXT PRIMARY KEY,
+  team_id TEXT NOT NULL,
+  root_path TEXT NOT NULL,
+  root_identity TEXT NOT NULL,
+  daemon_identity TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('agent', 'mutation')),
+  exclusive INTEGER NOT NULL CHECK (exclusive IN (0, 1)),
+  state TEXT NOT NULL CHECK (state IN ('active', 'recovery')),
+  recovery_mode TEXT NOT NULL DEFAULT 'owned' CHECK (recovery_mode IN ('owned', 'restored')),
+  resources_json TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(resources_json)),
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE workspace_resources (
+  id TEXT PRIMARY KEY,
+  writer_id TEXT NOT NULL REFERENCES workspace_writers(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL CHECK (kind IN ('worker', 'container')),
+  identity_json TEXT NOT NULL CHECK (json_valid(identity_json)),
+  creation_acknowledged INTEGER NOT NULL DEFAULT 0 CHECK (creation_acknowledged IN (0, 1)),
+  cleanup_confirmed INTEGER NOT NULL DEFAULT 0 CHECK (cleanup_confirmed IN (0, 1))
+);
+
+-- Bounded Agent command evidence. Active commands are never evicted by retention.
+CREATE TABLE coding_commands (
+  id TEXT PRIMARY KEY,
+  team_id TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  agent_id TEXT NOT NULL,
+  turn_id TEXT NOT NULL,
+  tool_call_id TEXT NOT NULL,
+  state TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  receipt_json TEXT NOT NULL,
+  UNIQUE(agent_id, turn_id, tool_call_id)
+);
+CREATE INDEX coding_command_history ON coding_commands(team_id, created_at, id);

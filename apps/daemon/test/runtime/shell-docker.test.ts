@@ -18,8 +18,14 @@ import {
   checkProtectedDockerReadiness,
   createDockerBashOperations,
   createPreparedDockerBashOperations,
+  type DockerContainerIdentity,
   preflightProtectedDockerRuntime,
+  terminateRecordedContainer,
 } from '../../src/runtime/shell/docker.ts'
+import {
+  createProtectedSessionShellTools,
+  createSessionShellTools,
+} from '../../src/runtime/shell/tooling.ts'
 
 interface FakeDockerInvocation {
   args: string[]
@@ -49,7 +55,7 @@ beforeEach(() => {
   writeFileSync(
     dockerPath,
     `#!${process.execPath}
-const { appendFileSync, readFileSync, rmSync, writeFileSync } = require('node:fs')
+const { appendFileSync, existsSync, readFileSync, rmSync, writeFileSync } = require('node:fs')
 const args = process.argv.slice(2)
 appendFileSync(${JSON.stringify(logPath)}, JSON.stringify({ args, pid: process.pid, env: process.env }) + '\\n')
 
@@ -68,7 +74,7 @@ if (args[0] === 'image' && args[1] === 'inspect') {
     process.exit(1)
   }
   const volumes = image === 'volume:image' ? { '/var/lib/example': {} } : null
-  const imageId = image === 'missing-tools:image'
+  const imageId = image.startsWith('sha256:') ? image : image === 'missing-tools:image'
     ? ${JSON.stringify(`sha256:${'c'.repeat(64)}`)}
     : readFileSync(${JSON.stringify(imageIdPath)}, 'utf8').trim()
   process.stdout.write(JSON.stringify(imageId) + '\\t' + JSON.stringify(volumes) + '\\n')
@@ -82,7 +88,20 @@ if (args[0] === 'container' && args[1] === 'create') {
   }
   const name = args[args.indexOf('--name') + 1]
   writeFileSync(${JSON.stringify(containerStatePath)}, name)
+  if (args.some((arg) => arg.includes('fixture-slow-create'))) {
+    setTimeout(() => process.exit(0), 1500)
+    return
+  }
   process.stdout.write('preflight-container-id\\n')
+  process.exit(0)
+}
+
+if (args[0] === 'container' && args[1] === 'inspect') {
+  if (!existsSync(${JSON.stringify(containerStatePath)})) {
+    process.stderr.write('No such container\\n')
+    process.exit(1)
+  }
+  process.stdout.write('d'.repeat(64) + '\\n')
   process.exit(0)
 }
 
@@ -105,6 +124,10 @@ if (args[0] === 'container' && args[1] === 'start') {
 }
 
 if (args[0] === 'container' && args[1] === 'rm') {
+  if (args.at(-1) === 'bazilion-unacknowledged-fixture' && !existsSync(${JSON.stringify(containerStatePath)})) {
+    process.stderr.write('Error response from daemon: No such container\\n')
+    process.exit(0)
+  }
   const calls = readFileSync(${JSON.stringify(logPath)}, 'utf8')
     .trim()
     .split('\\n')
@@ -508,6 +531,356 @@ describe('protected Docker preflight and pinned execution', () => {
         onData: () => undefined,
       }),
     ).rejects.toThrow(/image no longer matches.*immutable id/)
+    expect(invocations().some((entry) => entry.args[0] === 'run')).toBe(false)
+  })
+
+  test('records container identity before preflight creation and confirms cleanup before returning', async () => {
+    await startDockerSocket()
+    const events: string[] = []
+    let recorded: DockerContainerIdentity | undefined
+    const lifecycle = {
+      name: () => 'bazilion-lifecycle-fixture',
+      beforeCreate: async (identity: DockerContainerIdentity) => {
+        recorded = identity
+        expect(
+          invocations().some(
+            (entry) => entry.args[0] === 'container' && entry.args[1] === 'create',
+          ),
+        ).toBe(false)
+        expect(identity.containerName).toBe('bazilion-lifecycle-fixture')
+        events.push('registered')
+      },
+      afterCreate: async () => {
+        expect(
+          invocations().some(
+            (entry) => entry.args[0] === 'container' && entry.args[1] === 'create',
+          ),
+        ).toBe(true)
+        expect(
+          invocations().some((entry) => entry.args[0] === 'container' && entry.args[1] === 'start'),
+        ).toBe(false)
+        events.push('acknowledged')
+      },
+      afterRemove: async (name: string) => {
+        if (!recorded) throw new Error('missing fixture identity')
+        expect(await terminateRecordedContainer(recorded, true)).toBe(true)
+        expect(
+          invocations().some(
+            (entry) =>
+              entry.args[0] === 'container' && entry.args[1] === 'rm' && entry.args.includes(name),
+          ),
+        ).toBe(true)
+        events.push('removed')
+      },
+    }
+    await preflightProtectedDockerRuntime({
+      image: 'fake:image',
+      dockerPath,
+      hostEnv: { PATH: testDir, HOME: testDir },
+      workspaceDir: workspace,
+      lifecycle,
+    })
+    expect(events).toEqual(['registered', 'acknowledged', 'removed'])
+  })
+
+  test('failed durable registration prevents Docker container creation', async () => {
+    await startDockerSocket()
+    await expect(
+      preflightProtectedDockerRuntime({
+        image: 'fake:image',
+        dockerPath,
+        hostEnv: { PATH: testDir, HOME: testDir },
+        workspaceDir: workspace,
+        lifecycle: {
+          name: () => 'bazilion-registration-fixture',
+          beforeCreate: async () => {
+            throw new Error('registration unavailable')
+          },
+          afterCreate: async () => {},
+          afterRemove: async () => {},
+        },
+      }),
+    ).rejects.toThrow('registration unavailable')
+    expect(
+      invocations().some((entry) => entry.args[0] === 'container' && entry.args[1] === 'create'),
+    ).toBe(false)
+  })
+
+  test.each([
+    'create',
+    'start',
+  ] as const)('preflight cancellation during %s waits for registered container removal', async (phase) => {
+    await startDockerSocket()
+    const controller = new AbortController()
+    let recorded: DockerContainerIdentity | undefined
+    let acknowledged = false
+    let removed = false
+    const result = preflightProtectedDockerRuntime({
+      image: 'fake:image',
+      dockerPath,
+      workspaceDir: workspace,
+      hostEnv: { PATH: testDir, HOME: testDir },
+      signal: controller.signal,
+      lifecycle: {
+        name: () =>
+          phase === 'create' ? 'bazilion-fixture-slow-create' : 'bazilion-probe-start-hang',
+        beforeCreate: async (identity) => {
+          recorded = identity
+        },
+        afterCreate: async () => {
+          acknowledged = true
+        },
+        afterRemove: async () => {
+          if (!recorded) throw new Error('missing fixture identity')
+          expect(await terminateRecordedContainer(recorded, acknowledged)).toBe(true)
+          removed = true
+        },
+      },
+    })
+    const rejection = expect(result).rejects.toThrow(/^aborted$/)
+    const observed = () =>
+      existsSync(containerStatePath) &&
+      invocations().some((entry) => entry.args[0] === 'container' && entry.args[1] === phase)
+    const deadline = Date.now() + 3000
+    while (!observed() && Date.now() < deadline)
+      await new Promise((resolve) => setTimeout(resolve, 10))
+    expect(observed()).toBe(true)
+    controller.abort()
+    await rejection
+    expect(acknowledged).toBe(phase === 'start')
+    expect(removed).toBe(true)
+    expect(existsSync(containerStatePath)).toBe(false)
+    if (phase === 'create')
+      expect(invocations().some((entry) => entry.args[1] === 'start')).toBe(false)
+  })
+
+  test('successful rm exit with a missing-container diagnostic cannot release an unacknowledged create', async () => {
+    await startDockerSocket()
+    const runtime = await preflightProtectedDockerRuntime({
+      image: 'fake:image',
+      dockerPath,
+      hostEnv: { PATH: testDir, HOME: testDir },
+      workspaceDir: workspace,
+    })
+    const identity = { ...runtime, containerName: 'bazilion-unacknowledged-fixture' }
+    expect(await terminateRecordedContainer(identity, false)).toBe(false)
+    writeFileSync(containerStatePath, identity.containerName)
+    expect(await terminateRecordedContainer(identity, false)).toBe(true)
+    expect(await terminateRecordedContainer(identity, true)).toBe(true)
+  })
+
+  test.each([
+    'abort',
+    'timeout',
+  ] as const)('registered %s during create never starts project code and awaits cleanup', async (kind) => {
+    await startDockerSocket()
+    const runtime = await preflightProtectedDockerRuntime({
+      image: 'fake:image',
+      dockerPath,
+      hostEnv: { PATH: testDir, HOME: testDir },
+      workspaceDir: workspace,
+    })
+    writeFileSync(logPath, '')
+    const controller = new AbortController()
+    let recorded: DockerContainerIdentity | undefined
+    let acknowledged = false
+    let removed = false
+    const lifecycle = {
+      name: () => 'bazilion-create-cancellation-fixture',
+      beforeCreate: async (identity: DockerContainerIdentity) => {
+        recorded = identity
+      },
+      afterCreate: async () => {
+        acknowledged = true
+      },
+      afterRemove: async () => {
+        if (!recorded) throw new Error('missing fixture identity')
+        expect(await terminateRecordedContainer(recorded, acknowledged)).toBe(true)
+        removed = true
+      },
+    }
+    const execution = createPreparedDockerBashOperations(runtime, lifecycle).exec(
+      'echo fixture-slow-create',
+      workspace,
+      { onData: () => {}, signal: controller.signal, timeout: kind === 'timeout' ? 0.5 : 10 },
+    )
+    const rejection = expect(execution).rejects.toThrow(
+      kind === 'abort' ? /^aborted$/ : /^timeout:0\.5$/,
+    )
+    if (kind === 'abort') {
+      // Wait until the fake daemon has observed create, not just client registration.
+      const deadline = Date.now() + 2000
+      while (!existsSync(containerStatePath) && Date.now() < deadline)
+        await new Promise((resolve) => setTimeout(resolve, 10))
+      expect(existsSync(containerStatePath)).toBe(true)
+      controller.abort()
+    }
+    await rejection
+    expect(acknowledged).toBe(false)
+    expect(removed).toBe(true)
+    expect(invocations().some((entry) => entry.args[1] === 'start')).toBe(false)
+  })
+
+  test('commands cannot start if durable creation acknowledgement fails', async () => {
+    await startDockerSocket()
+    const runtime = await preflightProtectedDockerRuntime({
+      image: 'fake:image',
+      dockerPath,
+      hostEnv: { PATH: testDir, HOME: testDir },
+      workspaceDir: workspace,
+    })
+    writeFileSync(logPath, '')
+    let recorded: DockerContainerIdentity | undefined
+    const lifecycle = {
+      name: () => 'bazilion-ack-failure-fixture',
+      beforeCreate: async (identity: DockerContainerIdentity) => {
+        recorded = identity
+      },
+      afterCreate: async () => {
+        throw new Error('acknowledgement unavailable')
+      },
+      afterRemove: async () => {
+        if (!recorded) throw new Error('missing fixture identity')
+        expect(await terminateRecordedContainer(recorded, false)).toBe(true)
+      },
+    }
+    await expect(
+      createPreparedDockerBashOperations(runtime, lifecycle).exec('echo project-code', workspace, {
+        onData: () => {},
+      }),
+    ).rejects.toThrow('acknowledgement unavailable')
+    expect(
+      invocations().some((entry) => entry.args[0] === 'container' && entry.args[1] === 'create'),
+    ).toBe(true)
+    expect(
+      invocations().some((entry) => entry.args[0] === 'container' && entry.args[1] === 'start'),
+    ).toBe(false)
+    expect(invocations().some((entry) => entry.args[0] === 'run')).toBe(false)
+  })
+
+  test('coding selection pins its image across tag changes and maps cwd without narrowing the mount', async () => {
+    await startDockerSocket()
+    mkdirSync(join(workspace, 'app source'))
+    const runtime = await preflightProtectedDockerRuntime({
+      image: 'fake:image',
+      dockerPath,
+      hostEnv: { PATH: testDir, HOME: testDir },
+      workspaceDir: workspace,
+      coding: { revision: 2, cwd: 'app source', env: { CI: 'true', NO_COLOR: '1', TZ: 'UTC' } },
+    })
+    writeFileSync(imageIdPath, `sha256:${'b'.repeat(64)}`)
+    await expect(
+      createPreparedDockerBashOperations(runtime).exec('true', workspace, {
+        onData: () => undefined,
+      }),
+    ).resolves.toEqual({ exitCode: 0 })
+    const run = invocations().findLast((entry) => entry.args[0] === 'run')
+    expect(flagValues(run?.args ?? [], '--workdir')).toEqual(['/workspace/app source'])
+    expect(run?.args).toContain(`sha256:${'a'.repeat(64)}`)
+    expect(run?.args).toContain(
+      `type=bind,source=${workspace},target=/workspace,bind-recursive=disabled`,
+    )
+    expect(run?.args).toContain('TZ=UTC')
+    expect(run?.args).toContain('none')
+    expect(run?.args).toContain('--read-only')
+  })
+
+  test('configured prepared Docker keeps its approval gate and refuses host execution', async () => {
+    await startDockerSocket()
+    const runtime = await preflightProtectedDockerRuntime({
+      image: 'fake:image',
+      dockerPath,
+      hostEnv: { PATH: testDir, HOME: testDir },
+      workspaceDir: workspace,
+      coding: { revision: 1, cwd: '.', env: { CI: 'true' } },
+    })
+    expect(() => createSessionShellTools(workspace, {}, { preparedDocker: runtime })).toThrow(
+      'cannot execute on the host',
+    )
+    const tools = createSessionShellTools(
+      workspace,
+      {
+        BAZILION_BASH_SANDBOX: 'docker',
+        BAZILION_BASH_APPROVAL: 'dangerous',
+        BAZILION_BASH_SANDBOX_IMAGE: 'global:image',
+      },
+      { preparedDocker: runtime },
+    )
+    expect(tools.config.sandboxImage).toBe('fake:image')
+    expect(tools.hostToolNames).toEqual([])
+    if (!tools.customBash) throw new Error('Missing prepared Bash tool')
+    const context = {
+      sessionManager: {
+        getSessionId: () => 'coding-test',
+        getSessionFile: () => undefined,
+        getCwd: () => workspace,
+      },
+    } as never
+    await expect(
+      tools.customBash.execute('denied', { command: 'sudo true' }, undefined, undefined, context),
+    ).rejects.toThrow()
+    expect(invocations().some((entry) => entry.args[0] === 'run')).toBe(false)
+    await tools.customBash.execute('safe', { command: 'true' }, undefined, undefined, context)
+    expect(invocations().findLast((entry) => entry.args[0] === 'run')?.args).toContain(
+      runtime.imageId,
+    )
+  })
+
+  test('protected Pi cwd is translated to the pinned host workspace and selected container subdirectory', async () => {
+    await startDockerSocket()
+    mkdirSync(join(workspace, 'app'))
+    const runtime = await preflightProtectedDockerRuntime({
+      image: 'fake:image',
+      dockerPath,
+      hostEnv: { PATH: testDir, HOME: testDir },
+      workspaceDir: workspace,
+      coding: { revision: 1, cwd: 'app', env: { CI: 'true' } },
+    })
+    const tools = createProtectedSessionShellTools(workspace, runtime, {
+      requestApproval: async () => {
+        throw new Error('No dangerous command expected')
+      },
+    })
+    if (!tools.customBash) throw new Error('Missing protected Bash tool')
+    const context = {
+      cwd: '/workspace/app',
+      sessionManager: {
+        getSessionId: () => 'protected-coding-test',
+        getSessionFile: () => undefined,
+        getCwd: () => '/workspace/app',
+      },
+    } as never
+    await tools.customBash.execute('safe', { command: 'true' }, undefined, undefined, context)
+    const run = invocations().findLast((entry) => entry.args[0] === 'run')
+    expect(flagValues(run?.args ?? [], '--workdir')).toEqual(['/workspace/app'])
+    expect(run?.args).toContain(
+      `type=bind,source=${workspace},target=/workspace,bind-recursive=disabled`,
+    )
+    await expect(
+      tools.customBash.execute('wrong-cwd', { command: 'true' }, undefined, undefined, {
+        ...(context as object),
+        cwd: '/outside',
+      } as never),
+    ).rejects.toThrow('differs from the admitted scope')
+  })
+
+  test('coding cwd cannot follow an intermediate symlink or a replacement after preflight', async () => {
+    await startDockerSocket()
+    mkdirSync(join(workspace, 'app'))
+    const runtime = await preflightProtectedDockerRuntime({
+      image: 'fake:image',
+      dockerPath,
+      hostEnv: { PATH: testDir, HOME: testDir },
+      workspaceDir: workspace,
+      coding: { revision: 1, cwd: 'app', env: {} },
+    })
+    renameSync(join(workspace, 'app'), join(workspace, 'original'))
+    symlinkSync(join(workspace, 'original'), join(workspace, 'app'))
+    await expect(
+      createPreparedDockerBashOperations(runtime).exec('true', workspace, {
+        onData: () => undefined,
+      }),
+    ).rejects.toThrow()
     expect(invocations().some((entry) => entry.args[0] === 'run')).toBe(false)
   })
 

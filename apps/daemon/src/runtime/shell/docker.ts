@@ -5,6 +5,12 @@ import { access, lstat, realpath, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { delimiter, isAbsolute, join, relative, sep } from 'node:path'
 import type { BashOperations } from '@earendil-works/pi-coding-agent'
+import { resolveCodingDirectory } from '../coding-directory.ts'
+import {
+  codingContainerCwd,
+  type DockerCodingSelection,
+  validateDockerCodingSelection,
+} from './coding.ts'
 
 const CONTAINER_WORKDIR = '/workspace'
 const MAX_TIMEOUT_MS = 2_147_483_647
@@ -44,7 +50,15 @@ const CONTAINER_LITERAL_ENV_KEYS = new Set([
   'TZ',
 ])
 
+export interface DockerResourceLifecycle {
+  name(kind: 'bash' | 'preflight'): string
+  beforeCreate(identity: DockerContainerIdentity): Promise<void>
+  afterCreate(containerName: string): Promise<void>
+  afterRemove(containerName: string): Promise<void>
+}
+
 export interface DockerBashOptions {
+  lifecycle?: DockerResourceLifecycle
   image: string
   env: NodeJS.ProcessEnv
   dockerPath?: string
@@ -97,9 +111,15 @@ export interface ProtectedDockerRuntime {
   workspace: ProtectedDockerMount
   readOnlyMounts: ProtectedDockerMount[]
   containerEnv: ProtectedContainerEnvironment
+  coding?: DockerCodingSelection
 }
 
 export interface ProtectedDockerPreflightInput {
+  signal?: AbortSignal
+  /** Internal admitted engine identity; avoids resolving a mutable tag again for an async probe. */
+  engine?: ProtectedDockerEngineRuntime
+  lifecycle?: DockerResourceLifecycle
+  coding?: DockerCodingSelection
   image: string
   workspaceDir: string
   /** Canonical boundary the registered Team workspace must remain within. */
@@ -126,7 +146,7 @@ export type ProtectedDockerReadiness =
         | 'Docker preflight failed'
     }
 
-interface ProtectedDockerEngineRuntime {
+export interface ProtectedDockerEngineRuntime {
   dockerPath: string
   executableIdentity: ProtectedDockerExecutableIdentity
   endpoint: string
@@ -146,6 +166,8 @@ const PROTECTED_CONTAINER_ENV: ProtectedContainerEnvironment = {
 }
 
 export interface DockerRunSpecInput extends DockerBashOptions {
+  /** Validated Team-relative default working directory; mount remains the entire Team. */
+  codingCwd?: string
   command: string
   mountSource: string
   containerName: string
@@ -206,7 +228,7 @@ export function buildDockerRunSpec(input: DockerRunSpecInput): DockerRunSpec {
     '--entrypoint',
     '/bin/bash',
     '--workdir',
-    CONTAINER_WORKDIR,
+    codingContainerCwd(input.codingCwd ?? '.'),
     // A bind mount is read/write unless `readonly` is present. No other mount is added.
     '--mount',
     `type=bind,source=${input.mountSource},target=${CONTAINER_WORKDIR},bind-recursive=disabled`,
@@ -317,7 +339,11 @@ async function proveProtectedImageReadiness(engine: ProtectedDockerEngineRuntime
 export async function preflightProtectedDockerRuntime(
   input: ProtectedDockerPreflightInput,
 ): Promise<ProtectedDockerRuntime> {
-  const engine = await preflightProtectedDockerEngine(input)
+  if (input.signal?.aborted) throw new Error('aborted')
+  const coding = input.coding ? validateDockerCodingSelection(input.coding) : undefined
+  if (coding) resolveCodingDirectory(input.workspaceDir, coding.cwd)
+  const engine = input.engine ?? (await preflightProtectedDockerEngine(input))
+  if (engine.image !== input.image) throw new Error('Docker engine image selection changed')
   const workspaceSource = await resolveMountSource(input.workspaceDir)
   const workspaceRoot = await resolveRequiredRoot(input.workspaceRoot ?? input.workspaceDir)
   if (!isWithin(workspaceRoot, workspaceSource)) {
@@ -334,13 +360,20 @@ export async function preflightProtectedDockerRuntime(
   )
   validateReadOnlyMounts(readOnlyMounts, workspace.source)
 
-  await proveProtectedContainerCreation(engine, workspace, readOnlyMounts)
+  await proveProtectedContainerCreation(
+    engine,
+    workspace,
+    readOnlyMounts,
+    input.lifecycle,
+    input.signal,
+  )
 
   return {
     ...engine,
     workspace,
     readOnlyMounts,
     containerEnv: { ...PROTECTED_CONTAINER_ENV },
+    ...(coding ? { coding } : {}),
   }
 }
 
@@ -350,6 +383,7 @@ export async function preflightProtectedDockerRuntime(
  */
 export function createPreparedDockerBashOperations(
   runtime: ProtectedDockerRuntime,
+  lifecycle?: DockerResourceLifecycle,
 ): BashOperations {
   validatePreparedDockerRuntime(runtime)
   return {
@@ -368,9 +402,10 @@ export function createPreparedDockerBashOperations(
       await assertDockerExecutableIdentity(runtime.dockerPath, runtime.executableIdentity)
       await assertLocalDockerSocket(runtime.endpoint)
       const dockerClientEnv: NodeJS.ProcessEnv = { DOCKER_HOST: runtime.endpoint }
+      if (runtime.coding) resolveCodingDirectory(workspace.source, runtime.coding.cwd)
       const currentImageId = await inspectSandboxImage(
         runtime.dockerPath,
-        runtime.image,
+        runtime.coding ? runtime.imageId : runtime.image,
         dockerClientEnv,
       )
       if (currentImageId !== runtime.imageId) {
@@ -379,11 +414,14 @@ export function createPreparedDockerBashOperations(
       await assertDockerExecutableIdentity(runtime.dockerPath, runtime.executableIdentity)
       if (signal?.aborted) throw new Error('aborted')
 
-      const containerName = `bazilion-bash-${process.pid}-${randomUUID().replaceAll('-', '')}`
+      const containerName =
+        lifecycle?.name('bash') ??
+        `bazilion-bash-${process.pid}-${randomUUID().replaceAll('-', '')}`
       const spec = buildDockerRunSpec({
         image: runtime.image,
         resolvedImage: runtime.imageId,
-        env: { ...runtime.containerEnv },
+        env: { ...runtime.containerEnv, ...runtime.coding?.env },
+        codingCwd: runtime.coding?.cwd,
         dockerPath: runtime.dockerPath,
         hostEnv: dockerClientEnv,
         command,
@@ -393,12 +431,26 @@ export function createPreparedDockerBashOperations(
         uid: runtime.uid,
         gid: runtime.gid,
       })
-      return executeDockerRun(spec, { onData, signal, timeout, timeoutMs })
+      await lifecycle?.beforeCreate({
+        dockerPath: runtime.dockerPath,
+        executableIdentity: runtime.executableIdentity,
+        endpoint: runtime.endpoint,
+        containerName,
+      })
+      try {
+        return await executeRegisteredDockerRun(
+          spec,
+          { onData, signal, timeout, timeoutMs },
+          lifecycle,
+        )
+      } finally {
+        await lifecycle?.afterRemove(containerName)
+      }
     },
   }
 }
 
-async function preflightProtectedDockerEngine(
+export async function preflightProtectedDockerEngine(
   input: Pick<ProtectedDockerPreflightInput, 'image' | 'dockerPath' | 'hostEnv'>,
 ): Promise<ProtectedDockerEngineRuntime> {
   validateImage(input.image)
@@ -419,8 +471,13 @@ async function proveProtectedContainerCreation(
   engine: ProtectedDockerEngineRuntime,
   workspace: ProtectedDockerMount,
   readOnlyMounts: ProtectedDockerMount[],
+  lifecycle?: DockerResourceLifecycle,
+  signal?: AbortSignal,
 ): Promise<void> {
-  const containerName = `bazilion-preflight-${process.pid}-${randomUUID().replaceAll('-', '')}`
+  if (signal?.aborted) throw new Error('aborted')
+  const containerName =
+    lifecycle?.name('preflight') ??
+    `bazilion-preflight-${process.pid}-${randomUUID().replaceAll('-', '')}`
   const dockerClientEnv: NodeJS.ProcessEnv = { DOCKER_HOST: engine.endpoint }
   const spec = buildDockerRunSpec({
     image: engine.image,
@@ -437,9 +494,16 @@ async function proveProtectedContainerCreation(
   })
 
   await assertDockerExecutableIdentity(engine.dockerPath, engine.executableIdentity)
+  await lifecycle?.beforeCreate({
+    dockerPath: engine.dockerPath,
+    executableIdentity: engine.executableIdentity,
+    endpoint: engine.endpoint,
+    containerName,
+  })
   let preflightError: unknown
   try {
-    await runProtectedContainerCreate(spec)
+    await runProtectedContainerCreate(spec, { signal })
+    await lifecycle?.afterCreate(containerName)
     // `docker container create` validates the pinned image and mount/runtime
     // configuration, but it does not resolve or execute the image entrypoint.
     // Start the exact container as well so readiness proves both required
@@ -447,14 +511,15 @@ async function proveProtectedContainerCreation(
     // prompted. The known `true` command still runs with the same no-network,
     // read-only, clean-environment policy used by protected model commands.
     await assertDockerExecutableIdentity(engine.dockerPath, engine.executableIdentity)
-    await runProtectedContainerProbe(spec)
+    await runProtectedContainerProbe(spec, signal)
   } catch (error) {
     preflightError = error
   }
 
   try {
     await assertDockerExecutableIdentity(engine.dockerPath, engine.executableIdentity)
-    await removePreflightContainer(engine.dockerPath, containerName, dockerClientEnv)
+    if (lifecycle) await lifecycle.afterRemove(containerName)
+    else await removePreflightContainer(engine.dockerPath, containerName, dockerClientEnv)
     await assertDockerExecutableIdentity(engine.dockerPath, engine.executableIdentity)
   } catch (cleanupError) {
     if (preflightError) {
@@ -469,7 +534,11 @@ async function proveProtectedContainerCreation(
   if (preflightError) throw preflightError
 }
 
-function runProtectedContainerCreate(spec: DockerRunSpec): Promise<void> {
+function runProtectedContainerCreate(
+  spec: DockerRunSpec,
+  options?: Pick<DockerExecutionOptions, 'signal' | 'timeout' | 'timeoutMs'>,
+): Promise<void> {
+  if (options?.signal?.aborted) return Promise.reject(new Error('aborted'))
   let envFileFd: number | undefined
   try {
     if (spec.envFileContent !== undefined) {
@@ -502,41 +571,55 @@ function runProtectedContainerCreate(spec: DockerRunSpec): Promise<void> {
     let stderr = ''
     let timeoutHandle: NodeJS.Timeout | undefined
     let killSettleHandle: NodeJS.Timeout | undefined
-    let timedOut = false
+    let termination: Error | undefined
     const finish = (error?: Error) => {
       if (settled) return
       settled = true
       if (timeoutHandle) clearTimeout(timeoutHandle)
       if (killSettleHandle) clearTimeout(killSettleHandle)
+      options?.signal?.removeEventListener('abort', onAbort)
       if (error) reject(error)
       else resolve()
     }
 
+    const commandTimeout =
+      options?.timeoutMs !== undefined && options.timeoutMs <= DOCKER_CREATE_TIMEOUT_MS
     const timeoutError = () =>
-      new Error(
-        `Docker sandbox could not create its protected preflight container within ${DOCKER_CREATE_TIMEOUT_MS}ms`,
-      )
+      commandTimeout
+        ? new Error(`timeout:${options?.timeout}`)
+        : new Error(
+            `Docker sandbox could not create its protected preflight container within ${DOCKER_CREATE_TIMEOUT_MS}ms`,
+          )
 
     child.stderr?.on('data', (data: Buffer) => {
       stderr = `${stderr}${data.toString('utf8')}`.slice(-MAX_STDERR_CHARS)
     })
     child.once('error', (error) => finish(formatSpawnError(spec.executable, error)))
     child.once('close', (code) => {
-      if (timedOut) finish(timeoutError())
+      if (termination) finish(termination)
       else if (code === 0) finish()
       else finish(formatDockerCreateError(spec, stderr, code))
     })
-    timeoutHandle = setTimeout(() => {
-      timedOut = true
+    const terminate = (error: Error) => {
+      if (settled || termination) return
+      termination = error
       child.kill('SIGKILL')
       // SIGKILL should close promptly. Keep a separate bound so a pathological
       // child cannot prevent the exact-name cleanup phase from running.
-      killSettleHandle = setTimeout(() => finish(timeoutError()), CLEANUP_TIMEOUT_MS)
-    }, DOCKER_CREATE_TIMEOUT_MS)
+      killSettleHandle = setTimeout(() => finish(error), CLEANUP_TIMEOUT_MS)
+    }
+    const onAbort = () => terminate(new Error('aborted'))
+    timeoutHandle = setTimeout(
+      () => terminate(timeoutError()),
+      Math.min(options?.timeoutMs ?? DOCKER_CREATE_TIMEOUT_MS, DOCKER_CREATE_TIMEOUT_MS),
+    )
+    options?.signal?.addEventListener('abort', onAbort, { once: true })
+    if (options?.signal?.aborted) onAbort()
   })
 }
 
-function runProtectedContainerProbe(spec: DockerRunSpec): Promise<void> {
+function runProtectedContainerProbe(spec: DockerRunSpec, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) return Promise.reject(new Error('aborted'))
   return new Promise((resolve, reject) => {
     let child: ReturnType<typeof spawn>
     try {
@@ -554,12 +637,13 @@ function runProtectedContainerProbe(spec: DockerRunSpec): Promise<void> {
     let stderr = ''
     let timeoutHandle: NodeJS.Timeout | undefined
     let killSettleHandle: NodeJS.Timeout | undefined
-    let timedOut = false
+    let termination: Error | undefined
     const finish = (error?: Error) => {
       if (settled) return
       settled = true
       if (timeoutHandle) clearTimeout(timeoutHandle)
       if (killSettleHandle) clearTimeout(killSettleHandle)
+      signal?.removeEventListener('abort', onAbort)
       if (error) reject(error)
       else resolve()
     }
@@ -574,17 +658,22 @@ function runProtectedContainerProbe(spec: DockerRunSpec): Promise<void> {
     })
     child.once('error', (error) => finish(formatSpawnError(spec.executable, error)))
     child.once('close', (code) => {
-      if (timedOut) finish(timeoutError())
+      if (termination) finish(termination)
       else if (code === 0) finish()
       else finish(formatDockerProbeError(spec, stderr, code))
     })
-    timeoutHandle = setTimeout(() => {
-      timedOut = true
+    const terminate = (error: Error) => {
+      if (settled || termination) return
+      termination = error
       child.kill('SIGKILL')
       // Bound the handoff to exact-name force cleanup even if the Docker CLI
       // itself does not report close promptly after termination.
-      killSettleHandle = setTimeout(() => finish(timeoutError()), CLEANUP_TIMEOUT_MS)
-    }, DOCKER_PROBE_START_TIMEOUT_MS)
+      killSettleHandle = setTimeout(() => finish(error), CLEANUP_TIMEOUT_MS)
+    }
+    const onAbort = () => terminate(new Error('aborted'))
+    timeoutHandle = setTimeout(() => terminate(timeoutError()), DOCKER_PROBE_START_TIMEOUT_MS)
+    signal?.addEventListener('abort', onAbort, { once: true })
+    if (signal?.aborted) onAbort()
   })
 }
 
@@ -592,19 +681,20 @@ async function removePreflightContainer(
   dockerPath: string,
   containerName: string,
   processEnv: NodeJS.ProcessEnv,
+  creationAcknowledged = true,
 ): Promise<void> {
   const args = ['container', 'rm', '--force', containerName]
   let last: CleanupResult | undefined
   for (let attempt = 0; attempt < CLEANUP_ATTEMPTS; attempt += 1) {
     last = await runCleanupCommand(dockerPath, args, processEnv)
-    if (last.ok) return
+    if (last.ok && !last.missing) return
     if (attempt < CLEANUP_ATTEMPTS - 1) {
       await new Promise<void>((resolve) => setTimeout(resolve, CLEANUP_RETRY_DELAY_MS))
     }
   }
-  // Repeated exact-name misses across the retry window confirm that a failed
-  // or killed create did not materialize its container late.
-  if (last?.missing) return
+  // A miss only proves absence after acknowledged creation. An unacknowledged
+  // create may still materialize after an arbitrarily long Docker-side delay.
+  if (last?.missing && creationAcknowledged) return
   throw new Error('Docker sandbox could not confirm cleanup of its preflight container')
 }
 
@@ -718,6 +808,7 @@ async function assertLocalDockerSocket(endpoint: string): Promise<void> {
 }
 
 function validatePreparedDockerRuntime(runtime: ProtectedDockerRuntime): void {
+  if (runtime.coding) validateDockerCodingSelection(runtime.coding)
   if (!isAbsolute(runtime.dockerPath)) {
     throw new Error('protected Docker executable must be absolute')
   }
@@ -792,7 +883,9 @@ export function createDockerBashOperations(options: DockerBashOptions): BashOper
       const dockerClientEnv = await resolveLocalDockerClientEnv(dockerPath, hostEnv)
       const resolvedImage = await inspectSandboxImage(dockerPath, image, dockerClientEnv)
       if (signal?.aborted) throw new Error('aborted')
-      const containerName = `bazilion-bash-${process.pid}-${randomUUID().replaceAll('-', '')}`
+      const containerName =
+        options.lifecycle?.name('bash') ??
+        `bazilion-bash-${process.pid}-${randomUUID().replaceAll('-', '')}`
       const spec = buildDockerRunSpec({
         image,
         env,
@@ -807,7 +900,24 @@ export function createDockerBashOperations(options: DockerBashOptions): BashOper
         hostEnv: dockerClientEnv,
       })
 
-      return executeDockerRun(spec, { onData, signal, timeout, timeoutMs })
+      if (options.lifecycle) {
+        const absolute = await resolveAbsoluteDockerPath(dockerPath, hostEnv)
+        await options.lifecycle.beforeCreate({
+          dockerPath: absolute,
+          executableIdentity: await inspectDockerExecutableIdentity(absolute),
+          endpoint: dockerClientEnv.DOCKER_HOST as string,
+          containerName,
+        })
+      }
+      try {
+        return await executeRegisteredDockerRun(
+          spec,
+          { onData, signal, timeout, timeoutMs },
+          options.lifecycle,
+        )
+      } finally {
+        await options.lifecycle?.afterRemove(containerName)
+      }
     },
   }
 }
@@ -817,6 +927,29 @@ interface DockerExecutionOptions {
   signal?: AbortSignal
   timeout?: number
   timeoutMs?: number
+}
+
+async function executeRegisteredDockerRun(
+  spec: DockerRunSpec,
+  options: DockerExecutionOptions,
+  lifecycle?: DockerResourceLifecycle,
+): Promise<{ exitCode: number | null }> {
+  if (!lifecycle) return executeDockerRun(spec, options)
+  const deadline = options.timeoutMs === undefined ? undefined : Date.now() + options.timeoutMs
+  // No project code starts until the daemon durably acknowledges a successful create.
+  await runProtectedContainerCreate(spec, options)
+  await lifecycle.afterCreate(spec.containerName)
+  if (options.signal?.aborted) throw new Error('aborted')
+  const remaining = deadline === undefined ? undefined : deadline - Date.now()
+  if (remaining !== undefined && remaining <= 0) throw new Error(`timeout:${options.timeout}`)
+  return executeDockerRun(
+    {
+      ...spec,
+      args: ['container', 'start', '--attach', spec.containerName],
+      envFileContent: undefined,
+    },
+    { ...options, timeoutMs: remaining },
+  )
 }
 
 function executeDockerRun(
@@ -1352,4 +1485,50 @@ function runCleanupCommand(
     child.once('error', (error) => finish(false, error.message))
     child.once('close', (code) => finish(code === 0))
   })
+}
+
+/** Captured by the daemon before creation; never assembled from an operator-supplied cleanup path. */
+export interface DockerContainerIdentity {
+  dockerPath: string
+  executableIdentity: ProtectedDockerExecutableIdentity
+  endpoint: string
+  containerName: string
+}
+
+export async function terminateRecordedContainer(
+  identity: DockerContainerIdentity,
+  creationAcknowledged = false,
+): Promise<boolean> {
+  try {
+    validateContainerName(identity.containerName)
+    if (!identity.containerName.startsWith('bazilion-')) return false
+    await assertDockerExecutableIdentity(identity.dockerPath, identity.executableIdentity)
+    await assertLocalDockerSocket(identity.endpoint)
+    let removalIdentity = identity.containerName
+    if (!creationAcknowledged) {
+      // Docker can silently return success for `rm --force` of a nonexistent name.
+      // Observe a real immutable ID first; otherwise a late create remains possible.
+      const observed = (
+        await runDockerInspection(
+          identity.dockerPath,
+          ['container', 'inspect', '--format', '{{.Id}}', identity.containerName],
+          { DOCKER_HOST: identity.endpoint },
+          'container recovery identity',
+        )
+      ).trim()
+      if (!/^[a-f0-9]{64}$/.test(observed)) return false
+      removalIdentity = observed
+    }
+    await removePreflightContainer(
+      identity.dockerPath,
+      removalIdentity,
+      {
+        DOCKER_HOST: identity.endpoint,
+      },
+      true,
+    )
+    return true
+  } catch {
+    return false
+  }
 }

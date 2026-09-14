@@ -1,14 +1,15 @@
 ---
-id: BAZ-044
+id: BAZ-043
 title: Revision-bound coding review and handoff
-status: draft
+status: todo
 size: L
 created: 2026-09-07
+refined: 2026-09-09
 priority: medium
 note: Later coding increment; review a captured change and prepare an evidence-backed handoff without automatic publication.
 ---
 
-# BAZ-044 — Revision-bound coding review and handoff
+# BAZ-043 — Revision-bound coding review and handoff
 
 ## User stories
 
@@ -27,7 +28,7 @@ requested review by an existing Agent, then export a useful handoff through curr
 
 ## Why and current baseline
 
-Verified against Bazilion `13c3a63` (v0.14.2) on 2026-09-07:
+Reviewed against the BAZ-039/040 remake at `81aaa31` on 2026-09-09:
 
 - [Messaging](../../../apps/daemon/src/runtime/tools/messaging.ts) and Team Policy already support
   Agent collaboration. A message asking another Agent to review does not itself freeze the code
@@ -40,11 +41,20 @@ Verified against Bazilion `13c3a63` (v0.14.2) on 2026-09-07:
   connects source review to Git handoff. Bazilion should preserve the operator's requested completion
   boundary and distinguish review evidence from publication or production acceptance.
 
+## Task experience and incremental value
+
+“Fix this and ask Alex to review it” creates the captured packet during the task. The coder yields,
+Alex inspects its bounded read-only scope, and findings return to the conversation. Ordinary peer
+messages already work in BAZ-040; this story adds immutable review input and enforced static-review
+capability. Creating a packet in a management form is not a prerequisite. A concise change summary
+and findings appear first; evidence, exports and optional editor handoff remain secondary actions.
+
 ## Scope
 
 ### Captured review packet
 
-- An authenticated operator selects the originating Team/conversation and a BAZ-042 snapshot.
+- A coding Agent creates a packet for its current task and a BAZ-042 snapshot through turn-bound
+  IPC; an authenticated operator can request the same action from chat.
   Show the request/acceptance summary, captured base and proposed change, existing dirty state,
   relevant BAZ-041 checks, known limitations, and unresolved findings.
 - Source identifiers are immutable. Model-authored summaries are labelled commentary; commands,
@@ -59,9 +69,10 @@ Verified against Bazilion `13c3a63` (v0.14.2) on 2026-09-07:
 - Let the operator inspect files/hunks, add findings with severity and snapshot/path/line context,
   and record a review conclusion. Resolving a finding requires an explicit decision or a linked
   subsequent revision; a changed line number alone cannot prove the issue was fixed.
-- An explicitly selected existing reviewer Agent receives the exact approved packet through
-  canonical messaging and Team Policy, preserving Agent membership, sender/recipient scope, and
-  the existing approval and loop controls. Do not broadcast the private transcript by default.
+- An existing reviewer selected during the task by the operator or authorized coding Agent receives
+  the exact approved packet through canonical messaging and Team Policy, preserving Agent
+  membership, sender/recipient scope, and existing approval and loop controls. Do not broadcast the
+  private transcript by default.
 - Bind reviewer input and results to the captured revision. Start with static review: scoped
   read-only snapshot/context access, no unrestricted host tools, no source-workspace edits, no
   installation or checks executed by the reviewer. Reuse BAZ-041 evidence for test results.
@@ -117,8 +128,7 @@ Verified against Bazilion `13c3a63` (v0.14.2) on 2026-09-07:
   [BAZ-041](BAZ-041-coding-command-verification.md) executor-owned verification.
 - Uses [BAZ-034](../done/BAZ-034-durable-agent-deliverables.md) for durable exports and
   [BAZ-035](../done/BAZ-035-conversation-library.md) for exact conversation references. No new chat store.
-- [BAZ-043](BAZ-043-isolated-coding-workspaces.md) enables parallel assignment ownership later;
-  static review of an immutable snapshot must remain possible without managed worktrees.
+- Static review of an immutable snapshot does not require managed worktrees or parallel checkouts.
 - Later than the initial coding milestone. If runtime-enforced Agent review and editor handoff
   exceed L together, split operator packet/export from the reviewer capability before moving to todo.
 
@@ -141,14 +151,16 @@ general approval workflows, and treating peer review as an execution authorizati
 - Exercise local and remote editor mappings, missing files, snapshot/live divergence, hostile
   filenames, and proof that review completion cannot trigger Git or deployment side effects.
 
-## Open Questions
+## Refinement decisions
 
-- **Review capability:** define the minimal read-only snapshot tools and policy delivery binding.
-  Recommended: a selected runtime capability for static evidence inspection, never a global
-  permission reduction on an Agent or reuse of the learning-review lifecycle.
-- **Review conclusion:** choose a small vocabulary and rules for unresolved findings. Recommended:
-  distinguish the reviewer's recommendation from the operator's acceptance, both scoped to revision.
-- **Retention and external state:** decide packet retention and representation of user-reported
-  commit/PR/deployment links. Keep reported and independently verified states visibly distinct.
-- **Publication follow-up:** an explicit commit/push/draft-PR story can follow once exact change
-  selection, credentials, and user authorization boundaries are defined; do not include it by stealth.
+- Dispatch a dedicated static-review invocation with only bounded snapshot metadata/content,
+  repository-context lookup for that captured scope, findings submission and messaging. Do not
+  provide Bash, edit/write, browser, MCP or learning-review capabilities.
+- Use `changes_requested`, `commented`, and `recommended` as reviewer conclusions. Findings retain
+  severity and snapshot references. Operator acceptance is a separate explicit fact for the same
+  revision; unresolved findings remain visible in every conclusion.
+- Retain packets and findings for seven days unless an export is deliberately published through
+  BAZ-034. User-reported commit, PR or deployment links are labelled reported; only evidence checked
+  through a future dedicated integration may be labelled verified.
+- Commit, push and PR creation remain outside this story. A later story must define exact selected
+  changes, credential ownership and explicit authorization before adding publication actions.

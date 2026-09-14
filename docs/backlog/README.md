@@ -27,53 +27,48 @@ docs/backlog/
 
 ---
 
-## Draft (8)
-
-| ID | Title | Size | Notes |
-|----|-------|------|-------|
-| [BAZ-039](draft/BAZ-039-repository-coding-context.md) | Repository context and coding onboarding within a Team | M | Coding first slice: bounded repository instructions, provenance, and command suggestions |
-| [BAZ-040](draft/BAZ-040-coding-environment-readiness.md) | Prepared per-Team coding environments and truthful readiness | L | Prepared local toolchains and explicit finite probes under the actual execution posture |
-| [BAZ-041](draft/BAZ-041-coding-command-verification.md) | Live coding command output and snapshot-bound verification | L | Retained logs and executor-owned check outcomes with code/environment freshness |
-| [BAZ-042](draft/BAZ-042-git-change-review.md) | Git changes and review beside coding conversations | M | Read-only diffs, explicit dirty baselines, and revision-bound feedback |
-| [BAZ-043](draft/BAZ-043-isolated-coding-workspaces.md) | Isolated coding workspaces for parallel assignments | L | Later: canonical Team checkout ownership, writer coordination, and safe Git metadata access |
-| [BAZ-044](draft/BAZ-044-coding-review-handoff.md) | Revision-bound coding review and handoff | L | Later: captured changes, scoped reviewer access, and handoff exports; publication deferred |
-| [BAZ-045](draft/BAZ-045-specialist-verification-handoff.md) | Specialist verification of a captured code change | L | After the coding milestone: same-Team tester, captured checks, coordinated execution, and scoped evidence |
-| [BAZ-046](draft/BAZ-046-controlled-deployment-execution.md) | Controlled deployment execution and verified outcomes | L | After specialist testing: one configured backend, exact release authorization, and observed deployment/health |
-
-Drafted on 2026-09-07 from the OpenClaw 2.0 / Hermes desktop review and current Bazilion code.
-BAZ-034 through BAZ-038 shipped in v0.15.0 through PRs #44 and #45. Track decisions and acceptance evidence
-in [the milestone progress log](BAZ-035-038-progress.md). Sizes are provisional; each draft records
-open decisions and boundaries to resolve before moving to `todo/`. Desktop packaging and Team
-conversation views remain later ideas rather than part of this initial slice.
-
-Coding drafts BAZ-039 through BAZ-044 were added on 2026-09-07. The initial coding milestone is
-BAZ-039 through BAZ-042: follow repository instructions, use a prepared environment, run the relevant
-finite checks, and return a persistent diff with verifiable results for a small real-repository bug.
-Refine context and environment first; command evidence and Git review can proceed in parallel once
-their shared snapshot contract is agreed. BAZ-034 supplies reusable durable-output primitives.
-BAZ-043 adds parallel workspace ownership later, followed by BAZ-044's review/handoff experience;
-static review itself does not require managed worktrees. Managed previews, language-server features,
-and automatic commit/push/PR publication are outside these first coding drafts.
-
-Specialist integration drafts BAZ-045 and BAZ-046 were added on 2026-09-07. Existing Profiles,
-Team Templates, and policy-controlled messaging already support specialist collaboration. Refine
-BAZ-045 after BAZ-039 through BAZ-042 for a coder-to-tester handoff with snapshot-bound check evidence;
-coordinated same-Team verification does not require BAZ-043's managed parallel workspaces or
-BAZ-044's static review UI. Follow with BAZ-046 for an explicitly authorized deployment through one
-configured backend, consuming an already published revision/artifact and verifying the actual
-outcome. Automatic Git publication and managed service/browser test environments remain separate
-later story candidates. Neither draft introduces a general pipeline engine or turns communication
-approval into permission to deploy.
-
-## Todo (0)
+## Draft (0)
 
 | ID | Title | Size | Notes |
 |----|-------|------|-------|
 
-## In Progress (0)
+The original coding stories were drafted on 2026-09-07 from the OpenClaw 2.0 / Hermes desktop
+review. BAZ-034 through BAZ-038 shipped in v0.15.0 through PRs #44 and #45; their decisions and
+acceptance evidence remain in [the milestone progress log](BAZ-035-038-progress.md). Desktop
+packaging and Team conversation views remain later ideas rather than part of this coding sequence.
+
+Coding stories BAZ-039 through BAZ-044 were reviewed on 2026-09-09 after the Agent-led
+BAZ-039/040 remake. The remake is implemented and manually accepted; PR #46 commit `81aaa31`
+passed CI. Merge/release remain separate. See [acceptance](BAZ-039-040-agent-led-acceptance.md)
+and the [successor-story review](design/coding-successors-review.md).
+
+The next sequence is **041 → 042 → 043 or 044**, based on whether the next task needs static review or
+specialist testing. BAZ-041 makes ordinary commands observable and diagnostics recoverable.
+BAZ-042 owns captured source identity, changes beside chat, and applicability of those command
+receipts. BAZ-044 adds finite, snapshot-bound tester capability; BAZ-043 adds read-only reviewer
+capability and handoff evidence. Neither adds basic delegation, which BAZ-040 already provides.
+There is no mandatory tester-to-reviewer-to-deployer pipeline.
+
+Managed parallel checkouts and controlled deployment were removed from this backlog sequence.
+Writer coordination already exists; checkout lifecycle and deployment integration can be proposed
+later from a concrete use case. Automatic Git publication, managed services/previews and ambient Pi
+extension loading remain separate, uncommitted scope.
+
+## Todo (4)
 
 | ID | Title | Size | Notes |
 |----|-------|------|-------|
+| [BAZ-041](todo/BAZ-041-coding-command-verification.md) | Live coding progress and retained diagnostics in chat | M | Next: extend existing command cards/receipts with live output and authorized retained logs |
+| [BAZ-042](todo/BAZ-042-git-change-review.md) | Git changes and review beside coding conversations | M | Agent-captured baselines, read-only diffs, source-bound check applicability and feedback |
+| [BAZ-043](todo/BAZ-043-coding-review-handoff.md) | Revision-bound coding review and handoff | L | Agent-requested static review of captured changes; enforced read-only scope; publication deferred |
+| [BAZ-044](todo/BAZ-044-specialist-verification-handoff.md) | Specialist verification of a captured code change | L | After 042: formal captured-change testing; reuse existing same-Team delegation and receipts |
+
+## In Progress (2)
+
+| ID | Title | Size | Notes |
+|----|-------|------|-------|
+| [BAZ-039](in_progress/BAZ-039-repository-coding-context.md) | Agents discover repository context while working | M | Agent-led remake validated locally; review/release pending. [Acceptance](BAZ-039-040-agent-led-acceptance.md) |
+| [BAZ-040](in_progress/BAZ-040-coding-environment-readiness.md) | Agents prepare and check their environment during a task | L | Agent tools, offline preparation and inbox handoff validated locally; review/release pending. [Acceptance](BAZ-039-040-agent-led-acceptance.md) |
 
 ## Done (33)
 

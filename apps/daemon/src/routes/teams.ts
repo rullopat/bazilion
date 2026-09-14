@@ -9,6 +9,7 @@ import type {
   SetTeamUserMdRequest,
 } from '@bazilion/api-types'
 import { type Context, Hono } from 'hono'
+import { CodingEnvironmentValidationError } from '../core/coding-environment/config.ts'
 import {
   adoptTeamTemplate,
   deleteTeam,
@@ -21,8 +22,17 @@ import {
   updateTeamPolicySource,
 } from '../core/index.ts'
 import { validateSlug } from '../core/profile/validate.ts'
+import { CodingEnvironmentRevisionError } from '../core/repos/coding-environment.ts'
+import type { AuthVariables } from '../lib/auth.ts'
+import {
+  codingEnvironmentStatus,
+  configureTeamCodingEnvironment,
+  mutateTeamWorkspace,
+} from '../lib/coding-environment/management.ts'
+import { WorkspaceBusyError } from '../lib/coding-environment/workspace.ts'
 import { getCtx } from '../lib/ctx.ts'
 import { sanitizeNativeModuleError } from '../lib/native-module-error.ts'
+import { resolveRepositoryContext } from '../lib/repository-context/index.ts'
 import { validateTopicNameFormat } from '../lib/telegram/naming.ts'
 import { syncGroupTopicNames } from '../lib/telegram/topic-rename.ts'
 import { qmdBackend } from '../runtime/index.ts'
@@ -31,7 +41,7 @@ import { qmdBackend } from '../runtime/index.ts'
 // blow out the system prompt.
 const USER_MD_MAX_BYTES = 12_000
 
-export const teamsRouter = new Hono()
+export const teamsRouter = new Hono<{ Variables: AuthVariables }>()
 
 teamsRouter.get('/', (c) => {
   const { db, paths } = getCtx()
@@ -57,6 +67,61 @@ teamsRouter.get('/:id', (c) => {
   const g = teamRepo.get(db, c.req.param('id'), paths)
   if (!g) return c.json({ error: `team not found: ${c.req.param('id')}` }, 404)
   return c.json(g)
+})
+
+teamsRouter.get('/:id/repository-context', async (c) => {
+  const { db, paths } = getCtx()
+  const team = teamRepo.get(db, c.req.param('id'), paths)
+  if (!team) return c.json({ error: 'Team not found' }, 404)
+  c.header('Cache-Control', 'no-store')
+  return c.json(
+    await resolveRepositoryContext({
+      teamId: team.id,
+      root: team.path,
+      target: c.req.query('target'),
+    }),
+  )
+})
+
+teamsRouter.get('/:id/coding-environment', async (c) => {
+  const { db, paths } = getCtx()
+  const team = teamRepo.get(db, c.req.param('id'), paths)
+  if (!team) return c.json({ error: 'Team not found' }, 404)
+  c.header('Cache-Control', 'no-store')
+  return c.json(await codingEnvironmentStatus(db, team))
+})
+
+teamsRouter.put('/:id/coding-environment', async (c) => {
+  const { db, paths } = getCtx()
+  const team = teamRepo.get(db, c.req.param('id'), paths)
+  if (!team) return c.json({ error: 'Team not found' }, 404)
+  const body: unknown = await c.req.json().catch(() => null)
+  if (
+    !body ||
+    typeof body !== 'object' ||
+    Array.isArray(body) ||
+    Object.keys(body).some((key) => !['expectedRevision', 'config'].includes(key))
+  )
+    return c.json({ error: 'Invalid coding environment request' }, 400)
+  const request = body as { expectedRevision: number; config: unknown }
+  try {
+    const environment = await configureTeamCodingEnvironment(
+      db,
+      team,
+      request.expectedRevision,
+      request.config,
+    )
+    c.header('Cache-Control', 'no-store')
+    return c.json(environment)
+  } catch (error) {
+    if (error instanceof WorkspaceBusyError)
+      return c.json({ error: error.message, code: error.message }, 409)
+    if (error instanceof CodingEnvironmentRevisionError)
+      return c.json({ error: error.message, code: 'environment_revision_conflict' }, 409)
+    if (error instanceof CodingEnvironmentValidationError)
+      return c.json({ error: error.message }, 400)
+    return c.json({ error: 'Coding environment paths could not be validated' }, 400)
+  }
 })
 
 teamsRouter.get('/:id/policy', (c) => {
@@ -315,7 +380,7 @@ teamsRouter.post('/:id/policy/update-source', async (c) => {
   }
 })
 
-teamsRouter.delete('/:id', (c) => {
+teamsRouter.delete('/:id', async (c) => {
   const { db, paths } = getCtx()
   try {
     const rawRevision = c.req.query('expectedTeamPolicyRevision')
@@ -327,9 +392,15 @@ teamsRouter.delete('/:id', (c) => {
     ) {
       return c.json({ error: 'expectedTeamPolicyRevision must be a positive integer' }, 400)
     }
-    deleteTeam(db, paths, c.req.param('id'), expectedTeamPolicyRevision as number)
+    const team = teamRepo.get(db, c.req.param('id'), paths)
+    if (!team) return c.json({ error: 'Team not found' }, 404)
+    await mutateTeamWorkspace(db, team, () =>
+      deleteTeam(db, paths, team.id, expectedTeamPolicyRevision as number),
+    )
     return c.body(null, 204)
   } catch (err) {
+    if (err instanceof WorkspaceBusyError)
+      return c.json({ error: err.message, code: err.message }, 409)
     const message = (err as Error).message
     return c.json(
       {

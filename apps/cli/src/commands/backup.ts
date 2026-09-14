@@ -34,6 +34,7 @@ import { pipeline } from 'node:stream/promises'
 import { Decrypter, Encrypter } from 'age-encryption'
 import { defineCommand } from 'citty'
 import { extract, list, type ReadEntry } from 'tar'
+import { invalidateRestoredCodingEvidence } from '../backup-coding-recovery.ts'
 import { pauseRestoredUserQueue } from '../backup-queue-recovery.ts'
 import { assertCanonicalBackupSchema } from '../backup-schema.ts'
 import { loadClientConfig } from '../client.ts'
@@ -553,6 +554,7 @@ function rebaseRestoredHomeDirectories(
           )
         }
       }
+      invalidateRestoredCodingEvidence(db, payload, targetHome)
       db.exec('COMMIT')
       transactionOpen = false
     } catch (error) {

@@ -1,14 +1,28 @@
 import type { ChatFrame } from '@bazilion/api-types'
 import { agentReviewRepo, mergeSecretsIntoEnv, providerStateRepo } from '../core/index.ts'
+import { interruptCodingCommands } from '../core/repos/coding-commands.ts'
 import { spawnWorkerTurn } from '../runtime/index.ts'
+import {
+  type DockerContainerIdentity,
+  preflightProtectedDockerEngine,
+} from '../runtime/shell/docker.ts'
+import { resolveShellSecurityConfig } from '../runtime/shell/security.ts'
+import { ownsActiveAgent } from './agent-cancel.ts'
 import { resolveAgentApiKey } from './api-key.ts'
 import { commandApprovalRegistry } from './bash-approval.ts'
 import { isBrowserEnabled, resolveBrowserConfig } from './browser/config.ts'
 import { createBrowserHost } from './browser/host.ts'
+import { createCodingHost } from './coding-environment/agent-host.ts'
+import { codingSecrets } from './coding-environment/diagnostics.ts'
+import { workspaceLifecycle } from './coding-environment/lifecycle.ts'
 import { getCtx } from './ctx.ts'
 import { resolveMcpForTurn } from './mcp/resolve.ts'
 import { createDbMessagingHost } from './messaging-host.ts'
 import { type LiveQuestionHost, questionServiceFor } from './question-service.ts'
+import {
+  requireCompleteRepositoryContext,
+  resolveRepositoryContext,
+} from './repository-context/index.ts'
 import { createResultHost } from './result-host.ts'
 import { authorizeBackgroundResult } from './result-library-delivery.ts'
 import { reconcilePrivateResults } from './result-retention.ts'
@@ -18,6 +32,8 @@ import {
   consumePreparedAgentTurn,
   type PreparedAgentTurn,
   prepareAgentTurn,
+  preparedContainerLease,
+  preparedWorkerLifecycle,
   releasePreparedAgentTurn,
 } from './turn-preparation.ts'
 import { createDbUserMdHost } from './user-md-host.ts'
@@ -42,15 +58,77 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
       : undefined
     const messagingHost = createDbMessagingHost(db, {
       causalParentMessageId: turn.causalParentMessageId,
+      workspace: { root: agent.team.path, paths, agentId: agent.agent.id },
     })
     const userMdHost = createDbUserMdHost(db, paths)
     const resultHost = createResultHost(db, paths, agent, turn.controller.signal, turn.conversation)
+    let contextBusy = false
+    const repositoryContextHost = async (target: string) => {
+      turn.controller.signal.throwIfAborted()
+      if (!ownsActiveAgent(agent.agent.id, turn.controller) || contextBusy)
+        throw new Error('Repository context unavailable for this turn')
+      contextBusy = true
+      try {
+        const report = await resolveRepositoryContext({
+          teamId: agent.team.id,
+          root: agent.team.path,
+          target,
+          expectedRootIdentity: turn.repositoryContext.rootIdentity ?? 'unavailable',
+        })
+        turn.controller.signal.throwIfAborted()
+        if (!ownsActiveAgent(agent.agent.id, turn.controller))
+          throw new Error('Repository context turn ended')
+        return report
+      } finally {
+        contextBusy = false
+      }
+    }
+    const selectedDocker = turn.protectedExecution?.docker ?? turn.configuredDocker?.docker
+    const codingHost = createCodingHost({
+      db,
+      agentId: agent.agent.id,
+      teamId: agent.team.id,
+      turnId,
+      root: agent.team.path,
+      posture: turn.protectedExecution ? 'protected' : selectedDocker ? 'docker' : 'host',
+      imageId: selectedDocker?.imageId ?? null,
+      values: selectedDocker?.coding?.env ?? {},
+      context: repositoryContextHost,
+      assertActive: () => {
+        if (!ownsActiveAgent(agent.agent.id, turn.controller)) throw new Error('Coding turn ended')
+      },
+      secrets: codingSecrets(mergeSecretsIntoEnv(db, authToken)),
+    })
+    const repositoryContext = await repositoryContextHost(turn.repositoryContext.target)
+    requireCompleteRepositoryContext(repositoryContext)
+    const containerLease = preparedContainerLease(turn)
+    const containerNamespace = containerLease.writer.id
+    const containerHost = (runtime: Omit<DockerContainerIdentity, 'containerName'>) => {
+      const lifecycle = workspaceLifecycle(db).containers(containerLease, runtime)
+      return {
+        beforeCreate: (containerName: string) =>
+          lifecycle.beforeCreate({
+            dockerPath: runtime.dockerPath,
+            endpoint: runtime.endpoint,
+            executableIdentity: runtime.executableIdentity,
+            containerName,
+          }),
+        afterCreate: (containerName: string) => lifecycle.afterCreate(containerName),
+        afterRemove: (containerName: string) => lifecycle.afterRemove(containerName),
+      }
+    }
     let frames: AsyncGenerator<ChatFrame, void, void>
     if (turn.surface === 'configured_operator_http') {
       if (invocation.kind !== 'operator_http') {
         throw new Error('configured operator surface requires an operator_http invocation')
       }
       const env = mergeSecretsIntoEnv(db, authToken)
+      const shellConfig = resolveShellSecurityConfig(env)
+      const dockerEngine =
+        turn.configuredDocker?.docker ??
+        (shellConfig.sandboxMode === 'docker'
+          ? await preflightProtectedDockerEngine({ image: shellConfig.sandboxImage, hostEnv: env })
+          : undefined)
       const enabledProviders = Array.from(providerStateRepo.listEnabled(db))
       const { apiKey, refreshApiKey } = await resolveAgentApiKey(db, authToken, agent, {
         withRefresher: true,
@@ -61,6 +139,9 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
       frames = spawnWorkerTurn(
         {
           kind: 'configured_operator_http',
+          containerNamespace,
+          ...(turn.configuredDocker ? { configuredDocker: turn.configuredDocker } : {}),
+          repositoryContext,
           agent,
           message: turn.message,
           conversation: turn.conversation,
@@ -76,6 +157,10 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
         {
           env,
           signal: turn.controller.signal,
+          resourceLifecycle: preparedWorkerLifecycle(turn),
+          containerHost: dockerEngine ? containerHost(dockerEngine) : undefined,
+          repositoryContextHost,
+          codingHost,
           messagingHost,
           resultHost,
           userMdHost,
@@ -97,6 +182,8 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
       frames = spawnWorkerTurn(
         {
           kind: 'protected',
+          containerNamespace,
+          repositoryContext,
           agent,
           message: turn.message,
           conversation: turn.conversation,
@@ -111,6 +198,10 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
         },
         {
           signal: turn.controller.signal,
+          resourceLifecycle: preparedWorkerLifecycle(turn),
+          containerHost: containerHost(prepared.docker),
+          repositoryContextHost,
+          codingHost,
           messagingHost,
           resultHost,
           userMdHost,
@@ -150,9 +241,10 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
       agentReviewRepo.recordSuccessfulUserTurn(db, agent.agent.id)
     }
   } finally {
+    interruptCodingCommands(getCtx().db, turnId)
     questionHost?.close()
     mirrorTypingStop(agent.agent.id)
-    releasePreparedAgentTurn(turn)
+    await releasePreparedAgentTurn(turn)
     reconcilePrivateResults(getCtx().db)
   }
 }

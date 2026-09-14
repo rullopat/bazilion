@@ -34,6 +34,20 @@ export class BashApprovalDeniedError extends Error {
 
 type BashToolDefinition = ReturnType<typeof createBashToolDefinition>
 
+export async function requireBashApproval(
+  command: string,
+  toolCallId: string,
+  signal?: AbortSignal,
+  host?: BashApprovalHost,
+): Promise<void> {
+  const risks = classifyBashCommand(command)
+  if (!risks.length) return
+  const decision = host
+    ? await host.requestApproval({ toolCallId, command, risks, signal })
+    : 'denied'
+  if (decision !== 'approved') throw new BashApprovalDeniedError(risks)
+}
+
 /**
  * Wrap Pi's bash ToolDefinition at the tool-call boundary, where the stable
  * toolCallId is available. BashOperations is deliberately left untouched so
@@ -45,19 +59,7 @@ export function createApprovalGatedBashTool(base: BashToolDefinition, host?: Bas
     description: `${base.description} Commands classified as dangerous require operator approval before execution.`,
     executionMode: 'sequential',
     async execute(toolCallId, params, signal, onUpdate, ctx) {
-      const risks = classifyBashCommand(params.command)
-      if (risks.length > 0) {
-        const decision = host
-          ? await host.requestApproval({
-              toolCallId,
-              command: params.command,
-              risks,
-              signal,
-            })
-          : 'denied'
-
-        if (decision !== 'approved') throw new BashApprovalDeniedError(risks)
-      }
+      await requireBashApproval(params.command, toolCallId, signal, host)
 
       return base.execute(toolCallId, params, signal, onUpdate, ctx)
     },

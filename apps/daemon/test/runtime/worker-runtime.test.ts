@@ -3,6 +3,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  readFileSync,
   realpathSync,
   rmSync,
   symlinkSync,
@@ -13,6 +14,10 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { ResolvedAgent } from '@bazilion/api-types'
 import { afterEach, describe, expect, test, vi } from 'vitest'
+import { openDb } from '../../src/core/db/client.ts'
+import { runMigrations } from '../../src/core/db/migrate.ts'
+import { workspaceLifecycle } from '../../src/lib/coding-environment/lifecycle.ts'
+import { resolveRepositoryContext } from '../../src/lib/repository-context/index.ts'
 import type { MemoryBackend } from '../../src/runtime/memory/types.ts'
 import { createProtectedBazilionCustomTools } from '../../src/runtime/pi/tools.ts'
 import type { ProtectedDockerRuntime } from '../../src/runtime/shell/docker.ts'
@@ -30,8 +35,13 @@ import {
   type ProtectedWorkerSpec,
   parseWorkerInput,
 } from '../../src/runtime/worker/runtime.ts'
-import { formatWorkerExitFailure, spawnWorkerTurn } from '../../src/runtime/worker/spawn.ts'
+import {
+  formatWorkerExitFailure,
+  spawnReviewWorker,
+  spawnWorkerTurn,
+} from '../../src/runtime/worker/spawn.ts'
 import { seedConversationTarget } from '../fixtures/conversation.ts'
+import { emptyRepositoryContext } from '../fixtures/repository-context.ts'
 
 const cleanup: string[] = []
 afterEach(() => {
@@ -39,6 +49,137 @@ afterEach(() => {
 })
 
 describe('minimal worker runtime', () => {
+  test('lost host worker cannot release ownership of Pi detached shell work after restart', async () => {
+    const root = tempRoot()
+    const prepared = protectedSpec(root)
+    const dbPath = join(root, 'host-recovery.db')
+    let db = openDb(dbPath)
+    runMigrations(db)
+    let workerPid: number | undefined
+    let shellPid: number | undefined
+    const marker = join(prepared.paths.teamDir, 'fixture-host-shell-pid')
+    try {
+      const lifecycle = workspaceLifecycle(db)
+      const lease = await lifecycle.claim(prepared.agent.team.id, prepared.paths.teamDir, 'agent')
+      const worker = lifecycle.worker(lease)
+      const collect = async () => {
+        for await (const _frame of spawnWorkerTurn(
+          {
+            kind: 'configured_operator_http',
+            agent: prepared.agent,
+            repositoryContext: prepared.repositoryContext,
+            conversation: prepared.conversation,
+            message: 'Fixture host command',
+            enabledProviders: ['openai-codex'],
+            turnId: 'host-recovery-fixture',
+            bashApprovalMode: 'auto_deny',
+          },
+          {
+            env: { ...process.env, BAZILION_BASH_SANDBOX: 'off' },
+            resourceLifecycle: {
+              beforeInput(pid, hostCommands) {
+                workerPid = pid
+                expect(hostCommands).toBe(true)
+                worker.beforeInput(pid, hostCommands)
+              },
+              afterExit: (normal) => worker.afterExit(normal),
+            },
+            workerEntryPath: fileURLToPath(
+              new URL('../fixtures/worker-host-detached-entry.ts', import.meta.url),
+            ),
+          },
+        )) {
+          /* Consume through the observed worker failure. */
+        }
+      }
+      const result = expect(collect()).rejects.toThrow('Worker cleanup could not be confirmed')
+      await vi.waitFor(() => expect(existsSync(marker)).toBe(true), { timeout: 10000 })
+      shellPid = Number(readFileSync(marker, 'utf8'))
+      if (!workerPid || !shellPid) throw new Error('Fixture process identity missing')
+      process.kill(-workerPid, 'SIGKILL')
+      await result
+      process.kill(shellPid, 0)
+      await lifecycle.release(lease)
+      db.close()
+      db = openDb(dbPath)
+      const restarted = workspaceLifecycle(db)
+      await expect(
+        restarted.claim(prepared.agent.team.id, prepared.paths.teamDir, 'agent'),
+      ).rejects.toThrow('workspace_recovery_required')
+      process.kill(shellPid, 0)
+      process.kill(-shellPid, 'SIGKILL')
+      // Absence of known PIDs still cannot prove the entire lost host command tree stopped.
+      await expect(
+        restarted.claim(prepared.agent.team.id, prepared.paths.teamDir, 'agent'),
+      ).rejects.toThrow('workspace_recovery_required')
+    } finally {
+      if (!shellPid) {
+        try {
+          shellPid = Number(readFileSync(marker, 'utf8'))
+        } catch {}
+      }
+      for (const pid of [workerPid, shellPid]) {
+        if (pid) {
+          try {
+            process.kill(-pid, 'SIGKILL')
+          } catch {}
+        }
+      }
+      db.close()
+    }
+  })
+  test('unconfirmed descendant output ends the transport but remains blocked after database reopen', async () => {
+    const root = tempRoot()
+    const spec = protectedSpec(root)
+    const dbPath = join(root, 'recovery.db')
+    let db = openDb(dbPath)
+    runMigrations(db)
+    let descendant: number | undefined
+    try {
+      const lifecycle = workspaceLifecycle(db)
+      const lease = await lifecycle.claim(spec.agent.team.id, spec.paths.teamDir, 'agent')
+      const collect = async () => {
+        for await (const _frame of spawnWorkerTurn(spec, {
+          ...scopedHosts(),
+          apiKeyRefreshHost: { refresh: async () => 'rotated' },
+          resourceLifecycle: lifecycle.worker(lease),
+          workerEntryPath: fileURLToPath(
+            new URL('../fixtures/worker-output-holder-entry.ts', import.meta.url),
+          ),
+        })) {
+          /* Consume the transport through termination, including a possible done frame. */
+        }
+      }
+      await expect(collect()).rejects.toThrow('Worker cleanup could not be confirmed')
+      descendant = Number(readFileSync(join(spec.paths.teamDir, 'fixture-descendant-pid'), 'utf8'))
+      process.kill(descendant, 0)
+      await lifecycle.release(lease)
+      db.close()
+      db = openDb(dbPath)
+      const restarted = workspaceLifecycle(db)
+      await expect(
+        restarted.claim(spec.agent.team.id, spec.paths.teamDir, 'agent'),
+      ).rejects.toThrow('workspace_recovery_required')
+      process.kill(descendant, 0)
+      process.kill(-descendant, 'SIGKILL')
+      const next = await restarted.claim(spec.agent.team.id, spec.paths.teamDir, 'agent')
+      await restarted.release(next)
+    } finally {
+      if (!descendant) {
+        try {
+          descendant = Number(
+            readFileSync(join(spec.paths.teamDir, 'fixture-descendant-pid'), 'utf8'),
+          )
+        } catch {}
+      }
+      if (descendant) {
+        try {
+          process.kill(-descendant, 'SIGKILL')
+        } catch {}
+      }
+      db.close()
+    }
+  })
   test('constructs an exact POSIX environment with no ambient startup or credential values', () => {
     const scratch = createMinimalWorkerScratch()
     try {
@@ -122,6 +263,23 @@ describe('minimal worker runtime', () => {
     }
     try {
       expect(parseWorkerInput(input)).toEqual(input)
+      const missingContext = structuredClone(input) as Record<string, unknown>
+      delete missingContext.repositoryContext
+      expect(() => parseWorkerInput(missingContext)).toThrow(
+        /missing required fields: repositoryContext/,
+      )
+      expect(() =>
+        parseWorkerInput({
+          ...input,
+          repositoryContext: { ...input.repositoryContext, teamId: 'other-team' },
+        }),
+      ).toThrow(/repository context/)
+      expect(() =>
+        parseWorkerInput({
+          ...input,
+          repositoryContext: { ...input.repositoryContext, extra: true },
+        }),
+      ).toThrow(/repository context/)
       const missing = structuredClone(input) as Record<string, unknown>
       delete missing.runtime
       expect(() => parseWorkerInput(missing)).toThrow(/missing required fields: runtime/)
@@ -246,6 +404,88 @@ describe('minimal worker runtime', () => {
     expect(withQuestion.filter((name) => name !== 'ask_user')).toEqual(names)
     expect(names.some((name) => name.startsWith('browser_'))).toBe(false)
     expect(names.some((name) => name.startsWith('mcp_'))).toBe(false)
+  })
+
+  test.each([
+    'configured',
+    'protected',
+  ] as const)('repository refresh IPC is scoped and rejects caller-supplied identity (%s)', async (surface) => {
+    const root = tempRoot()
+    const prepared = protectedSpec(root)
+    const teamRoot = prepared.agent.team.path
+    mkdirSync(join(teamRoot, 'nested'))
+    writeFileSync(join(teamRoot, 'nested', 'AGENTS.md'), 'IPC_NESTED_SENTINEL')
+    const initial = await resolveRepositoryContext({
+      teamId: prepared.agent.team.id,
+      root: teamRoot,
+    })
+    const host = vi.fn((target: string) =>
+      resolveRepositoryContext({
+        teamId: prepared.agent.team.id,
+        root: teamRoot,
+        target,
+        expectedRootIdentity: initial.rootIdentity ?? 'missing',
+      }),
+    )
+    for (const mode of ['valid', 'forged']) {
+      const frames = []
+      const options = {
+        ...scopedHosts(),
+        repositoryContextHost: host,
+        apiKeyRefreshHost: { refresh: async () => 'fixture-token' },
+        workerEntryPath: fileURLToPath(
+          new URL('../fixtures/worker-repository-context-entry.ts', import.meta.url),
+        ),
+      }
+      const iterator =
+        surface === 'protected'
+          ? spawnWorkerTurn({ ...prepared, repositoryContext: initial, message: mode }, options)
+          : spawnWorkerTurn(
+              {
+                kind: 'configured_operator_http',
+                repositoryContext: initial,
+                agent: prepared.agent,
+                conversation: prepared.conversation,
+                message: mode,
+                turnId: 'context-test',
+                enabledProviders: [],
+                apiKey: prepared.runtime.apiKey,
+                bashApprovalMode: 'auto_deny',
+              },
+              { ...options, env: {} },
+            )
+      for await (const frame of iterator) frames.push(frame)
+      if (mode === 'valid') {
+        expect(JSON.stringify(frames)).toContain('IPC_NESTED_SENTINEL')
+        expect(host).toHaveBeenCalledWith('nested/new.ts')
+      } else expect(JSON.stringify(frames)).toContain('Invalid repository context request')
+    }
+    expect(host).toHaveBeenCalledTimes(1)
+  })
+
+  test('restricted-review IPC never receives a repository context host', async () => {
+    const prepared = protectedSpec(tempRoot())
+    const host = vi.fn(async () => prepared.repositoryContext)
+    await expect(
+      spawnReviewWorker(
+        {
+          kind: 'restricted_review',
+          agentId: prepared.agent.agent.id,
+          message: 'valid',
+          turnId: 'review-context',
+          runtime: prepared.runtime,
+          review: { reviewId: 'review', evidence: [] },
+        },
+        {
+          repositoryContextHost: host,
+          apiKeyRefreshHost: { refresh: async () => 'fixture-token' },
+          workerEntryPath: fileURLToPath(
+            new URL('../fixtures/worker-repository-context-entry.ts', import.meta.url),
+          ),
+        },
+      ),
+    ).rejects.toThrow(/without a repositoryContextHost/)
+    expect(host).not.toHaveBeenCalled()
   })
 
   test('spawns with exact minimal env, closes stdin, redacts rotated diagnostics, and cleans scratch', async () => {
@@ -557,6 +797,7 @@ function protectedSpec(root: string, accessToken = 'initial-access-token'): Prot
   const docker = fakeDockerRuntime(teamDir, memoryDir)
   return {
     kind: 'protected',
+    repositoryContext: emptyRepositoryContext(agent.team.id),
     conversation: seedConversationTarget(sessionsDir, teamDir),
     agent,
     message: 'test protected runtime',
