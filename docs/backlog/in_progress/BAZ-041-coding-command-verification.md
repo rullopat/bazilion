@@ -1,7 +1,7 @@
 ---
 id: BAZ-041
 title: Live coding progress and retained diagnostics in chat
-status: todo
+status: in_progress
 size: M
 created: 2026-09-07
 refined: 2026-09-09

@@ -42,31 +42,32 @@ BAZ-039/040 remake. The remake shipped in v0.16.0 through PR #46 and version PR 
 [acceptance](BAZ-039-040-agent-led-acceptance.md) and the
 [successor-story review](design/coding-successors-review.md).
 
-The next sequence is **041 → 042 → 043 or 044**, based on whether the next task needs static review or
-specialist testing. BAZ-041 makes ordinary commands observable and diagnostics recoverable.
-BAZ-042 owns captured source identity, changes beside chat, and applicability of those command
-receipts. BAZ-044 adds finite, snapshot-bound tester capability; BAZ-043 adds read-only reviewer
-capability and handoff evidence. Neither adds basic delegation, which BAZ-040 already provides.
-There is no mandatory tester-to-reviewer-to-deployer pipeline.
+The next sequence is **041 + 042 → 043 or 044**, based on whether the next task needs static
+review or specialist testing. BAZ-041 and BAZ-042 are paired in one release because they share the receipt and
+snapshot evidence model: 042 attaches source identity to the receipts 041 makes observable, and a
+two-release split would need two clean-install schema revisions for one feature area. BAZ-044 adds
+finite, snapshot-bound tester capability; BAZ-043 adds read-only reviewer capability and handoff
+evidence. Neither adds basic delegation, which BAZ-040 already provides. There is no mandatory
+tester-to-reviewer-to-deployer pipeline.
 
 Managed parallel checkouts and controlled deployment were removed from this backlog sequence.
 Writer coordination already exists; checkout lifecycle and deployment integration can be proposed
 later from a concrete use case. Automatic Git publication, managed services/previews and ambient Pi
 extension loading remain separate, uncommitted scope.
 
-## Todo (4)
+## Todo (2)
 
 | ID | Title | Size | Notes |
 |----|-------|------|-------|
-| [BAZ-041](todo/BAZ-041-coding-command-verification.md) | Live coding progress and retained diagnostics in chat | M | Next: extend existing command cards/receipts with live output and authorized retained logs |
-| [BAZ-042](todo/BAZ-042-git-change-review.md) | Git changes and review beside coding conversations | M | Agent-captured baselines, read-only diffs, source-bound check applicability and feedback |
 | [BAZ-043](todo/BAZ-043-coding-review-handoff.md) | Revision-bound coding review and handoff | L | Agent-requested static review of captured changes; enforced read-only scope; publication deferred |
 | [BAZ-044](todo/BAZ-044-specialist-verification-handoff.md) | Specialist verification of a captured code change | L | After 042: formal captured-change testing; reuse existing same-Team delegation and receipts |
 
-## In Progress (0)
+## In Progress (2)
 
 | ID | Title | Size | Notes |
 |----|-------|------|-------|
+| [BAZ-041](in_progress/BAZ-041-coding-command-verification.md) | Live coding progress and retained diagnostics in chat | M | Next release: live output plus authorized retained diagnostics on existing receipts |
+| [BAZ-042](in_progress/BAZ-042-git-change-review.md) | Git changes and review beside coding conversations | M | Next release: captured baselines, read-only diffs, source-bound check applicability |
 
 ## Done (35)
 

@@ -141,7 +141,7 @@ Extend that distinction instead of replacing it with an unqualified “coding re
 
 - Implement after BAZ-039 establishes repository context and command provenance; do not duplicate its
   instruction discovery. Existing runtime preflight remains mandatory independently of this story.
-- [BAZ-041](../todo/BAZ-041-coding-command-verification.md) can provide richer live output and durable check
+- [BAZ-041](../in_progress/BAZ-041-coding-command-verification.md) can provide richer live output and durable check
   evidence later. It is optional for bounded readiness probes; neither story depends on the other's
   completed UI. Agree shared command identity and result shapes before implementing overlapping code.
 - First deliver Team selection, passive status, finite probes, and preparation guidance. Split

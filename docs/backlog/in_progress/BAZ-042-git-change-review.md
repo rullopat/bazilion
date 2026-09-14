@@ -1,7 +1,7 @@
 ---
 id: BAZ-042
 title: Git changes and review beside coding conversations
-status: todo
+status: in_progress
 size: M
 created: 2026-09-07
 refined: 2026-09-09
