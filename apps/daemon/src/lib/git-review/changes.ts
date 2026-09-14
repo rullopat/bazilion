@@ -1,82 +1,25 @@
+import {
+  type ContentOmission,
+  REVIEW_LIMITS,
+  type RepositoryChanges,
+  type ReviewChange,
+  type ReviewChangeStatus,
+  type ReviewIssue,
+  type ReviewLimits,
+} from '@bazilion/api-types'
 import type { CapturedGit } from '../git/capture.ts'
 import { type PinnedBase, type RepositoryIdentity, ReviewBaseError } from './identity.ts'
-import type { ReviewIssue } from './issue.ts'
-import { reviewScope, type ScopeReason } from './scope.ts'
+import { reviewScope } from './scope.ts'
 
 // Change inventory and bounded diffs for Git change review (BAZ-042 slice 3).
 //
 // Two read-only Git invocations describe the same change set: `--raw` carries the status letter,
 // modes and rename source, while `--numstat` carries line counts and binary markers. They are
 // merged by destination path. Patches are read per file, bounded, and say so when truncated.
-
-/** Refinement limits: 1,000 files, 1 MiB per text file, 16 MiB total captured content. */
-export interface ReviewLimits {
-  files: number
-  fileBytes: number
-  totalBytes: number
-  /** Rendered patch cap per file; a longer diff is cut and marked truncated. */
-  patchBytes: number
-}
-
-export const REVIEW_LIMITS: ReviewLimits = {
-  files: 1000,
-  fileBytes: 1024 * 1024,
-  totalBytes: 16 * 1024 * 1024,
-  patchBytes: 256 * 1024,
-}
-
-export type ReviewChangeStatus =
-  | 'added'
-  | 'modified'
-  | 'deleted'
-  | 'renamed'
-  | 'copied'
-  | 'type_changed'
-  | 'unmerged'
-  | 'untracked'
-  | 'unknown'
-
-/** Why an entry carries no content. Never a silent omission. */
-export type ContentOmission =
-  | 'untracked_not_selected'
-  | 'excluded'
-  | 'binary'
-  | 'too_large'
-  | 'total_limit'
-  | 'file_limit'
-  | 'unavailable'
-
-export interface ReviewChange {
-  /** Repository-relative path, destination side for renames. */
-  path: string
-  /** Source path for a rename or copy, otherwise null. */
-  previousPath: string | null
-  status: ReviewChangeStatus
-  /** True when Git reports the file as binary (`-` counts). */
-  binary: boolean
-  addedLines: number | null
-  deletedLines: number | null
-  oldMode: string | null
-  newMode: string | null
-  /** Unified diff text, or null when content was omitted. */
-  patch: string | null
-  patchTruncated: boolean
-  contentOmitted: ContentOmission | null
-  /** Set when the file was excluded by scope policy. */
-  excludedReason: ScopeReason | null
-}
-
-export interface RepositoryChanges {
-  base: PinnedBase
-  identity: RepositoryIdentity
-  /** Tracked changes and in-scope untracked names, sorted by path. */
-  changes: ReviewChange[]
-  /** True when the change list itself was cut by the file limit. */
-  truncated: boolean
-  /** In-scope files whose content was never attached because the total cap was reached. */
-  withheld: { untracked: number; excluded: number; binary: number; tooLarge: number }
-  issues: ReviewIssue[]
-}
+//
+// The wire shapes live in `@bazilion/api-types`; re-exported so daemon callers keep one path.
+export type { ContentOmission, RepositoryChanges, ReviewChange, ReviewChangeStatus, ReviewLimits }
+export { REVIEW_LIMITS }
 
 /**
  * List changes between a pinned base and the working tree.

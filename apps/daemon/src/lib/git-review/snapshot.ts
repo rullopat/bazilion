@@ -1,9 +1,32 @@
+import {
+  REVIEW_LIMITS,
+  type RepositoryIdentity,
+  type ReviewIssue,
+  type ReviewIssueCode,
+  type ReviewLimits,
+  type ReviewScopeReason,
+  type SnapshotComparison,
+  type SnapshotEntry,
+  type SnapshotEntryKind,
+  type SnapshotEntryLayer,
+  type SnapshotReference,
+  type SourceSnapshot,
+} from '@bazilion/api-types'
 import type { CapturedGit } from '../git/capture.ts'
 import { type ContextDirectory, hash, relativeParts } from '../repository-context/files.ts'
-import { listChanges, REVIEW_LIMITS, type ReviewLimits } from './changes.ts'
-import type { PinnedBase, RepositoryIdentity } from './identity.ts'
-import type { ReviewIssue, ReviewIssueCode } from './issue.ts'
-import { reviewScope, type ScopeReason } from './scope.ts'
+import { listChanges } from './changes.ts'
+import type { PinnedBase } from './identity.ts'
+import { reviewScope } from './scope.ts'
+
+// Wire shapes live in `@bazilion/api-types`; re-exported so daemon callers keep one import path.
+export type {
+  SnapshotComparison,
+  SnapshotEntry,
+  SnapshotEntryKind,
+  SnapshotEntryLayer,
+  SnapshotReference,
+  SourceSnapshot,
+}
 
 // Source snapshots for Git change review (BAZ-042 slice 4).
 //
@@ -17,64 +40,17 @@ import { reviewScope, type ScopeReason } from './scope.ts'
 //
 // Modification times are deliberately never used: they cannot distinguish a real edit from a touch.
 
-export type SnapshotEntryLayer = 'worktree' | 'untracked'
-
-export type SnapshotEntryKind = 'file' | 'deleted' | 'not_regular' | 'too_large' | 'unstable'
-
-export interface SnapshotEntry {
-  path: string
-  layer: SnapshotEntryLayer
-  kind: SnapshotEntryKind
-  /** sha256 of the captured bytes, or null when no content could be read. */
-  digest: string | null
-  bytes: number | null
-}
-
-export interface SourceSnapshot {
-  /**
-   * Content-addressed id over everything that identifies this state. Identical trees produce the
-   * same id, and `capturedAt` is deliberately excluded so the id never depends on when it was taken.
-   * `complete` is included, so an incomplete manifest can never share an id with a complete one.
-   */
-  id: string
-  capturedAt: number
-  /** False whenever any entry could not be fingerprinted; applicability must then be unknown. */
-  complete: boolean
-  identity: RepositoryIdentity
-  base: PinnedBase
-  head: string | null
-  /** Digest of the staged entries (mode/oid/stage/path), or null when the index is unreadable. */
-  indexDigest: string | null
-  indexEntries: number
-  entries: SnapshotEntry[]
-  /** Untracked paths the caller explicitly asked to include. */
-  untrackedIncluded: string[]
-  /** Paths refused by scope policy, recorded so an omission is never invisible. */
-  exclusions: { path: string; reason: ScopeReason }[]
-  withheld: { excluded: number; tooLarge: number; notRegular: number; unstable: number }
-  limits: ReviewLimits
-  issues: ReviewIssue[]
-}
-
-/** The immutable reference BAZ-041 receipts and BAZ-043 handoff carry. */
-export interface SnapshotReference {
-  id: string
-  complete: boolean
-  capturedAt: number
-}
-
+/** The small immutable handoff a receipt or a verification request carries. */
 export function snapshotReference(snapshot: SourceSnapshot): SnapshotReference {
   return { id: snapshot.id, complete: snapshot.complete, capturedAt: snapshot.capturedAt }
 }
 
 /**
- * Applicability of one snapshot against another, for a receipt or a verification handoff.
+ * Applicability of one snapshot against another.
  *
  * `unknown` is the honest answer whenever either side is incomplete — a snapshot that could not
  * fingerprint everything must never be reported as unchanged.
  */
-export type SnapshotComparison = 'identical' | 'changed' | 'unknown'
-
 export function compareSnapshots(
   before: SourceSnapshot,
   after: SourceSnapshot,
@@ -228,7 +204,7 @@ export async function captureSourceSnapshot(
 
   // --- explicitly included untracked layer -----------------------------------------------------
   const untrackedIncluded: string[] = []
-  const exclusions: { path: string; reason: ScopeReason }[] = []
+  const exclusions: { path: string; reason: ReviewScopeReason }[] = []
   for (const path of [...new Set(input.includeUntracked ?? [])].sort()) {
     const scoped = reviewScope(path)
     if (!scoped.included) {

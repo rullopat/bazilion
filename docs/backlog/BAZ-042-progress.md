@@ -115,8 +115,14 @@ So BAZ-042 adds **readers over that harness**, not another harness.
 4c. **Still open from this slice:** the turn-bound Agent capture tool and the operator-requested
    capture, linking BAZ-041 receipts to a before/after snapshot reference, and promoting the review
    and snapshot types into hermetic `api-types` (done at the start of slice 5, which needs them).
-5. **Surfaces.** Team-scoped HTTP routes, `@bazilion/client`, CLI list/show/diff parity, then the web
-   review panel beside chat (over the wire types promoted in slice 4b).
+5. **Surfaces.**
+   - **Types promoted (done).** `packages/api-types/src/git-review.ts` now owns the review and
+     snapshot wire shapes (identity, pinned base, change entries, limits and `REVIEW_LIMITS`,
+     snapshot entries, `SourceSnapshot`, `SnapshotReference`, comparison, scope reason and the
+     request/response envelopes). The daemon modules re-export what they previously declared, so
+     callers keep one import path and this stayed a pure move.
+   - Still to do: Team-scoped HTTP routes, `@bazilion/client`, CLI list/show/diff parity, then the web
+     review panel beside chat.
 6. **Feedback.** File/hunk selection carrying repository + snapshot + path + original line context,
    stale-hunk refresh, reuse of BAZ-036 for busy-turn queueing.
 

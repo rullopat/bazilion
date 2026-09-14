@@ -12,9 +12,11 @@
  *    content is attached; untracked credential-shaped names are withheld entirely and only counted.
  */
 
-export type ScopeReason = 'bazilion_state' | 'credential_shaped'
+import type { ReviewScopeReason } from '@bazilion/api-types'
 
-export type ScopeDecision = { included: true } | { included: false; reason: ScopeReason }
+export type { ReviewScopeReason as ScopeReason }
+
+export type ScopeDecision = { included: true } | { included: false; reason: ReviewScopeReason }
 
 /** Bazilion-owned paths inside a Team tree, relative to the Team root. */
 const BAZILION_STATE_PREFIXES = ['memory/']

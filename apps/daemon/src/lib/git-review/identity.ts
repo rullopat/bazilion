@@ -1,30 +1,16 @@
+import type { PinnedBase, RepositoryIdentity } from '@bazilion/api-types'
 import type { CapturedGit } from '../git/capture.ts'
 import type { ReviewIssueCode } from './issue.ts'
 import { isCommitOid, ReviewRefError, validateRefName } from './refs.ts'
+
+// Wire shapes are defined once in `@bazilion/api-types`; re-exported so daemon callers keep one
+// import path.
+export type { PinnedBase, RepositoryIdentity } from '@bazilion/api-types'
 
 // Repository identity and comparison-base resolution for Git change review (BAZ-042).
 //
 // Every read goes through the shared hardened capture, so no repository config, hook, filter,
 // credential helper or external metadata link can influence what is reported here.
-
-export interface RepositoryIdentity {
-  /** Current branch name, or null when HEAD is detached. */
-  branch: string | null
-  /** Commit HEAD points at, or null when the branch is unborn. */
-  head: string | null
-  headState: 'branch' | 'detached' | 'unborn'
-}
-
-/**
- * A comparison point pinned to a concrete commit.
- *
- * `resolvedOid` is the only value a comparison may use. Keeping `requestedRef` alongside it lets a
- * surface say what was asked for while a branch tip moving later cannot silently rewrite the review.
- */
-export interface PinnedBase {
-  requestedRef: string
-  resolvedOid: string
-}
 
 export class ReviewBaseError extends Error {
   readonly code: ReviewIssueCode

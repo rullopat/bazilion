@@ -1128,6 +1128,30 @@ export type {
   NewConversationInput,
 } from './conversations.ts'
 export type {
+  CaptureSourceSnapshotRequest,
+  ContentOmission,
+  PinnedBase,
+  RepositoryChanges,
+  RepositoryIdentity,
+  RepositoryReviewResponse,
+  ReviewChange,
+  ReviewChangeStatus,
+  ReviewIssue,
+  ReviewIssueCode,
+  ReviewLimits,
+  ReviewScopeReason,
+  SnapshotComparison,
+  SnapshotEntry,
+  SnapshotEntryKind,
+  SnapshotEntryLayer,
+  SnapshotReference,
+  SourceSnapshot,
+  SourceSnapshotListResponse,
+  SourceSnapshotResponse,
+  SourceSnapshotSummary,
+} from './git-review.ts'
+export { REVIEW_LIMITS } from './git-review.ts'
+export type {
   EditQueuedInput,
   EnqueueUserInput,
   QueueAttachment,
