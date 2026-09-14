@@ -1,7 +1,8 @@
 # BAZ-042 implementation progress
 
-Started: 2026-09-14. Status: in progress (foundation slice landed). Branch
-`feat/baz-041-042-coding-evidence`, continuing from the completed BAZ-041 work.
+Started: 2026-09-14. Status: in progress — slices 1 and 2 landed. Branch
+`feat/baz-041-042-coding-evidence`, continuing from the completed BAZ-041 work. Commits are batched
+locally and pushed when the story is further along, not per slice.
 
 Story: [BAZ-042](in_progress/BAZ-042-git-change-review.md).
 
@@ -33,17 +34,32 @@ So BAZ-042 adds **readers over that harness**, not another harness.
 1. **Shared capture (done here).** Extracted the scratch/config/env/bounds prologue into
    `apps/daemon/src/lib/git/capture.ts` (`findRepositoryRoot`, `captureRepositoryGit`) and rewrote
    `inspectGit` to use it. No behavior change intended; BAZ-039's tests are the proof.
-2. **Repository identity and base resolution.** Branch / detached / unborn state, resolving a movable
-   branch to a concrete commit before any comparison, and refusing to silently re-point an existing
-   review when the branch tip moves.
+2. **Repository identity and base resolution (done).** `lib/git-review/refs.ts` and
+   `lib/git-review/identity.ts`:
+   - `readRepositoryIdentity` distinguishes branch / detached / unborn (an unborn branch reports its
+     name with a null head).
+   - `resolveComparisonBase` validates a caller-supplied ref, then resolves it to a concrete commit
+     with `--end-of-options` so it can never be read as an option. A base is refused (`invalid_base`)
+     for anything option-like, whitespace-bearing, `..`/`@{`/`//`, trailing `/` or `.`, `.lock`,
+     over-long or empty — and **no Git process starts** in that case. An unknown ref fails
+     explicitly (`unknown_base`) rather than falling back to HEAD, which would silently review the
+     wrong thing.
+   - `PinnedBase` carries `requestedRef` (what the operator asked for) alongside `resolvedOid` (the
+     only value a comparison may use), so a moved tip cannot rewrite an existing review.
+   Discovered while testing: **one capture freezes the refs it read**, because `.git` metadata is
+   copied into private scratch at capture time. A commit made while the capture is open does not
+   change what that review sees, and a refresh needs a new capture. That is a stronger guarantee
+   than pinning alone, but it means slice 4's snapshot must record the capture instant rather than
+   assume it can re-read live refs later.
 3. **Change inventory and bounded diffs.** Tracked modified/added/deleted/renamed, untracked
    *names* only (content needs explicit selection), rename/mode/binary indicators, per-file and total
-   size caps, visible truncation, `incomplete` states.
+   size caps, visible truncation, `incomplete` states. Once the document shape stops moving, promote
+   the review types into hermetic `api-types` so routes, client and web share one definition.
 4. **Snapshot manifests.** Bounded before/after manifests (HEAD, index, dirty tracked bytes,
    explicitly included untracked content) with recorded exclusions and limits, plus the immutable
    snapshot reference shared with BAZ-041/BAZ-043 for applicability.
-5. **Surfaces.** Hermetic wire types in `api-types`, Team-scoped HTTP routes, `@bazilion/client`,
-   CLI list/show/diff parity, then the web review panel beside chat.
+5. **Surfaces.** Team-scoped HTTP routes, `@bazilion/client`, CLI list/show/diff parity, then the web
+   review panel beside chat (over the wire types promoted in slice 3).
 6. **Feedback.** File/hunk selection carrying repository + snapshot + path + original line context,
    stale-hunk refresh, reuse of BAZ-036 for busy-turn queueing.
 
@@ -66,5 +82,9 @@ So BAZ-042 adds **readers over that harness**, not another harness.
 - Slice 1 additions: `apps/daemon/test/core/git-capture.test.ts` covers a second read-only invocation
   through the shared capture (diff/rev-parse/status), helper non-execution during a diff, an
   unchanged index/worktree fingerprint, a non-repository root and a refused `commondir` layout.
-- Whole-tree: typecheck, format and lint clean; full suite 1556 passed / 7 skipped (202 files);
-  security acceptance 74 cases passed.
+- Slice 2 additions: `apps/daemon/test/core/git-review-identity.test.ts` covers branch/detached/
+  unborn identity, tag and raw-oid bases, a blob refused as a base, a tip that moves between two
+  captures, the single-capture freeze, and twelve unsafe ref shapes that must be refused before Git
+  runs (asserted with a recording wrapper, not inferred).
+- Whole-tree after slice 2: typecheck, format and lint clean; full suite 1574 passed / 7 skipped
+  (203 files); security acceptance 74 cases passed (slice 1 measured 1556 / 202 files).
