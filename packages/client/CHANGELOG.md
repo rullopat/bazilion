@@ -15,9 +15,9 @@
   older homes.
 
 - [#46](https://github.com/rullopat/bazilion/pull/46) [`0832ce9`](https://github.com/rullopat/bazilion/commit/0832ce9b2ddd78d9c30d9ad9195775d6ec0971a3) Thanks [@rullopat](https://github.com/rullopat)! - Add Team repository inspection, scoped AGENTS.md context for coding Agents, and passive command
-  suggestions with source provenance. Inspect and refresh through the Team page, `bazilion team
-context`, or the authenticated client/API. Repository discovery remains daemon-owned, bounded, and
-  separate from execution permission.
+  suggestions with source provenance. Inspect and refresh through the Team page,
+  `bazilion team context`, or the authenticated client/API. Repository discovery remains
+  daemon-owned, bounded, and separate from execution permission.
 
 ### Patch Changes
 
