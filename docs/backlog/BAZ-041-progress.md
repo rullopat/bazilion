@@ -1,10 +1,10 @@
 # BAZ-041 implementation progress
 
-Started: 2026-09-14 (resumed). Status: daemon/API/CLI/Telegram/web complete, locally green,
-covered by 10 BAZ-041 cases in the adversarial release gate, and observed in real Docker — see
-[the acceptance record](BAZ-041-acceptance.md). What remains before delivery is one real-model turn,
-not feature code. The retained-log browser read is deliberately first-page-only (no
-search/pagination) in this pass.
+Started: 2026-09-14 (resumed). Status: complete against the story's acceptance criteria. Feature
+work, the adversarial gate (12 BAZ-041 cases) and local acceptance are done, including a real-model
+turn on real Docker — see [the acceptance record](BAZ-041-acceptance.md). Every acceptance
+criterion is observed or suite-proven; nothing blocks delivery. The retained-log browser read is
+deliberately first-page-only (no search/pagination) in this pass.
 
 Story: [BAZ-041](in_progress/BAZ-041-coding-command-verification.md).
 Branch: `feat/baz-041-042-coding-evidence`.
@@ -108,17 +108,24 @@ push is included; BAZ-041 stays unshipped.
 - `pnpm test`: 1547 passed, 7 skipped (197 files).
 - `pnpm security:acceptance`: 72 required adversarial cases passed, 12 owned by BAZ-041.
 - `pnpm --filter @bazilion/web typecheck` clean.
+- Real-model turn on real Docker (Fireworks `deepseek-v4-flash-0731`): chose `coding_command`
+  unprompted; `succeeded` and `failed` receipts; retained diagnostics readable across a restart.
 - Local acceptance on a disposable home with a fake provider and real Docker: see
   [BAZ-041-acceptance.md](BAZ-041-acceptance.md). Criteria 1, 2 and 6 observed; 3 and 4 partly
   observed; 5 proven locally.
 
 ## Remaining work
 
-**Blocking delivery — one acceptance run, not code:**
+**No blocking items.** All acceptance criteria are observed or suite-proven. Criterion 1's real
+form is closed: a real model (Fireworks, `deepseek-v4-flash-0731`) chose `coding_command` from one
+ordinary sentence on a real Docker turn.
 
-1. **A real-model turn.** Live progress, retention, restart persistence and web/CLI parity were
-   observed with a *scripted* fake provider, so criterion 1's "a real model chooses the command
-   from an ordinary prompt" is still unproven. One run on a disposable home closes it.
+**Related defects found while accepting (outside this story):**
+
+1. **An unknown model id misroutes credentials to another vendor** — a `fireworks:` id absent from
+   pi-ai's catalog was sent to OpenAI's endpoint carrying the Fireworks key, so a typo discloses a
+   provider API key to a different provider. Fails open; needs a ticket of its own. Reproduction and
+   mechanism in the acceptance record.
 
 **Optional strengthening:**
 
@@ -152,16 +159,17 @@ push is included; BAZ-041 stays unshipped.
 ## Acceptance map
 
 1. Live changing output without a setup form — implemented (executor `onUpdate`, daemon/event/web)
-   and **observed in real Docker** (10 cumulative frames, no duplication, no setup form).
-   Real-model command selection still unproven.
+   and **observed in real Docker** (10 cumulative frames, no duplication, no setup form) and with a
+   **real model**, which chose `coding_command` from one ordinary sentence.
 2. Failure diagnostics after scratch cleanup; operator reopen — retention + API/CLI/Telegram/web
    control done (first page only; search/paging deferred) and **observed**: container gone, 61
    bytes read back, unchanged across a daemon restart, reopened from a reloaded chat card.
 3. Distinct terminal states; no replay on disconnect — BAZ-040 behavior preserved; progress is
-   cumulative so reconnect cannot duplicate output. **Succeeded vs. cancelled observed**; timeout,
-   worker loss and preflight failure remain suite-covered only.
+   cumulative so reconnect cannot duplicate output. **Succeeded, cancelled and a real-model
+   `failed` (exitCode 1) observed**; timeout, worker loss and preflight failure remain
+   suite-covered only.
 4. Held output inaccessible; redaction/control bytes/hostile markup — audience gate, redaction
-   pipeline, React-escaped rendering; pinned by the 10 BAZ-041 adversarial cases in
+   pipeline, React-escaped rendering; pinned by the 12 BAZ-041 adversarial cases in
    `security/acceptance-manifest.json` plus unit coverage, and **observed at the read surface**
    (403, CLI refusal, "hasn't been shared" card) with the withheld state staged.
 5. Quota/truncation/expiry/deletion/persistence failure truthful — explicit truncation flag,

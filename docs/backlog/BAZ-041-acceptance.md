@@ -5,20 +5,52 @@ Audit date: 2026-09-14. Scope: local acceptance evidence for
 [the progress record](BAZ-041-progress.md). No release, merge, push or deployment is included and
 BAZ-041 remains unshipped.
 
-The run used a **disposable home** (`/tmp/baz041-home`), a **fake provider**
-([`scripts/fake-coding-provider.mjs`](../../scripts/fake-coding-provider.mjs)) and real Docker. No
-personal runtime state, real provider credential or Telegram message was involved.
+Most of the run used a **disposable home** (`/tmp/baz041-home`), a **fake provider**
+([`scripts/fake-coding-provider.mjs`](../../scripts/fake-coding-provider.mjs)) and real Docker — no
+personal runtime state or Telegram message. The real-model section below used an operator-supplied
+Fireworks API key stored only in the throwaway home.
 
 ## Acceptance criteria
 
 | Criterion | Observed evidence | Result |
 | --- | --- | --- |
-| 1. Live changing output from an ordinary chat request, no setup form | Real Docker turn emitted 10 cumulative `coding_progress` frames before the terminal receipt (each replacing the prior tail, so no duplication), then the receipt. Observed in the browser too. The Team needed no checks/catalog; the coding environment is optional when `BAZILION_BASH_SANDBOX_IMAGE` is set. | Observed |
+| 1. Live changing output from an ordinary chat request, no setup form | Real Docker turn emitted 10 cumulative `coding_progress` frames before the terminal receipt (each replacing the prior tail, so no duplication), then the receipt. Observed in the browser too. The Team needed no checks/catalog; the coding environment is optional when `BAZILION_BASH_SANDBOX_IMAGE` is set. **Closed with a real model** (see below): given one ordinary sentence, a real model chose `coding_command` unprompted. | Observed |
 | 2. Diagnostics survive scratch cleanup; operator reopen after navigation and restart | Container was gone while `bazilion team log` still returned all 61 retained bytes. Re-read succeeded unchanged after killing and restarting the daemon. Reopened from a reloaded chat card in the browser. | Observed |
-| 3. Cancel, timeout, worker loss, preflight failure and exits stay distinct; no replay | Observed `succeeded` (61 bytes) and `cancelled` (14 bytes = exactly the two ticks emitted before cancellation) as distinct receipts. Progress is cumulative, so reconnect cannot duplicate output. Timeout, worker-loss and preflight-failure states are covered by the suite, not observed here. | Partly observed |
+| 3. Cancel, timeout, worker loss, preflight failure and exits stay distinct; no replay | Observed `succeeded` (61 bytes) and `cancelled` (14 bytes = exactly the two ticks emitted before cancellation) as distinct receipts, plus a real-model `succeeded`/`failed` pair on the same script (`exitCode` 0 vs 1). Progress is cumulative, so reconnect cannot duplicate output. Timeout, worker-loss and preflight-failure states are covered by the suite, not observed here. | Partly observed |
 | 4. Held/denied output stays inaccessible; redaction and hostile bytes | A retained row with `released_at` NULL returned HTTP 403 (`Coding log has not been shared`) and the CLI printed `error: Coding log has not been shared`; the browser card rendered the explicit "hasn't been shared" copy rather than an empty box. The withheld state itself was **staged** (see caveats). | Partly observed |
 | 5. Quota, truncation, expiry, deletion and persistence failure are truthful | Observed truthful metadata: `observedBytes`=61, `byteLength`=61, 7.00-day expiry, plus explicit `truncated`/`redacted` columns. Quota eviction, expiry/deletion tombstones and persistence failure were **not** observed; they rest on the unit suite and the release gate. | Proven locally |
 | 6. Web/CLI outcome parity; no coverage inferred from an exit code | CLI read and browser card reported byte-for-byte identical retained output for the same command id. Outcome and applicability remain separate facts. | Observed |
+
+## Real-model turn
+
+Provider and model: Fireworks AI, `fireworks:accounts/fireworks/models/deepseek-v4-flash-0731`.
+Prompt (one ordinary sentence): *"Run the project's test suite (it is in app/) and investigate any
+failure you find."* The workspace held a fixture (`README.md`, `app/test.sh` that prints TAP-ish
+lines and exits 1 with a fabricated `Cannot find module 'fixture-dep'`).
+
+The model was **not** told which tool to use. It read the workspace with `bash`, then chose
+`coding_command` unprompted — which is criterion 1's real form, previously only demonstrated with a
+scripted fake provider.
+
+| turn | command | receipt | retained | released |
+| --- | --- | --- | --- | --- |
+| 1 | `sh /workspace/app/test.sh; echo "EXIT=$?"` | `succeeded` (exitCode 0 — the wrapper masked it) | 150 B | yes |
+| 2 | `/workspace/app/test.sh` | `failed` (exitCode 1) | 143 B | yes |
+
+The second turn was requested precisely because the first one's wrapper hid the script's exit code;
+the bare invocation produced `state: "failed"`, `exitCode: 1`, and the full diagnostic
+(`not ok 2 - dependency resolution` + `Error: Cannot find module 'fixture-dep'`), which stayed
+readable through `bazilion team log` and across a daemon restart. The model also correctly
+reported "it is the script's own exit code", i.e. it did not infer success from its wrapper.
+
+Friction observed (not defects, but they cost the model a turn):
+
+- It first passed `cwd: "/workspace"` — the container path it had just seen — and got
+  `Invalid coding environment cwd`, then self-corrected to `cwd: "."`. The tool takes a
+  Team-relative cwd, but the container is mounted at `/workspace`, so a model that has explored the
+  sandbox naturally reaches for the absolute path. The tool description could say so up front.
+- It ran the check through the generic `bash` tool as well as `coding_command`. Both work in Docker
+  mode; only the latter produces live progress and a retained log.
 
 ## Detailed observations
 
@@ -143,6 +175,40 @@ deliberately **not** done here: it is a second change to a security-relevant sto
 an opt-in posture, and the intended semantics (should approving a one-line summary disclose the
 whole retained log?) deserve an explicit decision.
 
+## Finding: an unknown model id routes credentials to a different vendor (open)
+
+Discovered while setting up the real-model run, and **not** fixed here because it is unrelated to
+BAZ-041. Two model ids on the same configured provider, same key:
+
+```
+fireworks:accounts/fireworks/models/deepseek-v4-flash-0731
+  -> 401 {"error":{"message":"The API key you provided is invalid.","code":"UNAUTHORIZED"}}
+         (Fireworks' own error shape; a direct curl to Fireworks matches it)
+
+fireworks:deepseek-flash-latest          (not in pi-ai's Fireworks catalog)
+  -> 401 {"message":"Incorrect API key provided: dummy-no********-key.
+         You can find your API key at https://platform.openai.com/account/api-keys."}
+         (OpenAI's error shape, for a request carrying the *Fireworks* key)
+```
+
+Mechanism (`runtime/providers/pi-runtime.ts`):
+
+```ts
+const known = runtime.getModel(piProviderName(providerName), modelId)
+if (known) return baseUrl ? { ...known, baseUrl } : known
+return fallbackPiModel(providerName, modelId, baseUrl)   // baseUrl: baseUrl ?? ''
+```
+
+`providerBaseUrl('fireworks', env)` returns `undefined`, so the fallback model is built with
+`baseUrl: ''`, no provider base URL is registered, and the request resolves to OpenAI's default
+endpoint — transmitting whichever provider credential was configured. Local/compat providers are
+unaffected because they supply a real base URL.
+
+Impact: a typo in a model string silently discloses that provider's API key to a different vendor.
+It fails **open** where it should fail closed. A fix would make `resolvePiModel` reject an id that is
+absent from the provider's catalog when no explicit base URL applies, with a clear error naming the
+provider.
+
 ## Caveats
 
 1. **Criterion 4's withheld state was staged in this run.** An existing retained row was
@@ -150,8 +216,10 @@ whole retained log?) deserve an explicit decision.
    surface end to end — route, proxy and UI copy — but is not genuine egress withholding. The real
    path is a Team Policy `approval_required` edge; the round trip is now covered by tests, but it
    was not re-run manually here.
-2. **No real-model turn.** The fake provider scripts the `coding_command` call, so "a real model
-   chooses to run a command from an ordinary prompt" is not established by this record.
+2. **The real-model run used one prompt, one model and a shell-only fixture.** It establishes that a
+   real model chooses `coding_command` unprompted and that the failure path retains usable
+   diagnostics, but it is one sample: other models, other environments and the story's original
+   "run the app test" wording against a real toolchain image are still untried.
 3. **Criterion 5's edges are unobserved.** Quota eviction, expiry/deletion tombstones and
    persistence failure are covered by `apps/daemon/test/core/coding-command-logs.test.ts` and the
    release gate, not by this run.
