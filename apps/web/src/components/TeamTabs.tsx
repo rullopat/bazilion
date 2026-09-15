@@ -6,6 +6,7 @@ const TABS = [
   { suffix: '/members', label: 'Members' },
   { suffix: '/policy', label: 'Policy' },
   { suffix: '/memory', label: 'Memory' },
+  { suffix: '/review', label: 'Review' },
   { suffix: '/results', label: 'Results' },
   { suffix: '/activity', label: 'Activity' },
 ] as const

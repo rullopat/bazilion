@@ -101,14 +101,14 @@ export async function readTeamReview(
   db: BazilionDb,
   paths: Paths,
   teamId: string,
-  input: { base?: string; patches?: boolean; limits?: ReviewLimits } = {},
+  input: { base?: string; patches?: boolean; patchPath?: string; limits?: ReviewLimits } = {},
 ): Promise<RepositoryReviewResponse> {
   const team = requireTeam(db, paths, teamId)
   const changes: RepositoryChanges = await withRepository(team.path, async (captured) => {
     const base = await resolveComparisonBase(captured, input.base ?? 'HEAD')
     const identity = await readRepositoryIdentity(captured)
     const listed = await listChanges(captured, base, identity, input.limits)
-    return input.patches ? attachPatches(captured, listed, input.limits) : listed
+    return input.patches ? attachPatches(captured, listed, input.limits, input.patchPath) : listed
   })
   return { teamId: team.id, changes }
 }

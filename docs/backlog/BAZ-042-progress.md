@@ -146,8 +146,21 @@ So BAZ-042 adds **readers over that harness**, not another harness.
      Patches stay opt-in so a caller that wants the file list does not pay for content. Errors map to
      machine codes: `invalid_base`/`unknown_base` → 400, `not_repository`/`unsupported_layout` → 409,
      `team_not_found` → 404. Untracked selection is validated and bounded before anything is read.
-   - Still to do: the web review panel beside chat (slice 5b), plus the tablet/phone narrow view,
-     keyboard feedback selection and the file/hunk feedback flow (slice 6).
+5b. **Web review panel (done).** `/teams/:id/review` (a `Review` tab beside the other Team
+   sections), backed by server functions in `apps/web/src/lib/git-review.ts` that follow the
+   `lib/auth.ts` precedent so the client bundle never ships the daemon URL or cookie machinery:
+   - Shows the pinned baseline (`branch · base HEAD (oid)`), the change list with status, counts,
+     rename arrows and binary/withheld reasons, a bounded diff for one selected file, and the
+     retained snapshots with an operator capture button.
+   - Truthful states rather than empty ones: a non-repository or unsupported layout renders an
+     explicit banner with its code, an incomplete snapshot is labelled *inapplicable* rather than
+     exact, and a withheld path says what was withheld instead of showing a bare zero. Wording lives
+     in `git-review-presentation.ts` as pure functions so it is unit-tested.
+   - Keyboard and narrow-screen: every row is a real button (Tab/Enter), the diff is a scrollable
+     `pre`, and controls stack at small widths.
+   - Single-file diffs: `GET /review?patches=1&path=<p>` reads only the requested patch, so opening
+     one file does not pull every patch; an empty or over-long `path` is refused.
+   - Still to do: the file/hunk feedback flow with stale-hunk refresh and BAZ-036 queueing (slice 6).
 6. **Feedback.** File/hunk selection carrying repository + snapshot + path + original line context,
    stale-hunk refresh, reuse of BAZ-036 for busy-turn queueing.
 
@@ -201,5 +214,9 @@ So BAZ-042 adds **readers over that harness**, not another harness.
   refused credential-shaped path recorded rather than read, a non-repository capture neither failing
   the command nor claiming completeness, and repeated/malformed/over-long capture calls being
   rejected.
-- Whole-tree after slice 4c: typecheck (root and web), format and lint clean; full suite 1626 passed
-  / 7 skipped (207 files); security acceptance 74 cases passed (slice 5 measured 1620 / 207 files).
+- Slice 5b additions: two route cases (a single-file diff not paying for the rest, and a refused
+  `path` parameter) and five web cases for the panel's wording — counts never rendered as a bare
+  zero, withheld and unselected files saying so, branch/detached/unborn labels, an unavailable review
+  reading as not reviewable rather than empty, and an incomplete snapshot never labelled exact.
+- Whole-tree after slice 5b: typecheck (root and web), format and lint clean; full suite 1633 passed
+  / 7 skipped (208 files); security acceptance 74 cases passed (slice 4c measured 1626 / 207 files).

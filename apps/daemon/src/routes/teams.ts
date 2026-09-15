@@ -170,10 +170,15 @@ teamsRouter.get('/:id/review', async (c) => {
   c.header('Cache-Control', 'no-store')
   const base = c.req.query('base')
   const patches = c.req.query('patches') === '1'
+  const patchPath = c.req.query('path')
+  if (patchPath !== undefined && (patchPath.length === 0 || patchPath.length > 4096)) {
+    return c.json({ error: 'Invalid path', code: 'invalid_path' }, 400)
+  }
   try {
     const review = await readTeamReview(db, paths, c.req.param('id'), {
       ...(base === undefined ? {} : { base }),
       patches,
+      ...(patchPath === undefined ? {} : { patchPath }),
     })
     return c.json(review)
   } catch (error) {

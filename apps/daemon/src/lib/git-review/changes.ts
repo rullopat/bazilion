@@ -178,11 +178,17 @@ export async function attachPatches(
   captured: CapturedGit,
   report: RepositoryChanges,
   limits: ReviewLimits = REVIEW_LIMITS,
+  onlyPath?: string,
 ): Promise<RepositoryChanges> {
   let total = 0
   let tooLarge = 0
   const changes: ReviewChange[] = []
   for (const change of report.changes) {
+    // A caller asking for one file's diff should not pay for (or receive) every other patch.
+    if (onlyPath !== undefined && change.path !== onlyPath) {
+      changes.push(change)
+      continue
+    }
     if (change.contentOmitted && change.contentOmitted !== 'binary') {
       changes.push(change)
       continue

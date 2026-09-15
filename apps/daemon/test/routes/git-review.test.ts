@@ -181,3 +181,26 @@ test.each([
   })
   expect(response.status).toBe(400)
 })
+
+test('a single-file diff is fetched without paying for the rest', async () => {
+  repo()
+  writeFileSync(join(teamDir(), 'app.txt'), 'one\ntwo\nthree\n')
+  writeFileSync(join(teamDir(), 'other.txt'), 'new file\n')
+  const response = await teamsRouter.request(
+    `/${env.teamId}/review?patches=1&path=${encodeURIComponent('app.txt')}`,
+  )
+  const body = (await response.json()) as RepositoryReviewResponse
+  const app = body.changes.changes.find((change) => change.path === 'app.txt')
+  const other = body.changes.changes.find((change) => change.path === 'other.txt')
+  expect(app?.patch).toContain('+three')
+  // The unrequested file is still listed, but its content was never read.
+  expect(other?.patch).toBeNull()
+})
+
+test('an empty or over-long path parameter is refused', async () => {
+  repo()
+  const empty = await teamsRouter.request(`/${env.teamId}/review?patches=1&path=`)
+  expect(empty.status).toBe(400)
+  const long = await teamsRouter.request(`/${env.teamId}/review?patches=1&path=${'x'.repeat(4097)}`)
+  expect(long.status).toBe(400)
+})
