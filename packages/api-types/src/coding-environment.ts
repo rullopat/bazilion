@@ -1,4 +1,6 @@
 /** Optional durable defaults; never a prerequisite for Agent coding commands. */
+import type { SnapshotReference } from './git-review.ts'
+
 export interface CodingEnvironmentValues {
   CI?: 'true' | 'false'
   NO_COLOR?: '0' | '1'
@@ -67,6 +69,15 @@ export interface CodingCommandReceipt extends Omit<CodingCommandOutcome, 'state'
   environment: CodingEnvironmentSnapshot
   startedAt: number
   finishedAt: number | null
+  /**
+   * Source-evidence references at the command's execution boundary (BAZ-042).
+   *
+   * `sourceBefore` is set only when this turn captured a starting snapshot; `sourceAfter` is
+   * captured when the receipt settles. Absent fields mean the source state was never captured for
+   * that receipt — applicability is unknown, and must not be inferred from the current tree.
+   */
+  sourceBefore?: SnapshotReference | null
+  sourceAfter?: SnapshotReference | null
 }
 export interface CodingReceiptView {
   receipt: CodingCommandReceipt

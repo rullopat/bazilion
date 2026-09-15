@@ -1147,6 +1147,7 @@ export type {
   SnapshotEntryLayer,
   SnapshotReference,
   SourceSnapshot,
+  SourceSnapshotCaptureResult,
   SourceSnapshotListResponse,
   SourceSnapshotResponse,
   SourceSnapshotSummary,

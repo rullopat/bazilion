@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { CodingCommandLogPage, CodingCommandReceipt } from '@bazilion/api-types'
@@ -9,6 +10,7 @@ import {
   interruptCodingCommands,
   saveCodingCommand,
 } from '../../src/core/repos/coding-commands.ts'
+import { getSourceSnapshot, listSourceSnapshots } from '../../src/core/repos/source-snapshots.ts'
 import { createCodingHost } from '../../src/lib/coding-environment/agent-host.ts'
 import { CodingDiagnostics, codingSecrets } from '../../src/lib/coding-environment/diagnostics.ts'
 import { createDbMessagingHost } from '../../src/lib/messaging-host.ts'
@@ -51,6 +53,7 @@ afterEach(() => {
 function host(agentId = owner, turnId = 'turn', secrets: string[] = []) {
   return createCodingHost({
     db: env.db,
+    paths: env.paths,
     agentId,
     teamId: env.teamId,
     turnId,
@@ -351,4 +354,163 @@ test('dangerous command approval remains mandatory and does not execute on denia
   )
   expect(JSON.parse((result.content[0] as { text: string }).text).state).toBe('blocked')
   expect(readFileSync(join(root, 'keep'), 'utf8')).toBe('preserve')
+})
+
+// ─── BAZ-042: turn-bound source snapshot + receipt linkage ────────────────────
+
+function gitInRoot(...args: string[]): string {
+  return execFileSync('git', ['-C', root, ...args], {
+    encoding: 'utf8',
+    env: {
+      PATH: '/usr/bin:/bin',
+      HOME: env.home,
+      GIT_CONFIG_NOSYSTEM: '1',
+      GIT_CONFIG_GLOBAL: '/dev/null',
+      GIT_AUTHOR_NAME: 'Test',
+      GIT_AUTHOR_EMAIL: 'test@example.invalid',
+      GIT_COMMITTER_NAME: 'Test',
+      GIT_COMMITTER_EMAIL: 'test@example.invalid',
+    },
+  }).trim()
+}
+
+function repoFixture(): void {
+  gitInRoot('init', '-q', '-b', 'main')
+  writeFileSync(join(root, 'app.txt'), 'one\n')
+  gitInRoot('add', '.')
+  gitInRoot('commit', '-qm', 'base')
+}
+
+test('the snapshot tool captures a start state and the receipt records it as sourceBefore', async () => {
+  repoFixture()
+  writeFileSync(join(root, 'app.txt'), 'changed before editing\n')
+  const h = host()
+  const captured = (await h.invoke({ action: 'snapshot', toolCallId: 'snap-1' })) as {
+    reference: { id: string; complete: boolean }
+    entries: number
+  }
+  expect(captured.reference.complete).toBe(true)
+  expect(captured.entries).toBe(1)
+
+  const started = (await h.invoke({
+    action: 'start',
+    toolCallId: 'call-1',
+    input: command,
+  })) as CodingCommandReceipt
+  expect(started.sourceBefore).toEqual(captured.reference)
+  expect(started.sourceAfter).toBeNull()
+
+  // The persisted snapshot is readable through the Team-scoped service, with agent provenance.
+  const stored = listSourceSnapshots(env.db, env.teamId)
+  expect(stored).toEqual([
+    expect.objectContaining({
+      snapshotId: captured.reference.id,
+      capturedBy: 'agent',
+      agentId: owner,
+      turnId: 'turn',
+      toolCallId: 'snap-1',
+    }),
+  ])
+})
+
+test('a finished command records the source state at its own execution boundary', async () => {
+  repoFixture()
+  const h = host()
+  const started = (await h.invoke({
+    action: 'start',
+    toolCallId: 'call-1',
+    input: command,
+  })) as CodingCommandReceipt
+  // No starting capture this turn: the before reference stays absent rather than being invented.
+  expect(started.sourceBefore).toBeNull()
+
+  const finished = (await h.invoke({
+    action: 'finish',
+    id: started.id,
+    outcome: {
+      state: 'succeeded',
+      exitCode: 0,
+      diagnostic: 'ok\n',
+      truncated: false,
+      reason: null,
+    },
+  })) as CodingCommandReceipt
+  expect(finished.sourceAfter?.complete).toBe(true)
+  expect(finished.state).toBe('succeeded')
+  // The reference is persisted, so a later verification can resolve it.
+  const stored = getSourceSnapshot(env.db, env.teamId, finished.sourceAfter?.id ?? 'missing')
+  expect(stored).not.toBeNull()
+})
+
+test('untracked content is opt-in, and a refused path is recorded rather than read', async () => {
+  repoFixture()
+  writeFileSync(join(root, 'notes.txt'), 'scratch\n')
+  writeFileSync(join(root, '.env'), 'SECRET=1\n')
+  const h = host()
+  const bare = (await h.invoke({ action: 'snapshot', toolCallId: 'snap-1' })) as {
+    includedUntracked: string[]
+    entries: number
+  }
+  expect(bare.includedUntracked).toEqual([])
+  expect(bare.entries).toBe(0)
+
+  const selected = (await h.invoke({
+    action: 'snapshot',
+    toolCallId: 'snap-2',
+    includeUntracked: ['notes.txt', '.env'],
+  })) as {
+    includedUntracked: string[]
+    exclusions: { path: string; reason: string }[]
+    entries: number
+  }
+  expect(selected.includedUntracked).toEqual(['notes.txt'])
+  expect(selected.exclusions).toEqual([{ path: '.env', reason: 'credential_shaped' }])
+  expect(selected.entries).toBe(1)
+})
+
+test('a source capture that cannot be taken never fails the command', async () => {
+  // Not a repository at all: the capture is unavailable, and the command still settles.
+  const h = host()
+  await expect(h.invoke({ action: 'snapshot', toolCallId: 'snap-1' })).rejects.toThrow(
+    /not a Git repository/i,
+  )
+  const started = (await h.invoke({
+    action: 'start',
+    toolCallId: 'call-1',
+    input: command,
+  })) as CodingCommandReceipt
+  expect(started.sourceBefore).toBeNull()
+  const finished = (await h.invoke({
+    action: 'finish',
+    id: started.id,
+    outcome: {
+      state: 'succeeded',
+      exitCode: 0,
+      diagnostic: 'ok\n',
+      truncated: false,
+      reason: null,
+    },
+  })) as CodingCommandReceipt
+  expect(finished.state).toBe('succeeded')
+  // Absent, not falsely complete: applicability for this receipt is unknown.
+  expect(finished.sourceAfter).toBeNull()
+})
+
+test('a repeated or malformed snapshot tool call is rejected', async () => {
+  repoFixture()
+  const h = host()
+  await h.invoke({ action: 'snapshot', toolCallId: 'snap-1' })
+  await expect(h.invoke({ action: 'snapshot', toolCallId: 'snap-1' })).rejects.toThrow(
+    /repeated coding tool call/,
+  )
+  await expect(h.invoke({ action: 'snapshot', toolCallId: '' })).rejects.toThrow(
+    /Invalid or repeated coding tool call/,
+  )
+  await expect(
+    h.invoke({
+      action: 'snapshot',
+      toolCallId: 'snap-2',
+      includeUntracked: ['x'.repeat(4097)],
+    }),
+  ).rejects.toThrow(/Invalid untracked selection/)
 })

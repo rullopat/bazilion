@@ -249,6 +249,8 @@ export function piMessagesToProviderView(
             'coding_command',
             'coding_receipt',
             'coding_log',
+            // BAZ-042: a snapshot result names withheld paths, so history must not render it.
+            'source_snapshot',
           ].includes(tr.toolName ?? '')
         ) {
           // The transcript still holds the executor's raw result here, so the

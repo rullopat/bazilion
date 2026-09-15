@@ -116,9 +116,22 @@ So BAZ-042 adds **readers over that harness**, not another harness.
      was recomputed (`2d8a15dc…` → `8454a37b…`). Restore keeps snapshots at their **original**
      expiry and drops the ones already past it, so a restored copy never serves evidence whose
      window closed.
-4c. **Still open from this slice:** the turn-bound Agent capture tool and the operator-requested
-   capture, linking BAZ-041 receipts to a before/after snapshot reference, and promoting the review
-   and snapshot types into hermetic `api-types` (done at the start of slice 5, which needs them).
+4c. **Turn-bound Agent capture and receipt linkage (done).**
+   - New IPC action `snapshot` and a `source_snapshot` tool: the Agent calls it once before editing
+     and quotes the reference in its summary. It returns a deliberately **compact** result — the
+     reference, the entry count, what was included and what was excluded, plus issues — because a
+     model needs an honest count, not the whole entry list. Untracked content stays opt-in per path,
+     the list is bounded before anything is read, and the per-turn operation limit applies.
+   - `CodingCommandReceipt` gains `sourceBefore` and `sourceAfter`. `sourceBefore` is the first
+     snapshot this turn captured, so it is absent when the Agent never captured one — never invented.
+     `sourceAfter` is captured at the command's **own execution boundary** when the receipt settles.
+   - Capturing evidence can never fail a command: a failed capture leaves the reference null, so an
+     absent reference reads as **unknown applicability** rather than as "unchanged". Tested against a
+     non-repository Team, where the command still settles successfully.
+   - History masking: `source_snapshot` results join the masked coding-evidence list in
+     `runtime/pi/events.ts` and the web chat lists. Without that, a replay would render the result
+     JSON — including the paths scope policy deliberately **withheld** — which would undo the
+     withholding. The egress regression test now covers the tool name too.
 5. **Surfaces.**
    - **Types promoted (done).** `packages/api-types/src/git-review.ts` now owns the review and
      snapshot wire shapes (identity, pinned base, change entries, limits and `REVIEW_LIMITS`,
@@ -182,5 +195,11 @@ So BAZ-042 adds **readers over that harness**, not another harness.
   codes, a non-repository Team returning 409 rather than an empty review, an unknown Team 404, an
   operator capture returning a reference plus its listing and single read, an unknown snapshot id
   404, a reference being meaningless in another Team, and five refused capture payloads.
-- Whole-tree after slice 5: typecheck, format and lint clean; full suite 1620 passed / 7 skipped
-  (207 files); security acceptance 74 cases passed (slice 4b measured 1607 / 206 files).
+- Slice 4c additions: five cases in `apps/daemon/test/lib/agent-coding.test.ts` cover the capture
+  tool returning a compact result with agent provenance persisted and readable, the receipt recording
+  `sourceBefore`/`sourceAfter` with the after-state resolved from the store, untracked opt-in with a
+  refused credential-shaped path recorded rather than read, a non-repository capture neither failing
+  the command nor claiming completeness, and repeated/malformed/over-long capture calls being
+  rejected.
+- Whole-tree after slice 4c: typecheck (root and web), format and lint clean; full suite 1626 passed
+  / 7 skipped (207 files); security acceptance 74 cases passed (slice 5 measured 1620 / 207 files).

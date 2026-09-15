@@ -899,7 +899,7 @@ export function ChatPane({
           : ev.type === 'tool_result'
             ? { kind: 'result', id: ev.id, name: ev.name, body: ev.result }
             : { kind: 'error', id: ev.id, name: ev.name, body: ev.error }
-      if (ev.type === 'tool_result' && ['repository_context', 'coding_environment', 'coding_command', 'coding_receipt', 'coding_log'].includes(ev.name)) {
+      if (ev.type === 'tool_result' && ['repository_context', 'coding_environment', 'coding_command', 'coding_receipt', 'coding_log', 'source_snapshot'].includes(ev.name)) {
         deliveredCoding.current.set(`${ev.name}:${ev.id}`, ev.result)
         while (deliveredCoding.current.size > 20) deliveredCoding.current.delete(deliveredCoding.current.keys().next().value!)
       }
@@ -1701,7 +1701,7 @@ function upsertCodingProgress(
 }
 
 function ToolGroup({ items, dropCls }: { items: ToolItem[]; dropCls: string }) {
-  const codingNames = ['repository_context', 'coding_command', 'coding_environment', 'coding_receipt', 'coding_log', 'send_message']
+  const codingNames = ['repository_context', 'coding_command', 'coding_environment', 'coding_receipt', 'coding_log', 'source_snapshot', 'send_message']
   const hasCoding = items.some(item => codingNames.includes(item.name))
   const visibleItems = items.filter(item => !(item.kind === 'call' && codingNames.includes(item.name) && items.some(other => other.id === item.id && other.kind !== 'call')))
   const [expanded, setExpanded] = useState(false)
@@ -1765,7 +1765,7 @@ function ToolLine({ item }: { item: ToolItem }) {
         {item.truncated && <p>Earlier output omitted; the retained log holds more.</p>}
       </div>
     )
-  if (item.kind !== 'error' && ['repository_context', 'coding_command', 'coding_environment', 'coding_receipt', 'coding_log'].includes(item.name)) return <CodingToolResult name={item.name} body={item.body} pending={item.kind === 'call'} log={item.codingLog} />
+  if (item.kind !== 'error' && ['repository_context', 'coding_command', 'coding_environment', 'coding_receipt', 'coding_log', 'source_snapshot'].includes(item.name)) return <CodingToolResult name={item.name} body={item.body} pending={item.kind === 'call'} log={item.codingLog} />
   if (item.kind === 'call') {
     const args = prettyArgs(item.body)
     const multiLine = args.includes('\n')

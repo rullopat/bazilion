@@ -257,5 +257,32 @@ export function codingTools(input: {
         }
       },
     },
+    {
+      name: 'source_snapshot',
+      label: 'Capture the current source state',
+      description:
+        'Capture a bounded snapshot of the repository source you are about to work from, and quote its reference in your summary. Call this once before you start editing: the reference is how a later change or verification is tied to the version it actually applies to. It is read-only and never changes the repository. The result may be incomplete — when it is, say so, because an incomplete snapshot cannot support a claim that code is unchanged. Untracked file content is never included unless you name each path.',
+      parameters: Type.Object(
+        {
+          includeUntracked: Type.Optional(
+            Type.Array(Type.String({ maxLength: 4096 }), { maxItems: 1000 }),
+          ),
+        },
+        { additionalProperties: false },
+      ),
+      executionMode: 'sequential',
+      async execute(toolCallId, params) {
+        const values = params as { includeUntracked?: string[] }
+        const value = await input.host.invoke({
+          action: 'snapshot',
+          toolCallId,
+          ...(values.includeUntracked ? { includeUntracked: values.includeUntracked } : {}),
+        })
+        return {
+          content: [{ type: 'text', text: JSON.stringify(value) }],
+          details: { sourceSnapshot: value },
+        }
+      },
+    },
   ]
 }

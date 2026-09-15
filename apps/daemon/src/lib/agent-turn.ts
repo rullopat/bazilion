@@ -86,6 +86,7 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
     const selectedDocker = turn.protectedExecution?.docker ?? turn.configuredDocker?.docker
     const codingHost = createCodingHost({
       db,
+      paths,
       agentId: agent.agent.id,
       teamId: agent.team.id,
       turnId,

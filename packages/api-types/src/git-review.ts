@@ -157,6 +157,22 @@ export type SnapshotComparison = 'identical' | 'changed' | 'unknown'
 /** Where a capture came from. An operator capture has no turn, and says so rather than faking one. */
 export type SnapshotCaptureOrigin = 'agent' | 'operator'
 
+/**
+ * Compact result of an Agent- or operator-initiated capture.
+ *
+ * Deliberately smaller than the full document: an Agent needs the reference plus an honest count of
+ * what was and was not fingerprinted, not the whole entry list.
+ */
+export interface SourceSnapshotCaptureResult {
+  reference: SnapshotReference
+  head: string | null
+  baseOid: string
+  entries: number
+  includedUntracked: string[]
+  exclusions: { path: string; reason: ReviewScopeReason }[]
+  issues: ReviewIssue[]
+}
+
 /** Operator-visible snapshot record, without the manifest body. */
 export interface SourceSnapshotSummary {
   snapshotId: string

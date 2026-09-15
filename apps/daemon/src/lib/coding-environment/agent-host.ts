@@ -3,9 +3,12 @@ import type {
   CodingCommandOutcome,
   CodingCommandReceipt,
   CodingEnvironmentSnapshot,
+  SnapshotReference,
+  SourceSnapshotCaptureResult,
 } from '@bazilion/api-types'
 import { codingRelativePath, validateCodingCommand } from '../../core/coding-environment/config.ts'
 import { agentRepo, type BazilionDb } from '../../core/index.ts'
+import type { Paths } from '../../core/paths.ts'
 import {
   pruneCodingCommandLogs,
   readCodingCommandLog,
@@ -22,6 +25,7 @@ import { resolveCodingDirectory } from '../../runtime/coding-directory.ts'
 import type { CodingHost, CodingRequest } from '../../runtime/pi/coding-contract.ts'
 import type { RepositoryContextHost } from '../../runtime/pi/repository-context.ts'
 import { deliverableInbox } from '../communication.ts'
+import { captureTeamSnapshot } from '../git-review/service.ts'
 import { ContextDirectory } from '../repository-context/files.ts'
 import { requireCompleteRepositoryContext } from '../repository-context/index.ts'
 import {
@@ -33,6 +37,7 @@ import {
 
 export function createCodingHost(input: {
   db: BazilionDb
+  paths: Paths
   agentId: string
   teamId: string
   turnId: string
@@ -47,6 +52,12 @@ export function createCodingHost(input: {
   const active = new Set<string>()
   const calls = new Set<string>()
   let starting = false
+  /**
+   * BAZ-042: the first source snapshot this turn captured, kept as the receipt's `sourceBefore`.
+   * Capturing evidence must never fail a command, so a failed capture simply leaves it unset — an
+   * absent reference means unknown applicability, never "unchanged".
+   */
+  let sourceBefore: SnapshotReference | null = null
   /**
    * Shared receipt/log authorization. A producing Agent may read its own evidence; any
    * other Team member must present the exact policy-authorized message that carried
@@ -139,6 +150,41 @@ export function createCodingHost(input: {
       input.assertActive()
       if (!raw || typeof raw !== 'object') throw new Error('Invalid coding request')
       if (raw.action === 'environment') return snapshot(raw.target)
+      if (raw.action === 'snapshot') {
+        if (
+          typeof raw.toolCallId !== 'string' ||
+          !raw.toolCallId ||
+          raw.toolCallId.length > 256 ||
+          calls.has(raw.toolCallId)
+        )
+          throw new Error('Invalid or repeated coding tool call')
+        if (calls.size >= 64) throw new Error('Turn operation limit reached')
+        calls.add(raw.toolCallId)
+        // Untracked content is opt-in per path and bounded before anything is read.
+        const requested = Array.isArray(raw.includeUntracked)
+          ? raw.includeUntracked.filter((entry): entry is string => typeof entry === 'string')
+          : []
+        if (requested.length > 1000 || requested.some((entry) => entry.length > 4096))
+          throw new Error('Invalid untracked selection')
+        const captured = await captureTeamSnapshot(input.db, input.paths, input.teamId, {
+          capturedBy: 'agent',
+          agentId: input.agentId,
+          turnId: input.turnId,
+          toolCallId: raw.toolCallId,
+          ...(requested.length > 0 ? { includeUntracked: requested } : {}),
+        })
+        sourceBefore ??= captured.reference
+        const result: SourceSnapshotCaptureResult = {
+          reference: captured.reference,
+          head: captured.snapshot.head,
+          baseOid: captured.snapshot.base.resolvedOid,
+          entries: captured.snapshot.entries.length,
+          includedUntracked: captured.snapshot.untrackedIncluded,
+          exclusions: captured.snapshot.exclusions,
+          issues: captured.snapshot.issues,
+        }
+        return result
+      }
       if (raw.action === 'start') {
         if (starting || active.size || calls.size >= 64)
           throw new Error('Coding operation already active or turn operation limit reached')
@@ -170,6 +216,8 @@ export function createCodingHost(input: {
             diagnostic: '',
             truncated: false,
             reason: null,
+            sourceBefore,
+            sourceAfter: null,
           }
           saveCodingCommand(input.db, receipt)
           active.add(receipt.id)
@@ -219,6 +267,19 @@ export function createCodingHost(input: {
           reason: reason.finish().diagnostic || null,
           finishedAt: Date.now(),
         })
+        // BAZ-042: the source state at this command's own execution boundary. A capture failure
+        // leaves the reference absent (unknown applicability) rather than failing the command.
+        try {
+          const captured = await captureTeamSnapshot(input.db, input.paths, input.teamId, {
+            capturedBy: 'agent',
+            agentId: input.agentId,
+            turnId: input.turnId,
+            toolCallId: receipt.toolCallId,
+          })
+          receipt.sourceAfter = captured.reference
+        } catch {
+          receipt.sourceAfter = null
+        }
         saveCodingCommand(input.db, receipt)
         // Retention is best-effort evidence maintenance. A persistence failure must not
         // turn a completed command into a failed one; the log simply reads unavailable.

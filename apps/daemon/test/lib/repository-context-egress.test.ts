@@ -73,6 +73,7 @@ test.each([
   'coding_environment',
   'coding_command',
   'coding_receipt',
+  'source_snapshot',
 ])('public history and done projections never independently release %s results', (toolName) => {
   const messages = [
     {
