@@ -20,10 +20,12 @@ function printIssues(changes: RepositoryChanges): void {
   for (const issue of changes.issues) console.log(`note: ${issue.code}: ${issue.message}`)
 }
 
-const reviewCmd = defineCommand({
+// Subcommand-first, matching `team policy` and the rest of the CLI: citty resolves the first
+// positional as a subcommand, so a bare `team review <slug>` would be read as an unknown command.
+const showCmd = defineCommand({
   meta: {
-    name: 'review',
-    description: 'Review Git changes since a baseline (read-only)',
+    name: 'show',
+    description: 'List changes since a baseline (read-only)',
   },
   args: {
     ...slug,
@@ -97,14 +99,22 @@ const captureCmd = defineCommand({
     base: { type: 'string', description: 'Comparison base (default HEAD)' },
     include: {
       type: 'string',
-      description: 'Untracked path to include by content (repeatable)',
+      // citty has no array arg: a repeated flag would silently keep only the last value, so the
+      // list is comma-separated and parsed explicitly.
+      description: 'Comma-separated untracked paths to include by content',
     },
     json: { type: 'boolean', description: 'Emit the complete snapshot as JSON' },
   },
   async run({ args }) {
     const client = createClient()
-    const raw = args.include as string | string[] | undefined
-    const includeUntracked = raw === undefined ? [] : Array.isArray(raw) ? raw : [raw]
+    const includeUntracked = (args.include ?? '')
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0)
+    if (includeUntracked.length > 1000) {
+      console.error('team review capture: too many paths to include')
+      process.exit(1)
+    }
     const captured = await client.repositoryReview(args.id).capture({
       ...(args.base ? { base: args.base } : {}),
       ...(includeUntracked.length > 0 ? { includeUntracked } : {}),
@@ -186,30 +196,10 @@ export const teamReviewCommand = defineCommand({
     name: 'review',
     description: 'Read-only Git change review and bounded source snapshots',
   },
-  args: {
-    id: { type: 'positional', description: 'Team slug' },
-    base: { type: 'string', description: 'Comparison base (default HEAD)' },
-    patch: { type: 'string', description: 'Print the diff for one changed path' },
-    json: { type: 'boolean', description: 'Emit JSON' },
-  },
   subCommands: {
+    show: showCmd,
     capture: captureCmd,
     snapshots: snapshotsCmd,
     snapshot: snapshotCmd,
-  },
-  async run({ args, rawArgs }) {
-    // `team review <slug>` is the default action; a bare `team review` with no slug is a usage error.
-    if (!args.id) {
-      console.error('team review: specify a Team slug, or use capture|snapshots|snapshot')
-      process.exit(1)
-    }
-    if (
-      rawArgs.includes('capture') ||
-      rawArgs.includes('snapshots') ||
-      rawArgs.includes('snapshot')
-    ) {
-      return
-    }
-    await reviewCmd.run?.({ args, rawArgs, cmd: reviewCmd } as never)
   },
 })

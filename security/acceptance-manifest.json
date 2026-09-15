@@ -444,6 +444,60 @@
       "owner": "BAZ-041",
       "file": "apps/daemon/test/runtime/pi-model-routing.test.ts",
       "test": "a catalogued model resolves to its own provider endpoint"
+    },
+    {
+      "id": "GIT-REVIEW-NO-REPO-TRUTHFUL",
+      "owner": "BAZ-042",
+      "file": "apps/daemon/test/routes/git-review.test.ts",
+      "test": "a Team that is not a repository says so instead of returning an empty review"
+    },
+    {
+      "id": "GIT-REVIEW-BASE-INJECTION",
+      "owner": "BAZ-042",
+      "file": "apps/daemon/test/routes/git-review.test.ts",
+      "test": "an unusable base is refused with a machine-readable code"
+    },
+    {
+      "id": "GIT-REVIEW-CROSS-TEAM",
+      "owner": "BAZ-042",
+      "file": "apps/daemon/test/routes/git-review.test.ts",
+      "test": "a snapshot reference means nothing in another Team"
+    },
+    {
+      "id": "GIT-REVIEW-STALE-FEEDBACK",
+      "owner": "BAZ-042",
+      "file": "apps/daemon/test/routes/git-review.test.ts",
+      "test": "feedback against a superseded snapshot is marked stale, not silently retargeted"
+    },
+    {
+      "id": "GIT-REVIEW-NO-MUTATION",
+      "owner": "BAZ-042",
+      "file": "apps/daemon/test/core/git-capture.test.ts",
+      "test": "diff reads leave the index and worktree untouched"
+    },
+    {
+      "id": "GIT-REVIEW-HELPER-SUPPRESSION",
+      "owner": "BAZ-042",
+      "file": "apps/daemon/test/core/git-capture.test.ts",
+      "test": "diff reads cannot execute repository-configured helpers"
+    },
+    {
+      "id": "GIT-REVIEW-LAYOUT-REFUSAL",
+      "owner": "BAZ-042",
+      "file": "apps/daemon/test/core/git-capture.test.ts",
+      "test": "an unsupported metadata layout is refused"
+    },
+    {
+      "id": "GIT-REVIEW-SYMLINK-BOUNDARY",
+      "owner": "BAZ-042",
+      "file": "apps/daemon/test/core/git-review-snapshot.test.ts",
+      "test": "a changed path that is not a regular file cannot be fingerprinted"
+    },
+    {
+      "id": "GIT-REVIEW-SCOPE-WITHHOLD",
+      "owner": "BAZ-042",
+      "file": "apps/daemon/test/lib/agent-coding.test.ts",
+      "test": "untracked content is opt-in, and a refused path is recorded rather than read"
     }
   ]
 }

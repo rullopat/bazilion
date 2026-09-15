@@ -1,6 +1,8 @@
 # BAZ-042 implementation progress
 
-Started: 2026-09-14. Status: in progress — slices 1–4 landed. Branch
+Started: 2026-09-14. Status: complete against the story's acceptance criteria and awaiting release —
+slices 1–6 plus an acceptance run are done: see [the acceptance record](BAZ-042-acceptance.md).
+Branch
 `feat/baz-041-042-coding-evidence`, continuing from the completed BAZ-041 work. Commits are batched
 locally and pushed when the story is further along, not per slice.
 
@@ -160,7 +162,8 @@ So BAZ-042 adds **readers over that harness**, not another harness.
      `pre`, and controls stack at small widths.
    - Single-file diffs: `GET /review?patches=1&path=<p>` reads only the requested patch, so opening
      one file does not pull every patch; an empty or over-long `path` is refused.
-   - Still to do: surfacing a receipt's applicability on the chat card itself (the endpoint exists).
+   - Still to do: surfacing a receipt's applicability on the chat card itself (the endpoint exists),
+     and a scripted browser check for the panel (keyboard/narrow-screen were not observed).
 6. **Feedback (done).** File-level selection carrying repository + snapshot + path + line context,
    stale refresh, and reuse of BAZ-036 for queueing.
 
@@ -265,5 +268,11 @@ So BAZ-042 adds **readers over that harness**, not another harness.
   composed message, a superseded snapshot marked stale with the moved-lines warning, no snapshot
   claiming `unknown` rather than implying a match, an unchanged file staying `current` while another
   file changed, and five refused payloads including an inverted range and an extra key).
+- Acceptance run: see [BAZ-042-acceptance.md](BAZ-042-acceptance.md). All six criteria observed,
+  with five recorded caveats. Gate 74 → 83 cases (nine BAZ-042). The run found and fixed two CLI
+  defects (`team review <slug>` never worked; `--include` silently kept only the last path because
+  citty string flags are last-wins) and reported a third outside this story: the shipped
+  `agent chat --image/--file` flags have the same last-wins problem, so multiple attachments are
+  silently dropped.
 - Whole-tree after slice 6: typecheck (root and web), format and lint clean; full suite 1644 passed
-  / 7 skipped (208 files); security acceptance 74 cases passed (slice 5b measured 1635 / 208 files).
+  / 7 skipped (208 files); security acceptance 83 cases passed (slice 5b measured 1635 / 208 files).
