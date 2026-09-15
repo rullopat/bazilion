@@ -164,6 +164,29 @@ So BAZ-042 adds **readers over that harness**, not another harness.
 6. **Feedback.** File/hunk selection carrying repository + snapshot + path + original line context,
    stale-hunk refresh, reuse of BAZ-036 for busy-turn queueing.
 
+### Decisions taken for slice 6 (so they are not re-litigated)
+
+- **File-level selection first; hunk line ranges are context, not identity.** The requirement is that
+  feedback "cannot silently point at different current lines". A hunk has no natural id — one would
+  have to be synthesized from offsets and context, which is where this kind of feature turns flaky.
+  File level gives the same guarantee using machinery that already exists: a snapshot records a
+  digest per changed path, so identity is `(team, snapshotId, path)` and staleness is decidable by
+  comparing that digest with the current state. The selected hunk's line range is still captured and
+  shown to the Agent as context, so the wire shape does not change if hunk identity lands later.
+- **Applicability is three-valued and never a badge.** Surfacing receipts against the current source
+  is acceptance criterion 4, and the data exists (`sourceBefore`/`sourceAfter` plus the stored
+  manifest), so it is not optional. But comparing whole-tree states establishes that the source
+  *changed*, never that the change was relevant to what was tested — relevance needs coverage
+  information Bazilion does not have. So: `identical` / `changed` / `unknown`, the last covering no
+  snapshot, an incomplete one, or an expired one. It is never rendered as a pass or a green mark.
+
+### Implemented here
+
+- `readSnapshotApplicability` plus `GET /:id/review/snapshots/:snapshotId/applicability`, returning
+  `comparison`, a machine `reason` and the current reference. The check captures the current state
+  **in memory only** — verifying must not create evidence of its own — and returns `unknown` for a
+  missing/expired id, an incomplete stored snapshot, or a capture that cannot be taken.
+
 ## Constraints to honor as this lands
 
 - Read-only always: no staging, reverting, committing, pushing or branch mutation.
@@ -218,5 +241,8 @@ So BAZ-042 adds **readers over that harness**, not another harness.
   `path` parameter) and five web cases for the panel's wording — counts never rendered as a bare
   zero, withheld and unselected files saying so, branch/detached/unborn labels, an unavailable review
   reading as not reviewable rather than empty, and an incomplete snapshot never labelled exact.
+- Applicability additions: two route cases (an unchanged tree reading `identical` then `changed`
+  after an edit, and an absent id reading `unknown` while creating no snapshot row).
 - Whole-tree after slice 5b: typecheck (root and web), format and lint clean; full suite 1633 passed
   / 7 skipped (208 files); security acceptance 74 cases passed (slice 4c measured 1626 / 207 files).
+  Re-run after the applicability work: 1635 passed / 208 files.

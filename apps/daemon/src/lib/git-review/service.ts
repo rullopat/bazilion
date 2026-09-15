@@ -2,6 +2,7 @@ import type {
   RepositoryChanges,
   RepositoryReviewResponse,
   SnapshotCaptureOrigin,
+  SnapshotReference,
   SourceSnapshot,
   SourceSnapshotResponse,
   SourceSnapshotSummary,
@@ -19,7 +20,7 @@ import { type CapturedGit, captureRepositoryGit, findRepositoryRoot } from '../g
 import { ContextDirectory, ContextReadError } from '../repository-context/files.ts'
 import { attachPatches, listChanges, type ReviewLimits } from './changes.ts'
 import { ReviewBaseError, readRepositoryIdentity, resolveComparisonBase } from './identity.ts'
-import { captureSourceSnapshot, snapshotReference } from './snapshot.ts'
+import { captureSourceSnapshot, compareSnapshots, snapshotReference } from './snapshot.ts'
 
 // Daemon-side Git review operations (BAZ-042 slice 5).
 //
@@ -159,6 +160,64 @@ export async function captureTeamSnapshot(
     manifestJson: JSON.stringify(snapshot),
   })
   return { snapshot, reference: snapshotReference(snapshot) }
+}
+
+/**
+ * Whether a stored snapshot still describes the current source state (BAZ-042 criterion 4).
+ *
+ * Deliberately three-valued and conservative. Comparing whole-tree states establishes that the
+ * source *changed*, never that the change was relevant to what was tested — relevance needs coverage
+ * information Bazilion does not have, so this must never be rendered as a pass or a badge.
+ */
+export interface SnapshotApplicability {
+  comparison: 'identical' | 'changed' | 'unknown'
+  reason:
+    | 'source_unchanged'
+    | 'source_changed'
+    | 'no_snapshot'
+    | 'incomplete_snapshot'
+    | 'capture_unavailable'
+  currentSnapshot: SnapshotReference | null
+}
+
+export async function readSnapshotApplicability(
+  db: BazilionDb,
+  paths: Paths,
+  teamId: string,
+  snapshotId: string,
+): Promise<SnapshotApplicability> {
+  const team = requireTeam(db, paths, teamId)
+  const record = getSourceSnapshot(db, team.id, snapshotId)
+  // Unknown covers both "never captured" and "past its window": neither can support a claim.
+  if (!record) return { comparison: 'unknown', reason: 'no_snapshot', currentSnapshot: null }
+  let stored: SourceSnapshot
+  try {
+    stored = JSON.parse(record.manifestJson) as SourceSnapshot
+  } catch {
+    return { comparison: 'unknown', reason: 'no_snapshot', currentSnapshot: null }
+  }
+  if (!stored.complete) {
+    return { comparison: 'unknown', reason: 'incomplete_snapshot', currentSnapshot: null }
+  }
+  let current: SourceSnapshot
+  try {
+    current = await withRepository(team.path, async (captured) => {
+      const base = await resolveComparisonBase(captured, 'HEAD')
+      const identity = await readRepositoryIdentity(captured)
+      // Not persisted: checking applicability must not create evidence of its own.
+      return captureSourceSnapshot(captured, base, identity, {
+        includeUntracked: stored.untrackedIncluded,
+      })
+    })
+  } catch {
+    return { comparison: 'unknown', reason: 'capture_unavailable', currentSnapshot: null }
+  }
+  const comparison = compareSnapshots(stored, current)
+  return {
+    comparison,
+    reason: comparison === 'identical' ? 'source_unchanged' : 'source_changed',
+    currentSnapshot: snapshotReference(current),
+  }
 }
 
 export function listTeamSnapshots(

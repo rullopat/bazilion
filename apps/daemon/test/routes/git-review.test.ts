@@ -204,3 +204,44 @@ test('an empty or over-long path parameter is refused', async () => {
   const long = await teamsRouter.request(`/${env.teamId}/review?patches=1&path=${'x'.repeat(4097)}`)
   expect(long.status).toBe(400)
 })
+
+test('snapshot applicability is three-valued and conservative', async () => {
+  repo()
+  writeFileSync(join(teamDir(), 'app.txt'), 'changed\n')
+  const captured = (await (
+    await teamsRouter.request(`/${env.teamId}/review/snapshots`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+  ).json()) as SourceSnapshotResponse
+  const id = captured.reference.id
+
+  const unchanged = await teamsRouter.request(`/${env.teamId}/review/snapshots/${id}/applicability`)
+  expect(unchanged.status).toBe(200)
+  expect(await unchanged.json()).toMatchObject({
+    comparison: 'identical',
+    reason: 'source_unchanged',
+  })
+
+  // A later edit makes the stored snapshot stale — but only "changed", never "failed".
+  writeFileSync(join(teamDir(), 'app.txt'), 'changed again\n')
+  expect(
+    await (await teamsRouter.request(`/${env.teamId}/review/snapshots/${id}/applicability`)).json(),
+  ).toMatchObject({ comparison: 'changed', reason: 'source_changed' })
+})
+
+test('applicability is unknown for a snapshot that is absent, and takes no new evidence', async () => {
+  repo()
+  const missing = await teamsRouter.request(
+    `/${env.teamId}/review/snapshots/${'f'.repeat(64)}/applicability`,
+  )
+  expect(missing.status).toBe(200)
+  expect(await missing.json()).toMatchObject({ comparison: 'unknown', reason: 'no_snapshot' })
+
+  // The check captures the current state in memory only: it must not create a snapshot row.
+  const listed = (await (
+    await teamsRouter.request(`/${env.teamId}/review/snapshots`)
+  ).json()) as SourceSnapshotListResponse
+  expect(listed.snapshots).toEqual([])
+})

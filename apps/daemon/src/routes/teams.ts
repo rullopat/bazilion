@@ -44,6 +44,7 @@ import {
   listTeamSnapshots,
   ReviewBaseError,
   ReviewUnavailableError,
+  readSnapshotApplicability,
   readTeamReview,
   readTeamSnapshot,
 } from '../lib/git-review/service.ts'
@@ -203,6 +204,18 @@ teamsRouter.get('/:id/review/snapshots/:snapshotId', (c) => {
     const snapshot = readTeamSnapshot(db, paths, c.req.param('id'), c.req.param('snapshotId'))
     if (!snapshot) return c.json({ error: 'Snapshot not found' }, 404)
     return c.json({ snapshot })
+  } catch (error) {
+    return reviewFailure(c, error)
+  }
+})
+
+teamsRouter.get('/:id/review/snapshots/:snapshotId/applicability', async (c) => {
+  const { db, paths } = getCtx()
+  c.header('Cache-Control', 'no-store')
+  try {
+    return c.json(
+      await readSnapshotApplicability(db, paths, c.req.param('id'), c.req.param('snapshotId')),
+    )
   } catch (error) {
     return reviewFailure(c, error)
   }
