@@ -4,6 +4,7 @@
 
 import { ApiClientError } from '@bazilion/client'
 import type {
+  Agent,
   RepositoryReviewResponse,
   SourceSnapshot,
   SourceSnapshotListResponse,
@@ -24,6 +25,8 @@ export interface TeamReviewView {
   review: RepositoryReviewResponse | null
   unavailable: ReviewUnavailable | null
   snapshots: SourceSnapshotSummary[]
+  /** Team members feedback can be addressed to. */
+  members: { id: string; name: string }[]
 }
 
 function failure(error: unknown, fallback: string): ReviewUnavailable | null {
@@ -63,7 +66,90 @@ export const fetchTeamReview = createServerFn({ method: 'POST' })
       // Snapshots are secondary evidence; a failure here must not hide the change list.
       snapshots = []
     }
-    return { team, review, unavailable, snapshots }
+    let members: { id: string; name: string }[] = []
+    try {
+      const agents = await client.get<Agent[]>('/api/agents?includeArchived=true')
+      members = agents
+        .filter((agent) => agent.teamId === team.id)
+        .map((agent) => ({ id: agent.id, name: agent.name }))
+    } catch {
+      members = []
+    }
+    return { team, review, unavailable, snapshots, members }
+  })
+
+export interface ComposedFeedback {
+  reference: string
+  message: string
+  applicability: 'current' | 'stale' | 'unknown'
+  applicabilityReason: string
+}
+
+/** Compose feedback for one path. Composition never sends: the operator sees the message first. */
+export const prepareReviewFeedback = createServerFn({ method: 'POST' })
+  .validator(
+    (input: {
+      id: string
+      path: string
+      snapshotId?: string
+      startLine?: number
+      endLine?: number
+      note?: string
+    }) => input,
+  )
+  .handler(async ({ data }): Promise<ComposedFeedback | ReviewUnavailable> => {
+    const { id, ...body } = data
+    try {
+      const response = await daemonClient().post<{
+        feedback: { applicability: 'current' | 'stale' | 'unknown'; applicabilityReason: string }
+        reference: string
+        message: string
+      }>(`/api/teams/${encodeURIComponent(id)}/review/feedback`, body)
+      return {
+        reference: response.reference,
+        message: response.message,
+        applicability: response.feedback.applicability,
+        applicabilityReason: response.feedback.applicabilityReason,
+      }
+    } catch (error) {
+      return (
+        failure(error, 'Feedback could not be prepared.') ?? {
+          code: undefined,
+          message: 'Feedback could not be prepared.',
+        }
+      )
+    }
+  })
+
+/**
+ * Send composed feedback to an Agent through the shipped follow-up queue (BAZ-036).
+ *
+ * Deliberately the queue rather than a second path: it is durable, it is the same ingress busy turns
+ * already use, it shows up in the existing queue UI, and the snapshot reference travels inside the
+ * message text so the identity survives whatever holds it. No parallel record is created.
+ */
+export const sendReviewFeedback = createServerFn({ method: 'POST' })
+  .validator((input: { agentId: string; message: string }) => input)
+  .handler(async ({ data }): Promise<{ queued: true } | ReviewUnavailable> => {
+    const client = daemonClient()
+    try {
+      const head = await client.get<{ selection: unknown }>(
+        `/api/agents/${encodeURIComponent(data.agentId)}/sessions/head`,
+      )
+      await client.post(`/api/agents/${encodeURIComponent(data.agentId)}/queue`, {
+        requestId: crypto.randomUUID(),
+        message: data.message,
+        expectedSelection: head.selection,
+      })
+      return { queued: true }
+    } catch (error) {
+      return (
+        failure(error, 'The feedback could not be queued.') ?? {
+          code: undefined,
+          message: 'The feedback could not be queued.',
+        }
+      )
+    }
   })
 
 export interface FileDiffView {

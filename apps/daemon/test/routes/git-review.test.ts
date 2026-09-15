@@ -245,3 +245,133 @@ test('applicability is unknown for a snapshot that is absent, and takes no new e
   ).json()) as SourceSnapshotListResponse
   expect(listed.snapshots).toEqual([])
 })
+
+test('feedback carries the reviewed snapshot, the path and a bounded excerpt', async () => {
+  repo()
+  writeFileSync(join(teamDir(), 'app.txt'), 'one\ntwo\nthree\n')
+  const captured = (await (
+    await teamsRouter.request(`/${env.teamId}/review/snapshots`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+  ).json()) as SourceSnapshotResponse
+
+  const response = await teamsRouter.request(`/${env.teamId}/review/feedback`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      path: 'app.txt',
+      snapshotId: captured.reference.id,
+      startLine: 2,
+      endLine: 3,
+      note: 'please keep the ordering here',
+    }),
+  })
+  expect(response.status).toBe(200)
+  const body = (await response.json()) as {
+    feedback: {
+      applicability: string
+      lineRange: unknown
+      excerpt: string | null
+      excerptSource: string
+      snapshotId: string | null
+    }
+    reference: string
+    message: string
+  }
+  expect(body.feedback).toMatchObject({
+    applicability: 'current',
+    lineRange: { start: 2, end: 3 },
+    excerptSource: 'current_read',
+    snapshotId: captured.reference.id,
+  })
+  // The message is what actually crosses the chat ingress, so the identity travels inside it.
+  expect(body.reference).toBe(`review-feedback:${captured.reference.id}:app.txt`)
+  expect(body.message).toContain(`review-feedback:${captured.reference.id}`)
+  expect(body.message).toContain('app.txt')
+  expect(body.message).toContain('unchanged since this snapshot')
+  expect(body.message).toContain('Selected lines: 2-3')
+  expect(body.message).toContain('+three')
+  expect(body.message).toContain('please keep the ordering here')
+  // The excerpt is labelled as a fresh read, never presented as the snapshot's own bytes.
+  expect(body.message).toContain('read now, not stored in the snapshot')
+})
+
+test('feedback against a superseded snapshot is marked stale, not silently retargeted', async () => {
+  repo()
+  writeFileSync(join(teamDir(), 'app.txt'), 'one\ntwo\nfirst revision\n')
+  const captured = (await (
+    await teamsRouter.request(`/${env.teamId}/review/snapshots`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+  ).json()) as SourceSnapshotResponse
+
+  // The file moves on after the snapshot was taken.
+  writeFileSync(join(teamDir(), 'app.txt'), 'one\ntwo\nsecond revision\n')
+  const response = await teamsRouter.request(`/${env.teamId}/review/feedback`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ path: 'app.txt', snapshotId: captured.reference.id }),
+  })
+  const body = (await response.json()) as { feedback: { applicability: string }; message: string }
+  expect(body.feedback.applicability).toBe('stale')
+  expect(body.message).toContain('CHANGED since this snapshot')
+})
+
+test('feedback without a snapshot claims no applicability at all', async () => {
+  repo()
+  writeFileSync(join(teamDir(), 'app.txt'), 'one\ntwo\nthree\n')
+  const body = (await (
+    await teamsRouter.request(`/${env.teamId}/review/feedback`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ path: 'app.txt' }),
+    })
+  ).json()) as { feedback: { applicability: string; snapshotId: string | null }; message: string }
+  expect(body.feedback.applicability).toBe('unknown')
+  expect(body.feedback.snapshotId).toBeNull()
+  expect(body.message).toContain('unknown (no_snapshot)')
+  expect(body.message).toContain('(not captured)')
+})
+
+test('feedback for an unchanged file is current even when the tree has other edits', async () => {
+  repo()
+  writeFileSync(join(teamDir(), 'other.txt'), 'new\n')
+  const captured = (await (
+    await teamsRouter.request(`/${env.teamId}/review/snapshots`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+  ).json()) as SourceSnapshotResponse
+  // The untouched file is still listed as untracked/added; asking about it must not be "stale"
+  // merely because a different file was added after the snapshot.
+  const body = (await (
+    await teamsRouter.request(`/${env.teamId}/review/feedback`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ path: 'other.txt', snapshotId: captured.reference.id }),
+    })
+  ).json()) as { feedback: { applicability: string } }
+  expect(body.feedback.applicability).toBe('current')
+})
+
+test.each([
+  ['a path outside the change set', { path: 'not-changed.txt' }],
+  ['an inverted line range', { path: 'app.txt', startLine: 5, endLine: 2 }],
+  ['a non-integer line', { path: 'app.txt', startLine: 1.5 }],
+  ['an unexpected key', { path: 'app.txt', agentId: 'x' }],
+  ['an over-long note', { path: 'app.txt', note: 'x'.repeat(2001) }],
+])('feedback with %s is refused', async (_label, payload) => {
+  repo()
+  writeFileSync(join(teamDir(), 'app.txt'), 'one\ntwo\nthree\n')
+  const response = await teamsRouter.request(`/${env.teamId}/review/feedback`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  expect(response.status).toBe(400)
+})

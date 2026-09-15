@@ -39,7 +39,11 @@ export class ReviewUnavailableError extends Error {
   }
 }
 
-function requireTeam(db: BazilionDb, paths: Paths, teamId: string): { id: string; path: string } {
+export function requireTeam(
+  db: BazilionDb,
+  paths: Paths,
+  teamId: string,
+): { id: string; path: string } {
   const team = teamRepo.get(db, teamId, paths)
   if (!team) throw new ReviewUnavailableError('team_not_found', 'Team not found.')
   return { id: team.id, path: team.path }
@@ -51,7 +55,7 @@ function requireTeam(db: BazilionDb, paths: Paths, teamId: string): { id: string
  * The workspace is reached through an fd-pinned `ContextDirectory` (never a path), and everything is
  * released afterwards even when the work fails.
  */
-async function withRepository<T>(
+export async function withRepository<T>(
   teamDir: string,
   fn: (captured: CapturedGit) => Promise<T>,
 ): Promise<T> {

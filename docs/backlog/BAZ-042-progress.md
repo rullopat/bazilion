@@ -160,9 +160,9 @@ So BAZ-042 adds **readers over that harness**, not another harness.
      `pre`, and controls stack at small widths.
    - Single-file diffs: `GET /review?patches=1&path=<p>` reads only the requested patch, so opening
      one file does not pull every patch; an empty or over-long `path` is refused.
-   - Still to do: the file/hunk feedback flow with stale-hunk refresh and BAZ-036 queueing (slice 6).
-6. **Feedback.** File/hunk selection carrying repository + snapshot + path + original line context,
-   stale-hunk refresh, reuse of BAZ-036 for busy-turn queueing.
+   - Still to do: surfacing a receipt's applicability on the chat card itself (the endpoint exists).
+6. **Feedback (done).** File-level selection carrying repository + snapshot + path + line context,
+   stale refresh, and reuse of BAZ-036 for queueing.
 
 ### Decisions taken for slice 6 (so they are not re-litigated)
 
@@ -179,6 +179,24 @@ So BAZ-042 adds **readers over that harness**, not another harness.
   *changed*, never that the change was relevant to what was tested — relevance needs coverage
   information Bazilion does not have. So: `identical` / `changed` / `unknown`, the last covering no
   snapshot, an incomplete one, or an expired one. It is never rendered as a pass or a green mark.
+
+### Slice 6 implementation
+
+- `lib/git-review/feedback.ts` builds a `ReviewFeedbackDocument` and composes the message that
+  actually crosses the ingress. Identity is `(team, snapshotId, path)`; the selected line range
+  travels as **context**. The snapshot reference is carried in the message text, so whatever queue or
+  approval holds it, the identity travels with it and no parallel record is created.
+- Staleness is answered per **path**, narrower than whole-tree applicability, because the property
+  feedback must not violate is "are these the lines the operator saw?". Both sides must be complete,
+  otherwise the verdict is `unknown` rather than a hopeful `current`. Unchanged on both sides reads
+  `current` even when other files changed, which is the correct answer for this path.
+- The excerpt is **read now**, not taken from the client: the operator's selection identifies which
+  lines, not what they contain, and a snapshot stores digests rather than content. Its provenance is
+  labelled in the message so it is never passed off as the snapshot's own bytes.
+- `POST /:id/review/feedback` composes and returns the exact message but deliberately **does not
+  send**. Sending goes through the shipped follow-up queue (`drainUserQueueHead`), which is the same
+  ingress busy turns already use, is durable and visible in the existing queue UI — rather than a
+  second send path. The panel says so: "Queue for Agent", with the composed message shown first.
 
 ### Implemented here
 
@@ -243,6 +261,9 @@ So BAZ-042 adds **readers over that harness**, not another harness.
   reading as not reviewable rather than empty, and an incomplete snapshot never labelled exact.
 - Applicability additions: two route cases (an unchanged tree reading `identical` then `changed`
   after an edit, and an absent id reading `unknown` while creating no snapshot row).
-- Whole-tree after slice 5b: typecheck (root and web), format and lint clean; full suite 1633 passed
-  / 7 skipped (208 files); security acceptance 74 cases passed (slice 4c measured 1626 / 207 files).
-  Re-run after the applicability work: 1635 passed / 208 files.
+- Slice 6 additions: nine route cases (snapshot/path/line context and the labelled excerpt in the
+  composed message, a superseded snapshot marked stale with the moved-lines warning, no snapshot
+  claiming `unknown` rather than implying a match, an unchanged file staying `current` while another
+  file changed, and five refused payloads including an inverted range and an extra key).
+- Whole-tree after slice 6: typecheck (root and web), format and lint clean; full suite 1644 passed
+  / 7 skipped (208 files); security acceptance 74 cases passed (slice 5b measured 1635 / 208 files).

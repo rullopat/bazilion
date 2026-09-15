@@ -21,6 +21,9 @@ import {
   fetchFileDiff,
   fetchTeamReview,
   fetchTeamSnapshot,
+  prepareReviewFeedback,
+  sendReviewFeedback,
+  type ComposedFeedback,
   type FileDiffView,
 } from '../../../lib/git-review'
 
@@ -44,6 +47,12 @@ function ReviewPage() {
   const [selected, setSelected] = useState<string | null>(null)
   const [diff, setDiff] = useState<FileDiffView | null>(null)
   const [snapshot, setSnapshot] = useState<SourceSnapshot | null>(null)
+  const [latestSnapshotId, setLatestSnapshotId] = useState(
+    () => loaded.snapshots[0]?.snapshotId ?? null,
+  )
+  const [note, setNote] = useState('')
+  const [agentId, setAgentId] = useState(() => loaded.members[0]?.id ?? '')
+  const [composed, setComposed] = useState<ComposedFeedback | null>(null)
   const [status, setStatus] = useState<{ kind: 'info' | 'error'; message: string } | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -86,6 +95,40 @@ function ReviewPage() {
     } else {
       setStatus({ kind: 'error', message: unavailableMessage(result.code, result.message) })
     }
+    setBusy(false)
+  }
+
+  async function prepare() {
+    if (!selected) return
+    setBusy(true)
+    setStatus({ kind: 'info', message: 'Preparing feedback…' })
+    const result = await prepareReviewFeedback({
+      data: {
+        id: teamId,
+        path: selected,
+        ...(latestSnapshotId ? { snapshotId: latestSnapshotId } : {}),
+        ...(note.trim() ? { note } : {}),
+      },
+    })
+    if ('message' in result && 'reference' in result) {
+      setComposed(result)
+      setStatus(null)
+    } else {
+      setStatus({ kind: 'error', message: unavailableMessage(result.code, result.message) })
+    }
+    setBusy(false)
+  }
+
+  async function send() {
+    if (!composed || !agentId) return
+    setBusy(true)
+    const result = await sendReviewFeedback({ data: { agentId, message: composed.message } })
+    setStatus(
+      'queued' in result
+        ? { kind: 'info', message: 'Feedback queued for the Agent. It runs as the next turn.' }
+        : { kind: 'error', message: unavailableMessage(result.code, result.message) },
+    )
+    if ('queued' in result) setComposed(null)
     setBusy(false)
   }
 
@@ -217,6 +260,66 @@ function ReviewPage() {
               {diff.truncated && <p className="text-xs">This diff was truncated at the patch limit.</p>}
             </>
           )}
+
+          <div className="space-y-2 rounded-sm border border-fawn p-3">
+            <h3>Send feedback about this file</h3>
+            <label className="flex flex-col gap-1">
+              <span>Note (optional)</span>
+              <textarea
+                className="input"
+                rows={2}
+                value={note}
+                onChange={(event) => setNote(event.target.value)}
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span>Agent</span>
+              <select
+                className="input"
+                value={agentId}
+                onChange={(event) => setAgentId(event.target.value)}
+              >
+                {loaded.members.map((member) => (
+                  <option key={member.id} value={member.id}>
+                    {member.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="ghost" disabled={busy} onClick={() => void prepare()}>
+                Preview message
+              </Button>
+              <Button variant="primary" disabled={busy || !composed || !agentId} onClick={() => void send()}>
+                Queue for Agent
+              </Button>
+            </div>
+            {latestSnapshotId ? (
+              <p className="text-xs opacity-70">
+                Referenced snapshot: {latestSnapshotId.slice(0, 12)}. It is rechecked now, and the
+                verdict is stated in the message.
+              </p>
+            ) : (
+              <p className="text-xs opacity-70">
+                No snapshot captured for this Team yet, so the feedback will say its source identity is
+                unknown rather than implying the lines still match.
+              </p>
+            )}
+            {composed && (
+              <>
+                <p className="text-sm">
+                  {composed.applicability === 'current'
+                    ? 'This file is unchanged since the snapshot.'
+                    : composed.applicability === 'stale'
+                      ? 'This file changed since the snapshot — the selected lines may have moved.'
+                      : `Source identity unknown (${composed.applicabilityReason}).`}
+                </p>
+                <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-sm bg-[rgba(42,31,22,0.04)] p-3 font-mono text-xs">
+                  {composed.message}
+                </pre>
+              </>
+            )}
+          </div>
         </section>
       )}
 

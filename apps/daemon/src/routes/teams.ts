@@ -40,6 +40,13 @@ import {
 import { WorkspaceBusyError } from '../lib/coding-environment/workspace.ts'
 import { getCtx } from '../lib/ctx.ts'
 import {
+  buildReviewFeedback,
+  composeFeedbackMessage,
+  FEEDBACK_LIMITS,
+  FeedbackTargetError,
+  feedbackReference,
+} from '../lib/git-review/feedback.ts'
+import {
   captureTeamSnapshot,
   listTeamSnapshots,
   ReviewBaseError,
@@ -157,6 +164,8 @@ function reviewFailure(
 ): Response | Promise<never> {
   if (error instanceof ReviewBaseError)
     return c.json({ error: error.message, code: error.code }, 400)
+  if (error instanceof FeedbackTargetError)
+    return c.json({ error: error.message, code: error.code }, 400)
   if (error instanceof ReviewUnavailableError) {
     return c.json(
       { error: error.message, code: error.code },
@@ -204,6 +213,67 @@ teamsRouter.get('/:id/review/snapshots/:snapshotId', (c) => {
     const snapshot = readTeamSnapshot(db, paths, c.req.param('id'), c.req.param('snapshotId'))
     if (!snapshot) return c.json({ error: 'Snapshot not found' }, 404)
     return c.json({ snapshot })
+  } catch (error) {
+    return reviewFailure(c, error)
+  }
+})
+
+// Composes feedback and returns the exact message; it deliberately does NOT send. Sending goes
+// through the normal agent chat ingress, so a busy turn queues it through the shipped BAZ-036 queue
+// rather than this route inventing a second one.
+teamsRouter.post('/:id/review/feedback', async (c) => {
+  const { db, paths } = getCtx()
+  c.header('Cache-Control', 'no-store')
+  const body: unknown = await c.req.json().catch(() => null)
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return c.json({ error: 'Invalid feedback request' }, 400)
+  }
+  const input = body as Record<string, unknown>
+  if (
+    Object.keys(input).some(
+      (key) => !['path', 'base', 'snapshotId', 'startLine', 'endLine', 'note'].includes(key),
+    )
+  ) {
+    return c.json({ error: 'Invalid feedback request' }, 400)
+  }
+  if (typeof input.path !== 'string' || input.path.length === 0 || input.path.length > 4096) {
+    return c.json({ error: 'A changed path is required' }, 400)
+  }
+  if (input.base !== undefined && (typeof input.base !== 'string' || input.base.length > 4096)) {
+    return c.json({ error: 'Invalid comparison base' }, 400)
+  }
+  if (
+    input.snapshotId !== undefined &&
+    (typeof input.snapshotId !== 'string' || input.snapshotId.length > 128)
+  ) {
+    return c.json({ error: 'Invalid snapshot reference' }, 400)
+  }
+  if (
+    input.note !== undefined &&
+    (typeof input.note !== 'string' || input.note.length > FEEDBACK_LIMITS.noteChars)
+  ) {
+    return c.json({ error: 'Invalid feedback note' }, 400)
+  }
+  for (const key of ['startLine', 'endLine'] as const) {
+    const value = input[key]
+    if (value !== undefined && (typeof value !== 'number' || !Number.isSafeInteger(value))) {
+      return c.json({ error: 'Selected lines must be whole numbers' }, 400)
+    }
+  }
+  try {
+    const feedback = await buildReviewFeedback(db, paths, c.req.param('id'), {
+      path: input.path,
+      ...(input.base === undefined ? {} : { base: input.base as string }),
+      ...(input.snapshotId === undefined ? {} : { snapshotId: input.snapshotId as string }),
+      ...(input.startLine === undefined ? {} : { startLine: input.startLine as number }),
+      ...(input.endLine === undefined ? {} : { endLine: input.endLine as number }),
+      ...(input.note === undefined ? {} : { note: input.note as string }),
+    })
+    return c.json({
+      feedback,
+      reference: feedbackReference(feedback),
+      message: composeFeedbackMessage(feedback, input.note as string | undefined),
+    })
   } catch (error) {
     return reviewFailure(c, error)
   }
