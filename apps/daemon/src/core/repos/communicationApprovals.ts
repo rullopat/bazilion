@@ -410,6 +410,54 @@ export function grantSchedulerTrigger(
   validateDelivery: (row: CommunicationApprovalDetail) => string | null,
   now = Date.now(),
 ): SchedulerApprovalGrantResult {
+  return grantDurableApproval(
+    db,
+    id,
+    actor,
+    { operation: 'scheduler_trigger', payloadKind: 'scheduler_trigger' },
+    revalidate,
+    validateDelivery,
+    now,
+  )
+}
+
+/**
+ * BAZ-044: convert a held verification request into a durable grant.
+ *
+ * Identical durable semantics to a scheduler grant — the approval records the decision, and the
+ * verification state machine keeps sole ownership of claiming and executing the request.
+ */
+export function grantVerificationRequest(
+  db: BazilionDb,
+  id: string,
+  actor: string,
+  revalidate: (row: CommunicationApprovalDetail) => CommunicationAuthorizationResult,
+  validateDelivery: (row: CommunicationApprovalDetail) => string | null,
+  onGranted: (row: CommunicationApprovalDetail) => void,
+  now = Date.now(),
+): SchedulerApprovalGrantResult {
+  return grantDurableApproval(
+    db,
+    id,
+    actor,
+    { operation: 'request_verification', payloadKind: 'verification_request' },
+    revalidate,
+    validateDelivery,
+    now,
+    onGranted,
+  )
+}
+
+function grantDurableApproval(
+  db: BazilionDb,
+  id: string,
+  actor: string,
+  expected: { operation: string; payloadKind: string },
+  revalidate: (row: CommunicationApprovalDetail) => CommunicationAuthorizationResult,
+  validateDelivery: (row: CommunicationApprovalDetail) => string | null,
+  now: number,
+  onGranted?: (row: CommunicationApprovalDetail) => void,
+): SchedulerApprovalGrantResult {
   expirePending(db, now)
   return db.raw.transaction(() => {
     const current = raw(db, id)
@@ -417,8 +465,12 @@ export function grantSchedulerTrigger(
     const detail = detailFromRow(db, current)
     if (detail.status !== 'pending')
       throw new Error(`approval_state_conflict: current ${detail.status}`)
-    if (detail.operation !== 'scheduler_trigger' || detail.payloadKind !== 'scheduler_trigger') {
-      throw new Error('approval_payload_conflict: not a scheduler trigger approval')
+    if (detail.operation !== expected.operation || detail.payloadKind !== expected.payloadKind) {
+      // The operation names the action and the payload kind names its shape; both are fixed here so
+      // an approval cannot be released by a different handler than the one that captured it.
+      throw new Error(
+        `approval_payload_conflict: not a ${expected.operation}/${expected.payloadKind} approval`,
+      )
     }
 
     const authorization = revalidate(detail)
@@ -476,6 +528,9 @@ export function grantSchedulerTrigger(
       [now, actor, now, id],
     ).changes
     if (changed !== 1) throw new Error('approval_state_conflict: concurrent approval')
+    // The guarded side effect commits with the decision, so a granted approval cannot be
+    // delivered without its effect having happened.
+    onGranted?.(detail)
     appendEvent(db, id, 'approved', actor, null, now)
     appendEvent(db, id, 'delivery_started', actor, null, now)
     appendEvent(db, id, 'delivered', actor, null, now)

@@ -13,8 +13,9 @@ unrestricted inbox turn.
 | # | Slice | Outcome | State |
 |---|-------|---------|-------|
 | 1 | Typed request store | Schema, bounds, single-owner claims, per-attempt outcomes, restart/recovery and restore semantics | **done** |
-| 2 | Request capture | Capture contract from an Agent or the operator: snapshot binding, ≤8 checks, admitted environment facts, blockers instead of substitution | |
-| 3 | Dispatch owner | One trusted invocation kind for verification, preclaimed turn, approval release, no inbox-wake consumption, no replay | |
+| 2 | Request capture | Capture contract from an Agent or the operator: snapshot binding, ≤8 checks, admitted environment facts, blockers instead of substitution | **done** |
+| 3a | Authorization and release | Verification authorizer on the canonical peer edge, a closed approval tuple, and a durable grant whose release commits with the decision | **done** |
+| 3b | Dispatch | The preclaimed verification invocation is defined; claiming and admitting the tester turn is not wired yet | **in progress** |
 | 4 | Workspace and snapshot revalidation | Reserve the workspace for the interval; block on drift before execution; unknown after source mutation | |
 | 5 | Restricted test capability | Worker surface that can inspect the request and invoke each captured command once — no Bash/edit/write/browser/MCP/deploy | |
 | 6 | Evidence return and surfaces | Per-request access, API/CLI/web, cancellation, expiry, Telegram notices | |
@@ -69,3 +70,62 @@ test in `apps/cli/test/backup-coding-recovery.test.ts`.
 
 **Verification.** `pnpm typecheck` clean; `pnpm format`/`pnpm lint` clean; 53 tests across the
 verification, restore, coding-log and coding-redaction suites pass.
+
+## Slice 2 — request capture (done)
+
+`apps/daemon/src/lib/verification/capture.ts` plus hermetic wire shapes in
+`packages/api-types/src/verification.ts` (19 exported types, including the closed
+`VerificationBlockerReason` list). Five tests in `apps/daemon/test/lib/verification-capture.test.ts`.
+
+**Decisions worth keeping.**
+
+- **Capture validates the inputs, not the caller's description of them.** The snapshot must exist in
+  this Team inside its window *and* have complete coverage; the specialist must be a live,
+  non-archived member of the same Team; the requester must be a member and never the specialist
+  itself; the environment is the one the Team is admitted into right now, resolved passively so a
+  capture can never have side effects on the repository.
+- **A blocker is a result, not an exception to be smoothed over.** Every refusal carries a reason
+  from a closed list and a detail, and a refused capture leaves nothing behind — verified by asserting
+  zero rows after ten different refusals.
+- **`readVerificationReport` composes contract + attempts + three-valued applicability**, and reports
+  `unknown` — with no tested snapshot id — when there is nothing to compare. Editing the source flips
+  it to `changed`, never to a pass.
+
+**A test that passed for the wrong reason, caught by typecheck.** The incomplete-coverage test passed
+`limits: { maxFileBytes: 16 }`; `maxFileBytes` does not exist on `ReviewLimits` (it is `fileBytes`),
+so the limit was silently ignored and the assertion happened to hold through a different path. It now
+includes an untracked file explicitly with `fileBytes: 16` and asserts *which* entry could not be read
+(`tooLarge`), so the refusal is about coverage and nothing else. Vitest strips types, which is exactly
+why `pnpm typecheck` is part of the loop.
+
+## Slice 3a — authorization and approval release (done)
+
+`authorizeVerificationRequest` (`lib/communication.ts`), the `verification_request` delivery-plan kind
+(`lib/approval-delivery-plan.ts`), a `grantVerificationRequest` grant path
+(`core/repos/communicationApprovals.ts`), and the preclaimed `specialist_verification` invocation kind
+(`lib/turn-invocation.ts`). 16 further tests across the invocation, approval-plan and authorization
+suites.
+
+**Decisions worth keeping.**
+
+- **The request id *is* the attempt id.** Policy evaluation, a held approval and dispatch all key on the
+  same identity, so a released approval cannot be replayed onto a different request. Enforced in the
+  plan validator and in the invocation validator.
+- **A verification turn is always the protected surface**, even on a loopback daemon, and its
+  `bashApprovalMode` is `auto_deny`: it has no operator authorization to inherit, and an unattended
+  command needing shell approval stays blocked rather than being auto-approved.
+- **The invocation is a closed nominal value.** Rebinding the claim to another Agent or attempt, adding
+  a key, or downgrading the approval posture all fail validation; the preclaimed turn is consumed
+  exactly once at preparation handoff, like a scheduler or inbox claim.
+- **One durable grant, with the release committed inside the decision.** `grantDurableApproval` was
+  extracted so verification and scheduler grants share exactly one implementation; an `onGranted` hook
+  runs inside the decision transaction, so a granted approval cannot be delivered without its guarded
+  effect having happened. A request whose inputs no longer hold is refused as `delivery_failed`, and a
+  policy or membership change denies rather than grants.
+- **Operation and payload kind are a pair.** They differ for verification
+  (`request_verification` / `verification_request`) but must both match, so an approval cannot be
+  released by a handler other than the one that captured it. Conflating them was a real bug caught by
+  the grant test.
+- **Adding a plan kind fails closed at the delivery site.** The Telegram delivery block now narrows
+  through `isTelegramDeliveryPlan` instead of assuming the remaining kinds are Telegram ones; the guard
+  is statically unreachable today and becomes live the moment a kind is added without a handler.

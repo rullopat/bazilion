@@ -304,3 +304,56 @@ describe('approval delivery planning', () => {
     expect(() => planApprovalDelivery(detail, context)).toThrow(/agent_to_agent_endpoints/)
   })
 })
+
+// BAZ-044: a held verification request has exactly one release path, keyed on the request id.
+describe('verification request approvals', () => {
+  const requestId = '11111111-2222-4333-8444-555555555555'
+  const held = () =>
+    approval({
+      attemptKind: 'verification_request',
+      attemptId: requestId,
+      operation: 'request_verification',
+      origin: 'verification_request',
+      source: { kind: 'agent', id: 'coder' },
+      target: { kind: 'agent', id: 'tester' },
+      payloadKind: 'verification_request',
+      payload: { requestId },
+    })
+
+  test('a well-formed held request plans as a durable grant', () => {
+    const plan = planApprovalDelivery(held())
+    expect(plan).toMatchObject({
+      kind: 'verification_request',
+      payload: { requestId },
+    })
+  })
+
+  test('the tuple is closed: identity, payload and attempt must all agree', () => {
+    const invalid: Array<[Partial<CommunicationApprovalDetail>, string]> = [
+      [{ attemptKind: 'agent_tool' }, 'attempt_kind'],
+      [{ operation: 'send_agent_message' }, 'verification_request_payload'],
+      [{ origin: 'agent_inbox' }, 'verification_request_payload'],
+      [{ payload: { requestId: 'not-a-uuid' } }, 'verification_request_payload'],
+      [{ payload: {} }, 'verification_request_payload'],
+      [{ payload: { requestId, extra: 1 } }, 'verification_request_payload'],
+      [{ payload: 'requestId' }, 'verification_request_payload'],
+    ]
+    for (const [override, code] of invalid) {
+      const broken = approval({ ...held(), ...override })
+      expect(() => planApprovalDelivery(broken), JSON.stringify(override)).toThrow(
+        ApprovalDeliveryValidationError,
+      )
+      expect(() => planApprovalDelivery(broken), JSON.stringify(override)).toThrow(code)
+    }
+  })
+
+  test('a released approval cannot be replayed onto another request', () => {
+    const other = '99999999-8888-4777-8666-555555555555'
+    expect(() => planApprovalDelivery(approval({ ...held(), attemptId: other }))).toThrow(
+      /verification_request_attempt/,
+    )
+    expect(() =>
+      planApprovalDelivery(approval({ ...held(), payload: { requestId: other } })),
+    ).toThrow(/verification_request_attempt/)
+  })
+})

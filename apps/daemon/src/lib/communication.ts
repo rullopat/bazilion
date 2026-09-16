@@ -181,6 +181,34 @@ export function authorizeAgentEgress(
   )
 }
 
+/**
+ * Authorize one typed verification request on the agent-to-agent edge (BAZ-044).
+ *
+ * The request id is the attempt id, so policy evaluation, a held approval and dispatch all key on
+ * the same identity and a released approval cannot be replayed onto a different request. An
+ * `approval_required` edge throws `CommunicationPendingError` after capturing the attempt; a denied
+ * edge throws with its evidence. Neither case lets the caller keep a request that was not authorized.
+ */
+export function authorizeVerificationRequest(
+  db: BazilionDb,
+  input: { from: string; to: string; requestId: string },
+): AuthorizationResult {
+  return authorizeBoundary(
+    db,
+    {
+      source: { kind: 'agent', id: input.from },
+      target: { kind: 'agent', id: input.to },
+      origin: 'verification_request',
+      attemptKind: 'verification_request',
+      attemptId: input.requestId,
+      approvalPayloadKind: 'verification_request',
+      approvalPayload: { requestId: input.requestId },
+      requester: input.from,
+    },
+    'request_verification',
+  )
+}
+
 export function authorizeHttpChatFrame(
   db: BazilionDb,
   agentId: string,

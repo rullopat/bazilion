@@ -40,6 +40,11 @@ export interface InboxMessageApprovalPayload {
   messageId: string
 }
 
+/** BAZ-044: the held typed request. Dispatch stays with the verification state machine. */
+export interface VerificationRequestApprovalPayload {
+  requestId: string
+}
+
 export interface HttpChatFrameApprovalPayload {
   agentId: string
   frame: ChatFrame
@@ -120,6 +125,11 @@ export type ApprovalDeliveryPlan =
       payload: AgentMessageApprovalPayload
     }
   | {
+      kind: 'verification_request'
+      approval: CommunicationApprovalDetail
+      payload: VerificationRequestApprovalPayload
+    }
+  | {
       kind: 'http_chat_frame'
       approval: CommunicationApprovalDetail
       payload: HttpChatFrameApprovalPayload
@@ -144,6 +154,23 @@ export type ApprovalDeliveryPlan =
       approval: CommunicationApprovalDetail
       payload: TelegramFileApprovalPayload
     }
+
+/**
+ * Is this plan delivered over the Telegram transport?
+ *
+ * Exported so a delivery site can narrow the union instead of assuming the remaining kinds are
+ * Telegram ones — an added plan kind then fails closed rather than being mis-delivered.
+ */
+export function isTelegramDeliveryPlan(
+  plan: ApprovalDeliveryPlan,
+): plan is Extract<ApprovalDeliveryPlan, { kind: `telegram_${string}` }> {
+  return (
+    plan.kind === 'telegram_text' ||
+    plan.kind === 'telegram_typing' ||
+    plan.kind === 'telegram_image' ||
+    plan.kind === 'telegram_file'
+  )
+}
 
 export interface ApprovalDeliveryPlanContext {
   questionInput?: (agentId: string, questionId: string) => QuestionApprovalSnapshot | null
@@ -235,6 +262,24 @@ export function planApprovalDelivery(
     } catch {
       return invalid('question_binding')
     }
+  }
+
+  if (approval.payloadKind === 'verification_request') {
+    const payload = approval.payload
+    if (
+      approval.operation !== 'request_verification' ||
+      approval.origin !== 'verification_request' ||
+      !isRecord(payload) ||
+      Object.keys(payload).sort().join(',') !== 'requestId' ||
+      typeof payload.requestId !== 'string' ||
+      !/^[0-9a-f-]{36}$/i.test(payload.requestId)
+    )
+      return invalid('verification_request_payload')
+    requireAttemptKind(approval, 'verification_request')
+    // The request identity is the attempt identity: a released approval cannot be replayed onto
+    // another request, and the request itself revalidates membership and policy before dispatch.
+    if (approval.attemptId !== payload.requestId) return invalid('verification_request_attempt')
+    return { kind: 'verification_request', approval, payload: { requestId: payload.requestId } }
   }
 
   if (approval.payloadKind === 'queued_user') {

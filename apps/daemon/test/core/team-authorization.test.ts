@@ -1,10 +1,16 @@
 import { afterEach, beforeEach, expect, test } from 'vitest'
 import { spawnAgent } from '../../src/core/agent/spawn.ts'
 import { createProfile } from '../../src/core/profile/create.ts'
+import * as approvalRepo from '../../src/core/repos/communicationApprovals.ts'
 import * as messageRepo from '../../src/core/repos/messages.ts'
 import { registerTeam } from '../../src/core/team/register.ts'
-import { authorizeCommunication, recordDenial } from '../../src/core/team-policy/authorization.ts'
 import {
+  authorizeCommunication,
+  authorizeInSnapshot,
+  recordDenial,
+} from '../../src/core/team-policy/authorization.ts'
+import {
+  authorizeVerificationRequest,
   CommunicationDeniedError,
   deliverableInbox,
   sendAgentMessage,
@@ -38,6 +44,23 @@ function edge(team: string, sk: string, sid: string, tk: string, tid: string) {
   env.db.raw.run(
     'INSERT INTO team_policy_edges (team_id, source_kind, source_id, target_kind, target_id) VALUES (?, ?, ?, ?, ?)',
     [team, sk, sid, tk, tid],
+  )
+}
+
+/** An edge with an explicit posture; the default edge helper always allows. */
+function edgeWithPosture(
+  team: string,
+  sk: string,
+  sid: string,
+  tk: string,
+  tid: string,
+  posture: 'allow' | 'approval_required',
+) {
+  env.db.raw.run(
+    `INSERT INTO team_policy_edges
+     (team_id, source_kind, source_id, target_kind, target_id, posture)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [team, sk, sid, tk, tid, posture],
   )
 }
 
@@ -280,4 +303,206 @@ test('Agent inbox reauthorization atomically blocks stale deliveries while opera
       .query<{ count: number }, []>('SELECT COUNT(*) count FROM team_policy_block_events')
       .get()?.count,
   ).toBe(1)
+})
+
+// BAZ-044: a verification request is authorized on the canonical agent-to-agent edge, and a held
+// approval releases it as a durable grant rather than executing anything in the HTTP request.
+test('a verification request is authorized on the peer edge and held once when approval is required', () => {
+  const coder = spawnAgent(env.db, env.paths, { profileId: 'p', teamId: env.teamId })
+  const tester = spawnAgent(env.db, env.paths, { profileId: 'p', teamId: env.teamId })
+  const requestId = '11111111-2222-4333-8444-555555555555'
+  // Gate off: authorization succeeds without creating anything durable.
+  expect(() =>
+    authorizeVerificationRequest(env.db, { from: coder.id, to: tester.id, requestId }),
+  ).not.toThrow()
+  expect(
+    env.db.raw
+      .query<{ count: number }, []>('SELECT COUNT(*) count FROM communication_approvals')
+      .get()?.count,
+  ).toBe(0)
+
+  process.env.BAZILION_TEAM_POLICY_ENFORCEMENT = 'on'
+  env.db.raw.run('DELETE FROM team_policy_edges WHERE team_id = ?', [env.teamId])
+  // No edge: denied with durable evidence, and nothing is held.
+  expect(() =>
+    authorizeVerificationRequest(env.db, { from: coder.id, to: tester.id, requestId }),
+  ).toThrow(CommunicationDeniedError)
+  expect(
+    env.db.raw
+      .query<{ count: number }, []>('SELECT COUNT(*) count FROM communication_approvals')
+      .get()?.count,
+  ).toBe(0)
+
+  // An approval-required edge captures the attempt exactly once, keyed on the request id.
+  edgeWithPosture(env.teamId, 'agent', coder.id, 'agent', tester.id, 'approval_required')
+  let held: unknown
+  try {
+    authorizeVerificationRequest(env.db, { from: coder.id, to: tester.id, requestId })
+    throw new Error('expected the request to be held')
+  } catch (error) {
+    held = error
+  }
+  expect(String(held)).toContain('approval')
+  const approvalRow = env.db.raw
+    .query<{ attempt_kind: string; attempt_id: string; operation: string; status: string }, []>(
+      'SELECT attempt_kind, attempt_id, operation, status FROM communication_approvals',
+    )
+    .get()
+  expect(approvalRow).toEqual({
+    attempt_kind: 'verification_request',
+    attempt_id: requestId,
+    operation: 'request_verification',
+    status: 'pending',
+  })
+  // Attempting again does not create a second approval: the attempt tuple is unique.
+  expect(() =>
+    authorizeVerificationRequest(env.db, { from: coder.id, to: tester.id, requestId }),
+  ).toThrow()
+  expect(
+    env.db.raw
+      .query<{ count: number }, []>('SELECT COUNT(*) count FROM communication_approvals')
+      .get()?.count,
+  ).toBe(1)
+})
+
+test('a held verification request releases exactly once, and only while it is still dispatchable', () => {
+  const coder = spawnAgent(env.db, env.paths, { profileId: 'p', teamId: env.teamId })
+  const tester = spawnAgent(env.db, env.paths, { profileId: 'p', teamId: env.teamId })
+  const requestId = '11111111-2222-4333-8444-555555555555'
+  process.env.BAZILION_TEAM_POLICY_ENFORCEMENT = 'on'
+  env.db.raw.run('DELETE FROM team_policy_edges WHERE team_id = ?', [env.teamId])
+  edgeWithPosture(env.teamId, 'agent', coder.id, 'agent', tester.id, 'approval_required')
+  expect(() =>
+    authorizeVerificationRequest(env.db, { from: coder.id, to: tester.id, requestId }),
+  ).toThrow()
+  const approvalId = env.db.raw
+    .query<{ id: string }, []>('SELECT id FROM communication_approvals')
+    .get()?.id
+  if (!approvalId) throw new Error('expected a pending approval')
+
+  const revalidate = (approval: {
+    source: never
+    target: never
+    origin: string
+    attemptKind: string
+    attemptId: string
+  }) =>
+    authorizeInSnapshot(env.db, {
+      source: approval.source,
+      target: approval.target,
+      origin: approval.origin,
+      attemptKind: approval.attemptKind,
+      attemptId: approval.attemptId,
+    })
+
+  // A request whose inputs no longer hold is refused, and the approval is not left granted.
+  const blocked = approvalRepo.grantVerificationRequest(
+    env.db,
+    approvalId,
+    'operator',
+    revalidate as never,
+    (approval) => {
+      expect(approval.payload).toMatchObject({ requestId })
+      return 'verification request is no longer dispatchable'
+    },
+    () => {
+      throw new Error('must not release an unvalidated request')
+    },
+  )
+  expect(blocked).toMatchObject({ granted: false, failureKind: 'delivery' })
+  expect(
+    env.db.raw.query<{ status: string }, []>('SELECT status FROM communication_approvals').get()
+      ?.status,
+  ).toBe('delivery_failed')
+
+  // Revalidation failure (policy or membership changed) denies rather than grants.
+  const secondRequestId = '22222222-2222-4333-8444-555555555555'
+  const second = approvalRepo.request(
+    env.db,
+    {
+      source: { kind: 'agent', id: coder.id },
+      target: { kind: 'agent', id: tester.id },
+      origin: 'verification_request',
+      attemptKind: 'verification_request',
+      attemptId: secondRequestId,
+    },
+    'request_verification',
+    {
+      decision: 'approval_required',
+      channel: 'same_team',
+      reasonCode: 'approval_required',
+      reason: 'edge requires approval',
+      policyRefs: [],
+      componentOutcomes: [],
+      matchedEdgeIds: [],
+      requiredEdgeIds: [],
+    },
+    'verification_request',
+    { requestId: secondRequestId },
+    { requester: coder.id },
+  )
+  env.db.raw.run('DELETE FROM team_policy_edges WHERE team_id = ?', [env.teamId])
+  const denied = approvalRepo.grantVerificationRequest(
+    env.db,
+    second.id,
+    'operator',
+    revalidate as never,
+    () => null,
+    () => {
+      throw new Error('must not release a denied request')
+    },
+  )
+  expect(denied).toMatchObject({ granted: false, failureKind: 'revalidation' })
+})
+
+test('a granted verification request runs its guarded release inside the decision', () => {
+  const coder = spawnAgent(env.db, env.paths, { profileId: 'p', teamId: env.teamId })
+  const tester = spawnAgent(env.db, env.paths, { profileId: 'p', teamId: env.teamId })
+  const requestId = '99999999-2222-4333-8444-555555555555'
+  process.env.BAZILION_TEAM_POLICY_ENFORCEMENT = 'on'
+  env.db.raw.run('DELETE FROM team_policy_edges WHERE team_id = ?', [env.teamId])
+  edgeWithPosture(env.teamId, 'agent', coder.id, 'agent', tester.id, 'approval_required')
+  expect(() =>
+    authorizeVerificationRequest(env.db, { from: coder.id, to: tester.id, requestId }),
+  ).toThrow()
+  const approvalId = env.db.raw
+    .query<{ id: string }, []>('SELECT id FROM communication_approvals')
+    .get()?.id
+  if (!approvalId) throw new Error('expected a pending approval')
+
+  const released: string[] = []
+  const grant = approvalRepo.grantVerificationRequest(
+    env.db,
+    approvalId,
+    'operator',
+    (approval) =>
+      authorizeInSnapshot(env.db, {
+        source: approval.source,
+        target: approval.target,
+        origin: approval.origin,
+        attemptKind: approval.attemptKind,
+        attemptId: approval.attemptId,
+      }),
+    (approval) => {
+      expect(approval.attemptId).toBe(requestId)
+      return null
+    },
+    (approval) => released.push(String(approval.attemptId)),
+  )
+  expect(grant).toMatchObject({ granted: true, approval: { status: 'delivered' } })
+  // The release committed with the decision, and only once.
+  expect(released).toEqual([requestId])
+  expect(() =>
+    approvalRepo.grantVerificationRequest(
+      env.db,
+      approvalId,
+      'operator',
+      () => {
+        throw new Error('must not revalidate a settled approval')
+      },
+      () => null,
+      () => released.push('again'),
+    ),
+  ).toThrow(/approval_state_conflict/)
+  expect(released).toEqual([requestId])
 })

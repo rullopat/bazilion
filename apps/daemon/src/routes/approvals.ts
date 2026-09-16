@@ -29,6 +29,7 @@ import { prepareAgentTurn, runAgentTurn } from '../lib/agent-turn.ts'
 import {
   type ApprovalDeliveryPlan,
   ApprovalDeliveryValidationError,
+  isTelegramDeliveryPlan,
   planApprovalDelivery,
   type SchedulerTriggerApprovalPayload,
 } from '../lib/approval-delivery-plan.ts'
@@ -320,6 +321,12 @@ async function deliver(plan: ApprovalDeliveryPlan): Promise<void> {
     // in one state machine.
     return
   }
+  if (plan.kind === 'verification_request') {
+    // BAZ-044 approvals are durable grants only, exactly like scheduler triggers: the request was
+    // released into `pending` by the grant transaction, and the verification state machine alone
+    // claims and executes it under its own lease and recovery rules.
+    return
+  }
   if (plan.kind === 'agent_turn') {
     const preparedTurn = await prepareAgentTurn({
       invocation: createTrustedTurnInvocation({
@@ -432,6 +439,14 @@ async function deliver(plan: ApprovalDeliveryPlan): Promise<void> {
     }
     if (failure) throw new Error(failure)
     return
+  }
+
+  // Everything above returns for its own plan kind, so reaching here with a non-Telegram plan
+  // means a kind was added without a delivery handler. Fail closed instead of mis-delivering.
+  if (!isTelegramDeliveryPlan(plan)) {
+    // Statically unreachable today; it becomes reachable the moment a plan kind is added
+    // without a delivery handler, which is exactly when it should stop the delivery.
+    throw new Error('approval_delivery_invalid: no delivery handler for this plan kind')
   }
 
   const { db, authToken } = getCtx()

@@ -53,6 +53,20 @@ export interface InboxWakeAttempt {
   agentId: string
 }
 
+/**
+ * A specialist verification attempt.
+ *
+ * `attemptId` is the request id: the typed request *is* the attempt, so the same identity owns
+ * policy evaluation, approval release and dispatch. It is never an inbox wake — a captured request
+ * must not be consumed as an ordinary writable coding turn.
+ */
+export interface VerificationRequestAttempt {
+  origin: 'verification_request'
+  attemptKind: 'verification_request'
+  attemptId: string
+  agentId: string
+}
+
 export type ApprovedUserTurnAttempt =
   | {
       origin: 'http_chat'
@@ -92,6 +106,13 @@ type TrustedTurnInvocationVariant =
   | {
       kind: 'inbox_wake'
       authorization: InboxWakeAttempt
+      turn: BoundAgentTurn
+      claim: PreclaimedTurn
+      bashApprovalMode: 'auto_deny'
+    }
+  | {
+      kind: 'specialist_verification'
+      authorization: VerificationRequestAttempt
       turn: BoundAgentTurn
       claim: PreclaimedTurn
       bashApprovalMode: 'auto_deny'
@@ -198,13 +219,30 @@ export function invocationOwnsUserAuthorization(
 
 export function invocationHasPreclaimedRegistration(
   invocation: TrustedTurnInvocation,
-): invocation is Extract<TrustedTurnInvocation, { kind: 'scheduled_trigger' | 'inbox_wake' }> {
-  return invocation.kind === 'scheduled_trigger' || invocation.kind === 'inbox_wake'
+): invocation is Extract<
+  TrustedTurnInvocation,
+  { kind: 'scheduled_trigger' | 'inbox_wake' | 'specialist_verification' }
+> {
+  return (
+    invocation.kind === 'scheduled_trigger' ||
+    invocation.kind === 'inbox_wake' ||
+    invocation.kind === 'specialist_verification'
+  )
 }
 
-/** Consume a scheduler/inbox lifecycle claim exactly once at preparation handoff. */
+/** A verification turn is restricted: it never becomes an ordinary writable coding turn. */
+export function invocationRepresentsSpecialistVerification(
+  invocation: TrustedTurnInvocation,
+): invocation is Extract<TrustedTurnInvocation, { kind: 'specialist_verification' }> {
+  return invocation.kind === 'specialist_verification'
+}
+
+/** Consume a scheduler/inbox/verification lifecycle claim exactly once at preparation handoff. */
 export function consumePreclaimedTurn(
-  invocation: Extract<TrustedTurnInvocation, { kind: 'scheduled_trigger' | 'inbox_wake' }>,
+  invocation: Extract<
+    TrustedTurnInvocation,
+    { kind: 'scheduled_trigger' | 'inbox_wake' | 'specialist_verification' }
+  >,
 ): PreclaimedTurn {
   assertTrustedTurnInvocation(invocation)
   const claim = invocation.claim
@@ -281,7 +319,11 @@ function validateTurnInvocation(value: unknown): asserts value is TrustedTurnInv
     }
     return
   }
-  if (value.kind === 'scheduled_trigger' || value.kind === 'inbox_wake') {
+  if (
+    value.kind === 'scheduled_trigger' ||
+    value.kind === 'inbox_wake' ||
+    value.kind === 'specialist_verification'
+  ) {
     assertExactKeys(value, ['kind', 'authorization', 'turn', 'claim', 'bashApprovalMode'])
     if (!isRecord(value.authorization) || !isRecord(value.claim)) throw invalidInvocation()
     assertExactKeys(value.authorization, ['origin', 'attemptKind', 'attemptId', 'agentId'])
@@ -295,7 +337,9 @@ function validateTurnInvocation(value: unknown): asserts value is TrustedTurnInv
     const expected =
       value.kind === 'scheduled_trigger'
         ? (['scheduler_trigger', 'scheduler_trigger'] as const)
-        : (['scheduler_inbox', 'inbox_wake'] as const)
+        : value.kind === 'inbox_wake'
+          ? (['scheduler_inbox', 'inbox_wake'] as const)
+          : (['verification_request', 'verification_request'] as const)
     if (
       value.bashApprovalMode !== 'auto_deny' ||
       !isAttempt(value.authorization, expected[0], expected[1]) ||
