@@ -102,6 +102,8 @@ export interface CreateBazilionSessionOptions {
   paths: Paths
   /** Merged env (process.env + secrets) — produced via `mergeSecretsIntoEnv`. */
   env: NodeJS.ProcessEnv
+  /** BAZ-044: the requester-side verification capability, present in ordinary coding turns only. */
+  verificationRequestHost?: import('../tools/verification.ts').VerificationRequestHost
   memory: MemoryBackend
   /**
    * Names of providers the user has explicitly enabled in /config.
@@ -191,6 +193,8 @@ export interface CreateProtectedBazilionSessionOptions {
   fileSink: import('../tools/deliver-file.ts').FileSink
   bashApprovalHost: BashApprovalHost
   refreshApiKey: (providerName: string) => Promise<string>
+  /** BAZ-044: the requester-side verification capability, present in ordinary coding turns only. */
+  verificationRequestHost?: import('../tools/verification.ts').VerificationRequestHost
 }
 
 export interface CreateRestrictedReviewSessionOptions {
@@ -359,6 +363,7 @@ export async function createBazilionSession(
         askUser,
         sessionId: sessionManager.getSessionId(),
         env,
+        verificationRequestHost: opts.verificationRequestHost,
       })
   if (repository) bazilionTools.push(repository.tool)
   if (
@@ -517,6 +522,7 @@ export async function createProtectedBazilionSession(
     fileSink: opts.fileSink,
     askUser: opts.askUser,
     sessionId: sessionManager.getSessionId(),
+    verificationRequestHost: opts.verificationRequestHost,
   })
   if (repository) bazilionTools.push(repository.tool)
   // Shared with the protected credential boundary below: refreshed tokens are

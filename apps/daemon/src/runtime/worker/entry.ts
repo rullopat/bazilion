@@ -17,7 +17,7 @@ import {
 } from '../pi/session.ts'
 import { ourToolToPiTool } from '../pi/tools.ts'
 import type { BashApprovalHost as ShellBashApprovalHost } from '../shell/approval.ts'
-import { verificationTools } from '../tools/verification.ts'
+import { type VerificationRequestHost, verificationTools } from '../tools/verification.ts'
 import { createIpcApiKeyRefresher } from './api-key-refresh.ts'
 import { createIpcClient, type WorkerIpcCall } from './ipc-client.ts'
 import type {
@@ -242,6 +242,16 @@ function createReviewState(
  * Proxy the capability over IPC. Only the ordinal travels; the request identity is bound here from
  * the worker's own input, so a worker cannot address another request's attempt.
  */
+/**
+ * BAZ-044 requester side. Only the protected coding turn receives this, so an ordinary turn can ask a
+ * specialist for verification and no restricted turn can ask for anything.
+ */
+function createIpcVerificationRequestHost(ipcCall: WorkerIpcCall): VerificationRequestHost {
+  return {
+    capture: (intent) => ipcCall('verificationCapture', intent),
+  }
+}
+
 function createIpcVerificationHost(
   ipcCall: WorkerIpcCall,
   identity: { requestId: string; attemptId: string },
@@ -299,6 +309,9 @@ async function createSessionForInput(
       enabledProviders: new Set(input.enabledProviders),
       messagingHost,
       userMdHost,
+      // The requester's half of specialist verification. Only the configured/browser-enabled worker
+      // kind reaches this builder, and it is an ordinary coding turn.
+      verificationRequestHost: createIpcVerificationRequestHost(ipcCall),
       apiKey: input.apiKey,
       refreshApiKey,
       browserHost,
@@ -378,6 +391,7 @@ async function createSessionForInput(
     messagingHost,
     userMdHost,
     bashApprovalHost,
+    verificationRequestHost: createIpcVerificationRequestHost(ipcCall),
     askUser: input.questionEnabled
       ? (toolCallId, question) => ipcCall('askUser', { toolCallId, question })
       : undefined,

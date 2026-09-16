@@ -39,6 +39,7 @@ export type RpcMethod =
   | 'userMdWrite'
   | 'browserInvoke'
   | 'mcpInvoke'
+  | 'verificationCapture'
   | 'verificationRead'
   | 'verificationRun'
   | 'refreshApiKey'
@@ -188,6 +189,10 @@ export type RpcArgs =
   | { method: 'userMdWrite'; args: UserMdWriteArgs }
   | { method: 'browserInvoke'; args: BrowserInvokeArgs }
   | { method: 'mcpInvoke'; args: McpInvokeArgs }
+  | {
+      method: 'verificationCapture'
+      args: import('../tools/verification.ts').VerificationRequestIntent
+    }
   | { method: 'verificationRead'; args: VerificationIdentityArgs }
   | { method: 'verificationRun'; args: VerificationRunArgs }
   | { method: 'refreshApiKey'; args: ApiKeyRefreshArgs }
@@ -212,6 +217,10 @@ export type RpcResult =
   | { method: 'userMdWrite'; value: UserMdWriteResult }
   | { method: 'browserInvoke'; value: ToolResultPart[] }
   | { method: 'mcpInvoke'; value: ToolResultPart[] }
+  | {
+      method: 'verificationCapture'
+      value: import('../tools/verification.ts').VerificationRequestReceipt
+    }
   | { method: 'verificationRead'; value: import('../tools/verification.ts').VerificationBrief }
   | { method: 'verificationRun'; value: import('../tools/verification.ts').VerificationCheckRun }
   | { method: 'refreshApiKey'; value: string }

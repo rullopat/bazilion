@@ -132,6 +132,13 @@ section is typechecked and built, not browser-observed.
    they do not confine writes. And an executed check whose receipt was pruned reports
    `receiptUnavailable` rather than silence, so "the evidence is gone" is distinguishable from "no receipt
    was recorded".
+0. **Two gaps from the v0.19.0 gap work, both closed.** A container check now runs with the posture its
+   receipt claims (read-only team memory, recovery-registered container), declared output paths are
+   *checked* rather than trusted (the attempt records writes outside the declaration, and the requester
+   is told), and — the substantive one — an agent can now request verification at all, which is what
+   makes the result delivery reachable. `scripts/verification-live-run.mjs` observes the whole loop
+   (coder asks → capture → restricted specialist → daemon-executed check → receipt → result → coder
+   woken) against a real daemon and repository.
 1. **No live-model verification run.** The end-to-end path *is* now observed as one continuous run with
    a fixture worker and a stubbed model runtime (no provider contacted). What is still unobserved is a
    real agent deciding to request verification, and a model-authored summary being checked against the

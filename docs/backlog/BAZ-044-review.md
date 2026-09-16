@@ -4,7 +4,7 @@ Audit of the implemented story against its own scope, acceptance criteria and th
 Every finding below was **verified in the code or with a throwaway probe**, not inferred from the
 summary I wrote while building it. Probe scripts were deleted after use; their raw output is quoted.
 
-**All thirteen are fixed** (S13 was found by the release audit below), each with a regression test, and
+**All fourteen are fixed** (S13 and S14 were found by the release and gap audits below), each with a regression test, and
 five gate cases were added (111 → 116). The end-to-end gate case covers the result return as well as the
 receipts, since the gate rejects two cases pointing at one test.
 
@@ -375,6 +375,30 @@ message arrives from the specialist to the requester with the receipt reference.
 
 Auditing for the release is what surfaced this: the twelve findings before it were all *implemented but
 mis-wired*; this one was **not implemented at all**, and every test I had written still passed.
+
+---
+
+## S14 — No agent could request verification at all (high, second missing implementation — found by the v0.19.0 gap work)
+
+S13 made the result reach the *requester*, and the criterion it serves says "a coder can request checks
+from an existing same-Team tester". Nothing implemented that side: only the operator HTTP route and the
+CLI could create a request, so in production the requester was always the operator and **the result
+delivery S13 added was unreachable** — implemented, unit-tested, and never on a path an agent could take.
+The story's task experience ("have our tester verify this fix … the coder captures the current change and
+relevant commands, sends one authorized request, and yields") had no implementation.
+
+**Status: fixed.** `request_verification` is the requester-side tool: it takes a specialist and up to
+eight checks, and nothing else — no snapshot to name, no requester to claim, no approve, publish or run
+action. The daemon captures the change *at that moment*, attributes it to the turn's own agent, and
+binds the identity in `lib/verification/request-capability.ts`, so a worker cannot ask as someone else.
+A refusal (unknown specialist, an incomplete capture, an ended turn) writes nothing and says why. The
+capability is refused to every restricted kind at spawn time, because handing a read-only turn the
+ability to capture a snapshot and write a request would be a write the story does not grant.
+
+Observed end to end, not just unit-tested: `scripts/verification-live-run.mjs` boots a disposable daemon
+and repository, has a coder agent ask in an ordinary chat turn, and follows the request through the
+restricted specialist, the daemon-side executor and the receipt back to the coder's inbox wake — with
+one message, the receipt reference, and the undeclared write reported.
 
 ---
 

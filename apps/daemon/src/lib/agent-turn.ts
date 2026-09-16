@@ -37,6 +37,7 @@ import {
   releasePreparedAgentTurn,
 } from './turn-preparation.ts'
 import { createDbUserMdHost } from './user-md-host.ts'
+import { createVerificationRequestHost } from './verification/request-capability.ts'
 
 export { prepareAgentTurn }
 
@@ -83,6 +84,18 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
         contextBusy = false
       }
     }
+    // BAZ-044 requester side: this turn may hand its current change to a Team specialist. Bound to the
+    // turn's own agent, so a worker cannot request verification as anyone else.
+    const verificationRequestHost = createVerificationRequestHost({
+      db,
+      paths,
+      agentId: agent.agent.id,
+      teamId: agent.team.id,
+      turnId,
+      assertActive: () => {
+        if (!ownsActiveAgent(agent.agent.id, turn.controller)) throw new Error('Coding turn ended')
+      },
+    })
     const selectedDocker = turn.protectedExecution?.docker ?? turn.configuredDocker?.docker
     const codingHost = createCodingHost({
       db,
@@ -163,6 +176,7 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
           repositoryContextHost,
           codingHost,
           messagingHost,
+          verificationRequestHost,
           resultHost,
           userMdHost,
           browserHost,
@@ -204,6 +218,7 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
           repositoryContextHost,
           codingHost,
           messagingHost,
+          verificationRequestHost,
           resultHost,
           userMdHost,
           bashApprovalHost: commandApprovalRegistry,

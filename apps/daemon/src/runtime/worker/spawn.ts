@@ -164,6 +164,8 @@ export interface ConfiguredSpawnWorkerOpts extends CommonSpawnWorkerOpts {
   questionHost?: import('./ipc-protocol.ts').QuestionHost
   /** Explicit legacy configured environment. There is intentionally no default. */
   env: NodeJS.ProcessEnv
+  /** BAZ-044: lets an ordinary coding turn hand its current change to a Team specialist. */
+  verificationRequestHost?: import('../tools/verification.ts').VerificationRequestHost
   /**
    * Daemon-side implementation of the messaging tools the worker calls back
    * into via IPC. Omit only when the caller knows the agent will not invoke
@@ -198,6 +200,8 @@ export interface ProtectedSpawnWorkerOpts extends CommonSpawnWorkerOpts {
   userMdHost: UserMdHost
   bashApprovalHost: BashApprovalHost
   apiKeyRefreshHost: ApiKeyRefreshHost
+  /** BAZ-044: lets a normal coding turn hand its current change to a Team specialist. */
+  verificationRequestHost?: import('../tools/verification.ts').VerificationRequestHost
 }
 
 export interface RestrictedReviewSpawnWorkerOpts extends CommonSpawnWorkerOpts {
@@ -567,6 +571,10 @@ function assertSpawnCombination(
       'repositoryContextHost',
       'resultHost',
       'resourceLifecycle',
+      // Not just "a restricted turn has no reason to ask": the requester capability captures a
+      // snapshot and writes a request, so handing it to any restricted kind would give that turn a
+      // write the story does not grant it.
+      'verificationRequestHost',
     ]) {
       if (forbidden in record) throw new Error(`${spec.kind} rejects ${forbidden}`)
     }
@@ -633,6 +641,12 @@ function spawnHosts(
       spec.kind === 'specialist_verification'
         ? (opts as SpecialistVerificationSpawnWorkerOpts).verificationHost
         : undefined,
+    verificationRequestHost:
+      spec.kind === 'protected'
+        ? (opts as ProtectedSpawnWorkerOpts).verificationRequestHost
+        : spec.kind === 'configured_operator_http'
+          ? (opts as ConfiguredSpawnWorkerOpts).verificationRequestHost
+          : undefined,
     bashApprovalHost: configuredOpts?.bashApprovalHost ?? protectedOpts?.bashApprovalHost,
     apiKeyRefreshHost: opts.apiKeyRefreshHost,
     apiKeyRefreshContext: {
@@ -676,6 +690,8 @@ interface IpcHosts {
   browserHost?: BrowserHost
   mcpHost?: McpHost
   verificationHost?: import('./ipc-protocol.ts').VerificationHost
+  /** BAZ-044 requester side: only a protected coding turn may ask for verification. */
+  verificationRequestHost?: import('../tools/verification.ts').VerificationRequestHost
   bashApprovalHost?: BashApprovalHost
   apiKeyRefreshHost?: ApiKeyRefreshHost
   apiKeyRefreshContext?: ApiKeyRefreshTurnContext
@@ -848,6 +864,12 @@ async function dispatch(req: IpcRequest, hosts: IpcHosts): Promise<IpcReply> {
           req.args.toolName,
           req.args.args,
         )
+        break
+      case 'verificationCapture':
+        result =
+          await require(hosts.verificationRequestHost, 'verificationRequestHost', req.method).capture(
+            req.args,
+          )
         break
       case 'verificationRead':
         result = await require(hosts.verificationHost, 'verification', req.method).read(

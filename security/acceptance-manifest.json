@@ -702,6 +702,18 @@
       "owner": "BAZ-044",
       "file": "apps/daemon/test/lib/verification-writes.test.ts",
       "test": "observed writes are split by whether the declaration covered them"
+    },
+    {
+      "id": "VERIFY-CODER-CAN-REQUEST-VERIFICATION",
+      "owner": "BAZ-044",
+      "file": "apps/daemon/test/lib/verification-request-capability.test.ts",
+      "test": "a coding turn captures its change and hands one request to a Team specialist"
+    },
+    {
+      "id": "VERIFY-RESTRICTED-TURN-CANNOT-REQUEST",
+      "owner": "BAZ-044",
+      "file": "apps/daemon/test/runtime/worker-runtime.test.ts",
+      "test": "a restricted turn cannot be handed the requester capability"
     }
   ]
 }

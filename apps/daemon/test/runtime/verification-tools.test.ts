@@ -3,6 +3,8 @@ import {
   type VerificationBrief,
   VerificationCapabilityError,
   type VerificationCapabilityHost,
+  type VerificationRequestHost,
+  verificationRequestTool,
   verificationTools,
 } from '../../src/runtime/tools/verification.ts'
 
@@ -189,4 +191,131 @@ test('a refused invocation stays runnable, because nothing executed', async () =
   await expect(run.invoke({ ordinal: 0 }, { toolCallId: 't' })).rejects.toThrow('missing toolchain')
   await expect(run.invoke({ ordinal: 0 }, { toolCallId: 't' })).resolves.toContain('succeeded')
   expect(attempts).toBe(2)
+})
+
+// ---------------------------------------------------------------------------------------------
+// The requester's half. It asks for verification and can do nothing else: no approval, no execution,
+// and no way to name a different requester.
+// ---------------------------------------------------------------------------------------------
+
+function requestHost(): { host: VerificationRequestHost; seen: unknown[] } {
+  const seen: unknown[] = []
+  return {
+    seen,
+    host: {
+      capture: async (intent) => {
+        seen.push(intent)
+        return {
+          requestId: 'req-1',
+          snapshotId: 'snap-1',
+          specialist: intent.specialist,
+          state: 'pending',
+          checks: intent.checks.map((check, ordinal) => ({
+            ordinal,
+            command: check.command,
+            cwd: check.cwd ?? '.',
+            timeoutMs: (check.timeoutSeconds ?? 120) * 1000,
+          })),
+        }
+      },
+    },
+  }
+}
+
+test('the requester tool asks for verification and offers nothing else', () => {
+  const { host } = requestHost()
+  const tool = verificationRequestTool(host)
+  expect(tool.def.name).toBe('request_verification')
+  const parameters = tool.def.parameters as {
+    additionalProperties?: boolean
+    required?: string[]
+    properties: Record<string, unknown>
+  }
+  // No snapshot to choose, no requester to claim, no publish or approve action: the daemon captures
+  // the change and binds the identity, the model supplies only what to check and who should check it.
+  expect(parameters.additionalProperties).toBe(false)
+  expect(parameters.required).toEqual(['specialist', 'checks'])
+  expect(Object.keys(parameters.properties).sort()).toEqual([
+    'checks',
+    'specialist',
+    'summary',
+    'writablePaths',
+  ])
+})
+
+test('a malformed request is refused before the daemon is asked', async () => {
+  const { host, seen } = requestHost()
+  const tool = verificationRequestTool(host)
+  for (const args of [
+    { specialist: '', checks: [{ command: 'x', purpose: 'y' }] },
+    { specialist: 'tester', checks: [] },
+    { specialist: 'tester', checks: [{ command: '', purpose: 'y' }] },
+    { specialist: 'tester', checks: [{ command: 'x', purpose: '' }] },
+    {
+      specialist: 'tester',
+      checks: Array.from({ length: 9 }, () => ({ command: 'x', purpose: 'y' })),
+    },
+  ]) {
+    await expect(tool.invoke(args, { toolCallId: 't' })).rejects.toThrow(
+      /request_verification|check \d/,
+    )
+  }
+  expect(seen).toEqual([])
+})
+
+test('a valid request is handed over as intent, and the receipt names what to wait on', async () => {
+  const { host, seen } = requestHost()
+  const tool = verificationRequestTool(host)
+  const rendered = await tool.invoke(
+    {
+      specialist: 'tester',
+      checks: [
+        { command: 'pnpm test', purpose: 'unit suite' },
+        { command: 'pnpm build', purpose: 'build', cwd: 'app', timeoutSeconds: 30 },
+      ],
+      summary: 'the fix should be verified',
+      writablePaths: ['dist'],
+    },
+    { toolCallId: 't' },
+  )
+  expect(seen).toEqual([
+    {
+      specialist: 'tester',
+      checks: [
+        { command: 'pnpm test', purpose: 'unit suite' },
+        { command: 'pnpm build', purpose: 'build', cwd: 'app', timeoutSeconds: 30 },
+      ],
+      summary: 'the fix should be verified',
+      writablePaths: ['dist'],
+    },
+  ])
+  const text =
+    typeof rendered === 'string'
+      ? rendered
+      : (Array.isArray(rendered) ? rendered : rendered.content)
+          .map((part) => (part.type === 'text' ? part.text : ''))
+          .join('')
+  expect(text).toContain('req-1')
+  expect(text).toContain('pending')
+  // The requester is told to yield and wait, and is told what this is not.
+  expect(text).toContain('End your turn')
+  expect(text).toContain('not an')
+})
+
+test('the specialist capability does not contain the requester tool', () => {
+  const { value } = host({
+    invoke: async (ordinal: number) => ({
+      ordinal,
+      state: 'succeeded',
+      commandId: null,
+      exitCode: 0,
+      output: '',
+      truncated: false,
+      blocker: null,
+    }),
+  })
+  expect(verificationTools(value).map((tool) => tool.def.name)).toEqual([
+    'verification_request',
+    'verification_check',
+  ])
 })

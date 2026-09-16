@@ -29,6 +29,7 @@ import { memoryTools } from '../tools/memory.ts'
 import { messagingTools } from '../tools/messaging.ts'
 import type { ToolHandler, ToolOutput } from '../tools/types.ts'
 import { userMdTools } from '../tools/user-md.ts'
+import { type VerificationRequestHost, verificationRequestTool } from '../tools/verification.ts'
 import { protectedWebFetchTool, webTools } from '../tools/web.ts'
 import type {
   BrowserHost,
@@ -103,6 +104,8 @@ export interface BazilionCustomToolsOpts {
   fileSink?: FileSink
   /** Merged env (process.env + secrets). */
   env?: NodeJS.ProcessEnv
+  /** BAZ-044: present only in an ordinary coding turn, and only when the daemon bound it. */
+  verificationRequestHost?: VerificationRequestHost
 }
 
 export interface ProtectedBazilionCustomToolsOpts {
@@ -113,6 +116,8 @@ export interface ProtectedBazilionCustomToolsOpts {
   userMdHost: UserMdHost
   sessionId?: string
   fileSink: FileSink
+  /** BAZ-044: present only in an ordinary protected coding turn. */
+  verificationRequestHost?: VerificationRequestHost
 }
 
 /**
@@ -147,6 +152,10 @@ export function createBazilionCustomTools(opts: BazilionCustomToolsOpts): ToolDe
   if (opts.fileSink) {
     handlers.push(deliverFileTool(opts.agent.team.path, opts.fileSink, opts.sessionId))
   }
+  if (opts.verificationRequestHost) {
+    // The requester's half of specialist verification. It asks; it never approves or executes.
+    handlers.push(verificationRequestTool(opts.verificationRequestHost))
+  }
   if (opts.askUser) handlers.push(askUserTool(opts.askUser))
   return handlers.map(ourToolToPiTool)
 }
@@ -168,6 +177,10 @@ export function createProtectedBazilionCustomTools(
     ...userMdTools(opts.userMdHost, opts.agent.team.id),
     deliverFileTool(opts.agent.team.path, opts.fileSink, opts.sessionId),
   ]
+  if (opts.verificationRequestHost) {
+    // The requester's half of specialist verification. It asks; it never approves or executes.
+    handlers.push(verificationRequestTool(opts.verificationRequestHost))
+  }
   if (opts.askUser) handlers.push(askUserTool(opts.askUser))
   return handlers.map(ourToolToPiTool)
 }

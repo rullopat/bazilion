@@ -490,6 +490,38 @@ describe('minimal worker runtime', () => {
     expect(host).not.toHaveBeenCalled()
   })
 
+  test('a restricted turn cannot be handed the requester capability', async () => {
+    // The requester capability captures a snapshot and writes a request. A restricted turn is
+    // read-only by construction, so it must be refused the host at spawn time rather than trusted not
+    // to call it — the same rule the specialist cappability already follows.
+    const prepared = protectedSpec(tempRoot())
+    const host = {
+      capture: async () => {
+        throw new Error('the requester capability must never be offered to a restricted turn')
+      },
+    }
+    for (const spec of [
+      {
+        kind: 'restricted_review' as const,
+        agentId: prepared.agent.agent.id,
+        message: 'valid',
+        turnId: 'review-requester',
+        runtime: prepared.runtime,
+        review: { reviewId: 'review', evidence: [] },
+      },
+    ]) {
+      await expect(
+        spawnReviewWorker(spec, {
+          apiKeyRefreshHost: { refresh: async () => 'fixture-token' },
+          verificationRequestHost: host,
+          workerEntryPath: fileURLToPath(
+            new URL('../fixtures/worker-repository-context-entry.ts', import.meta.url),
+          ),
+        } as never),
+      ).rejects.toThrow(/rejects verificationRequestHost/)
+    }
+  })
+
   test('spawns with exact minimal env, closes stdin, redacts rotated diagnostics, and cleans scratch', async () => {
     const root = tempRoot()
     const scratchParent = join(root, 'scratch-parent')
