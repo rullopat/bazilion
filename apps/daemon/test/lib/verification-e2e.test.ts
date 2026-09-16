@@ -86,7 +86,12 @@ test('a captured dirty change is verified end to end and the receipts identify i
   git(env, 'add', '.')
   git(env, 'commit', '-qm', 'base')
   writeFileSync(join(env.paths.teamDir(env.teamId), 'app.txt'), 'one\ntwo\nthree\n')
-  writeFileSync(join(env.paths.teamDir(env.teamId), 'check.sh'), '#!/bin/sh\nexit 0\n')
+  // The check writes into the declared output directory *and* somewhere it never declared, so the
+  // observation has both sides to report.
+  writeFileSync(
+    join(env.paths.teamDir(env.teamId), 'check.sh'),
+    '#!/bin/sh\nmkdir -p build && echo out > build/out.txt && echo stray > stray.txt\nexit 0\n',
+  )
 
   const captured = await captureTeamSnapshot(env.db, env.paths, env.teamId, {
     capturedBy: 'agent',
@@ -104,6 +109,7 @@ test('a captured dirty change is verified end to end and the receipts identify i
     recipientAgentId: 'tester',
     snapshotId: captured.reference.id,
     checks: [{ command: 'sh check.sh', cwd: '.', purpose: 'sanity check', timeoutMs: 30_000 }],
+    writablePaths: ['build'],
     summary: 'verify the fix',
   })
   if (request.kind !== 'captured') throw new Error(`capture blocked: ${request.blocker.reason}`)
@@ -161,6 +167,20 @@ test('a captured dirty change is verified end to end and the receipts identify i
   expect(inbox[0]?.payload).toContain('completed')
   expect(inbox[0]?.payload).toContain('snapshot')
   expect(inbox[0]?.payload).toContain('not an approval to publish')
+  // Declared output paths are advisory, so the result reports the write outside the declaration
+  // instead of implying it was prevented.
+  expect(inbox[0]?.payload).toContain('Writes outside the declared output paths (build): stray.txt')
+
+  // Where the checks wrote, relative to the baseline taken under the same lease. `build/out.txt` is
+  // covered by the declaration; `stray.txt` is not, and saying so is the whole point of the field.
+  expect(attempt?.observedWrites).toMatchObject({
+    comparison: 'changed',
+    declaredPaths: ['build'],
+    undeclaredPaths: ['stray.txt'],
+  })
+  expect(attempt?.observedWrites?.observedPaths).toEqual(
+    expect.arrayContaining(['build/out.txt', 'stray.txt']),
+  )
 
   // The workspace lease is released, so the Team is not left blocked.
   expect(

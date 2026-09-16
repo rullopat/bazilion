@@ -74,6 +74,21 @@ function printReport(report: VerificationReport): void {
       `    [${check.ordinal}] ${OUTCOME_GLYPH[state]}${exit}${receipt}  ${check.command} (${check.purpose})`,
     )
   }
+  const writes = attempt?.observedWrites
+  if (writes?.undeclaredPaths.length) {
+    // Not a failure: declared output paths are advisory, so this reports where a check wrote outside
+    // them rather than claiming a write was prevented.
+    const declared = writes.declaredPaths.length ? writes.declaredPaths.join(', ') : 'none declared'
+    console.log(
+      `  wrote outside the declared output paths (${declared}): ${writes.undeclaredPaths.join(', ')}${
+        writes.truncated ? ' …' : ''
+      }`,
+    )
+  } else if (writes?.comparison === 'unknown') {
+    console.log(
+      '  writes: could not be established (the tree could not be compared to the capture)',
+    )
+  }
   if (attempt?.error) console.log(`  note: ${attempt.error}`)
   if (!attempt) console.log('  note: no attempt has run yet')
 }

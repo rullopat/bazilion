@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import type { VerificationObservedWrites } from '@bazilion/api-types'
 import { type BazilionDb, inTx } from '../db/client.ts'
 
 // BAZ-044: one typed, snapshot-bound verification request handed to a selected same-Team specialist.
@@ -159,6 +160,8 @@ export interface VerificationAttemptRecord {
   startedAt: number | null
   finishedAt: number | null
   error: string | null
+  /** BAZ-044: observed writes relative to the capture. Null when not established. */
+  observedWrites: VerificationObservedWrites | null
   createdAt: number
 }
 
@@ -218,6 +221,7 @@ interface AttemptRow {
   started_at: number | null
   finished_at: number | null
   error: string | null
+  observed_writes_json: string | null
   created_at: number
 }
 
@@ -232,7 +236,7 @@ const OUTCOME_COLUMNS = 'attempt_id, ordinal, state, command_id, exit_code, star
 
 const ATTEMPT_COLUMNS =
   'id, request_id, attempt_number, supersedes_attempt_id, state, lease_owner, lease_expires_at, ' +
-  'started_at, finished_at, error, created_at'
+  'started_at, finished_at, error, observed_writes_json, created_at'
 
 function toRequest(row: RequestRow): VerificationRequestRecord {
   return {
@@ -290,7 +294,18 @@ function toAttempt(row: AttemptRow): VerificationAttemptRecord {
     startedAt: row.started_at,
     finishedAt: row.finished_at,
     error: row.error,
+    observedWrites: parseObservedWrites(row.observed_writes_json),
     createdAt: row.created_at,
+  }
+}
+
+/** A malformed observation is read as absent rather than as "nothing was written". */
+function parseObservedWrites(json: string | null): VerificationObservedWrites | null {
+  if (!json) return null
+  try {
+    return JSON.parse(json) as VerificationObservedWrites
+  } catch {
+    return null
   }
 }
 
@@ -574,6 +589,8 @@ export function finishVerificationAttempt(
     leaseOwner: string
     state: Exclude<VerificationAttemptState, 'claimed' | 'running'>
     error?: string | null
+    /** Observed writes relative to the capture, when they could be established before settling. */
+    observedWrites?: VerificationObservedWrites | null
     now?: number
   },
 ): boolean {
@@ -590,9 +607,16 @@ export function finishVerificationAttempt(
     if (attempt.finishedAt !== null) return false
     db.raw.run(
       `UPDATE verification_attempts
-       SET state = ?, finished_at = ?, lease_owner = NULL, lease_expires_at = NULL, error = ?
+       SET state = ?, finished_at = ?, lease_owner = NULL, lease_expires_at = NULL, error = ?,
+           observed_writes_json = ?
        WHERE id = ?`,
-      [input.state, now, input.error ?? null, input.attemptId],
+      [
+        input.state,
+        now,
+        input.error ?? null,
+        input.observedWrites ? JSON.stringify(input.observedWrites) : null,
+        input.attemptId,
+      ],
     )
     setRequestState(db, attempt.requestId, input.state === 'uncertain' ? 'uncertain' : input.state)
     return true

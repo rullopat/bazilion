@@ -245,6 +245,18 @@ function VerificationsPage() {
                       )
                     })}
                   </ul>
+                  {attempt?.observedWrites?.undeclaredPaths.length ? (
+                    <p className="muted">
+                      wrote outside the declared output paths (
+                      {attempt.observedWrites.declaredPaths.length
+                        ? attempt.observedWrites.declaredPaths.join(', ')
+                        : 'none declared'}
+                      ): {attempt.observedWrites.undeclaredPaths.join(', ')}
+                      {attempt.observedWrites.truncated ? ' …' : ''}
+                    </p>
+                  ) : attempt?.observedWrites?.comparison === 'unknown' ? (
+                    <p className="muted">writes: could not be established</p>
+                  ) : null}
                   {attempt?.error ? <p className="muted">note: {attempt.error}</p> : null}
                   <p className="muted">
                     applicability: {applicability[report.request.id] ?? 'not checked'}

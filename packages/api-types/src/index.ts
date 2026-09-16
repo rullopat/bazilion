@@ -1176,6 +1176,7 @@ export type {
   VerificationCheckState,
   VerificationEnvironmentFacts,
   VerificationListResponse,
+  VerificationObservedWrites,
   VerificationReport,
   VerificationRequest,
   VerificationRequester,

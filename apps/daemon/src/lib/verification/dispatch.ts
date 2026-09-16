@@ -31,6 +31,7 @@ import {
   createVerificationHost,
   settleVerificationAttempt,
 } from './runner.ts'
+import { compareWorkspaceFingerprints, fingerprintWorkspace } from './writes.ts'
 
 // BAZ-044: the one dispatch owner for a verification request.
 //
@@ -120,6 +121,11 @@ export async function dispatchVerificationRequest(
       return 'settled'
     }
 
+    // The baseline is taken here, under the held lease and after admission proved the tree matches the
+    // capture, so "where did the checks write" is a comparison of one attempt rather than of the
+    // repository's history.
+    const writeBaseline = await fingerprintWorkspace(paths.teamDir(live.teamId)).catch(() => null)
+
     const prepared = await prepareVerificationTurn({
       request: live,
       attemptId: admitted.claim.attempt.id,
@@ -180,10 +186,18 @@ export async function dispatchVerificationRequest(
       if (abandoned) await handBackResult(db, paths, requestId, 'failed')
       return 'settled'
     }
+    // Established while the workspace lease is still held and before the attempt settles, so the
+    // evidence and the outcome land together rather than the outcome existing without it.
+    const observedWrites = compareWorkspaceFingerprints(
+      live,
+      writeBaseline,
+      await fingerprintWorkspace(paths.teamDir(live.teamId)).catch(() => null),
+    )
     const settled = settleVerificationAttempt(db, {
       attemptId: admitted.claim.attempt.id,
       requestId,
       leaseOwner: VERIFICATION_DISPATCH_OWNER,
+      observedWrites,
     })
     if (settled !== 'uncertain') await handBackResult(db, paths, requestId, settled)
     return 'dispatched'

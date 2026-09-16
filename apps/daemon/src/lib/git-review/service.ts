@@ -184,39 +184,69 @@ export interface SnapshotApplicability {
   currentSnapshot: SnapshotReference | null
 }
 
+/**
+ * Re-capture the Team's current state for comparison against a stored snapshot.
+ *
+ * The single owner of "how the live tree is compared" — both applicability and the path-level delta
+ * below go through it, so a second, subtly different comparison cannot appear. Nothing is persisted:
+ * checking a snapshot must not create evidence of its own.
+ */
+async function captureComparisonState(
+  teamPath: string,
+  stored: SourceSnapshot,
+): Promise<SourceSnapshot | null> {
+  try {
+    return await withRepository(teamPath, async (captured) => {
+      const base = await resolveComparisonBase(captured, 'HEAD')
+      const identity = await readRepositoryIdentity(captured)
+      return captureSourceSnapshot(captured, base, identity, {
+        includeUntracked: stored.untrackedIncluded,
+      })
+    })
+  } catch {
+    return null
+  }
+}
+
+/** Load a stored snapshot document, distinguishing "unknown" from "unreadable" the same way everywhere. */
+async function loadStoredSnapshot(
+  db: BazilionDb,
+  paths: Paths,
+  teamId: string,
+  snapshotId: string,
+): Promise<
+  | { ok: true; teamPath: string; stored: SourceSnapshot }
+  | { ok: false; reason: 'no_snapshot' | 'incomplete_snapshot' }
+> {
+  const team = requireTeam(db, paths, teamId)
+  const record = getSourceSnapshot(db, team.id, snapshotId)
+  // Unknown covers both "never captured" and "past its window": neither can support a claim.
+  if (!record) return { ok: false, reason: 'no_snapshot' }
+  let stored: SourceSnapshot
+  try {
+    stored = JSON.parse(record.manifestJson) as SourceSnapshot
+  } catch {
+    return { ok: false, reason: 'no_snapshot' }
+  }
+  if (!stored.complete) return { ok: false, reason: 'incomplete_snapshot' }
+  return { ok: true, teamPath: team.path, stored }
+}
+
 export async function readSnapshotApplicability(
   db: BazilionDb,
   paths: Paths,
   teamId: string,
   snapshotId: string,
 ): Promise<SnapshotApplicability> {
-  const team = requireTeam(db, paths, teamId)
-  const record = getSourceSnapshot(db, team.id, snapshotId)
-  // Unknown covers both "never captured" and "past its window": neither can support a claim.
-  if (!record) return { comparison: 'unknown', reason: 'no_snapshot', currentSnapshot: null }
-  let stored: SourceSnapshot
-  try {
-    stored = JSON.parse(record.manifestJson) as SourceSnapshot
-  } catch {
-    return { comparison: 'unknown', reason: 'no_snapshot', currentSnapshot: null }
+  const loaded = await loadStoredSnapshot(db, paths, teamId, snapshotId)
+  if (!loaded.ok) {
+    return { comparison: 'unknown', reason: loaded.reason, currentSnapshot: null }
   }
-  if (!stored.complete) {
-    return { comparison: 'unknown', reason: 'incomplete_snapshot', currentSnapshot: null }
-  }
-  let current: SourceSnapshot
-  try {
-    current = await withRepository(team.path, async (captured) => {
-      const base = await resolveComparisonBase(captured, 'HEAD')
-      const identity = await readRepositoryIdentity(captured)
-      // Not persisted: checking applicability must not create evidence of its own.
-      return captureSourceSnapshot(captured, base, identity, {
-        includeUntracked: stored.untrackedIncluded,
-      })
-    })
-  } catch {
+  const current = await captureComparisonState(loaded.teamPath, loaded.stored)
+  if (!current) {
     return { comparison: 'unknown', reason: 'capture_unavailable', currentSnapshot: null }
   }
-  const comparison = compareSnapshots(stored, current)
+  const comparison = compareSnapshots(loaded.stored, current)
   return {
     comparison,
     reason: comparison === 'identical' ? 'source_unchanged' : 'source_changed',

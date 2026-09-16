@@ -201,6 +201,7 @@ export function readVerificationSummary(
     startedAt: attempt.startedAt,
     finishedAt: attempt.finishedAt,
     error: attempt.error,
+    observedWrites: attempt.observedWrites,
     outcomes: listVerificationCheckOutcomes(db, attempt.id).map((outcome) => ({
       ordinal: outcome.ordinal,
       state: outcome.state,

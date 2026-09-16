@@ -1,4 +1,8 @@
-import type { VerificationBlocker, VerificationCheckState } from '@bazilion/api-types'
+import type {
+  VerificationBlocker,
+  VerificationCheckState,
+  VerificationObservedWrites,
+} from '@bazilion/api-types'
 import type { BazilionDb } from '../../core/db/client.ts'
 import {
   finishVerificationAttempt,
@@ -182,7 +186,14 @@ function normalizeState(state: VerificationCheckExecutorResult['state']): Verifi
  */
 export function settleVerificationAttempt(
   db: BazilionDb,
-  input: { attemptId: string; requestId: string; leaseOwner: string; now?: number },
+  input: {
+    attemptId: string
+    requestId: string
+    leaseOwner: string
+    /** Where the tree moved relative to the capture, when it could be established. */
+    observedWrites?: VerificationObservedWrites | null
+    now?: number
+  },
 ): 'completed' | 'failed' | 'uncertain' {
   const now = input.now ?? Date.now()
   // Gate ownership *before* mutating anything: `finishVerificationAttempt` re-checks inside its
@@ -222,6 +233,7 @@ export function settleVerificationAttempt(
     leaseOwner: input.leaseOwner,
     state,
     error,
+    observedWrites: input.observedWrites ?? null,
     now,
   })
   if (!finished) {

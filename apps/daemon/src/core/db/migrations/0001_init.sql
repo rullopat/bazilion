@@ -879,6 +879,10 @@ CREATE TABLE verification_attempts (
   started_at INTEGER,
   finished_at INTEGER,
   error TEXT CHECK (error IS NULL OR length(CAST(error AS BLOB)) <= 2000),
+  -- BAZ-044: where the tree moved relative to the capture, after the checks ran. Written once at
+  -- settle, never rewritten; NULL means it was not established (still running, or nothing executed),
+  -- which is deliberately distinct from an empty observation.
+  observed_writes_json TEXT,
   created_at INTEGER NOT NULL,
   CHECK ((state IN ('claimed', 'running')) = (finished_at IS NULL)),
   CHECK ((state IN ('claimed', 'running')) = (lease_owner IS NOT NULL)),

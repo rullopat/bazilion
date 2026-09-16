@@ -696,6 +696,12 @@
       "owner": "BAZ-044",
       "file": "apps/daemon/test/core/verification-requests.test.ts",
       "test": "pruning a coding receipt leaves the verification outcome readable"
+    },
+    {
+      "id": "VERIFY-DECLARED-OUTPUT-PATHS-ARE-CHECKED",
+      "owner": "BAZ-044",
+      "file": "apps/daemon/test/lib/verification-writes.test.ts",
+      "test": "observed writes are split by whether the declaration covered them"
     }
   ]
 }

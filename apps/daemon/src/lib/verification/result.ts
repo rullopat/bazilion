@@ -106,11 +106,30 @@ function renderResult(input: VerificationResultInput): string {
         : ''
     lines.push(`  [${check.ordinal}] ${state}${exit} — ${check.command}${receipt}`)
   }
+  const writes = attempt.observedWrites
+  if (writes?.comparison === 'unknown') {
+    lines.push(
+      '',
+      'Writes: could not be established (the tree could not be compared to the capture).',
+    )
+  } else if (writes) {
+    if (writes.undeclaredPaths.length > 0) {
+      lines.push(
+        '',
+        `Writes outside the declared output paths (${
+          writes.declaredPaths.length === 0 ? 'none were declared' : writes.declaredPaths.join(', ')
+        }): ${writes.undeclaredPaths.join(', ')}${writes.truncated ? ' …' : ''}`,
+      )
+    } else if (writes.observedPaths.length > 0) {
+      lines.push('', `Writes: ${writes.observedPaths.join(', ')} — all inside the declared paths.`)
+    }
+  }
   if (attempt.error) lines.push('', `Limitation: ${attempt.error}`)
   lines.push(
     '',
     'Facts above are executor-owned. A non-zero exit is a result about the commands that ran, never',
-    'proof about later code, and this is not an approval to publish, merge or deploy.',
+    'proof about later code, and this is not an approval to publish, merge or deploy. Declared output',
+    'paths are not enforced, so a change they do not cover appears above rather than being prevented.',
   )
   const payload = lines.join('\n')
   return payload.length > MAX_RESULT_CHARACTERS

@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import type { DatabaseSync } from 'node:sqlite'
 
 const CANONICAL_MIGRATION = '0001_init'
-const CANONICAL_SCHEMA_HASH = 'cb3811823a7dead88cce0beb08cd4066ea3143258af0f0b8ba329016465dda37'
+const CANONICAL_SCHEMA_HASH = '67894e8f80c8a5020329b2032881bbb4e775a1d4771bb7d4168e500321738e91'
 
 // Explicit objects created by migrate.ts + 0001_init.sql. SQLite's implicit
 // auto-indexes have `sql = NULL` and are deliberately represented through the

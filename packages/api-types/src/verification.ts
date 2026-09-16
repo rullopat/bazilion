@@ -108,6 +108,24 @@ export interface VerificationCheckOutcome {
   finishedAt: number | null
 }
 
+/**
+ * What the tree looked like after a verification's checks ran, relative to the capture.
+ *
+ * Declared output paths are **advisory**: they are validated at capture time and recorded, but they do not
+ * confine a check. This is what keeps that honest — a check that wrote outside what it declared is
+ * reported, so the declaration can be checked rather than assumed. `unknown` means it could not be
+ * established, which is different from "nothing was written".
+ */
+export interface VerificationObservedWrites {
+  comparison: SnapshotComparison
+  /** Declared, Team-relative output paths across the attempt's checks. */
+  declaredPaths: string[]
+  observedPaths: string[]
+  /** Observed paths no declared path covers — the check wrote somewhere it did not declare. */
+  undeclaredPaths: string[]
+  truncated: boolean
+}
+
 export interface VerificationAttempt {
   id: string
   attemptNumber: number
@@ -117,6 +135,11 @@ export interface VerificationAttempt {
   startedAt: number | null
   finishedAt: number | null
   error: string | null
+  /**
+   * Present once the attempt settled and the tree could be compared. Null while running, and on an
+   * attempt that never ran anything.
+   */
+  observedWrites: VerificationObservedWrites | null
   outcomes: VerificationCheckOutcome[]
 }
 
