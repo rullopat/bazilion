@@ -273,7 +273,10 @@ try {
       `  [${finding.severity}] ${finding.path}${finding.lineStart ? `:${finding.lineStart}` : ''} — ${finding.note} (${finding.state})`,
     )
   }
-  out(`conclusion: ${settled.conclusions.map((entry) => entry.conclusion).join(', ') || 'none'}`)
+  for (const conclusion of settled.conclusions) {
+    out(`conclusion: ${conclusion.conclusion}${conclusion.note ? ` — ${conclusion.note}` : ''}`)
+  }
+  if (settled.conclusions.length === 0) out('conclusion: none')
   out(`reported:  ${JSON.stringify(settled.packet.reported)}`)
 
   assert.equal(
@@ -284,10 +287,18 @@ try {
   assert.equal(settled.packet.requester.kind, 'agent', 'the requester is an agent')
   assert.equal(settled.packet.requester.agentId, coder, 'the coder asked, not the operator')
   assert.equal(attempt?.state, 'completed')
-  assert.ok(settled.findings.length > 0, 'the reviewer recorded at least one finding')
+  // Findings are the *model's* judgement, so their number is not asserted: a reviewer that concluded
+  // `recommended` with nothing to report is a legitimate result, and demanding a finding would be asserting
+  // my expectation of the model rather than the mechanism. What must hold is that any finding it did record
+  // names the revision it was made against. The finding *path* is covered deterministically by the scripted
+  // run and by the end-to-end test, which is where "one finding is recorded" belongs.
   assert.ok(
     settled.findings.every((finding) => finding.snapshotId === settled.packet.snapshot.id),
     'every finding names the revision it was made against',
+  )
+  assert.ok(
+    settled.conclusions.length > 0,
+    'the reviewer concluded, which is what makes a packet reviewed',
   )
   assert.equal(
     settled.conclusions[0]?.snapshotId,

@@ -39,11 +39,22 @@ into a **failure** if any is answered. The review left the tree byte-identical t
 finding must name a path the capture recorded: a path that merely exists in today's tree belongs to a
 different change and is refused (`apps/daemon/test/lib/review-e2e.test.ts`).
 
-**Observed with a real model.** `scripts/review-live-run.mjs` boots a disposable daemon and repository and
-drives the whole loop: a coder agent **chose `request_review` unprompted**, the restricted reviewer read the
-packet and the patch, recorded a finding that explicitly says it **cannot run anything** ("I cannot run that
-here"), concluded `recommended`, and the result reached the coder's inbox. The finding and the conclusion
-both name the captured revision.
+**Observed with a real model, on two models.** `scripts/review-live-run.mjs` boots a disposable daemon and
+repository and drives the whole loop: a coder agent **chose `request_review` unprompted**, the restricted
+reviewer read the packet and the patch, recorded a finding, concluded, and the result reached the coder's
+inbox. The finding and the conclusion both name the captured revision.
+
+The second run used `fireworks:accounts/fireworks/models/deepseek-v4p1-flash` — an id newer than this build's
+catalogue, admitted through the pinned endpoint — and its output is the clearest evidence that the boundaries
+hold from the inside: the reviewer quoted the patch's hunk header to show what it had read, recorded an
+`info` finding saying that confirming the value "would need the test suite to be run — **I have no shell and
+cannot run it**", and closed with "Conclusion is based only on the reproducible patch; nothing was executed,
+and this is not an approval."
+
+**The harness asserts the mechanism, never the model's opinion.** One run concluded `recommended` with no
+findings at all, which is a legitimate — arguably the best — result, and an earlier version of the harness
+failed it for that. The agent-side live assertions are therefore about identity, provenance and delivery;
+"a finding is recorded" is covered deterministically by the scripted run and the end-to-end test.
 
 **Content honesty.** A manifest stores paths and digests, never bytes, so a patch exists only while the tree
 still matches the capture. Once it has moved, the reviewer is told the content is not reproducible and a
@@ -140,6 +151,18 @@ Four findings against my own work, all fixed on the branch:
   `origin`/`attemptKind` with the shipped `agent_result` payload kind — which would have captured an approval
   the dispatcher's plan validator rejects, i.e. an artifact held forever with a release that cannot happen.
   The plan is now validated in the test, so the hold is proven releasable rather than assumed.
+
+## Correction to an earlier claim
+
+While preparing the live run I reported that this model "produced no assistant content" and that
+uncatalogued models were unusable through Bazilion. **That was wrong**, and it is worth recording how it
+went wrong: the turn had failed on a **404**, the CLI had reported it, and I truncated that output with a
+`head` pipe and inferred a model problem from an empty session transcript. The cause was two defects of mine
+— the fallback model was built for an endpoint its OpenAI-compatible adapter cannot call (`…/inference`
+instead of `…/inference/v1`), and the registry path never carried the endpoint at all, so `provider test`
+failed closed for exactly the models the endpoint was meant to admit. Both are fixed, pinned in the gate, and
+the model now passes both loops. Both live-run harnesses additionally assert that a turn actually put an
+assistant message in the transcript, so a turn that does nothing can no longer read as a turn that succeeded.
 
 ## Validation
 
