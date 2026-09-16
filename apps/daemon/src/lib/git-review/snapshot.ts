@@ -253,17 +253,13 @@ export async function captureSourceSnapshot(
     })
   }
 
-  // --- coherence re-check ----------------------------------------------------------------------
-  // The index is re-read after all content work. A change here means another writer touched the
-  // repository while the snapshot was being taken. This detects a moved index, not a transient edit
-  // that was reverted before the check, so an exact claim still carries that stated limit.
-  const recheck = await readIndexDigest(captured)
-  if (index && recheck && index.digest !== recheck.digest) {
-    fail(
-      'unstable',
-      'The index changed while the snapshot was being taken; the snapshot is incomplete.',
-    )
-  }
+  // No coherence re-check is possible here, and pretending otherwise would be worse than none: the
+  // capture reads Git metadata from a *frozen copy* made in scratch, so a writer touching the live
+  // repository mid-capture cannot move the refs or index this snapshot sees. It is by construction
+  // stable, not by check. What can still change under us is worktree *content*, which is read live
+  // through the fd-pinned directory; a file that changes while being read is reported as `unstable`
+  // above. A change landing between the listing and the read is not detected, and the manifest simply
+  // fingerprints the bytes it read — that limit is stated rather than papered over.
 
   entries.sort((a, b) =>
     a.layer === b.layer

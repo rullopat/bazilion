@@ -228,3 +228,62 @@ test('the reference exposes identity, completeness and when it was taken', async
     })
   })
 })
+
+test('a capture is a frozen view: a writer mid-capture cannot move what it sees', async () => {
+  repo()
+  writeFileSync(join(root, 'src/app.txt'), 'changed before capture\n')
+  const directory = new ContextDirectory(root)
+  const found = findRepositoryRoot([directory])
+  if (!found) throw new Error('fixture is not a repository')
+  const captured = await captureRepositoryGit(found)
+  try {
+    const before = await resolveComparisonBase(captured, 'HEAD')
+    const identity = await readRepositoryIdentity(captured)
+    const baseline = await captureSourceSnapshot(captured, before, identity)
+    expect(baseline.complete).toBe(true)
+
+    // Stage a new file and edit another one *after* the capture was taken. Git metadata was copied
+    // into scratch, so the capture's view cannot move: this is a guarantee by construction, not one
+    // a check provides. (The previous version of this test asserted a "coherence re-check" caught
+    // this; it could not, because both index reads came from the same frozen copy.)
+    writeFileSync(join(root, 'staged-later.txt'), 'racy\n')
+    execFileSync('git', ['-C', root, 'add', 'staged-later.txt'], {
+      encoding: 'utf8',
+      env: {
+        PATH: '/usr/bin:/bin',
+        HOME: parent,
+        GIT_CONFIG_NOSYSTEM: '1',
+        GIT_CONFIG_GLOBAL: '/dev/null',
+      },
+    })
+    const again = await captureSourceSnapshot(captured, before, identity)
+    expect(again.id).toBe(baseline.id)
+    expect(again.indexDigest).toBe(baseline.indexDigest)
+    expect(again.entries.map((entry) => entry.path)).not.toContain('staged-later.txt')
+  } finally {
+    captured.cleanup()
+    directory.close()
+  }
+})
+
+test('a fresh capture does see the writer, so the freeze is per-capture not permanent', async () => {
+  repo()
+  writeFileSync(join(root, 'src/app.txt'), 'first\n')
+  const directory = new ContextDirectory(root)
+  const found = findRepositoryRoot([directory])
+  if (!found) throw new Error('fixture is not a repository')
+  const captured = await captureRepositoryGit(found)
+  try {
+    const base = await resolveComparisonBase(captured, 'HEAD')
+    const identity = await readRepositoryIdentity(captured)
+    const first = await captureSourceSnapshot(captured, base, identity)
+    writeFileSync(join(root, 'src/app.txt'), 'second\n')
+    const second = await captureSourceSnapshot(captured, base, identity)
+    // The frozen metadata is shared, but the worktree is read live, so content changes are seen.
+    expect(second.id).not.toBe(first.id)
+    expect(second.entries[0]?.digest).not.toBe(first.entries[0]?.digest)
+  } finally {
+    captured.cleanup()
+    directory.close()
+  }
+})

@@ -94,9 +94,15 @@ So BAZ-042 adds **readers over that harness**, not another harness.
      refused rather than followed), a changed file that moved under the reader, an oversized index
      and a missing included path each mark the snapshot incomplete and are recorded per entry, with
      `withheld` counts and named issue codes — an omission is never visible only in prose.
-   - A coherence re-check re-reads the index after all content work, so another writer touching the
-     repository mid-capture is detected. Stated limit: that detects a moved index, not a transient
-     edit reverted before the check, and the doc comment says so rather than implying proof.
+   - **Correction (found by an acceptance test that could not fail the way it was supposed to):** an
+     earlier version of this slice added an "index coherence re-check" that re-read the index after
+     all content work and claimed to detect a writer touching the repository mid-capture. It **could
+     not**: both index reads come from the frozen scratch copy, so the comparison was always equal.
+     Dead code that looks like a guarantee is worse than no check, so it was removed. The real
+     property is better: the capture's view of refs and the index is stable **by construction**, and
+     the only live part — worktree content read through the fd-pinned directory — reports a file that
+     changes under the reader as `unstable`. A change landing between listing and reading is not
+     detected, and that limit is stated rather than papered over. Both halves are now tested.
    - Scope refusals are recorded in `exclusions` (path + reason), so credential-shaped and
      Bazilion-owned paths are visibly withheld rather than silently absent.
 4b. **Persist snapshots (store landed).** `source_snapshots` in the canonical schema (clean-install
@@ -162,8 +168,12 @@ So BAZ-042 adds **readers over that harness**, not another harness.
      `pre`, and controls stack at small widths.
    - Single-file diffs: `GET /review?patches=1&path=<p>` reads only the requested patch, so opening
      one file does not pull every patch; an empty or over-long `path` is refused.
-   - Still to do: surfacing a receipt's applicability on the chat card itself (the endpoint exists),
-     and a scripted browser check for the panel (keyboard/narrow-screen were not observed).
+   - **Applicability on the coding card (done).** A receipt with a captured source shows its tested
+     version and offers "Check applicability"; the verdict reads `unchanged since this result was
+     produced` / `changed … relevance unknown` / `unknown (<reason>)`, and a receipt with no captured
+     source reads **Not checked**. Nothing is inferred from the mere existence of a result, and a
+     non-identical verdict is presented as a warning rather than a pass.
+   - Still to do: a scripted browser check for the panel (keyboard/narrow-screen were not observed).
 6. **Feedback (done).** File-level selection carrying repository + snapshot + path + line context,
    stale refresh, and reuse of BAZ-036 for queueing.
 
@@ -275,5 +285,9 @@ So BAZ-042 adds **readers over that harness**, not another harness.
   `agent chat --image/--file` flags, where multiple attachments were silently reduced to one. The fix
   reads raw arguments (`apps/cli/src/repeatable-args.ts`) rather than comma-splitting, which would
   corrupt a path containing a comma.
-- Whole-tree after slice 6: typecheck (root and web), format and lint clean; full suite 1644 passed
-  / 7 skipped (208 files); security acceptance 83 cases passed (slice 5b measured 1635 / 208 files).
+- Gap-closing additions: the capture's frozen view and a fresh capture seeing later writes
+  (`git-review-snapshot.test.ts`), applicability wording and a card rendering **Not checked** with no
+  captured source (`apps/web/test/git-review-presentation.test.ts`), and seven cases for the
+  repeatable-flag collector.
+- Whole-tree now: typecheck (root and web), format and lint clean; full suite 1656 passed / 7 skipped
+  (209 files); security acceptance 83 cases passed.

@@ -1,6 +1,8 @@
 import { expect, test } from 'vitest'
 import type { RepositoryChanges, ReviewChange } from '@bazilion/api-types'
 import {
+  applicabilityLabel,
+  applicabilityWarns,
   baseLabel,
   changeStatusLabel,
   changeSummary,
@@ -100,4 +102,65 @@ test('an incomplete snapshot is never labelled as exact', () => {
   expect(referenceLabel({ id: 'd'.repeat(64), complete: false, capturedAt: 0 })).toBe(
     `${'d'.repeat(12)} · incomplete`,
   )
+})
+
+test('a receipt with no captured source says Not checked, never something that reads as passing', () => {
+  expect(applicabilityLabel(null)).toBe('Source: Not checked')
+  expect(applicabilityWarns(null)).toBe(false)
+})
+
+test('an applicability verdict states what it knows and warns rather than passing silently', () => {
+  expect(applicabilityLabel({ comparison: 'identical', reason: 'source_unchanged' })).toContain(
+    'unchanged since',
+  )
+  expect(applicabilityLabel({ comparison: 'changed', reason: 'source_changed' })).toContain(
+    'relevance unknown',
+  )
+  expect(applicabilityLabel({ comparison: 'unknown', reason: 'incomplete_snapshot' })).toContain(
+    'incomplete snapshot',
+  )
+  // Unchanged is the only state that does not warrant a warning.
+  expect(applicabilityWarns({ comparison: 'identical' })).toBe(false)
+  expect(applicabilityWarns({ comparison: 'changed' })).toBe(true)
+  expect(applicabilityWarns({ comparison: 'unknown' })).toBe(true)
+})
+
+test('a receipt card renders applicability without claiming a pass', async () => {
+  const { createElement } = await import('react')
+  const { renderToStaticMarkup } = await import('react-dom/server')
+  const { CodingToolResult } = await import('../src/components/CodingToolResult.tsx')
+  const receipt = {
+    id: 'receipt-1',
+    agentId: 'agent-1',
+    teamId: 'team-1',
+    turnId: 'turn-1',
+    toolCallId: 'call-1',
+    state: 'succeeded',
+    exitCode: 0,
+    input: { command: 'pnpm test', cwd: '.', purpose: 'test', timeoutSeconds: 30 },
+    environment: { posture: 'docker', cwd: '.', imageId: null },
+    diagnostic: 'ok\n',
+    truncated: false,
+    reason: null,
+    startedAt: 1,
+    finishedAt: 2,
+  }
+  const withoutSource = renderToStaticMarkup(
+    createElement(CodingToolResult, { name: 'coding_command', body: JSON.stringify(receipt) }),
+  )
+  expect(withoutSource).toContain('Not checked')
+  expect(withoutSource).not.toContain('unchanged since')
+
+  const withSource = renderToStaticMarkup(
+    createElement(CodingToolResult, {
+      name: 'coding_command',
+      body: JSON.stringify({
+        ...receipt,
+        sourceAfter: { id: 'a'.repeat(64), complete: true, capturedAt: 2 },
+      }),
+    }),
+  )
+  expect(withSource).toContain('tested version')
+  expect(withSource).toContain('Check applicability')
+  expect(withSource).toContain('aaaaaaaaaaaa')
 })

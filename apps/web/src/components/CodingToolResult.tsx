@@ -1,6 +1,11 @@
 import { useState } from 'react'
 import { codingFailureSummary, PRIVATE_CODING_HISTORY } from '../lib/coding-presentation'
 import { fetchRetainedCodingLog, type RetainedCodingLog } from '../lib/coding-log'
+import {
+  fetchSnapshotApplicability,
+  type ApplicabilityView,
+} from '../lib/git-review'
+import { applicabilityLabel, applicabilityWarns } from '../lib/git-review-presentation'
 import { Button } from './Button'
 import type {
   CodingCommandReceipt,
@@ -150,9 +155,75 @@ export function CodingToolResult({
         </pre>
         {receipt.truncated && <p>Output truncated.</p>}
         <p className="break-all">coding-receipt:{receipt.id}</p>
+        <SourceApplicability
+          teamId={receipt.teamId}
+          after={receipt.sourceAfter ?? null}
+          before={receipt.sourceBefore ?? null}
+        />
         {receipt.environment?.imageId && <p className="break-all">{receipt.environment.imageId}</p>}
       </details>
     </div>
+  )
+}
+
+/**
+ * Whether this result's tested source still matches the current source (BAZ-042 criterion 4).
+ *
+ * Nothing is assumed from the fact that a result exists: a receipt with no captured source reads as
+ * **Not checked**, and the verdict is loaded only when the operator asks for it.
+ */
+function SourceApplicability({
+  teamId,
+  after,
+  before,
+}: {
+  teamId: string
+  after: { id: string; complete: boolean } | null
+  before: { id: string; complete: boolean } | null
+}) {
+  const [state, setState] = useState<ApplicabilityView | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  async function check() {
+    if (!after) return
+    setLoading(true)
+    try {
+      setState(await fetchSnapshotApplicability({ data: { teamId, snapshotId: after.id } }))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const verdict = state?.status === 'ok' ? state : null
+  const label = applicabilityLabel(verdict)
+  return (
+    <p className={applicabilityWarns(verdict) ? 'text-rose-baziu' : undefined}>
+      {label}
+      {after ? (
+        <>
+          {' · tested version '}
+          <span className="break-all font-mono">{after.id.slice(0, 12)}</span>
+          {after.complete ? '' : ' (incomplete)'}
+          {verdict === null && (
+            <>
+              {' '}
+              <Button variant="ghost" disabled={loading} onClick={() => void check()}>
+                {loading ? 'Checking…' : 'Check applicability'}
+              </Button>
+            </>
+          )}
+          {state?.status === 'unavailable' && <span> · {state.message}</span>}
+        </>
+      ) : (
+        ' · no source snapshot was captured for this result'
+      )}
+      {before && (
+        <>
+          {' · started from '}
+          <span className="break-all font-mono">{before.id.slice(0, 12)}</span>
+        </>
+      )}
+    </p>
   )
 }
 

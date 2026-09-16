@@ -92,6 +92,31 @@ export function snapshotLabel(snapshot: SourceSnapshotSummary): string {
   return `${snapshot.snapshotId.slice(0, 12)} · ${state} · ${snapshot.capturedBy} · ${when} · ${snapshot.entryCount} entries`
 }
 
+/**
+ * Wording for a receipt's source applicability.
+ *
+ * Absence is **Not checked**: a receipt with no captured source can never read as passing, and
+ * `changed` says only that the code moved, never that the result is wrong.
+ */
+export function applicabilityLabel(
+  state: { comparison: 'identical' | 'changed' | 'unknown'; reason: string } | null,
+): string {
+  if (state === null) return 'Source: Not checked'
+  switch (state.comparison) {
+    case 'identical':
+      return 'Source: unchanged since this result was produced'
+    case 'changed':
+      return 'Source: changed since this result was produced — relevance unknown'
+    default:
+      return `Source: unknown (${state.reason.replaceAll('_', ' ')})`
+  }
+}
+
+/** Whether an applicability verdict warrants a warning presentation. */
+export function applicabilityWarns(state: { comparison: 'identical' | 'changed' | 'unknown' } | null): boolean {
+  return state !== null && state.comparison !== 'identical'
+}
+
 export function referenceLabel(reference: SnapshotReference): string {
   return `${reference.id.slice(0, 12)} · ${reference.complete ? 'complete' : 'incomplete'}`
 }

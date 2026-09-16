@@ -183,6 +183,37 @@ export const fetchFileDiff = createServerFn({ method: 'POST' })
     }
   })
 
+export type ApplicabilityView =
+  | { status: 'ok'; comparison: 'identical' | 'changed' | 'unknown'; reason: string }
+  | { status: 'unavailable'; code: string | undefined; message: string }
+
+/**
+ * Whether a receipt's tested source still matches the current source (BAZ-042 criterion 4).
+ *
+ * Three-valued and conservative: `changed` means the source moved, not that the change was relevant
+ * to what was tested, so it is never rendered as a pass or a failure.
+ */
+export const fetchSnapshotApplicability = createServerFn({ method: 'POST' })
+  .validator((input: { teamId: string; snapshotId: string }) => input)
+  .handler(async ({ data }): Promise<ApplicabilityView> => {
+    try {
+      const response = await daemonClient().get<{
+        comparison: 'identical' | 'changed' | 'unknown'
+        reason: string
+      }>(
+        `/api/teams/${encodeURIComponent(data.teamId)}/review/snapshots/${encodeURIComponent(data.snapshotId)}/applicability`,
+      )
+      return { status: 'ok', comparison: response.comparison, reason: response.reason }
+    } catch (error) {
+      const unavailable = failure(error, 'Applicability could not be established.')
+      return {
+        status: 'unavailable',
+        code: unavailable?.code,
+        message: unavailable?.message ?? 'Applicability could not be established.',
+      }
+    }
+  })
+
 export const captureTeamSnapshot = createServerFn({ method: 'POST' })
   .validator((input: { id: string }) => input)
   .handler(

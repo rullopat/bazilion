@@ -33,7 +33,7 @@ One repository carrying every case the story names, committed base `70f3dcc6`:
 | 1. A dirty repository keeps its prior changes in the baseline, and base/prior/since are distinguishable | The Team was linked to a repository that was already dirty. The review showed `base HEAD (70f3dcc6…)` alongside the pre-existing staged *and* unstaged edits, so prior work appears as "since baseline" rather than being attributed to anything Bazilion did. | Observed |
 | 2. Tracked, included untracked, renamed, deleted, binary and large files are truthful; an incomplete capture never claims to be exact | All ten changes listed with correct statuses: rename shown as `docs/old-name.txt -> docs/new-name.txt`, delete as `0+ 1-`, binary as `binary` with **no** line counts, untracked listed by name only (`untracked_not_selected`). `.env` was withheld and *counted* ("0 excluded and 1 untracked path(s) withheld"). A symlink made the snapshot `complete: false` with `unstable: … could not be fingerprinted`, i.e. no exact claim. | Observed |
 | 3. Feedback references the reviewed snapshot; later edits cannot silently retarget it | Feedback composed against snapshot `8e920ce5…` reported `current` / `path_unchanged`. After editing `src/app.txt`, the same request reported `stale` / `path_changed` and the message body read `Source identity: CHANGED since this snapshot — the selected lines may have moved`. The message carries `review-feedback:<snapshotId>:<path>`. | Observed |
-| 4. Receipts are linked to the tested snapshot and go stale when applicable code changes | A real turn (committed fake provider) produced a `coding_command` receipt with `sourceAfter` **complete**, and `sourceBefore` absent because the Agent captured none — absent rather than invented. The receipt's snapshot resolved through the review route, reported `identical` immediately after the run, and `changed` after editing `src/app.txt`. An `incomplete` snapshot returned `unknown`, never a verdict. | Observed |
+| 4. Receipts are linked to the tested snapshot and go stale when applicable code changes | A real turn (committed fake provider) produced a `coding_command` receipt with `sourceAfter` **complete**, and `sourceBefore` absent because the Agent captured none — absent rather than invented. The receipt's snapshot resolved through the review route, reported `identical` immediately after the run, and `changed` after editing `src/app.txt`. An `incomplete` snapshot returned `unknown`, never a verdict. The **coding card now surfaces this**: it names the tested version, offers "Check applicability", and reads **Not checked** when no source was captured (rendering covered by tests; not browser-observed). | Observed |
 | 5. Inspection cannot execute helpers, mutate the repository, or escape the boundary | After review, single-file patch, capture and snapshot listing: the helper's marker file **did not exist**, and the repository was byte-identical (worktree status hash and `.git/index` hash unchanged). Base injection (`--upload-pack=…`) and unknown refs were refused with machine codes; a credential-shaped path was excluded rather than read; a symlink was refused rather than followed. | Observed |
 | 6. API/CLI and the web view agree on revisions, scope, limits and unavailable states | `team review show repo --json` and `GET /api/teams/repo/review` produced **identical** change lists (10 entries), and the same base, identity and withheld counts. A non-repository Team returns 409 `not_repository` rather than an empty list. | Observed, after the CLI fix below |
 
@@ -83,11 +83,14 @@ Release-gate cases: nine BAZ-042 entries in `security/acceptance-manifest.json`
    reading order were not looked at. There is no scripted browser check for this panel, unlike
    BAZ-041's acceptance; the repository pattern to extend is
    `scripts/check-repository-context-ui.mjs`.
-2. **Chat-card applicability is not displayed.** The endpoint exists and was verified by request; the
-   coding card does not yet show "applies to this version / stale / unknown" (criterion 4's display
-   half).
-3. **Concurrent capture/write was not reproduced live.** The index coherence re-check is covered by
-   unit behaviour only; interleaving a writer mid-capture was not scripted.
+2. **The coding card's applicability is test-covered, not browser-observed.** The card renders the
+   tested version, the verdict and **Not checked**; it was exercised through static markup in tests
+   rather than looked at in a browser.
+3. **Concurrent capture/write is stated, not checked.** An earlier "index coherence re-check" turned
+   out to be dead code (both reads came from the frozen scratch copy) and was removed. The capture's
+   refs and index are stable **by construction**; worktree content is read live and a file changing
+   under the reader is reported `unstable`. A change landing between listing and reading is not
+   detected, and the record says so instead of implying otherwise.
 4. **Criterion 4 used the fake provider.** A real model was not run for this story (BAZ-041's
    acceptance did run one), so "a real model edits code, then the receipt goes stale" is untried.
 5. **Large-file truncation was not exercised live.** The 80 KB file appeared as untracked-not-selected;
