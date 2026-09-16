@@ -4,24 +4,24 @@ Audit of the implemented story against its own scope, acceptance criteria and th
 Every finding below was **verified in the code or with a throwaway probe**, not inferred from the
 summary I wrote while building it. Probe scripts were deleted after use; their raw output is quoted.
 
-Ordered by severity. **S1, S2, S7b and S8 are fixed** (with regression tests) in the commits following
-this review; S3–S6 and S9–S12 remain open, with the fix sketched for each.
+**All twelve are fixed**, each with a regression test, and five more gate cases were added
+(111 → 116).
 
 | # | Finding | Severity | Status |
 |---|---------|----------|--------|
 | S1 | Pruning a referenced receipt is impossible; breaks every later receipt save in the Team | high | **fixed** |
 | S2 | Restart recovery written but never called; interrupted request stuck forever | high | **fixed** |
-| S3 | A held request can be approved and still never run | high | open |
-| S4 | Operator-created held request produces an invalid approval tuple (500, stuck) | high | open |
-| S5 | Host-mode check runs with the daemon's ambient environment, receipt claims `protected` | medium-high | open |
-| S6 | `writablePaths` captured but never enforced | medium | open |
-| S7 | Cancel over-broad (aborts an unrelated turn) | medium | open |
+| S3 | A held request can be approved and still never run | high | **fixed** |
+| S4 | Operator-created held request produces an invalid approval tuple (500, stuck) | high | **fixed** |
+| S5 | Host-mode check runs with the daemon's ambient environment, receipt claims `protected` | medium-high | **fixed** |
+| S6 | `writablePaths` captured but never enforced | medium | **fixed** (validation + honest labelling) |
+| S7 | Cancel over-broad (aborts an unrelated turn) | medium | **fixed** |
 | S7b | Cancel cannot cancel an `awaiting_approval` request at all | medium | **fixed** |
 | S8 | Settlement mutates outcomes before validating ownership | medium | **fixed** |
-| S9 | List route has a second report composer; captures the tree once per request | medium | open |
-| S10 | Expired requests are never pruned | low-medium | open |
-| S11 | A pruned receipt is indistinguishable from one that never existed | low | open |
-| S12 | Dead code (`VerificationCheckWrite.label`) | trivial | open |
+| S9 | List route has a second report composer; captures the tree once per request | medium | **fixed** |
+| S10 | Expired requests are never pruned | low-medium | **fixed** |
+| S11 | A pruned receipt is indistinguishable from one that never existed | low | **fixed** |
+| S12 | Dead code (`VerificationCheckWrite.label`) | trivial | **fixed** |
 
 ---
 
@@ -128,6 +128,12 @@ story lists approval-held as a state that completes, so this is a missing leg of
 is still dispatchable, and pass `onGranted` to move `awaiting_approval → pending`. **Test to add:**
 hold on a real edge, approve through the route, assert `pending` and that the next tick dispatches.
 
+
+**Status: fixed.** The approve route now has the branch the scheduler-trigger path has: it revalidates
+(`validateVerificationGrant` — still held, specialist still a member, evidence still inside its window),
+records the decision, and releases the request into `pending` through `releaseVerificationGrant`, which
+is committed inside the decision transaction. A grant whose inputs no longer hold is refused and the
+request stays held rather than being released into a dispatch that must fail.
 ---
 
 ## S4 — An operator-created request that needs approval produces an invalid approval tuple (high)
@@ -152,6 +158,11 @@ already distinguishes user→agent by its source/target, so the operation name n
 accept both operations for the verification payload kind in the plan validator. The first is cleaner and
 keeps one operation per attempt kind.
 
+
+**Status: fixed.** `authorizeOperatorVerification` captures the operator case with the same
+`request_verification` operation the agent case uses — the source and target already say who asked, so the
+operation need not encode it, and one operation per attempt kind keeps the tuple recognisable by exactly
+one handler. The test asserts both requesters produce a plan the validator accepts.
 ---
 
 ## S5 — A host-mode check runs with the daemon's ambient environment while its receipt claims `posture: 'protected'` (medium-high, security-relevant)
@@ -178,6 +189,11 @@ the evidence of the environment.
 (or `minimalWorkerProcessEnv` with the turn's scratch), never `process.env`. Note the container path is
 already correct (`buildSandboxContainerEnv` applies the allowlist and pins container paths).
 
+
+**Status: fixed.** Host mode now runs with the scrubbed allowlist environment plus whatever the request
+froze at capture — the same posture a sandboxed command gets, never `process.env`. The regression test
+asserts both directions: a value the request froze reaches the check, and an ambient credential does not
+(the command prints `ambient=[]`).
 ---
 
 ## S6 — `writablePaths` is captured but never enforced (medium, missed implementation)
@@ -201,6 +217,13 @@ document that host mode cannot confine writes; container mode: mount only the de
 and the rest read-only) or stop presenting it as a constraint. Enforcing partial confinement honestly is
 better than implying full confinement.
 
+
+**Status: fixed, on the honest reading.** Declared paths are now *validated* (Team-relative, inside the
+workspace, never the root, bounded count) so they cannot be an escape hatch, and the declaration is
+labelled for what it is: the receipt records `declared_output_paths_are_advisory` and the specialist's
+brief says the declaration does not confine writes. Real confinement needs the container mount strategy
+(one read/write mount per declared path, the rest read-only), which is a larger change than a fix here;
+pretending otherwise is what this finding was about.
 ---
 
 ## S7 — Cancel is both over-broad and incomplete (medium)
@@ -233,6 +256,12 @@ attempt's id checked against the running turn) so cancel targets the right turn;
 **Status: partially fixed.** A `pending` or `awaiting_approval` request is now cancelled directly.
 The over-broad abort remains open, because targeting the right turn needs a dispatch-owner registry keyed
 by request id.
+
+**Status: fixed.** A per-request dispatch registry (`Symbol.for('bazilion.verification.dispatch')`)
+records the controller of the turn running for each request, so a cancel aborts **that** request's turn
+and nothing else — cancelling by agent id would abort whatever else the specialist happens to be doing.
+The regression test registers an unrelated turn, cancels a `running` request, and asserts the unrelated
+controller is untouched. `pending` and `awaiting_approval` requests are cancelled directly (S7b).
 ---
 
 ## S8 — Settlement mutates outcomes before validating ownership (medium, latent)
@@ -271,6 +300,12 @@ composer and the single-request composer must be kept in step by hand. It also m
 **Fix.** Reuse `readVerificationReport` in the list path, and either compute applicability per request
 lazily (on demand, like the BAZ-042 chat card) or omit it from the list and let the detail view ask.
 
+
+**Status: fixed.** One composer, two shapes: `readVerificationSummary` produces the row (contract, checks,
+attempts) and `readVerificationReport` is the summary plus applicability, so the surfaces cannot disagree
+about the facts. Applicability moved out of the list entirely — the list no longer walks the repository,
+and the CLI says so instead of printing a value it did not compute. The web page asks per request with a
+**Check applicability** action.
 ---
 
 ## S10 — Expired requests are never pruned (low-medium)
@@ -288,6 +323,9 @@ window — but rows, their manifests and their outcomes accumulate for the life 
 
 **Fix.** Add a sweep to the same retention path the other evidence tables use.
 
+
+**Status: fixed.** `dispatchPendingVerifications` sweeps expired requests on each tick, which is the same
+visit that dispatches them, so requests, checks, attempts and outcomes no longer accumulate.
 ---
 
 ## S11 — A pruned receipt is indistinguishable from a check that never had one (low, honesty gap)
@@ -301,6 +339,11 @@ evidence stays visibly unavailable"; for this case the report cannot tell "no re
 **Fix.** Either keep a tombstone (a nullable `receipt_pruned_at`) or surface `not recorded` vs
 `no longer available` as distinct in the report.
 
+
+**Status: fixed.** Outcomes now carry `receiptUnavailable`, set by the single composer when a check
+executed but has no receipt pointer, and the CLI and web render *receipt no longer available* rather than
+silence. The regression test prunes a receipt and asserts the outcome keeps its state and exit code while
+reporting the evidence as gone.
 ---
 
 ## S12 — Dead code (trivial)
@@ -308,6 +351,8 @@ evidence stays visibly unavailable"; for this case the report cannot tell "no re
 `VerificationCheckWrite` and its optional `label` field in `core/repos/verification-requests.ts` are never
 referenced. Either wire the label (a harness-supplied hint on a check) or delete it.
 
+
+**Status: fixed.** `VerificationCheckWrite` and its unused `label` were removed.
 ---
 
 ## Verified sound (so the audit is not only a list of faults)

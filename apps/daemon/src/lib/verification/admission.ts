@@ -14,7 +14,7 @@ import { authorizeCommunication } from '../../core/team-policy/authorization.ts'
 import { workspaceLifecycle } from '../coding-environment/lifecycle.ts'
 import { WorkspaceBusyError, type WorkspaceLease } from '../coding-environment/workspace.ts'
 import {
-  authorizeUserIngress,
+  authorizeOperatorVerification,
   authorizeVerificationRequest,
   teamPolicyEnforcementEnabled,
 } from '../communication.ts'
@@ -125,13 +125,11 @@ export async function admitVerificationRequest(
           requestId,
         })
       } else {
-        authorizeUserIngress(db, request.recipientAgentId, {
-          origin: 'verification_request',
-          attemptKind: 'verification_request',
-          attemptId: requestId,
-          approvalPayloadKind: 'verification_request',
-          approvalPayload: { requestId },
-          requester: 'user',
+        // Must use the verification operation, not the generic user-ingress one: the plan validator
+        // recognises one operation per attempt kind, and a mismatch made the approval undeliverable.
+        authorizeOperatorVerification(db, {
+          agentId: request.recipientAgentId,
+          requestId,
         })
       }
       // A policy that reports approval_required without holding the attempt is a contract breach.

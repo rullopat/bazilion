@@ -1181,4 +1181,5 @@ export type {
   VerificationRequester,
   VerificationRequestState,
   VerificationResponse,
+  VerificationSummary,
 } from './verification.ts'

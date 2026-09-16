@@ -162,7 +162,10 @@ function renderBrief(brief: VerificationBrief): string {
   ]
   if (brief.summary) lines.push(`Requested by the requester: ${brief.summary}`)
   if (brief.writablePaths.length > 0) {
-    lines.push(`Declared writable output paths: ${brief.writablePaths.join(', ')}`)
+    lines.push(
+      `Declared generated-output paths (where a check is expected to write; this does not confine ` +
+        `writes): ${brief.writablePaths.join(', ')}`,
+    )
   }
   lines.push('', 'Captured checks:')
   for (const entry of brief.checks) {

@@ -43,7 +43,6 @@ import {
   setRequestState,
   type VerificationRequestRecord,
 } from '../core/repos/verification-requests.ts'
-import { cancelAgent } from '../lib/agent-cancel.ts'
 import type { AuthVariables } from '../lib/auth.ts'
 import {
   codingEnvironmentStatus,
@@ -76,8 +75,10 @@ import { syncGroupTopicNames } from '../lib/telegram/topic-rename.ts'
 import {
   captureVerificationRequest,
   readVerificationReport,
+  readVerificationSummary,
   toWireRequest,
 } from '../lib/verification/capture.ts'
+import { cancelVerificationDispatch } from '../lib/verification/dispatch.ts'
 import { qmdBackend } from '../runtime/index.ts'
 
 // 12 KB cap — enough for a rich USER.md, small enough that it can't silently
@@ -854,36 +855,12 @@ teamsRouter.get('/:id/verifications', async (c) => {
   try {
     const team = requireTeam(db, paths, c.req.param('id'))
     const requests = listVerificationRequests(db, team.id)
-    const reports = await Promise.all(
-      requests.map(async (record) => ({
-        request: toWireRequest(record),
-        checks: listVerificationChecks(db, record.id).map((check) => ({
-          ordinal: check.ordinal,
-          command: check.command,
-          cwd: check.cwd,
-          purpose: check.purpose,
-          timeoutMs: check.timeoutMs,
-        })),
-        attempts: listVerificationAttempts(db, record.id).map((attempt) => ({
-          id: attempt.id,
-          attemptNumber: attempt.attemptNumber,
-          supersedesAttemptId: attempt.supersedesAttemptId,
-          state: attempt.state,
-          startedAt: attempt.startedAt,
-          finishedAt: attempt.finishedAt,
-          error: attempt.error,
-          outcomes: listVerificationCheckOutcomes(db, attempt.id).map((outcome) => ({
-            ordinal: outcome.ordinal,
-            state: outcome.state,
-            commandId: outcome.commandId,
-            exitCode: outcome.exitCode,
-            startedAt: outcome.startedAt,
-            finishedAt: outcome.finishedAt,
-          })),
-        })),
-        applicability: await applicabilityFor(db, paths, team.id, record),
-      })),
-    )
+    // One row per request from the shared composer. Applicability is not established here: it means
+    // comparing the live tree against each capture, so it belongs to the detail view where someone
+    // actually asks about one request.
+    const reports = requests
+      .map((record) => readVerificationSummary(db, paths, team.id, record.id))
+      .filter((summary) => summary !== null)
     return c.json({ requests: reports })
   } catch (error) {
     return reviewFailure(c, error)
@@ -968,8 +945,9 @@ teamsRouter.post('/:id/verifications/:requestId/cancel', async (c) => {
       // Nothing owns it yet, so it is cancelled directly rather than left dispatchable or held.
       setRequestState(db, record.id, 'cancelled')
     } else {
-      // A running turn is aborted, and the dispatcher settles the attempt as cancelled.
-      const aborted = cancelAgent(record.recipientAgentId)
+      // Aborts *this request's* turn only. Cancelling by agent id would abort whatever else the
+      // specialist happens to be doing, which is not what cancelling a verification means.
+      const aborted = cancelVerificationDispatch(record.id)
       if (!aborted) {
         return c.json({ error: 'Verification request is not cancelled yet; retry' }, 409)
       }
@@ -982,17 +960,4 @@ teamsRouter.post('/:id/verifications/:requestId/cancel', async (c) => {
 
 async function report(db: BazilionDb, paths: Paths, record: VerificationRequestRecord) {
   return readVerificationReport(db, paths, record.teamId, record.id)
-}
-
-async function applicabilityFor(
-  db: BazilionDb,
-  paths: Paths,
-  teamId: string,
-  record: VerificationRequestRecord,
-) {
-  const applicability = await readSnapshotApplicability(db, paths, teamId, record.snapshotId)
-  return {
-    comparison: applicability.comparison,
-    testedSnapshotId: applicability.comparison === 'unknown' ? null : record.snapshotId,
-  }
 }

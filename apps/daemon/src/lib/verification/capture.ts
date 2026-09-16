@@ -4,6 +4,7 @@ import type {
   VerificationEnvironmentFacts,
   VerificationReport,
   VerificationRequest as VerificationRequestWire,
+  VerificationSummary,
 } from '@bazilion/api-types'
 import type { BazilionDb } from '../../core/db/client.ts'
 import type { Paths } from '../../core/paths.ts'
@@ -100,9 +101,27 @@ export function captureVerificationRequest(
     )
   }
   if (intent.writablePaths && intent.writablePaths.length > 0) {
-    const bounded = intent.writablePaths.filter((path) => path.length > 0 && path.length <= 1_000)
-    if (bounded.length !== intent.writablePaths.length || bounded.length > 16) {
-      return blocked('unsupported', 'declared writable paths are outside their bounded contract')
+    // Team-relative, inside the workspace, and never the workspace root: these name where a check is
+    // expected to write generated output, so they must not be an escape hatch out of the Team.
+    const bounded: string[] = []
+    for (const path of intent.writablePaths) {
+      if (typeof path !== 'string' || path.length === 0 || path.length > 1_000) {
+        return blocked('unsupported', 'declared writable paths are outside their bounded contract')
+      }
+      if (path.startsWith('/') || path.startsWith('~') || path.includes('\\')) {
+        return blocked('unsupported', `declared writable path must be Team-relative: ${path}`)
+      }
+      const parts = path.split('/').filter((part) => part && part !== '.')
+      if (parts.length === 0 || parts.some((part) => part === '..')) {
+        return blocked(
+          'unsupported',
+          `declared writable path must be inside the workspace: ${path}`,
+        )
+      }
+      bounded.push(parts.join('/'))
+    }
+    if (bounded.length > 16) {
+      return blocked('unsupported', 'too many declared writable paths')
     }
     environment.writablePaths = bounded
   }
@@ -157,13 +176,18 @@ export function admittedEnvironment(
   }
 }
 
-/** Compose the operator view of one request: its contract, its attempts, and current applicability. */
-export async function readVerificationReport(
+/**
+ * Compose one row: the contract, its checks, and every attempt with its outcomes.
+ *
+ * Shared by the list and the detail view so the two surfaces cannot report different facts — the only
+ * difference between them is whether applicability is established.
+ */
+export function readVerificationSummary(
   db: BazilionDb,
   paths: Paths,
   teamId: string,
   requestId: string,
-): Promise<VerificationReport | null> {
+): VerificationSummary | null {
   const team = safeTeam(db, paths, teamId)
   if (!team) return null
   const record = getVerificationRequest(db, team.id, requestId)
@@ -181,14 +205,16 @@ export async function readVerificationReport(
       ordinal: outcome.ordinal,
       state: outcome.state,
       commandId: outcome.commandId,
+      // Executed, but no receipt pointer: the receipt was pruned or expired, which is different from
+      // never having recorded one.
+      receiptUnavailable:
+        outcome.commandId === null &&
+        ['succeeded', 'failed', 'timed_out', 'cancelled'].includes(outcome.state),
       exitCode: outcome.exitCode,
       startedAt: outcome.startedAt,
       finishedAt: outcome.finishedAt,
     })),
   }))
-  // Applicability is three-valued and never a pass: a comparison shows that the source changed,
-  // not that the change was relevant. A capture with no comparison reads as unknown.
-  const applicability = await readSnapshotApplicability(db, paths, team.id, record.snapshotId)
   return {
     request: toWireRequest(record),
     checks: checks.map((check) => ({
@@ -199,9 +225,35 @@ export async function readVerificationReport(
       timeoutMs: check.timeoutMs,
     })),
     attempts,
+  }
+}
+
+/**
+ * Compose the detail view: the summary plus current applicability.
+ *
+ * Applicability is three-valued and never a pass — a comparison shows that the source changed, not that
+ * the change was relevant — and it is computed here rather than in the list because it means walking the
+ * live tree against the capture.
+ */
+export async function readVerificationReport(
+  db: BazilionDb,
+  paths: Paths,
+  teamId: string,
+  requestId: string,
+): Promise<VerificationReport | null> {
+  const summary = readVerificationSummary(db, paths, teamId, requestId)
+  if (!summary) return null
+  const applicability = await readSnapshotApplicability(
+    db,
+    paths,
+    summary.request.teamId,
+    summary.request.snapshot.id,
+  )
+  return {
+    ...summary,
     applicability: {
       comparison: applicability.comparison,
-      testedSnapshotId: applicability.comparison === 'unknown' ? null : record.snapshotId,
+      testedSnapshotId: applicability.comparison === 'unknown' ? null : summary.request.snapshot.id,
     },
   }
 }

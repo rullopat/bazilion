@@ -61,7 +61,11 @@ function printReport(report: VerificationReport): void {
   for (const check of report.checks) {
     const outcome = outcomes.get(check.ordinal)
     const state = outcome?.state ?? 'not_executed'
-    const receipt = outcome?.commandId ? `  receipt ${outcome.commandId}` : ''
+    const receipt = outcome?.commandId
+      ? `  receipt ${outcome.commandId}`
+      : outcome?.receiptUnavailable
+        ? '  receipt no longer available'
+        : ''
     const exit =
       outcome?.exitCode === null || outcome?.exitCode === undefined
         ? ''
@@ -169,16 +173,17 @@ const listCmd = defineCommand({
       return
     }
     const rows = [
-      ['ID', 'STATE', 'SPECIALIST', 'CHANGE', 'APPLICABILITY'],
+      ['ID', 'STATE', 'SPECIALIST', 'CHANGE'],
       ...response.requests.map((entry) => [
         entry.request.id,
         entry.request.state,
         entry.request.recipientAgentId,
         entry.request.snapshot.id.slice(0, 12),
-        entry.applicability.comparison,
       ]),
     ]
     for (const line of columnize(rows)) console.log(line)
+    // Applicability is established per request, not per list: `show` compares the live tree.
+    console.log("run `bazilion team verify show <slug> <id>` for a request's current applicability")
   },
 })
 

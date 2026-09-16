@@ -45,6 +45,10 @@ import {
   deliverQueuedApproval,
   queuedApprovalInput,
 } from '../lib/user-queue-approved.ts'
+import {
+  releaseVerificationGrant,
+  validateVerificationGrant,
+} from '../lib/verification/approval.ts'
 
 export const approvalsRouter = new Hono()
 
@@ -179,6 +183,39 @@ approvalsRouter.post('/:id/approve', async (c) => {
         error.message,
       )
       return c.json({ error: 'approval delivery failed', detail: error.message }, 500)
+    }
+    if (pendingPlan.kind === 'verification_request') {
+      // BAZ-044: a held verification request is a durable grant. Release it into `pending`; the
+      // verification state machine remains the only thing that claims and executes it.
+      const { paths } = getCtx()
+      const granted = communicationApprovalRepo.grantVerificationRequest(
+        db,
+        id,
+        'authenticated_operator',
+        (approval) =>
+          authorizeInSnapshot(db, {
+            source: approval.source,
+            target: approval.target,
+            origin: approval.origin,
+            attemptKind: approval.attemptKind,
+            attemptId: approval.attemptId,
+          }),
+        () => validateVerificationGrant(db, paths, pendingPlan.payload.requestId),
+        () => releaseVerificationGrant(db, pendingPlan.payload.requestId),
+      )
+      if (!granted.granted) {
+        return c.json(
+          {
+            error:
+              granted.failureKind === 'revalidation'
+                ? 'approval revalidation failed'
+                : 'approval delivery failed',
+            detail: granted.error,
+          },
+          409,
+        )
+      }
+      return c.json(granted.approval)
     }
     if (pendingPlan.kind === 'scheduler_trigger') {
       const granted = communicationApprovalRepo.grantSchedulerTrigger(

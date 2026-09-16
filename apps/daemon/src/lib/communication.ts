@@ -182,6 +182,34 @@ export function authorizeAgentEgress(
 }
 
 /**
+ * Authorize one typed verification request from the operator (BAZ-044).
+ *
+ * Uses the same operation as the agent-requester path — the source and target already say who asked, so
+ * the operation name need not encode it, and one operation per attempt kind keeps the approval tuple
+ * recognisable by exactly one handler.
+ */
+export function authorizeOperatorVerification(
+  db: BazilionDb,
+  input: { agentId: string; requestId: string },
+): AuthorizationResult {
+  const agent = agentRepo.get(db, input.agentId)
+  return authorizeBoundary(
+    db,
+    {
+      source: { kind: 'user', teamId: agent?.teamId ?? '__missing__' },
+      target: { kind: 'agent', id: input.agentId },
+      origin: 'verification_request',
+      attemptKind: 'verification_request',
+      attemptId: input.requestId,
+      approvalPayloadKind: 'verification_request',
+      approvalPayload: { requestId: input.requestId },
+      requester: 'user',
+    },
+    'request_verification',
+  )
+}
+
+/**
  * Authorize one typed verification request on the agent-to-agent edge (BAZ-044).
  *
  * The request id is the attempt id, so policy evaluation, a held approval and dispatch all key on

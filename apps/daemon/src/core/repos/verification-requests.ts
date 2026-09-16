@@ -95,11 +95,6 @@ export interface VerificationCheckInput {
   timeoutMs: number
 }
 
-export interface VerificationCheckWrite extends VerificationCheckInput {
-  /** Optional harness direction; never trusted as an assertion about what a check does. */
-  label?: string
-}
-
 export interface VerificationRequestInput {
   id?: string
   teamId: string

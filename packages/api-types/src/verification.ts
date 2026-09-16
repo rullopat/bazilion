@@ -98,6 +98,11 @@ export interface VerificationCheckOutcome {
   state: VerificationCheckState
   /** The BAZ-041 receipt that produced this outcome, for the states that executed. */
   commandId: string | null
+  /**
+   * True when the check executed but its receipt is no longer available (pruned or expired). Without
+   * this an occupied `null` is indistinguishable from a check that never recorded a receipt.
+   */
+  receiptUnavailable: boolean
   exitCode: number | null
   startedAt: number | null
   finishedAt: number | null
@@ -161,8 +166,21 @@ export interface VerificationReport {
   applicability: VerificationApplicability
 }
 
+/**
+ * One row of a list: the contract, its checks and its attempts.
+ *
+ * Applicability is deliberately absent. Establishing it means comparing the live tree against the
+ * capture, so computing it per row would walk the repository once per request; the detail view asks for
+ * it instead. A list therefore never implies that anything was checked.
+ */
+export interface VerificationSummary {
+  request: VerificationRequest
+  checks: VerificationCheck[]
+  attempts: VerificationAttempt[]
+}
+
 export interface VerificationListResponse {
-  requests: VerificationReport[]
+  requests: VerificationSummary[]
 }
 
 export interface VerificationResponse {

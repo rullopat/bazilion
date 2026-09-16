@@ -9,7 +9,9 @@ import {
   authorizeInSnapshot,
   recordDenial,
 } from '../../src/core/team-policy/authorization.ts'
+import { planApprovalDelivery } from '../../src/lib/approval-delivery-plan.ts'
 import {
+  authorizeOperatorVerification,
   authorizeVerificationRequest,
   CommunicationDeniedError,
   deliverableInbox,
@@ -505,4 +507,51 @@ test('a granted verification request runs its guarded release inside the decisio
     ),
   ).toThrow(/approval_state_conflict/)
   expect(released).toEqual([requestId])
+})
+
+// Review S3/S4: a held request must be releasable — including one the operator asked for, whose
+// approval tuple previously used the generic user-ingress operation and was undeliverable.
+test('a held request releases into pending, for an agent or the operator requester', async () => {
+  const coder = spawnAgent(env.db, env.paths, { profileId: 'p', teamId: env.teamId })
+  const tester = spawnAgent(env.db, env.paths, { profileId: 'p', teamId: env.teamId })
+  const requestId = '33333333-2222-4333-8444-555555555555'
+  process.env.BAZILION_TEAM_POLICY_ENFORCEMENT = 'on'
+  env.db.raw.run('DELETE FROM team_policy_edges WHERE team_id = ?', [env.teamId])
+  edgeWithPosture(env.teamId, 'agent', coder.id, 'agent', tester.id, 'approval_required')
+  edgeWithPosture(env.teamId, 'user', '', 'agent', tester.id, 'approval_required')
+
+  for (const [label, capture] of [
+    [
+      'agent',
+      () =>
+        authorizeVerificationRequest(env.db, {
+          from: coder.id,
+          to: tester.id,
+          requestId,
+        }),
+    ],
+    ['operator', () => authorizeOperatorVerification(env.db, { agentId: tester.id, requestId })],
+  ] as const) {
+    expect(capture, label).toThrow()
+    const row = env.db.raw
+      .query<{ id: string; operation: string; payload_kind: string; attempt_id: string }, []>(
+        'SELECT id, operation, payload_kind, attempt_id FROM communication_approvals ORDER BY created_at DESC LIMIT 1',
+      )
+      .get()
+    // One operation per attempt kind, whoever asked: that is what makes the plan recognisable.
+    expect(row, label).toMatchObject({
+      operation: 'request_verification',
+      payload_kind: 'verification_request',
+      attempt_id: requestId,
+    })
+    if (!row) continue
+    // The plan validator accepts it, so the approval can actually be delivered.
+    const detail = approvalRepo.get(env.db, row.id, true)
+    expect(detail).not.toBeNull()
+    expect(planApprovalDelivery(detail as never)).toMatchObject({
+      kind: 'verification_request',
+      payload: { requestId },
+    })
+    env.db.raw.run('DELETE FROM communication_approvals WHERE id = ?', [row.id])
+  }
 })

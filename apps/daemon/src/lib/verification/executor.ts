@@ -9,7 +9,11 @@ import { saveCodingCommand } from '../../core/repos/coding-commands.ts'
 import type { VerificationRequestRecord } from '../../core/repos/verification-requests.ts'
 import { resolveCodingDirectory } from '../../runtime/coding-directory.ts'
 import { createDockerBashOperations } from '../../runtime/shell/docker.ts'
-import { classifyBashCommand, resolveShellSecurityConfig } from '../../runtime/shell/security.ts'
+import {
+  buildScrubbedShellEnv,
+  classifyBashCommand,
+  resolveShellSecurityConfig,
+} from '../../runtime/shell/security.ts'
 import { buildSandboxContainerEnv } from '../../runtime/shell/tooling.ts'
 import { redactJsonValue } from '../../runtime/worker/runtime.ts'
 import {
@@ -114,7 +118,13 @@ export function createProtectedCheckExecutor(
           // rather than invented. Unknown applicability is reported as unknown.
           inputFingerprint: null,
           capturedAt: startedAt,
-          restrictions: isContainer ? ['network_disabled', 'read_only_memory'] : [],
+          // Declared output paths name where a check is expected to write; they do not confine it in
+          // host mode, and the receipt must not imply otherwise. Any write still makes the tree differ
+          // from the captured snapshot, which is reported as `changed` rather than as a pass.
+          restrictions: [
+            ...(isContainer ? ['network_disabled', 'read_only_memory'] : []),
+            'declared_output_paths_are_advisory',
+          ],
         },
         startedAt,
         finishedAt: null,
@@ -136,14 +146,21 @@ export function createProtectedCheckExecutor(
       let observedBytes = 0
       let truncatedStream = false
       const operations = buildOperations(input, env, config.envAllowlist)
+      // Never the daemon's ambient environment. A check is a protected turn's command, so it gets the
+      // scrubbed allowlist environment (plus what the request froze), exactly like a sandboxed one —
+      // otherwise a captured check could read credentials the receipt claims it was protected from.
+      const hostEnv = {
+        ...buildScrubbedShellEnv(env, config.envAllowlist),
+        ...(input.request.environment.env ?? {}),
+      }
       let exitCode: number | null = null
       let failure: unknown
       try {
         const result = await operations.exec(command, absoluteCwd, {
           signal: input.signal,
           timeout: timeoutMs,
-          // Host mode already inherits the daemon's scrubbed env; container mode supplies its own.
-          ...(isContainer ? {} : { env }),
+          // Host mode runs with the scrubbed environment above; container mode supplies its own.
+          ...(isContainer ? {} : { env: hostEnv }),
           onData: (chunk: Buffer) => {
             // Bounded while streaming: a runaway command cannot grow the diagnostic without limit.
             if (observedBytes >= CODING_OUTPUT_BYTES * 4) return

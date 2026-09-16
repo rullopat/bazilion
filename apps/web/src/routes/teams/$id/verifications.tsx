@@ -12,6 +12,7 @@ import {
   cancelVerification,
   createVerification,
   fetchTeamVerifications,
+  fetchVerification,
   type TeamVerificationsView,
 } from '../../../lib/verification'
 
@@ -40,7 +41,7 @@ function outcomeLabel(state: string, exitCode: number | null): string {
 
 function VerificationsPage() {
   const loaded: TeamVerificationsView = Route.useLoaderData()
-  const teamId = loaded.requests[0]?.request.teamId ?? ''
+  const teamId = Route.useParams().id
   const [requests, setRequests] = useState(loaded.requests)
   const [unavailable, setUnavailable] = useState(loaded.unavailable)
   const [agentId, setAgentId] = useState(() => loaded.members[0]?.id ?? '')
@@ -49,6 +50,9 @@ function VerificationsPage() {
   const [summary, setSummary] = useState('')
   const [status, setStatus] = useState<{ kind: 'info' | 'error'; message: string } | null>(null)
   const [busy, setBusy] = useState(false)
+  // Applicability is asked for per request: comparing the live tree is real work, and a list that
+  // computed it for every row would walk the repository once per request.
+  const [applicability, setApplicability] = useState<Record<string, string>>({})
 
   async function reload() {
     const next = await fetchTeamVerifications({ data: { id: teamId } })
@@ -98,6 +102,22 @@ function VerificationsPage() {
         kind: 'error',
         message: 'message' in result ? (result.message ?? 'Request failed') : 'Request failed',
       })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function checkApplicability(requestId: string) {
+    setBusy(true)
+    try {
+      const result = await fetchVerification({ data: { id: teamId, requestId } })
+      setApplicability((current) => ({
+        ...current,
+        [requestId]:
+          'report' in result
+            ? applicabilityLabel(result.report.applicability.comparison)
+            : 'unavailable',
+      }))
     } finally {
       setBusy(false)
     }
@@ -201,7 +221,6 @@ function VerificationsPage() {
                   </div>
                   <p className="muted">
                     change {report.request.snapshot.id.slice(0, 12)} ·{' '}
-                    {applicabilityLabel(report.applicability.comparison)} ·{' '}
                     {report.request.environment.image} (shell {report.request.environment.sandbox})
                   </p>
                   <ul>
@@ -216,12 +235,27 @@ function VerificationsPage() {
                               {' '}
                               <span className="muted">receipt {outcome.commandId.slice(0, 8)}</span>
                             </>
+                          ) : outcome?.receiptUnavailable ? (
+                            <>
+                              {' '}
+                              <span className="muted">receipt no longer available</span>
+                            </>
                           ) : null}
                         </li>
                       )
                     })}
                   </ul>
                   {attempt?.error ? <p className="muted">note: {attempt.error}</p> : null}
+                  <p className="muted">
+                    applicability: {applicability[report.request.id] ?? 'not checked'}
+                  </p>
+                  <Button
+                    variant="ghost"
+                    disabled={busy}
+                    onClick={() => checkApplicability(report.request.id)}
+                  >
+                    Check applicability
+                  </Button>{' '}
                   {cancellable ? (
                     <Button variant="danger" disabled={busy} onClick={() => cancel(report.request.id)}>
                       Cancel

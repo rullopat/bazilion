@@ -3,7 +3,11 @@ import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { VerificationBlockedResponse, VerificationResponse } from '@bazilion/api-types'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
-import { setRequestState } from '../../src/core/repos/verification-requests.ts'
+import {
+  getVerificationRequest,
+  setRequestState,
+} from '../../src/core/repos/verification-requests.ts'
+import { registerAgent, unregisterAgent } from '../../src/lib/agent-cancel.ts'
 import { teamsRouter } from '../../src/routes/teams.ts'
 import { makeTestEnv, type TestEnv } from '../core/helpers.ts'
 
@@ -166,4 +170,25 @@ test('a held request can be cancelled, not just a pending one (review S7b)', asy
   })
   expect(cancelled.status).toBe(200)
   expect(((await cancelled.json()) as VerificationResponse).request.request.state).toBe('cancelled')
+})
+
+test('cancelling a running request does not abort an unrelated turn (review S7a)', async () => {
+  const snapshot = await snapshotId()
+  const created = await create(snapshot)
+  const id = ((await created.json()) as VerificationResponse).request.request.id
+  setRequestState(env.db, id, 'running')
+  // The specialist is doing something else entirely — the previous failure mode aborted this.
+  const unrelated = new AbortController()
+  registerAgent('tester', unrelated)
+  try {
+    const response = await teamsRouter.request(`/${env.teamId}/verifications/${id}/cancel`, {
+      method: 'POST',
+    })
+    // Nothing owns this request's turn, so the cancel refuses rather than reaching for the agent.
+    expect(response.status).toBe(409)
+    expect(unrelated.signal.aborted).toBe(false)
+    expect(getVerificationRequest(env.db, env.teamId, id)?.state).toBe('running')
+  } finally {
+    unregisterAgent('tester')
+  }
 })

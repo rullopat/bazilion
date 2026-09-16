@@ -666,6 +666,36 @@
       "owner": "BAZ-044",
       "file": "apps/daemon/test/lib/verification-e2e.test.ts",
       "test": "a failing captured check is reported as a failure, not as an error"
+    },
+    {
+      "id": "VERIFY-GRANT-RELEASES-HELD-REQUEST",
+      "owner": "BAZ-044",
+      "file": "apps/daemon/test/core/team-authorization.test.ts",
+      "test": "a held request releases into pending, for an agent or the operator requester"
+    },
+    {
+      "id": "VERIFY-GRANT-REVALIDATES",
+      "owner": "BAZ-044",
+      "file": "apps/daemon/test/lib/verification-admission.test.ts",
+      "test": "a grant releases a held request, and refuses once its evidence is gone"
+    },
+    {
+      "id": "VERIFY-CANCEL-TARGETS-ITS-OWN-TURN",
+      "owner": "BAZ-044",
+      "file": "apps/daemon/test/routes/verifications.test.ts",
+      "test": "cancelling a running request does not abort an unrelated turn (review S7a)"
+    },
+    {
+      "id": "VERIFY-PRUNED-RECEIPT-VISIBLE",
+      "owner": "BAZ-044",
+      "file": "apps/daemon/test/lib/verification-executor.test.ts",
+      "test": "a receipt that is gone is reported as unavailable, not as never recorded (review S11)"
+    },
+    {
+      "id": "VERIFY-RECEIPT-PRUNABLE",
+      "owner": "BAZ-044",
+      "file": "apps/daemon/test/core/verification-requests.test.ts",
+      "test": "pruning a coding receipt leaves the verification outcome readable"
     }
   ]
 }

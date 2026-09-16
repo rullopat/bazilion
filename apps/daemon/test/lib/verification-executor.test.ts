@@ -6,10 +6,13 @@ import type { BazilionDb } from '../../src/core/db/client.ts'
 import { getCodingCommandLog } from '../../src/core/repos/coding-command-logs.ts'
 import { getCodingCommand } from '../../src/core/repos/coding-commands.ts'
 import {
+  claimVerificationAttempt,
   createVerificationRequest,
+  recordVerificationCheckOutcome,
   type VerificationRequestRecord,
 } from '../../src/core/repos/verification-requests.ts'
 import { captureTeamSnapshot } from '../../src/lib/git-review/service.ts'
+import { readVerificationSummary } from '../../src/lib/verification/capture.ts'
 import { createProtectedCheckExecutor } from '../../src/lib/verification/executor.ts'
 import { makeTestEnv, type TestEnv } from '../core/helpers.ts'
 
@@ -52,6 +55,7 @@ async function requestFor(
   env: TestEnv,
   command: string,
   sandbox: 'off' | 'docker' = 'off',
+  declaredEnv?: Record<string, string>,
 ): Promise<VerificationRequestRecord> {
   git(env, 'init', '-q', '-b', 'main')
   writeFileSync(join(env.paths.teamDir(env.teamId), 'app.txt'), 'one\ntwo\n')
@@ -70,7 +74,12 @@ async function requestFor(
     snapshotComplete: true,
     head: snapshot.snapshot.head,
     baseOid: snapshot.snapshot.base.resolvedOid,
-    environment: { image: 'debian:bookworm-slim', sandbox, cwd: '.' },
+    environment: {
+      image: 'debian:bookworm-slim',
+      sandbox,
+      cwd: '.',
+      ...(declaredEnv ? { env: declaredEnv } : {}),
+    },
     checks: [{ command, cwd: '.', purpose: 'suite', timeoutMs: 30_000 }],
   })
 }
@@ -144,9 +153,12 @@ test('retained output is redacted, so a credential cannot survive in the diagnos
   try {
     seed(env.db, env.teamId)
     // The secret is *not* in the command text (a command containing credential material is refused
-    // separately); it reaches the output through the environment, which redaction must still catch.
+    // separately). It reaches the output through an environment value the request froze at capture, so
+    // this also proves the frozen environment is what the check actually runs with.
     const secret = 'sk-live-abcdefghijklmnopqrstuvwxyz'
-    const request = await requestFor(env, 'printf %s "$LEAKY_TOKEN"')
+    const request = await requestFor(env, 'printf %s "$LEAKY_TOKEN"', 'off', {
+      LEAKY_TOKEN: secret,
+    })
     const result = await createProtectedCheckExecutor({
       db: env.db,
       paths: env.paths,
@@ -154,7 +166,12 @@ test('retained output is redacted, so a credential cannot survive in the diagnos
       attemptId: 'attempt-1',
       teamPath: env.paths.teamDir(env.teamId),
       secrets: () => [secret],
-      env: { BAZILION_BASH_SANDBOX: 'off', LEAKY_TOKEN: secret },
+      // The daemon's ambient environment, including a credential it must never pass on.
+      env: {
+        BAZILION_BASH_SANDBOX: 'off',
+        LEAKY_TOKEN: secret,
+        AMBIENT_PROVIDER_KEY: secret,
+      },
     }).run({
       command: 'printf %s "$LEAKY_TOKEN"',
       cwd: '.',
@@ -169,6 +186,26 @@ test('retained output is redacted, so a credential cannot survive in the diagnos
     const log = getCodingCommandLog(env.db, result.commandId ?? '')
     expect(log).toMatchObject({ redacted: true, releasedAt: null })
     expect(log.availability).toBe('available')
+
+    // The daemon's own ambient variables are not inherited: a check runs with the scrubbed allowlist
+    // plus what the request froze, so an ambient credential cannot reach it even unredacted.
+    const ambient = await createProtectedCheckExecutor({
+      db: env.db,
+      paths: env.paths,
+      request,
+      attemptId: 'attempt-1',
+      teamPath: env.paths.teamDir(env.teamId),
+      secrets: () => [],
+      env: { BAZILION_BASH_SANDBOX: 'off', AMBIENT_PROVIDER_KEY: 'ambient-value' },
+    }).run({
+      command: 'printf "ambient=[%s]" "$AMBIENT_PROVIDER_KEY"',
+      cwd: '.',
+      timeoutMs: 30_000,
+      purpose: 'verification',
+      writablePaths: [],
+    })
+    expect(ambient.output).toContain('ambient=[]')
+    expect(ambient.output).not.toContain('ambient-value')
   } finally {
     env.cleanup()
   }
@@ -238,6 +275,57 @@ test('a command carrying protected credential material is refused', async () => 
     })
     expect(result).toMatchObject({ state: 'blocked', commandId: null })
     expect(result.blocker?.reason).toBe('unsupported')
+  } finally {
+    env.cleanup()
+  }
+})
+
+test('a receipt that is gone is reported as unavailable, not as never recorded (review S11)', async () => {
+  const env = makeTestEnv()
+  try {
+    seed(env.db, env.teamId)
+    const request = await requestFor(env, 'true')
+    const claim = claimVerificationAttempt(env.db, {
+      requestId: request.id,
+      leaseOwner: 'owner-a',
+      leaseMs: 60_000,
+    })
+    const attemptId = claim?.attempt.id ?? ''
+    const result = await executorFor(env, request).run({
+      command: 'true',
+      cwd: '.',
+      timeoutMs: 30_000,
+      purpose: 'verification',
+      writablePaths: [],
+    })
+    expect(result.commandId).toBeTruthy()
+    expect(
+      recordVerificationCheckOutcome(env.db, {
+        attemptId,
+        ordinal: 0,
+        state: 'succeeded',
+        commandId: result.commandId,
+        exitCode: 0,
+      }),
+    ).toBe(true)
+
+    const before = readVerificationSummary(env.db, env.paths, env.teamId, request.id)
+    expect(before?.attempts[0]?.outcomes[0]).toMatchObject({
+      state: 'succeeded',
+      commandId: result.commandId,
+      receiptUnavailable: false,
+    })
+
+    // The receipt is pruned (retention, not failure). The outcome keeps its facts and says the
+    // evidence is gone rather than implying one was never recorded.
+    env.db.raw.run('DELETE FROM coding_commands WHERE id = ?', [result.commandId])
+    const after = readVerificationSummary(env.db, env.paths, env.teamId, request.id)
+    expect(after?.attempts[0]?.outcomes[0]).toMatchObject({
+      state: 'succeeded',
+      exitCode: 0,
+      commandId: null,
+      receiptUnavailable: true,
+    })
   } finally {
     env.cleanup()
   }

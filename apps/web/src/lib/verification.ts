@@ -8,6 +8,7 @@ import type {
   VerificationListResponse,
   VerificationResponse,
   VerificationReport,
+  VerificationSummary,
 } from '@bazilion/api-types'
 import { createServerFn } from '@tanstack/react-start'
 import { daemonClient } from './daemon-client'
@@ -18,7 +19,8 @@ export interface VerificationUnavailable {
 }
 
 export interface TeamVerificationsView {
-  requests: VerificationReport[]
+  /** Rows only: applicability is established per request, on demand. */
+  requests: VerificationSummary[]
   /** Team members a request can be addressed to. */
   members: { id: string; name: string }[]
   unavailable: VerificationUnavailable | null
@@ -53,6 +55,27 @@ export const fetchTeamVerifications = createServerFn({ method: 'POST' })
       return { requests: [], members: [], unavailable: failure(error, 'Verifications unavailable') }
     }
   })
+
+/**
+ * One request's detail, including current applicability. Kept separate from the list because
+ * establishing applicability compares the live tree against the capture.
+ */
+export const fetchVerification = createServerFn({ method: 'POST' })
+  .validator((input: { id: string; requestId: string }) => input)
+  .handler(
+    async ({ data }): Promise<{ report: VerificationReport } | VerificationUnavailable> => {
+      try {
+        const response = await daemonClient().get<{ request: VerificationReport }>(
+          `/api/teams/${encodeURIComponent(data.id)}/verifications/${encodeURIComponent(data.requestId)}`,
+        )
+        return { report: response.request }
+      } catch (error) {
+        const unavailable = failure(error, 'Verification request could not be loaded')
+        if (unavailable) return unavailable
+        throw error
+      }
+    },
+  )
 
 export const createVerification = createServerFn({ method: 'POST' })
   .validator(

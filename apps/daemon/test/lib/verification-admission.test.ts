@@ -7,10 +7,15 @@ import {
   getVerificationRequest,
   listVerificationAttempts,
   listVerificationCheckOutcomes,
+  setRequestState,
 } from '../../src/core/repos/verification-requests.ts'
 import { workspaceLifecycle } from '../../src/lib/coding-environment/lifecycle.ts'
 import { captureTeamSnapshot } from '../../src/lib/git-review/service.ts'
 import { admitVerificationRequest } from '../../src/lib/verification/admission.ts'
+import {
+  releaseVerificationGrant,
+  validateVerificationGrant,
+} from '../../src/lib/verification/approval.ts'
 import { captureVerificationRequest } from '../../src/lib/verification/capture.ts'
 import { makeTestEnv, type TestEnv } from '../core/helpers.ts'
 
@@ -166,6 +171,37 @@ test('a specialist that left the Team, or an unknown request, is refused without
     // An unknown id is not a failure to report: there is nothing to run.
     const unknown = await admitVerificationRequest(env.db, env.paths, 'does-not-exist')
     expect(unknown).toMatchObject({ kind: 'deferred', reason: 'unknown_or_expired' })
+  } finally {
+    env.cleanup()
+  }
+})
+
+// Review S3: the grant revalidates before releasing, so a request whose inputs no longer hold stays
+// held rather than being released into a dispatch that must fail.
+test('a grant releases a held request, and refuses once its evidence is gone', async () => {
+  const env = makeTestEnv()
+  try {
+    seedAgents(env.db, env.teamId)
+    repo(env)
+    const requestId = await capturedRequest(env)
+    setRequestState(env.db, requestId, 'awaiting_approval')
+
+    expect(validateVerificationGrant(env.db, env.paths, requestId)).toBeNull()
+    releaseVerificationGrant(env.db, requestId)
+    expect(getVerificationRequest(env.db, env.teamId, requestId)?.state).toBe('pending')
+
+    // A request that is no longer held is not released again.
+    releaseVerificationGrant(env.db, requestId)
+    expect(getVerificationRequest(env.db, env.teamId, requestId)?.state).toBe('pending')
+
+    // With its evidence gone, the grant refuses and the request stays where it is.
+    setRequestState(env.db, requestId, 'awaiting_approval')
+    env.db.raw.run('DELETE FROM source_snapshots WHERE team_id = ?', [env.teamId])
+    expect(validateVerificationGrant(env.db, env.paths, requestId)).toContain('retention window')
+    expect(getVerificationRequest(env.db, env.teamId, requestId)?.state).toBe('awaiting_approval')
+
+    // An unknown request is refused rather than throwing.
+    expect(validateVerificationGrant(env.db, env.paths, 'nope')).toContain('unknown')
   } finally {
     env.cleanup()
   }

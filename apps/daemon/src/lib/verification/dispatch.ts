@@ -1,6 +1,7 @@
 import {
   getVerificationRequest,
   getVerificationRequestById,
+  pruneVerificationRequests,
 } from '../../core/repos/verification-requests.ts'
 import { mergeSecretsIntoEnv } from '../../core/secrets.ts'
 import { isActiveAgent, registerAgent, unregisterAgent } from '../agent-cancel.ts'
@@ -34,6 +35,37 @@ import {
 // request's outcome is settled from the executor-owned check outcomes rather than from anything the
 // model said.
 
+const DISPATCH_REGISTRY_KEY = Symbol.for('bazilion.verification.dispatch')
+
+interface DispatchRegistry {
+  controllers: Map<string, AbortController>
+}
+
+/** Pin one registry per process, like the daemon's other process-lifetime registries. */
+function dispatchRegistry(): DispatchRegistry {
+  const host = globalThis as unknown as Record<symbol, DispatchRegistry | undefined>
+  host[DISPATCH_REGISTRY_KEY] ??= { controllers: new Map() }
+  return host[DISPATCH_REGISTRY_KEY] as DispatchRegistry
+}
+
+/**
+ * Abort the turn running on behalf of one request.
+ *
+ * Keyed by request id on purpose: cancelling by agent id would abort whatever else that specialist
+ * happens to be doing, which is not what "cancel this verification" means.
+ */
+export function cancelVerificationDispatch(requestId: string): boolean {
+  const controller = dispatchRegistry().controllers.get(requestId)
+  if (!controller) return false
+  controller.abort()
+  return true
+}
+
+/** Whether this process currently owns a running turn for the request. */
+export function isVerificationDispatching(requestId: string): boolean {
+  return dispatchRegistry().controllers.has(requestId)
+}
+
 export type VerificationDispatchResult =
   | 'dispatched'
   | 'not_dispatchable'
@@ -62,6 +94,8 @@ export async function dispatchVerificationRequest(
     releaseLease()
   }
   if (opts.signal) opts.signal.addEventListener('abort', () => controller.abort(), { once: true })
+
+  dispatchRegistry().controllers.set(requestId, controller)
 
   let admission: VerificationAdmission | undefined
   try {
@@ -157,6 +191,7 @@ export async function dispatchVerificationRequest(
     // The workspace claim is released only after the attempt is settled, so a cancelled or failed
     // verification can never leave the Team blocked.
     if (admission?.kind === 'admitted') await workspaceLifecycle(db).release(admission.workspace)
+    dispatchRegistry().controllers.delete(requestId)
     if (registered) unregisterAgent(request.recipientAgentId)
   }
 }
@@ -164,6 +199,10 @@ export async function dispatchVerificationRequest(
 /** Dispatch every eligible pending request. */
 export async function dispatchPendingVerifications(now = Date.now()): Promise<void> {
   const { db, paths } = getCtx()
+  // Retention: reads already refuse a request past its window, but nothing deleted the rows. The tick
+  // that dispatches them is the natural place to sweep, so requests, checks, attempts and outcomes do
+  // not accumulate for the life of the home.
+  pruneVerificationRequests(db, now)
   const pending = db.raw
     .query<{ id: string }, [number]>(
       `SELECT id FROM verification_requests
