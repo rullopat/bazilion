@@ -104,7 +104,12 @@ export function bindVerificationCapability(
 
 export function executePreparedVerification(
   prepared: PreparedVerificationTurn,
-  opts: { verificationHost: VerificationHost; signal: AbortSignal },
+  opts: {
+    verificationHost: VerificationHost
+    signal: AbortSignal
+    /** Internal integration-test override, forwarded to the worker spawner. */
+    workerEntryPath?: string
+  },
 ): AsyncGenerator<ChatFrame, void, void> {
   // The claim is consumed by rendering it once: a prepared turn cannot be run twice, so a retry
   // must go through a fresh attempt rather than reusing this one.
@@ -113,5 +118,6 @@ export function executePreparedVerification(
     signal: opts.signal,
     apiKeyRefreshHost: { refresh: prepared.refreshApiKey },
     verificationHost: opts.verificationHost,
+    ...(opts.workerEntryPath ? { workerEntryPath: opts.workerEntryPath } : {}),
   })
 }

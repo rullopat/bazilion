@@ -43,7 +43,7 @@ export type VerificationDispatchResult =
 /** Dispatch one request if it is eligible. Safe to call repeatedly: a claim has one owner. */
 export async function dispatchVerificationRequest(
   requestId: string,
-  opts: { signal?: AbortSignal } = {},
+  opts: { signal?: AbortSignal; workerEntryPath?: string } = {},
 ): Promise<VerificationDispatchResult> {
   const { db, paths } = getCtx()
   const request = getVerificationRequestById(db, requestId)
@@ -108,6 +108,7 @@ export async function dispatchVerificationRequest(
     for await (const frame of executePreparedVerification(prepared, {
       verificationHost: capability,
       signal: controller.signal,
+      ...(opts.workerEntryPath ? { workerEntryPath: opts.workerEntryPath } : {}),
     })) {
       if (frame.kind === 'fatal') failure ??= frame.error
       else if (frame.kind === 'event' && frame.event.type === 'error') failure ??= frame.event.error

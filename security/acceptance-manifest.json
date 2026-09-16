@@ -654,6 +654,18 @@
       "owner": "BAZ-044",
       "file": "apps/daemon/test/lib/verification-capture.test.ts",
       "test": "a captured request is not a peer message, so an inbox wake has nothing to consume"
+    },
+    {
+      "id": "VERIFY-END-TO-END-RECEIPTS",
+      "owner": "BAZ-044",
+      "file": "apps/daemon/test/lib/verification-e2e.test.ts",
+      "test": "a captured dirty change is verified end to end and the receipts identify it"
+    },
+    {
+      "id": "VERIFY-FAILURE-IS-A-RESULT",
+      "owner": "BAZ-044",
+      "file": "apps/daemon/test/lib/verification-e2e.test.ts",
+      "test": "a failing captured check is reported as a failure, not as an error"
     }
   ]
 }

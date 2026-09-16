@@ -443,3 +443,28 @@ story described; and the web section is typechecked and built rather than browse
 
 **Full suite** 1713 passed / 7 skipped (1720); **gate** 109 cases; typecheck, format and lint clean
 (root and web).
+
+## End-to-end observation (closes the largest acceptance gap)
+
+`apps/daemon/test/lib/verification-e2e.test.ts` drives the whole path against a **real repository with a
+real dirty change**: capture the snapshot, dispatch the request through claim → workspace reservation →
+drift revalidation → restricted worker → IPC → executor → receipt → settle, then read the receipts back.
+They identify the captured snapshot, the captured command, the frozen environment and the observed exit
+code, and the workspace lease is released so the Team is not left blocked. A second case runs a check
+that exits non-zero and records `failed` with `exit 4` while the request is `completed` — the distinction
+between "the change did not pass" and "the verification could not run".
+
+**What it replaces, stated precisely:** the worker is a fixture that performs only what the capability
+allows (read the request, then run each declared check), and the model runtime is stubbed, so **no
+provider is contacted and no model decides anything**. The daemon-side boundary is what is observed.
+
+Two debugging notes worth keeping, because both were my own mistakes rather than product behaviour:
+
+- An agent-attributed capture must carry its turn provenance — the store refuses a partial one
+  (`captured_by = 'agent'` implies agent/turn/tool-call ids). The e2e fixture had to supply them.
+- The stubbed protected runtime must be the **exact admitted shape** the spawner validates: omitted
+  optional keys, and only `providerName`, `modelId`, `reasoningLevel` among the required ones. A
+  `null` `baseUrl` is rejected as strongly as a missing one, which is correct — it distinguishes
+  "no endpoint" from "an endpoint that is null".
+
+**Gate now 111 cases** (28 added for BAZ-044); full suite 1715 passed / 7 skipped (1722).

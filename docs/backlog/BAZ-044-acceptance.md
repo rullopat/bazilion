@@ -11,8 +11,8 @@ BAZ-041, every story in `done/` carries `shipped:` and `release:`, and this one 
 
 | Source | What it establishes |
 | --- | --- |
-| 41 new tests across nine files | Bounds, single ownership, refusal-not-substitution, capability closure, receipt rules, restore and dispatch settlement |
-| Adversarial release gate | 26 new cases (`83 → 109`), all passing: `pnpm security:acceptance` |
+| 43 new tests across ten files | Bounds, single ownership, refusal-not-substitution, capability closure, receipt rules, restore and dispatch settlement |
+| Adversarial release gate | 28 new cases (`83 → 111`), all passing: `pnpm security:acceptance` |
 | Typecheck / format / lint | Clean (root and web) |
 | Web typecheck and build | Clean; the route tree regenerates with the new section |
 | Full suite | 1713 passed / 7 skipped (1720) before the last web and manifest edits; 109 gate cases after |
@@ -30,10 +30,22 @@ attempt, purpose and the **snapshot it was verified against** (`sourceBefore`). 
 without a receipt is refused rather than stored, and a fabricated receipt reference fails the foreign
 key.
 
-**Not observed:** a full coder→tester→receipts run against a real model, and a Docker-posture check
-actually executing. The Docker path is exercised only through the frozen-environment refusal
-(a container request on a host daemon is blocked), so container execution itself is **implemented but
-unobserved**.
+**Observed end to end** (`apps/daemon/test/lib/verification-e2e.test.ts`): a real repository with a
+real dirty change is captured, the request is dispatched through the real path — claim, workspace
+reservation, drift revalidation, restricted worker, IPC, executor, receipt, settle — and the receipts
+read back identifying the captured snapshot, the captured command, the frozen environment and the
+observed exit code. A second run with a check that exits non-zero records `failed` with `exit 4` and
+the request `completed`, which is the distinction the story requires.
+
+**What that test deliberately replaces, stated precisely:** the worker is a fixture that performs only
+what the capability allows (read the request, then run each declared check), and the model runtime is
+stubbed — **no provider is contacted and no model decides anything**. So what is observed is the
+daemon-side boundary; what is still not observed is a live agent choosing to request verification and
+its summary being checked for the absence of a deployment recommendation.
+
+**Not observed:** a Docker-posture check actually executing. The Docker branch is exercised only through
+the frozen-environment refusal (a container request on a host daemon is blocked), so container
+execution itself is **implemented but unobserved**.
 
 ### 2. Busy waiting, delayed approval, inbox wake, and restart preserve the typed request and sole dispatch owner
 
@@ -110,10 +122,11 @@ section is typechecked and built, not browser-observed.
 
 ## Caveats, stated rather than implied
 
-1. **No end-to-end real-model verification run.** The pieces are covered individually and the fake-provider
-   harness from BAZ-041 exists, but I did not run a live coder→tester turn through it. This is the
-   largest gap: criterion 1's "returned receipts identify exactly…" is proven at the executor and store
-   level, not as one continuous observed run.
+1. **No live-model verification run.** The end-to-end path *is* now observed as one continuous run with
+   a fixture worker and a stubbed model runtime (no provider contacted). What is still unobserved is a
+   real agent deciding to request verification, and a model-authored summary being checked against the
+   boundaries in its system prompt. The fake-provider harness from BAZ-041 exists for that, and it was
+   not wired up here.
 2. **Container execution is unobserved.** The Docker branch of the executor is implemented against the
    same preflighted path a coding turn uses, and its *refusal* is tested; its successful execution is not.
 3. **Peer receipt access was not extended.** Criterion 5's positive direction for the requester reuses
@@ -126,5 +139,5 @@ section is typechecked and built, not browser-observed.
 
 ## Release gate
 
-`pnpm security:acceptance` → **109 required adversarial cases**, all passing, including 26 added here.
+`pnpm security:acceptance` → **111 required adversarial cases**, all passing, including 28 added here.
 Schema change: the alpha contract gains four tables, so this release is clean-install-only.
