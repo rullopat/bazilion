@@ -191,3 +191,54 @@ export interface ReviewExport {
   /** Stated plainly, because a handoff is where overclaiming does the most damage. */
   limitations: string[]
 }
+
+/**
+ * What a reviewer Agent is shown about a packet (BAZ-043 slice 6).
+ *
+ * Two things are deliberately separate here. The **changed-path list** comes from the capture and is
+ * always available. The **content** is not: a manifest stores paths and digests, never bytes, so a patch
+ * for the reviewed revision exists only while the working tree still matches the capture. A reviewer is
+ * told which of the two it has rather than being handed the current tree as if it were the reviewed one.
+ */
+export interface ReviewPacketBrief {
+  packetId: string
+  summary: string | null
+  snapshot: { id: string; complete: boolean; head: string | null; baseOid: string }
+  /** Changed paths of the captured revision. Path and status only. */
+  changes: Array<{ path: string; status: string; previousPath: string | null }>
+  /** True while the reviewed revision's content can still be reproduced from the working tree. */
+  contentAvailable: boolean
+  /** Why content is unavailable, when it is. Never a substitute for the change list. */
+  contentUnavailableReason: string | null
+  /** Findings recorded so far, including the reviewer's own, so it does not repeat itself. */
+  findings: Array<{
+    id: string
+    path: string
+    severity: ReviewSeverity
+    note: string
+    authorKind: ReviewAuthorKind
+  }>
+  conclusion: ReviewConclusion | null
+}
+
+/** One changed path's patch, bounded. `reason` explains an empty result rather than implying none. */
+export interface ReviewPathContent {
+  path: string
+  patch: string | null
+  truncated: boolean
+  reason: string | null
+}
+
+/** What a reviewer may submit. There is no field for a command, a file write or a publication. */
+export interface ReviewFindingInput {
+  path: string
+  severity: ReviewSeverity
+  note: string
+  lineStart?: number | null
+  lineEnd?: number | null
+}
+
+export interface ReviewConclusionInput {
+  conclusion: ReviewConclusion
+  note?: string | null
+}
