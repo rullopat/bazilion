@@ -18,7 +18,8 @@ unrestricted inbox turn.
 | 3b | Dispatch | The preclaimed verification invocation is defined; claiming and admitting the tester turn is not wired yet | **in progress** |
 | 4 | Admission | Revalidate, hold, reserve the workspace and refuse drift — with a settled claim when nothing ran | **done** |
 | 5a | Capability tool surface | Two tools — read the request, run one captured check once — with no way to express a command | **done** |
-| 5b | Worker spec, IPC host, dispatcher | The capability is not yet reachable from a worker run | **in progress** |
+| 5b | Daemon capability host | Captured values only, receipts always, and settle reports evidence availability | **done** |
+| 5c | Worker spec, IPC transport, dispatcher | The host is not yet reachable from a worker run or the scheduler | **in progress** |
 | 4 | Workspace and snapshot revalidation | Reserve the workspace for the interval; block on drift before execution; unknown after source mutation | |
 | 5 | Restricted test capability | Worker surface that can inspect the request and invoke each captured command once — no Bash/edit/write/browser/MCP/deploy | |
 | 6 | Evidence return and surfaces | Per-request access, API/CLI/web, cancellation, expiry, Telegram notices | |
@@ -198,3 +199,38 @@ parameters are exactly `{ ordinal }` with `additionalProperties: false`, and no 
   a failure is not rerunnable to get a better answer.
 - **The brief labels an incomplete capture** (`INCOMPLETE COVERAGE`) and reports applicability
   verbatim, so the specialist cannot mistake a three-valued comparison for a pass.
+
+## Slice 5b — the daemon-side capability host (done)
+
+`apps/daemon/src/lib/verification/runner.ts` and six tests in
+`apps/daemon/test/lib/verification-runner.test.ts`.
+
+**This is where the captured contract meets execution**, and it is the authority for the three rules
+the worker also enforces: only declared ordinals run, each runs once, and every reported outcome
+carries the receipt that produced it.
+
+**Decisions worth keeping.**
+
+- **The captured values are used verbatim.** The executor receives the captured command, cwd, timeout
+  and purpose, and the request's declared writable paths — there is no parameter through which a
+  caller could widen them, so the test asserts the executor saw exactly `pnpm test failing` at
+  `/workspace` for 5,000 ms as purpose `verification`.
+- **An executed outcome without a receipt is refused, not stored.** Provenance is never fabricated;
+  the check stays `not_executed` and the refusal is raised to the caller, so a failed bookkeeping
+  path cannot masquerade as a verification result.
+- **A blocked check is explicit and stays runnable.** It records `blocked` with no receipt and its
+  reason text, which is distinct from `skipped` (the specialist chose not to run it), `unknown`
+  (interrupted) and `failed` (it ran and exited non-zero).
+- **Settling reports evidence availability, never a verdict about the change.** A check that exited
+  non-zero is a *result*, so the attempt completes with evidence and the per-check facts carry the
+  failure — conflating that with "the verification could not run" would erase the distinction the
+  story requires. Only when nothing executed at all does the attempt fail, with
+  `no captured check executed`.
+- **A partial run never reads as a full one.** Checks the specialist never ran are settled as
+  `skipped` with a timestamp, so a report cannot present an unrun check as if it had passed.
+- **Settling never overwrites another owner's claim.** A mismatched lease owner returns `uncertain`
+  and leaves the attempt open for its real owner.
+
+**Verification.** 1386 tests across daemon lib/core/routes/runtime; typecheck, format and lint clean.
+One failure appeared in the first full run and did not reproduce on re-run — consistent with the
+pre-existing load-related flake recorded in the BAZ-042 acceptance caveats; not claimed deterministic.

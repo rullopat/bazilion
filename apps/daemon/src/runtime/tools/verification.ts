@@ -57,7 +57,7 @@ export interface VerificationCapabilityHost {
    * Invoke one declared check. The host refuses an undeclared ordinal, a second invocation of a
    * settled check, and every request that would widen the captured command or environment.
    */
-  invoke(ordinal: number, context: { toolCallId: string }): Promise<VerificationCheckRun>
+  invoke(ordinal: number, context?: { toolCallId: string }): Promise<VerificationCheckRun>
 }
 
 export class VerificationCapabilityError extends Error {
