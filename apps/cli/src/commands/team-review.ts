@@ -7,6 +7,7 @@ import { defineCommand } from 'citty'
 import { createClient } from '../client.ts'
 import { columnize } from '../columnize.ts'
 import { collectFlagValues } from '../repeatable-args.ts'
+import { teamReviewPacketCommand } from './team-review-packet.ts'
 
 // `bazilion team review` — read-only Git change review and bounded source snapshots (BAZ-042).
 //
@@ -198,5 +199,6 @@ export const teamReviewCommand = defineCommand({
     capture: captureCmd,
     snapshots: snapshotsCmd,
     snapshot: snapshotCmd,
+    packet: teamReviewPacketCommand,
   },
 })

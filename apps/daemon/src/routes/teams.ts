@@ -8,6 +8,8 @@ import {
   type CodingCommandLogView,
   REVIEW_LIMITS,
   type RegisterTeamRequest,
+  type ReviewConclusion,
+  type ReviewSeverity,
   type SetTeamTopicFormatRequest,
   type SetTeamUserMdRequest,
 } from '@bazilion/api-types'
@@ -34,6 +36,13 @@ import {
 } from '../core/repos/coding-command-logs.ts'
 import { getCodingCommand } from '../core/repos/coding-commands.ts'
 import { CodingEnvironmentRevisionError } from '../core/repos/coding-environment.ts'
+import {
+  addReviewFinding,
+  getTeamReviewPacket,
+  ReviewPacketError,
+  recordReviewConclusion,
+  resolveReviewFinding,
+} from '../core/repos/review-packets.ts'
 import {
   getVerificationRequest,
   listVerificationAttempts,
@@ -70,6 +79,11 @@ import {
 } from '../lib/git-review/service.ts'
 import { sanitizeNativeModuleError } from '../lib/native-module-error.ts'
 import { resolveRepositoryContext } from '../lib/repository-context/index.ts'
+import {
+  captureReviewPacket,
+  readReviewPacketReport,
+  readReviewPacketSummaries,
+} from '../lib/review/capture.ts'
 import { validateTopicNameFormat } from '../lib/telegram/naming.ts'
 import { syncGroupTopicNames } from '../lib/telegram/topic-rename.ts'
 import {
@@ -212,6 +226,193 @@ teamsRouter.get('/:id/review', async (c) => {
     })
     return c.json(review)
   } catch (error) {
+    return reviewFailure(c, error)
+  }
+})
+
+const SEVERITIES: readonly ReviewSeverity[] = ['blocker', 'major', 'minor', 'info']
+const CONCLUSIONS: readonly ReviewConclusion[] = ['changes_requested', 'commented', 'recommended']
+
+/** A line number, or null when the caller did not give a usable one. */
+function readLine(value: unknown): number | null {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 1 ? value : null
+}
+
+/**
+ * Is this a path a finding can name?
+ *
+ * Repository-relative, no absolute paths and no traversal: a finding is about the reviewed revision, and
+ * a path that cannot be resolved inside it cannot be correlated to anything.
+ */
+function isReviewablePath(path: string): boolean {
+  if (path.length === 0 || path.length > 1_000) return false
+  if (path.startsWith('/') || path.includes('\0')) return false
+  return !path.split('/').includes('..')
+}
+
+// BAZ-043: revision-bound review packets. A packet binds one captured revision; findings are
+// append-only and resolution requires explicit proof.
+teamsRouter.get('/:id/reviews', (c) => {
+  const { db } = getCtx()
+  c.header('Cache-Control', 'no-store')
+  try {
+    return c.json({ packets: readReviewPacketSummaries(db, c.req.param('id')) })
+  } catch (error) {
+    return reviewFailure(c, error)
+  }
+})
+
+teamsRouter.post('/:id/reviews', async (c) => {
+  const { db, paths } = getCtx()
+  const body = (await c.req.json().catch(() => null)) as {
+    snapshotId?: unknown
+    reviewerAgentId?: unknown
+    summary?: unknown
+  } | null
+  if (!body || typeof body.snapshotId !== 'string' || body.snapshotId.length === 0) {
+    return c.json({ error: 'Invalid review packet', code: 'invalid_packet' }, 400)
+  }
+  if (
+    body.reviewerAgentId !== undefined &&
+    body.reviewerAgentId !== null &&
+    typeof body.reviewerAgentId !== 'string'
+  ) {
+    return c.json({ error: 'Invalid review packet', code: 'invalid_packet' }, 400)
+  }
+  const result = captureReviewPacket(db, paths, {
+    teamId: c.req.param('id'),
+    snapshotId: body.snapshotId,
+    // An operator may open a packet with no reviewer: nothing is delegated, so nothing is dispatched.
+    reviewerAgentId: typeof body.reviewerAgentId === 'string' ? body.reviewerAgentId : null,
+    summary: typeof body.summary === 'string' ? body.summary : null,
+    requesterKind: 'operator',
+  })
+  if (result.kind === 'blocked') return c.json({ blocked: result.blocker }, 409)
+  const report = await readReviewPacketReport(db, paths, result.packet.teamId, result.packet.id)
+  return c.json({ report }, 201)
+})
+
+teamsRouter.get('/:id/reviews/:packetId', async (c) => {
+  const { db, paths } = getCtx()
+  c.header('Cache-Control', 'no-store')
+  try {
+    const report = await readReviewPacketReport(
+      db,
+      paths,
+      c.req.param('id'),
+      c.req.param('packetId'),
+    )
+    if (!report) return c.json({ error: 'Review packet not found' }, 404)
+    return c.json({ report })
+  } catch (error) {
+    return reviewFailure(c, error)
+  }
+})
+
+teamsRouter.post('/:id/reviews/:packetId/findings', async (c) => {
+  const { db, paths } = getCtx()
+  const packetId = c.req.param('packetId')
+  const packet = getTeamReviewPacket(db, c.req.param('id'), packetId)
+  if (!packet) return c.json({ error: 'Review packet not found' }, 404)
+  const body = (await c.req.json().catch(() => null)) as {
+    path?: unknown
+    severity?: unknown
+    note?: unknown
+    lineStart?: unknown
+    lineEnd?: unknown
+  } | null
+  if (!body || typeof body.path !== 'string' || typeof body.note !== 'string') {
+    return c.json({ error: 'Invalid finding', code: 'invalid_finding' }, 400)
+  }
+  if (!SEVERITIES.includes(body.severity as ReviewSeverity)) {
+    return c.json({ error: 'Invalid severity', code: 'invalid_severity' }, 400)
+  }
+  if (!isReviewablePath(body.path)) {
+    // Findings name a path in the reviewed revision; anything outside the review's own scope cannot be
+    // correlated to it, so it is refused rather than stored as a finding nobody can check.
+    return c.json({ error: 'The path is outside the reviewed scope', code: 'invalid_path' }, 400)
+  }
+  try {
+    const finding = addReviewFinding(db, {
+      packetId,
+      authorKind: 'operator',
+      path: body.path,
+      severity: body.severity as ReviewSeverity,
+      note: body.note,
+      lineStart: readLine(body.lineStart),
+      lineEnd: readLine(body.lineEnd),
+      // The finding is about the revision this packet captured — not about whatever is on disk now.
+      snapshotId: packet.snapshotId,
+    })
+    const report = await readReviewPacketReport(db, paths, packet.teamId, packetId)
+    return c.json({ finding, report }, 201)
+  } catch (error) {
+    if (error instanceof ReviewPacketError) {
+      return c.json({ error: error.message, code: error.code }, 400)
+    }
+    return reviewFailure(c, error)
+  }
+})
+
+teamsRouter.post('/:id/reviews/:packetId/findings/:findingId/resolve', async (c) => {
+  const { db, paths } = getCtx()
+  const packetId = c.req.param('packetId')
+  const packet = getTeamReviewPacket(db, c.req.param('id'), packetId)
+  if (!packet) return c.json({ error: 'Review packet not found' }, 404)
+  const body = (await c.req.json().catch(() => null)) as {
+    resolutionKind?: unknown
+    resolutionNote?: unknown
+  } | null
+  if (
+    !body ||
+    (body.resolutionKind !== 'explicit' && body.resolutionKind !== 'linked_revision') ||
+    typeof body.resolutionNote !== 'string'
+  ) {
+    return c.json({ error: 'Invalid resolution', code: 'invalid_resolution' }, 400)
+  }
+  try {
+    const finding = resolveReviewFinding(db, {
+      findingId: c.req.param('findingId'),
+      resolutionKind: body.resolutionKind,
+      resolutionNote: body.resolutionNote,
+      resolvedByKind: 'operator',
+    })
+    const report = await readReviewPacketReport(db, paths, packet.teamId, packetId)
+    return c.json({ finding, report })
+  } catch (error) {
+    if (error instanceof ReviewPacketError) {
+      return c.json({ error: error.message, code: error.code }, 400)
+    }
+    return reviewFailure(c, error)
+  }
+})
+
+teamsRouter.post('/:id/reviews/:packetId/conclusion', async (c) => {
+  const { db, paths } = getCtx()
+  const packetId = c.req.param('packetId')
+  const packet = getTeamReviewPacket(db, c.req.param('id'), packetId)
+  if (!packet) return c.json({ error: 'Review packet not found' }, 404)
+  const body = (await c.req.json().catch(() => null)) as {
+    conclusion?: unknown
+    note?: unknown
+  } | null
+  if (!body || !CONCLUSIONS.includes(body.conclusion as ReviewConclusion)) {
+    return c.json({ error: 'Invalid conclusion', code: 'invalid_conclusion' }, 400)
+  }
+  try {
+    const conclusion = recordReviewConclusion(db, {
+      packetId,
+      reviewerKind: 'operator',
+      conclusion: body.conclusion as ReviewConclusion,
+      note: typeof body.note === 'string' ? body.note : null,
+      snapshotId: packet.snapshotId,
+    })
+    const report = await readReviewPacketReport(db, paths, packet.teamId, packetId)
+    return c.json({ conclusion, report })
+  } catch (error) {
+    if (error instanceof ReviewPacketError) {
+      return c.json({ error: error.message, code: error.code }, 400)
+    }
     return reviewFailure(c, error)
   }
 })

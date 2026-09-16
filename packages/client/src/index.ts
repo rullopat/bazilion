@@ -183,6 +183,46 @@ export function createClient(cfg: ClientConfig) {
           request('POST', `${base}/${encodeURIComponent(requestId)}/cancel`),
       }
     },
+    /**
+     * Revision-bound review packets (BAZ-043).
+     *
+     * A packet binds one captured revision. Findings are append-only, and resolving one requires an
+     * explicit decision or a named later revision — a moved line proves nothing.
+     */
+    reviewPackets: (teamId: string) => {
+      const base = `/api/teams/${encodeURIComponent(teamId)}/reviews`
+      const item = (packetId: string) => `${base}/${encodeURIComponent(packetId)}`
+      return {
+        list: (): Promise<import('@bazilion/api-types').ReviewPacketListResponse> =>
+          request('GET', base),
+        show: (packetId: string): Promise<import('@bazilion/api-types').ReviewPacketResponse> =>
+          request('GET', item(packetId)),
+        create: (
+          input: import('@bazilion/api-types').CreateReviewPacketRequest,
+        ): Promise<import('@bazilion/api-types').ReviewPacketResponse> =>
+          request('POST', base, input),
+        addFinding: (
+          packetId: string,
+          input: import('@bazilion/api-types').AddReviewFindingRequest,
+        ): Promise<import('@bazilion/api-types').ReviewPacketResponse> =>
+          request('POST', `${item(packetId)}/findings`, input),
+        resolveFinding: (
+          packetId: string,
+          findingId: string,
+          input: import('@bazilion/api-types').ResolveReviewFindingRequest,
+        ): Promise<import('@bazilion/api-types').ReviewPacketResponse> =>
+          request(
+            'POST',
+            `${item(packetId)}/findings/${encodeURIComponent(findingId)}/resolve`,
+            input,
+          ),
+        recordConclusion: (
+          packetId: string,
+          input: import('@bazilion/api-types').RecordReviewConclusionRequest,
+        ): Promise<import('@bazilion/api-types').ReviewPacketResponse> =>
+          request('POST', `${item(packetId)}/conclusion`, input),
+      }
+    },
     /** Read-only Git change review and bounded source snapshots (BAZ-042). */
     repositoryReview: (teamId: string) => {
       const base = `/api/teams/${encodeURIComponent(teamId)}/review`
