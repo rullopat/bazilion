@@ -185,6 +185,16 @@ export function settleVerificationAttempt(
   input: { attemptId: string; requestId: string; leaseOwner: string; now?: number },
 ): 'completed' | 'failed' | 'uncertain' {
   const now = input.now ?? Date.now()
+  // Gate ownership *before* mutating anything: `finishVerificationAttempt` re-checks inside its
+  // transaction, but by then the skipped-marking below would already have touched another owner's
+  // attempt. A mismatched owner must leave the attempt exactly as it found it.
+  const owned = db.raw
+    .query<{ id: string }, [string, string]>(
+      `SELECT id FROM verification_attempts
+       WHERE id = ? AND lease_owner = ? AND finished_at IS NULL`,
+    )
+    .get(input.attemptId, input.leaseOwner)
+  if (!owned) return 'uncertain'
   const declared = listVerificationChecks(db, input.requestId)
   const outcomes = new Map(
     listVerificationCheckOutcomes(db, input.attemptId).map((outcome) => [outcome.ordinal, outcome]),

@@ -16,9 +16,11 @@ import {
   reconcileApprovalHolds,
   recoverInterrupted as recoverInterruptedQueue,
 } from '../core/repos/user-queue.ts'
+import { recoverInterruptedVerificationAttempts } from '../core/repos/verification-requests.ts'
 import { reconcilePrivateResults, recoverInterruptedResultDeliveries } from './result-retention.ts'
 import { startScheduler } from './scheduler.ts'
 import { assertTeamPolicyEnforcementReleaseReady } from './team-policy-contract.ts'
+import { VERIFICATION_DISPATCH_OWNER } from './verification/admission.ts'
 
 let _db: BazilionDb | null = null
 let _paths: Paths | null = null
@@ -105,6 +107,9 @@ function bootstrap(paths: Paths): { db: BazilionDb; authToken: string } {
     recoverInterruptedQuestions(db)
     recoverInterruptedNotifications(db)
     interruptCodingCommands(db)
+    // BAZ-044: a verification attempt left open by another process is settled as uncertain here, so a
+    // restart never leaves a request claimed-but-unrunnable (the one-open-attempt index would block it).
+    recoverInterruptedVerificationAttempts(db, VERIFICATION_DISPATCH_OWNER)
     reconcileApprovalHolds(db)
     recoverInterruptedResultDeliveries(db)
     reconcilePrivateResults(db)

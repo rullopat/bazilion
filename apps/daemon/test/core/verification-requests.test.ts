@@ -20,6 +20,9 @@ import {
 } from '../../src/core/repos/verification-requests.ts'
 import { makeTestEnv } from './helpers.ts'
 
+/** The regression below needs exactly one declared check, matching its outcome ordinal. */
+const checkOnly = { command: 'pnpm test', cwd: '/workspace', purpose: 'suite', timeoutMs: 120_000 }
+
 // BAZ-044 slice 1: the typed, snapshot-bound specialist verification request.
 //
 // The properties under test are the ones the rest of the story rests on: a request is bounded and
@@ -492,6 +495,49 @@ test('an invalid claim owner or lease is refused', () => {
     expect(() =>
       claimVerificationAttempt(env.db, { requestId: 'req-1', leaseOwner: 'a', leaseMs: 0 }),
     ).toThrow('positive lease')
+  } finally {
+    env.cleanup()
+  }
+})
+
+// Regression (review S1): a verification outcome must not make receipt pruning impossible.
+//
+// `command_id` is ON DELETE SET NULL, so a *required-non-null* rule for executed states made the delete
+// violate the outcome table's CHECK. `saveCodingCommand` prunes on every save, so that failure spread to
+// every later receipt in the Team — found by probe, guarded here.
+test('pruning a coding receipt leaves the verification outcome readable', () => {
+  const env = makeTestEnv()
+  try {
+    seedAgents(env.db, env.teamId)
+    env.db.raw.run(
+      "INSERT INTO profiles (id,name,dir,default_model,created_at,updated_at) VALUES ('p2','P2','p','lmstudio:m',1,1) ON CONFLICT DO NOTHING",
+    )
+    createVerificationRequest(env.db, input(env.teamId, { checks: [checkOnly] }))
+    const claim = claimVerificationAttempt(env.db, {
+      requestId: 'req-1',
+      leaseOwner: 'owner-a',
+      leaseMs: 60_000,
+    })
+    const attemptId = claim?.attempt.id ?? ''
+    seedCommandReceipt(env.db, env.teamId, 'cmd-kept')
+    expect(
+      recordVerificationCheckOutcome(env.db, {
+        attemptId,
+        ordinal: 0,
+        state: 'succeeded',
+        commandId: 'cmd-kept',
+        exitCode: 0,
+      }),
+    ).toBe(true)
+
+    // Deleting the referenced receipt must succeed, and must not fail a CHECK.
+    expect(() =>
+      env.db.raw.run('DELETE FROM coding_commands WHERE id = ?', ['cmd-kept']),
+    ).not.toThrow()
+
+    // The outcome keeps the executor's facts, and simply reports that its receipt is gone.
+    const outcome = listVerificationCheckOutcomes(env.db, attemptId)[0]
+    expect(outcome).toMatchObject({ state: 'succeeded', exitCode: 0, commandId: null })
   } finally {
     env.cleanup()
   }

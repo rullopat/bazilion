@@ -964,13 +964,13 @@ teamsRouter.post('/:id/verifications/:requestId/cancel', async (c) => {
     ) {
       return c.json({ error: `Verification request is already ${record.state}` }, 409)
     }
-    // A running turn is aborted, and the dispatcher settles the attempt as cancelled.
-    const aborted = cancelAgent(record.recipientAgentId)
-    if (!aborted) {
-      if (record.state === 'pending') {
-        // Nothing owns it yet, so it is cancelled directly rather than left dispatchable.
-        setRequestState(db, record.id, 'cancelled')
-      } else {
+    if (record.state === 'pending' || record.state === 'awaiting_approval') {
+      // Nothing owns it yet, so it is cancelled directly rather than left dispatchable or held.
+      setRequestState(db, record.id, 'cancelled')
+    } else {
+      // A running turn is aborted, and the dispatcher settles the attempt as cancelled.
+      const aborted = cancelAgent(record.recipientAgentId)
+      if (!aborted) {
         return c.json({ error: 'Verification request is not cancelled yet; retry' }, 409)
       }
     }

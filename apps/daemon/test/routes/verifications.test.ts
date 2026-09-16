@@ -3,6 +3,7 @@ import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { VerificationBlockedResponse, VerificationResponse } from '@bazilion/api-types'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
+import { setRequestState } from '../../src/core/repos/verification-requests.ts'
 import { teamsRouter } from '../../src/routes/teams.ts'
 import { makeTestEnv, type TestEnv } from '../core/helpers.ts'
 
@@ -152,4 +153,17 @@ test('an unknown request reads as 404 and no-cache everywhere', async () => {
   const missing = await teamsRouter.request(`/${env.teamId}/verifications/missing`)
   expect(missing.status).toBe(404)
   expect(missing.headers.get('cache-control')).toBe('no-store')
+})
+
+test('a held request can be cancelled, not just a pending one (review S7b)', async () => {
+  const snapshot = await snapshotId()
+  const created = await create(snapshot)
+  const id = ((await created.json()) as VerificationResponse).request.request.id
+  // The state a request reaches when its edge requires approval.
+  setRequestState(env.db, id, 'awaiting_approval')
+  const cancelled = await teamsRouter.request(`/${env.teamId}/verifications/${id}/cancel`, {
+    method: 'POST',
+  })
+  expect(cancelled.status).toBe(200)
+  expect(((await cancelled.json()) as VerificationResponse).request.request.state).toBe('cancelled')
 })
