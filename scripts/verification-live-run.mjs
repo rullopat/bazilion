@@ -14,6 +14,11 @@
 //
 //   FIREWORKS_API_KEY=… pnpm tsx scripts/verification-live-run.mjs --model fireworks:accounts/fireworks/models/deepseek-v4-flash-0731
 //
+// The key is read from the environment of *this* process and passed to the disposable daemon. Nothing in
+// this script prints it: every line goes through a scrubber that replaces any credential-looking
+// environment value, including in failure output. Keep the key out of this repository, and never pass it
+// as an argument — arguments land in shell history and in `ps`.
+//
 // Exits non-zero on the first invariant that does not hold. Evidence stays under the printed home so a
 // failure can be inspected rather than re-run.
 import assert from 'node:assert/strict'
@@ -23,6 +28,25 @@ import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { startTestServer } from '../apps/cli/test/server-fixture.ts'
+
+// Anything that looks like a credential in this process's environment is scrubbed from every line this
+// script prints. A model provider can echo request context in an error, and a harness that prints a key
+// once has leaked it into a terminal, a log or a transcript.
+const secretValues = Object.entries(process.env)
+  .filter(
+    ([name, value]) =>
+      typeof value === 'string' &&
+      value.length >= 12 &&
+      /(API_?KEY|_TOKEN$|_SECRET$|PASSWORD)/i.test(name),
+  )
+  .map(([, value]) => value)
+const scrub = (value) => {
+  let text = String(value)
+  for (const secret of secretValues) text = text.split(secret).join('[redacted]')
+  return text
+}
+const out = (...parts) => process.stdout.write(`${scrub(parts.join(' '))}\n`)
+const err = (...parts) => process.stderr.write(`${scrub(parts.join(' '))}\n`)
 
 const modelFlag = process.argv.indexOf('--model')
 const realModel = modelFlag === -1 ? null : process.argv[modelFlag + 1]
@@ -76,7 +100,7 @@ const provider = createServer((request, response) => {
     const call = providerCalls++
     if (process.env.VERIFY_LIVE_DEBUG && call === 0) {
       const names = (JSON.parse(body).tools ?? []).map((entry) => entry.function?.name)
-      console.error(`[debug] tools offered: ${names.join(', ')}`)
+      err(`[debug] tools offered: ${names.join(', ')}`)
     }
     const [delta, finish] = script[call] ?? say('Done.')
     response.writeHead(200, { 'content-type': 'text/event-stream' })
@@ -126,10 +150,15 @@ const server = await startTestServer({
   TELEGRAM_CHAT_ID: '',
 })
 
-const api = (path) =>
-  fetch(`${server.url}${path}`, { headers: { authorization: `Bearer ${server.token}` } }).then(
-    (response) => response.json(),
-  )
+const api = (path, init = {}) =>
+  fetch(`${server.url}${path}`, {
+    ...init,
+    headers: {
+      authorization: `Bearer ${server.token}`,
+      ...(init.body ? { 'content-type': 'application/json' } : {}),
+      ...(init.headers ?? {}),
+    },
+  }).then((response) => response.json())
 const run = async (args) => {
   const result = await server.cli(args)
   if (result.exitCode !== 0) {
@@ -149,8 +178,24 @@ const waitFor = async (label, probe, attempts = 120) => {
 try {
   const model = realModel ?? 'lmstudio:test-model'
   const team = 'live-run'
-  console.log(`home:  ${home}`)
-  console.log(`model: ${model}${realModel ? ' (real provider)' : ' (scripted)'}`)
+  out(`home:  ${home}`)
+  out(`model: ${model}${realModel ? ' (real provider)' : ' (scripted)'}`)
+
+  // A provider is only usable when the admin switch is on and the model is curated. The disposable home
+  // starts with the fixture's defaults, so a real provider has to be admitted here — otherwise the run
+  // fails on configuration rather than on anything it is meant to establish.
+  const [providerName, ...modelParts] = model.split(':')
+  const modelId = modelParts.join(':')
+  if (providerName && modelId) {
+    await api(`/api/config/providers/${encodeURIComponent(providerName)}/enabled`, {
+      method: 'PUT',
+      body: JSON.stringify({ enabled: true }),
+    })
+    await api(`/api/config/providers/${encodeURIComponent(providerName)}/models`, {
+      method: 'PUT',
+      body: JSON.stringify({ models: [modelId] }),
+    })
+  }
 
   await run(['team', 'add', team, '--link', repo])
   // Two ordinary members of one Team: the coder that asks, and the specialist it hands the change to.
@@ -164,7 +209,7 @@ try {
 
   // The coder asks in an ordinary chat turn. Nothing in this harness creates the request.
   await run(['agent', 'chat', 'coder', '--message', 'finish the change and have it verified'])
-  console.log('coder turn finished; waiting for the verification and the wake')
+  out('coder turn finished; waiting for the verification and the wake')
 
   const requests = await waitFor('a verification request', async () => {
     const list = await api(`/api/teams/${team}/verifications`)
@@ -180,14 +225,14 @@ try {
   })
   const attempt = settled.attempts.at(-1)
   const outcome = attempt?.outcomes?.[0]
-  console.log(`\nrequest:  ${requestId} -> ${settled.request.state}`)
-  console.log(`requester: ${settled.request.requester.agentId} (the coder agent, not the operator)`)
-  console.log(`attempt:  ${attempt?.state}${attempt?.error ? ` (${attempt.error})` : ''}`)
-  console.log(`check:    [${outcome?.ordinal}] ${outcome?.state} exit ${outcome?.exitCode}`)
-  console.log(`receipt:  ${outcome?.commandId ?? 'none'}`)
-  console.log(`writes:   declared ${JSON.stringify(attempt?.observedWrites?.declaredPaths)}`)
-  console.log(`          observed ${JSON.stringify(attempt?.observedWrites?.observedPaths)}`)
-  console.log(`          undeclared ${JSON.stringify(attempt?.observedWrites?.undeclaredPaths)}`)
+  out(`\nrequest:  ${requestId} -> ${settled.request.state}`)
+  out(`requester: ${settled.request.requester.agentId} (the coder agent, not the operator)`)
+  out(`attempt:  ${attempt?.state}${attempt?.error ? ` (${attempt.error})` : ''}`)
+  out(`check:    [${outcome?.ordinal}] ${outcome?.state} exit ${outcome?.exitCode}`)
+  out(`receipt:  ${outcome?.commandId ?? 'none'}`)
+  out(`writes:   declared ${JSON.stringify(attempt?.observedWrites?.declaredPaths)}`)
+  out(`          observed ${JSON.stringify(attempt?.observedWrites?.observedPaths)}`)
+  out(`          undeclared ${JSON.stringify(attempt?.observedWrites?.undeclaredPaths)}`)
 
   // The plan is the model's; the facts are the executor's. Assert the executor's.
   assert.equal(settled.request.state, 'completed', 'the request settled with evidence')
@@ -209,22 +254,22 @@ try {
     const inbox = await api(`/api/agents/${coder}/messages`)
     return inbox.messages.find((entry) => entry.fromAgentId === settled.request.recipientAgentId)
   })
-  console.log(`\nresult message (${message.id}):\n${message.payload}`)
+  out(`\nresult message (${message.id}):\n${message.payload}`)
   assert.match(message.payload, /coding-receipt:/)
   assert.match(message.payload, /Writes outside the declared output paths \(build\): stray\.txt/)
-  console.log(`\nprovider calls: ${providerCalls}`)
+  out(`\nprovider calls: ${providerCalls}`)
 
-  console.log(
+  out(
     '\nobserved: coder asks -> capture -> restricted specialist -> daemon-executed check -> receipt -> result -> coder woken',
   )
   if (!realModel) {
-    console.log(
+    out(
       'the model was scripted; rerun with --model <provider:model> and a provider key to let a real model choose the tools',
     )
   }
 } catch (error) {
-  console.error(`\nFAILED: ${error instanceof Error ? error.message : String(error)}`)
-  console.error(`evidence kept at ${home}`)
+  err(`\nFAILED: ${error instanceof Error ? error.message : String(error)}`)
+  err(`evidence kept at ${home}`)
   await server.stop({ keepHome: true })
   provider.close()
   process.exit(1)
