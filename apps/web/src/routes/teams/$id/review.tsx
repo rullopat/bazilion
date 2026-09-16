@@ -8,6 +8,8 @@ import { useState } from 'react'
 import { Button } from '../../../components/Button'
 import { PageShell } from '../../../components/Page'
 import { TeamTabs } from '../../../components/TeamTabs'
+import { ReviewPacketPanel } from '../../../components/ReviewPacketPanel'
+import { fetchTeamReviewPackets } from '../../../lib/review-packets'
 import {
   baseLabel,
   changeSummary,
@@ -28,9 +30,12 @@ import {
 
 export const Route = createFileRoute('/teams/$id/review')({
   loader: async ({ params }) => {
-    const data = await fetchTeamReview({ data: { id: params.id } })
+    const [data, packets] = await Promise.all([
+      fetchTeamReview({ data: { id: params.id } }),
+      fetchTeamReviewPackets({ data: { id: params.id } }),
+    ])
     if (!data) throw redirect({ to: '/teams' })
-    return data
+    return { ...data, packets }
   },
   component: ReviewPage,
 })
@@ -372,6 +377,10 @@ function ReviewPage() {
           </div>
         )}
       </section>
+
+      {loaded.packets ? (
+        <ReviewPacketPanel teamId={teamId} view={loaded.packets} />
+      ) : null}
     </PageShell>
   )
 }
