@@ -341,3 +341,54 @@ test.each([
     'invalid trusted turn invocation',
   )
 })
+
+test('a verification turn cannot be smuggled through the inbox or scheduler path', () => {
+  const create = createTrustedTurnInvocation as (value: unknown) => TrustedTurnInvocation
+  // A genuine inbox wake: scheduler origin, inbox attempt kind, and its own preclaimed turn.
+  const inboxClaim = claim('agent-1', 'wake-1')
+  const smuggled = {
+    kind: 'specialist_verification',
+    authorization: {
+      origin: 'scheduler_inbox',
+      attemptKind: 'inbox_wake',
+      attemptId: 'wake-1',
+      agentId: 'agent-1',
+    },
+    turn: turn(),
+    claim: inboxClaim,
+    bashApprovalMode: 'auto_deny',
+  }
+  expect(() => create(smuggled)).toThrow(/invalid trusted/)
+  // The reverse is refused too: a verification attempt id cannot drive an inbox wake, so the two
+  // dispatch paths cannot be swapped for one another.
+  expect(() =>
+    create({
+      kind: 'inbox_wake',
+      authorization: {
+        origin: 'verification_request',
+        attemptKind: 'verification_request',
+        attemptId: 'req-1',
+        agentId: 'agent-1',
+      },
+      turn: turn(),
+      claim: claim('agent-1', 'req-1'),
+      bashApprovalMode: 'auto_deny',
+    }),
+  ).toThrow(/invalid trusted/)
+  // And a verification turn never counts as a user turn, so it cannot inherit user authorization.
+  const genuine = create({
+    kind: 'specialist_verification',
+    authorization: {
+      origin: 'verification_request',
+      attemptKind: 'verification_request',
+      attemptId: 'req-1',
+      agentId: 'agent-1',
+    },
+    turn: turn(),
+    claim: claim('agent-1', 'req-1'),
+    bashApprovalMode: 'auto_deny',
+  })
+  expect(invocationRepresentsUserTurn(genuine)).toBe(false)
+  expect(invocationOwnsUserAuthorization(genuine)).toBe(false)
+  expect(executionSurfaceForInvocation(genuine)).toBe('protected')
+})

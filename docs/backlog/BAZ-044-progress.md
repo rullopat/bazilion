@@ -234,3 +234,56 @@ carries the receipt that produced it.
 **Verification.** 1386 tests across daemon lib/core/routes/runtime; typecheck, format and lint clean.
 One failure appeared in the first full run and did not reproduce on re-run — consistent with the
 pre-existing load-related flake recorded in the BAZ-042 acceptance caveats; not claimed deterministic.
+
+## Hardening pass — the two open notes (done, before 5c)
+
+### Note 1: the flake is found, explained and fixed
+
+The flake was **not** in the product: it was a test fixture that depended on git's stat cache.
+
+`apps/daemon/test/routes/git-review.test.ts` simulated a modification by writing `'changed\n'` over a
+file committed as `'one\ntwo\n'` — **the same eight bytes**. Git decides dirtiness from recorded stat
+data (size, mtime, ctime) plus its racy-git rules, so when the write landed in the same filesystem
+timestamp tick as the stat git had recorded during `git add`/`commit`, git reported the entry clean.
+The capture then honestly listed no changed path, and the test failed.
+
+**How it was proven, not guessed.** A throwaway probe (`/tmp/snap-probe.mts`, deleted after use) looped
+the exact capture twice in a fresh repository and dumped both manifests on any id mismatch:
+**8 mismatches in 400 iterations**, and every one showed the second capture listing `entries: []` while
+the first listed `app.txt`. After changing the fixture to an unambiguous edit of a different length:
+**0 mismatches in 600 iterations.**
+
+Two further failures appeared only under the harness's artificial 3×-concurrent full suites, and both
+were load-sensitive *test* timeouts, not product behaviour:
+
+- `bootstrap-identity-startup` / `legacy-schema-startup` capped the spawned daemon at 5 s with
+  `kill('SIGKILL')`, so a loaded machine turned a correct `exit 1` into a spurious `SIGKILL` mismatch.
+  Both caps are now 30 s, because the cap exists to stop a hung child, not to bound a legitimate boot.
+  The comment says so at both sites.
+- `apps/web/test/security-gateway.integration.test.ts` builds the web UI in `beforeAll` under a 60 s
+  timeout, which three concurrent suites cannot meet. Raised to 240 s.
+
+**Two sequential full suites now pass cleanly: 1698 passed / 7 skipped (1705), twice.** Before this
+pass, the same suite failed roughly 1 run in 7.
+
+**The limit is documented rather than hidden.** `snapshot.ts` and `docs/coding-evidence.md` now state
+that a snapshot enumerates what git reports as changed, that a same-size same-tick edit can therefore
+compare `identical`, and why Bazilion does not re-hash the whole tree to second-guess git — evidence
+that disagrees with the repository's own view would be worse, not better.
+
+### Note 2: the "no ordinary inbox turn" invariant is now checked
+
+It was previously true by construction. It is now asserted twice:
+
+- Capture writes **zero** `messages` rows — including on a blocked capture — so an inbox wake has
+  nothing to consume. A request that carries a peer message id only references one.
+- A verification turn cannot be smuggled through the inbox path, **in either direction**: an
+  inbox-wake origin with the verification kind is refused, and a verification attempt id cannot drive
+  an inbox wake. A genuine verification turn is never a user turn, owns no user authorization, and is
+  always the protected surface.
+
+**Harness note (not committed).** The repeat-run harness lives in `/tmp/flake-hunt.sh` and is
+deliberately not a repo artifact: it runs N concurrent *full* suites, which is a load amplifier rather
+than a normal invocation. Under 3× concurrency, two further environment-heavy tests contend for shared
+resources (`browser-live` for Chromium, `shell-docker` for the Docker daemon). Those did not appear in
+sequential runs and are not claimed fixed.

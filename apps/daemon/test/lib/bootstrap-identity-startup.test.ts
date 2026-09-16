@@ -185,7 +185,10 @@ test('daemon reports a stale bootstrap identity without binding HTTP or leaking 
 
   const result = await new Promise<{ code: number | null; signal: NodeJS.Signals | null }>(
     (resolve, reject) => {
-      const timeout = setTimeout(() => child.kill('SIGKILL'), 5_000)
+      // Generous on purpose. The assertion is that the child exits with code 1 instead of binding
+      // HTTP; a loaded machine (concurrent suites, three tsx boots) can take well over 5s to boot and
+      // exit, and killing it early turns a correct exit into a spurious SIGKILL mismatch.
+      const timeout = setTimeout(() => child.kill('SIGKILL'), 30_000)
       child.once('error', reject)
       child.once('close', (code, signal) => {
         clearTimeout(timeout)

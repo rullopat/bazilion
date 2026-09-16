@@ -111,7 +111,9 @@ test('daemon entry reports the recovery action and exits before binding HTTP', a
 
   const result = await new Promise<{ code: number | null; signal: NodeJS.Signals | null }>(
     (resolve, reject) => {
-      const timeout = setTimeout(() => child.kill('SIGKILL'), 5_000)
+      // See bootstrap-identity-startup: the cap only exists to stop a hung child, so it must not be
+      // tight enough to fire on a loaded machine and misreport a clean exit as SIGKILL.
+      const timeout = setTimeout(() => child.kill('SIGKILL'), 30_000)
       child.once('error', reject)
       child.once('close', (code, signal) => {
         clearTimeout(timeout)

@@ -106,7 +106,10 @@ test('an unknown Team is a 404, not a review of something else', async () => {
 
 test('an operator capture stores a snapshot and returns its reference', async () => {
   repo()
-  writeFileSync(join(teamDir(), 'app.txt'), 'changed\n')
+  // The edit must differ in *length* from the committed `'one\\ntwo\\n'`. A same-size rewrite can
+  // land in the same filesystem mtime tick, and git's stat cache then reports the entry clean — the
+  // capture faithfully reports "nothing changed", and this test flakes. See the snapshot docs.
+  writeFileSync(join(teamDir(), 'app.txt'), 'changed content\n')
   writeFileSync(join(teamDir(), 'notes.txt'), 'scratch\n')
   const response = await teamsRouter.request(`/${env.teamId}/review/snapshots`, {
     method: 'POST',
@@ -207,7 +210,8 @@ test('an empty or over-long path parameter is refused', async () => {
 
 test('snapshot applicability is three-valued and conservative', async () => {
   repo()
-  writeFileSync(join(teamDir(), 'app.txt'), 'changed\n')
+  // Longer than the committed `'one\\ntwo\\n'`: see the note above on git's stat cache.
+  writeFileSync(join(teamDir(), 'app.txt'), 'changed content\n')
   const captured = (await (
     await teamsRouter.request(`/${env.teamId}/review/snapshots`, {
       method: 'POST',

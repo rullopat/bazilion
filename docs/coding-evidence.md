@@ -84,5 +84,12 @@ Stated limits, so nothing here reads as more than it is:
 
 - A snapshot fingerprints the bytes it read. A change landing between listing and reading is not
   detected; a file that changes *while* being read is reported `unstable`.
+- A snapshot enumerates what git reports as changed. Git decides dirtiness from recorded stat data
+  (size, mtime, ctime) plus its racy-git rules, so an edit that keeps a file the same byte length and
+  lands in the same filesystem timestamp tick as git's recorded stat can be reported clean, and the
+  capture honestly lists no changed path. Applicability compares two captures, so such an edit can
+  still compare `identical`. Bazilion does not re-hash the whole tree to second-guess the repository's
+  own view: evidence that disagrees with git would be worse, not better. This is why the review test
+  fixtures change file length when they simulate a modification.
 - Comparing source states shows that code changed, never that the change was relevant to a given result.
 - A successful command never establishes whole-project correctness, and an exit code is never coverage.

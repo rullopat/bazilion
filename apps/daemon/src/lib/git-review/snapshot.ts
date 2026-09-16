@@ -311,6 +311,17 @@ export async function captureSourceSnapshot(
 }
 
 /**
+ * Stated limit — what Bazilion enumerates is what git reports as changed.
+ *
+ * Git decides dirtiness from its recorded stat data (size, mtime, ctime) and its racy-git rules. An
+ * edit that leaves a file the same byte length and lands inside the same filesystem timestamp tick as
+ * git's recorded stat can therefore be treated as clean, and the capture will honestly report no
+ * changed path. This is not a defect to paper over: the alternative is re-hashing the whole tree on
+ * every capture, and a fingerprint that disagrees with the repository's own view would be worse
+ * evidence, not better. The consequence for callers is real and recorded: applicability compares two
+ * of these captures, so a same-size same-tick edit can compare `identical`. Tests that exercise a
+ * modification must therefore change the byte length, which is why the review fixtures say so.
+ *
  * Digest the staged index.
  *
  * Blob ids are content-addressed, so this identifies the staged bytes exactly without reading any

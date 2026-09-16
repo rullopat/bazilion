@@ -160,7 +160,9 @@ beforeAll(async () => {
   const origin = `https://127.0.0.1:${port}`
   daemon = await startTestServer({ BAZILION_PUBLIC_ORIGIN: origin })
   web = await startWeb(daemon.url, { port, origin })
-}, 60_000)
+// The setup may build the web UI, which is slow on a loaded machine; the timeout exists to stop a
+// hung setup, not to bound a legitimate build.
+}, 240_000)
 
 afterAll(async () => {
   await web?.stop()

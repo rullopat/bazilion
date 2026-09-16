@@ -227,3 +227,30 @@ test('capture refuses a Team that is not a repository without inventing one', as
     env.cleanup()
   }
 })
+
+test('a captured request is not a peer message, so an inbox wake has nothing to consume', async () => {
+  const env = makeTestEnv()
+  try {
+    seedAgents(env.db, env.teamId)
+    repo(env)
+    const snapshotId = await snapshot(env)
+    const result = captureVerificationRequest(env.db, env.paths, intent(env, snapshotId))
+    expect(result.kind).toBe('captured')
+    // The typed request is dispatched by its own state machine, never by the ordinary inbox path.
+    // If a request were also a peer message, an inbox wake could consume it as an unrestricted
+    // coding turn — so the absence of a message row is the invariant, asserted rather than assumed.
+    const messages = env.db.raw
+      .query<{ count: number }, []>('SELECT count(*) AS count FROM messages')
+      .get()
+    expect(messages?.count).toBe(0)
+    // A request that carries a peer message id only *references* one; it still creates none itself.
+    const blocked = captureVerificationRequest(env.db, env.paths, intent(env, 'missing-snapshot'))
+    expect(blocked.kind).toBe('blocked')
+    expect(
+      env.db.raw.query<{ count: number }, []>('SELECT count(*) AS count FROM messages').get()
+        ?.count,
+    ).toBe(0)
+  } finally {
+    env.cleanup()
+  }
+})
