@@ -4,8 +4,9 @@ Audit of the implemented story against its own scope, acceptance criteria and th
 Every finding below was **verified in the code or with a throwaway probe**, not inferred from the
 summary I wrote while building it. Probe scripts were deleted after use; their raw output is quoted.
 
-**All twelve are fixed**, each with a regression test, and five more gate cases were added
-(111 → 116).
+**All thirteen are fixed** (S13 was found by the release audit below), each with a regression test, and
+five gate cases were added (111 → 116). The end-to-end gate case covers the result return as well as the
+receipts, since the gate rejects two cases pointing at one test.
 
 | # | Finding | Severity | Status |
 |---|---------|----------|--------|
@@ -353,6 +354,28 @@ referenced. Either wire the label (a harness-supplied hint on a check) or delete
 
 
 **Status: fixed.** `VerificationCheckWrite` and its unused `label` were removed.
+---
+
+## S13 — The requesting Agent never learned the result (high, missed implementation — found in the release audit)
+
+Nothing delivered the outcome back to the requester. The verification settled, the operator surfaces showed
+everything, and the **coder that asked for the verification could never see the result** — the loop the
+story exists to close was open at the last hop. Scope made it explicit ("Deliver a concise result with
+requested snapshot, checks attempted, evidence links, findings, limitations, and current applicability")
+and criterion 5 required "explicit per-request access … for the requester to returned receipts/logs".
+
+**Status: fixed.** `deliverVerificationResult` hands the outcome to the requester through the canonical
+messenger on **every** settlement path (completed, failed, cancelled), carrying the applicable
+`coding-receipt:<id>` references. That is the bounded access the story asked for rather than a new sharing
+mechanism: BAZ-040's authorized peer-read path is exactly what grants a peer access to a receipt it was
+sent, so nothing new is opened. Team Policy applies to the message like any other peer message, the payload
+is bounded, and a denied or held delivery never changes the verification's own outcome (it is logged
+payload-free and the evidence stays readable by its owner and the operator). The end-to-end test asserts the
+message arrives from the specialist to the requester with the receipt reference.
+
+Auditing for the release is what surfaced this: the twelve findings before it were all *implemented but
+mis-wired*; this one was **not implemented at all**, and every test I had written still passed.
+
 ---
 
 ## Verified sound (so the audit is not only a list of faults)

@@ -1,6 +1,9 @@
+import type { BazilionDb } from '../../core/db/client.ts'
+import type { Paths } from '../../core/paths.ts'
 import {
   getVerificationRequest,
   getVerificationRequestById,
+  listVerificationAttempts,
   pruneVerificationRequests,
 } from '../../core/repos/verification-requests.ts'
 import { mergeSecretsIntoEnv } from '../../core/secrets.ts'
@@ -9,6 +12,7 @@ import { acquireAgentLifecycleLease } from '../agent-lifecycle-lease.ts'
 import { codingSecrets } from '../coding-environment/diagnostics.ts'
 import { workspaceLifecycle } from '../coding-environment/lifecycle.ts'
 import { getCtx } from '../ctx.ts'
+import { readSnapshotApplicability } from '../git-review/service.ts'
 import { protectedFailureMessage } from '../protected-failure.ts'
 import {
   admitVerificationRequest,
@@ -21,6 +25,7 @@ import {
   executePreparedVerification,
   prepareVerificationTurn,
 } from './preparation.ts'
+import { deliverVerificationResult } from './result.ts'
 import {
   abandonVerificationAttempt,
   createVerificationHost,
@@ -149,32 +154,35 @@ export async function dispatchVerificationRequest(
     }
 
     if (controller.signal.aborted) {
-      abandonVerificationAttempt(db, {
+      const abandoned = abandonVerificationAttempt(db, {
         attemptId: admitted.claim.attempt.id,
         requestId,
         leaseOwner: VERIFICATION_DISPATCH_OWNER,
         state: 'cancelled',
         error: 'verification was cancelled before it reported',
       })
+      if (abandoned) await handBackResult(db, paths, requestId, 'cancelled')
       return 'settled'
     }
     if (failure) {
       // The turn itself failed. Checks it did not run stay unrun, and the attempt says why — an
       // attempt that reports no outcome is never presented as a result about the change.
-      abandonVerificationAttempt(db, {
+      const abandoned = abandonVerificationAttempt(db, {
         attemptId: admitted.claim.attempt.id,
         requestId,
         leaseOwner: VERIFICATION_DISPATCH_OWNER,
         state: 'failed',
         error: failure,
       })
+      if (abandoned) await handBackResult(db, paths, requestId, 'failed')
       return 'settled'
     }
-    settleVerificationAttempt(db, {
+    const settled = settleVerificationAttempt(db, {
       attemptId: admitted.claim.attempt.id,
       requestId,
       leaseOwner: VERIFICATION_DISPATCH_OWNER,
     })
+    if (settled !== 'uncertain') await handBackResult(db, paths, requestId, settled)
     return 'dispatched'
   } catch (error) {
     if (admission?.kind === 'admitted') {
@@ -194,6 +202,38 @@ export async function dispatchVerificationRequest(
     dispatchRegistry().controllers.delete(requestId)
     if (registered) unregisterAgent(request.recipientAgentId)
   }
+}
+
+/**
+ * Hand a settled outcome back to the requesting Agent, with the applicability *now*.
+ *
+ * One place, so every settlement path reports through the same channel — and a delivery that policy
+ * refuses never changes the verification's own outcome.
+ */
+async function handBackResult(
+  db: BazilionDb,
+  paths: Paths,
+  requestId: string,
+  outcome: 'completed' | 'failed' | 'cancelled' | 'uncertain',
+): Promise<void> {
+  const request = getVerificationRequestById(db, requestId)
+  if (!request) return
+  const attempt = listVerificationAttempts(db, requestId).at(-1)
+  if (!attempt) return
+  let applicability: 'identical' | 'changed' | 'unknown' | null = null
+  try {
+    const comparison = await readSnapshotApplicability(
+      db,
+      paths,
+      request.teamId,
+      request.snapshotId,
+    )
+    applicability = comparison.comparison
+  } catch {
+    // Establishing applicability is evidence, never a reason to withhold the outcome.
+    applicability = null
+  }
+  deliverVerificationResult({ db, paths, request, attempt, outcome, applicability })
 }
 
 /** Dispatch every eligible pending request. */

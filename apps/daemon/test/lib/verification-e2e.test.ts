@@ -148,6 +148,20 @@ test('a captured dirty change is verified end to end and the receipts identify i
     id: captured.reference.id,
     complete: true,
   })
+  // The requesting Agent learns the outcome through the canonical messenger, and the message carries
+  // the receipt reference — which is exactly what grants that peer read access to that receipt.
+  const inbox = env.db.raw
+    .query<{ from_agent_id: string; to_agent_id: string; payload: string }, []>(
+      'SELECT from_agent_id, to_agent_id, payload FROM messages',
+    )
+    .all()
+  expect(inbox).toHaveLength(1)
+  expect(inbox[0]).toMatchObject({ from_agent_id: 'tester', to_agent_id: 'coder' })
+  expect(inbox[0]?.payload).toContain(`coding-receipt:${outcomes[0]?.commandId}`)
+  expect(inbox[0]?.payload).toContain('completed')
+  expect(inbox[0]?.payload).toContain('snapshot')
+  expect(inbox[0]?.payload).toContain('not an approval to publish')
+
   // The workspace lease is released, so the Team is not left blocked.
   expect(
     env.db.raw.query<{ count: number }, []>('SELECT count(*) AS count FROM workspace_writers').get()
