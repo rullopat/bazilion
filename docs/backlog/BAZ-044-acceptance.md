@@ -127,34 +127,55 @@ section is typechecked and built, not browser-observed.
 
 ## Caveats, stated rather than implied
 
-0. **Two honesty fixes from the review are worth reading as behavioural claims.** A check's declared output
-   paths are *advisory*: they are validated and recorded, and the receipt and the specialist's brief both say
-   they do not confine writes. And an executed check whose receipt was pruned reports
-   `receiptUnavailable` rather than silence, so "the evidence is gone" is distinguishable from "no receipt
-   was recorded".
-0. **Two gaps from the v0.19.0 gap work, both closed.** A container check now runs with the posture its
-   receipt claims (read-only team memory, recovery-registered container), declared output paths are
-   *checked* rather than trusted (the attempt records writes outside the declaration, and the requester
-   is told), and — the substantive one — an agent can now request verification at all, which is what
-   makes the result delivery reachable. `scripts/verification-live-run.mjs` observes the whole loop
-   (coder asks → capture → restricted specialist → daemon-executed check → receipt → result → coder
-   woken) against a real daemon and repository.
-1. **No live-model verification run.** The end-to-end path *is* now observed as one continuous run with
-   a fixture worker and a stubbed model runtime (no provider contacted). What is still unobserved is a
-   real agent deciding to request verification, and a model-authored summary being checked against the
-   boundaries in its system prompt. The fake-provider harness from BAZ-041 exists for that, and it was
-   not wired up here.
-2. **Container execution is unobserved.** The Docker branch of the executor is implemented against the
-   same preflighted path a coding turn uses, and its *refusal* is tested; its successful execution is not.
-3. **Peer receipt access was not extended.** Criterion 5's positive direction for the requester reuses
+1. **Two honesty fixes from the review are behavioural claims, not notes.** A check's declared output paths
+   are *advisory*: validated and recorded, and the receipt and the specialist's brief both say they do not
+   confine writes. An executed check whose receipt was pruned reports `receiptUnavailable` rather than
+   silence, so "the evidence is gone" is distinguishable from "no receipt was recorded".
+2. **The v0.19.0 gap work closed three more, two of them defects.** A container check now runs with the
+   posture its receipt claims (read-only team memory, recovery-registered container); declared output paths
+   are *checked* rather than trusted — the attempt records writes outside the declaration and the requester
+   is told; and, the substantive one, **an agent can now request verification at all**, which is what makes
+   the result delivery reachable in production rather than only in tests.
+3. **The live-model run is now observed, as three samples.** `scripts/verification-live-run.mjs` boots a
+   disposable daemon and repository and drives the whole loop; with `--model <provider:model>` and a
+   provider key in the environment, a **real model** does the work. Run against
+   `fireworks:accounts/fireworks/models/deepseek-v4-flash-0731`, three consecutive runs:
+
+   - The model was given one ordinary sentence ("finish the change and have it verified") and **chose
+     `request_verification` unprompted**, then the specialist chose `verification_check`. No prompt told
+     it to verify anything.
+   - It **designed its own check sets each time**, and they differed: (a) `./check.sh`; (b) three checks
+     including artifact assertions (`test -f build/out.txt && grep -q '^out$' …`) with
+     `writablePaths: ["build","build/out.txt","stray.txt"]` declared; (c) a committed change verified by
+     a `node` ESM import check plus a git check. In the final sample all three checks executed, each with
+     an executor-owned receipt whose `sourceBefore.id` **matched the snapshot the request captured**.
+   - A model can ask for a check that cannot run, and the daemon reports it **as a result, not an error**:
+     in the first sample the model asked for `./check.sh` while the file lacked its exec bit, and the
+     receipt records `failed` / exit 126 with the observed `Permission denied`, having run the captured
+     command **verbatim** rather than substituting a runnable one.
+   - The declared-output-path mechanism worked as intended: in sample (b) the model declared the stray
+     file its check writes, so `undeclared` was empty — the declaration is used, and still not trusted.
+
+   **Still unobserved**, stated precisely: a model-authored *summary* checked against its prompt
+   boundaries (no sample produced a deployment recommendation, but nothing asserts one would be caught);
+   other providers and models; and the container posture, which these runs did not enable.
+
+4. **Container execution is now observed too.** `apps/daemon/test/lib/verification-container.integration.test.ts`
+   (`BAZILION_TEST_DOCKER=1`) runs a real container check: it sees the container's filesystem and not the
+   host's, **cannot write the Team's shared memory**, has no network, and registers a container that is
+   confirmed removed. It is gated on the environment variable, so a machine without Docker skips it
+   rather than passing it vacuously.
+
+5. **Peer receipt access was not extended.** Criterion 5's positive direction for the requester reuses
    BAZ-040's existing authorized path rather than adding the per-request grant the story described.
-4. **Two-writer race and restart races are covered by construction and unit tests, not by live races.**
-5. **The suite is not claimed deterministic.** The pre-existing load-related flake was found and fixed
+6. **Two-writer race and restart races are covered by construction and unit tests, not by live races.**
+7. **The suite is not claimed deterministic.** The pre-existing load-related flake was found and fixed
    during this work (a fixture whose edit was the same byte length, so git's stat cache reported the file
    clean); sequential full runs are clean, but 3×-concurrent runs still surface contention in the Docker
    and Chromium integration tests. Recorded in the progress doc.
 
 ## Release gate
 
-`pnpm security:acceptance` → **111 required adversarial cases**, all passing, including 28 added here.
-Schema change: the alpha contract gains four tables, so this release is clean-install-only.
+`pnpm security:acceptance` → **123 required adversarial cases**, all passing, 40 of them added since the
+first draft of this record. Schema change: the alpha contract gains four tables, so this release is
+clean-install-only.

@@ -191,7 +191,7 @@ export function verificationRequestTool(host: VerificationRequestHost): ToolHand
     def: {
       name: 'request_verification',
       description:
-        'Hand the current change to one existing member of this Team and ask them to run specific checks against it. The daemon captures the change as it is right now, so later edits are not covered. Use it when a task is finished and an independent check is worth more than your own report; then end your turn and wait. You will be told the outcome. This asks for verification — it never approves, publishes, merges or deploys anything.',
+        'Hand the current change to one existing member of this Team and ask them to run specific checks against it. The daemon captures the change as it is right now — you do not capture one yourself — so later edits are not covered. Use it when a task is finished and an independent check is worth more than your own report; then end your turn and wait. You will be told the outcome. This asks for verification — it never approves, publishes, merges or deploys anything.',
       parameters: {
         type: 'object',
         properties: {

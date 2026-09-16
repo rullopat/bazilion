@@ -117,10 +117,11 @@ test('a refusal writes nothing and says why', async () => {
   const env = repoEnv()
   try {
     const host = hostFor(env)
-    // Nobody to verify: the specialist is not a member of this Team.
+    // Nobody to verify: the name matches no live member of this Team, and the refusal names who could be
+    // asked instead of leaving the caller to guess.
     await expect(
       host.capture({ specialist: 'stranger', checks: [{ command: 'x', purpose: 'y' }] }),
-    ).rejects.toThrow(/was not requested/)
+    ).rejects.toThrow(/no Team member is named stranger/)
     expect(listVerificationRequests(env.db, env.teamId)).toHaveLength(0)
     expect(
       env.db.raw.query<{ n: number }, []>('SELECT count(*) AS n FROM verification_checks').get()?.n,
@@ -143,6 +144,47 @@ test('a finished turn cannot capture anything', async () => {
     expect(
       env.db.raw.query<{ n: number }, []>('SELECT count(*) AS n FROM source_snapshots').get()?.n,
     ).toBe(0)
+  } finally {
+    env.cleanup()
+  }
+})
+
+test('a specialist can be named instead of identified', async () => {
+  const env = repoEnv()
+  try {
+    // A model knows its peers by name. The id path still works, and a name resolves to the live member of
+    // this Team — the alternative was a model going looking for agent.json with bash, which the container
+    // posture makes impossible.
+    const byName = await hostFor(env).capture({
+      specialist: 'Tester',
+      checks: [{ command: 'sh check.sh', purpose: 'by name' }],
+    })
+    expect(listVerificationRequests(env.db, env.teamId)[0]?.recipientAgentId).toBe('tester')
+
+    const byId = await hostFor(env).capture({
+      specialist: 'tester',
+      checks: [{ command: 'sh check.sh', purpose: 'by id' }],
+    })
+    expect(byId.requestId).not.toBe(byName.requestId)
+    expect(listVerificationRequests(env.db, env.teamId)).toHaveLength(2)
+  } finally {
+    env.cleanup()
+  }
+})
+
+test('an unknown specialist is refused with the members that could be asked', async () => {
+  const env = repoEnv()
+  try {
+    // One failed call has to be enough to recover, so the refusal lists the candidates rather than
+    // leaving a model to guess again.
+    await expect(
+      hostFor(env).capture({ specialist: 'alex', checks: [{ command: 'x', purpose: 'y' }] }),
+    ).rejects.toThrow(/no Team member is named alex.*Members you can ask: tester \(tester\)/s)
+    expect(listVerificationRequests(env.db, env.teamId)).toHaveLength(0)
+    // A member of another Team is not a candidate, so its name cannot be used to reach across Teams.
+    await expect(
+      hostFor(env).capture({ specialist: 'outsider', checks: [{ command: 'x', purpose: 'y' }] }),
+    ).rejects.toThrow(/Members you can ask: tester/)
   } finally {
     env.cleanup()
   }

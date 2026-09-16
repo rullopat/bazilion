@@ -23,10 +23,11 @@
 // failure can be inspected rather than re-run.
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { DatabaseSync } from 'node:sqlite'
 import { startTestServer } from '../apps/cli/test/server-fixture.ts'
 
 // Anything that looks like a credential in this process's environment is scrubbed from every line this
@@ -137,6 +138,8 @@ writeFileSync(
   join(repo, 'check.sh'),
   '#!/bin/sh\nmkdir -p build && echo out > build/out.txt && echo stray > stray.txt\nexit 0\n',
 )
+// Executable, so a model that asks for `./check.sh` gets a real result rather than a permission error.
+chmodSync(join(repo, 'check.sh'), 0o755)
 
 // The scheduler is left ON: requests are dispatched by its tick and the coder is woken by its inbox
 // wake, which is the production path — the harness never reaches into the daemon to start either.
@@ -166,7 +169,9 @@ const run = async (args) => {
   }
   return result.stdout
 }
-const waitFor = async (label, probe, attempts = 120) => {
+// A real model is slower than the scripted one, especially on its first turn with the full system
+// prompt and repository context, so the wait budget is longer when a provider is actually being called.
+const waitFor = async (label, probe, attempts = realModel ? 480 : 120) => {
   for (let attempt = 0; attempt < attempts; attempt++) {
     const value = await probe()
     if (value) return value
@@ -225,6 +230,30 @@ try {
   })
   const attempt = settled.attempts.at(-1)
   const outcome = attempt?.outcomes?.[0]
+  // The commands are the *model's* choice, so they are printed rather than asserted.
+  settled.checks.forEach((check) =>
+    out(`asked for: [${check.ordinal}] ${check.command} (${check.purpose})`),
+  )
+  // The receipt's provenance comes from the daemon's own store, not from the report: it must name the
+  // exact revision the request captured.
+  const receiptRow = outcome?.commandId
+    ? (() => {
+        const db = new DatabaseSync(join(server.home, 'bazilion.db'))
+        const row = db
+          .prepare('SELECT receipt_json FROM coding_commands WHERE id = ?')
+          .get(outcome.commandId)
+        db.close()
+        return row ? JSON.parse(row.receipt_json) : null
+      })()
+    : null
+  if (receiptRow) {
+    const provenance = receiptRow.sourceBefore?.id ?? '(none)'
+    out(
+      `receipt names revision: ${String(provenance).slice(0, 16)}${
+        provenance === settled.request.snapshot.id ? ' (matches the request)' : ' (MISMATCH)'
+      }`,
+    )
+  }
   out(`\nrequest:  ${requestId} -> ${settled.request.state}`)
   out(`requester: ${settled.request.requester.agentId} (the coder agent, not the operator)`)
   out(`attempt:  ${attempt?.state}${attempt?.error ? ` (${attempt.error})` : ''}`)
@@ -239,11 +268,27 @@ try {
   assert.equal(settled.request.requester.kind, 'agent', 'an agent was the requester')
   assert.equal(settled.request.requester.agentId, coder, 'the coder asked, not the operator')
   assert.equal(attempt?.state, 'completed')
-  assert.equal(outcome?.state, 'succeeded', 'the declared check ran and succeeded')
-  assert.equal(outcome?.exitCode, 0)
-  assert.ok(outcome?.commandId, 'the executed check has a receipt')
-  assert.deepEqual(attempt?.observedWrites?.declaredPaths, ['build'])
-  assert.deepEqual(attempt?.observedWrites?.undeclaredPaths, ['stray.txt'])
+  // A real model chooses its own checks, so the assertion is that *something executed and is recorded*,
+  // never that a particular command succeeded.
+  const executed = (attempt?.outcomes ?? []).filter((entry) =>
+    ['succeeded', 'failed'].includes(entry.state),
+  )
+  assert.ok(executed.length > 0, 'at least one required check executed')
+  assert.ok(
+    executed.every((entry) => entry.commandId),
+    'every executed check has an executor-owned receipt',
+  )
+  assert.equal(
+    receiptRow?.sourceBefore?.id,
+    settled.request.snapshot.id,
+    'the receipt names the exact revision the request captured',
+  )
+  if (!realModel) {
+    // Deterministic only for the scripted run: it is the strict regression case.
+    assert.equal(outcome?.state, 'succeeded')
+    assert.deepEqual(attempt?.observedWrites?.declaredPaths, ['build'])
+    assert.deepEqual(attempt?.observedWrites?.undeclaredPaths, ['stray.txt'])
+  }
   // The verification never touched the change it was handed.
   assert.match(readFileSync(join(repo, 'app.js'), 'utf8'), /answer = 42/)
 
@@ -256,8 +301,14 @@ try {
   })
   out(`\nresult message (${message.id}):\n${message.payload}`)
   assert.match(message.payload, /coding-receipt:/)
-  assert.match(message.payload, /Writes outside the declared output paths \(build\): stray\.txt/)
-  out(`\nprovider calls: ${providerCalls}`)
+  if (!realModel) {
+    assert.match(message.payload, /Writes outside the declared output paths \(build\): stray\.txt/)
+  }
+  out(
+    `\nscripted-provider calls: ${providerCalls}${
+      realModel ? ' (a real-model run talks to the provider instead)' : ''
+    }`,
+  )
 
   out(
     '\nobserved: coder asks -> capture -> restricted specialist -> daemon-executed check -> receipt -> result -> coder woken',

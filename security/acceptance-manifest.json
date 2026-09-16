@@ -732,6 +732,12 @@
       "owner": "BAZ-043",
       "file": "apps/daemon/test/lib/review-capture.test.ts",
       "test": "every unestablishable input is refused, and a refusal writes nothing"
+    },
+    {
+      "id": "VERIFY-SPECIALIST-RESOLVED-BY-NAME",
+      "owner": "BAZ-044",
+      "file": "apps/daemon/test/lib/verification-request-capability.test.ts",
+      "test": "an unknown specialist is refused with the members that could be asked"
     }
   ]
 }

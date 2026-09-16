@@ -4,7 +4,7 @@ Audit of the implemented story against its own scope, acceptance criteria and th
 Every finding below was **verified in the code or with a throwaway probe**, not inferred from the
 summary I wrote while building it. Probe scripts were deleted after use; their raw output is quoted.
 
-**All fourteen are fixed** (S13 and S14 were found by the release and gap audits below), each with a regression test, and
+**All fifteen are fixed** (S13/S14 came from the release and gap audits, S15 from the live-model run), each with a regression test, and
 five gate cases were added (111 → 116). The end-to-end gate case covers the result return as well as the
 receipts, since the gate rejects two cases pointing at one test.
 
@@ -399,6 +399,27 @@ Observed end to end, not just unit-tested: `scripts/verification-live-run.mjs` b
 and repository, has a coder agent ask in an ordinary chat turn, and follows the request through the
 restricted specialist, the daemon-side executor and the receipt back to the coder's inbox wake — with
 one message, the receipt reference, and the undeclared write reported.
+
+---
+
+## S15 — A coder could not name its own teammates (medium, found by a real model)
+
+`request_verification` required a specialist **agent id**, and nothing anywhere tells an agent who its
+teammates are. A real model, given only "finish the change and have it verified", solved it by reading
+`agents/*/agent.json` with `bash` to find the peer's UUID — which works on the host posture and **cannot
+work at all under container isolation**, where the agent directories are not mounted. So the flow I had
+just built was usable only in the posture that happened to expose its own bookkeeping.
+
+**Status: fixed.** The daemon resolves the named specialist inside the caller's own Team: exact id first,
+then a case-insensitive name match, and a refusal that **lists the members that can be asked** — so one
+failed call is enough for a model to recover instead of guessing. Ambiguity is refused with the matching
+ids rather than resolved by picking one. A member of another Team is never a candidate, so a name cannot
+be used to reach across Teams. The tool's description now says a name is acceptable and that the daemon
+captures the snapshot, after a model made a redundant capture of its own.
+
+**How it was found is the point.** Twelve findings came from reading code; the two missing
+implementations came from auditing claims; this one came from *running a real model* — it is invisible to
+a scripted provider, because the fixture knows the id it was written with.
 
 ---
 
