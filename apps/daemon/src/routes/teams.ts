@@ -3,6 +3,7 @@
 // `<team.path>/memory/` and is shared by every agent in the team.
 
 import { join } from 'node:path'
+import type { CreateVerificationRequest } from '@bazilion/api-types'
 import {
   type CodingCommandLogView,
   REVIEW_LIMITS,
@@ -12,6 +13,7 @@ import {
 } from '@bazilion/api-types'
 import { type Context, Hono } from 'hono'
 import { CodingEnvironmentValidationError } from '../core/coding-environment/config.ts'
+import type { BazilionDb } from '../core/db/client.ts'
 import {
   adoptTeamTemplate,
   deleteTeam,
@@ -23,6 +25,7 @@ import {
   teamRepo,
   updateTeamPolicySource,
 } from '../core/index.ts'
+import type { Paths } from '../core/paths.ts'
 import { validateSlug } from '../core/profile/validate.ts'
 import {
   getCodingCommandLog,
@@ -31,6 +34,16 @@ import {
 } from '../core/repos/coding-command-logs.ts'
 import { getCodingCommand } from '../core/repos/coding-commands.ts'
 import { CodingEnvironmentRevisionError } from '../core/repos/coding-environment.ts'
+import {
+  getVerificationRequest,
+  listVerificationAttempts,
+  listVerificationCheckOutcomes,
+  listVerificationChecks,
+  listVerificationRequests,
+  setRequestState,
+  type VerificationRequestRecord,
+} from '../core/repos/verification-requests.ts'
+import { cancelAgent } from '../lib/agent-cancel.ts'
 import type { AuthVariables } from '../lib/auth.ts'
 import {
   codingEnvironmentStatus,
@@ -54,11 +67,17 @@ import {
   readSnapshotApplicability,
   readTeamReview,
   readTeamSnapshot,
+  requireTeam,
 } from '../lib/git-review/service.ts'
 import { sanitizeNativeModuleError } from '../lib/native-module-error.ts'
 import { resolveRepositoryContext } from '../lib/repository-context/index.ts'
 import { validateTopicNameFormat } from '../lib/telegram/naming.ts'
 import { syncGroupTopicNames } from '../lib/telegram/topic-rename.ts'
+import {
+  captureVerificationRequest,
+  readVerificationReport,
+  toWireRequest,
+} from '../lib/verification/capture.ts'
 import { qmdBackend } from '../runtime/index.ts'
 
 // 12 KB cap — enough for a rich USER.md, small enough that it can't silently
@@ -818,4 +837,162 @@ function teamPolicyError(c: Context, error: unknown): Response {
     return c.json({ error: message, code: 'source_diverged' }, 409)
   }
   return c.json({ error: message, code: 'team_policy_invalid' }, 400)
+}
+
+// ---------------------------------------------------------------------------------------------
+// BAZ-044: specialist verification requests
+//
+// The operator surface: create a typed request against a captured change, list and read them with
+// their evidence, and cancel one. Execution is owned by the verification state machine, so these
+// routes never run a check themselves — and a cancel aborts the running specialist turn, which
+// settles the attempt as cancelled rather than leaving it running.
+// ---------------------------------------------------------------------------------------------
+
+teamsRouter.get('/:id/verifications', async (c) => {
+  const { db, paths } = getCtx()
+  c.header('Cache-Control', 'no-store')
+  try {
+    const team = requireTeam(db, paths, c.req.param('id'))
+    const requests = listVerificationRequests(db, team.id)
+    const reports = await Promise.all(
+      requests.map(async (record) => ({
+        request: toWireRequest(record),
+        checks: listVerificationChecks(db, record.id).map((check) => ({
+          ordinal: check.ordinal,
+          command: check.command,
+          cwd: check.cwd,
+          purpose: check.purpose,
+          timeoutMs: check.timeoutMs,
+        })),
+        attempts: listVerificationAttempts(db, record.id).map((attempt) => ({
+          id: attempt.id,
+          attemptNumber: attempt.attemptNumber,
+          supersedesAttemptId: attempt.supersedesAttemptId,
+          state: attempt.state,
+          startedAt: attempt.startedAt,
+          finishedAt: attempt.finishedAt,
+          error: attempt.error,
+          outcomes: listVerificationCheckOutcomes(db, attempt.id).map((outcome) => ({
+            ordinal: outcome.ordinal,
+            state: outcome.state,
+            commandId: outcome.commandId,
+            exitCode: outcome.exitCode,
+            startedAt: outcome.startedAt,
+            finishedAt: outcome.finishedAt,
+          })),
+        })),
+        applicability: await applicabilityFor(db, paths, team.id, record),
+      })),
+    )
+    return c.json({ requests: reports })
+  } catch (error) {
+    return reviewFailure(c, error)
+  }
+})
+
+teamsRouter.post('/:id/verifications', async (c) => {
+  const { db, paths } = getCtx()
+  c.header('Cache-Control', 'no-store')
+  const body: unknown = await c.req.json().catch(() => null)
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return c.json({ error: 'Invalid verification request' }, 400)
+  }
+  const input = body as Partial<CreateVerificationRequest>
+  if (
+    typeof input.recipientAgentId !== 'string' ||
+    typeof input.snapshotId !== 'string' ||
+    !Array.isArray(input.checks) ||
+    input.checks.some(
+      (check: CreateVerificationRequest['checks'][number]) =>
+        !check ||
+        typeof check.command !== 'string' ||
+        typeof check.cwd !== 'string' ||
+        typeof check.purpose !== 'string' ||
+        !Number.isInteger(check.timeoutMs),
+    )
+  ) {
+    return c.json({ error: 'Invalid verification request' }, 400)
+  }
+  try {
+    const result = captureVerificationRequest(db, paths, {
+      teamId: c.req.param('id'),
+      requesterKind: 'operator',
+      requesterAgentId: null,
+      recipientAgentId: input.recipientAgentId,
+      snapshotId: input.snapshotId,
+      checks: input.checks,
+      summary: typeof input.summary === 'string' ? input.summary : null,
+      sourceSessionId: typeof input.sourceSessionId === 'string' ? input.sourceSessionId : null,
+      ...(Array.isArray(input.writablePaths) ? { writablePaths: input.writablePaths } : {}),
+    })
+    // A blocker is a result with a reason, not a failure: it says which input could not be honoured.
+    if (result.kind === 'blocked') return c.json({ blocked: result.blocker }, 409)
+    return c.json({ request: await report(db, paths, result.request) }, 201)
+  } catch (error) {
+    return reviewFailure(c, error)
+  }
+})
+
+teamsRouter.get('/:id/verifications/:requestId', async (c) => {
+  const { db, paths } = getCtx()
+  c.header('Cache-Control', 'no-store')
+  try {
+    const report = await readVerificationReport(
+      db,
+      paths,
+      c.req.param('id'),
+      c.req.param('requestId'),
+    )
+    if (!report) return c.json({ error: 'Verification request not found' }, 404)
+    return c.json({ request: report })
+  } catch (error) {
+    return reviewFailure(c, error)
+  }
+})
+
+teamsRouter.post('/:id/verifications/:requestId/cancel', async (c) => {
+  const { db, paths } = getCtx()
+  c.header('Cache-Control', 'no-store')
+  try {
+    const team = requireTeam(db, paths, c.req.param('id'))
+    const record = getVerificationRequest(db, team.id, c.req.param('requestId'))
+    if (!record) return c.json({ error: 'Verification request not found' }, 404)
+    if (
+      record.state !== 'pending' &&
+      record.state !== 'awaiting_approval' &&
+      record.state !== 'running'
+    ) {
+      return c.json({ error: `Verification request is already ${record.state}` }, 409)
+    }
+    // A running turn is aborted, and the dispatcher settles the attempt as cancelled.
+    const aborted = cancelAgent(record.recipientAgentId)
+    if (!aborted) {
+      if (record.state === 'pending') {
+        // Nothing owns it yet, so it is cancelled directly rather than left dispatchable.
+        setRequestState(db, record.id, 'cancelled')
+      } else {
+        return c.json({ error: 'Verification request is not cancelled yet; retry' }, 409)
+      }
+    }
+    return c.json({ request: await readVerificationReport(db, paths, team.id, record.id) })
+  } catch (error) {
+    return reviewFailure(c, error)
+  }
+})
+
+async function report(db: BazilionDb, paths: Paths, record: VerificationRequestRecord) {
+  return readVerificationReport(db, paths, record.teamId, record.id)
+}
+
+async function applicabilityFor(
+  db: BazilionDb,
+  paths: Paths,
+  teamId: string,
+  record: VerificationRequestRecord,
+) {
+  const applicability = await readSnapshotApplicability(db, paths, teamId, record.snapshotId)
+  return {
+    comparison: applicability.comparison,
+    testedSnapshotId: applicability.comparison === 'unknown' ? null : record.snapshotId,
+  }
 }

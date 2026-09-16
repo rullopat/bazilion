@@ -160,6 +160,29 @@ export function createClient(cfg: ClientConfig) {
           input,
         ),
     },
+    /**
+     * Specialist verification of a captured code change (BAZ-044).
+     *
+     * Creating a request does not execute anything: the verification state machine claims and runs
+     * it, and a blocked capture comes back as a typed blocker rather than an error.
+     */
+    verifications: (teamId: string) => {
+      const base = `/api/teams/${encodeURIComponent(teamId)}/verifications`
+      return {
+        list: (): Promise<import('@bazilion/api-types').VerificationListResponse> =>
+          request('GET', base),
+        show: (requestId: string): Promise<import('@bazilion/api-types').VerificationResponse> =>
+          request('GET', `${base}/${encodeURIComponent(requestId)}`),
+        create: (
+          input: import('@bazilion/api-types').CreateVerificationRequest,
+        ): Promise<
+          | import('@bazilion/api-types').VerificationResponse
+          | import('@bazilion/api-types').VerificationBlockedResponse
+        > => request('POST', base, input),
+        cancel: (requestId: string): Promise<import('@bazilion/api-types').VerificationResponse> =>
+          request('POST', `${base}/${encodeURIComponent(requestId)}/cancel`),
+      }
+    },
     /** Read-only Git change review and bounded source snapshots (BAZ-042). */
     repositoryReview: (teamId: string) => {
       const base = `/api/teams/${encodeURIComponent(teamId)}/review`

@@ -14,6 +14,7 @@ import { teamCodingLogCommand } from './team-coding-log.ts'
 import { teamEnvironmentCommand } from './team-environment.ts'
 import { teamPolicyCommand } from './team-policy.ts'
 import { teamReviewCommand } from './team-review.ts'
+import { verifyCommand } from './team-verify.ts'
 
 const addCmd = defineCommand({
   meta: {
@@ -251,6 +252,7 @@ export const teamCommand = defineCommand({
     environment: teamEnvironmentCommand,
     log: teamCodingLogCommand,
     review: teamReviewCommand,
+    verify: verifyCommand,
     context: contextCmd,
     add: addCmd,
     list: listCmd,
