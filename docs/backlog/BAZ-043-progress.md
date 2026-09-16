@@ -1,7 +1,7 @@
 # BAZ-043 — progress
 
-Working branch: `feat/baz-043-review-handoff` (targeting **v0.19.0**, which also carries the BAZ-044 gap
-closures). The story file stays in `todo/` until it ships; this log records what actually exists.
+Shipped in **v0.19.0** on 2026-09-16, together with the BAZ-044 gap closures. The story now lives in
+`done/`; this log records what actually exists.
 
 ## Slice plan
 

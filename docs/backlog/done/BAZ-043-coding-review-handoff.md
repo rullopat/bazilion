@@ -1,11 +1,13 @@
 ---
 id: BAZ-043
 title: Revision-bound coding review and handoff
-status: in_progress
+status: done
 size: L
 created: 2026-09-07
 refined: 2026-09-09
 priority: medium
+shipped: 2026-09-16
+release: v0.19.0
 note: Later coding increment; review a captured change and prepare an evidence-backed handoff without automatic publication.
 ---
 
@@ -164,3 +166,30 @@ general approval workflows, and treating peer review as an execution authorizati
   through a future dedicated integration may be labelled verified.
 - Commit, push and PR creation remain outside this story. A later story must define exact selected
   changes, credential ownership and explicit authorization before adding publication actions.
+
+## As-built release record
+
+Shipped in **v0.19.0** on 2026-09-16, together with three closures from BAZ-044's gap work. Implemented
+across eight slices; see the [progress log](../BAZ-043-progress.md) and the
+[acceptance record](../BAZ-043-acceptance.md).
+
+**Delivered as scoped.** One packet binds one captured revision; the reviewer's capability is four read-only
+tools with no execution, editing, browsing or publication verb; findings are append-only with explicit
+resolution; completion facts are separate and operator-reported where nothing verifies them; exports go
+through BAZ-034's durable publication; file links name their host and never turn a path into a command.
+
+**Deltas from the plan worth knowing.**
+
+- **The reviewer has no messaging capability**, although the refinement note listed it. The daemon delivers
+  the result through the canonical messenger, so there is one owner rather than two — and the inbox-wake path
+  the story warns about is precisely the one that must never execute a review.
+- **Content is only the reviewed revision's while the tree still matches.** A BAZ-042 manifest stores paths
+  and digests, never bytes, so a patch cannot be reproduced for an old revision. The reviewer is told that
+  instead of being shown later code, and a finding made then is `unverified`.
+- **`checksCurrent` is derived, not asserted**, from executor-owned evidence for the same revision.
+- **Widening `agent_results` provenance** was the one schema change the export delivery required: a result is
+  now a turn's tool call *or* a review export, with paired constraints so neither can publish as the other.
+
+**Known limits, stated rather than implied:** the web section is typechecked and built but not
+browser-observed; whether a viewer's browser is on the daemon host is stated in the file link rather than
+detected; and the review runs a restricted turn whose posture was not separately observed in a container.

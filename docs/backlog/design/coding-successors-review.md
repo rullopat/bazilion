@@ -15,7 +15,7 @@ work and make its evidence useful. They must not require setting up Team checks 
 | --- | --- | --- |
 | [041](../done/BAZ-041-coding-command-verification.md) | Basic execution receipts, redaction, cancellation and peer reads already exist; old scope mixed streaming, storage, snapshotting and a check console. | Live command progress and bounded retained diagnostics in chat. Extend existing receipts and authorized output access; no saved checks or new runner. |
 | [042](../done/BAZ-042-git-change-review.md) | Genuine missing user value, but manual baseline setup and split snapshot ownership could recreate the old UX. | Agent captures before edits; show the resulting changes and evidence beside chat. Own source manifests and command applicability here. |
-| [043](../todo/BAZ-043-coding-review-handoff.md) | Operator-created packets were the primary entry point; ordinary delegation already exists. | Agent-requested review of an immutable change with enforced read-only capability. Chat findings first, packet/export details second. |
+| [043](../done/BAZ-043-coding-review-handoff.md) | Operator-created packets were the primary entry point; ordinary delegation already exists. | Agent-requested review of an immutable change with enforced read-only capability. Chat findings first, packet/export details second. |
 | [044](../done/BAZ-044-specialist-verification-handoff.md) | Named operator-reviewed checks and new peer access duplicated or contradicted 040. | Capture task-selected commands and actual environment; restrict specialist execution to that request and bind results to code. Reuse peer access and yield/resume. |
 
 ## Recommended order

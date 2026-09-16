@@ -202,7 +202,9 @@ API in `apps/daemon/src/core/`: `openSecrets(db, password)` and `openConfig(db)`
   `~/.bazilion`; do not add ALTER migrations, legacy-table importers, or API/URL/filesystem
   compatibility adapters. The bootstrap runner remains idempotent for an already-current schema.
 
-## Implemented for the next release (don't re-implement)
+## Implemented and released invariants (don't re-implement)
+
+These are shipped and load-bearing; none of them is a proposal.
 
 - **BAZ-034: durable Agent results.** Explicit `deliver_file` calls await turn-bound daemon IPC
   publication into `agent_results` in `Paths.db`. Bytes, SHA-256 and source provenance commit

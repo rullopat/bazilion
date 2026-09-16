@@ -1,6 +1,7 @@
 # BAZ-043 — verification of the acceptance criteria
 
-Written against the branch `feat/baz-043-review-handoff` (targeting **v0.19.0**). Each criterion is marked
+Shipped in **v0.19.0** on 2026-09-16 (commit `478f6b9` is the release commit; published from `acf9346`).
+Written against the branch `feat/baz-043-review-handoff`. Each criterion is marked
 **Observed** (watched happening, including with a real model), **Proven locally** (tests and the release
 gate), or **Not claimed**, and the caveats at the end are the honest remainder rather than a summary of
 successes.
