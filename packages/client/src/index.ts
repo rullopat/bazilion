@@ -221,6 +221,10 @@ export function createClient(cfg: ClientConfig) {
           input: import('@bazilion/api-types').RecordReviewConclusionRequest,
         ): Promise<import('@bazilion/api-types').ReviewPacketResponse> =>
           request('POST', `${item(packetId)}/conclusion`, input),
+        export: (
+          packetId: string,
+        ): Promise<{ export: import('@bazilion/api-types').ReviewExport }> =>
+          request('GET', `${item(packetId)}/export`),
       }
     },
     /** Read-only Git change review and bounded source snapshots (BAZ-042). */

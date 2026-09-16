@@ -714,6 +714,24 @@
       "owner": "BAZ-044",
       "file": "apps/daemon/test/runtime/worker-runtime.test.ts",
       "test": "minimal worker runtime > a restricted turn cannot be handed the requester capability"
+    },
+    {
+      "id": "REVIEW-UNVERIFIED-FINDING-CANNOT-BE-RESOLVED",
+      "owner": "BAZ-043",
+      "file": "apps/daemon/test/core/review-packets.test.ts",
+      "test": "an unverified finding cannot be resolved, and resolution needs proof"
+    },
+    {
+      "id": "REVIEW-HANDOFF-REFUSES-TO-SHOW-DIFFERENT-CODE",
+      "owner": "BAZ-043",
+      "file": "apps/daemon/test/lib/review-export.test.ts",
+      "test": "a moved tree yields no patch, and says why instead of showing different code"
+    },
+    {
+      "id": "REVIEW-REFUSAL-WRITES-NOTHING",
+      "owner": "BAZ-043",
+      "file": "apps/daemon/test/lib/review-capture.test.ts",
+      "test": "every unestablishable input is refused, and a refusal writes nothing"
     }
   ]
 }

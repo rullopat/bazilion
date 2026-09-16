@@ -328,6 +328,41 @@ const snapshotCmd = defineCommand({
   },
 })
 
+const exportCmd = defineCommand({
+  meta: { name: 'export', description: 'Print the patch and handoff text for a packet’s revision' },
+  args: {
+    ...slug,
+    ...packetId,
+    patch: { type: 'boolean', description: 'Print only the unified patch' },
+    handoff: { type: 'boolean', description: 'Print only the handoff text' },
+    json: { type: 'boolean', description: 'Emit the export as JSON' },
+  },
+  async run({ args }) {
+    const client = createClient()
+    try {
+      const { export: result } = await client.reviewPackets(args.id).export(args.packetId)
+      if (args.json) {
+        console.log(JSON.stringify(result, null, 2))
+        return
+      }
+      if (args.patch || !args.handoff)
+        console.log(result.patch || '(no patch: see the handoff limitations)')
+      if (!args.patch) {
+        if (!args.handoff) console.log('')
+        console.log(result.handoff)
+      }
+      if (!args.patch && result.limitations.length > 0) {
+        console.error(
+          `\nhandoff names ${result.limitations.length} limitation(s), and a conclusion is not acceptance`,
+        )
+      }
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error))
+      process.exit(1)
+    }
+  },
+})
+
 export const teamReviewPacketCommand = defineCommand({
   meta: {
     name: 'packet',
@@ -341,6 +376,7 @@ export const teamReviewPacketCommand = defineCommand({
     finding: findingCmd,
     resolve: resolveCmd,
     conclude: concludeCmd,
+    export: exportCmd,
     snapshots: snapshotCmd,
   },
 })

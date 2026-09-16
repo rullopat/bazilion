@@ -84,6 +84,7 @@ import {
   readReviewPacketReport,
   readReviewPacketSummaries,
 } from '../lib/review/capture.ts'
+import { buildReviewExport } from '../lib/review/export.ts'
 import { validateTopicNameFormat } from '../lib/telegram/naming.ts'
 import { syncGroupTopicNames } from '../lib/telegram/topic-rename.ts'
 import {
@@ -415,6 +416,19 @@ teamsRouter.post('/:id/reviews/:packetId/conclusion', async (c) => {
     }
     return reviewFailure(c, error)
   }
+})
+
+teamsRouter.get('/:id/reviews/:packetId/export', async (c) => {
+  const { db, paths } = getCtx()
+  c.header('Cache-Control', 'no-store')
+  const result = await buildReviewExport(db, paths, c.req.param('id'), c.req.param('packetId'))
+  if (result.kind === 'refused') {
+    return c.json(
+      { error: result.refusal.detail, code: result.refusal.reason },
+      result.refusal.reason === 'packet_unavailable' ? 404 : 409,
+    )
+  }
+  return c.json({ export: result.export })
 })
 
 teamsRouter.get('/:id/review/snapshots', (c) => {
