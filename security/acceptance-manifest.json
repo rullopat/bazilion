@@ -738,6 +738,12 @@
       "owner": "BAZ-044",
       "file": "apps/daemon/test/lib/verification-request-capability.test.ts",
       "test": "an unknown specialist is refused with the members that could be asked"
+    },
+    {
+      "id": "MODEL-FIREWORKS-HAS-OWN-ENDPOINT",
+      "owner": "BAZ-031",
+      "file": "apps/daemon/test/runtime/pi-model-routing.test.ts",
+      "test": "fireworks has its own endpoint, so a model newer than the catalog stays on Fireworks"
     }
   ]
 }

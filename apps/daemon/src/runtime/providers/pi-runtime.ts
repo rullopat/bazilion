@@ -172,6 +172,14 @@ export function providerBaseUrl(providerName: string, env: NodeJS.ProcessEnv): s
       return env.LLAMACPP_URL ?? LOCAL_PROVIDERS.llamacpp?.baseUrl
     case 'vercel-ai-gateway':
       return env.AI_GATEWAY_BASE_URL
+    case 'fireworks':
+      // Fireworks serves every model it hosts, including ones released after this build's catalog, from
+      // one endpoint of its own. Pinning it preserves the fail-closed rule's actual intent — an
+      // uncatalogued id must never be built against *another vendor's* default while carrying this
+      // provider's credential — and makes an upstream model usable without waiting for a catalog update.
+      // The override exists so an operator can point at a proxy, explicitly, the same way LMSTUDIO_URL
+      // works; that is the documented remedy the unknown-model error was already suggesting.
+      return env.FIREWORKS_BASE_URL ?? 'https://api.fireworks.ai/inference'
     default:
       return undefined
   }

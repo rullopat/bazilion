@@ -66,3 +66,31 @@ test('an explicit base URL override wins for an uncatalogued model', async () =>
   const model = resolvePiModel(runtime, 'lmstudio', 'custom', 'http://127.0.0.1:1234/v1')
   expect(model.baseUrl).toBe('http://127.0.0.1:1234/v1')
 })
+
+test('fireworks has its own endpoint, so a model newer than the catalog stays on Fireworks', async () => {
+  // The fail-closed rule exists to stop an uncatalogued id reaching *another vendor's* default with this
+  // provider's credential. Fireworks publishes one inference endpoint for everything it hosts, so pinning
+  // it keeps that intent while letting an upstream model (here the 4.1 flash, absent from this build's
+  // catalog) be used without waiting for a catalog update.
+  const endpoint = providerBaseUrl('fireworks', {})
+  expect(endpoint).toContain('api.fireworks.ai')
+  expect(endpoint).not.toContain('openai.com')
+
+  const runtime = await createBazilionPiRuntime({ providerName: 'fireworks', env: {} })
+  const model = resolvePiModel(
+    runtime,
+    'fireworks',
+    'accounts/fireworks/models/deepseek-v4p1-flash',
+    endpoint,
+  )
+  expect(model.provider).toBe('fireworks')
+  expect(model.baseUrl).toContain('api.fireworks.ai')
+
+  // An operator can still point Fireworks at a proxy, explicitly, which is the remedy the unknown-model
+  // error names — but it has to be stated rather than inherited.
+  expect(providerBaseUrl('fireworks', { FIREWORKS_BASE_URL: 'https://proxy.internal/v1' })).toBe(
+    'https://proxy.internal/v1',
+  )
+  // An unknown provider still has no endpoint, so its uncatalogued ids are still refused.
+  expect(providerBaseUrl('fireworks-not-a-provider', {})).toBeUndefined()
+})
