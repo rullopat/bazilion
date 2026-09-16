@@ -57,16 +57,17 @@ Writer coordination already exists; checkout lifecycle and deployment integratio
 later from a concrete use case. Automatic Git publication, managed services/previews and ambient Pi
 extension loading remain separate, uncommitted scope.
 
-## Todo (2)
+## Todo (1)
 
 | ID | Title | Size | Notes |
 |----|-------|------|-------|
 | [BAZ-043](todo/BAZ-043-coding-review-handoff.md) | Revision-bound coding review and handoff | L | Agent-requested static review of captured changes; enforced read-only scope; publication deferred |
-| [BAZ-044](todo/BAZ-044-specialist-verification-handoff.md) | Specialist verification of a captured code change | L | After 042: formal captured-change testing; reuse existing same-Team delegation and receipts |
 
-## In Progress (0)
+## In Progress (1)
 
-Nothing in flight. Move an item here from `todo/` when implementation starts.
+| ID | Title | Size | Notes |
+|----|-------|------|-------|
+| [BAZ-044](in_progress/BAZ-044-specialist-verification-handoff.md) | Specialist verification of a captured code change | L | Snapshot-bound finite checks handed to a selected same-Team specialist; slice plan and records in the [progress log](BAZ-044-progress.md) |
 
 ## Done (37)
 

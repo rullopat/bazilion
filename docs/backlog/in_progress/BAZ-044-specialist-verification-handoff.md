@@ -1,7 +1,7 @@
 ---
 id: BAZ-044
 title: Specialist verification of a captured code change
-status: todo
+status: in_progress
 size: L
 created: 2026-09-07
 refined: 2026-09-09

@@ -27,7 +27,16 @@ export interface CodingEnvironmentStatus {
   image: string
   workspaceRecovery: 'none' | 'required' | 'restored'
 }
-export type CodingPurpose = 'runtime' | 'dependency' | 'prepare' | 'build' | 'test'
+export type CodingPurpose =
+  | 'runtime'
+  | 'dependency'
+  | 'prepare'
+  | 'build'
+  | 'test'
+  // BAZ-044: set only by the specialist verification runner, which executes a captured check on
+  // behalf of a typed request. The `coding_command` tool deliberately does not offer it: an Agent
+  // must not be able to label its own ad hoc command as someone else's verification.
+  | 'verification'
 export interface CodingCommandInput {
   command: string
   cwd: string

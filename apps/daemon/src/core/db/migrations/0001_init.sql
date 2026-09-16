@@ -806,3 +806,107 @@ CREATE TABLE source_snapshots (
 );
 CREATE INDEX source_snapshots_retention ON source_snapshots(expires_at, snapshot_id);
 CREATE INDEX source_snapshots_team_time ON source_snapshots(team_id, created_at, snapshot_id);
+
+-- BAZ-044: specialist verification of a captured code change.
+--
+-- One typed request binds exactly one immutable change (a BAZ-042 snapshot) to a finite set of
+-- captured commands and the BAZ-040 admitted environment, and one selected same-Team specialist.
+-- This is a bounded dispatch-and-evidence record, not a workflow engine: there are no stages,
+-- transformations, approver assignments, automatic retries or check substitution.
+CREATE TABLE verification_requests (
+  id TEXT PRIMARY KEY,
+  team_id TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  requester_kind TEXT NOT NULL CHECK (requester_kind IN ('agent', 'operator')),
+  requester_agent_id TEXT,
+  recipient_agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+  -- Canonical messaging identity when the request rides the existing peer message path.
+  message_id TEXT REFERENCES messages(id) ON DELETE SET NULL,
+  -- BAZ-035 conversation identity of the source task, when there is one.
+  source_session_id TEXT,
+  -- BAZ-042 evidence identity. Deliberately not a foreign key: a snapshot has its own seven-day
+  -- window, and a request whose evidence is gone must report that rather than resolve to a
+  -- different tree.
+  snapshot_id TEXT NOT NULL,
+  snapshot_complete INTEGER NOT NULL CHECK (snapshot_complete IN (0, 1)),
+  head TEXT,
+  base_oid TEXT NOT NULL,
+  -- BAZ-040 admitted environment facts resolved at admission and frozen with the request.
+  environment_json TEXT NOT NULL CHECK (json_valid(environment_json)),
+  summary TEXT CHECK (summary IS NULL OR length(CAST(summary AS BLOB)) <= 2000),
+  state TEXT NOT NULL CHECK (state IN (
+    'pending', 'awaiting_approval', 'blocked', 'running',
+    'completed', 'failed', 'cancelled', 'uncertain'
+  )),
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL,
+  CHECK (expires_at > created_at),
+  -- An operator request has no Agent requester; an Agent request must name one.
+  CHECK ((requester_kind = 'agent') = (requester_agent_id IS NOT NULL)),
+  -- A specialist never verifies its own request.
+  CHECK (requester_agent_id IS NULL OR requester_agent_id != recipient_agent_id)
+);
+CREATE INDEX verification_requests_team_time
+  ON verification_requests(team_id, created_at DESC, id);
+CREATE INDEX verification_requests_recipient_dispatch
+  ON verification_requests(recipient_agent_id, state, created_at);
+CREATE INDEX verification_requests_retention ON verification_requests(expires_at, id);
+
+-- The captured contract: at most eight checks, each with an exact command, cwd, purpose and
+-- timeout. Immutable once written, so a later attempt cannot reinterpret what was agreed.
+CREATE TABLE verification_checks (
+  request_id TEXT NOT NULL REFERENCES verification_requests(id) ON DELETE CASCADE,
+  ordinal INTEGER NOT NULL CHECK (ordinal BETWEEN 0 AND 7),
+  command TEXT NOT NULL CHECK (length(CAST(command AS BLOB)) BETWEEN 1 AND 2000),
+  cwd TEXT NOT NULL CHECK (length(CAST(cwd AS BLOB)) <= 1000),
+  purpose TEXT NOT NULL CHECK (length(CAST(purpose AS BLOB)) BETWEEN 1 AND 500),
+  timeout_ms INTEGER NOT NULL CHECK (timeout_ms BETWEEN 1000 AND 300000),
+  PRIMARY KEY (request_id, ordinal)
+);
+
+-- Execution attempts. Claiming is transactional and leased so exactly one owner dispatches a
+-- request; a claim left by an interrupted process becomes uncertain and is never automatically
+-- replayed. An explicit rerun is a new attempt that links to the result it supersedes.
+CREATE TABLE verification_attempts (
+  id TEXT PRIMARY KEY,
+  request_id TEXT NOT NULL REFERENCES verification_requests(id) ON DELETE CASCADE,
+  attempt_number INTEGER NOT NULL CHECK (attempt_number >= 1),
+  supersedes_attempt_id TEXT REFERENCES verification_attempts(id) ON DELETE SET NULL,
+  state TEXT NOT NULL CHECK (state IN (
+    'claimed', 'running', 'completed', 'failed', 'cancelled', 'uncertain'
+  )),
+  lease_owner TEXT,
+  lease_expires_at INTEGER,
+  started_at INTEGER,
+  finished_at INTEGER,
+  error TEXT CHECK (error IS NULL OR length(CAST(error AS BLOB)) <= 2000),
+  created_at INTEGER NOT NULL,
+  CHECK ((state IN ('claimed', 'running')) = (finished_at IS NULL)),
+  CHECK ((state IN ('claimed', 'running')) = (lease_owner IS NOT NULL)),
+  CHECK (state != 'claimed' OR started_at IS NULL),
+  UNIQUE (request_id, attempt_number)
+);
+CREATE UNIQUE INDEX verification_attempts_one_open_per_request
+  ON verification_attempts(request_id) WHERE finished_at IS NULL;
+CREATE INDEX verification_attempts_lease ON verification_attempts(state, lease_expires_at);
+
+-- Executor-owned outcomes, one row set per attempt. History is never rewritten: a rerun records
+-- its own outcomes beside the previous attempt's, so the earlier receipt stays readable.
+CREATE TABLE verification_check_outcomes (
+  attempt_id TEXT NOT NULL REFERENCES verification_attempts(id) ON DELETE CASCADE,
+  ordinal INTEGER NOT NULL CHECK (ordinal BETWEEN 0 AND 7),
+  state TEXT NOT NULL CHECK (state IN (
+    'not_executed', 'succeeded', 'failed', 'skipped', 'blocked',
+    'timed_out', 'cancelled', 'unknown'
+  )),
+  command_id TEXT REFERENCES coding_commands(id) ON DELETE SET NULL,
+  exit_code INTEGER,
+  started_at INTEGER,
+  finished_at INTEGER,
+  PRIMARY KEY (attempt_id, ordinal),
+  CHECK ((state = 'not_executed') = (finished_at IS NULL)),
+  -- A receipt exists exactly for the outcomes that executed. A skipped, blocked or interrupted
+  -- check reports that truth instead of borrowing a receipt from another run.
+  CHECK ((command_id IS NOT NULL) = (state IN ('succeeded', 'failed', 'timed_out', 'cancelled'))),
+  CHECK (exit_code IS NULL OR state IN ('succeeded', 'failed'))
+);
+CREATE INDEX verification_check_outcomes_command ON verification_check_outcomes(command_id);
