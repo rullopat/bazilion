@@ -816,6 +816,24 @@
       "owner": "BAZ-043",
       "file": "apps/daemon/test/lib/review-capability.test.ts",
       "test": "a finished turn cannot read or write through the capability"
+    },
+    {
+      "id": "REVIEW-EXPORT-IS-A-PUBLICATION-WITH-PROVENANCE",
+      "owner": "BAZ-043",
+      "file": "apps/daemon/test/lib/review-export-delivery.test.ts",
+      "test": "a delivered export is a durable, hashed artifact owned by the reviewer"
+    },
+    {
+      "id": "REVIEW-HELD-EXPORT-IS-UNREADABLE-BUT-RELEASABLE",
+      "owner": "BAZ-043",
+      "file": "apps/daemon/test/lib/review-export-delivery.test.ts",
+      "test": "an approval-held delivery leaves the bytes unreadable, and the approval can release them"
+    },
+    {
+      "id": "REVIEW-DENIED-EXPORT-RELEASES-NOTHING",
+      "owner": "BAZ-043",
+      "file": "apps/daemon/test/lib/review-export-delivery.test.ts",
+      "test": "a denied delivery does not release anything, and an operator-only packet is refused"
     }
   ]
 }

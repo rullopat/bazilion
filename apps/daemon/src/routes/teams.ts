@@ -86,6 +86,7 @@ import {
   readReviewPacketReport,
   readReviewPacketSummaries,
 } from '../lib/review/capture.ts'
+import { deliverReviewExport } from '../lib/review/deliver-export.ts'
 import { cancelReviewDispatch } from '../lib/review/dispatch.ts'
 import { buildReviewExport } from '../lib/review/export.ts'
 import { buildFileLink, openFileLink } from '../lib/review/file-link.ts'
@@ -420,6 +421,18 @@ teamsRouter.post('/:id/reviews/:packetId/conclusion', async (c) => {
     }
     return reviewFailure(c, error)
   }
+})
+
+teamsRouter.post('/:id/reviews/:packetId/export/deliver', async (c) => {
+  const { db, paths } = getCtx()
+  c.header('Cache-Control', 'no-store')
+  const packet = getTeamReviewPacket(db, c.req.param('id'), c.req.param('packetId'))
+  if (!packet) return c.json({ error: 'Review packet not found' }, 404)
+  const delivery = await deliverReviewExport(db, paths, packet.id)
+  if (delivery.kind === 'refused') return c.json({ delivery }, 409)
+  // A held or denied delivery is a result with a reason, not a failure: the export exists, unreadable, and
+  // the approval queue names it.
+  return c.json({ delivery })
 })
 
 teamsRouter.post('/:id/reviews/:packetId/cancel', async (c) => {

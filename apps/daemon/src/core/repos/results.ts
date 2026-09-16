@@ -5,18 +5,31 @@ import type { BazilionDb } from '../db/client.ts'
 export const MAX_RESULT_BYTES = 25 * 1024 * 1024
 export const MAX_RETAINED_RESULT_BYTES = 1024 * 1024 * 1024
 
-const columns = `id, team_id AS teamId, agent_id AS agentId, session_id AS sessionId,
-  tool_call_id AS toolCallId, name, mime_type AS mimeType, byte_length AS byteLength,
+const columns = `id, team_id AS teamId, agent_id AS agentId, source_kind AS sourceKind,
+  session_id AS sessionId, tool_call_id AS toolCallId, review_packet_id AS reviewPacketId,
+  review_revision AS reviewRevision, name, mime_type AS mimeType, byte_length AS byteLength,
   sha256, created_at AS createdAt, released_at AS releasedAt, deleted_at AS deletedAt`
 
+/**
+ * What produced a result: a turn's `deliver_file` call, or an artifact a daemon surface produced from a
+ * review packet.
+ *
+ * The source is inferred from which identity is supplied rather than stated twice, and the database checks
+ * that exactly one pair is present — so neither kind can be published under the other's identity. Existing
+ * turn publishers are unchanged: naming a session and tool call *is* the turn source.
+ */
 export interface PublishResultInput {
   teamId: string
   agentId: string
-  sessionId: string
-  toolCallId: string
   name: string
   mimeType: string
   bytes: Uint8Array
+  /** A turn's tool call: the source unless a review packet is named instead. */
+  sessionId?: string
+  toolCallId?: string
+  /** A review export: the packet and the revision it describes. */
+  reviewPacketId?: string
+  reviewRevision?: string
 }
 
 function validIdentity(value: unknown): value is string {
@@ -32,13 +45,25 @@ export function getReceipt(db: BazilionDb, id: string): AgentResult | null {
 
 /** Publication does not release a result. The existing egress authorizer owns release. */
 export function publish(db: BazilionDb, input: PublishResultInput): AgentResult {
-  if (
-    !validIdentity(input.teamId) ||
-    !validIdentity(input.agentId) ||
-    !validIdentity(input.sessionId) ||
-    !validIdentity(input.toolCallId)
-  )
+  if (!validIdentity(input.teamId) || !validIdentity(input.agentId)) {
     throw new Error('Invalid result provenance')
+  }
+  // Exactly one source, checked here as well as by the table's paired constraints: a result whose
+  // provenance is ambiguous would be one whose access rules nobody can reason about.
+  const source = input.reviewPacketId !== undefined ? 'review_packet' : 'session_tool'
+  if (source === 'session_tool') {
+    if (!validIdentity(input.sessionId) || !validIdentity(input.toolCallId)) {
+      throw new Error('Invalid result provenance')
+    }
+    if (input.reviewRevision !== undefined) throw new Error('Invalid result provenance')
+  } else if (
+    !validIdentity(input.reviewPacketId) ||
+    !validIdentity(input.reviewRevision) ||
+    input.sessionId !== undefined ||
+    input.toolCallId !== undefined
+  ) {
+    throw new Error('Invalid result provenance')
+  }
   if (
     typeof input.name !== 'string' ||
     !input.name ||
@@ -58,11 +83,24 @@ export function publish(db: BazilionDb, input: PublishResultInput): AgentResult 
   const bytes = Buffer.from(input.bytes)
   const sha256 = createHash('sha256').update(bytes).digest('hex')
   return db.raw.transaction(() => {
-    const existing = db.raw
-      .query<AgentResult, [string, string, string]>(
-        `SELECT ${columns} FROM agent_results WHERE agent_id = ? AND session_id = ? AND tool_call_id = ?`,
-      )
-      .get(input.agentId, input.sessionId, input.toolCallId)
+    // Retry idempotency is keyed on the source: the same tool call, or the same export of the same
+    // revision of the same packet.
+    const existing =
+      source === 'session_tool'
+        ? db.raw
+            .query<AgentResult, [string, string, string]>(
+              `SELECT ${columns} FROM agent_results
+               WHERE agent_id = ? AND source_kind = 'session_tool' AND session_id = ? AND tool_call_id = ?`,
+            )
+            // Narrowed by the validation above; the assertion is what the strings are.
+            .get(input.agentId, input.sessionId as string, input.toolCallId as string)
+        : db.raw
+            .query<AgentResult, [string, string, string]>(
+              `SELECT ${columns} FROM agent_results
+               WHERE agent_id = ? AND source_kind = 'review_packet' AND review_packet_id = ?
+                 AND review_revision = ?`,
+            )
+            .get(input.agentId, input.reviewPacketId as string, input.reviewRevision as string)
     if (existing) {
       if (existing.deletedAt !== null) throw new Error('Captured result was deleted')
       if (
@@ -94,14 +132,18 @@ export function publish(db: BazilionDb, input: PublishResultInput): AgentResult 
     const id = randomUUID()
     db.raw.run(
       `INSERT INTO agent_results
-      (id, team_id, agent_id, session_id, tool_call_id, name, mime_type, byte_length, sha256, created_at, bytes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (id, team_id, agent_id, source_kind, session_id, tool_call_id, review_packet_id, review_revision,
+       name, mime_type, byte_length, sha256, created_at, bytes)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         input.teamId,
         input.agentId,
-        input.sessionId,
-        input.toolCallId,
+        source,
+        source === 'session_tool' ? input.sessionId : null,
+        source === 'session_tool' ? input.toolCallId : null,
+        source === 'review_packet' ? input.reviewPacketId : null,
+        source === 'review_packet' ? input.reviewRevision : null,
         input.name,
         input.mimeType,
         bytes.byteLength,

@@ -440,12 +440,34 @@ const exportCmd = defineCommand({
     ...slug,
     ...packetId,
     patch: { type: 'boolean', description: 'Print only the unified patch' },
+    deliver: {
+      type: 'boolean',
+      description:
+        'Publish the export as a durable artifact for the requesting Agent (subject to policy)',
+    },
     handoff: { type: 'boolean', description: 'Print only the handoff text' },
     json: { type: 'boolean', description: 'Emit the export as JSON' },
   },
   async run({ args }) {
     const client = createClient()
     try {
+      if (args.deliver) {
+        const { delivery } = await client.reviewPackets(args.id).deliverExport(args.packetId)
+        if (delivery.kind === 'delivered') {
+          console.log(`delivered: ${delivery.resultName} (result ${delivery.resultId})`)
+          console.log(
+            delivery.noticeHeld
+              ? 'the requester’s notice is held for approval; the artifact itself is available'
+              : 'the requester was told where to find it',
+          )
+        } else if (delivery.kind === 'held') {
+          console.log(`held for approval: ${delivery.detail}`)
+          console.log(`result ${delivery.resultId} stays unreadable until it is released`)
+        } else {
+          console.log(`not delivered (${delivery.kind}): ${delivery.detail}`)
+        }
+        return
+      }
       const { export: result } = await client.reviewPackets(args.id).export(args.packetId)
       if (args.json) {
         console.log(JSON.stringify(result, null, 2))

@@ -43,9 +43,8 @@ These are the things a reader should know are *not* done, or are done differentl
   delivered by the daemon through the canonical messenger, so there is one owner instead of two, and a
   restricted turn with messaging would be a wider surface for no gain. The route that would need it — an
   inbox wake — is exactly the path that must never execute a review.
-- **An export cannot yet be delivered to an agent.** The story asks exports to go through BAZ-034's durable
-  publication with the same approval holds; today the export is operator-facing HTTP. Criterion 4 is
-  therefore only partly met.
+- **Exports are delivered through BAZ-034's publication** (`…/export/deliver`), held until the shipped egress
+  authorizer releases them. Widening `agent_results` provenance is the one schema change this required.
 - **The workspace is not reserved during a review.** Static review reads a captured revision, so it does not
   hold the Team's checkout — which is also what lets the coder keep working while its change is reviewed. The
   consequence is that a reviewer can read a tree that moves underneath it; the content rule above is what

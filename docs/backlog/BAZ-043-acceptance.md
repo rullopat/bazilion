@@ -77,9 +77,21 @@ diff of different code, and the export says why instead of showing one. Unresolv
 named in the export itself, and a handoff with open findings says it is not a statement that the change is
 ready. Access is authenticated HTTP; a packet past its window is refused rather than exported empty.
 
-**Not claimed: the Agent-delivery path.** The story asks exports to use BAZ-034's durable publication so an
-export cannot bypass an approval-held Agent delivery. That wiring does **not** exist: the export is
-operator-facing HTTP only. Criterion 4 is therefore **partly met**, and the gap is stated rather than implied.
+**Delivered as a publication, not a download.** `POST …/export/deliver` (CLI `packet export --deliver`)
+publishes the export through BAZ-034's contract, and adds no second mechanism: the bytes go into
+`agent_results` **held**, with a SHA-256 and a provenance naming the packet **and** the revision, owned by
+the reviewer whose work it describes; the shipped egress authorizer then decides, capturing the same closed
+`agent_result` tuple every other publication uses; and only an `allow` releases the bytes, after which the
+requester is told where to find them. This required widening provenance — a result is now either a turn's
+`deliver_file` call or a review export, and the table's paired constraints make it impossible to publish
+under the wrong identity.
+
+**Observed.** A held export is genuinely unreadable, not merely unreported: it is absent from the library,
+cannot be downloaded, and no notice was sent — while the approval names exactly that artifact, and its plan
+validates as an `agent_result` delivery so the shipped dispatcher can release it (asserted, because a hold
+whose plan the dispatcher rejects would be stuck forever — the failure mode a wrong origin or attempt kind
+produces). A denied edge releases nothing, and an operator-only packet is refused because there is nobody to
+deliver to. Re-delivering the same revision returns the same receipt rather than duplicating bytes.
 
 ## 5. Editor/file links identify host, mapping and live-versus-snapshot; hostile paths cannot become commands
 
@@ -109,7 +121,7 @@ path is observed with a real model through the real daemon.
 
 ## Defect review
 
-Three findings against my own work, all fixed on the branch:
+Four findings against my own work, all fixed on the branch:
 
 - **A missing implementation, found by checking the story rather than the tests.** The story requires a coding
   Agent to create a packet through turn-bound IPC; only the operator route existed. That is the same class as
@@ -123,6 +135,10 @@ Three findings against my own work, all fixed on the branch:
   rewritten.
 - **A fact that could never be true.** `facts.checksCurrent` was hardcoded `false`. It is now derived from
   BAZ-041 evidence for the same revision, which is what makes it a fact rather than a placeholder.
+- **A publication tuple that would not have been releasable.** My first export delivery used its own
+  `origin`/`attemptKind` with the shipped `agent_result` payload kind — which would have captured an approval
+  the dispatcher's plan validator rejects, i.e. an artifact held forever with a release that cannot happen.
+  The plan is now validated in the test, so the hold is proven releasable rather than assumed.
 
 ## Validation
 

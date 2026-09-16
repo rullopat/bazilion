@@ -225,6 +225,25 @@ export function createClient(cfg: ClientConfig) {
           packetId: string,
         ): Promise<{ export: import('@bazilion/api-types').ReviewExport }> =>
           request('GET', `${item(packetId)}/export`),
+        /**
+         * Publish the export as a durable artifact through BAZ-034's contract. `held` and `denied` are
+         * outcomes, not errors: the bytes exist and stay unreadable, and an approval names them.
+         */
+        deliverExport: (
+          packetId: string,
+        ): Promise<{
+          delivery:
+            | {
+                kind: 'delivered'
+                resultId: string
+                resultName: string
+                revision: string
+                noticeHeld?: boolean
+              }
+            | { kind: 'held'; resultId: string; revision: string; detail: string }
+            | { kind: 'denied'; revision: string; detail: string }
+            | { kind: 'refused'; detail: string }
+        }> => request('POST', `${item(packetId)}/export/deliver`),
         reportState: (
           packetId: string,
           input: {

@@ -530,8 +530,14 @@ CREATE TABLE agent_results (
   id TEXT PRIMARY KEY,
   team_id TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
   agent_id TEXT NOT NULL,
-  session_id TEXT NOT NULL,
-  tool_call_id TEXT NOT NULL,
+  -- BAZ-043 widened provenance: a result is either a turn's deliver_file call, or an artifact an
+  -- operator/system surface produced from a review packet. Never both, and never neither — the source is
+  -- what the access rules and the backup verifier reason about.
+  source_kind TEXT NOT NULL CHECK (source_kind IN ('session_tool', 'review_packet')),
+  session_id TEXT,
+  tool_call_id TEXT,
+  review_packet_id TEXT REFERENCES review_packets(id) ON DELETE CASCADE,
+  review_revision TEXT,
   name TEXT NOT NULL,
   mime_type TEXT NOT NULL,
   byte_length INTEGER NOT NULL CHECK (byte_length BETWEEN 0 AND 26214400),
@@ -540,10 +546,16 @@ CREATE TABLE agent_results (
   released_at INTEGER,
   deleted_at INTEGER,
   bytes BLOB,
-  UNIQUE (agent_id, session_id, tool_call_id),
+  CHECK ((source_kind = 'session_tool') = (session_id IS NOT NULL AND tool_call_id IS NOT NULL)),
+  CHECK ((source_kind = 'review_packet') = (review_packet_id IS NOT NULL AND review_revision IS NOT NULL)),
   CHECK ((deleted_at IS NULL AND bytes IS NOT NULL AND length(bytes) = byte_length)
     OR (deleted_at IS NOT NULL AND bytes IS NULL))
 );
+-- Retry idempotency is per source: a turn's tool call, or one export of one revision of one packet.
+CREATE UNIQUE INDEX agent_results_session_source
+  ON agent_results(agent_id, session_id, tool_call_id) WHERE source_kind = 'session_tool';
+CREATE UNIQUE INDEX agent_results_packet_source
+  ON agent_results(agent_id, review_packet_id, review_revision) WHERE source_kind = 'review_packet';
 CREATE INDEX agent_results_team_time ON agent_results(team_id, created_at DESC, id DESC);
 
 CREATE TRIGGER validate_team_policy_baseline_update
