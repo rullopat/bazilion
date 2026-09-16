@@ -7,6 +7,7 @@ const TABS = [
   { suffix: '/policy', label: 'Policy' },
   { suffix: '/memory', label: 'Memory' },
   { suffix: '/review', label: 'Review' },
+  { suffix: '/verifications', label: 'Verifications' },
   { suffix: '/results', label: 'Results' },
   { suffix: '/activity', label: 'Activity' },
 ] as const

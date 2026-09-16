@@ -28,6 +28,7 @@ import { Route as TemplatesTeamsIndexRouteImport } from './routes/templates/team
 import { Route as TemplatesAgentsIndexRouteImport } from './routes/templates/agents/index'
 import { Route as TeamsIdIndexRouteImport } from './routes/teams/$id/index'
 import { Route as AgentsIdIndexRouteImport } from './routes/agents/$id/index'
+import { Route as TeamsIdVerificationsRouteImport } from './routes/teams/$id/verifications'
 import { Route as TeamsIdReviewRouteImport } from './routes/teams/$id/review'
 import { Route as TeamsIdResultsRouteImport } from './routes/teams/$id/results'
 import { Route as TeamsIdPolicyRouteImport } from './routes/teams/$id/policy'
@@ -137,6 +138,11 @@ const AgentsIdIndexRoute = AgentsIdIndexRouteImport.update({
   path: '/agents/$id/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TeamsIdVerificationsRoute = TeamsIdVerificationsRouteImport.update({
+  id: '/teams/$id/verifications',
+  path: '/teams/$id/verifications',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const TeamsIdReviewRoute = TeamsIdReviewRouteImport.update({
   id: '/teams/$id/review',
   path: '/teams/$id/review',
@@ -231,6 +237,7 @@ export interface FileRoutesByFullPath {
   '/teams/$id/policy': typeof TeamsIdPolicyRoute
   '/teams/$id/results': typeof TeamsIdResultsRoute
   '/teams/$id/review': typeof TeamsIdReviewRoute
+  '/teams/$id/verifications': typeof TeamsIdVerificationsRoute
   '/agents/$id/': typeof AgentsIdIndexRoute
   '/teams/$id/': typeof TeamsIdIndexRoute
   '/templates/agents/': typeof TemplatesAgentsIndexRoute
@@ -265,6 +272,7 @@ export interface FileRoutesByTo {
   '/teams/$id/policy': typeof TeamsIdPolicyRoute
   '/teams/$id/results': typeof TeamsIdResultsRoute
   '/teams/$id/review': typeof TeamsIdReviewRoute
+  '/teams/$id/verifications': typeof TeamsIdVerificationsRoute
   '/agents/$id': typeof AgentsIdIndexRoute
   '/teams/$id': typeof TeamsIdIndexRoute
   '/templates/agents': typeof TemplatesAgentsIndexRoute
@@ -300,6 +308,7 @@ export interface FileRoutesById {
   '/teams/$id/policy': typeof TeamsIdPolicyRoute
   '/teams/$id/results': typeof TeamsIdResultsRoute
   '/teams/$id/review': typeof TeamsIdReviewRoute
+  '/teams/$id/verifications': typeof TeamsIdVerificationsRoute
   '/agents/$id/': typeof AgentsIdIndexRoute
   '/teams/$id/': typeof TeamsIdIndexRoute
   '/templates/agents/': typeof TemplatesAgentsIndexRoute
@@ -336,6 +345,7 @@ export interface FileRouteTypes {
     | '/teams/$id/policy'
     | '/teams/$id/results'
     | '/teams/$id/review'
+    | '/teams/$id/verifications'
     | '/agents/$id/'
     | '/teams/$id/'
     | '/templates/agents/'
@@ -370,6 +380,7 @@ export interface FileRouteTypes {
     | '/teams/$id/policy'
     | '/teams/$id/results'
     | '/teams/$id/review'
+    | '/teams/$id/verifications'
     | '/agents/$id'
     | '/teams/$id'
     | '/templates/agents'
@@ -404,6 +415,7 @@ export interface FileRouteTypes {
     | '/teams/$id/policy'
     | '/teams/$id/results'
     | '/teams/$id/review'
+    | '/teams/$id/verifications'
     | '/agents/$id/'
     | '/teams/$id/'
     | '/templates/agents/'
@@ -439,6 +451,7 @@ export interface RootRouteChildren {
   TeamsIdPolicyRoute: typeof TeamsIdPolicyRoute
   TeamsIdResultsRoute: typeof TeamsIdResultsRoute
   TeamsIdReviewRoute: typeof TeamsIdReviewRoute
+  TeamsIdVerificationsRoute: typeof TeamsIdVerificationsRoute
   AgentsIdIndexRoute: typeof AgentsIdIndexRoute
   TeamsIdIndexRoute: typeof TeamsIdIndexRoute
   TemplatesAgentsIndexRoute: typeof TemplatesAgentsIndexRoute
@@ -582,6 +595,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AgentsIdIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/teams/$id/verifications': {
+      id: '/teams/$id/verifications'
+      path: '/teams/$id/verifications'
+      fullPath: '/teams/$id/verifications'
+      preLoaderRoute: typeof TeamsIdVerificationsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/teams/$id/review': {
       id: '/teams/$id/review'
       path: '/teams/$id/review'
@@ -703,6 +723,7 @@ const rootRouteChildren: RootRouteChildren = {
   TeamsIdPolicyRoute: TeamsIdPolicyRoute,
   TeamsIdResultsRoute: TeamsIdResultsRoute,
   TeamsIdReviewRoute: TeamsIdReviewRoute,
+  TeamsIdVerificationsRoute: TeamsIdVerificationsRoute,
   AgentsIdIndexRoute: AgentsIdIndexRoute,
   TeamsIdIndexRoute: TeamsIdIndexRoute,
   TemplatesAgentsIndexRoute: TemplatesAgentsIndexRoute,
