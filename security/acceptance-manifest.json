@@ -498,6 +498,162 @@
       "owner": "BAZ-042",
       "file": "apps/daemon/test/lib/agent-coding.test.ts",
       "test": "untracked content is opt-in, and a refused path is recorded rather than read"
+    },
+    {
+      "id": "VERIFY-BOUNDED-CAPTURE",
+      "owner": "BAZ-044",
+      "file": "apps/daemon/test/core/verification-requests.test.ts",
+      "test": "a request is bounded before anything is written"
+    },
+    {
+      "id": "VERIFY-SINGLE-OWNER",
+      "owner": "BAZ-044",
+      "file": "apps/daemon/test/core/verification-requests.test.ts",
+      "test": "exactly one owner may claim a request"
+    },
+    {
+      "id": "VERIFY-NO-REPLAY-AFTER-RESTART",
+      "owner": "BAZ-044",
+      "file": "apps/daemon/test/core/verification-requests.test.ts",
+      "test": "an interrupted claim becomes uncertain and is never replayed"
+    },
+    {
+      "id": "VERIFY-CAPTURE-REFUSES-UNAVAILABLE-INPUTS",
+      "owner": "BAZ-044",
+      "file": "apps/daemon/test/lib/verification-capture.test.ts",
+      "test": "capture refuses unavailable or unsound inputs with a specific blocker"
+    },
+    {
+      "id": "VERIFY-INCOMPLETE-COVERAGE-REFUSED",
+      "owner": "BAZ-044",
+      "file": "apps/daemon/test/lib/verification-capture.test.ts",
+      "test": "an incomplete capture never authorizes execution"
+    },
+    {
+      "id": "VERIFY-REPORT-IS-NOT-A-PASS",
+      "owner": "BAZ-044",
+      "file": "apps/daemon/test/lib/verification-capture.test.ts",
+      "test": "the report composes the contract, its attempts, and current applicability"
+    },
+    {
+      "id": "VERIFY-ADMISSION-REFUSES-DRIFT",
+      "owner": "BAZ-044",
+      "file": "apps/daemon/test/lib/verification-admission.test.ts",
+      "test": "drift between capture and execution blocks the request instead of testing another tree"
+    },
+    {
+      "id": "VERIFY-ADMISSION-RESERVES-WORKSPACE",
+      "owner": "BAZ-044",
+      "file": "apps/daemon/test/lib/verification-admission.test.ts",
+      "test": "admission claims one slot and reserves the workspace exclusively"
+    },
+    {
+      "id": "VERIFY-UNAPPROVABLE-IS-REFUSED",
+      "owner": "BAZ-044",
+      "file": "apps/daemon/test/lib/verification-admission.test.ts",
+      "test": "an unverifiable workspace is refused rather than assumed to match"
+    },
+    {
+      "id": "VERIFY-CAPABILITY-CANNOT-BE-WIDENED",
+      "owner": "BAZ-044",
+      "file": "apps/daemon/test/runtime/verification-tools.test.ts",
+      "test": "the capability is exactly two tools and neither accepts a command"
+    },
+    {
+      "id": "VERIFY-CAPABILITY-ARGUMENTS-CLOSED",
+      "owner": "BAZ-044",
+      "file": "apps/daemon/test/runtime/verification-tools.test.ts",
+      "test": "the argument shape is closed: no extra keys, no substitution through the ordinal"
+    },
+    {
+      "id": "VERIFY-CHECK-RUNS-ONCE",
+      "owner": "BAZ-044",
+      "file": "apps/daemon/test/lib/verification-runner.test.ts",
+      "test": "the daemon is authoritative: undeclared, repeated and receiptless outcomes are refused"
+    },
+    {
+      "id": "VERIFY-RECEIPT-REQUIRED-FOR-EXECUTED-CHECK",
+      "owner": "BAZ-044",
+      "file": "apps/daemon/test/lib/verification-executor.test.ts",
+      "test": "a passing check records a succeeded outcome and its receipt"
+    },
+    {
+      "id": "VERIFY-FROZEN-ENVIRONMENT-AUTHORITATIVE",
+      "owner": "BAZ-044",
+      "file": "apps/daemon/test/lib/verification-executor.test.ts",
+      "test": "the frozen environment is authoritative: a container request is refused on a host daemon"
+    },
+    {
+      "id": "VERIFY-UNATTENDED-APPROVAL-BLOCKED",
+      "owner": "BAZ-044",
+      "file": "apps/daemon/test/lib/verification-executor.test.ts",
+      "test": "an unattended risky command is blocked instead of auto-approved"
+    },
+    {
+      "id": "VERIFY-CREDENTIAL-NEVER-RETAINED",
+      "owner": "BAZ-044",
+      "file": "apps/daemon/test/lib/verification-executor.test.ts",
+      "test": "retained output is redacted, so a credential cannot survive in the diagnostic"
+    },
+    {
+      "id": "VERIFY-COMMAND-CARRYING-CREDENTIAL-REFUSED",
+      "owner": "BAZ-044",
+      "file": "apps/daemon/test/lib/verification-executor.test.ts",
+      "test": "a command carrying protected credential material is refused"
+    },
+    {
+      "id": "VERIFY-INVOCATION-IS-RESTRICTED",
+      "owner": "BAZ-044",
+      "file": "apps/daemon/test/lib/turn-invocation.test.ts",
+      "test": "a verification turn is restricted: no turn shape, no claim, no operator surface"
+    },
+    {
+      "id": "VERIFY-CAPABILITY-BOUND-TO-ATTEMPT",
+      "owner": "BAZ-044",
+      "file": "apps/daemon/test/lib/verification-preparation.test.ts",
+      "test": "the capability refuses any identity but its own"
+    },
+    {
+      "id": "VERIFY-HOLD-CAPTURED-ONCE",
+      "owner": "BAZ-044",
+      "file": "apps/daemon/test/core/team-authorization.test.ts",
+      "test": "a verification request is authorized on the peer edge and held once when approval is required"
+    },
+    {
+      "id": "VERIFY-RELEASE-NOT-REPLAYED",
+      "owner": "BAZ-044",
+      "file": "apps/daemon/test/lib/approval-delivery-plan.test.ts",
+      "test": "verification request approvals > a released approval cannot be replayed onto another request"
+    },
+    {
+      "id": "VERIFY-RESTORE-REVALIDATES",
+      "owner": "BAZ-044",
+      "file": "apps/cli/test/backup-coding-recovery.test.ts",
+      "test": "restore revalidates captured verification evidence instead of replaying it"
+    },
+    {
+      "id": "VERIFY-BUSY-SPECIALIST-DEFERS",
+      "owner": "BAZ-044",
+      "file": "apps/daemon/test/lib/verification-dispatch.test.ts",
+      "test": "a busy specialist defers: the request stays pending and unclaimed"
+    },
+    {
+      "id": "VERIFY-LIVE-CLAIM-NOT-ADOPTED",
+      "owner": "BAZ-044",
+      "file": "apps/daemon/test/lib/verification-dispatch.test.ts",
+      "test": "an attempt claimed by another process cannot be adopted"
+    },
+    {
+      "id": "VERIFY-API-BLOCKER-NOT-CRASH",
+      "owner": "BAZ-044",
+      "file": "apps/daemon/test/routes/verifications.test.ts",
+      "test": "a capture that cannot be honoured comes back as a blocker, not a crash"
+    },
+    {
+      "id": "VERIFY-MULTIMEDIA-NO-IMPLICIT-ACCESS",
+      "owner": "BAZ-044",
+      "file": "apps/daemon/test/lib/verification-capture.test.ts",
+      "test": "a captured request is not a peer message, so an inbox wake has nothing to consume"
     }
   ]
 }

@@ -21,7 +21,9 @@ unrestricted inbox turn.
 | 5b | Daemon capability host | Captured values only, receipts always, and settle reports evidence availability | **done** |
 | 5c | Worker spec + IPC transport | The verification turn is a real restricted worker kind, wired end to end | **done** |
 | 5d-1 | Restricted invocation + IPC host binding | The turn identity is a restricted invocation; the daemon re-checks the worker's request/attempt | **done** |
-| 5d-2 | Protected check executor + dispatcher | Running a captured command daemon-side with a BAZ-041 receipt, then claim/spawn/settle | **not started** |
+| 5d-2 | Protected check executor + dispatcher | Running a captured command daemon-side with a BAZ-041 receipt, then claim/spawn/settle | **done** |
+| 6 | Surfaces | API routes, client, CLI and the Team Verifications section | **done** |
+| 7 | Acceptance | Criterion-by-criterion record, 26 gate cases, caveats | **done** |
 | 4 | Workspace and snapshot revalidation | Reserve the workspace for the interval; block on drift before execution; unknown after source mutation | |
 | 5 | Restricted test capability | Worker surface that can inspect the request and invoke each captured command once — no Bash/edit/write/browser/MCP/deploy | |
 | 6 | Evidence return and surfaces | Per-request access, API/CLI/web, cancellation, expiry, Telegram notices | |
@@ -407,3 +409,37 @@ and an interrupted process must keep the `uncertain` semantics already implement
 
 **Schedule wiring last.** A scheduler tick that dispatches eligible `pending` requests is the final step,
 after the executor and dispatcher exist — not before.
+
+## Slices 5d-2, 6 and 7 (done)
+
+**5d-2 — the executor and dispatcher.** `lib/verification/executor.ts` runs one captured check with the
+captured command, cwd and timeout through the *same* shell operations a coding turn uses (host or the
+preflighted container path), the same posture resolution, the same redaction and the same BAZ-041
+receipt lifecycle. It exists to enforce three rules: the frozen environment is authoritative (a
+container request on a host daemon is **blocked**, never silently run), a command needing unavailable
+approval is blocked rather than auto-approved, and the outcome comes from the observed process. A
+receipt is written for every executed check and named with the snapshot it was verified against.
+
+`lib/verification/dispatch.ts` is the one dispatch owner, mirroring the restricted review dispatcher:
+refuse while the specialist is busy, take the agent lifecycle lease, re-check under it, admit (which
+revalidates, reserves the workspace and refuses drift), prepare the restricted turn, bind the capability
+to this attempt, drain the frames, settle. Cancellation and turn failure abandon the attempt honestly —
+checks that never ran are not presented as results — and the workspace claim is always released. The
+scheduler tick now dispatches eligible pending requests through this state machine.
+
+**6 — surfaces.** `GET|POST /api/teams/:id/verifications`, `.../:requestId`,
+`.../:requestId/cancel`; `@bazilion/client`'s `verifications(teamId)`; `bazilion team verify
+create|list|show|cancel`; and a Team **Verifications** section. A blocked capture is a 409 with a typed
+blocker on every surface, not an error, and cancel aborts the running turn so the attempt settles as
+`cancelled`. CLI `--check` values are parsed from raw argv, so a command containing a comma is not split.
+
+**7 — acceptance.** [BAZ-044-acceptance.md](BAZ-044-acceptance.md) records the criterion-by-criterion
+evidence, and `security/acceptance-manifest.json` gained **26 cases (83 → 109)**, all passing.
+
+**Known gaps, recorded in the acceptance doc rather than implied:** no end-to-end real-model
+coder→tester run; container execution implemented but unobserved (its refusal is tested); the
+requester's peer receipt access reuses BAZ-040's authorized path instead of the per-request grant the
+story described; and the web section is typechecked and built rather than browser-observed.
+
+**Full suite** 1713 passed / 7 skipped (1720); **gate** 109 cases; typecheck, format and lint clean
+(root and web).
