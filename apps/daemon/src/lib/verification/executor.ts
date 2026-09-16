@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto'
+import { existsSync } from 'node:fs'
+import { join, posix, relative, sep } from 'node:path'
 import type { CodingCommandReceipt } from '@bazilion/api-types'
 import { type BashOperations, createLocalBashOperations } from '@earendil-works/pi-coding-agent'
 import { codingRelativePath } from '../../core/coding-environment/config.ts'
@@ -8,13 +10,17 @@ import { saveCodingCommandLog } from '../../core/repos/coding-command-logs.ts'
 import { saveCodingCommand } from '../../core/repos/coding-commands.ts'
 import type { VerificationRequestRecord } from '../../core/repos/verification-requests.ts'
 import { resolveCodingDirectory } from '../../runtime/coding-directory.ts'
-import { createDockerBashOperations } from '../../runtime/shell/docker.ts'
+import {
+  createDockerBashOperations,
+  type DockerReadOnlyMount,
+  type DockerResourceLifecycle,
+} from '../../runtime/shell/docker.ts'
 import {
   buildScrubbedShellEnv,
   classifyBashCommand,
   resolveShellSecurityConfig,
 } from '../../runtime/shell/security.ts'
-import { buildSandboxContainerEnv } from '../../runtime/shell/tooling.ts'
+import { buildSandboxContainerEnv, safeReadOnlyMount } from '../../runtime/shell/tooling.ts'
 import { redactJsonValue } from '../../runtime/worker/runtime.ts'
 import {
   CODING_OUTPUT_BYTES,
@@ -39,6 +45,10 @@ import type { VerificationCheckExecutor, VerificationCheckExecutorResult } from 
 //   2. **A command needing unavailable approval is blocked, never auto-approved.** Verification turns
 //      run unattended, so an interactive approval cannot be answered.
 //   3. **The receipt state comes from the observed process.** Never from the model's description.
+//
+// A container check runs with the *same* posture as a sandboxed coding command — the same read-only
+// memory over-mount, the same recovery registration — because a receipt that claims `read_only_memory`
+// while memory is writable is worse than one that claims nothing.
 
 export interface ProtectedCheckExecutorInput {
   db: BazilionDb
@@ -54,6 +64,12 @@ export interface ProtectedCheckExecutorInput {
   secrets: () => readonly string[]
   /** Aborts with the turn: the running command is killed and reported as cancelled. */
   signal?: AbortSignal
+  /**
+   * Container recovery registration, so a container this check created is tracked against the held
+   * workspace lease and can be reconciled after a daemon restart instead of leaking. Ignored for a
+   * host-posture check.
+   */
+  containerLifecycle?: DockerResourceLifecycle
   env?: NodeJS.ProcessEnv
 }
 
@@ -92,6 +108,11 @@ export function createProtectedCheckExecutor(
       if (secrets.some((secret) => secret && command.includes(secret))) {
         return blocked('unsupported', 'the captured command contains protected credential material')
       }
+
+      // Resolved before the receipt exists: a check that cannot be run through the posture the
+      // request was captured with must leave no evidence behind — not even a receipt in `running`.
+      const container = buildContainerOperations(input, env, config.envAllowlist, absoluteCwd)
+      if ('blocked' in container) return blocked('environment_unavailable', container.blocked)
 
       const commandId = randomUUID()
       const startedAt = Date.now()
@@ -142,10 +163,10 @@ export function createProtectedCheckExecutor(
       }
       saveCodingCommand(input.db, receipt)
 
+      const operations = container.operations
       let observed = ''
       let observedBytes = 0
       let truncatedStream = false
-      const operations = buildOperations(input, env, config.envAllowlist)
       // Never the daemon's ambient environment. A check is a protected turn's command, so it gets the
       // scrubbed allowlist environment (plus what the request froze), exactly like a sandboxed one —
       // otherwise a captured check could read credentials the receipt claims it was protected from.
@@ -223,18 +244,63 @@ export function createProtectedCheckExecutor(
   }
 }
 
-function buildOperations(
+type ContainerOperations = { operations: BashOperations } | { blocked: string }
+
+function buildContainerOperations(
   input: ProtectedCheckExecutorInput,
   env: NodeJS.ProcessEnv,
   envAllowlist: readonly string[],
-): BashOperations {
-  if (input.request.environment.sandbox !== 'docker') return createLocalBashOperations()
-  // The same preflighted container path a coding turn uses: fresh, network-disabled, with the Team
-  // workspace mounted read/write and no host credentials or host files reachable.
-  return createDockerBashOperations({
-    image: input.request.environment.image,
-    env: buildSandboxContainerEnv(env, envAllowlist),
-  })
+  /** The directory that becomes the container's `/workspace`. */
+  containerWorkspace: string,
+): ContainerOperations {
+  if (input.request.environment.sandbox !== 'docker') {
+    return { operations: createLocalBashOperations() }
+  }
+  const memoryMount = sandboxMemoryMount(input.teamPath, containerWorkspace)
+  if ('blocked' in memoryMount) return memoryMount
+  // The same container path a coding turn uses: fresh, network-disabled, with the Team workspace
+  // mounted read/write, the shared memory subtree over-mounted read-only, no host credentials or host
+  // files reachable, and the container registered under the held workspace lease for recovery.
+  return {
+    operations: createDockerBashOperations({
+      ...(input.containerLifecycle ? { lifecycle: input.containerLifecycle } : {}),
+      image: input.request.environment.image,
+      env: buildSandboxContainerEnv(env, envAllowlist),
+      readOnlyMounts: memoryMount.mounts,
+    }),
+  }
+}
+
+/**
+ * The Team's shared memory, over-mounted read-only inside the container — the mount the receipt's
+ * `read_only_memory` restriction actually refers to.
+ *
+ * Memory writes belong to the scoped `memory_*` tools, so a captured check must not reach them. If the
+ * memory directory exists but cannot be mounted safely (a symlink, a non-directory), the check is
+ * **blocked** rather than run with memory writable: fail closed, never silently weaken the posture.
+ */
+function sandboxMemoryMount(
+  teamPath: string,
+  containerWorkspace: string,
+): { mounts: DockerReadOnlyMount[] } | { blocked: string } {
+  const memorySource = join(teamPath, 'memory')
+  if (!existsSync(memorySource)) return { mounts: [] }
+  const inside = relative(containerWorkspace, memorySource)
+  // Outside the mounted tree the memory directory is not reachable at all, which is already safe.
+  if (inside === '' || inside === '..' || inside.startsWith(`..${sep}`)) return { mounts: [] }
+  try {
+    return {
+      mounts: [
+        safeReadOnlyMount(memorySource, posix.join('/workspace', ...inside.split(sep)), teamPath),
+      ],
+    }
+  } catch (error) {
+    return {
+      blocked: `the Team memory directory cannot be mounted read-only for this check (${
+        error instanceof Error ? error.message : String(error)
+      })`,
+    }
+  }
 }
 
 /** The outcome comes from the observed process, never from a description of it. */

@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { writeFileSync } from 'node:fs'
+import { mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, test } from 'vitest'
 import type { BazilionDb } from '../../src/core/db/client.ts'
@@ -326,6 +326,48 @@ test('a receipt that is gone is reported as unavailable, not as never recorded (
       commandId: null,
       receiptUnavailable: true,
     })
+  } finally {
+    env.cleanup()
+  }
+})
+
+test('a container check is blocked rather than run with the shared memory writable', async () => {
+  const env = makeTestEnv()
+  try {
+    seed(env.db, env.teamId)
+    const request = await requestFor(env, "printf 'should not run'", 'docker')
+    // A memory directory that cannot be over-mounted read-only — a symlink here. Running the check
+    // anyway would leave team memory writable while the receipt claims `read_only_memory`, so the
+    // executor refuses instead: fail closed, never silently weaken the posture.
+    const memory = join(env.paths.teamDir(env.teamId), 'memory')
+    rmSync(memory, { recursive: true, force: true })
+    mkdirSync(join(env.home, 'elsewhere'), { recursive: true })
+    symlinkSync(join(env.home, 'elsewhere'), memory)
+
+    const result = await createProtectedCheckExecutor({
+      db: env.db,
+      paths: env.paths,
+      request,
+      attemptId: 'attempt-1',
+      teamPath: env.paths.teamDir(env.teamId),
+      secrets: () => [],
+      env: { BAZILION_BASH_SANDBOX: 'docker' },
+    }).run({
+      command: "printf 'should not run'",
+      cwd: '.',
+      timeoutMs: 30_000,
+      purpose: 'verification',
+      writablePaths: [],
+    })
+
+    expect(result).toMatchObject({ state: 'blocked', commandId: null })
+    expect(result.blocker?.reason).toBe('environment_unavailable')
+    expect(result.output).toContain('read-only')
+    // Nothing ran, so no receipt exists to be mistaken for evidence.
+    expect(
+      env.db.raw.query<{ count: number }, []>('SELECT count(*) AS count FROM coding_commands').get()
+        ?.count,
+    ).toBe(0)
   } finally {
     env.cleanup()
   }

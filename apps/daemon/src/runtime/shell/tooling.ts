@@ -183,7 +183,14 @@ export function createSessionShellTools(
   return { config, hostToolNames: [], customBash }
 }
 
-function safeReadOnlyMount(
+/**
+ * Validate and describe one read-only container mount.
+ *
+ * Shared with the verification executor so a captured check gets the *same* mount semantics as a
+ * coding turn rather than a second, weaker implementation: the source must be a real directory
+ * (never a symlink) and must stay inside the expected root.
+ */
+export function safeReadOnlyMount(
   source: string,
   target: string,
   expectedRoot: string,

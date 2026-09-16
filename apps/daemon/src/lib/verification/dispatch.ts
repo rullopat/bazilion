@@ -138,6 +138,9 @@ export async function dispatchVerificationRequest(
           teamPath: paths.teamDir(live.teamId),
           secrets: () => currentSecrets(),
           signal: controller.signal,
+          // The checks run while this dispatch holds the workspace lease, so their containers register
+          // against it and are reconciled rather than leaked if the daemon dies mid-check.
+          containerLifecycle: workspaceLifecycle(db).containers(admitted.workspace),
         }),
       }),
       { requestId, attemptId: admitted.claim.attempt.id },
