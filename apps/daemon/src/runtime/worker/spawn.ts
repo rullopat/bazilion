@@ -51,6 +51,7 @@ import {
   type RestrictedReviewWorkerSpec,
   redactExactValue,
   redactJsonValue,
+  type SpecialistVerificationWorkerSpec,
   type WorkerInput,
   type WorkerTurnSpec,
 } from './runtime.ts'
@@ -119,6 +120,17 @@ export async function spawnReviewWorker(
     if (frame.kind === 'fatal') throw new Error(frame.error)
   }
   throw new Error('review worker exited without a result')
+}
+
+/**
+ * BAZ-044: run one specialist verification turn. Frames stream to the caller; the dispatcher settles
+ * the attempt from the outcomes the daemon-side host recorded, not from anything the model said.
+ */
+export function spawnVerificationWorker(
+  spec: SpecialistVerificationWorkerSpec,
+  opts: ProtectedSpawnWorkerOpts,
+): AsyncGenerator<ChatFrame, void, void> {
+  return spawnWorker(spec, opts) as AsyncGenerator<ChatFrame, void, void>
 }
 
 export interface WorkerResourceLifecycle {
@@ -213,7 +225,7 @@ export function spawnWorkerTurn(
 }
 
 async function* spawnWorker(
-  spec: WorkerTurnSpec | RestrictedReviewWorkerSpec,
+  spec: WorkerTurnSpec | RestrictedReviewWorkerSpec | SpecialistVerificationWorkerSpec,
   opts: SpawnWorkerOpts,
 ): AsyncGenerator<WorkerOutputFrame, void, void> {
   assertSpawnCombination(spec, opts)
@@ -291,7 +303,7 @@ async function* spawnWorker(
   const stderrRedactor =
     accessTokens.length > 0 ? new ExactValueStreamRedactor(accessTokens) : undefined
 
-  const resourceLifecycle = spec.kind === 'restricted_review' ? undefined : opts.resourceLifecycle
+  const resourceLifecycle = isRestrictedWorkerKind(spec) ? undefined : opts.resourceLifecycle
   let resourceCleanup: Promise<boolean> | undefined
   const cleanupResources = () =>
     (resourceCleanup ??=
@@ -483,13 +495,24 @@ async function* spawnWorker(
   }
 }
 
+/**
+ * A verification turn is restricted in the same way a review turn is: it may not reach the coding
+ * surface, a container, repository context, the result library, peers, USER.md, the browser or MCP.
+ * Kept as one predicate so a new restricted kind cannot pick up only *some* of those limits.
+ */
+function isRestrictedWorkerKind(
+  spec: WorkerTurnSpec | RestrictedReviewWorkerSpec | SpecialistVerificationWorkerSpec,
+): spec is RestrictedReviewWorkerSpec | SpecialistVerificationWorkerSpec {
+  return spec.kind === 'restricted_review' || spec.kind === 'specialist_verification'
+}
+
 function assertSpawnCombination(
-  spec: WorkerTurnSpec | RestrictedReviewWorkerSpec,
+  spec: WorkerTurnSpec | RestrictedReviewWorkerSpec | SpecialistVerificationWorkerSpec,
   opts: SpawnWorkerOpts,
 ): void {
   const record = opts as unknown as Record<string, unknown>
   if (
-    spec.kind !== 'restricted_review' &&
+    !isRestrictedWorkerKind(spec) &&
     (Boolean(spec.questionEnabled) !== Boolean(record.questionHost) ||
       (record.questionHost &&
         !hostHasMethods(record.questionHost, ['ask', 'close', 'subscribe', 'consumed'])))
@@ -545,7 +568,7 @@ function hostHasMethods(value: unknown, methods: readonly string[]): boolean {
 }
 
 function spawnHosts(
-  spec: WorkerTurnSpec | RestrictedReviewWorkerSpec,
+  spec: WorkerTurnSpec | RestrictedReviewWorkerSpec | SpecialistVerificationWorkerSpec,
   opts: SpawnWorkerOpts,
   signal: AbortSignal,
   onBashApproval: NonNullable<IpcHosts['onBashApproval']>,
@@ -569,17 +592,21 @@ function spawnHosts(
     )
     if (signal.aborted) questionHost.close()
   }
+  const restricted = isRestrictedWorkerKind(spec)
   return {
-    questionHost,
-    containerHost: spec.kind === 'restricted_review' ? undefined : opts.containerHost,
-    codingHost: spec.kind === 'restricted_review' ? undefined : opts.codingHost,
-    repositoryContextHost:
-      spec.kind === 'restricted_review' ? undefined : opts.repositoryContextHost,
-    resultHost: spec.kind === 'restricted_review' ? undefined : opts.resultHost,
-    messagingHost: configuredOpts?.messagingHost ?? protectedOpts?.messagingHost,
-    userMdHost: configuredOpts?.userMdHost ?? protectedOpts?.userMdHost,
-    browserHost: configuredOpts?.browserHost,
-    mcpHost: configuredOpts?.mcpHost,
+    questionHost: restricted ? undefined : questionHost,
+    containerHost: restricted ? undefined : opts.containerHost,
+    codingHost: restricted ? undefined : opts.codingHost,
+    repositoryContextHost: restricted ? undefined : opts.repositoryContextHost,
+    resultHost: restricted ? undefined : opts.resultHost,
+    // A verification turn reads its request and runs captured checks; it does not message peers,
+    // edit USER.md, drive a browser or call MCP. Cleared here rather than trusting the caller.
+    messagingHost: restricted
+      ? undefined
+      : (configuredOpts?.messagingHost ?? protectedOpts?.messagingHost),
+    userMdHost: restricted ? undefined : (configuredOpts?.userMdHost ?? protectedOpts?.userMdHost),
+    browserHost: restricted ? undefined : configuredOpts?.browserHost,
+    mcpHost: restricted ? undefined : configuredOpts?.mcpHost,
     bashApprovalHost: configuredOpts?.bashApprovalHost ?? protectedOpts?.bashApprovalHost,
     apiKeyRefreshHost: opts.apiKeyRefreshHost,
     apiKeyRefreshContext: {

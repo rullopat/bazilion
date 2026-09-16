@@ -39,6 +39,8 @@ export type RpcMethod =
   | 'userMdWrite'
   | 'browserInvoke'
   | 'mcpInvoke'
+  | 'verificationRead'
+  | 'verificationRun'
   | 'refreshApiKey'
   | 'bashApproval'
   | 'publishResult'
@@ -100,6 +102,16 @@ export interface BrowserInvokeArgs {
   agentId: string
   action: string
   args: Record<string, unknown>
+}
+
+/** BAZ-044: the specialist capability. Both calls carry the turn's own request/attempt identity. */
+export interface VerificationIdentityArgs {
+  requestId: string
+  attemptId: string
+}
+
+export interface VerificationRunArgs extends VerificationIdentityArgs {
+  ordinal: number
 }
 
 export interface McpInvokeArgs {
@@ -176,6 +188,8 @@ export type RpcArgs =
   | { method: 'userMdWrite'; args: UserMdWriteArgs }
   | { method: 'browserInvoke'; args: BrowserInvokeArgs }
   | { method: 'mcpInvoke'; args: McpInvokeArgs }
+  | { method: 'verificationRead'; args: VerificationIdentityArgs }
+  | { method: 'verificationRun'; args: VerificationRunArgs }
   | { method: 'refreshApiKey'; args: ApiKeyRefreshArgs }
   | { method: 'bashApproval'; args: BashApprovalArgs }
 
@@ -198,6 +212,8 @@ export type RpcResult =
   | { method: 'userMdWrite'; value: UserMdWriteResult }
   | { method: 'browserInvoke'; value: ToolResultPart[] }
   | { method: 'mcpInvoke'; value: ToolResultPart[] }
+  | { method: 'verificationRead'; value: import('../tools/verification.ts').VerificationBrief }
+  | { method: 'verificationRun'; value: import('../tools/verification.ts').VerificationCheckRun }
   | { method: 'refreshApiKey'; value: string }
   | { method: 'bashApproval'; value: BashApprovalResult }
 
@@ -270,6 +286,22 @@ export interface McpHost {
  * spawned before this host is invoked. Tokens only travel in the private IPC
  * reply and are never emitted as chat frames.
  */
+/**
+ * Host-side surface for the specialist capability. The daemon binds it to one claimed attempt, so a
+ * worker can only read the request it was admitted for and run checks that request declared.
+ */
+export interface VerificationHost {
+  read(
+    requestId: string,
+    attemptId: string,
+  ): Promise<import('../tools/verification.ts').VerificationBrief>
+  run(
+    requestId: string,
+    attemptId: string,
+    ordinal: number,
+  ): Promise<import('../tools/verification.ts').VerificationCheckRun>
+}
+
 export interface ApiKeyRefreshHost {
   refresh(providerName: string, signal?: AbortSignal): Promise<string>
 }

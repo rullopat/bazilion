@@ -19,7 +19,8 @@ unrestricted inbox turn.
 | 4 | Admission | Revalidate, hold, reserve the workspace and refuse drift — with a settled claim when nothing ran | **done** |
 | 5a | Capability tool surface | Two tools — read the request, run one captured check once — with no way to express a command | **done** |
 | 5b | Daemon capability host | Captured values only, receipts always, and settle reports evidence availability | **done** |
-| 5c | Worker spec, IPC transport, dispatcher | The host is not yet reachable from a worker run or the scheduler | **in progress** |
+| 5c | Worker spec + IPC transport | The verification turn is a real restricted worker kind, wired end to end | **done** |
+| 5d | Dispatcher | Claiming, spawning and settling from the scheduler tick | **not started** |
 | 4 | Workspace and snapshot revalidation | Reserve the workspace for the interval; block on drift before execution; unknown after source mutation | |
 | 5 | Restricted test capability | Worker surface that can inspect the request and invoke each captured command once — no Bash/edit/write/browser/MCP/deploy | |
 | 6 | Evidence return and surfaces | Per-request access, API/CLI/web, cancellation, expiry, Telegram notices | |
@@ -287,3 +288,34 @@ deliberately not a repo artifact: it runs N concurrent *full* suites, which is a
 than a normal invocation. Under 3× concurrency, two further environment-heavy tests contend for shared
 resources (`browser-live` for Chromium, `shell-docker` for the Docker daemon). Those did not appear in
 sequential runs and are not claimed fixed.
+
+## Slice 5c — the verification turn is a real restricted worker (done)
+
+`SpecialistVerificationWorkerSpec` + input validation in `runtime/worker/runtime.ts`, two IPC methods
+(`verificationRead` / `verificationRun`) and a `VerificationHost` in `runtime/worker/ipc-protocol.ts`,
+the tool assembly in `runtime/worker/entry.ts`, and the host-clearing/isolation rules plus
+`spawnVerificationWorker` in `runtime/worker/spawn.ts`. 908 tests pass across the daemon runtime and
+lib suites; typecheck and lint clean.
+
+**Decisions worth keeping.**
+
+- **The worker input is closed.** `VERIFICATION_KEYS` is exact, so a verification turn cannot smuggle
+  an extra field — there is no `codingHost`, `repositoryContext`, `resultHost`, `containerNamespace` or
+  `questionEnabled` for it to carry, and `assertProtectedProviderRuntime` plus bound API key refresh
+  are still required.
+- **The request identity is bound in the worker, not sent by the tool.** `createIpcVerificationHost`
+  closes over `input.verification`, so a call carries only an ordinal and **cannot address another
+  request's attempt**. Only the two methods exist; there is no generic invoke.
+- **Every restricted host is cleared in one place.** `isRestrictedWorkerKind` is now a type guard used
+  for all of them, and it clears `messagingHost`, `userMdHost`, `browserHost` and `mcpHost` for
+  restricted kinds as well as the coding/container/context/result hosts. Previously those four were
+  left to the caller simply not to pass; a verification turn does not message peers, edit USER.md,
+  drive a browser or call MCP, so the spawner refuses to hand them over.
+- **The session is a restricted session with an injected tool list.** `createRestrictedReviewSession`
+  is reused deliberately: the difference between a review turn and a verification turn is the tool
+  list, and neither path can reach a general coding surface. The system prompt states the boundaries —
+  one declared ordinal, once each, no shell or editor or browser or network, generated output only to
+  declared paths — and asks for a recommendation-free summary, since a specialist's conclusion is not
+  authorization for anything.
+- **Questions and images are excluded by kind**, not by convention, in the same places restricted
+  reviews already were.

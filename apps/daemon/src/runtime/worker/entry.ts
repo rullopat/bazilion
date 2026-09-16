@@ -15,7 +15,9 @@ import {
   createProtectedBazilionSession,
   createRestrictedReviewSession,
 } from '../pi/session.ts'
+import { ourToolToPiTool } from '../pi/tools.ts'
 import type { BashApprovalHost as ShellBashApprovalHost } from '../shell/approval.ts'
+import { verificationTools } from '../tools/verification.ts'
 import { createIpcApiKeyRefresher } from './api-key-refresh.ts'
 import { createIpcClient, type WorkerIpcCall } from './ipc-client.ts'
 import type {
@@ -236,11 +238,31 @@ function createReviewState(
   }
 }
 
+/**
+ * Proxy the capability over IPC. Only the ordinal travels; the request identity is bound here from
+ * the worker's own input, so a worker cannot address another request's attempt.
+ */
+function createIpcVerificationHost(
+  ipcCall: WorkerIpcCall,
+  identity: { requestId: string; attemptId: string },
+): import('../tools/verification.ts').VerificationCapabilityHost {
+  return {
+    // The request identity is bound here from the worker's own input, so a tool call cannot address
+    // another request's attempt: only an ordinal travels.
+    read: () => ipcCall('verificationRead', identity),
+    invoke: (ordinal: number) => ipcCall('verificationRun', { ...identity, ordinal }),
+  }
+}
+
 async function createSessionForInput(
   input: WorkerInput,
   ipcCall: WorkerIpcCall,
 ): Promise<{ handle: BazilionSessionHandle; reviewState?: ReviewState }> {
-  if (input.kind !== 'restricted_review' && !input.repositoryContext)
+  if (
+    input.kind !== 'restricted_review' &&
+    input.kind !== 'specialist_verification' &&
+    !input.repositoryContext
+  )
     throw new Error('Coding turn requires daemon-prepared repository context')
   if (input.kind === 'configured_operator_http') {
     const paths = resolvePaths()
@@ -303,6 +325,22 @@ async function createSessionForInput(
     agentId: input.kind === 'protected' ? input.agent.agent.id : input.agentId,
     turnId: input.turnId,
   })
+  if (input.kind === 'specialist_verification') {
+    // A restricted session whose entire tool surface is the captured-check capability. Reusing the
+    // restricted session factory is deliberate: the difference between this and a review turn is the
+    // injected tool list, and neither path can reach a general coding tool.
+    const handle = await createRestrictedReviewSession({
+      runtime: input.runtime,
+      scratch: input.scratch,
+      systemPrompt: VERIFICATION_SYSTEM_PROMPT,
+      tools: verificationTools(createIpcVerificationHost(ipcCall, input.verification)).map(
+        ourToolToPiTool,
+      ),
+      refreshApiKey,
+    })
+    return { handle }
+  }
+
   if (input.kind === 'restricted_review') {
     const reviewState = createReviewState(input.review.evidence)
     const handle = await createRestrictedReviewSession({
@@ -391,6 +429,7 @@ async function main(): Promise<void> {
   const unsubscribe = session.subscribe((piEvent) => {
     if (
       input.kind !== 'restricted_review' &&
+      input.kind !== 'specialist_verification' &&
       input.questionEnabled &&
       piEvent.type === 'message_end' &&
       piEvent.message.role === 'toolResult' &&
@@ -440,11 +479,11 @@ async function main(): Promise<void> {
   try {
     const promptMessage = redactJsonValue(input.message, activeAccessTokens)
     const sanitizedImages =
-      input.kind === 'restricted_review'
+      input.kind === 'restricted_review' || input.kind === 'specialist_verification'
         ? []
         : redactJsonValue(input.images ?? [], activeAccessTokens)
     const promptImages =
-      input.kind === 'restricted_review'
+      input.kind === 'restricted_review' || input.kind === 'specialist_verification'
         ? []
         : sanitizedImages.map((image) => ({
             type: 'image' as const,
@@ -489,6 +528,25 @@ main().catch((error) => {
   } catch {}
   process.exit(1)
 })
+
+const VERIFICATION_SYSTEM_PROMPT = `You are a restricted verification specialist. You verify one
+captured change against the checks your requester selected. Call verification_request to read the
+request, then verification_check once per declared check, in order.
+
+Boundaries you cannot cross, and must not try to:
+- Only the declared ordinal of a captured check can run, once. You cannot change its command, cwd,
+  timeout or environment, add a check, or retry a check that already reported.
+- You have no shell, no editor, no browser, no network tool and no deployment credential. A missing
+  toolchain, service or approval is an explicit blocker to report, never something to work around.
+- Generated output may only be written to the declared writable paths.
+
+Report what actually happened. A non-zero exit is a failure of that check; say so plainly. An exit
+code is evidence about the commands that ran, never proof about later code, and never a statement
+that the change is ready to merge. Distinguish a failure from a check you did not run, and never
+describe an unrun check as passing.
+
+Finish with a short summary: the snapshot you verified, each check with its outcome and receipt, and
+any blocker or limitation that stopped a check. Do not recommend deployment.`
 
 const REVIEW_SYSTEM_PROMPT = `You are a restricted learning reviewer. Analyze only the supplied
 transcript digest and approved-lesson index. You cannot act on the world. Call propose_lesson once
