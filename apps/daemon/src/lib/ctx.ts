@@ -12,6 +12,7 @@ import {
 import { interruptCodingCommands } from '../core/repos/coding-commands.ts'
 import { recoverInterrupted as recoverInterruptedNotifications } from '../core/repos/notifications.ts'
 import { recoverInterrupted as recoverInterruptedQuestions } from '../core/repos/questions.ts'
+import { recoverInterruptedReviewAttempts } from '../core/repos/review-packets.ts'
 import {
   reconcileApprovalHolds,
   recoverInterrupted as recoverInterruptedQueue,
@@ -110,6 +111,9 @@ function bootstrap(paths: Paths): { db: BazilionDb; authToken: string } {
     // BAZ-044: a verification attempt left open by another process is settled as uncertain here, so a
     // restart never leaves a request claimed-but-unrunnable (the one-open-attempt index would block it).
     recoverInterruptedVerificationAttempts(db, VERIFICATION_DISPATCH_OWNER)
+    // BAZ-043: the same rule for a packet's reviewer turn — an interrupted attempt becomes uncertain and
+    // is never replayed, and the packet returns to `open` for an explicit decision.
+    recoverInterruptedReviewAttempts(db, Date.now())
     reconcileApprovalHolds(db)
     recoverInterruptedResultDeliveries(db)
     reconcilePrivateResults(db)

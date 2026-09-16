@@ -38,6 +38,7 @@ import { approvalDeliveryFailureMessage, protectedFrameFailure } from '../lib/pr
 import { questionServiceFor } from '../lib/question-service.ts'
 import { capturedResultFile, releaseResultFile } from '../lib/result-delivery.ts'
 import { reconcilePrivateResults } from '../lib/result-retention.ts'
+import { releaseReviewGrant, validateReviewGrant } from '../lib/review/approval.ts'
 import { downloadMediaBytes } from '../lib/telegram/media.ts'
 import { createTrustedTurnInvocation } from '../lib/turn-invocation.ts'
 import {
@@ -183,6 +184,38 @@ approvalsRouter.post('/:id/approve', async (c) => {
         error.message,
       )
       return c.json({ error: 'approval delivery failed', detail: error.message }, 500)
+    }
+    if (pendingPlan.kind === 'review_request') {
+      // BAZ-043: a held review request is a durable grant, exactly like a verification request. The
+      // review state machine remains the only thing that claims and dispatches the reviewer.
+      const granted = communicationApprovalRepo.grantReviewRequest(
+        db,
+        id,
+        'authenticated_operator',
+        (approval) =>
+          authorizeInSnapshot(db, {
+            source: approval.source,
+            target: approval.target,
+            origin: approval.origin,
+            attemptKind: approval.attemptKind,
+            attemptId: approval.attemptId,
+          }),
+        () => validateReviewGrant(db, getCtx().paths, pendingPlan.payload.packetId),
+        () => releaseReviewGrant(db, pendingPlan.payload.packetId),
+      )
+      if (!granted.granted) {
+        return c.json(
+          {
+            error:
+              granted.failureKind === 'revalidation'
+                ? 'approval revalidation failed'
+                : 'approval delivery failed',
+            detail: granted.error,
+          },
+          409,
+        )
+      }
+      return c.json({ granted: true })
     }
     if (pendingPlan.kind === 'verification_request') {
       // BAZ-044: a held verification request is a durable grant. Release it into `pending`; the
@@ -356,6 +389,11 @@ async function deliver(plan: ApprovalDeliveryPlan): Promise<void> {
     // Scheduler approvals are durable grants only. The pending dispatch is
     // executed by the scheduler so leases, retries, and restart recovery stay
     // in one state machine.
+    return
+  }
+  if (plan.kind === 'review_request') {
+    // BAZ-043 approvals are durable grants too: the packet was released into `open` by the grant
+    // transaction, and the review state machine alone claims and dispatches it under its own rules.
     return
   }
   if (plan.kind === 'verification_request') {

@@ -54,6 +54,7 @@ import { matchesCron, type ParsedCron, parseCron } from './cron.ts'
 import { getCtx } from './ctx.ts'
 import { prepareProtectedExecution } from './protected-execution.ts'
 import { protectedFailureMessage, protectedFrameFailure } from './protected-failure.ts'
+import { dispatchableReviews, dispatchReviewPacket } from './review/dispatch.ts'
 import { dispatchClaimableReviews } from './review-dispatcher.ts'
 import { createPreclaimedTurn, createTrustedTurnInvocation } from './turn-invocation.ts'
 import { dispatchPendingVerifications } from './verification/dispatch.ts'
@@ -535,6 +536,18 @@ async function tick(): Promise<void> {
   // inbox path — an eligible pending request is claimed under its own lease and admitted with the
   // restricted capability. A busy or unavailable specialist simply leaves it pending for a later tick.
   work.push(dispatchPendingVerifications(now))
+  // BAZ-043: a packet waiting for its reviewer is dispatched by the review state machine, never by the
+  // inbox path — the ordinary inbox wake starts a *writable coding turn*, which must never be able to
+  // consume a review packet. A busy reviewer leaves the packet open for a later tick.
+  for (const packet of dispatchableReviews()) {
+    work.push(
+      dispatchReviewPacket(packet.id)
+        .then(() => undefined)
+        .catch(() =>
+          console.warn(JSON.stringify({ event: 'review_dispatch_failed', packetId: packet.id })),
+        ),
+    )
+  }
   await Promise.allSettled(work)
 }
 

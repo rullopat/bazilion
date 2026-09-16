@@ -237,6 +237,33 @@ export function authorizeVerificationRequest(
   )
 }
 
+/**
+ * BAZ-043: the requester's edge to its reviewer.
+ *
+ * A review that an `approval_required` edge holds must not run: the packet waits in `awaiting_approval`
+ * until an operator releases it, and the released grant is a durable grant like a held verification
+ * request — the review state machine alone claims and executes it.
+ */
+export function authorizeReviewRequest(
+  db: BazilionDb,
+  input: { from: string; to: string; packetId: string },
+): AuthorizationResult {
+  return authorizeBoundary(
+    db,
+    {
+      source: { kind: 'agent', id: input.from },
+      target: { kind: 'agent', id: input.to },
+      origin: 'review_request',
+      attemptKind: 'review_request',
+      attemptId: input.packetId,
+      approvalPayloadKind: 'review_request',
+      approvalPayload: { packetId: input.packetId },
+      requester: input.from,
+    },
+    'request_review',
+  )
+}
+
 export function authorizeHttpChatFrame(
   db: BazilionDb,
   agentId: string,

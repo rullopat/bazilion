@@ -123,6 +123,19 @@ export interface SpecialistVerificationWorkerSpec {
   }
 }
 
+/** BAZ-043: a restricted static review of one captured revision. */
+export interface StaticReviewWorkerSpec {
+  kind: 'packet_review'
+  agentId: string
+  message: string
+  turnId: string
+  runtime: ProtectedProviderWorkerRuntime
+  review: {
+    packetId: string
+    attemptId: string
+  }
+}
+
 export type WorkerTurnSpec = ConfiguredOperatorHttpWorkerSpec | ProtectedWorkerSpec
 
 export interface MinimalWorkerScratch {
@@ -145,6 +158,10 @@ export type WorkerInput =
       scratch: MinimalWorkerScratch
     })
   | (SpecialistVerificationWorkerSpec & {
+      apiKeyRefreshEnabled: true
+      scratch: MinimalWorkerScratch
+    })
+  | (StaticReviewWorkerSpec & {
       apiKeyRefreshEnabled: true
       scratch: MinimalWorkerScratch
     })
@@ -210,6 +227,16 @@ const PROTECTED_REQUIRED_KEYS = new Set(
     (key) => key !== 'images' && key !== 'questionEnabled' && key !== 'containerNamespace',
   ),
 )
+const STATIC_REVIEW_KEYS = new Set([
+  'kind',
+  'agentId',
+  'message',
+  'turnId',
+  'runtime',
+  'review',
+  'apiKeyRefreshEnabled',
+  'scratch',
+])
 const VERIFICATION_KEYS = new Set([
   'kind',
   'agentId',
@@ -416,6 +443,28 @@ export function parseWorkerInput(value: unknown): WorkerInput {
     )
     requireString(verification.requestId, 'requestId')
     requireString(verification.attemptId, 'attemptId')
+    return value as WorkerInput
+  }
+
+  if (kind === 'packet_review') {
+    assertExactKeys(input, STATIC_REVIEW_KEYS, 'static review worker input', STATIC_REVIEW_KEYS)
+    requireString(input.agentId, 'agentId')
+    requireString(input.message, 'message')
+    requireString(input.turnId, 'turnId')
+    assertProtectedProviderRuntime(input.runtime)
+    if (input.apiKeyRefreshEnabled !== true) {
+      throw new Error('worker: static review requires bound API key refresh')
+    }
+    assertMinimalWorkerScratch(input.scratch)
+    const review = objectRecord(input.review, 'review metadata')
+    assertExactKeys(
+      review,
+      new Set(['packetId', 'attemptId']),
+      'review metadata',
+      new Set(['packetId', 'attemptId']),
+    )
+    requireString(review.packetId, 'packetId')
+    requireString(review.attemptId, 'attemptId')
     return value as WorkerInput
   }
 

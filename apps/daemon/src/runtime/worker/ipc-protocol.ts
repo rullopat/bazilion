@@ -39,6 +39,10 @@ export type RpcMethod =
   | 'userMdWrite'
   | 'browserInvoke'
   | 'mcpInvoke'
+  | 'reviewPacketRead'
+  | 'reviewPathRead'
+  | 'reviewFindingAdd'
+  | 'reviewConclusion'
   | 'verificationCapture'
   | 'verificationRead'
   | 'verificationRun'
@@ -189,6 +193,16 @@ export type RpcArgs =
   | { method: 'userMdWrite'; args: UserMdWriteArgs }
   | { method: 'browserInvoke'; args: BrowserInvokeArgs }
   | { method: 'mcpInvoke'; args: McpInvokeArgs }
+  | { method: 'reviewPacketRead'; args: ReviewIdentityArgs }
+  | { method: 'reviewPathRead'; args: ReviewIdentityArgs & { path: string } }
+  | {
+      method: 'reviewFindingAdd'
+      args: ReviewIdentityArgs & { finding: import('@bazilion/api-types').ReviewFindingInput }
+    }
+  | {
+      method: 'reviewConclusion'
+      args: ReviewIdentityArgs & { conclusion: import('@bazilion/api-types').ReviewConclusionInput }
+    }
   | {
       method: 'verificationCapture'
       args: import('../tools/verification.ts').VerificationRequestIntent
@@ -217,6 +231,19 @@ export type RpcResult =
   | { method: 'userMdWrite'; value: UserMdWriteResult }
   | { method: 'browserInvoke'; value: ToolResultPart[] }
   | { method: 'mcpInvoke'; value: ToolResultPart[] }
+  | {
+      method: 'reviewPacketRead'
+      value: import('@bazilion/api-types').ReviewPacketBrief
+    }
+  | {
+      method: 'reviewPathRead'
+      value: import('@bazilion/api-types').ReviewPathContent
+    }
+  | { method: 'reviewFindingAdd'; value: { findingId: string; ordinal: number } }
+  | {
+      method: 'reviewConclusion'
+      value: { conclusion: import('@bazilion/api-types').ReviewConclusion }
+    }
   | {
       method: 'verificationCapture'
       value: import('../tools/verification.ts').VerificationRequestReceipt
@@ -299,6 +326,39 @@ export interface McpHost {
  * Host-side surface for the specialist capability. The daemon binds it to one claimed attempt, so a
  * worker can only read the request it was admitted for and run checks that request declared.
  */
+export interface ReviewIdentityArgs {
+  packetId: string
+  attemptId: string
+}
+
+/**
+ * The reviewer's capability over IPC (BAZ-043).
+ *
+ * Every call carries the packet and attempt the worker believes it is acting for; the daemon refuses
+ * anything but its own binding, so a compromised worker cannot read or annotate another review.
+ */
+export interface ChangeReviewHost {
+  read(
+    packetId: string,
+    attemptId: string,
+  ): Promise<import('@bazilion/api-types').ReviewPacketBrief>
+  path(
+    packetId: string,
+    attemptId: string,
+    path: string,
+  ): Promise<import('@bazilion/api-types').ReviewPathContent>
+  addFinding(
+    packetId: string,
+    attemptId: string,
+    finding: import('@bazilion/api-types').ReviewFindingInput,
+  ): Promise<{ findingId: string; ordinal: number }>
+  conclude(
+    packetId: string,
+    attemptId: string,
+    conclusion: import('@bazilion/api-types').ReviewConclusionInput,
+  ): Promise<{ conclusion: import('@bazilion/api-types').ReviewConclusion }>
+}
+
 export interface VerificationHost {
   read(
     requestId: string,

@@ -17,6 +17,7 @@ import {
 } from '../pi/session.ts'
 import { ourToolToPiTool } from '../pi/tools.ts'
 import type { BashApprovalHost as ShellBashApprovalHost } from '../shell/approval.ts'
+import { type ReviewCapabilityHost, reviewTools } from '../tools/review.ts'
 import { type VerificationRequestHost, verificationTools } from '../tools/verification.ts'
 import { createIpcApiKeyRefresher } from './api-key-refresh.ts'
 import { createIpcClient, type WorkerIpcCall } from './ipc-client.ts'
@@ -252,6 +253,20 @@ function createIpcVerificationRequestHost(ipcCall: WorkerIpcCall): VerificationR
   }
 }
 
+/** BAZ-043: the reviewer's capability, proxied to the daemon that owns the packet. */
+function createIpcChangeReviewHost(
+  ipcCall: WorkerIpcCall,
+  identity: { packetId: string; attemptId: string },
+): ReviewCapabilityHost {
+  const { packetId, attemptId } = identity
+  return {
+    read: () => ipcCall('reviewPacketRead', { packetId, attemptId }),
+    path: (path) => ipcCall('reviewPathRead', { packetId, attemptId, path }),
+    addFinding: (finding) => ipcCall('reviewFindingAdd', { packetId, attemptId, finding }),
+    conclude: (conclusion) => ipcCall('reviewConclusion', { packetId, attemptId, conclusion }),
+  }
+}
+
 function createIpcVerificationHost(
   ipcCall: WorkerIpcCall,
   identity: { requestId: string; attemptId: string },
@@ -271,6 +286,7 @@ async function createSessionForInput(
   if (
     input.kind !== 'restricted_review' &&
     input.kind !== 'specialist_verification' &&
+    input.kind !== 'packet_review' &&
     !input.repositoryContext
   )
     throw new Error('Coding turn requires daemon-prepared repository context')
@@ -349,6 +365,19 @@ async function createSessionForInput(
       tools: verificationTools(createIpcVerificationHost(ipcCall, input.verification)).map(
         ourToolToPiTool,
       ),
+      refreshApiKey,
+    })
+    return { handle }
+  }
+
+  if (input.kind === 'packet_review') {
+    // Same restricted session factory as the other read-only kinds: the difference is the injected tool
+    // list, and none of the three can reach a general coding tool.
+    const handle = await createRestrictedReviewSession({
+      runtime: input.runtime,
+      scratch: input.scratch,
+      systemPrompt: STATIC_REVIEW_SYSTEM_PROMPT,
+      tools: reviewTools(createIpcChangeReviewHost(ipcCall, input.review)).map(ourToolToPiTool),
       refreshApiKey,
     })
     return { handle }
@@ -444,6 +473,7 @@ async function main(): Promise<void> {
     if (
       input.kind !== 'restricted_review' &&
       input.kind !== 'specialist_verification' &&
+      input.kind !== 'packet_review' &&
       input.questionEnabled &&
       piEvent.type === 'message_end' &&
       piEvent.message.role === 'toolResult' &&
@@ -492,18 +522,20 @@ async function main(): Promise<void> {
 
   try {
     const promptMessage = redactJsonValue(input.message, activeAccessTokens)
-    const sanitizedImages =
-      input.kind === 'restricted_review' || input.kind === 'specialist_verification'
-        ? []
-        : redactJsonValue(input.images ?? [], activeAccessTokens)
-    const promptImages =
-      input.kind === 'restricted_review' || input.kind === 'specialist_verification'
-        ? []
-        : sanitizedImages.map((image) => ({
-            type: 'image' as const,
-            data: image.data,
-            mimeType: image.mimeType,
-          }))
+    const restricted =
+      input.kind === 'restricted_review' ||
+      input.kind === 'specialist_verification' ||
+      input.kind === 'packet_review'
+    const sanitizedImages = restricted
+      ? []
+      : redactJsonValue(input.images ?? [], activeAccessTokens)
+    const promptImages = restricted
+      ? []
+      : sanitizedImages.map((image) => ({
+          type: 'image' as const,
+          data: image.data,
+          mimeType: image.mimeType,
+        }))
     await session.prompt(
       promptMessage,
       promptImages.length > 0 ? { images: promptImages } : undefined,
@@ -542,6 +574,22 @@ main().catch((error) => {
   } catch {}
   process.exit(1)
 })
+
+const STATIC_REVIEW_SYSTEM_PROMPT = `You are a restricted code reviewer. You review one captured
+revision and report what you find. Call review_packet to read the revision, review_path to read a patch,
+review_finding to record a finding, and finish with review_conclusion.
+
+Boundaries you cannot cross, and must not try to:
+- You review the *captured revision*, not the current repository. If its content is not reproducible, say
+  so and do not describe lines you could not read: the change list and the requester's summary are what
+  you have.
+- You have no shell, no editor, no browser and no network tool. You cannot run a test, apply a fix, stage
+  anything, commit, merge or deploy. If something would need running to be sure, say that it needs running.
+- You cannot publish, and your conclusion is not an approval. It is your statement about this revision.
+
+Report what you actually found, with the path it concerns. Say when you are unsure, and say when you could
+not verify something rather than guessing. Do not repeat a finding that is already recorded.
+`
 
 const VERIFICATION_SYSTEM_PROMPT = `You are a restricted verification specialist. You verify one
 captured change against the checks your requester selected. Call verification_request to read the

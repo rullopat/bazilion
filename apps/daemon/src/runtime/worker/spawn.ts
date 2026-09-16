@@ -52,6 +52,7 @@ import {
   redactExactValue,
   redactJsonValue,
   type SpecialistVerificationWorkerSpec,
+  type StaticReviewWorkerSpec,
   type WorkerInput,
   type WorkerTurnSpec,
 } from './runtime.ts'
@@ -126,12 +127,31 @@ export async function spawnReviewWorker(
  * BAZ-044: run one specialist verification turn. Frames stream to the caller; the dispatcher settles
  * the attempt from the outcomes the daemon-side host recorded, not from anything the model said.
  */
+export function spawnStaticReviewWorker(
+  spec: StaticReviewWorkerSpec,
+  opts: StaticReviewSpawnWorkerOpts,
+): AsyncGenerator<ChatFrame, void, void> {
+  return spawnWorker(spec, opts) as AsyncGenerator<ChatFrame, void, void>
+}
+
 export function spawnVerificationWorker(
   spec: SpecialistVerificationWorkerSpec,
   opts: SpecialistVerificationSpawnWorkerOpts,
 ): AsyncGenerator<ChatFrame, void, void> {
   return spawnWorker(spec, opts) as AsyncGenerator<ChatFrame, void, void>
 }
+
+/**
+ * Every worker spec a spawn can be asked for, including the restricted kinds.
+ *
+ * One alias rather than the union written out at four call sites: adding a restricted kind should change
+ * one line, not four.
+ */
+type SpecWithCapabilityHost =
+  | WorkerTurnSpec
+  | RestrictedReviewWorkerSpec
+  | SpecialistVerificationWorkerSpec
+  | StaticReviewWorkerSpec
 
 export interface WorkerResourceLifecycle {
   beforeInput(pid: number, hostCommands?: boolean): void
@@ -208,6 +228,12 @@ export interface RestrictedReviewSpawnWorkerOpts extends CommonSpawnWorkerOpts {
   apiKeyRefreshHost: ApiKeyRefreshHost
 }
 
+/** A static review turn gets exactly one extra host — the reviewer capability — and nothing else. */
+export interface StaticReviewSpawnWorkerOpts extends CommonSpawnWorkerOpts {
+  apiKeyRefreshHost: ApiKeyRefreshHost
+  changeReviewHost: import('./ipc-protocol.ts').ChangeReviewHost
+}
+
 /** A verification turn gets exactly one extra host — the capability — and nothing else. */
 export interface SpecialistVerificationSpawnWorkerOpts extends CommonSpawnWorkerOpts {
   apiKeyRefreshHost: ApiKeyRefreshHost
@@ -219,6 +245,7 @@ export type SpawnWorkerOpts =
   | ProtectedSpawnWorkerOpts
   | RestrictedReviewSpawnWorkerOpts
   | SpecialistVerificationSpawnWorkerOpts
+  | StaticReviewSpawnWorkerOpts
 
 export function spawnWorkerTurn(
   spec: ConfiguredOperatorHttpWorkerSpec,
@@ -236,7 +263,7 @@ export function spawnWorkerTurn(
 }
 
 async function* spawnWorker(
-  spec: WorkerTurnSpec | RestrictedReviewWorkerSpec | SpecialistVerificationWorkerSpec,
+  spec: SpecWithCapabilityHost,
   opts: SpawnWorkerOpts,
 ): AsyncGenerator<WorkerOutputFrame, void, void> {
   assertSpawnCombination(spec, opts)
@@ -512,15 +539,16 @@ async function* spawnWorker(
  * Kept as one predicate so a new restricted kind cannot pick up only *some* of those limits.
  */
 function isRestrictedWorkerKind(
-  spec: WorkerTurnSpec | RestrictedReviewWorkerSpec | SpecialistVerificationWorkerSpec,
-): spec is RestrictedReviewWorkerSpec | SpecialistVerificationWorkerSpec {
-  return spec.kind === 'restricted_review' || spec.kind === 'specialist_verification'
+  spec: SpecWithCapabilityHost,
+): spec is RestrictedReviewWorkerSpec | SpecialistVerificationWorkerSpec | StaticReviewWorkerSpec {
+  return (
+    spec.kind === 'restricted_review' ||
+    spec.kind === 'specialist_verification' ||
+    spec.kind === 'packet_review'
+  )
 }
 
-function assertSpawnCombination(
-  spec: WorkerTurnSpec | RestrictedReviewWorkerSpec | SpecialistVerificationWorkerSpec,
-  opts: SpawnWorkerOpts,
-): void {
+function assertSpawnCombination(spec: SpecWithCapabilityHost, opts: SpawnWorkerOpts): void {
   const record = opts as unknown as Record<string, unknown>
   if (
     !isRestrictedWorkerKind(spec) &&
@@ -578,14 +606,22 @@ function assertSpawnCombination(
     ]) {
       if (forbidden in record) throw new Error(`${spec.kind} rejects ${forbidden}`)
     }
-    // The capability host is bound to one claimed attempt, so a verification turn must have it and
-    // no other kind may carry it.
-    const wantsCapability = spec.kind === 'specialist_verification'
-    if (wantsCapability !== 'verificationHost' in record) {
+    // A capability host is bound to one claimed attempt, so each restricted kind must have exactly the
+    // one it needs and no other kind may carry any of them.
+    const wantsVerification = spec.kind === 'specialist_verification'
+    if (wantsVerification !== 'verificationHost' in record) {
       throw new Error(
-        wantsCapability
+        wantsVerification
           ? 'verification turn requires its bound capability host'
           : `${spec.kind} rejects verificationHost`,
+      )
+    }
+    const wantsReview = spec.kind === 'packet_review'
+    if (wantsReview !== 'changeReviewHost' in record) {
+      throw new Error(
+        wantsReview
+          ? 'review turn requires its bound capability host'
+          : `${spec.kind} rejects changeReviewHost`,
       )
     }
   }
@@ -598,7 +634,7 @@ function hostHasMethods(value: unknown, methods: readonly string[]): boolean {
 }
 
 function spawnHosts(
-  spec: WorkerTurnSpec | RestrictedReviewWorkerSpec | SpecialistVerificationWorkerSpec,
+  spec: SpecWithCapabilityHost,
   opts: SpawnWorkerOpts,
   signal: AbortSignal,
   onBashApproval: NonNullable<IpcHosts['onBashApproval']>,
@@ -640,6 +676,10 @@ function spawnHosts(
     verificationHost:
       spec.kind === 'specialist_verification'
         ? (opts as SpecialistVerificationSpawnWorkerOpts).verificationHost
+        : undefined,
+    changeReviewHost:
+      spec.kind === 'packet_review'
+        ? (opts as StaticReviewSpawnWorkerOpts).changeReviewHost
         : undefined,
     verificationRequestHost:
       spec.kind === 'protected'
@@ -690,6 +730,8 @@ interface IpcHosts {
   browserHost?: BrowserHost
   mcpHost?: McpHost
   verificationHost?: import('./ipc-protocol.ts').VerificationHost
+  /** BAZ-043: the reviewer capability, bound to one packet attempt. */
+  changeReviewHost?: import('./ipc-protocol.ts').ChangeReviewHost
   /** BAZ-044 requester side: only a protected coding turn may ask for verification. */
   verificationRequestHost?: import('../tools/verification.ts').VerificationRequestHost
   bashApprovalHost?: BashApprovalHost
@@ -863,6 +905,33 @@ async function dispatch(req: IpcRequest, hosts: IpcHosts): Promise<IpcReply> {
           req.args.serverId,
           req.args.toolName,
           req.args.args,
+        )
+        break
+      case 'reviewPacketRead':
+        result = await require(hosts.changeReviewHost, 'review', req.method).read(
+          req.args.packetId,
+          req.args.attemptId,
+        )
+        break
+      case 'reviewPathRead':
+        result = await require(hosts.changeReviewHost, 'review', req.method).path(
+          req.args.packetId,
+          req.args.attemptId,
+          req.args.path,
+        )
+        break
+      case 'reviewFindingAdd':
+        result = await require(hosts.changeReviewHost, 'review', req.method).addFinding(
+          req.args.packetId,
+          req.args.attemptId,
+          req.args.finding,
+        )
+        break
+      case 'reviewConclusion':
+        result = await require(hosts.changeReviewHost, 'review', req.method).conclude(
+          req.args.packetId,
+          req.args.attemptId,
+          req.args.conclusion,
         )
         break
       case 'verificationCapture':

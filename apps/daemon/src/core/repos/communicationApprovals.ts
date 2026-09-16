@@ -448,6 +448,28 @@ export function grantVerificationRequest(
   )
 }
 
+/** BAZ-043: convert a held review request into a durable grant, exactly like a verification request. */
+export function grantReviewRequest(
+  db: BazilionDb,
+  id: string,
+  actor: string,
+  revalidate: (row: CommunicationApprovalDetail) => CommunicationAuthorizationResult,
+  validateDelivery: (row: CommunicationApprovalDetail) => string | null,
+  onGranted: (row: CommunicationApprovalDetail) => void,
+  now = Date.now(),
+): SchedulerApprovalGrantResult {
+  return grantDurableApproval(
+    db,
+    id,
+    actor,
+    { operation: 'request_review', payloadKind: 'review_request' },
+    revalidate,
+    validateDelivery,
+    now,
+    onGranted,
+  )
+}
+
 function grantDurableApproval(
   db: BazilionDb,
   id: string,

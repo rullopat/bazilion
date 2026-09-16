@@ -8,10 +8,12 @@ import {
 const trustedTurnBrand: unique symbol = Symbol('bazilion.trusted-turn-invocation')
 const trustedReviewBrand: unique symbol = Symbol('bazilion.trusted-review-invocation')
 const trustedVerificationBrand: unique symbol = Symbol('bazilion.trusted-verification-invocation')
+const trustedChangeReviewBrand: unique symbol = Symbol('bazilion.trusted-change-review-invocation')
 const preclaimedTurnBrand: unique symbol = Symbol('bazilion.preclaimed-turn')
 const trustedTurns = new WeakSet<object>()
 const trustedReviews = new WeakSet<object>()
 const trustedVerifications = new WeakSet<object>()
+const trustedChangeReviews = new WeakSet<object>()
 const trustedClaims = new WeakSet<object>()
 const consumedClaims = new WeakSet<object>()
 
@@ -152,10 +154,32 @@ export type TrustedRestrictedVerificationInvocation =
     readonly [trustedVerificationBrand]: true
   }
 
+/**
+ * A restricted static-review turn (BAZ-043).
+ *
+ * Dispatched directly like the others: no turn-preparation, no lifecycle claim, no operator surface. The
+ * packet id *is* the attempt id, so policy, a held approval and dispatch all key on one identity and a
+ * released approval cannot be replayed onto another packet.
+ */
+type TrustedChangeReviewInvocationInput = {
+  kind: 'restricted_change_review'
+  authorization: {
+    kind: 'packet'
+    packetId: string
+    attemptId: string
+  }
+  bashApprovalMode: 'auto_deny'
+}
+
+export type TrustedChangeReviewInvocation = TrustedChangeReviewInvocationInput & {
+  readonly [trustedChangeReviewBrand]: true
+}
+
 export type TrustedInvocation =
   | TrustedTurnInvocation
   | TrustedRestrictedReviewInvocation
   | TrustedRestrictedVerificationInvocation
+  | TrustedChangeReviewInvocation
 export type TurnExecutionSurface = 'configured_operator_http' | 'protected'
 
 export function createPreclaimedTurn(input: {
@@ -221,6 +245,49 @@ export function createTrustedVerificationInvocation(
   Object.defineProperty(candidate, trustedVerificationBrand, { value: true })
   trustedVerifications.add(candidate)
   return Object.freeze(candidate)
+}
+
+export function createTrustedChangeReviewInvocation(
+  value: TrustedChangeReviewInvocationInput,
+): TrustedChangeReviewInvocation {
+  validateChangeReviewInvocation(value)
+  const candidate = {
+    ...value,
+    authorization: Object.freeze({ ...value.authorization }),
+  } as TrustedChangeReviewInvocation
+  validateChangeReviewInvocation(candidate)
+  Object.defineProperty(candidate, trustedChangeReviewBrand, { value: true })
+  trustedChangeReviews.add(candidate)
+  return Object.freeze(candidate)
+}
+
+export function assertTrustedChangeReviewInvocation(
+  value: unknown,
+): asserts value is TrustedChangeReviewInvocation {
+  if (!isRecord(value) || !trustedChangeReviews.has(value)) throw invalidInvocation()
+  validateChangeReviewInvocation(value)
+}
+
+function validateChangeReviewInvocation(
+  value: unknown,
+): asserts value is TrustedChangeReviewInvocationInput {
+  if (!isRecord(value)) throw invalidInvocation()
+  assertExactKeys(value, ['kind', 'authorization', 'bashApprovalMode'])
+  if (
+    value.kind !== 'restricted_change_review' ||
+    value.bashApprovalMode !== 'auto_deny' ||
+    !isRecord(value.authorization)
+  ) {
+    throw invalidInvocation()
+  }
+  assertExactKeys(value.authorization, ['kind', 'packetId', 'attemptId'])
+  if (
+    value.authorization.kind !== 'packet' ||
+    !isNonEmptyString(value.authorization.packetId) ||
+    !isNonEmptyString(value.authorization.attemptId)
+  ) {
+    throw invalidInvocation()
+  }
 }
 
 export function assertTrustedVerificationInvocation(

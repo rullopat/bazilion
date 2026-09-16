@@ -130,6 +130,11 @@ export type ApprovalDeliveryPlan =
       payload: VerificationRequestApprovalPayload
     }
   | {
+      kind: 'review_request'
+      approval: CommunicationApprovalDetail
+      payload: { packetId: string }
+    }
+  | {
       kind: 'http_chat_frame'
       approval: CommunicationApprovalDetail
       payload: HttpChatFrameApprovalPayload
@@ -262,6 +267,24 @@ export function planApprovalDelivery(
     } catch {
       return invalid('question_binding')
     }
+  }
+
+  if (approval.payloadKind === 'review_request') {
+    const payload = approval.payload
+    if (
+      approval.operation !== 'request_review' ||
+      approval.origin !== 'review_request' ||
+      !isRecord(payload) ||
+      Object.keys(payload).sort().join(',') !== 'packetId' ||
+      typeof payload.packetId !== 'string' ||
+      !/^[0-9a-f-]{36}$/i.test(payload.packetId)
+    )
+      return invalid('review_request_payload')
+    requireAttemptKind(approval, 'review_request')
+    // The packet identity is the attempt identity, so a released approval cannot be replayed onto another
+    // packet, and the packet revalidates membership and policy before its reviewer is dispatched.
+    if (approval.attemptId !== payload.packetId) return invalid('review_request_attempt')
+    return { kind: 'review_request', approval, payload: { packetId: payload.packetId } }
   }
 
   if (approval.payloadKind === 'verification_request') {
