@@ -134,6 +134,10 @@ export type VerificationBlockerReason =
   | 'source_changed'
   | 'check_not_captured'
   | 'approval_required'
+  /** The edge no longer permits the request, so it must not run. */
+  | 'policy_denied'
+  /** The live workspace cannot be shown to match the captured change. */
+  | 'source_unverifiable'
   | 'missing_toolchain'
   | 'unsupported'
 

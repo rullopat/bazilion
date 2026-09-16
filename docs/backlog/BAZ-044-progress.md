@@ -16,6 +16,8 @@ unrestricted inbox turn.
 | 2 | Request capture | Capture contract from an Agent or the operator: snapshot binding, ≤8 checks, admitted environment facts, blockers instead of substitution | **done** |
 | 3a | Authorization and release | Verification authorizer on the canonical peer edge, a closed approval tuple, and a durable grant whose release commits with the decision | **done** |
 | 3b | Dispatch | The preclaimed verification invocation is defined; claiming and admitting the tester turn is not wired yet | **in progress** |
+| 4 | Admission | Revalidate, hold, reserve the workspace and refuse drift — with a settled claim when nothing ran | **done** |
+| 5 | Restricted test capability | Worker surface that can inspect the request and invoke each captured command once | |
 | 4 | Workspace and snapshot revalidation | Reserve the workspace for the interval; block on drift before execution; unknown after source mutation | |
 | 5 | Restricted test capability | Worker surface that can inspect the request and invoke each captured command once — no Bash/edit/write/browser/MCP/deploy | |
 | 6 | Evidence return and surfaces | Per-request access, API/CLI/web, cancellation, expiry, Telegram notices | |
@@ -129,3 +131,44 @@ suites.
 - **Adding a plan kind fails closed at the delivery site.** The Telegram delivery block now narrows
   through `isTelegramDeliveryPlan` instead of assuming the remaining kinds are Telegram ones; the guard
   is statically unreachable today and becomes live the moment a kind is added without a handler.
+
+## Slice 4 — admission (done)
+
+`apps/daemon/src/lib/verification/admission.ts` and four tests in
+`apps/daemon/test/lib/verification-admission.test.ts`.
+
+**The order is the security property**, and it is deliberate:
+
+1. **Revalidate before claiming anything durable.** The specialist must still be a live member of the
+   same Team, the captured evidence must still be inside its window, and the canonical edge must still
+   permit the request. A request that can no longer be honoured is refused without leaving an attempt
+   behind — asserted by checking there are zero attempts after a refusal.
+2. **Claim the single dispatch slot** through the leased, transactional claim, so an execution that is
+   interrupted is recoverable as `uncertain` rather than replayable.
+3. **Reserve the workspace exclusively, then prove the reserved tree is the captured one.** A coder or
+   an external editor may have moved the tree while the request waited; running here would test a
+   different change and call it verified.
+
+**Decisions worth keeping.**
+
+- **Policy is re-evaluated on every attempt, and the gate is respected.** A request that was allowed
+  when captured is not allowed forever, but with Team Policy enforcement off the edge is an
+  unconditional allow — otherwise admission would invent a policy decision the runtime is not making.
+- **A `deny` blocks; an `approval_required` holds.** The latter captures the attempt through the
+  canonical approver (agent→agent or user→agent, matching who asked) and returns `held`; release never
+  executes anything. A policy that reports `approval_required` *without* capturing the attempt is
+  treated as a contract breach and blocks rather than running.
+- **A busy workspace is a deferral, not a failure.** A claimed-but-unstarted attempt is settled
+  honestly: `failed` with its checks `blocked`, and the request `blocked` with `source_changed` or
+  `source_unverifiable` — never `succeeded`, and never left `running` holding the slot.
+- **Nothing is substituted**: not a different tree, not a relaxed policy, not a fresh snapshot. The
+  drift refusal names the remedy (a fresh capture) instead of quietly re-capturing.
+- **`unknown` applicability is refused as `source_unverifiable`, not assumed to match**, so "we could
+  not prove the tree is the captured one" and "the tree changed" stay distinguishable.
+
+**Still unwired, deliberately.** Admission is not yet reachable from the scheduler, and that stays true
+until slice 5 exists: a dispatcher that claims a request without being able to execute its checks would
+leave work stuck in `running`. The repo therefore still contains no path that can execute a
+verification request end to end.
+
+**Verification.** 1048 tests pass across daemon lib/core/routes; typecheck, format and lint clean.
