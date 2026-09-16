@@ -1162,3 +1162,23 @@ export type {
   UserQueueListResponse,
   UserQueueStatus,
 } from './user-queue.ts'
+export type {
+  CreateVerificationRequest,
+  VerificationApplicability,
+  VerificationAttempt,
+  VerificationAttemptState,
+  VerificationBlockedResponse,
+  VerificationBlocker,
+  VerificationBlockerReason,
+  VerificationCheck,
+  VerificationCheckInput,
+  VerificationCheckOutcome,
+  VerificationCheckState,
+  VerificationEnvironmentFacts,
+  VerificationListResponse,
+  VerificationReport,
+  VerificationRequest,
+  VerificationRequester,
+  VerificationRequestState,
+  VerificationResponse,
+} from './verification.ts'
