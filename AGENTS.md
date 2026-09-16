@@ -214,6 +214,48 @@ API in `apps/daemon/src/core/`: `openSecrets(db, password)` and `openConfig(db)`
   Deletion tombstones cannot resurrect; Agent transfer/deletion retain original Team provenance,
   Team deletion cascades, and backup/restore verifies blob hashes. See `docs/results.md`.
 
+- **BAZ-044: specialist verification of a captured code change.** One typed request
+  (`verification_requests` + `verification_checks`, with `verification_attempts` and
+  `verification_check_outcomes`) binds exactly one BAZ-042 snapshot to at most eight captured commands
+  and the frozen BAZ-040 admitted environment, and names one same-Team specialist. It is a bounded
+  dispatch-and-evidence record, not a workflow engine: no stages, transformations, approver assignment
+  or automatic retries. The invariants are load-bearing — do not re-derive them:
+  - **The captured contract is immutable and outcomes are per attempt.** A rerun is a new attempt that
+    links to the result it supersedes, so history is never rewritten. Claiming is transactional,
+    leased, and persisted *before* a command runs, which is what makes an interrupted execution
+    `uncertain` (never replayed) instead of silently retried.
+  - **Capture and admission validate, never substitute.** Capture refuses an unavailable or incomplete
+    snapshot, a non-member or archived specialist, and a self-verification, leaving no rows behind.
+    Admission revalidates membership, evidence window and directed policy on every attempt, reserves the
+    workspace exclusively, and **refuses drift**: `source_changed` names a fresh capture as the remedy
+    rather than re-capturing silently.
+  - **The specialist capability is two tools and cannot be widened.** `verification_request` reads the
+    request; `verification_check` runs one declared ordinal, once. No command, cwd, timeout or env
+    argument exists to pass, the worker input keys are exact, and the spawner rejects coding/container/
+    context/result/messaging/USER.md/browser/MCP/question hosts for a restricted kind rather than
+    trusting the caller. The daemon re-checks the worker's request/attempt identity against its own
+    binding, so a compromised worker still cannot reach another attempt.
+  - **The frozen environment is authoritative and unattended approval is blocked.** A request captured
+    for a container is refused when isolation is off (and vice versa); a check needing an approval an
+    unattended turn cannot obtain is `blocked`, never auto-approved. A command carrying protected
+    credential material is refused, and retained output is redacted with a **live** secrets supplier.
+  - **Outcomes are executor facts, and settling reports evidence availability, not a verdict.** A
+    receipt is written for every executed check (one is required; provenance is never fabricated) and
+    it names the snapshot it was verified against. `completed` means the check set finished — a
+    non-zero exit is a *result*, reported per check — and only "nothing executed at all" fails the
+    attempt. Unrun checks settle as `skipped`, distinct from `blocked` and `unknown`.
+  - **One dispatch owner, never the inbox path.** A request is dispatched by the scheduler tick through
+    its own state machine, is never a peer message, and cannot be smuggled through the inbox in either
+    direction. Its invocation is a *restricted* invocation (like a restricted review), not a turn with
+    a preclaimed lifecycle claim.
+  - Surfaces: `/api/teams/:id/verifications[/:requestId[/cancel]]`, `bazilion team verify
+    create|list|show|cancel`, and the Team **Verifications** section — all built from one report
+    composition so they cannot disagree. Restore revalidates: expired requests are dropped, requests
+    whose evidence did not survive are `blocked`, open attempts become `uncertain`, and receipt-backed
+    outcomes are invalidated to `unknown`.
+  See `docs/backlog/BAZ-044-acceptance.md` for the criterion-by-criterion evidence and the stated gaps
+  (no live-model run; container execution implemented but unobserved).
+
 - **BAZ-031: provider-neutral protected runtime.** Every provider id in Bazilion's pinned Pi
   registry is exhaustively accounted for. Protected and restricted-review workers receive only the
   selected model id, reasoning level, selected API/OAuth credential, optional validated endpoint,
