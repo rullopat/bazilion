@@ -713,7 +713,7 @@
       "id": "VERIFY-RESTRICTED-TURN-CANNOT-REQUEST",
       "owner": "BAZ-044",
       "file": "apps/daemon/test/runtime/worker-runtime.test.ts",
-      "test": "a restricted turn cannot be handed the requester capability"
+      "test": "minimal worker runtime > a restricted turn cannot be handed the requester capability"
     }
   ]
 }

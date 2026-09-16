@@ -807,6 +807,125 @@ CREATE TABLE source_snapshots (
 CREATE INDEX source_snapshots_retention ON source_snapshots(expires_at, snapshot_id);
 CREATE INDEX source_snapshots_team_time ON source_snapshots(team_id, created_at, snapshot_id);
 
+-- BAZ-043: revision-bound review and handoff.
+--
+-- One packet binds exactly one immutable change (a BAZ-042 snapshot) to a bounded set of findings and
+-- one review conclusion, plus an optional reviewer Agent. It is a record of *review*, not a workflow:
+-- no stages, no approver assignment, and no automatic commit, push, PR, merge or deploy.
+CREATE TABLE review_packets (
+  id TEXT PRIMARY KEY,
+  team_id TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  requester_kind TEXT NOT NULL CHECK (requester_kind IN ('agent', 'operator')),
+  requester_agent_id TEXT,
+  -- Null means an operator-only packet: nothing was delegated, so no reviewer turn is dispatched.
+  reviewer_agent_id TEXT REFERENCES agents(id) ON DELETE SET NULL,
+  -- BAZ-042 evidence identity. Not a foreign key, deliberately: a snapshot has its own seven-day
+  -- window, and a packet whose evidence is gone must report that rather than resolve to another tree.
+  snapshot_id TEXT NOT NULL,
+  snapshot_complete INTEGER NOT NULL CHECK (snapshot_complete IN (0, 1)),
+  head TEXT,
+  base_oid TEXT NOT NULL,
+  -- What the change is for: the requester's statement of the problem, kept as commentary.
+  summary TEXT CHECK (summary IS NULL OR length(CAST(summary AS BLOB)) <= 2000),
+  state TEXT NOT NULL CHECK (state IN (
+    'open', 'awaiting_approval', 'blocked', 'reviewing', 'reviewed', 'cancelled'
+  )),
+  -- Recorded only when an export was actually produced, and only for the revision it exported.
+  exported_at INTEGER,
+  export_revision TEXT,
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL,
+  CHECK (expires_at > created_at),
+  CHECK ((requester_kind = 'agent') = (requester_agent_id IS NOT NULL)),
+  -- A reviewer never reviews its own packet.
+  CHECK (requester_agent_id IS NULL OR reviewer_agent_id IS NULL OR requester_agent_id != reviewer_agent_id),
+  -- An export names the revision it was made from, or it is not an export.
+  CHECK ((exported_at IS NULL) = (export_revision IS NULL))
+);
+CREATE INDEX review_packets_team_time ON review_packets(team_id, created_at DESC, id);
+CREATE INDEX review_packets_reviewer_dispatch
+  ON review_packets(reviewer_agent_id, state, created_at);
+CREATE INDEX review_packets_retention ON review_packets(expires_at, id);
+
+-- Findings, append-only. A finding is about one path in one captured revision; the line range is
+-- context, never identity, because lines move while the issue stays the same.
+CREATE TABLE review_findings (
+  id TEXT PRIMARY KEY,
+  packet_id TEXT NOT NULL REFERENCES review_packets(id) ON DELETE CASCADE,
+  author_kind TEXT NOT NULL CHECK (author_kind IN ('agent', 'operator')),
+  author_agent_id TEXT,
+  -- Repository-relative. Validated at write time to be inside the reviewed scope.
+  path TEXT NOT NULL CHECK (length(CAST(path AS BLOB)) BETWEEN 1 AND 1000),
+  line_start INTEGER CHECK (line_start IS NULL OR line_start >= 1),
+  line_end INTEGER CHECK (line_end IS NULL OR line_end >= 1),
+  severity TEXT NOT NULL CHECK (severity IN ('blocker', 'major', 'minor', 'info')),
+  note TEXT NOT NULL CHECK (length(CAST(note AS BLOB)) BETWEEN 1 AND 4000),
+  -- The revision the finding was made against. A finding of an older revision stays visible and is
+  -- reported as stale for the current code, rather than being silently attached to new lines.
+  snapshot_id TEXT NOT NULL,
+  state TEXT NOT NULL CHECK (state IN ('open', 'unverified', 'resolved')),
+  -- Proof of resolution. A line number alone never proves an issue was fixed, so the only ways out of
+  -- `open` are an explicit decision or a later revision that is named.
+  resolution_kind TEXT CHECK (resolution_kind IN ('explicit', 'linked_revision')),
+  resolution_note TEXT CHECK (resolution_note IS NULL OR length(CAST(resolution_note AS BLOB)) <= 2000),
+  resolved_at INTEGER,
+  resolved_by_kind TEXT CHECK (resolved_by_kind IN ('agent', 'operator')),
+  resolved_by_agent_id TEXT,
+  created_at INTEGER NOT NULL,
+  CHECK ((line_end IS NULL) OR (line_start IS NOT NULL AND line_end >= line_start)),
+  CHECK ((author_kind = 'agent') = (author_agent_id IS NOT NULL)),
+  -- Resolution facts travel together, and only a resolved finding has them.
+  CHECK (
+    (state = 'resolved') = (
+      resolution_kind IS NOT NULL AND resolved_at IS NOT NULL
+      AND resolved_by_kind IS NOT NULL AND resolution_note IS NOT NULL
+    )
+  ),
+  CHECK ((resolved_by_kind = 'agent') = (resolved_by_agent_id IS NOT NULL))
+);
+CREATE INDEX review_findings_packet ON review_findings(packet_id, created_at, id);
+CREATE INDEX review_findings_unresolved ON review_findings(packet_id, state, severity);
+
+-- One conclusion per reviewer per packet: changes_requested, commented or recommended. Operator
+-- acceptance is a separate fact recorded elsewhere; a conclusion never implies it.
+CREATE TABLE review_conclusions (
+  id TEXT PRIMARY KEY,
+  packet_id TEXT NOT NULL REFERENCES review_packets(id) ON DELETE CASCADE,
+  reviewer_kind TEXT NOT NULL CHECK (reviewer_kind IN ('agent', 'operator')),
+  reviewer_agent_id TEXT,
+  conclusion TEXT NOT NULL CHECK (conclusion IN ('changes_requested', 'commented', 'recommended')),
+  note TEXT CHECK (note IS NULL OR length(CAST(note AS BLOB)) <= 4000),
+  -- The revision the conclusion is about, so a later revision cannot inherit it.
+  snapshot_id TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  UNIQUE (packet_id, reviewer_kind, reviewer_agent_id),
+  CHECK ((reviewer_kind = 'agent') = (reviewer_agent_id IS NOT NULL))
+);
+CREATE INDEX review_conclusions_packet ON review_conclusions(packet_id, created_at, id);
+
+-- Reviewer dispatch attempts. Claiming is transactional and leased so exactly one owner reviews a
+-- packet; a claim left by an interrupted process becomes uncertain and is never replayed.
+CREATE TABLE review_attempts (
+  id TEXT PRIMARY KEY,
+  packet_id TEXT NOT NULL REFERENCES review_packets(id) ON DELETE CASCADE,
+  attempt_number INTEGER NOT NULL CHECK (attempt_number >= 1),
+  supersedes_attempt_id TEXT REFERENCES review_attempts(id) ON DELETE SET NULL,
+  state TEXT NOT NULL CHECK (state IN ('claimed', 'running', 'completed', 'failed', 'cancelled', 'uncertain')),
+  lease_owner TEXT,
+  lease_expires_at INTEGER,
+  started_at INTEGER,
+  finished_at INTEGER,
+  error TEXT CHECK (error IS NULL OR length(CAST(error AS BLOB)) <= 2000),
+  created_at INTEGER NOT NULL,
+  CHECK ((state IN ('claimed', 'running')) = (finished_at IS NULL)),
+  CHECK ((state IN ('claimed', 'running')) = (lease_owner IS NOT NULL)),
+  CHECK (state != 'claimed' OR started_at IS NULL),
+  UNIQUE (packet_id, attempt_number)
+);
+CREATE UNIQUE INDEX review_attempts_one_open_per_packet
+  ON review_attempts(packet_id) WHERE finished_at IS NULL;
+CREATE INDEX review_attempts_lease ON review_attempts(state, lease_expires_at);
+
 -- BAZ-044: specialist verification of a captured code change.
 --
 -- One typed request binds exactly one immutable change (a BAZ-042 snapshot) to a finite set of

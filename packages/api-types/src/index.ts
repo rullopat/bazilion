@@ -1154,6 +1154,29 @@ export type {
 } from './git-review.ts'
 export { REVIEW_LIMITS } from './git-review.ts'
 export type {
+  AddReviewFindingRequest,
+  CreateReviewPacketRequest,
+  RecordReviewConclusionRequest,
+  ResolveReviewFindingRequest,
+  ReviewAttempt,
+  ReviewAuthorKind,
+  ReviewCompletionFacts,
+  ReviewConclusion,
+  ReviewConclusionEntry,
+  ReviewExport,
+  ReviewFinding,
+  ReviewFindingState,
+  ReviewPacket,
+  ReviewPacketListResponse,
+  ReviewPacketReport,
+  ReviewPacketResponse,
+  ReviewPacketState,
+  ReviewPacketSummary,
+  ReviewRequester,
+  ReviewResolutionKind,
+  ReviewSeverity,
+} from './review.ts'
+export type {
   EditQueuedInput,
   EnqueueUserInput,
   QueueAttachment,
