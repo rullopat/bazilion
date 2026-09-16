@@ -363,3 +363,47 @@ path runs commands *inside the worker* through `codingHost`; a verification turn
 cancellation, redaction and receipt publication — before the dispatcher can be wired. Shipping the
 dispatcher without it would claim requests that could never run their checks, which is exactly the
 half-wired state this story must not ship.
+
+## 5d-2 handoff — what the daemon-side check executor must be
+
+Written after reading the code it has to fit, so the next chunk starts from facts rather than
+re-derivation. **No half-wired code was committed for this**: a dispatcher that claims requests whose
+checks cannot run is the one state this story must not ship.
+
+**Why a daemon-side executor is needed at all.** Today a coding command is executed by pi's bash tool
+*inside the worker*, with the daemon's `codingHost` only creating the receipt (`action: 'start'`), the
+worker running the process, and the host finishing it (`action: 'finish'`) — see
+`lib/coding-environment/agent-host.ts:149-302`. A verification turn deliberately has no `codingHost`,
+so its captured checks must be run by the daemon itself.
+
+**There is no generic "run this command" helper to reuse.** The only daemon-side spawns are
+`lib/git/capture.ts` (git) and `runtime/shell/docker.ts` (the protected container path). So the
+executor must assemble the spawn itself from the existing, already-hardened pieces:
+
+- `resolveShellSecurityConfig(env)` for the admitted posture and `buildScrubbedShellEnv(...)` for the
+  container/host environment allowlist (`runtime/shell/security.ts`);
+- `buildDockerRunSpec(...)` for the Docker path (`runtime/shell/docker.ts:193`) — already validates
+  the docker path, image, container name and mount arguments;
+- `codingContainerCwd(cwd)` for the contained cwd (`runtime/shell/coding.ts`);
+- `requireBashApproval(...)` and the approval host for the dangerous-command gate
+  (`runtime/shell/approval.ts:37`) — a check needing an unavailable approval must stay an explicit
+  `blocked` outcome, never an auto-approve;
+- the BAZ-041 receipt lifecycle it must feed: `saveCodingCommand(...)` running → terminal, and
+  `saveCodingCommandLog(...)` for the retained 64 KiB tail, with the secrets supplier shared between
+  the receipt and mid-turn redaction (BAZ-041 gap 3).
+
+**Contract to satisfy.** `VerificationCheckExecutor.run` returns
+`{commandId, state, exitCode, output, truncated}` — `commandId` only for the states that executed
+(non-negotiable: `runner.ts` refuses an executed outcome without a receipt), `blocked` with no receipt
+and a reason when a toolchain, service or approval is unavailable. The state must come from the observed
+process outcome, never from the model's description of it.
+
+**Then the dispatcher is mechanical**, mirroring `review-dispatcher.ts`: busy check →
+`acquireAgentLifecycleLease` → re-check → `registerAgent` → `admitVerificationRequest` (which already
+revalidates, reserves the workspace and refuses drift) → `prepareVerificationTurn` →
+`bindVerificationCapability` → drain frames → `settleVerificationAttempt` → release the workspace →
+`unregisterAgent`. Cancellation must settle the attempt `cancelled` rather than leaving it `running`,
+and an interrupted process must keep the `uncertain` semantics already implemented in the store.
+
+**Schedule wiring last.** A scheduler tick that dispatches eligible `pending` requests is the final step,
+after the executor and dispatcher exist — not before.
