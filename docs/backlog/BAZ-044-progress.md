@@ -17,7 +17,8 @@ unrestricted inbox turn.
 | 3a | Authorization and release | Verification authorizer on the canonical peer edge, a closed approval tuple, and a durable grant whose release commits with the decision | **done** |
 | 3b | Dispatch | The preclaimed verification invocation is defined; claiming and admitting the tester turn is not wired yet | **in progress** |
 | 4 | Admission | Revalidate, hold, reserve the workspace and refuse drift — with a settled claim when nothing ran | **done** |
-| 5 | Restricted test capability | Worker surface that can inspect the request and invoke each captured command once | |
+| 5a | Capability tool surface | Two tools — read the request, run one captured check once — with no way to express a command | **done** |
+| 5b | Worker spec, IPC host, dispatcher | The capability is not yet reachable from a worker run | **in progress** |
 | 4 | Workspace and snapshot revalidation | Reserve the workspace for the interval; block on drift before execution; unknown after source mutation | |
 | 5 | Restricted test capability | Worker surface that can inspect the request and invoke each captured command once — no Bash/edit/write/browser/MCP/deploy | |
 | 6 | Evidence return and surfaces | Per-request access, API/CLI/web, cancellation, expiry, Telegram notices | |
@@ -172,3 +173,28 @@ leave work stuck in `running`. The repo therefore still contains no path that ca
 verification request end to end.
 
 **Verification.** 1048 tests pass across daemon lib/core/routes; typecheck, format and lint clean.
+
+## Slice 5a — the specialist's capability (done)
+
+`apps/daemon/src/runtime/tools/verification.ts` and six tests in
+`apps/daemon/test/runtime/verification-tools.test.ts`.
+
+**The property that matters is negative.** There are exactly two tools and neither can express a
+command, a cwd, a timeout, an environment change, or a second run of a settled check. The tests assert
+that as a fact about the tool schemas rather than trusting the description: `verification_check`'s
+parameters are exactly `{ ordinal }` with `additionalProperties: false`, and no `command`, `cwd`,
+`timeoutMs`, `env` or `shell` key exists to be passed.
+
+**Decisions worth keeping.**
+
+- **The daemon host is authoritative for all three rules** (declared ordinals, once-only, receipt per
+  outcome). The tool layer repeats them as defence in depth, so a specialist gets a clear refusal
+  instead of a silently different run — and a widened request is *refused*, not trimmed to fit.
+- **Two distinct refusals, for two distinct situations.** A tool instance that already ran a check
+  refuses with "already running"; a reloaded instance refuses from the settled state recorded on the
+  request ("already reported 'succeeded'"). Conflating them would hide which rule fired.
+- **A refused invocation stays runnable, but only because nothing executed.** A refusal (for example a
+  missing toolchain) clears the in-flight guard; a reported outcome never does. A check that reported
+  a failure is not rerunnable to get a better answer.
+- **The brief labels an incomplete capture** (`INCOMPLETE COVERAGE`) and reports applicability
+  verbatim, so the specialist cannot mistake a three-valued comparison for a pass.
