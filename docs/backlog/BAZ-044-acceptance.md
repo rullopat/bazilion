@@ -12,7 +12,8 @@ BAZ-041, every story in `done/` carries `shipped:` and `release:`, and this one 
 | Source | What it establishes |
 | --- | --- |
 | 43 new tests across ten files | Bounds, single ownership, refusal-not-substitution, capability closure, receipt rules, restore and dispatch settlement |
-| Adversarial release gate | 28 new cases (`83 → 111`), all passing: `pnpm security:acceptance` |
+| Adversarial release gate | 33 new cases (`83 → 116`), all passing: `pnpm security:acceptance` |
+| Defect review | [BAZ-044-review.md](BAZ-044-review.md) — 12 findings, all fixed with regression tests |
 | Typecheck / format / lint | Clean (root and web) |
 | Web typecheck and build | Clean; the route tree regenerates with the new section |
 | Full suite | 1713 passed / 7 skipped (1720) before the last web and manifest edits; 109 gate cases after |
@@ -106,7 +107,11 @@ inaccessible — is covered by the existing BAZ-041/042 disclosure tests rather 
 
 ### 6. API/CLI/web agree on request and evidence status after reconnect/restart, cancellation, expiry, and backup/restore; model summaries never replace executor facts or imply deployment acceptance
 
-**Covered.** One composition function builds the report for all three surfaces, so they cannot disagree:
+**Covered.** One composer builds the surfaces from the same facts — `readVerificationSummary` for list rows
+and `readVerificationReport` (that summary plus applicability) for the detail — so they cannot disagree.
+Applicability is deliberately **not** in the list: establishing it compares the live tree against the
+capture, so computing it per row would walk the repository once per request, and a list never implies that
+anything was checked. Surfaces:
 `GET|POST /api/teams/:id/verifications`, `.../:requestId`, `.../:requestId/cancel`; `@bazilion/client`;
 `bazilion team verify create|list|show|cancel`; and the Team **Verifications** section. Cancellation is
 settled as `cancelled` (not left `running`), an unknown request is 404 and a finished one is a state
@@ -122,6 +127,11 @@ section is typechecked and built, not browser-observed.
 
 ## Caveats, stated rather than implied
 
+0. **Two honesty fixes from the review are worth reading as behavioural claims.** A check's declared output
+   paths are *advisory*: they are validated and recorded, and the receipt and the specialist's brief both say
+   they do not confine writes. And an executed check whose receipt was pruned reports
+   `receiptUnavailable` rather than silence, so "the evidence is gone" is distinguishable from "no receipt
+   was recorded".
 1. **No live-model verification run.** The end-to-end path *is* now observed as one continuous run with
    a fixture worker and a stubbed model runtime (no provider contacted). What is still unobserved is a
    real agent deciding to request verification, and a model-authored summary being checked against the
