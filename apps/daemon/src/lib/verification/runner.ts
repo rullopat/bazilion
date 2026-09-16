@@ -221,3 +221,41 @@ export function settleVerificationAttempt(
   setRequestState(db, input.requestId, state)
   return state
 }
+
+/**
+ * Abandon a claimed attempt whose turn was cancelled or failed before it could report.
+ *
+ * Distinct from `settleVerificationAttempt`: nothing was verified, so the attempt is `cancelled` or
+ * `failed` and its unreported checks are left `not_executed` rather than turned into results. An
+ * interrupted process keeps the store's `uncertain` semantics instead, because there the work may
+ * have happened.
+ */
+export function abandonVerificationAttempt(
+  db: BazilionDb,
+  input: {
+    attemptId: string
+    requestId: string
+    leaseOwner: string
+    state: 'cancelled' | 'failed'
+    error: string
+    now?: number
+  },
+): boolean {
+  const now = input.now ?? Date.now()
+  const finished = finishVerificationAttempt(db, {
+    attemptId: input.attemptId,
+    leaseOwner: input.leaseOwner,
+    state: input.state,
+    error: input.error,
+    now,
+  })
+  if (!finished) return false
+  db.raw.run(
+    `UPDATE verification_check_outcomes
+     SET state = 'unknown', finished_at = ?
+     WHERE attempt_id = ? AND state = 'not_executed'`,
+    [now, input.attemptId],
+  )
+  setRequestState(db, input.requestId, input.state)
+  return true
+}

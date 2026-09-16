@@ -56,6 +56,7 @@ import { prepareProtectedExecution } from './protected-execution.ts'
 import { protectedFailureMessage, protectedFrameFailure } from './protected-failure.ts'
 import { dispatchClaimableReviews } from './review-dispatcher.ts'
 import { createPreclaimedTurn, createTrustedTurnInvocation } from './turn-invocation.ts'
+import { dispatchPendingVerifications } from './verification/dispatch.ts'
 
 const SCHEDULER_KEY = Symbol.for('bazilion.scheduler')
 const TICK_MS = Number(process.env.BAZILION_SCHEDULER_TICK_MS ?? 5_000)
@@ -530,6 +531,10 @@ async function tick(): Promise<void> {
     work.push(fireInboxWake(agentId))
   }
   work.push(dispatchClaimableReviews(now))
+  // BAZ-044: specialist verification requests are dispatched by their own state machine, never by the
+  // inbox path — an eligible pending request is claimed under its own lease and admitted with the
+  // restricted capability. A busy or unavailable specialist simply leaves it pending for a later tick.
+  work.push(dispatchPendingVerifications(now))
   await Promise.allSettled(work)
 }
 
