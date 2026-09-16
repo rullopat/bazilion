@@ -20,7 +20,8 @@ unrestricted inbox turn.
 | 5a | Capability tool surface | Two tools — read the request, run one captured check once — with no way to express a command | **done** |
 | 5b | Daemon capability host | Captured values only, receipts always, and settle reports evidence availability | **done** |
 | 5c | Worker spec + IPC transport | The verification turn is a real restricted worker kind, wired end to end | **done** |
-| 5d | Dispatcher | Claiming, spawning and settling from the scheduler tick | **not started** |
+| 5d-1 | Restricted invocation + IPC host binding | The turn identity is a restricted invocation; the daemon re-checks the worker's request/attempt | **done** |
+| 5d-2 | Protected check executor + dispatcher | Running a captured command daemon-side with a BAZ-041 receipt, then claim/spawn/settle | **not started** |
 | 4 | Workspace and snapshot revalidation | Reserve the workspace for the interval; block on drift before execution; unknown after source mutation | |
 | 5 | Restricted test capability | Worker surface that can inspect the request and invoke each captured command once — no Bash/edit/write/browser/MCP/deploy | |
 | 6 | Evidence return and surfaces | Per-request access, API/CLI/web, cancellation, expiry, Telegram notices | |
@@ -319,3 +320,46 @@ lib suites; typecheck and lint clean.
   authorization for anything.
 - **Questions and images are excluded by kind**, not by convention, in the same places restricted
   reviews already were.
+
+## Slice 5d-1 — restricted invocation and the bound capability (done)
+
+**A design correction, found by reading the code this would have to fit into.** Slice 3a gave the
+verification turn a `TrustedTurnInvocation` variant carrying a **preclaimed lifecycle turn**. That is
+the shape used by scheduler and inbox turns, which go through `prepareAgentTurn` — and `prepareAgentTurn`
+would have consumed the claim and built a *coding* session (system prompt, repository context, session
+directories, coding tools) that a verification turn must not have. Worse, a restricted turn is
+dispatched directly, like a restricted review, so nothing would ever have consumed that claim: the
+preclaimed turn's `releaseLease` would simply have leaked.
+
+It is now a **restricted invocation** (`restricted_verification`, authorization
+`{kind: 'request', requestId, attemptId}`), mirroring the restricted review one — one restricted-turn
+pattern instead of two, no claim to leak, and no turn payload to inherit authorization from. The
+contract is closed: the kind, the `auto_deny` posture and the exact authorization keys are all
+validated, a raw or cloned value is never trusted, and a verification invocation cannot be asserted as
+a normal turn or vice versa.
+
+**The daemon does not take the worker's word for its identity.** `bindVerificationCapability` checks the
+request and attempt the worker sends against this turn's own binding and refuses anything else before
+the host is reached, so a compromised worker still cannot read another request or run its checks. The
+capability host is also required for a verification turn and forbidden for every other kind, so a
+misconfigured spawn fails closed rather than starting a worker with the wrong surface.
+
+**A tightening for the review path too.** The restricted-spawn guard now rejects `codingHost`,
+`containerHost`, `repositoryContextHost`, `resultHost` and `resourceLifecycle` along with the messaging,
+USER.md, browser, MCP and question hosts. A restricted review previously failed *later* (when the worker
+refused to run without a context host); it now fails before the child starts. The existing test asserting
+that property was updated to the earlier, clearer refusal — the property it checks is unchanged and the
+host is still never called.
+
+## What 5d-2 needs
+
+The dispatcher itself is unremarkable: it mirrors `review-dispatcher.ts` — busy check, lifecycle lease,
+`registerAgent`, admit, resolve, prepare, drain frames, settle, release the workspace.
+
+What blocks it is the **executor**: `VerificationCheckExecutor.run` must execute one captured command
+in the Team workspace under the admitted posture and produce a BAZ-041 receipt. The existing coding
+path runs commands *inside the worker* through `codingHost`; a verification turn deliberately has no
+`codingHost`, so the daemon needs its own protected check executor — command execution, timeout,
+cancellation, redaction and receipt publication — before the dispatcher can be wired. Shipping the
+dispatcher without it would claim requests that could never run their checks, which is exactly the
+half-wired state this story must not ship.

@@ -484,7 +484,9 @@ describe('minimal worker runtime', () => {
           ),
         },
       ),
-    ).rejects.toThrow(/without a repositoryContextHost/)
+      // Refused before the worker starts: a restricted kind may not be handed the host at all, so
+      // the capability cannot reach the repository even through a spawn-time option.
+    ).rejects.toThrow(/rejects repositoryContextHost/)
     expect(host).not.toHaveBeenCalled()
   })
 

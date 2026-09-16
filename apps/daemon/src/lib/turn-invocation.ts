@@ -7,9 +7,11 @@ import {
 
 const trustedTurnBrand: unique symbol = Symbol('bazilion.trusted-turn-invocation')
 const trustedReviewBrand: unique symbol = Symbol('bazilion.trusted-review-invocation')
+const trustedVerificationBrand: unique symbol = Symbol('bazilion.trusted-verification-invocation')
 const preclaimedTurnBrand: unique symbol = Symbol('bazilion.preclaimed-turn')
 const trustedTurns = new WeakSet<object>()
 const trustedReviews = new WeakSet<object>()
+const trustedVerifications = new WeakSet<object>()
 const trustedClaims = new WeakSet<object>()
 const consumedClaims = new WeakSet<object>()
 
@@ -49,20 +51,6 @@ export interface ScheduledTriggerAttempt {
 export interface InboxWakeAttempt {
   origin: 'scheduler_inbox'
   attemptKind: 'inbox_wake'
-  attemptId: string
-  agentId: string
-}
-
-/**
- * A specialist verification attempt.
- *
- * `attemptId` is the request id: the typed request *is* the attempt, so the same identity owns
- * policy evaluation, approval release and dispatch. It is never an inbox wake — a captured request
- * must not be consumed as an ordinary writable coding turn.
- */
-export interface VerificationRequestAttempt {
-  origin: 'verification_request'
-  attemptKind: 'verification_request'
   attemptId: string
   agentId: string
 }
@@ -111,13 +99,6 @@ type TrustedTurnInvocationVariant =
       bashApprovalMode: 'auto_deny'
     }
   | {
-      kind: 'specialist_verification'
-      authorization: VerificationRequestAttempt
-      turn: BoundAgentTurn
-      claim: PreclaimedTurn
-      bashApprovalMode: 'auto_deny'
-    }
-  | {
       kind: 'approval_delivery'
       authorization: ApprovedUserTurnAttempt
       turn: BoundAgentTurn
@@ -149,7 +130,32 @@ export type TrustedRestrictedReviewInvocation = TrustedRestrictedReviewInvocatio
   readonly [trustedReviewBrand]: true
 }
 
-export type TrustedInvocation = TrustedTurnInvocation | TrustedRestrictedReviewInvocation
+/**
+ * A restricted specialist verification turn.
+ *
+ * Dispatched directly, like a restricted review: no turn-preparation, no lifecycle claim, and no
+ * operator surface. `attemptId` is the attempt being executed, so the identity a turn is bound to is
+ * the same one its approval and dispatch were keyed on.
+ */
+type TrustedRestrictedVerificationInvocationInput = {
+  kind: 'restricted_verification'
+  authorization: {
+    kind: 'request'
+    requestId: string
+    attemptId: string
+  }
+  bashApprovalMode: 'auto_deny'
+}
+
+export type TrustedRestrictedVerificationInvocation =
+  TrustedRestrictedVerificationInvocationInput & {
+    readonly [trustedVerificationBrand]: true
+  }
+
+export type TrustedInvocation =
+  | TrustedTurnInvocation
+  | TrustedRestrictedReviewInvocation
+  | TrustedRestrictedVerificationInvocation
 export type TurnExecutionSurface = 'configured_operator_http' | 'protected'
 
 export function createPreclaimedTurn(input: {
@@ -203,6 +209,49 @@ export function createTrustedReviewInvocation(
   return Object.freeze(candidate)
 }
 
+export function createTrustedVerificationInvocation(
+  value: TrustedRestrictedVerificationInvocationInput,
+): TrustedRestrictedVerificationInvocation {
+  validateVerificationInvocation(value)
+  const candidate = {
+    ...value,
+    authorization: Object.freeze({ ...value.authorization }),
+  } as TrustedRestrictedVerificationInvocation
+  validateVerificationInvocation(candidate)
+  Object.defineProperty(candidate, trustedVerificationBrand, { value: true })
+  trustedVerifications.add(candidate)
+  return Object.freeze(candidate)
+}
+
+export function assertTrustedVerificationInvocation(
+  value: unknown,
+): asserts value is TrustedRestrictedVerificationInvocation {
+  if (!isRecord(value) || !trustedVerifications.has(value)) throw invalidInvocation()
+  validateVerificationInvocation(value)
+}
+
+function validateVerificationInvocation(
+  value: unknown,
+): asserts value is TrustedRestrictedVerificationInvocationInput {
+  if (!isRecord(value)) throw invalidInvocation()
+  assertExactKeys(value, ['kind', 'authorization', 'bashApprovalMode'])
+  if (
+    value.kind !== 'restricted_verification' ||
+    value.bashApprovalMode !== 'auto_deny' ||
+    !isRecord(value.authorization)
+  ) {
+    throw invalidInvocation()
+  }
+  assertExactKeys(value.authorization, ['kind', 'requestId', 'attemptId'])
+  if (
+    value.authorization.kind !== 'request' ||
+    !isNonEmptyString(value.authorization.requestId) ||
+    !isNonEmptyString(value.authorization.attemptId)
+  ) {
+    throw invalidInvocation()
+  }
+}
+
 export function executionSurfaceForInvocation(
   invocation: TrustedTurnInvocation,
 ): TurnExecutionSurface {
@@ -219,30 +268,13 @@ export function invocationOwnsUserAuthorization(
 
 export function invocationHasPreclaimedRegistration(
   invocation: TrustedTurnInvocation,
-): invocation is Extract<
-  TrustedTurnInvocation,
-  { kind: 'scheduled_trigger' | 'inbox_wake' | 'specialist_verification' }
-> {
-  return (
-    invocation.kind === 'scheduled_trigger' ||
-    invocation.kind === 'inbox_wake' ||
-    invocation.kind === 'specialist_verification'
-  )
+): invocation is Extract<TrustedTurnInvocation, { kind: 'scheduled_trigger' | 'inbox_wake' }> {
+  return invocation.kind === 'scheduled_trigger' || invocation.kind === 'inbox_wake'
 }
 
-/** A verification turn is restricted: it never becomes an ordinary writable coding turn. */
-export function invocationRepresentsSpecialistVerification(
-  invocation: TrustedTurnInvocation,
-): invocation is Extract<TrustedTurnInvocation, { kind: 'specialist_verification' }> {
-  return invocation.kind === 'specialist_verification'
-}
-
-/** Consume a scheduler/inbox/verification lifecycle claim exactly once at preparation handoff. */
+/** Consume a scheduler/inbox lifecycle claim exactly once at preparation handoff. */
 export function consumePreclaimedTurn(
-  invocation: Extract<
-    TrustedTurnInvocation,
-    { kind: 'scheduled_trigger' | 'inbox_wake' | 'specialist_verification' }
-  >,
+  invocation: Extract<TrustedTurnInvocation, { kind: 'scheduled_trigger' | 'inbox_wake' }>,
 ): PreclaimedTurn {
   assertTrustedTurnInvocation(invocation)
   const claim = invocation.claim
@@ -319,11 +351,7 @@ function validateTurnInvocation(value: unknown): asserts value is TrustedTurnInv
     }
     return
   }
-  if (
-    value.kind === 'scheduled_trigger' ||
-    value.kind === 'inbox_wake' ||
-    value.kind === 'specialist_verification'
-  ) {
+  if (value.kind === 'scheduled_trigger' || value.kind === 'inbox_wake') {
     assertExactKeys(value, ['kind', 'authorization', 'turn', 'claim', 'bashApprovalMode'])
     if (!isRecord(value.authorization) || !isRecord(value.claim)) throw invalidInvocation()
     assertExactKeys(value.authorization, ['origin', 'attemptKind', 'attemptId', 'agentId'])
@@ -337,9 +365,7 @@ function validateTurnInvocation(value: unknown): asserts value is TrustedTurnInv
     const expected =
       value.kind === 'scheduled_trigger'
         ? (['scheduler_trigger', 'scheduler_trigger'] as const)
-        : value.kind === 'inbox_wake'
-          ? (['scheduler_inbox', 'inbox_wake'] as const)
-          : (['verification_request', 'verification_request'] as const)
+        : (['scheduler_inbox', 'inbox_wake'] as const)
     if (
       value.bashApprovalMode !== 'auto_deny' ||
       !isAttempt(value.authorization, expected[0], expected[1]) ||

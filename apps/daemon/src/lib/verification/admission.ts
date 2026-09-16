@@ -38,7 +38,7 @@ import { readSnapshotApplicability, requireTeam } from '../git-review/service.ts
 export const VERIFICATION_LEASE_MS = 10 * 60 * 1000
 
 /** Process identity for claims: another process's claim is recovered as uncertain, never adopted. */
-const DISPATCH_OWNER = randomUUID()
+export const VERIFICATION_DISPATCH_OWNER = randomUUID()
 
 export type VerificationAdmission =
   | {
@@ -161,7 +161,7 @@ export async function admitVerificationRequest(
 
   const claim = claimVerificationAttempt(db, {
     requestId,
-    leaseOwner: DISPATCH_OWNER,
+    leaseOwner: VERIFICATION_DISPATCH_OWNER,
     leaseMs: VERIFICATION_LEASE_MS,
     now,
   })

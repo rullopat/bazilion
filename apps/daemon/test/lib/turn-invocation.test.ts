@@ -3,14 +3,14 @@ import { expect, test } from 'vitest'
 import {
   assertTrustedReviewInvocation,
   assertTrustedTurnInvocation,
-  consumePreclaimedTurn,
+  assertTrustedVerificationInvocation,
   createPreclaimedTurn,
   createTrustedReviewInvocation,
   createTrustedTurnInvocation,
+  createTrustedVerificationInvocation,
   executionSurfaceForInvocation,
   invocationHasPreclaimedRegistration,
   invocationOwnsUserAuthorization,
-  invocationRepresentsSpecialistVerification,
   invocationRepresentsUserTurn,
   type TrustedTurnInvocation,
 } from '../../src/lib/turn-invocation.ts'
@@ -121,26 +121,6 @@ const invocations: Array<{
   },
   {
     invocation: createTrustedTurnInvocation({
-      kind: 'specialist_verification',
-      authorization: {
-        origin: 'verification_request',
-        attemptKind: 'verification_request',
-        attemptId: 'req-1',
-        agentId: 'agent-1',
-      },
-      turn: turn(),
-      claim: claim('agent-1', 'req-1'),
-      bashApprovalMode: 'auto_deny',
-    }),
-    // Never the operator surface, even on a loopback daemon: a verification turn has no
-    // operator authorization of its own.
-    surface: 'protected',
-    authorizes: false,
-    preclaimed: true,
-    userTurn: false,
-  },
-  {
-    invocation: createTrustedTurnInvocation({
       kind: 'approval_delivery',
       authorization: {
         origin: 'http_chat',
@@ -227,47 +207,6 @@ test('preclaimed scheduler and inbox identity cannot be rebound to another targe
   expect(() => create({ ...base, claim: { ...boundClaim } })).toThrow(/invalid trusted/)
 })
 
-test('a verification attempt cannot be rebound, downgraded, or confused with an inbox wake', () => {
-  const create = createTrustedTurnInvocation as (value: unknown) => TrustedTurnInvocation
-  const boundClaim = claim('agent-1', 'req-1')
-  const base = {
-    kind: 'specialist_verification',
-    authorization: {
-      origin: 'verification_request',
-      attemptKind: 'verification_request',
-      attemptId: 'req-1',
-      agentId: 'agent-1',
-    },
-    turn: turn(),
-    claim: boundClaim,
-    bashApprovalMode: 'auto_deny',
-  }
-  const invocation = create(base)
-  expect(invocationRepresentsSpecialistVerification(invocation)).toBe(true)
-  // The request id is the attempt id, so a claim cannot be moved onto another request.
-  expect(() =>
-    create({
-      ...base,
-      authorization: { ...base.authorization, attemptId: 'req-2' },
-    }),
-  ).toThrow(/invalid trusted/)
-  // Nor onto another Agent: the recipient is bound at every layer.
-  expect(() => create({ ...base, turn: turn('agent-2') })).toThrow(/invalid trusted/)
-  // No extra keys: the posture is one immutable nominal value, not a bag of flags.
-  expect(() => create({ ...base, requireIsolation: false } as never)).toThrow(/invalid trusted/)
-  // A verification turn is protected, so it cannot inherit the interactive approval posture.
-  expect(() => create({ ...base, bashApprovalMode: 'interactive' })).toThrow(/invalid trusted/)
-  // A forged claim object is not a claim.
-  expect(() => create({ ...base, claim: { ...boundClaim } })).toThrow(/invalid trusted/)
-  // The kind is consumed exactly once at preparation handoff, like any preclaimed turn.
-  expect(invocationRepresentsSpecialistVerification(invocation)).toBe(true)
-  if (!invocationRepresentsSpecialistVerification(invocation)) {
-    throw new Error('expected a specialist verification invocation')
-  }
-  expect(() => consumePreclaimedTurn(invocation)).not.toThrow()
-  expect(() => consumePreclaimedTurn(invocation)).toThrow('already been prepared')
-})
-
 test('the factory snapshots and freezes the exact message, attachments, and causal parent', () => {
   const attachments: Attachment[] = [{ name: 'a.txt', mimeType: 'text/plain', data: 'YQ==' }]
   const invocation = createTrustedTurnInvocation({
@@ -342,53 +281,48 @@ test.each([
   )
 })
 
-test('a verification turn cannot be smuggled through the inbox or scheduler path', () => {
-  const create = createTrustedTurnInvocation as (value: unknown) => TrustedTurnInvocation
-  // A genuine inbox wake: scheduler origin, inbox attempt kind, and its own preclaimed turn.
-  const inboxClaim = claim('agent-1', 'wake-1')
-  const smuggled = {
-    kind: 'specialist_verification',
-    authorization: {
-      origin: 'scheduler_inbox',
-      attemptKind: 'inbox_wake',
-      attemptId: 'wake-1',
-      agentId: 'agent-1',
-    },
-    turn: turn(),
-    claim: inboxClaim,
+test('a verification turn is restricted: no turn shape, no claim, no operator surface', () => {
+  const create = createTrustedVerificationInvocation as (value: unknown) => unknown
+  const base = {
+    kind: 'restricted_verification',
+    authorization: { kind: 'request', requestId: 'req-1', attemptId: 'attempt-1' },
     bashApprovalMode: 'auto_deny',
   }
-  expect(() => create(smuggled)).toThrow(/invalid trusted/)
-  // The reverse is refused too: a verification attempt id cannot drive an inbox wake, so the two
-  // dispatch paths cannot be swapped for one another.
-  expect(() =>
-    create({
-      kind: 'inbox_wake',
-      authorization: {
-        origin: 'verification_request',
-        attemptKind: 'verification_request',
-        attemptId: 'req-1',
-        agentId: 'agent-1',
-      },
-      turn: turn(),
-      claim: claim('agent-1', 'req-1'),
-      bashApprovalMode: 'auto_deny',
-    }),
-  ).toThrow(/invalid trusted/)
-  // And a verification turn never counts as a user turn, so it cannot inherit user authorization.
-  const genuine = create({
-    kind: 'specialist_verification',
-    authorization: {
-      origin: 'verification_request',
-      attemptKind: 'verification_request',
-      attemptId: 'req-1',
-      agentId: 'agent-1',
-    },
-    turn: turn(),
-    claim: claim('agent-1', 'req-1'),
-    bashApprovalMode: 'auto_deny',
-  })
-  expect(invocationRepresentsUserTurn(genuine)).toBe(false)
-  expect(invocationOwnsUserAuthorization(genuine)).toBe(false)
-  expect(executionSurfaceForInvocation(genuine)).toBe('protected')
+  const invocation = createTrustedVerificationInvocation(base as never)
+  expect(invocation.kind).toBe('restricted_verification')
+  expect(Object.isFrozen(invocation)).toBe(true)
+  // It carries no turn payload to inherit authorization from, cannot be consumed as an inbox wake
+  // or a scheduler claim, and is never the operator surface.
+  expect(invocationOwnsUserAuthorization(invocation as never)).toBe(false)
+  expect(invocationRepresentsUserTurn(invocation as never)).toBe(false)
+  expect(invocationHasPreclaimedRegistration(invocation as never)).toBe(false)
+  expect(() => assertTrustedVerificationInvocation(invocation)).not.toThrow()
+
+  const invalid: Array<[Record<string, unknown>, string]> = [
+    [{ ...base, kind: 'restricted_review' }, 'invalid trusted'],
+    [{ ...base, bashApprovalMode: 'interactive' }, 'invalid trusted'],
+    [
+      { ...base, authorization: { kind: 'none', requestId: 'req-1', attemptId: 'a' } },
+      'invalid trusted',
+    ],
+    [{ ...base, authorization: { kind: 'request', requestId: 'req-1' } }, 'invalid trusted'],
+    [
+      { ...base, authorization: { kind: 'request', requestId: '', attemptId: 'a' } },
+      'invalid trusted',
+    ],
+    [
+      { ...base, authorization: { kind: 'request', requestId: 'req-1', attemptId: 'a', extra: 1 } },
+      'invalid trusted',
+    ],
+    [{ ...base, turn: { agentId: 'agent-1', message: 'x', attachments: [] } }, 'invalid trusted'],
+    [{ ...base, claim: {} }, 'invalid trusted'],
+  ]
+  for (const [value, message] of invalid) {
+    expect(() => create(value), JSON.stringify(value).slice(0, 60)).toThrow(message)
+  }
+  // A raw, cloned or wrongly-branded value is never trusted.
+  expect(() => assertTrustedVerificationInvocation({ ...base })).toThrow(
+    'invalid trusted turn invocation',
+  )
+  expect(() => assertTrustedTurnInvocation(invocation)).toThrow('invalid trusted turn invocation')
 })

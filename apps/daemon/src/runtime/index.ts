@@ -117,6 +117,7 @@ export type {
   ProtectedWorkerPaths,
   ProtectedWorkerSpec,
   RestrictedReviewWorkerSpec,
+  SpecialistVerificationWorkerSpec,
   WorkerInput,
   WorkerTurnSpec,
 } from './worker/runtime.ts'
@@ -137,4 +138,4 @@ export type {
   ReviewWorkerProposal,
   SpawnWorkerOpts,
 } from './worker/spawn.ts'
-export { spawnReviewWorker, spawnWorkerTurn } from './worker/spawn.ts'
+export { spawnReviewWorker, spawnVerificationWorker, spawnWorkerTurn } from './worker/spawn.ts'

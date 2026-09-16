@@ -128,7 +128,7 @@ export async function spawnReviewWorker(
  */
 export function spawnVerificationWorker(
   spec: SpecialistVerificationWorkerSpec,
-  opts: ProtectedSpawnWorkerOpts,
+  opts: SpecialistVerificationSpawnWorkerOpts,
 ): AsyncGenerator<ChatFrame, void, void> {
   return spawnWorker(spec, opts) as AsyncGenerator<ChatFrame, void, void>
 }
@@ -204,10 +204,17 @@ export interface RestrictedReviewSpawnWorkerOpts extends CommonSpawnWorkerOpts {
   apiKeyRefreshHost: ApiKeyRefreshHost
 }
 
+/** A verification turn gets exactly one extra host — the capability — and nothing else. */
+export interface SpecialistVerificationSpawnWorkerOpts extends CommonSpawnWorkerOpts {
+  apiKeyRefreshHost: ApiKeyRefreshHost
+  verificationHost: import('./ipc-protocol.ts').VerificationHost
+}
+
 export type SpawnWorkerOpts =
   | ConfiguredSpawnWorkerOpts
   | ProtectedSpawnWorkerOpts
   | RestrictedReviewSpawnWorkerOpts
+  | SpecialistVerificationSpawnWorkerOpts
 
 export function spawnWorkerTurn(
   spec: ConfiguredOperatorHttpWorkerSpec,
@@ -555,8 +562,23 @@ function assertSpawnCombination(
       'bashApprovalHost',
       'browserHost',
       'mcpHost',
+      'codingHost',
+      'containerHost',
+      'repositoryContextHost',
+      'resultHost',
+      'resourceLifecycle',
     ]) {
-      if (forbidden in record) throw new Error(`restricted review rejects ${forbidden}`)
+      if (forbidden in record) throw new Error(`${spec.kind} rejects ${forbidden}`)
+    }
+    // The capability host is bound to one claimed attempt, so a verification turn must have it and
+    // no other kind may carry it.
+    const wantsCapability = spec.kind === 'specialist_verification'
+    if (wantsCapability !== 'verificationHost' in record) {
+      throw new Error(
+        wantsCapability
+          ? 'verification turn requires its bound capability host'
+          : `${spec.kind} rejects verificationHost`,
+      )
     }
   }
 }
@@ -607,6 +629,10 @@ function spawnHosts(
     userMdHost: restricted ? undefined : (configuredOpts?.userMdHost ?? protectedOpts?.userMdHost),
     browserHost: restricted ? undefined : configuredOpts?.browserHost,
     mcpHost: restricted ? undefined : configuredOpts?.mcpHost,
+    verificationHost:
+      spec.kind === 'specialist_verification'
+        ? (opts as SpecialistVerificationSpawnWorkerOpts).verificationHost
+        : undefined,
     bashApprovalHost: configuredOpts?.bashApprovalHost ?? protectedOpts?.bashApprovalHost,
     apiKeyRefreshHost: opts.apiKeyRefreshHost,
     apiKeyRefreshContext: {
@@ -649,6 +675,7 @@ interface IpcHosts {
   userMdHost?: UserMdHost
   browserHost?: BrowserHost
   mcpHost?: McpHost
+  verificationHost?: import('./ipc-protocol.ts').VerificationHost
   bashApprovalHost?: BashApprovalHost
   apiKeyRefreshHost?: ApiKeyRefreshHost
   apiKeyRefreshContext?: ApiKeyRefreshTurnContext
@@ -820,6 +847,19 @@ async function dispatch(req: IpcRequest, hosts: IpcHosts): Promise<IpcReply> {
           req.args.serverId,
           req.args.toolName,
           req.args.args,
+        )
+        break
+      case 'verificationRead':
+        result = await require(hosts.verificationHost, 'verification', req.method).read(
+          req.args.requestId,
+          req.args.attemptId,
+        )
+        break
+      case 'verificationRun':
+        result = await require(hosts.verificationHost, 'verification', req.method).run(
+          req.args.requestId,
+          req.args.attemptId,
+          req.args.ordinal,
         )
         break
       case 'refreshApiKey':
