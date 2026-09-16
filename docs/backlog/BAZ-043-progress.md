@@ -31,12 +31,36 @@ closures). The story file stays in `todo/` until it ships; this log records what
 
 ## Not implemented yet
 
-- **Slice 6, the reviewer capability.** The story's criterion 2: a reviewer Agent inspects only the
-  authorized captured scope, cannot modify the checkout, has no hidden host shell or network, and cannot
-  be reached through the ordinary inbox-wake path. This is the largest remaining piece and the one that
-  makes the story more than an operator form. It follows BAZ-044's shape: a restricted invocation with
-  its own capability host (bounded snapshot read, findings submission, conclusion, messaging), a lease
-  per packet, and the spawn guard extended so no other kind can carry the capability.
+- **Slice 6, the reviewer capability.** The story's criterion 2, and the largest remaining piece. It
+  follows BAZ-044's shape exactly, which is now well-trodden — do not invent a second pattern:
+
+  1. **Invocation.** A restricted invocation `restricted_change_review` on the existing
+     `createTrustedReviewInvocation` family, with `authorization: { kind: 'packet', packetId, attemptId }`.
+     The packet id *is* the attempt id, so policy, a held approval and dispatch all key on one identity
+     and a released approval cannot be replayed onto another packet. It is dispatched directly like
+     restricted review — **not** a `TrustedTurnInvocation` with a preclaimed claim, which is what BAZ-044
+     slice 5d-1 had to undo.
+  2. **Capability.** `reviewPacketRead` (bounded packet metadata, the changed paths of the captured
+     revision, and the findings so far) + `reviewFinding` (append one finding) + `reviewConclusion`
+     (record the reviewer's conclusion) over IPC, with a `bindReviewCapability` that re-checks the
+     packet/attempt against the daemon's own binding before the host is reached — the daemon does not take
+     the worker's word for its identity.
+  3. **Tools.** Exactly those three, schemas closed with `additionalProperties: false`, and no path
+     outside the captured revision's changed paths. Read-only: no bash, edit/write, browser, MCP,
+     memory, result or check execution. The spawn guard already rejects
+     `codingHost`/`containerHost`/`repositoryContextHost`/`resultHost`/`resourceLifecycle`/`messagingHost`
+     for restricted kinds and must additionally reject `verificationRequestHost`.
+  4. **Admission and lease.** `review_attempts` already exists. Admission revalidates membership and the
+     directed edge on every attempt, claims the attempt, and leaves the workspace **unreserved**: static
+     review reads a captured revision and must not hold the Team's checkout, which is also what keeps a
+     coder working while its change is reviewed.
+  5. **Result.** Reuse BAZ-044's delivery shape: the reviewer's conclusion and findings go back to the
+     requester through the canonical messenger with an origin of its own, so a held delivery cannot
+     bypass the approval posture.
+  6. **The inbox-wake trap the story names.** The ordinary inbox-wake path starts a normal protected
+     coding turn with writable Bash. A packet must therefore never ride a peer message as its payload;
+     dispatch is owned by the packet state machine, and the adversarial case to write is "an inbox wake
+     concurrent with a packet dispatch reviews nothing and executes nothing".
 - **Slice 7, completion states.** Only the fields exist (`facts`); nothing records an operator-reported
   commit/PR/deployment yet, and the editor/file-link surface (criterion 5) is absent.
 - **An Agent-delivery path for an export.** The export is produced over authenticated HTTP. When an
