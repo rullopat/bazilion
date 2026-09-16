@@ -11,7 +11,6 @@ import { TeamTabs } from '../../../components/TeamTabs'
 import {
   baseLabel,
   changeSummary,
-  changeStatusLabel,
   referenceLabel,
   snapshotLabel,
   unavailableMessage,
@@ -213,8 +212,7 @@ function ReviewPage() {
                       {change.previousPath ? `${change.previousPath} → ${change.path}` : change.path}
                     </span>
                     <span className="text-xs opacity-80">
-                      {changeStatusLabel(change.status)}
-                      {' · '}
+                      {/* `changeSummary` already leads with the status label. */}
                       {changeSummary(change)}
                       {change.patchTruncated ? ' · diff truncated' : ''}
                     </span>

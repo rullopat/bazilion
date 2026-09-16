@@ -173,7 +173,12 @@ So BAZ-042 adds **readers over that harness**, not another harness.
      produced` / `changed … relevance unknown` / `unknown (<reason>)`, and a receipt with no captured
      source reads **Not checked**. Nothing is inferred from the mere existence of a result, and a
      non-identical verdict is presented as a warning rather than a pass.
-   - Still to do: a scripted browser check for the panel (keyboard/narrow-screen were not observed).
+   - **Scripted browser check (done).** `scripts/check-git-review-ui.mjs` drives a disposable daemon
+     and Chromium: keyboard row selection opens the diff, a 390×844 viewport has no horizontal
+     overflow, a capture reaches the retained list, and a non-repository Team reports unavailable
+     rather than an empty list. It emitted screenshots and the rendered text, and that text exposed a
+     defect the unit tests could not see — the row printed its status twice (`untracked · untracked ·
+     content not selected`), now fixed.
 6. **Feedback (done).** File-level selection carrying repository + snapshot + path + line context,
    stale refresh, and reuse of BAZ-036 for queueing.
 

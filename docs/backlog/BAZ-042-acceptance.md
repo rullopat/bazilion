@@ -72,6 +72,8 @@ pnpm tsx apps/cli/src/index.ts team review capture repo --include notes.txt --in
 node scripts/fake-coding-provider.mjs 18099 &                 # for criterion 4
 ```
 
+Browser acceptance: `pnpm --filter @bazilion/web build && pnpm tsx scripts/check-git-review-ui.mjs`.
+
 Release-gate cases: nine BAZ-042 entries in `security/acceptance-manifest.json`
 (`GIT-REVIEW-NO-REPO-TRUTHFUL`, `-BASE-INJECTION`, `-CROSS-TEAM`, `-STALE-FEEDBACK`, `-NO-MUTATION`,
 `-HELPER-SUPPRESSION`, `-LAYOUT-REFUSAL`, `-SYMLINK-BOUNDARY`, `-SCOPE-WITHHOLD`); the gate total is
@@ -79,10 +81,18 @@ Release-gate cases: nine BAZ-042 entries in `security/acceptance-manifest.json`
 
 ## Caveats
 
-1. **No browser observation.** Keyboard row selection, the narrow-screen stacking and the panel's
-   reading order were not looked at. There is no scripted browser check for this panel, unlike
-   BAZ-041's acceptance; the repository pattern to extend is
-   `scripts/check-repository-context-ui.mjs`.
+1. **The panel is covered by a scripted browser check, and that check found a defect on its first
+   useful run.** `pnpm tsx scripts/check-git-review-ui.mjs` (after
+   `pnpm --filter @bazilion/web build`) drives a disposable daemon and Chromium and asserts: the
+   pinned baseline is stated, the change list carries counts and names untracked files without
+   content, **keyboard** row selection opens the diff, a snapshot capture reaches the retained list,
+   a 390×844 viewport has no horizontal overflow, and a non-repository Team reports unavailable
+   rather than an empty list. It writes screenshots plus the rendered `panel.txt`, and asserts zero
+   page errors.
+   Its first run showed the status **rendered twice** per row (`untracked · untracked · content not
+   selected`), which no unit test could see; the row now prints the summary alone. What the check does
+   *not* establish is visual judgement: the asserting run reads the DOM and layout, and a human still
+   has to look at the screenshots.
 2. **The coding card's applicability is test-covered, not browser-observed.** The card renders the
    tested version, the verdict and **Not checked**; it was exercised through static markup in tests
    rather than looked at in a browser.
