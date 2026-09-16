@@ -774,6 +774,48 @@
       "owner": "BAZ-043",
       "file": "apps/daemon/test/lib/review-file-link.test.ts",
       "test": "reported states are what the operator said, and nothing is inferred"
+    },
+    {
+      "id": "REVIEW-CODER-CAN-REQUEST-A-REVIEW",
+      "owner": "BAZ-043",
+      "file": "apps/daemon/test/lib/review-capability.test.ts",
+      "test": "a coding turn can ask for a review, and the daemon binds who asked"
+    },
+    {
+      "id": "REVIEW-REQUESTER-TOOL-IS-CLOSED",
+      "owner": "BAZ-043",
+      "file": "apps/daemon/test/lib/review-capability.test.ts",
+      "test": "the review requester tool is closed: a reviewer and a summary, nothing else"
+    },
+    {
+      "id": "REVIEW-HELD-REVIEW-REVALIDATES-BEFORE-RELEASE",
+      "owner": "BAZ-043",
+      "file": "apps/daemon/test/lib/review-capture.test.ts",
+      "test": "a held review is released only after revalidation, and a losing race is not released"
+    },
+    {
+      "id": "REVIEW-CANCELLATION-CANNOT-REWRITE-A-SETTLED-REVIEW",
+      "owner": "BAZ-043",
+      "file": "apps/daemon/test/routes/reviews.test.ts",
+      "test": "a waiting packet can be cancelled, and a reviewed one cannot be rewritten"
+    },
+    {
+      "id": "REVIEW-CHECKS-CURRENT-IS-EVIDENCE-NOT-A-CONSTANT",
+      "owner": "BAZ-043",
+      "file": "apps/daemon/test/routes/reviews.test.ts",
+      "test": "checks are current only when a verification of this revision actually executed"
+    },
+    {
+      "id": "REVIEW-UNVERIFIED-FINDING-BLOCKS-RESOLUTION-AND-CONTENT",
+      "owner": "BAZ-043",
+      "file": "apps/daemon/test/lib/review-capability.test.ts",
+      "test": "once the tree moves, the reviewer is told content is gone instead of shown later code"
+    },
+    {
+      "id": "REVIEW-FINISHED-TURN-CANNOT-ANNOTATE",
+      "owner": "BAZ-043",
+      "file": "apps/daemon/test/lib/review-capability.test.ts",
+      "test": "a finished turn cannot read or write through the capability"
     }
   ]
 }

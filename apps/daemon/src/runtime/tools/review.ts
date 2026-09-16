@@ -22,6 +22,28 @@ import type { ToolHandler } from './types.ts'
 // checkout. The daemon host is authoritative for all of it: it owns which paths exist in the revision,
 // whether content is reproducible, and what a conclusion is allowed to be.
 
+/**
+ * What a coding turn asks for: one existing same-Team member to review the change as it stands now.
+ *
+ * No snapshot id and no checks — the daemon captures the revision at this moment, and a review has no
+ * commands to run. It is a request for a *reading*, not for execution.
+ */
+export interface ReviewRequestIntent {
+  reviewer: string
+  summary?: string
+}
+
+export interface ReviewRequestReceipt {
+  packetId: string
+  snapshotId: string
+  reviewer: string
+  state: string
+}
+
+export interface ReviewRequestHost {
+  capture(intent: ReviewRequestIntent): Promise<ReviewRequestReceipt>
+}
+
 export interface ReviewCapabilityHost {
   read(): Promise<ReviewPacketBrief>
   path(path: string): Promise<ReviewPathContent>
@@ -153,6 +175,56 @@ export function reviewTools(host: ReviewCapabilityHost): ToolHandler[] {
   }
 
   return [packetTool, pathTool, findingTool, conclusionTool]
+}
+
+/**
+ * The requester-side tool, available in an ordinary coding turn and nowhere else.
+ *
+ * It asks for a review, not for a verdict: the receipt names the packet to wait on. Whether the reviewer is
+ * allowed and whether policy holds the request are decided by the daemon at dispatch — this tool cannot
+ * grant anything or run anything.
+ */
+export function reviewRequestTool(host: ReviewRequestHost): ToolHandler {
+  return {
+    def: {
+      name: 'request_review',
+      description:
+        'Ask one existing member of this Team to read the change as it is right now and say what they think of it. The daemon captures the change, so later edits are not covered. Use it when a second pair of eyes is worth more than your own summary; then end your turn and wait — you will be told what they found. This is a static reading: the reviewer runs nothing and changes nothing, and this is not an approval to publish, merge or deploy.',
+      parameters: {
+        type: 'object',
+        properties: {
+          reviewer: {
+            type: 'string',
+            description:
+              'The same-Team member who should review — their name or their agent id. A name that matches nobody comes back with the members you can ask.',
+          },
+          summary: {
+            type: 'string',
+            description:
+              'What the change is for and what to look at, in your words. It is commentary; it is not evidence.',
+          },
+        },
+        required: ['reviewer'],
+        additionalProperties: false,
+      },
+    },
+    async invoke(args) {
+      const reviewer = typeof args.reviewer === 'string' ? args.reviewer.trim() : ''
+      if (reviewer === '') throw new ReviewCapabilityError('request_review needs a reviewer')
+      const receipt = await host.capture({
+        reviewer,
+        ...(typeof args.summary === 'string' ? { summary: args.summary } : {}),
+      })
+      return [
+        `Review packet ${receipt.packetId} is ${receipt.state}, against revision ${receipt.snapshotId}.`,
+        `Reviewer: ${receipt.reviewer}.`,
+        '',
+        'The change is captured as it was at this moment; editing it now does not change what will be',
+        'reviewed. End your turn and wait — the findings are delivered back to you. A reviewer’s conclusion',
+        'is their statement about this revision, not an approval and not a test result.',
+      ].join('\n')
+    },
+  }
 }
 
 function readLine(value: unknown): number | null {

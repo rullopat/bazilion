@@ -186,6 +186,8 @@ export interface ConfiguredSpawnWorkerOpts extends CommonSpawnWorkerOpts {
   env: NodeJS.ProcessEnv
   /** BAZ-044: lets an ordinary coding turn hand its current change to a Team specialist. */
   verificationRequestHost?: import('../tools/verification.ts').VerificationRequestHost
+  /** BAZ-043: lets an ordinary coding turn ask a Team member to review the change. */
+  reviewRequestHost?: import('../tools/review.ts').ReviewRequestHost
   /**
    * Daemon-side implementation of the messaging tools the worker calls back
    * into via IPC. Omit only when the caller knows the agent will not invoke
@@ -222,6 +224,8 @@ export interface ProtectedSpawnWorkerOpts extends CommonSpawnWorkerOpts {
   apiKeyRefreshHost: ApiKeyRefreshHost
   /** BAZ-044: lets a normal coding turn hand its current change to a Team specialist. */
   verificationRequestHost?: import('../tools/verification.ts').VerificationRequestHost
+  /** BAZ-043: lets a normal coding turn ask a Team member to review the change. */
+  reviewRequestHost?: import('../tools/review.ts').ReviewRequestHost
 }
 
 export interface RestrictedReviewSpawnWorkerOpts extends CommonSpawnWorkerOpts {
@@ -603,6 +607,8 @@ function assertSpawnCombination(spec: SpecWithCapabilityHost, opts: SpawnWorkerO
       // snapshot and writes a request, so handing it to any restricted kind would give that turn a
       // write the story does not grant it.
       'verificationRequestHost',
+      // Same rule for the review requester: a restricted turn must not be able to ask anyone for anything.
+      'reviewRequestHost',
     ]) {
       if (forbidden in record) throw new Error(`${spec.kind} rejects ${forbidden}`)
     }
@@ -687,6 +693,12 @@ function spawnHosts(
         : spec.kind === 'configured_operator_http'
           ? (opts as ConfiguredSpawnWorkerOpts).verificationRequestHost
           : undefined,
+    reviewRequestHost:
+      spec.kind === 'protected'
+        ? (opts as ProtectedSpawnWorkerOpts).reviewRequestHost
+        : spec.kind === 'configured_operator_http'
+          ? (opts as ConfiguredSpawnWorkerOpts).reviewRequestHost
+          : undefined,
     bashApprovalHost: configuredOpts?.bashApprovalHost ?? protectedOpts?.bashApprovalHost,
     apiKeyRefreshHost: opts.apiKeyRefreshHost,
     apiKeyRefreshContext: {
@@ -734,6 +746,7 @@ interface IpcHosts {
   changeReviewHost?: import('./ipc-protocol.ts').ChangeReviewHost
   /** BAZ-044 requester side: only a protected coding turn may ask for verification. */
   verificationRequestHost?: import('../tools/verification.ts').VerificationRequestHost
+  reviewRequestHost?: import('../tools/review.ts').ReviewRequestHost
   bashApprovalHost?: BashApprovalHost
   apiKeyRefreshHost?: ApiKeyRefreshHost
   apiKeyRefreshContext?: ApiKeyRefreshTurnContext
@@ -905,6 +918,11 @@ async function dispatch(req: IpcRequest, hosts: IpcHosts): Promise<IpcReply> {
           req.args.serverId,
           req.args.toolName,
           req.args.args,
+        )
+        break
+      case 'reviewPacketCapture':
+        result = await require(hosts.reviewRequestHost, 'reviewRequestHost', req.method).capture(
+          req.args,
         )
         break
       case 'reviewPacketRead':

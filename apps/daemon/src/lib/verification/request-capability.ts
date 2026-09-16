@@ -1,13 +1,13 @@
 import type { VerificationCheckInput } from '@bazilion/api-types'
 import type { BazilionDb } from '../../core/db/client.ts'
 import type { Paths } from '../../core/paths.ts'
-import { list as listAgents } from '../../core/repos/agents.ts'
 import type {
   VerificationRequestHost,
   VerificationRequestIntent,
   VerificationRequestReceipt,
 } from '../../runtime/tools/verification.ts'
 import { captureTeamSnapshot } from '../git-review/service.ts'
+import { resolveTeamMember } from '../team-member.ts'
 import { captureVerificationRequest } from './capture.ts'
 
 // BAZ-044: the requester's half of the loop.
@@ -30,41 +30,6 @@ export interface VerificationRequestCapabilityInput {
   turnId: string
   /** Re-checked before the snapshot is taken, so a finished turn cannot capture anything. */
   assertActive: () => void
-}
-
-/**
- * Resolve the specialist a coding turn named, by id or by name, inside its own Team.
- *
- * Only live members of the caller's Team are candidates, so a name cannot reach another Team's Agent and
- * a refusal can safely list what *was* available. The refusal names the candidates, so one failed call is
- * enough for a model to recover rather than guess again.
- */
-function resolveSpecialist(
-  db: BazilionDb,
-  teamId: string,
-  requested: string,
-  requesterAgentId: string,
-): { agentId: string } | { error: string } {
-  const wanted = requested.trim().toLowerCase()
-  const members = listAgents(db).filter(
-    (agent) => agent.teamId === teamId && agent.status !== 'archived',
-  )
-  const byId = members.find((agent) => agent.id.toLowerCase() === wanted)
-  if (byId) return { agentId: byId.id }
-  const byName = members.filter((agent) => agent.name.toLowerCase() === wanted)
-  if (byName.length === 1 && byName[0]) return { agentId: byName[0].id }
-  const candidates = members
-    .filter((agent) => agent.id !== requesterAgentId)
-    .map((agent) => `${agent.name} (${agent.id})`)
-    .join(', ')
-  if (byName.length > 1) {
-    return {
-      error: `more than one Team member is named ${requested}; use the id instead. Members: ${candidates}`,
-    }
-  }
-  return {
-    error: `no Team member is named ${requested}. Members you can ask: ${candidates || '(none)'}`,
-  }
 }
 
 export function createVerificationRequestHost(
@@ -94,7 +59,11 @@ export function createVerificationRequestHost(
       // looking for it — which a real model did, by reading the agent directories with bash. That
       // workaround does not exist under container isolation, where those paths are not mounted at all,
       // so the contract has to accept what an agent actually knows.
-      const resolved = resolveSpecialist(input.db, input.teamId, intent.specialist, input.agentId)
+      const resolved = resolveTeamMember(input.db, {
+        teamId: input.teamId,
+        requested: intent.specialist,
+        excludeAgentId: input.agentId,
+      })
       if ('error' in resolved) throw new Error(resolved.error)
 
       const checks: VerificationCheckInput[] = intent.checks.map((check) => ({

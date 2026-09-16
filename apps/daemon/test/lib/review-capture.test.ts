@@ -7,8 +7,10 @@ import {
   addReviewFinding,
   getReviewPacket,
   listReviewFindings,
+  setReviewPacketState,
 } from '../../src/core/repos/review-packets.ts'
 import { captureTeamSnapshot } from '../../src/lib/git-review/service.ts'
+import { releaseReviewGrant, validateReviewGrant } from '../../src/lib/review/approval.ts'
 import { captureReviewPacket, readReviewPacketReport } from '../../src/lib/review/capture.ts'
 import { makeTestEnv, type TestEnv } from '../core/helpers.ts'
 
@@ -247,6 +249,65 @@ test('an incomplete capture cannot be reviewed, because a partial revision is no
     expect(result.kind).toBe('blocked')
     if (result.kind === 'blocked') expect(result.blocker.reason).toBe('snapshot_incomplete')
     expect(count(env.db, 'review_packets')).toBe(0)
+  } finally {
+    env.cleanup()
+  }
+})
+
+test('a held review is released only after revalidation, and a losing race is not released', async () => {
+  const { env, snapshotId } = await repoEnv()
+  try {
+    const captured = captureReviewPacket(env.db, env.paths, {
+      teamId: env.teamId,
+      snapshotId,
+      reviewerAgentId: 'reviewer',
+      requesterKind: 'operator',
+    })
+    if (captured.kind !== 'captured') throw new Error('capture blocked')
+    const packetId = captured.packet.id
+
+    // Nothing is released unless it is actually waiting: a packet that is `open` has no hold to lift.
+    expect(validateReviewGrant(env.db, env.paths, packetId)).toMatch(/not awaiting approval/)
+    setReviewPacketState(env.db, packetId, 'awaiting_approval')
+    expect(validateReviewGrant(env.db, env.paths, packetId)).toBeNull()
+
+    // The reviewer leaving the Team is exactly the change a release must catch.
+    env.db.raw.run("UPDATE agents SET status = 'archived' WHERE id = 'reviewer'")
+    expect(validateReviewGrant(env.db, env.paths, packetId)).toMatch(/missing or archived/)
+    env.db.raw.run("UPDATE agents SET status = 'idle' WHERE id = 'reviewer'")
+    expect(validateReviewGrant(env.db, env.paths, packetId)).toBeNull()
+
+    // The evidence window closing is the other one.
+    const stored = getReviewPacket(env.db, packetId)
+    env.db.raw.run('DELETE FROM source_snapshots WHERE snapshot_id = ?', [stored?.snapshotId])
+    expect(validateReviewGrant(env.db, env.paths, packetId)).toMatch(
+      /no longer inside its retention/,
+    )
+  } finally {
+    env.cleanup()
+  }
+})
+
+test('releasing a held review returns it to open, and a cancellation that raced wins', async () => {
+  const { env, snapshotId } = await repoEnv()
+  try {
+    const captured = captureReviewPacket(env.db, env.paths, {
+      teamId: env.teamId,
+      snapshotId,
+      reviewerAgentId: 'reviewer',
+      requesterKind: 'operator',
+    })
+    if (captured.kind !== 'captured') throw new Error('capture blocked')
+    const packetId = captured.packet.id
+
+    setReviewPacketState(env.db, packetId, 'awaiting_approval')
+    releaseReviewGrant(env.db, packetId)
+    expect(getReviewPacket(env.db, packetId)?.state).toBe('open')
+
+    // A packet cancelled while the operator was deciding is not resurrected by a late approval.
+    setReviewPacketState(env.db, packetId, 'cancelled')
+    releaseReviewGrant(env.db, packetId)
+    expect(getReviewPacket(env.db, packetId)?.state).toBe('cancelled')
   } finally {
     env.cleanup()
   }

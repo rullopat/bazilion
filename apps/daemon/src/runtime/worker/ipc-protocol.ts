@@ -39,6 +39,7 @@ export type RpcMethod =
   | 'userMdWrite'
   | 'browserInvoke'
   | 'mcpInvoke'
+  | 'reviewPacketCapture'
   | 'reviewPacketRead'
   | 'reviewPathRead'
   | 'reviewFindingAdd'
@@ -193,6 +194,10 @@ export type RpcArgs =
   | { method: 'userMdWrite'; args: UserMdWriteArgs }
   | { method: 'browserInvoke'; args: BrowserInvokeArgs }
   | { method: 'mcpInvoke'; args: McpInvokeArgs }
+  | {
+      method: 'reviewPacketCapture'
+      args: import('../tools/review.ts').ReviewRequestIntent
+    }
   | { method: 'reviewPacketRead'; args: ReviewIdentityArgs }
   | { method: 'reviewPathRead'; args: ReviewIdentityArgs & { path: string } }
   | {
@@ -231,6 +236,10 @@ export type RpcResult =
   | { method: 'userMdWrite'; value: UserMdWriteResult }
   | { method: 'browserInvoke'; value: ToolResultPart[] }
   | { method: 'mcpInvoke'; value: ToolResultPart[] }
+  | {
+      method: 'reviewPacketCapture'
+      value: import('../tools/review.ts').ReviewRequestReceipt
+    }
   | {
       method: 'reviewPacketRead'
       value: import('@bazilion/api-types').ReviewPacketBrief

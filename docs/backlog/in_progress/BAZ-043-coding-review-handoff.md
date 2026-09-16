@@ -1,7 +1,7 @@
 ---
 id: BAZ-043
 title: Revision-bound coding review and handoff
-status: todo
+status: in_progress
 size: L
 created: 2026-09-07
 refined: 2026-09-09

@@ -57,15 +57,15 @@ Writer coordination already exists; checkout lifecycle and deployment integratio
 later from a concrete use case. Automatic Git publication, managed services/previews and ambient Pi
 extension loading remain separate, uncommitted scope.
 
-## Todo (1)
+## Todo (0)
+
+Nothing refined and waiting. Capture the next story in `draft/` and refine it here.
+
+## In Progress (1)
 
 | ID | Title | Size | Notes |
 |----|-------|------|-------|
-| [BAZ-043](todo/BAZ-043-coding-review-handoff.md) | Revision-bound coding review and handoff | L | Agent-requested static review of captured changes; enforced read-only scope; publication deferred |
-
-## In Progress (0)
-
-Nothing in flight. Move an item here from `todo/` when implementation starts.
+| [BAZ-043](in_progress/BAZ-043-coding-review-handoff.md) | Revision-bound coding review and handoff | L | Implemented across eight slices and heading for v0.19.0; see the [progress log](BAZ-043-progress.md), the [acceptance record](BAZ-043-acceptance.md) and the live runs |
 
 ## Done (38)
 

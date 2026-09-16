@@ -119,6 +119,35 @@ recorded on the receipt as not confining writes: real confinement needs the cont
 environments, framework parsers, automatic retries, source changes to fix failures, and any automatic
 commit, push, PR or deployment. A verification result is never an approval to publish.
 
+## Reviewing a captured change (v0.19.0)
+
+A packet binds one captured revision, and either side of the review is an operator or an agent:
+
+```sh
+bazilion team review packet create my-team --snapshot <id> --reviewer tester --summary "the crash fix"
+bazilion team review packet list my-team
+bazilion team review packet show my-team <packetId>
+bazilion team review packet finding my-team <packetId> --path app.ts --severity major --note "no test" --lines 12-20
+bazilion team review packet conclude my-team <packetId> --conclusion changes_requested
+bazilion team review packet export my-team <packetId>
+```
+
+A coder can ask for the same thing from inside its own turn with `request_review`, naming a teammate by name
+or id. **Requesting a review runs nothing**: the daemon captures the revision, and the reviewer's capability
+is four read-only tools — read the packet, read a changed path's patch, record a finding, record a
+conclusion. There is no shell, no editor, no browser, no network and no publication verb, and the reviewer
+is refused every one of them at the daemon boundary rather than by instruction.
+
+Two limits are worth knowing before trusting a result:
+
+- **Content is only the reviewed revision's while the tree still matches the capture.** A snapshot stores
+  paths and digests, never bytes, so once the tree moves there is no patch to show for the old revision — the
+  reviewer is told that and must not describe lines it could not read. A finding recorded at that point is
+  `unverified` and cannot be resolved.
+- **A conclusion is a reviewer's statement**, not a pass, not acceptance and not permission to publish.
+  Committed / pushed / pull request / merged / deployed / production accepted are whatever you report them to
+  be: Bazilion has no code-host integration, so those states are labelled reported rather than verified.
+
 ## Read-only guarantees and limits
 
 Inspection never stages, commits, checks out or reverts anything, and it never executes

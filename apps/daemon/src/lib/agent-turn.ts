@@ -26,6 +26,7 @@ import {
 import { createResultHost } from './result-host.ts'
 import { authorizeBackgroundResult } from './result-library-delivery.ts'
 import { reconcilePrivateResults } from './result-retention.ts'
+import { createReviewRequestHost } from './review/request-capability.ts'
 import { mirrorAgentTurnFrame, mirrorTypingStart, mirrorTypingStop } from './telegram/mirror.ts'
 import { invocationRepresentsUserTurn } from './turn-invocation.ts'
 import {
@@ -87,6 +88,18 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
     // BAZ-044 requester side: this turn may hand its current change to a Team specialist. Bound to the
     // turn's own agent, so a worker cannot request verification as anyone else.
     const verificationRequestHost = createVerificationRequestHost({
+      db,
+      paths,
+      agentId: agent.agent.id,
+      teamId: agent.team.id,
+      turnId,
+      assertActive: () => {
+        if (!ownsActiveAgent(agent.agent.id, turn.controller)) throw new Error('Coding turn ended')
+      },
+    })
+    // BAZ-043 requester side: this turn may ask a teammate to read its current change. Bound to the turn's
+    // own agent, so a worker cannot request a review as anyone else.
+    const reviewRequestHost = createReviewRequestHost({
       db,
       paths,
       agentId: agent.agent.id,
@@ -177,6 +190,7 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
           codingHost,
           messagingHost,
           verificationRequestHost,
+          reviewRequestHost,
           resultHost,
           userMdHost,
           browserHost,
@@ -219,6 +233,7 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
           codingHost,
           messagingHost,
           verificationRequestHost,
+          reviewRequestHost,
           resultHost,
           userMdHost,
           bashApprovalHost: commandApprovalRegistry,

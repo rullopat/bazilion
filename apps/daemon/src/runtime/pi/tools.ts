@@ -27,6 +27,7 @@ import { homeTools } from '../tools/home.ts'
 import { mcpProxyTools } from '../tools/mcp.ts'
 import { memoryTools } from '../tools/memory.ts'
 import { messagingTools } from '../tools/messaging.ts'
+import { type ReviewRequestHost, reviewRequestTool } from '../tools/review.ts'
 import type { ToolHandler, ToolOutput } from '../tools/types.ts'
 import { userMdTools } from '../tools/user-md.ts'
 import { type VerificationRequestHost, verificationRequestTool } from '../tools/verification.ts'
@@ -106,6 +107,8 @@ export interface BazilionCustomToolsOpts {
   env?: NodeJS.ProcessEnv
   /** BAZ-044: present only in an ordinary coding turn, and only when the daemon bound it. */
   verificationRequestHost?: VerificationRequestHost
+  /** BAZ-043: the same, for asking a teammate to review the change. */
+  reviewRequestHost?: ReviewRequestHost
 }
 
 export interface ProtectedBazilionCustomToolsOpts {
@@ -118,6 +121,8 @@ export interface ProtectedBazilionCustomToolsOpts {
   fileSink: FileSink
   /** BAZ-044: present only in an ordinary protected coding turn. */
   verificationRequestHost?: VerificationRequestHost
+  /** BAZ-043: present only in an ordinary protected coding turn. */
+  reviewRequestHost?: ReviewRequestHost
 }
 
 /**
@@ -156,6 +161,10 @@ export function createBazilionCustomTools(opts: BazilionCustomToolsOpts): ToolDe
     // The requester's half of specialist verification. It asks; it never approves or executes.
     handlers.push(verificationRequestTool(opts.verificationRequestHost))
   }
+  if (opts.reviewRequestHost) {
+    // The requester's half of review. It asks; the reviewer runs nothing.
+    handlers.push(reviewRequestTool(opts.reviewRequestHost))
+  }
   if (opts.askUser) handlers.push(askUserTool(opts.askUser))
   return handlers.map(ourToolToPiTool)
 }
@@ -180,6 +189,10 @@ export function createProtectedBazilionCustomTools(
   if (opts.verificationRequestHost) {
     // The requester's half of specialist verification. It asks; it never approves or executes.
     handlers.push(verificationRequestTool(opts.verificationRequestHost))
+  }
+  if (opts.reviewRequestHost) {
+    // The requester's half of review. It asks; the reviewer runs nothing.
+    handlers.push(reviewRequestTool(opts.reviewRequestHost))
   }
   if (opts.askUser) handlers.push(askUserTool(opts.askUser))
   return handlers.map(ourToolToPiTool)

@@ -17,7 +17,12 @@ import {
 } from '../pi/session.ts'
 import { ourToolToPiTool } from '../pi/tools.ts'
 import type { BashApprovalHost as ShellBashApprovalHost } from '../shell/approval.ts'
-import { type ReviewCapabilityHost, reviewTools } from '../tools/review.ts'
+import {
+  type ReviewCapabilityHost,
+  type ReviewRequestHost,
+  reviewRequestTool,
+  reviewTools,
+} from '../tools/review.ts'
 import { type VerificationRequestHost, verificationTools } from '../tools/verification.ts'
 import { createIpcApiKeyRefresher } from './api-key-refresh.ts'
 import { createIpcClient, type WorkerIpcCall } from './ipc-client.ts'
@@ -254,6 +259,13 @@ function createIpcVerificationRequestHost(ipcCall: WorkerIpcCall): VerificationR
 }
 
 /** BAZ-043: the reviewer's capability, proxied to the daemon that owns the packet. */
+/** BAZ-043 requester side: only an ordinary coding turn gets this, and only to *ask*. */
+function createIpcReviewRequestHost(ipcCall: WorkerIpcCall): ReviewRequestHost {
+  return {
+    capture: (intent) => ipcCall('reviewPacketCapture', intent),
+  }
+}
+
 function createIpcChangeReviewHost(
   ipcCall: WorkerIpcCall,
   identity: { packetId: string; attemptId: string },
@@ -325,9 +337,10 @@ async function createSessionForInput(
       enabledProviders: new Set(input.enabledProviders),
       messagingHost,
       userMdHost,
-      // The requester's half of specialist verification. Only the configured/browser-enabled worker
-      // kind reaches this builder, and it is an ordinary coding turn.
+      // The requester's halves of specialist verification and review. Only the configured/browser-enabled
+      // worker kind reaches this builder, and it is an ordinary coding turn.
       verificationRequestHost: createIpcVerificationRequestHost(ipcCall),
+      reviewRequestHost: createIpcReviewRequestHost(ipcCall),
       apiKey: input.apiKey,
       refreshApiKey,
       browserHost,
@@ -421,6 +434,7 @@ async function createSessionForInput(
     userMdHost,
     bashApprovalHost,
     verificationRequestHost: createIpcVerificationRequestHost(ipcCall),
+    reviewRequestHost: createIpcReviewRequestHost(ipcCall),
     askUser: input.questionEnabled
       ? (toolCallId, question) => ipcCall('askUser', { toolCallId, question })
       : undefined,

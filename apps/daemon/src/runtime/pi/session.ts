@@ -104,6 +104,8 @@ export interface CreateBazilionSessionOptions {
   env: NodeJS.ProcessEnv
   /** BAZ-044: the requester-side verification capability, present in ordinary coding turns only. */
   verificationRequestHost?: import('../tools/verification.ts').VerificationRequestHost
+  /** BAZ-043: the requester-side review capability, present in ordinary coding turns only. */
+  reviewRequestHost?: import('../tools/review.ts').ReviewRequestHost
   memory: MemoryBackend
   /**
    * Names of providers the user has explicitly enabled in /config.
@@ -195,6 +197,8 @@ export interface CreateProtectedBazilionSessionOptions {
   refreshApiKey: (providerName: string) => Promise<string>
   /** BAZ-044: the requester-side verification capability, present in ordinary coding turns only. */
   verificationRequestHost?: import('../tools/verification.ts').VerificationRequestHost
+  /** BAZ-043: the requester-side review capability, present in ordinary coding turns only. */
+  reviewRequestHost?: import('../tools/review.ts').ReviewRequestHost
 }
 
 export interface CreateRestrictedReviewSessionOptions {
@@ -364,6 +368,7 @@ export async function createBazilionSession(
         sessionId: sessionManager.getSessionId(),
         env,
         verificationRequestHost: opts.verificationRequestHost,
+        reviewRequestHost: opts.reviewRequestHost,
       })
   if (repository) bazilionTools.push(repository.tool)
   if (
@@ -523,6 +528,7 @@ export async function createProtectedBazilionSession(
     askUser: opts.askUser,
     sessionId: sessionManager.getSessionId(),
     verificationRequestHost: opts.verificationRequestHost,
+    reviewRequestHost: opts.reviewRequestHost,
   })
   if (repository) bazilionTools.push(repository.tool)
   // Shared with the protected credential boundary below: refreshed tokens are

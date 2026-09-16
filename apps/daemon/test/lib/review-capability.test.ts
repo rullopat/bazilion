@@ -5,6 +5,7 @@ import { expect, test } from 'vitest'
 import type { BazilionDb } from '../../src/core/db/client.ts'
 import {
   addReviewFinding,
+  getReviewPacket,
   listReviewConclusions,
   listReviewFindings,
 } from '../../src/core/repos/review-packets.ts'
@@ -246,4 +247,97 @@ test('a finished turn cannot read or write through the capability', async () => 
   } finally {
     env.cleanup()
   }
+})
+
+test('a coding turn can ask for a review, and the daemon binds who asked', async () => {
+  const { env } = await reviewingEnv()
+  try {
+    const { createReviewRequestHost } = await import('../../src/lib/review/request-capability.ts')
+    const host = createReviewRequestHost({
+      db: env.db,
+      paths: env.paths,
+      agentId: 'coder',
+      teamId: env.teamId,
+      turnId: 'turn-1',
+      assertActive: () => {},
+    })
+    // A model knows its peers by name; the id path works too, and the requester is the turn's own agent.
+    const receipt = await host.capture({
+      reviewer: 'Reviewer',
+      summary: 'the new branch is untested',
+    })
+    const packet = getReviewPacket(env.db, receipt.packetId)
+    expect(packet).toMatchObject({
+      requesterKind: 'agent',
+      requesterAgentId: 'coder',
+      reviewerAgentId: 'reviewer',
+      summary: 'the new branch is untested',
+      state: 'open',
+    })
+    expect(packet?.snapshotId).toBe(receipt.snapshotId)
+    // The revision exists as evidence for the packet.
+    expect(
+      env.db.raw
+        .query<{ n: number }, [string]>(
+          'SELECT count(*) AS n FROM source_snapshots WHERE snapshot_id = ?',
+        )
+        .get(receipt.snapshotId)?.n,
+    ).toBe(1)
+    // Note for the next reader: the snapshot row's `captured_by` belongs to the *first* capture of that
+    // content, because a snapshot is content-addressed and an identical tree shares one row. The requester
+    // identity therefore lives on the packet — asserted above — rather than on the snapshot.
+
+    // An unknown reviewer is refused with the members that could be asked, and nothing is written.
+    const before = env.db.raw
+      .query<{ n: number }, []>('SELECT count(*) AS n FROM review_packets')
+      .get()?.n
+    await expect(host.capture({ reviewer: 'alex' })).rejects.toThrow(/no Team member is named alex/)
+    expect(
+      env.db.raw.query<{ n: number }, []>('SELECT count(*) AS n FROM review_packets').get()?.n,
+    ).toBe(before)
+
+    // A finished turn cannot capture anything.
+    const ended = createReviewRequestHost({
+      db: env.db,
+      paths: env.paths,
+      agentId: 'coder',
+      teamId: env.teamId,
+      turnId: 'turn-2',
+      assertActive: () => {
+        throw new Error('Coding turn ended')
+      },
+    })
+    await expect(ended.capture({ reviewer: 'reviewer' })).rejects.toThrow('Coding turn ended')
+  } finally {
+    env.cleanup()
+  }
+})
+
+test('the review requester tool is closed: a reviewer and a summary, nothing else', async () => {
+  const { reviewRequestTool } = await import('../../src/runtime/tools/review.ts')
+  const seen: unknown[] = []
+  const tool = reviewRequestTool({
+    capture: async (intent) => {
+      seen.push(intent)
+      return { packetId: 'p-1', snapshotId: 's-1', reviewer: 'reviewer', state: 'open' }
+    },
+  })
+  expect(tool.def.name).toBe('request_review')
+  const parameters = tool.def.parameters as {
+    additionalProperties?: boolean
+    required?: string[]
+    properties: Record<string, unknown>
+  }
+  // No snapshot to name, no checks to run, no approve or publish action: the daemon captures the revision
+  // and a review executes nothing.
+  expect(parameters.additionalProperties).toBe(false)
+  expect(parameters.required).toEqual(['reviewer'])
+  expect(Object.keys(parameters.properties).sort()).toEqual(['reviewer', 'summary'])
+  await expect(tool.invoke({ reviewer: '  ' }, { toolCallId: 't' })).rejects.toThrow(
+    /needs a reviewer/,
+  )
+  expect(seen).toEqual([])
+  const text = await tool.invoke({ reviewer: 'reviewer' }, { toolCallId: 't' })
+  expect(String(text)).toContain('p-1')
+  expect(String(text)).toContain('End your turn')
 })

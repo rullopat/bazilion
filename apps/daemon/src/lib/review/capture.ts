@@ -22,6 +22,11 @@ import {
   type ReviewPacketRecord,
 } from '../../core/repos/review-packets.ts'
 import { getSourceSnapshot } from '../../core/repos/source-snapshots.ts'
+import {
+  listVerificationAttempts,
+  listVerificationCheckOutcomes,
+  listVerificationRequests,
+} from '../../core/repos/verification-requests.ts'
 import { readSnapshotApplicability, requireTeam } from '../git-review/service.ts'
 
 // BAZ-043: capture a review packet, and read it back for the operator surfaces.
@@ -283,14 +288,39 @@ export async function readReviewPacketReport(
     facts: {
       // Preparing a change is not reviewing it, and neither is acceptance. Only what has evidence.
       changePrepared: packet.snapshotComplete,
-      // Checks are BAZ-041 evidence and are not implied by a packet; a caller that has them adds them.
-      checksCurrent: false,
+      checksCurrent: checksAreCurrent(db, packet, applicability.comparison === 'identical'),
       reviewed,
       // Operator-reported external states, exactly as recorded. Nothing here is inferred: this story has no
       // code-host integration, so a state appears only because an operator reported it.
       reported: packet.reported,
     },
   }
+}
+
+/**
+ * Whether executor-owned check evidence exists *for this revision* and still applies to it.
+ *
+ * Both halves matter. A verification of the same captured revision gives real evidence; a verification of
+ * some other revision does not, and evidence of this revision stops being "current" the moment the tree
+ * moves away from what was checked. Never inferred from a review: a reviewer's opinion is not a test result.
+ */
+function checksAreCurrent(
+  db: BazilionDb,
+  packet: ReviewPacketRecord,
+  sourceUnchanged: boolean,
+): boolean {
+  if (!sourceUnchanged) return false
+  for (const request of listVerificationRequests(db, packet.teamId)) {
+    if (request.snapshotId !== packet.snapshotId) continue
+    const attempts = listVerificationAttempts(db, request.id)
+    for (const attempt of attempts) {
+      const executed = listVerificationCheckOutcomes(db, attempt.id).some((outcome) =>
+        ['succeeded', 'failed'].includes(outcome.state),
+      )
+      if (executed) return true
+    }
+  }
+  return false
 }
 
 /** The list view: no per-path applicability, because establishing it walks the repository. */

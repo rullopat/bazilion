@@ -43,6 +43,7 @@ import {
   recordReportedState,
   recordReviewConclusion,
   resolveReviewFinding,
+  setReviewPacketState,
 } from '../core/repos/review-packets.ts'
 import {
   getVerificationRequest,
@@ -85,6 +86,7 @@ import {
   readReviewPacketReport,
   readReviewPacketSummaries,
 } from '../lib/review/capture.ts'
+import { cancelReviewDispatch } from '../lib/review/dispatch.ts'
 import { buildReviewExport } from '../lib/review/export.ts'
 import { buildFileLink, openFileLink } from '../lib/review/file-link.ts'
 import { validateTopicNameFormat } from '../lib/telegram/naming.ts'
@@ -418,6 +420,30 @@ teamsRouter.post('/:id/reviews/:packetId/conclusion', async (c) => {
     }
     return reviewFailure(c, error)
   }
+})
+
+teamsRouter.post('/:id/reviews/:packetId/cancel', async (c) => {
+  const { db, paths } = getCtx()
+  const packetId = c.req.param('packetId')
+  const packet = getTeamReviewPacket(db, c.req.param('id'), packetId)
+  if (!packet) return c.json({ error: 'Review packet not found' }, 404)
+  if (!['open', 'awaiting_approval', 'reviewing'].includes(packet.state)) {
+    // A settled review is not cancellable: there is nothing running, and rewriting its state would erase
+    // what the reviewer found.
+    return c.json(
+      {
+        error: `the packet is ${packet.state}, so there is nothing to cancel`,
+        code: 'state_conflict',
+      },
+      409,
+    )
+  }
+  // A running attempt is aborted through the per-packet registry; a packet that is merely waiting is
+  // cancelled directly. Both go through one owner so the two cannot disagree.
+  const aborted = await cancelReviewDispatch(packetId)
+  if (!aborted) setReviewPacketState(db, packetId, 'cancelled')
+  const report = await readReviewPacketReport(db, paths, packet.teamId, packetId)
+  return c.json({ report, aborted })
 })
 
 teamsRouter.post('/:id/reviews/:packetId/reported', async (c) => {

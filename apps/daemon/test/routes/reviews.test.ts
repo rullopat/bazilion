@@ -3,6 +3,7 @@ import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { ReviewPacketReport, ReviewPacketResponse } from '@bazilion/api-types'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
+import { setReviewPacketState } from '../../src/core/repos/review-packets.ts'
 import { teamsRouter } from '../../src/routes/teams.ts'
 import { makeTestEnv, type TestEnv } from '../core/helpers.ts'
 
@@ -213,4 +214,88 @@ test('a packet of another Team is not reachable, and an unknown packet is a 404'
   expect(elsewhere.status).toBe(404)
   const unknown = await teamsRouter.request(`/${env.teamId}/reviews/does-not-exist`)
   expect(unknown.status).toBe(404)
+})
+
+test('a waiting packet can be cancelled, and a reviewed one cannot be rewritten', async () => {
+  // One capture, because the repository is created by the first call: two packets can name the same revision.
+  const snapshot = await snapshotId()
+  const packet = (await (await create(snapshot)).json()) as ReviewPacketResponse
+  const packetId = packet.report.packet.id
+
+  const cancelled = await teamsRouter.request(`/${env.teamId}/reviews/${packetId}/cancel`, {
+    method: 'POST',
+  })
+  expect(cancelled.status).toBe(200)
+  const body = (await cancelled.json()) as { report: ReviewPacketReport; aborted: boolean }
+  expect(body.report.packet.state).toBe('cancelled')
+  // Nothing was running, so nothing was aborted — and the two cannot disagree because one owner decides.
+  expect(body.aborted).toBe(false)
+
+  // An operator's own conclusion does not settle the packet: only a completed reviewer attempt makes it
+  // `reviewed`, because the review state machine owns that transition.
+  const reviewed = (await (await create(snapshot)).json()) as ReviewPacketResponse
+  const reviewedId = reviewed.report.packet.id
+  await teamsRouter.request(`/${env.teamId}/reviews/${reviewedId}/conclusion`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ conclusion: 'commented' }),
+  })
+  expect(
+    (
+      (await (
+        await teamsRouter.request(`/${env.teamId}/reviews/${reviewedId}`)
+      ).json()) as ReviewPacketResponse
+    ).report.packet.state,
+  ).toBe('open')
+
+  // A settled review keeps what the reviewer found: cancelling it is refused rather than rewriting it.
+  setReviewPacketState(env.db, reviewedId, 'reviewed')
+  const refused = await teamsRouter.request(`/${env.teamId}/reviews/${reviewedId}/cancel`, {
+    method: 'POST',
+  })
+  expect(refused.status).toBe(409)
+  expect(((await refused.json()) as { code: string }).code).toBe('state_conflict')
+})
+
+test('checks are current only when a verification of this revision actually executed', async () => {
+  const snapshot = await snapshotId()
+  const packet = (await (await create(snapshot)).json()) as ReviewPacketResponse
+  const packetId = packet.report.packet.id
+  // A review never implies checks: nothing has executed against this revision.
+  expect(packet.report.facts.checksCurrent).toBe(false)
+
+  // A verification of a *different* revision does not make this packet's checks current.
+  const otherPacket = (await (
+    await create(snapshot, { reviewerAgentId: null })
+  ).json()) as ReviewPacketResponse
+  expect(otherPacket.report.facts.checksCurrent).toBe(false)
+
+  // Record executed evidence for this revision, then the fact becomes true — and only for this revision.
+  env.db.raw.run(
+    `INSERT INTO verification_requests (
+       id, team_id, requester_kind, requester_agent_id, recipient_agent_id, snapshot_id,
+       snapshot_complete, base_oid, environment_json, state, created_at, expires_at
+     ) VALUES ('req-check', ?, 'operator', NULL, 'reviewer', ?, 1, 'base', '{}', 'completed', 1, ?)`,
+    [env.teamId, snapshot, Date.now() + 60_000],
+  )
+  env.db.raw.run(
+    `INSERT INTO verification_attempts (id, request_id, attempt_number, state, started_at, finished_at, created_at)
+     VALUES ('att-check', 'req-check', 1, 'completed', 1, 2, 1)`,
+  )
+  env.db.raw.run(
+    `INSERT INTO verification_check_outcomes (attempt_id, ordinal, state, exit_code, started_at, finished_at)
+     VALUES ('att-check', 0, 'succeeded', 0, 1, 2)`,
+  )
+  const fresh = (await (
+    await teamsRouter.request(`/${env.teamId}/reviews/${packetId}`)
+  ).json()) as ReviewPacketResponse
+  expect(fresh.report.facts.checksCurrent).toBe(true)
+
+  // Once the tree moves away from what was checked, the evidence stops being current.
+  writeFileSync(join(env.paths.teamDir(env.teamId), 'app.txt'), 'one\ntwo\nthree\nfour\n')
+  const stale = (await (
+    await teamsRouter.request(`/${env.teamId}/reviews/${packetId}`)
+  ).json()) as ReviewPacketResponse
+  expect(stale.report.facts.checksCurrent).toBe(false)
+  expect(stale.report.applicability.stale).toBe(true)
 })
