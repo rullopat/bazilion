@@ -6,6 +6,7 @@ import type {
 import { defineCommand } from 'citty'
 import { createClient } from '../client.ts'
 import { columnize } from '../columnize.ts'
+import { collectFlagValues } from '../repeatable-args.ts'
 
 // `bazilion team review` — read-only Git change review and bounded source snapshots (BAZ-042).
 //
@@ -99,18 +100,14 @@ const captureCmd = defineCommand({
     base: { type: 'string', description: 'Comparison base (default HEAD)' },
     include: {
       type: 'string',
-      // citty has no array arg: a repeated flag would silently keep only the last value, so the
-      // list is comma-separated and parsed explicitly.
-      description: 'Comma-separated untracked paths to include by content',
+      // Read from raw arguments: citty keeps only the last value of a repeated flag.
+      description: 'Untracked path to include by content (repeat the flag for more)',
     },
     json: { type: 'boolean', description: 'Emit the complete snapshot as JSON' },
   },
-  async run({ args }) {
+  async run({ args, rawArgs }) {
     const client = createClient()
-    const includeUntracked = (args.include ?? '')
-      .split(',')
-      .map((entry) => entry.trim())
-      .filter((entry) => entry.length > 0)
+    const includeUntracked = collectFlagValues(rawArgs, 'include')
     if (includeUntracked.length > 1000) {
       console.error('team review capture: too many paths to include')
       process.exit(1)

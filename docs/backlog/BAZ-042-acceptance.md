@@ -42,12 +42,15 @@ One repository carrying every case the story names, committed base `70f3dcc6`:
 1. **`team review <slug>` did not work.** citty resolves the first positional as a subcommand, so the
    bare form I shipped in slice 5 failed with `Unknown command`. Restructured to the repository's own
    convention (`team policy`): `team review show <slug>` plus `capture|snapshots|snapshot`.
-2. **citty string flags are last-wins, so "repeatable" is a lie.** `--include a --include b` yields
+2. **citty string flags are last-wins, so "repeatable" was a lie.** `--include a --include b` yielded
    `"b"`. My `team review capture --include` silently dropped every path but the last, which the API
-   route did not. `--include` now takes a comma-separated list and the CLI agrees with the API.
-   **Reported, not fixed:** the shipped `agent chat --image` / `--file` flags use the same
-   `string | string[]` assumption (`asPaths(args.image as string | string[])`), so multiple
-   attachments are silently reduced to the last one. That predates BAZ-042 and deserves its own fix.
+   route did not. The shipped `agent chat --image` / `--file` flags had the same defect — both made
+   the `string | string[]` assumption (`asPaths(args.image as string | string[])`) and quietly
+   reduced several attachments to one. Both are fixed by reading the raw argument list
+   (`apps/cli/src/repeatable-args.ts`) instead of relying on citty, and deliberately **not** by
+   comma-splitting, which would corrupt a path that legitimately contains a comma — verified with
+   `odd, name.txt`. Verified live: two `--image` flags put **two** image blocks in the session, and
+   repeated `--include` flags included `notes.txt` while excluding `.env`.
 3. **Measuring "no helper ran" needs the measurement to be hardened too.** My first check ran a plain
    `git -C … status`, which honours the repository's `core.fsmonitor` — so *my own* command executed
    the helper, and fsmonitor also **rewrote `.git/index`**, changing its hash. Re-running with
@@ -65,7 +68,7 @@ pnpm tsx apps/cli/src/index.ts provider enable lmstudio      # first-run gate
 pnpm tsx apps/cli/src/index.ts provider models-set lmstudio baz042-stub
 pnpm tsx apps/cli/src/index.ts team add repo --link /tmp/baz042-repo
 pnpm tsx apps/cli/src/index.ts team review show repo
-pnpm tsx apps/cli/src/index.ts team review capture repo --include 'notes.txt,.env'
+pnpm tsx apps/cli/src/index.ts team review capture repo --include notes.txt --include .env
 node scripts/fake-coding-provider.mjs 18099 &                 # for criterion 4
 ```
 

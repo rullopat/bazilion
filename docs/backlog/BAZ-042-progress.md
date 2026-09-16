@@ -271,8 +271,9 @@ So BAZ-042 adds **readers over that harness**, not another harness.
 - Acceptance run: see [BAZ-042-acceptance.md](BAZ-042-acceptance.md). All six criteria observed,
   with five recorded caveats. Gate 74 → 83 cases (nine BAZ-042). The run found and fixed two CLI
   defects (`team review <slug>` never worked; `--include` silently kept only the last path because
-  citty string flags are last-wins) and reported a third outside this story: the shipped
-  `agent chat --image/--file` flags have the same last-wins problem, so multiple attachments are
-  silently dropped.
+  citty string flags are last-wins) and fixed the same last-wins defect in the shipped
+  `agent chat --image/--file` flags, where multiple attachments were silently reduced to one. The fix
+  reads raw arguments (`apps/cli/src/repeatable-args.ts`) rather than comma-splitting, which would
+  corrupt a path containing a comma.
 - Whole-tree after slice 6: typecheck (root and web), format and lint clean; full suite 1644 passed
   / 7 skipped (208 files); security acceptance 83 cases passed (slice 5b measured 1635 / 208 files).

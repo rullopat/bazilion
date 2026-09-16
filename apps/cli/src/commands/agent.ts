@@ -37,6 +37,7 @@ import { defineCommand } from 'citty'
 import { ApiClientError, createClient } from '../client.ts'
 import { columnize } from '../columnize.ts'
 import { promptForQuestion, type QuestionPrompt } from '../question-prompt.ts'
+import { collectFlagValues } from '../repeatable-args.ts'
 
 const IMAGE_MIME: Record<string, string> = {
   '.png': 'image/png',
@@ -72,11 +73,6 @@ function loadFiles(paths: string[]): Attachment[] {
     mimeType: FILE_MIME[extname(p).toLowerCase()] ?? 'application/octet-stream',
     data: readFileSync(p).toString('base64'),
   }))
-}
-
-/** citty gives a string for one flag, an array for several — normalize. */
-function asPaths(v: string | string[] | undefined): string[] {
-  return v ? (Array.isArray(v) ? v : [v]) : []
 }
 
 const spawnCmd = defineCommand({
@@ -509,21 +505,25 @@ const chatCmd = defineCommand({
     },
     image: {
       type: 'string',
-      description: 'Attach an image file (png/jpg/gif/webp; repeatable). One-shot mode.',
+      description:
+        'Attach an image file (png/jpg/gif/webp; repeat the flag for more). One-shot mode.',
     },
     file: {
       type: 'string',
-      description: 'Attach any file — the agent gets a path reference (repeatable). One-shot mode.',
+      description:
+        'Attach any file — the agent gets a path reference (repeat the flag for more). One-shot mode.',
     },
   },
-  async run({ args }) {
+  async run({ args, rawArgs }) {
     const client = createClient()
     const resolved = await client.get<ResolvedAgent>(`/api/agents/${args.id}`)
     const bashApprovalMode = bashApprovalModeForTty(stdin.isTTY, stdout.isTTY)
 
+    // Read from raw arguments: citty keeps only the last value of a repeated flag, which silently
+    // reduced `--image a --image b` to one attachment.
     const attachments = [
-      ...loadImages(asPaths(args.image as string | string[] | undefined)),
-      ...loadFiles(asPaths(args.file as string | string[] | undefined)),
+      ...loadImages(collectFlagValues(rawArgs, 'image')),
+      ...loadFiles(collectFlagValues(rawArgs, 'file')),
     ]
 
     if (args.message || attachments.length > 0) {
