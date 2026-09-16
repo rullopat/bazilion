@@ -1,12 +1,14 @@
 ---
 id: BAZ-044
 title: Specialist verification of a captured code change
-status: in_progress
+status: done
 size: L
 created: 2026-09-07
 refined: 2026-09-09
 priority: high
-note: Follow the first coding milestone; delegate finite checks to an existing tester without a general workflow engine.
+shipped: 2026-09-16
+release: v0.18.0
+note: Shipped in v0.18.0. Delegate finite checks to an existing tester without a general workflow engine.
 ---
 
 # BAZ-044 — Specialist verification of a captured code change
@@ -193,3 +195,35 @@ commit/push/PR creation, deployment, and treating a tester's conclusion as execu
 - Keep one L story because restricted dispatch, execution and evidence return form one security
   boundary and one end-to-end user outcome. Split implementation commits if useful, without shipping
   a path that routes the typed request through an ordinary unrestricted inbox turn.
+
+## As-built release record
+
+Shipped in **v0.18.0** on 2026-09-16. Implemented in one pass across ten slices, with a defect review
+before release; see [the progress log](../BAZ-044-progress.md), [the acceptance record](../BAZ-044-acceptance.md)
+and [the review](../BAZ-044-review.md).
+
+**Delivered as scoped.** One typed request binds a BAZ-042 snapshot, at most eight captured commands and
+the frozen admitted environment to one same-Team specialist. The capability is two tools with no command
+argument to pass; admission revalidates, reserves the workspace and refuses drift; checks run through the
+existing shell posture, redaction and BAZ-041 receipt path; the result returns to the requester through the
+canonical messenger. Four new tables, so the release is clean-install-only.
+
+**Deltas from the plan worth knowing.**
+
+- **The turn is a restricted invocation, not a turn with a preclaimed lifecycle claim.** The first
+  implementation gave it a `TrustedTurnInvocation` carrying a preclaimed turn; that shape is for scheduler
+  and inbox turns, which go through `prepareAgentTurn`, and it would have leaked the claim while building a
+  *coding* session. Found by reading the code the dispatcher had to fit into.
+- **The captured contract is immutable with per-attempt outcomes.** An earlier layout put outcomes on the
+  captured checks, which forced a rerun to either overwrite or be refused.
+- **Checks are executed daemon-side.** A verification turn has no coding host, and there is no generic
+  daemon-side command runner, so `lib/verification/executor.ts` assembles the spawn from the existing
+  hardened shell pieces and publishes a real BAZ-041 receipt.
+- **`writablePaths` is advisory.** Validated and recorded, and labelled as not confining writes, because
+  real confinement needs the container mount strategy.
+- **The requester's access reuses BAZ-040's authorized peer-read path** rather than a new grant: the result
+  message carries `coding-receipt:` references, which is what grants exactly that peer read.
+
+**Known limits, stated rather than implied:** no live-model verification run (the end-to-end path is
+observed with a fixture worker and a stubbed model runtime); container execution implemented but
+unobserved; the suite is not claimed deterministic.

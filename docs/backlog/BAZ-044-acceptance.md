@@ -1,7 +1,7 @@
 # BAZ-044 — acceptance record
 
 Specialist verification of a captured code change. Story:
-[in_progress/BAZ-044-specialist-verification-handoff.md](in_progress/BAZ-044-specialist-verification-handoff.md) ·
+[done/BAZ-044-specialist-verification-handoff.md](done/BAZ-044-specialist-verification-handoff.md) ·
 progress and slice plan: [BAZ-044-progress.md](BAZ-044-progress.md).
 
 Status at this record: **implemented and covered, kept in `in_progress` until it ships** — like

@@ -1,6 +1,6 @@
 # BAZ-044 — implementation progress
 
-Specialist verification of a captured code change. Story: [BAZ-044](in_progress/BAZ-044-specialist-verification-handoff.md) ·
+Specialist verification of a captured code change. Story: [BAZ-044](done/BAZ-044-specialist-verification-handoff.md) ·
 refined 2026-09-09 · size L · priority high.
 
 The story is one L because restricted dispatch, execution and evidence return form **one security
@@ -23,7 +23,12 @@ unrestricted inbox turn.
 | 5d-1 | Restricted invocation + IPC host binding | The turn identity is a restricted invocation; the daemon re-checks the worker's request/attempt | **done** |
 | 5d-2 | Protected check executor + dispatcher | Running a captured command daemon-side with a BAZ-041 receipt, then claim/spawn/settle | **done** |
 | 6 | Surfaces | API routes, client, CLI and the Team Verifications section | **done** |
-| 7 | Acceptance | Criterion-by-criterion record, 26 gate cases, caveats | **done** |
+| 7 | Acceptance | Criterion-by-criterion record, 33 gate cases, caveats | **done** |
+
+**Shipped in v0.18.0 on 2026-09-16.** Story moved to `done/` with its ship metadata; the defect review
+([BAZ-044-review.md](BAZ-044-review.md)) found thirteen findings, all fixed with regression tests, including a
+cross-table constraint that broke receipt pruning, restart recovery that was never called, and a result that
+never reached the requesting agent.
 | 4 | Workspace and snapshot revalidation | Reserve the workspace for the interval; block on drift before execution; unknown after source mutation | |
 | 5 | Restricted test capability | Worker surface that can inspect the request and invoke each captured command once — no Bash/edit/write/browser/MCP/deploy | |
 | 6 | Evidence return and surfaces | Per-request access, API/CLI/web, cancellation, expiry, Telegram notices | |

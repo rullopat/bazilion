@@ -72,6 +72,53 @@ Feedback about a file carries the snapshot it was written against, so later edit
 rather than silently re-pointing at different lines. Feedback is sent through the ordinary follow-up
 queue — there is no second path.
 
+## Requesting verification from a specialist (v0.18.0)
+
+A coder — or the operator — can hand one captured change to an existing same-Team specialist:
+
+```sh
+bazilion team review capture my-team
+bazilion team verify create my-team --agent tester --snapshot <id> \
+  --check 'pnpm test :: unit suite :: . :: 120'
+bazilion team verify show my-team <requestId>
+```
+
+The request binds a BAZ-042 snapshot, at most eight exact commands and the frozen admitted environment into
+one immutable contract, and names one recipient. Requesting verification **runs nothing**: the daemon's
+verification state machine claims it, revalidates membership, the evidence window and directed policy,
+reserves the workspace exclusively, proves the reserved tree still matches the capture, and only then admits
+the specialist.
+
+**The specialist's capability is two tools.** `verification_request` reads the contract;
+`verification_check` runs one declared ordinal, once. There is no command, cwd, timeout or environment
+argument anywhere in the capability, so nothing can be widened, substituted or retried. The daemon
+additionally re-checks the worker's request and attempt identity against its own binding, and a verification
+turn is refused the coding, container, repository-context, result, messaging, USER.md, browser and MCP
+surfaces rather than being trusted not to use them.
+
+**Refusals, not substitutions.** Drift between the capture and execution is blocked with a fresh capture
+named as the remedy; a request captured against a container is refused when shell isolation is off; a check
+needing an approval an unattended turn cannot obtain is blocked rather than auto-approved; a command carrying
+protected credential material is refused outright. A refused capture returns a reason, and nothing is written.
+
+**Evidence says what it is.** Each executed check records a BAZ-041 receipt naming the snapshot it was
+verified against, and checks run through the same shell posture and redaction as a coding turn — never with
+the daemon's ambient environment. A non-zero exit is a *result* about the commands that ran, reported per
+check; settling reports evidence availability rather than a verdict, so a failing test and a verification
+that could not run stay distinct. An interrupted attempt is `uncertain` and is never replayed, and an
+executed check whose receipt was pruned reports `receiptUnavailable` rather than silence.
+
+**The result returns to the requester** through the canonical messenger, carrying `coding-receipt:`
+references — exactly what grants that peer read access to those receipts and nothing more. Team Policy
+applies to that message like any other peer message.
+
+**Declared output paths are advisory.** They are validated as Team-relative and inside the workspace, and
+recorded on the receipt as not confining writes: real confinement needs the container mount strategy.
+
+**Deliberately not implemented:** cross-Team verification, managed test databases/services/browser
+environments, framework parsers, automatic retries, source changes to fix failures, and any automatic
+commit, push, PR or deployment. A verification result is never an approval to publish.
+
 ## Read-only guarantees and limits
 
 Inspection never stages, commits, checks out or reverts anything, and it never executes
