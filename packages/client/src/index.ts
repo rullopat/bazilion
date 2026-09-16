@@ -225,6 +225,33 @@ export function createClient(cfg: ClientConfig) {
           packetId: string,
         ): Promise<{ export: import('@bazilion/api-types').ReviewExport }> =>
           request('GET', `${item(packetId)}/export`),
+        reportState: (
+          packetId: string,
+          input: {
+            state: import('@bazilion/api-types').ReviewReportedState
+            reference?: string | null
+          },
+        ): Promise<import('@bazilion/api-types').ReviewPacketResponse> =>
+          request('POST', `${item(packetId)}/reported`, input),
+        /**
+         * Resolve what a file link would do. Read-only: no editor runs unless `openLink` is called, and
+         * the link itself says which host it names and whether it is the reviewed revision or the live file.
+         */
+        link: (
+          packetId: string,
+          options: { path: string; line?: number },
+        ): Promise<{ link: import('@bazilion/api-types').ReviewFileLink }> => {
+          const params = new URLSearchParams({ path: options.path })
+          if (options.line !== undefined) params.set('line', String(options.line))
+          return request('GET', `${item(packetId)}/link?${params}`)
+        },
+        openLink: (
+          packetId: string,
+          options: { path: string; line?: number },
+        ): Promise<{
+          link: import('@bazilion/api-types').ReviewFileLink
+          result: { opened: boolean; detail: string }
+        }> => request('POST', `${item(packetId)}/link/open`, options),
       }
     },
     /** Read-only Git change review and bounded source snapshots (BAZ-042). */

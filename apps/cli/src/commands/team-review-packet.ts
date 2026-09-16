@@ -328,6 +328,112 @@ const snapshotCmd = defineCommand({
   },
 })
 
+const reportedCmd = defineCommand({
+  meta: {
+    name: 'reported',
+    description: 'Record an operator-reported external state (never verified by Bazilion)',
+  },
+  args: {
+    ...slug,
+    ...packetId,
+    state: {
+      type: 'positional',
+      required: true,
+      description: 'committed | pushed | pullRequest | merged | deployed | productionAccepted',
+    },
+    reference: {
+      type: 'string',
+      description:
+        'What the operator is pointing at: a commit id, a URL, a release name. Omit to clear it.',
+    },
+    json: { type: 'boolean', description: 'Emit JSON' },
+  },
+  async run({ args }) {
+    const client = createClient()
+    try {
+      const response = await client.reviewPackets(args.id).reportState(args.packetId, {
+        state: args.state as never,
+        reference: args.reference ?? null,
+      })
+      if (args.json) {
+        console.log(JSON.stringify(response, null, 2))
+        return
+      }
+      const reported = Object.entries(response.report.packet.reported)
+        .filter(([, value]) => value !== null)
+        .map(([key, value]) => `${key}=${value}`)
+      console.log(
+        `recorded (reported, not verified): ${
+          reported.length > 0 ? reported.join(' ') : 'nothing reported'
+        }`,
+      )
+      console.log(
+        'Bazilion did not check this: there is no code-host integration, so it is whatever you reported.',
+      )
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error))
+      process.exit(1)
+    }
+  },
+})
+
+const linkCmd = defineCommand({
+  meta: {
+    name: 'link',
+    description: 'Resolve where a file link points, and where it would open',
+  },
+  args: {
+    ...slug,
+    ...packetId,
+    path: { type: 'string', required: true, description: 'Changed path in the reviewed revision' },
+    line: { type: 'string', description: 'Line to point at' },
+    open: {
+      type: 'boolean',
+      description: 'Actually open it on the daemon host (requires a configured editor)',
+    },
+    json: { type: 'boolean', description: 'Emit JSON' },
+  },
+  async run({ args }) {
+    const client = createClient()
+    const options = {
+      path: args.path,
+      ...(args.line ? { line: Number(args.line) } : {}),
+    }
+    try {
+      if (args.open) {
+        const { link, result } = await client
+          .reviewPackets(args.id)
+          .openLink(args.packetId, options)
+        console.log(result.opened ? `opened: ${result.detail}` : `not opened: ${result.detail}`)
+        console.log(`host: ${link.host.daemon ?? 'unknown'} (owns the workspace)`)
+        return
+      }
+      const { link } = await client.reviewPackets(args.id).link(args.packetId, options)
+      if (args.json) {
+        console.log(JSON.stringify(link, null, 2))
+        return
+      }
+      console.log(`copy:  ${link.copyTarget}`)
+      console.log(`host:  ${link.host.daemon ?? 'unknown'} (owns the workspace)`)
+      console.log(`file:  ${link.hostPath ?? '(not part of the reviewed revision)'}`)
+      console.log(
+        `mode:  ${
+          link.mode === 'live'
+            ? 'the reviewed revision (the tree still matches the capture)'
+            : link.mode === 'stale'
+              ? 'the CURRENT file — the tree moved since the capture'
+              : 'unknown'
+        }`,
+      )
+      console.log(`open:  ${link.canOpen ? link.command : 'not configured on the daemon host'}`)
+      for (const note of link.notes) console.log(`  note: ${note}`)
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error))
+      process.exit(1)
+    }
+  },
+})
+
 const exportCmd = defineCommand({
   meta: { name: 'export', description: 'Print the patch and handoff text for a packet’s revision' },
   args: {
@@ -376,6 +482,8 @@ export const teamReviewPacketCommand = defineCommand({
     finding: findingCmd,
     resolve: resolveCmd,
     conclude: concludeCmd,
+    reported: reportedCmd,
+    link: linkCmd,
     export: exportCmd,
     snapshots: snapshotCmd,
   },

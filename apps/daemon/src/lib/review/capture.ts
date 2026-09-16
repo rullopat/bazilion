@@ -165,6 +165,7 @@ export function toWirePacket(packet: ReviewPacketRecord): ReviewPacketWire {
     expiresAt: packet.expiresAt,
     exportedAt: packet.exportedAt,
     exportRevision: packet.exportRevision,
+    reported: packet.reported,
   }
 }
 
@@ -285,16 +286,9 @@ export async function readReviewPacketReport(
       // Checks are BAZ-041 evidence and are not implied by a packet; a caller that has them adds them.
       checksCurrent: false,
       reviewed,
-      // Operator-reported external states start empty: this story records what it is told, and nothing
-      // here may claim a commit, a pull request or a deployment on its own.
-      reported: {
-        committed: null,
-        pushed: null,
-        pullRequest: null,
-        merged: null,
-        deployed: null,
-        productionAccepted: null,
-      },
+      // Operator-reported external states, exactly as recorded. Nothing here is inferred: this story has no
+      // code-host integration, so a state appears only because an operator reported it.
+      reported: packet.reported,
     },
   }
 }

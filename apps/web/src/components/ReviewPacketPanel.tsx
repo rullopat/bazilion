@@ -1,4 +1,9 @@
-import { type ReviewPacketReport, type ReviewSeverity } from '@bazilion/api-types'
+import {
+  type ReviewFileLink,
+  type ReviewPacketReport,
+  type ReviewReportedState,
+  type ReviewSeverity,
+} from '@bazilion/api-types'
 import { useState } from 'react'
 import { Button } from './Button'
 import type { ReviewUnavailable, TeamReviewPacketsView } from '../lib/review-packets'
@@ -6,7 +11,9 @@ import {
   addReviewFinding,
   createReviewPacket,
   fetchReviewExport,
+  fetchReviewFileLink,
   fetchReviewPacket,
+  recordReportedState,
   recordReviewConclusion,
   resolveReviewFinding,
 } from '../lib/review-packets'
@@ -19,6 +26,19 @@ import {
 
 const SEVERITIES: readonly ReviewSeverity[] = ['blocker', 'major', 'minor', 'info']
 const CONCLUSIONS = ['changes_requested', 'commented', 'recommended'] as const
+/**
+ * The completion facts, in the order they happen. Each is shown with the state it actually has: a review
+ * conclusion is not acceptance, and a reported state is what the operator said rather than something the
+ * daemon checked.
+ */
+const REPORTED_STATES: readonly ReviewReportedState[] = [
+  'committed',
+  'pushed',
+  'pullRequest',
+  'merged',
+  'deployed',
+  'productionAccepted',
+]
 
 function applicabilityLabel(comparison: 'identical' | 'changed' | 'unknown'): string {
   return comparison === 'identical'
@@ -36,6 +56,10 @@ export function ReviewPacketPanel({ teamId, view }: { teamId: string; view: Team
   const [reviewer, setReviewer] = useState(view.members[0]?.id ?? '')
   const [finding, setFinding] = useState({ path: '', severity: 'major' as ReviewSeverity, note: '' })
   const [handoff, setHandoff] = useState<{ packetId: string; patch: string; text: string } | null>(null)
+  const [link, setLink] = useState<{ packetId: string; link: ReviewFileLink } | null>(null)
+  const [reference, setReference] = useState('')
+  const [reportedState, setReportedState] = useState<ReviewReportedState>('committed')
+  const [linkPath, setLinkPath] = useState('')
 
   const run = async (action: () => Promise<{ report?: ReviewPacketReport } | ReviewUnavailable>) => {
     setBusy(true)
@@ -290,11 +314,113 @@ export function ReviewPacketPanel({ teamId, view }: { teamId: string; view: Team
                         </Button>
                       ))}
                     </div>
+                    <div className="space-y-1">
+                      <span className="muted">
+                        Where a file link points. The workspace belongs to the machine running the daemon,
+                        so this says which host it names and whether it is the reviewed revision.
+                      </span>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <input
+                          placeholder="changed path"
+                          value={linkPath}
+                          onChange={(event) => setLinkPath(event.target.value)}
+                        />
+                        <Button
+                          variant="ghost"
+                          disabled={busy || !linkPath}
+                          onClick={async () => {
+                            const result = await fetchReviewFileLink({
+                              data: { id: teamId, packetId: entry.packet.id, path: linkPath },
+                            })
+                            if ('link' in result) setLink({ packetId: entry.packet.id, link: result.link })
+                            else if ('message' in result) setError(result)
+                          }}
+                        >
+                          Resolve location
+                        </Button>
+                        {link?.packetId === entry.packet.id ? (
+                          <Button
+                            variant="ghost"
+                            onClick={() => void navigator.clipboard?.writeText(link.link.copyTarget)}
+                          >
+                            Copy location
+                          </Button>
+                        ) : null}
+                      </div>
+                      {link?.packetId === entry.packet.id ? (
+                        <p className="muted">
+                          <code>{link.link.copyTarget}</code> · on{' '}
+                          {link.link.host.daemon ?? 'the daemon host'} ·{' '}
+                          {link.link.mode === 'live'
+                            ? 'the reviewed revision'
+                            : link.link.mode === 'stale'
+                              ? 'the CURRENT file, not the reviewed revision'
+                              : 'unknown'}{' '}
+                          ·{' '}
+                          {link.link.canOpen
+                            ? `an editor is configured on the daemon host (${link.link.command})`
+                            : 'no editor configured, so nothing can be opened here'}
+                        </p>
+                      ) : null}
+                    </div>
+
                     <p className="muted">
-                      change prepared={String(report.facts.changePrepared)} checks current=
+                      completed: change prepared={String(report.facts.changePrepared)} checks current=
                       {String(report.facts.checksCurrent)} reviewed={String(report.facts.reviewed)} — a
                       conclusion is not acceptance, and nothing here commits, pushes, merges or deploys.
                     </p>
+
+                    <div className="space-y-1">
+                      <span className="muted">
+                        Beyond this point nothing is verified: Bazilion has no code-host integration, so these
+                        are whatever you report.
+                      </span>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <select
+                          className="unstyled"
+                          value={reportedState}
+                          onChange={(event) =>
+                            setReportedState(event.target.value as ReviewReportedState)
+                          }
+                        >
+                          {REPORTED_STATES.map((state) => (
+                            <option key={state} value={state}>
+                              {state}
+                            </option>
+                          ))}
+                        </select>
+                        <input
+                          placeholder="commit id, URL, release name…"
+                          value={reference}
+                          onChange={(event) => setReference(event.target.value)}
+                        />
+                        <Button
+                          variant="ghost"
+                          disabled={busy}
+                          onClick={() =>
+                            run(() =>
+                              recordReportedState({
+                                data: {
+                                  id: teamId,
+                                  packetId: entry.packet.id,
+                                  state: reportedState,
+                                  reference: reference || null,
+                                },
+                              }),
+                            )
+                          }
+                        >
+                          Report
+                        </Button>
+                      </div>
+                      <p className="muted">
+                        reported (reported, not verified):{' '}
+                        {Object.entries(report.packet.reported)
+                          .filter(([, value]) => value !== null)
+                          .map(([key, value]) => `${key}=${value}`)
+                          .join(' ') || 'nothing yet'}
+                      </p>
+                    </div>
                   </>
                 ) : null}
               </li>

@@ -37,6 +37,19 @@ export type ReviewPacketState =
 export type ReviewFindingState = 'open' | 'unverified' | 'resolved'
 export type ReviewResolutionKind = 'explicit' | 'linked_revision'
 
+/** The closed set of external states an operator may report. Nothing here is verified. */
+export const REVIEW_REPORTED_STATES = [
+  'committed',
+  'pushed',
+  'pullRequest',
+  'merged',
+  'deployed',
+  'productionAccepted',
+] as const
+
+export type ReviewReportedState = (typeof REVIEW_REPORTED_STATES)[number]
+export type ReviewReportedStates = Record<ReviewReportedState, string | null>
+
 export interface ReviewPacketRecord {
   id: string
   teamId: string
@@ -51,6 +64,8 @@ export interface ReviewPacketRecord {
   state: ReviewPacketState
   exportedAt: number | null
   exportRevision: string | null
+  /** Operator-reported external states. Null means unset; the daemon never infers one. */
+  reported: ReviewReportedStates
   createdAt: number
   expiresAt: number
 }
@@ -579,7 +594,7 @@ export function pruneReviewPackets(db: BazilionDb, now = Date.now()): number {
 
 const PACKET_COLUMNS =
   'id, team_id, requester_kind, requester_agent_id, reviewer_agent_id, snapshot_id, snapshot_complete, ' +
-  'head, base_oid, summary, state, exported_at, export_revision, created_at, expires_at'
+  'head, base_oid, summary, state, exported_at, export_revision, reported_json, created_at, expires_at'
 const FINDING_COLUMNS =
   'id, packet_id, author_kind, author_agent_id, path, line_start, line_end, severity, note, snapshot_id, ' +
   'state, resolution_kind, resolution_note, resolved_at, resolved_by_kind, resolved_by_agent_id, created_at'
@@ -603,6 +618,7 @@ interface PacketRow {
   state: string
   exported_at: number | null
   export_revision: string | null
+  reported_json: string | null
   created_at: number
   expires_at: number
 }
@@ -667,9 +683,59 @@ function toPacket(row: PacketRow): ReviewPacketRecord {
     state: row.state as ReviewPacketState,
     exportedAt: row.exported_at,
     exportRevision: row.export_revision,
+    reported: parseReported(row.reported_json),
     createdAt: row.created_at,
     expiresAt: row.expires_at,
   }
+}
+
+/** A malformed report reads as unset rather than as a state nobody recorded. */
+function parseReported(json: string | null): ReviewReportedStates {
+  const empty: ReviewReportedStates = {
+    committed: null,
+    pushed: null,
+    pullRequest: null,
+    merged: null,
+    deployed: null,
+    productionAccepted: null,
+  }
+  if (!json) return empty
+  try {
+    const parsed = JSON.parse(json) as Record<string, unknown>
+    for (const state of REVIEW_REPORTED_STATES) {
+      const value = parsed[state]
+      if (typeof value === 'string' && value.trim() !== '') empty[state] = value
+    }
+    return empty
+  } catch {
+    return empty
+  }
+}
+
+/**
+ * Record one operator-reported external state.
+ *
+ * Reported, never verified: the operator supplies a reference (a commit id, a URL, a release name) and the
+ * daemon stores it as what the operator said. There is no code-host integration here and none is claimed.
+ */
+export function recordReportedState(
+  db: BazilionDb,
+  input: { packetId: string; state: ReviewReportedState; reference: string | null },
+): ReviewReportedStates {
+  const packet = getReviewPacket(db, input.packetId)
+  if (!packet) throw new ReviewPacketError('packet_not_found', 'the packet does not exist')
+  if (!REVIEW_REPORTED_STATES.includes(input.state)) {
+    throw new ReviewPacketError('invalid_resolution', `unknown reported state: ${input.state}`)
+  }
+  if (input.reference && input.reference.length > REVIEW_LIMITS.path) {
+    throw new ReviewPacketError('invalid_resolution', 'the reported reference is too long')
+  }
+  const next = { ...packet.reported, [input.state]: input.reference?.trim() || null }
+  db.raw.run('UPDATE review_packets SET reported_json = ? WHERE id = ?', [
+    JSON.stringify(next),
+    input.packetId,
+  ])
+  return next
 }
 
 function toFinding(row: FindingRow): ReviewFindingRow {

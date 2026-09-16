@@ -744,6 +744,36 @@
       "owner": "BAZ-031",
       "file": "apps/daemon/test/runtime/pi-model-routing.test.ts",
       "test": "fireworks has its own endpoint, so a model newer than the catalog stays on Fireworks"
+    },
+    {
+      "id": "REVIEW-REVIEWER-REACHES-NOTHING-IT-WAS-NOT-GRANTED",
+      "owner": "BAZ-043",
+      "file": "apps/daemon/test/lib/review-e2e.test.ts",
+      "test": "a captured change is reviewed end to end, and the reviewer reaches nothing it was not granted"
+    },
+    {
+      "id": "REVIEW-FINISHING-WITHOUT-CONCLUDING-IS-NOT-A-REVIEW",
+      "owner": "BAZ-043",
+      "file": "apps/daemon/test/lib/review-e2e.test.ts",
+      "test": "a reviewer that finishes without concluding has not reviewed anything"
+    },
+    {
+      "id": "REVIEW-FILE-LINK-NAMES-ITS-HOST",
+      "owner": "BAZ-043",
+      "file": "apps/daemon/test/lib/review-file-link.test.ts",
+      "test": "a file link names the host, the copyable location, and whether it is the reviewed revision"
+    },
+    {
+      "id": "REVIEW-FILENAME-CANNOT-BECOME-A-COMMAND",
+      "owner": "BAZ-043",
+      "file": "apps/daemon/test/lib/review-file-link.test.ts",
+      "test": "a configured editor runs without a shell, so a filename cannot become a command"
+    },
+    {
+      "id": "REVIEW-REPORTED-STATE-IS-NOT-INFERRED",
+      "owner": "BAZ-043",
+      "file": "apps/daemon/test/lib/review-file-link.test.ts",
+      "test": "reported states are what the operator said, and nothing is inferred"
     }
   ]
 }

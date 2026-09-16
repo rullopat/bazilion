@@ -8,8 +8,10 @@ import type {
   RecordReviewConclusionRequest,
   ResolveReviewFindingRequest,
   ReviewConclusion,
+  ReviewFileLink,
   ReviewPacketListResponse,
   ReviewPacketReport,
+  ReviewReportedState,
 } from '@bazilion/api-types'
 import { createServerFn } from '@tanstack/react-start'
 import { daemonClient } from './daemon-client'
@@ -163,6 +165,58 @@ export const recordReviewConclusion = createServerFn({ method: 'POST' })
       return { report: response.report }
     } catch (error) {
       const unavailable = failure(error, 'The conclusion could not be recorded')
+      if (unavailable) return unavailable
+      throw error
+    }
+  })
+
+/** Resolve where a file link points. Read-only: nothing is opened by asking. */
+export const fetchReviewFileLink = createServerFn({ method: 'POST' })
+  .validator((input: { id: string; packetId: string; path: string; line?: number }) => input)
+  .handler(
+    async ({
+      data,
+    }): Promise<{ link: ReviewFileLink } | ReviewUnavailable> => {
+      try {
+        const params = new URLSearchParams({ path: data.path })
+        if (data.line !== undefined) params.set('line', String(data.line))
+        const response = await daemonClient().get<{ link: ReviewFileLink }>(
+          `/api/teams/${encodeURIComponent(data.id)}/reviews/${encodeURIComponent(data.packetId)}/link?${params}`,
+        )
+        return { link: response.link }
+      } catch (error) {
+        const unavailable = failure(error, 'That location could not be resolved')
+        if (unavailable) return unavailable
+        throw error
+      }
+    },
+  )
+
+/**
+ * Record an operator-reported external state.
+ *
+ * A separate server function from the review actions because it is a different kind of claim: the daemon
+ * cannot verify it, so the UI labels it as reported.
+ */
+export const recordReportedState = createServerFn({ method: 'POST' })
+  .validator(
+    (input: {
+      id: string
+      packetId: string
+      state: ReviewReportedState
+      reference?: string | null
+    }) => input,
+  )
+  .handler(async ({ data }): Promise<{ report: ReviewPacketReport } | ReviewUnavailable> => {
+    try {
+      const { id, packetId, ...body } = data
+      const response = await daemonClient().post<{ report: ReviewPacketReport }>(
+        `/api/teams/${encodeURIComponent(id)}/reviews/${encodeURIComponent(packetId)}/reported`,
+        body,
+      )
+      return { report: response.report }
+    } catch (error) {
+      const unavailable = failure(error, 'The reported state could not be recorded')
       if (unavailable) return unavailable
       throw error
     }

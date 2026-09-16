@@ -40,6 +40,7 @@ import {
   addReviewFinding,
   getTeamReviewPacket,
   ReviewPacketError,
+  recordReportedState,
   recordReviewConclusion,
   resolveReviewFinding,
 } from '../core/repos/review-packets.ts'
@@ -85,6 +86,7 @@ import {
   readReviewPacketSummaries,
 } from '../lib/review/capture.ts'
 import { buildReviewExport } from '../lib/review/export.ts'
+import { buildFileLink, openFileLink } from '../lib/review/file-link.ts'
 import { validateTopicNameFormat } from '../lib/telegram/naming.ts'
 import { syncGroupTopicNames } from '../lib/telegram/topic-rename.ts'
 import {
@@ -414,6 +416,109 @@ teamsRouter.post('/:id/reviews/:packetId/conclusion', async (c) => {
     if (error instanceof ReviewPacketError) {
       return c.json({ error: error.message, code: error.code }, 400)
     }
+    return reviewFailure(c, error)
+  }
+})
+
+teamsRouter.post('/:id/reviews/:packetId/reported', async (c) => {
+  const { db, paths } = getCtx()
+  const packetId = c.req.param('packetId')
+  const packet = getTeamReviewPacket(db, c.req.param('id'), packetId)
+  if (!packet) return c.json({ error: 'Review packet not found' }, 404)
+  const body = (await c.req.json().catch(() => null)) as {
+    state?: unknown
+    reference?: unknown
+  } | null
+  if (!body || typeof body.state !== 'string') {
+    return c.json({ error: 'Invalid reported state', code: 'invalid_reported_state' }, 400)
+  }
+  if (
+    body.reference !== undefined &&
+    body.reference !== null &&
+    typeof body.reference !== 'string'
+  ) {
+    return c.json({ error: 'Invalid reported state', code: 'invalid_reported_state' }, 400)
+  }
+  try {
+    recordReportedState(db, {
+      packetId,
+      state: body.state as never,
+      reference: typeof body.reference === 'string' ? body.reference : null,
+    })
+    const report = await readReviewPacketReport(db, paths, packet.teamId, packetId)
+    return c.json({ report })
+  } catch (error) {
+    if (error instanceof ReviewPacketError) {
+      return c.json({ error: error.message, code: error.code }, 400)
+    }
+    return reviewFailure(c, error)
+  }
+})
+
+teamsRouter.get('/:id/reviews/:packetId/link', async (c) => {
+  const { db, paths } = getCtx()
+  c.header('Cache-Control', 'no-store')
+  const packetId = c.req.param('packetId')
+  const packet = getTeamReviewPacket(db, c.req.param('id'), packetId)
+  if (!packet) return c.json({ error: 'Review packet not found' }, 404)
+  const path = c.req.query('path')
+  if (!path || !isReviewablePath(path)) {
+    return c.json({ error: 'Invalid path', code: 'invalid_path' }, 400)
+  }
+  const lineRaw = c.req.query('line')
+  const line = lineRaw === undefined ? null : Number(lineRaw)
+  try {
+    const applicability = await readSnapshotApplicability(
+      db,
+      paths,
+      packet.teamId,
+      packet.snapshotId,
+    )
+    const link = buildFileLink({
+      db,
+      paths,
+      packet,
+      path,
+      line: Number.isInteger(line) && (line ?? 0) >= 1 ? line : null,
+      contentAvailable: applicability.comparison === 'identical',
+    })
+    return c.json({ link })
+  } catch (error) {
+    return reviewFailure(c, error)
+  }
+})
+
+teamsRouter.post('/:id/reviews/:packetId/link/open', async (c) => {
+  const { db, paths } = getCtx()
+  const packetId = c.req.param('packetId')
+  const packet = getTeamReviewPacket(db, c.req.param('id'), packetId)
+  if (!packet) return c.json({ error: 'Review packet not found' }, 404)
+  const body = (await c.req.json().catch(() => null)) as {
+    path?: unknown
+    line?: unknown
+  } | null
+  if (!body || typeof body.path !== 'string' || !isReviewablePath(body.path)) {
+    return c.json({ error: 'Invalid path', code: 'invalid_path' }, 400)
+  }
+  try {
+    const applicability = await readSnapshotApplicability(
+      db,
+      paths,
+      packet.teamId,
+      packet.snapshotId,
+    )
+    const link = buildFileLink({
+      db,
+      paths,
+      packet,
+      path: body.path,
+      line: typeof body.line === 'number' && Number.isInteger(body.line) ? body.line : null,
+      contentAvailable: applicability.comparison === 'identical',
+    })
+    // Opening is explicit and only what was asked for is run: the operator requested this exact link.
+    const result = await openFileLink(link)
+    return c.json({ link, result })
+  } catch (error) {
     return reviewFailure(c, error)
   }
 })

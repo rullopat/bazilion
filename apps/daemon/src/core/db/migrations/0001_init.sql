@@ -833,6 +833,10 @@ CREATE TABLE review_packets (
   -- Recorded only when an export was actually produced, and only for the revision it exported.
   exported_at INTEGER,
   export_revision TEXT,
+  -- Operator-reported external states (committed / pushed / pull request / merged / deployed /
+  -- production accepted), each a reference the operator supplied. Never inferred, never verified: a
+  -- reported state is what the operator says, and this story has no code-host integration to check it.
+  reported_json TEXT CHECK (reported_json IS NULL OR json_valid(reported_json)),
   created_at INTEGER NOT NULL,
   expires_at INTEGER NOT NULL,
   CHECK (expires_at > created_at),

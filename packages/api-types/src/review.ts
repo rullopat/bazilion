@@ -44,6 +44,8 @@ export interface ReviewPacket {
   /** Set only when an export was actually produced, and only for the revision it exported. */
   exportedAt: number | null
   exportRevision: string | null
+  /** Operator-reported external states. Reported, never verified — see ReviewReportedStates. */
+  reported: ReviewReportedStates
 }
 
 export interface ReviewFinding {
@@ -117,14 +119,51 @@ export interface ReviewCompletionFacts {
   checksCurrent: boolean
   reviewed: boolean
   /** Operator-reported external states, labelled as reported rather than verified. */
-  reported: {
-    committed: string | null
-    pushed: string | null
-    pullRequest: string | null
-    merged: string | null
-    deployed: string | null
-    productionAccepted: string | null
-  }
+  reported: ReviewReportedStates
+}
+
+/**
+ * External states an operator reports by hand.
+ *
+ * Each is a reference the operator supplied — a commit id, a URL, a release name. Nothing here is
+ * verified: this story has no code-host integration, so a reported state is what the operator says, and it
+ * must never be displayed as if the daemon checked it.
+ */
+export type ReviewReportedState =
+  | 'committed'
+  | 'pushed'
+  | 'pullRequest'
+  | 'merged'
+  | 'deployed'
+  | 'productionAccepted'
+
+export type ReviewReportedStates = Record<ReviewReportedState, string | null>
+
+/**
+ * What a file link would do, and where.
+ *
+ * The workspace belongs to the machine running the daemon, not to whatever browser is looking at it, so a
+ * link says which host it names, whether it points at the reviewed revision or the live file, and whether
+ * anything can actually be opened. A browser elsewhere must be able to offer a copyable location without
+ * claiming it opened the source.
+ */
+export interface ReviewFileLink {
+  path: string
+  line: number | null
+  /** Absolute path *on the daemon host*. Never executed; shown so it can be copied or mapped. */
+  hostPath: string | null
+  /** The location to copy: repository-relative, so it is meaningful wherever it is pasted. */
+  copyTarget: string
+  /** `live` when the file on disk is the reviewed revision's content; `stale` when it has moved on. */
+  mode: 'live' | 'stale' | 'unknown'
+  /** The host the workspace lives on, as the daemon knows itself. */
+  host: { daemon: string | null; ownsWorkspace: true }
+  /** True only when an editor is configured for this daemon and the path was accepted. */
+  canOpen: boolean
+  /** The configured command, with placeholders left in place — shown so an operator sees what would run. */
+  command: string | null
+  /** Why opening is unavailable, or what to be careful about. */
+  notes: string[]
 }
 
 export interface ReviewPacketSummary {
