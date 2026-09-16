@@ -23,7 +23,16 @@
 // failure can be inspected rather than re-run.
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -171,6 +180,48 @@ const run = async (args) => {
 }
 // A real model is slower than the scripted one, especially on its first turn with the full system
 // prompt and repository context, so the wait budget is longer when a provider is actually being called.
+/**
+ * A turn that produced nothing must not be read as a turn that succeeded.
+ *
+ * This is the check that would have caught a broken provider path immediately: the CLI exits 0 when an
+ * *error event* was reported (only a fatal frame is non-zero), so a turn that did nothing looks quiet. The
+ * session transcript is the authority on whether anything was actually said.
+ */
+const requireTurnSpoke = (home, label, cliOutput) => {
+  const agentsDir = join(home, 'agents')
+  const sessions = []
+  for (const agent of existsSync(agentsDir) ? readdirSync(agentsDir) : []) {
+    const dir = join(agentsDir, agent, 'sessions')
+    if (!existsSync(dir)) continue
+    for (const file of readdirSync(dir)) sessions.push(join(dir, file))
+  }
+  sessions.sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs)
+  const newest = sessions[0]
+  if (!newest)
+    throw new Error(`${label}: the turn wrote no session at all. CLI output:\n${cliOutput}`)
+  const spoke = readFileSync(newest, 'utf8')
+    .split('\n')
+    .filter(Boolean)
+    .some((line) => {
+      try {
+        const entry = JSON.parse(line)
+        const content = entry?.message?.content
+        if (entry?.message?.role !== 'assistant' || !Array.isArray(content)) return false
+        return content.some((part) =>
+          part?.type === 'text' ? part.text.trim() !== '' : part?.type === 'toolCall',
+        )
+      } catch {
+        return false
+      }
+    })
+  if (!spoke) {
+    throw new Error(
+      `${label}: the turn produced no assistant message or tool call, so nothing happened. ` +
+        `CLI output:\n${cliOutput}`,
+    )
+  }
+}
+
 const waitFor = async (label, probe, attempts = realModel ? 480 : 120) => {
   for (let attempt = 0; attempt < attempts; attempt++) {
     const value = await probe()
@@ -213,7 +264,14 @@ try {
   assert.ok(coder, 'the coder agent exists')
 
   // The coder asks in an ordinary chat turn. Nothing in this harness creates the request.
-  await run(['agent', 'chat', 'coder', '--message', 'finish the change and have it verified'])
+  const coderTurn = await run([
+    'agent',
+    'chat',
+    'coder',
+    '--message',
+    'finish the change and have it verified',
+  ])
+  requireTurnSpoke(server.home, 'the coder turn', coderTurn)
   out('coder turn finished; waiting for the verification and the wake')
 
   const requests = await waitFor('a verification request', async () => {

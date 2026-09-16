@@ -834,6 +834,18 @@
       "owner": "BAZ-043",
       "file": "apps/daemon/test/lib/review-export-delivery.test.ts",
       "test": "a denied delivery does not release anything, and an operator-only packet is refused"
+    },
+    {
+      "id": "MODEL-FALLBACK-USES-ITS-ADAPTER-ENDPOINT",
+      "owner": "BAZ-031",
+      "file": "apps/daemon/test/runtime/pi-model-routing.test.ts",
+      "test": "an uncatalogued id is built for the endpoint its adapter actually calls"
+    },
+    {
+      "id": "MODEL-REGISTRY-CARRIES-THE-ENDPOINT",
+      "owner": "BAZ-031",
+      "file": "apps/daemon/test/runtime/pi-model-routing.test.ts",
+      "test": "the registry carries the endpoint too, so every caller can admit an upstream model"
     }
   ]
 }

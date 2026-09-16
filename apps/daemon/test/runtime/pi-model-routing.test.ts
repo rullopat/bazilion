@@ -1,10 +1,12 @@
 import { expect, test } from 'vitest'
 import {
   createBazilionPiRuntime,
+  fallbackBaseUrl,
   providerBaseUrl,
   resolvePiModel,
   UnknownModelError,
 } from '../../src/runtime/providers/pi-runtime.ts'
+import { loadProviderConfigFromEnv } from '../../src/runtime/providers/registry.ts'
 
 // Model resolution must fail closed.
 //
@@ -93,4 +95,54 @@ test('fireworks has its own endpoint, so a model newer than the catalog stays on
   )
   // An unknown provider still has no endpoint, so its uncatalogued ids are still refused.
   expect(providerBaseUrl('fireworks-not-a-provider', {})).toBeUndefined()
+})
+
+test('an uncatalogued id is built for the endpoint its adapter actually calls', async () => {
+  // The OpenAI SDK appends only `/chat/completions`, so a provider that serves `…/inference/v1/chat/
+  // completions` needs the version segment in the base URL. Without it the request goes to a URL that
+  // looks right and 404s — which is what happened the first time an operator tried an upstream model.
+  expect(fallbackBaseUrl('fireworks', 'https://api.fireworks.ai/inference')).toBe(
+    'https://api.fireworks.ai/inference/v1',
+  )
+  // Idempotent, so a caller that already passed the version segment is not doubled.
+  expect(fallbackBaseUrl('fireworks', 'https://api.fireworks.ai/inference/v1')).toBe(
+    'https://api.fireworks.ai/inference/v1',
+  )
+  // Providers with no such convention are left exactly as configured.
+  expect(fallbackBaseUrl('openrouter', 'https://openrouter.ai/api/v1')).toBe(
+    'https://openrouter.ai/api/v1',
+  )
+  expect(fallbackBaseUrl('fireworks', undefined)).toBeUndefined()
+
+  const runtime = await createBazilionPiRuntime({ providerName: 'fireworks', env: {} })
+  const model = resolvePiModel(
+    runtime,
+    'fireworks',
+    'accounts/fireworks/models/deepseek-v4p1-flash',
+    providerBaseUrl('fireworks', {}),
+  )
+  expect(model.api).toBe('openai-completions')
+  expect(model.baseUrl).toBe('https://api.fireworks.ai/inference/v1')
+
+  // A *catalogued* model keeps its own endpoint and API type: the catalogue is authoritative there, and
+  // this translation is only for the fallback.
+  const catalogued = resolvePiModel(runtime, 'fireworks', FIREWORKS_CATALOG_ID)
+  expect(catalogued.baseUrl).toBe('https://api.fireworks.ai/inference')
+  expect(catalogued.api).not.toBe('openai-completions')
+})
+
+test('the registry carries the endpoint too, so every caller can admit an upstream model', () => {
+  // The session path uses `providerBaseUrl`, and the registry (model smoke test, provider builds) uses the
+  // loaded config. Both have to name the same endpoint, or one of them fails closed for no reason.
+  const config = loadProviderConfigFromEnv({ FIREWORKS_API_KEY: 'fw' } as NodeJS.ProcessEnv)
+  expect(config.fireworks?.baseURL).toBe('https://api.fireworks.ai/inference')
+  // An operator override still wins.
+  expect(
+    loadProviderConfigFromEnv({
+      FIREWORKS_API_KEY: 'fw',
+      FIREWORKS_BASE_URL: 'https://proxy.internal/v1',
+    } as NodeJS.ProcessEnv).fireworks?.baseURL,
+  ).toBe('https://proxy.internal/v1')
+  // No key, no provider entry: resolution still refuses rather than inventing credentials.
+  expect(loadProviderConfigFromEnv({} as NodeJS.ProcessEnv).fireworks).toBeUndefined()
 })

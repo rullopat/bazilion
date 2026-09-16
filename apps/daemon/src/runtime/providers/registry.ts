@@ -4,6 +4,7 @@ import {
   loadAccessToken as loadOpenAICodexAccessToken,
 } from '../auth/openai-codex.ts'
 import { piProvider } from './pi-adapter.ts'
+import { providerBaseUrl } from './pi-runtime.ts'
 import { type RetryOptions, withRetry } from './retry.ts'
 import type { Provider } from './types.ts'
 
@@ -113,7 +114,16 @@ export function loadProviderConfigFromEnv(
   if (env.OPENROUTER_API_KEY) config.openrouter = { apiKey: env.OPENROUTER_API_KEY }
   if (env.AI_GATEWAY_API_KEY) config.vercelAiGateway = { apiKey: env.AI_GATEWAY_API_KEY }
   if (env.DEEPSEEK_API_KEY) config.deepseek = { apiKey: env.DEEPSEEK_API_KEY }
-  if (env.FIREWORKS_API_KEY) config.fireworks = { apiKey: env.FIREWORKS_API_KEY }
+  if (env.FIREWORKS_API_KEY) {
+    // The default endpoint is carried into the config, not only into the session path's `providerBaseUrl`,
+    // so every caller — including the model smoke test and any other registry consumer — resolves an
+    // uncatalogued id against Fireworks' own endpoint instead of failing closed for no reason. The
+    // OpenAI-compatible version segment is applied later, at fallback time, by `fallbackBaseUrl`.
+    config.fireworks = {
+      apiKey: env.FIREWORKS_API_KEY,
+      baseURL: env.FIREWORKS_BASE_URL ?? providerBaseUrl('fireworks', env),
+    }
+  }
   if (env.TOGETHER_API_KEY) config.together = { apiKey: env.TOGETHER_API_KEY }
   if (env.BASETEN_API_KEY) config.baseten = { apiKey: env.BASETEN_API_KEY }
   if (env.MOONSHOT_API_KEY) config.moonshotai = { apiKey: env.MOONSHOT_API_KEY }

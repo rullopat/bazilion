@@ -352,6 +352,37 @@ export async function createProtectedPiRuntime(
   })
 }
 
+/**
+ * Providers whose OpenAI-compatible API lives under a version segment.
+ *
+ * The OpenAI SDK appends only `/chat/completions` to the base URL it is given, while these providers serve
+ * `…/v1/chat/completions`. Catalogue entries are unaffected — they carry the provider's own base URL and
+ * their own API type — so this translation applies *only* to the fallback model built for an uncatalogued
+ * id, which is always the OpenAI-compatible adapter.
+ *
+ * Without it, an operator who configured an endpoint to use a model released after this build's catalogue
+ * would get a 404 from a URL that looks right.
+ */
+const OPENAI_COMPATIBLE_VERSION_SEGMENT: Record<string, string> = { fireworks: '/v1' }
+
+export function fallbackBaseUrl(
+  providerName: string,
+  baseUrl: string | undefined,
+): string | undefined {
+  const segment = OPENAI_COMPATIBLE_VERSION_SEGMENT[providerName]
+  if (!segment || !baseUrl) return baseUrl
+  let url: URL
+  try {
+    url = new URL(baseUrl)
+  } catch {
+    return baseUrl
+  }
+  const path = url.pathname.replace(/\/+$/, '')
+  if (path.endsWith(segment)) return baseUrl
+  url.pathname = `${path}${segment}`
+  return url.toString()
+}
+
 export function resolvePiModel(
   runtime: ModelRuntime,
   providerName: string,
@@ -366,5 +397,5 @@ export function resolvePiModel(
   // a typo in a model string would disclose a credential to another vendor.
   // Local/compat providers are unaffected — they always supply a base URL.
   if (!baseUrl) throw new UnknownModelError(providerName, modelId)
-  return fallbackPiModel(providerName, modelId, baseUrl)
+  return fallbackPiModel(providerName, modelId, fallbackBaseUrl(providerName, baseUrl))
 }
