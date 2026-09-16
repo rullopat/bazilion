@@ -1,12 +1,14 @@
 ---
 id: BAZ-041
 title: Live coding progress and retained diagnostics in chat
-status: in_progress
+status: done
+shipped: 2026-09-16
+release: v0.17.0
 size: M
 created: 2026-09-07
 refined: 2026-09-09
 priority: high
-note: Extend BAZ-040 command receipts and chat; source-snapshot applicability belongs to BAZ-042.
+note: Shipped in v0.17.0 through the feat/baz-041-042-coding-evidence branch and version PR #49; adds the coding_command_logs evidence table to the clean-install alpha schema.
 ---
 
 # BAZ-041 — Live coding progress and retained diagnostics in chat
@@ -129,3 +131,17 @@ publication, and claims of code correctness. Existing task-driven BAZ-040 prepar
   Output is private until the normal source-owned user or peer delivery authorizes the captured
   bytes. Reconnect can replay only already-authorized bounded updates; refreshed credentials join
   the redaction set before subsequent bytes are retained or emitted.
+
+## As-built release record
+
+Shipped in [v0.17.0](https://github.com/rullopat/bazilion/releases/tag/v0.17.0) on 2026-09-16 through
+the `feat/baz-041-042-coding-evidence` branch and version PR #49. This release adds
+`coding_command_logs` to the canonical alpha schema, so 0.16.x homes are not upgradable in place.
+
+Delivered as specified, with one escalation beyond the story: reaching a real withholding path (a Team
+Policy `approval_required` edge) exposed two defects in the shipped approval machinery — a validator
+that required images on every tool result, stranding captured frames, and an approval dispatch that
+released result files but never a retained coding log. Both are fixed here.
+
+Evidence: [acceptance record](../BAZ-041-acceptance.md) (all six criteria observed, with stated
+caveats), [progress record](../BAZ-041-progress.md), and 14 adversarial cases in the release gate.

@@ -42,10 +42,12 @@ BAZ-039/040 remake. The remake shipped in v0.16.0 through PR #46 and version PR 
 [acceptance](BAZ-039-040-agent-led-acceptance.md) and the
 [successor-story review](design/coding-successors-review.md).
 
-The next sequence is **041 + 042 → 043 or 044**, based on whether the next task needs static
-review or specialist testing. BAZ-041 and BAZ-042 are paired in one release because they share the receipt and
-snapshot evidence model: 042 attaches source identity to the receipts 041 makes observable, and a
-two-release split would need two clean-install schema revisions for one feature area. BAZ-044 adds
+BAZ-041 and BAZ-042 shipped in **v0.17.0** on 2026-09-16. They were paired in one release because they
+share the receipt and snapshot evidence model: 042 attaches source identity to the receipts 041 makes
+observable, and a two-release split would need two clean-install schema revisions for one feature area.
+
+The remaining sequence is **043 or 044**, based on whether the next task needs static
+review or specialist testing. BAZ-044 adds
 finite, snapshot-bound tester capability; BAZ-043 adds read-only reviewer capability and handoff
 evidence. Neither adds basic delegation, which BAZ-040 already provides. There is no mandatory
 tester-to-reviewer-to-deployer pipeline.
@@ -62,17 +64,16 @@ extension loading remain separate, uncommitted scope.
 | [BAZ-043](todo/BAZ-043-coding-review-handoff.md) | Revision-bound coding review and handoff | L | Agent-requested static review of captured changes; enforced read-only scope; publication deferred |
 | [BAZ-044](todo/BAZ-044-specialist-verification-handoff.md) | Specialist verification of a captured code change | L | After 042: formal captured-change testing; reuse existing same-Team delegation and receipts |
 
-## In Progress (2)
+## In Progress (0)
 
-| ID | Title | Size | Notes |
-|----|-------|------|-------|
-| [BAZ-041](in_progress/BAZ-041-coding-command-verification.md) | Live coding progress and retained diagnostics in chat | M | Next release: live output plus authorized retained diagnostics on existing receipts |
-| [BAZ-042](in_progress/BAZ-042-git-change-review.md) | Git changes and review beside coding conversations | M | Next release: captured baselines, read-only diffs, source-bound check applicability |
+Nothing in flight. Move an item here from `todo/` when implementation starts.
 
-## Done (35)
+## Done (37)
 
 | ID | Title | Size | Shipped | Release | Notes |
 |----|-------|------|---------|---------|-------|
+| [BAZ-041](done/BAZ-041-coding-command-verification.md) | Live coding progress and retained diagnostics in chat | M | 2026-09-16 | [v0.17.0](https://github.com/rullopat/bazilion/releases/tag/v0.17.0) | Bounded live command progress plus retained diagnostics with explicit disclosure states; adds the `coding_command_logs` table. [Acceptance record](BAZ-041-acceptance.md) |
+| [BAZ-042](done/BAZ-042-git-change-review.md) | Git changes and review beside coding conversations | M | 2026-09-16 | [v0.17.0](https://github.com/rullopat/bazilion/releases/tag/v0.17.0) | Baseline-pinned change review, bounded diffs, source snapshots and snapshot-bound applicability; adds the `source_snapshots` table. [Acceptance record](BAZ-042-acceptance.md) |
 | [BAZ-039](done/BAZ-039-repository-coding-context.md) | Agents discover repository context while working | M | 2026-09-14 | [v0.16.0](https://github.com/rullopat/bazilion/releases/tag/v0.16.0) | Agent-led repository discovery, scoped AGENTS.md context and passive command suggestions; implemented in PR #46 |
 | [BAZ-040](done/BAZ-040-coding-environment-readiness.md) | Agents prepare and check their environment during a task | L | 2026-09-14 | [v0.16.0](https://github.com/rullopat/bazilion/releases/tag/v0.16.0) | Admitted runtime inspection, scoped coding commands and workspace coordination; changes the alpha schema. Implemented in PR #46 |
 | [BAZ-034](done/BAZ-034-durable-agent-deliverables.md) | Durable agent deliverables and a Team results library | M | 2026-09-08 | [v0.15.0](https://github.com/rullopat/bazilion/releases/tag/v0.15.0) | Implemented in PR #44; guided acceptance and release verified |

@@ -1,12 +1,14 @@
 ---
 id: BAZ-042
 title: Git changes and review beside coding conversations
-status: in_progress
+status: done
+shipped: 2026-09-16
+release: v0.17.0
 size: M
 created: 2026-09-07
 refined: 2026-09-09
 priority: high
-note: Initial coding milestone; read-only change inspection with explicit baselines and truthful attribution.
+note: Shipped in v0.17.0 through the feat/baz-041-042-coding-evidence branch and version PR #49; adds the source_snapshots evidence table to the clean-install alpha schema.
 ---
 
 # BAZ-042 — Git changes and review beside coding conversations
@@ -113,12 +115,12 @@ Reviewed against the BAZ-039/040 remake at `81aaa31` on 2026-09-09:
 ## Dependencies and sequencing
 
 - Coordinate repository identity with
-  [BAZ-039](../done/BAZ-039-repository-coding-context.md) and the receipt extension with
+  [BAZ-039](BAZ-039-repository-coding-context.md) and the receipt extension with
   [BAZ-041](BAZ-041-coding-command-verification.md). This story owns snapshot identity and
   applicability; BAZ-041 progress can ship independently.
-- [BAZ-034](../done/BAZ-034-durable-agent-deliverables.md) supplies persistent patch exports;
-  [BAZ-035](../done/BAZ-035-conversation-library.md) supplies exact historic conversation navigation;
-  [BAZ-036](../done/BAZ-036-visible-follow-up-queue.md) supplies busy-turn feedback queueing.
+- [BAZ-034](BAZ-034-durable-agent-deliverables.md) supplies persistent patch exports;
+  [BAZ-035](BAZ-035-conversation-library.md) supplies exact historic conversation navigation;
+  [BAZ-036](BAZ-036-visible-follow-up-queue.md) supplies busy-turn feedback queueing.
 - This first review slice works with an existing supported repository and makes external-write and
   unsupported Git-layout limitations visible.
 
@@ -165,3 +167,17 @@ an embedded editor, semantic code search, public sharing, and attributing every 
   the registered Team root. Reject submodules, linked-worktree common directories outside that
   boundary and other unsupported layouts with guidance in the first slice. Never broaden mounts or
   execute repository-configured helpers to make inspection work.
+
+## As-built release record
+
+Shipped in [v0.17.0](https://github.com/rullopat/bazilion/releases/tag/v0.17.0) on 2026-09-16 through
+the `feat/baz-041-042-coding-evidence` branch and version PR #49. This release adds `source_snapshots`
+to the canonical alpha schema, so 0.16.x homes are not upgradable in place.
+
+Delivered as specified, with two decisions recorded rather than left open: feedback selection is
+file-level (a snapshot already records a digest per changed path, so staleness stays decidable without
+synthesizing hunk identities, and a selected line range travels as context), and applicability is
+three-valued — `identical` / `changed` / `unknown` — and never rendered as a pass.
+
+Evidence: [acceptance record](../BAZ-042-acceptance.md), [progress record](../BAZ-042-progress.md),
+nine adversarial cases in the release gate, and `scripts/check-git-review-ui.mjs` for the panel.

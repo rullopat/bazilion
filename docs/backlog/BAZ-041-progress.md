@@ -9,7 +9,7 @@ turn on real Docker — see [the acceptance record](BAZ-041-acceptance.md). Ever
 criterion is observed or suite-proven; nothing blocks delivery. The retained-log browser read is
 deliberately first-page-only (no search/pagination) in this pass.
 
-Story: [BAZ-041](in_progress/BAZ-041-coding-command-verification.md).
+Story: [BAZ-041](done/BAZ-041-coding-command-verification.md).
 Branch: `feat/baz-041-042-coding-evidence`.
 Resume HEAD: `1063c8b` (prior session left the retention repo layer uncommitted).
 

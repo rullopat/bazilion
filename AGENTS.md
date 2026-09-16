@@ -107,7 +107,7 @@ Path resolution is centralized in `apps/daemon/src/core/paths.ts`. The `Paths` s
 
 Teams always live at `~/.bazilion/teams/<slug>/`. The CLI (`bazilion team add <slug> [--link <target>]`) and the web `/teams` create form pass only the slug + optional name + optional link target; the daemon decides where the slot goes. `--link <abs-path>` materializes the slot as a symlink to an existing directory (the "agents working on my existing project tree" path); the target must exist and be a directory. Without `--link`, a fresh real directory is created. `teamRepo.get/list/insert(db, ..., paths)` derive `Team.path` from `paths.teamDir(id)` at read time — there is no `path` column anymore.
 
-### Repository context (BAZ-039, implemented and unreleased)
+### Repository context (BAZ-039, shipped in v0.16.0)
 
 The daemon resolver under `src/lib/repository-context/` prepares bounded Team-relative repository
 instructions and passive Git/command context. `GET /api/teams/:id/repository-context`,
@@ -118,6 +118,43 @@ context; automatic context/extension/skill discovery remains disabled. Private A
 are labelled Agent instructions, separately from repository guidance. Restricted reviews gain no
 repository capability. See `docs/repository-context.md` and `docs/backlog/BAZ-039-progress.md` for
 limits, acceptance status and remaining work. Do not treat context fingerprints as code checks.
+
+### Coding evidence: progress, retained diagnostics and change review (BAZ-041/042, shipped in v0.17.0)
+
+Retained diagnostics and source snapshots are **narrow evidence stores**, not a general runs/events
+layer and not a second transcript. Pi's session JSONL stays the authoritative conversation record.
+
+- `coding_command_logs` holds bounded retained output (2 MiB/command, 256 MiB/home, seven-day TTL).
+  Truncation is a stored flag, never inferred from byte counts, because redaction changes lengths.
+  **Retention and disclosure are separate**: captured bytes stay private until source-owned egress
+  (terminal operator delivery, an authorized peer read, or an approved communication) releases them, and
+  a held log must read as *not shared*, never as an empty result. `releaseCodingCommandLog` is called
+  from every such site — direct delivery, Telegram mirroring, peer reads, and approval dispatch.
+- `source_snapshots` holds bounded manifests of **paths and digests only, never content**: HEAD, the
+  index, sha256 of each path differing from a pinned baseline, and sha256 of explicitly selected
+  untracked files. The id is content-addressed (identical trees share it) and `complete` is part of the
+  id, so an incomplete capture can never collide with an exact one. A snapshot records its capture
+  instant: one capture reads a frozen copy of refs and index, so it cannot be re-read live later.
+- Applicability is **three-valued** — `identical` / `changed` / `unknown` — and is never rendered as a
+  pass. Absence is **Not checked**. Comparing source states establishes that code *changed*, never that
+  the change was relevant to what was tested; do not add a "verified" badge.
+- Git inspection has **one** hardened implementation, `src/lib/git/capture.ts`. Do not add a second Git
+  path: it copies bounded metadata into scratch with a Bazilion-authored config, refuses unsupported
+  layouts, reaches the work tree through a pinned directory descriptor, and applies every hardening flag
+  inside `runGit` so a caller cannot forget them. Inspection never mutates the repository and never runs
+  repository-configured helpers.
+- Review feedback is **file-level**: identity is `(team, snapshotId, path)`, with a selected line range
+  carried as context only. A snapshot already records a digest per changed path, so staleness stays
+  decidable without synthesizing hunk identities.
+- Scope policy (`lib/git-review/scope.ts`) excludes Bazilion-owned state (the Team-root `memory/` store
+  **only** — never a directory merely named `memory`, `dist` or similar) and credential-shaped paths.
+  Refusals are recorded and counted, never silently dropped.
+- Provider model resolution **fails closed**: an unknown model id is refused rather than falling back to
+  a build with an empty base URL, which resolved to a provider default and carried the configured
+  provider's credential to it.
+
+See `docs/coding-evidence.md`, `docs/backlog/done/BAZ-041-coding-command-verification.md` and
+`docs/backlog/done/BAZ-042-git-change-review.md`.
 
 ### Memory model
 

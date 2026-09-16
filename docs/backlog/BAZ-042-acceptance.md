@@ -1,7 +1,7 @@
 # BAZ-042 Git change review acceptance record
 
 Audit date: 2026-09-14. Scope: local acceptance evidence for
-[BAZ-042](in_progress/BAZ-042-git-change-review.md) against
+[BAZ-042](done/BAZ-042-git-change-review.md) against
 [the progress record](BAZ-042-progress.md). No release, merge, push or deployment is included.
 
 The run used a **disposable home** (`/tmp/baz042-home`) and a **disposable repository**

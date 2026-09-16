@@ -148,8 +148,8 @@ needs evidence that the selected specialist tested exactly the agreed change and
 
 - Depends on [BAZ-040](../done/BAZ-040-coding-environment-readiness.md) admitted
   environment/command contracts and workspace coordination,
-  [BAZ-041](BAZ-041-coding-command-verification.md) execution evidence, and
-  [BAZ-042](BAZ-042-git-change-review.md) snapshot identity. Deliver after the first coding milestone.
+  [BAZ-041](../done/BAZ-041-coding-command-verification.md) execution evidence, and
+  [BAZ-042](../done/BAZ-042-git-change-review.md) snapshot identity. Deliver after the first coding milestone.
 - Reuses [BAZ-034](../done/BAZ-034-durable-agent-deliverables.md) retained bytes; extend existing
   BAZ-040 peer receipt access only for captured request inputs and additional BAZ-041 logs.
   [BAZ-035](../done/BAZ-035-conversation-library.md) supplies exact source conversation identity

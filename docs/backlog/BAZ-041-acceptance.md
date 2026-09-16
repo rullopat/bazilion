@@ -1,7 +1,7 @@
 # BAZ-041 coding-progress acceptance record
 
 Audit date: 2026-09-14. Scope: local acceptance evidence for
-[BAZ-041](in_progress/BAZ-041-coding-command-verification.md) against
+[BAZ-041](done/BAZ-041-coding-command-verification.md) against
 [the progress record](BAZ-041-progress.md). No release, merge, push or deployment is included and
 BAZ-041 remains unshipped.
 

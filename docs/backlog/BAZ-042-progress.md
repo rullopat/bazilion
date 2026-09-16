@@ -6,7 +6,7 @@ Branch
 `feat/baz-041-042-coding-evidence`, continuing from the completed BAZ-041 work. Commits are batched
 locally and pushed when the story is further along, not per slice.
 
-Story: [BAZ-042](in_progress/BAZ-042-git-change-review.md).
+Story: [BAZ-042](done/BAZ-042-git-change-review.md).
 
 ## Architecture decision: reuse the BAZ-039 Git harness
 
