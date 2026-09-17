@@ -1,7 +1,7 @@
 ---
 id: BAZ-047
 title: Stable schema contract and in-place upgrades for beta
-status: in_progress
+status: done
 size: L (1-2 weeks)
 created: 2026-09-17
 refined: 2026-09-17
@@ -144,3 +144,9 @@ novelty.
 ## As-built
 
 _TBD._
+
+**Shipped 2026-09-17 through PR #54** (merged after #55/#56; the branch was split so
+the removals reviewed separately). CI ran both jobs green on GitHub runners,
+including the release upgrade matrix's first run there. The first real forward
+migration arrives with BAZ-055's `0002_device_token_scopes.sql`. Unreleased — ships
+with the next version bump.
