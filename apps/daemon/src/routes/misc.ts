@@ -19,6 +19,7 @@ import { Hono } from 'hono'
 import {
   agentRepo,
   discoverSkills,
+  isSetupComplete,
   mcpServerRepo,
   mergeSecretsIntoEnv,
   parseSkillFile,
@@ -55,7 +56,16 @@ const protectedDockerReadiness = createProtectedDockerReadinessCache()
 miscRouter.get('/health', (c) => {
   const instanceId = getDaemonInstanceId()
   if (instanceId) c.header('x-bazilion-daemon-instance', instanceId)
-  return c.json({ ok: true } satisfies PublicHealthResponse)
+  // BAZ-055 slice 3: introspectable auth posture — no secrets, no user data.
+  // Kills the "server is up but the client can't connect" support class.
+  return c.json({
+    ok: true,
+    auth: {
+      required: true,
+      credentialKinds: ['bootstrap', 'device', 'pairing-code'],
+      setupComplete: isSetupComplete(getCtx().db),
+    },
+  } satisfies PublicHealthResponse)
 })
 
 miscRouter.get('/health/details', async (c) => {

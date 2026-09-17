@@ -45,6 +45,29 @@ function TokensPage() {
   const [busy, setBusy] = useState(false)
   const [revokeTokenTarget, setRevokeTokenTarget] = useState<WebToken | null>(null)
   const [revokeSessionTarget, setRevokeSessionTarget] = useState<WebSession | null>(null)
+  const [pairUrl, setPairUrl] = useState<string | null>(null)
+
+  async function mintPairingCode(scopes: string[]) {
+    setErr(null)
+    setBusy(true)
+    try {
+      const res = await fetch('/api/pair/codes', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(scopes.length > 0 ? { scopes } : {}),
+      })
+      if (!res.ok) {
+        const j = (await res.json().catch(() => ({}))) as { error?: string }
+        throw new Error(j.error ?? `${res.status} ${res.statusText}`)
+      }
+      const body = (await res.json()) as { setupUrl: string }
+      setPairUrl(body.setupUrl)
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
 
   async function mint(e: React.FormEvent) {
     e.preventDefault()
@@ -181,6 +204,32 @@ function TokensPage() {
           </div>
         )}
         {err && <p role="alert" className="text-sm text-danger">{err}</p>}
+        <div className="mt-3 border-t pt-3">
+          <p className="text-sm text-muted-foreground mb-2">
+            Pair a new device with a one-paste setup code instead — the code expires in 10
+            minutes and admits exactly one credential exchange (with the scopes selected
+            above, or all if none are).
+          </p>
+          <Button
+            variant="secondary"
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              setPairUrl(null)
+              void mintPairingCode([...selectedScopes])
+            }}
+          >
+            {busy ? 'creating…' : 'mint pairing code'}
+          </Button>
+          {pairUrl && (
+            <div className="mt-2 rounded-md border border-warning/25 bg-warning/10 p-3">
+              <p className="text-xs text-warning mb-1">
+                paste or scan this on the new device — it works once, for 10 minutes.
+              </p>
+              <pre className="font-mono text-xs whitespace-pre-wrap break-all">{pairUrl}</pre>
+            </div>
+          )}
+        </div>
       </section>
 
       <div>

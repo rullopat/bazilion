@@ -27,6 +27,7 @@ const ADMIN_PREFIXES = [
   '/api/mcp-servers',
   '/api/backup',
   '/api/tokens',
+  '/api/pair/codes',
   '/api/auth/openai',
   '/api/providers/test',
   '/api/communication',

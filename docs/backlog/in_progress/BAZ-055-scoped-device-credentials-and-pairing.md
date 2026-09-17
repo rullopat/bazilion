@@ -162,3 +162,27 @@ non-interactive turn behavior (BAZ-006).
   session-scope inheritance, 401 unchanged). Full suite 1,843 passed / 0 failed.
 
 **Slices 2 (pairing codes) and 3 (posture probe) — next, as PR B.**
+
+**Slices 2 + 3 — done on `feat/pairing-codes-posture` (PR B):**
+
+- **Pairing setup codes**: new `web_pairing_tokens` table (0003) — separate from
+  `web_tokens` deliberately (a new `kind` would need a table rebuild for the CHECK
+  constraint; pairing tokens have no sessions or audit surface). A code is
+  10-minute, single-use (claimed in the same transaction that mints the device
+  credential, with the audit link recorded), carries the scopes the minted
+  credential will get, and is *not itself an API credential*.
+- **Routes**: `POST /api/pair/codes` (admin-gated via the scope table) mints;
+  `POST /api/pair/exchange` is a public path like `/api/login` — the code is the
+  secret. Both in `auth-login.ts`.
+- **`bazilion token pair --scope …`** prints the `bazilion-pair://pair?server=…&code=…`
+  setup URL + QR; the web tokens page gained a "mint pairing code" flow showing the
+  setup URL. The existing `token create --qr` QR (which pointed at the removed
+  mobile app) is now superseded by this flow for device onboarding.
+- **Posture probe** (Hermes pattern): `GET /api/health` now returns
+  `auth: { required, credentialKinds, setupComplete }` — secret-free.
+- **Adaptation note**: no TLS certificate fingerprint in the setup URL — Bazilion's
+  gateway is Tailscale Serve over loopback-only daemons (no daemon-owned leaf cert
+  to pin, unlike OpenClaw's direct TLS). The URL format has room for a fingerprint
+  if a self-TLS mode ever exists.
+- Verification: full suite 1,848 passed / 0 failed (5 new pairing/posture HTTP
+  cases); typecheck clean.
