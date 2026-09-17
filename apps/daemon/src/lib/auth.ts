@@ -9,6 +9,7 @@
 // seed for the secrets table) and the CLI (loopback bearer) can use it.
 // Validation goes through `findActiveByToken`, no special-case loopback path.
 
+import type { DeviceTokenScope } from '@bazilion/api-types'
 import { webTokenRepo } from '../core/index.ts'
 import type { AuthenticatedSession } from '../core/repos/webSessions.ts'
 import { getCtx } from './ctx.ts'
@@ -23,6 +24,7 @@ export interface BearerPrincipal {
   kind: 'bootstrap' | 'device'
   tokenId: string
   label: string
+  scopes: DeviceTokenScope[]
   sessionId: null
 }
 
@@ -30,6 +32,7 @@ export interface SessionPrincipal {
   kind: 'session'
   tokenId: string
   label: string
+  scopes: DeviceTokenScope[]
   sessionId: string
 }
 
@@ -50,6 +53,7 @@ export function authenticateToken(token: string): BearerPrincipal | null {
         kind: match.kind,
         tokenId: match.id,
         label: match.label,
+        scopes: match.scopes,
         sessionId: null,
       }
     }

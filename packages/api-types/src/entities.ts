@@ -447,10 +447,20 @@ export interface AgentLoopBreakEvent {
   createdAt: Timestamp
 }
 
+/**
+ * BAZ-055: authorization scopes for device tokens. The bootstrap token holds
+ * all scopes implicitly (single operator). Stored in `web_tokens.scopes` as a
+ * space-separated list.
+ */
+export const DEVICE_TOKEN_SCOPES = ['read', 'write', 'approvals', 'admin'] as const
+export type DeviceTokenScope = (typeof DEVICE_TOKEN_SCOPES)[number]
+export const ALL_DEVICE_TOKEN_SCOPES: readonly DeviceTokenScope[] = DEVICE_TOKEN_SCOPES
+
 export interface WebToken {
   id: string
   label: string
   kind: 'bootstrap' | 'device'
+  scopes: DeviceTokenScope[]
   createdAt: Timestamp
   lastUsedAt: Timestamp | null
   expiresAt: Timestamp | null

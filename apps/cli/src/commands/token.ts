@@ -10,13 +10,14 @@ import { readAuthFile } from '../auth-file.ts'
 import { createClient, loadClientConfig } from '../client.ts'
 import { columnize } from '../columnize.ts'
 import { resolveCliPaths } from '../paths.ts'
+import { collectFlagValues } from '../repeatable-args.ts'
 
 function tokenRow(t: WebToken): string[] {
   const last = t.lastUsedAt ? new Date(t.lastUsedAt).toISOString() : '(never)'
   const expired = t.expiresAt !== null && t.expiresAt <= Date.now()
   const state = t.revokedAt ? 'revoked' : expired ? 'expired' : 'active'
   const expires = t.expiresAt ? new Date(t.expiresAt).toISOString() : '(never)'
-  return [t.id, t.kind, state, t.label, `expires: ${expires}`, `last: ${last}`]
+  return [t.id, t.kind, state, t.label, t.scopes.join(' '), `expires: ${expires}`, `last: ${last}`]
 }
 
 function resolveQrServer(override: string | undefined): string {
@@ -57,18 +58,29 @@ const createCmd = defineCommand({
       type: 'string',
       description: 'Device lifetime in days (default 90, maximum 365)',
     },
+    scope: {
+      type: 'string',
+      description:
+        'Authorization scope; repeat for more (read, write, approvals, admin). Default: all scopes.',
+    },
   },
-  async run({ args }) {
+  async run({ args, rawArgs }) {
     const client = createClient()
     const expiresInDays = args.expiresDays === undefined ? undefined : Number(args.expiresDays)
     if (expiresInDays !== undefined && !Number.isInteger(expiresInDays)) {
       throw new Error('--expires-days must be an integer')
     }
-    const body: CreateTokenRequest = { label: args.label, expiresInDays }
+    const scopes = collectFlagValues(rawArgs, 'scope')
+    const body: CreateTokenRequest = {
+      label: args.label,
+      expiresInDays,
+      ...(scopes.length > 0 ? { scopes: scopes as CreateTokenRequest['scopes'] } : {}),
+    }
     const res = await client.post<CreateTokenResponse>('/api/tokens', body)
-    console.log(`id:    ${res.meta.id}`)
-    console.log(`label: ${res.meta.label}`)
-    console.log(`kind:  ${res.meta.kind}`)
+    console.log(`id:     ${res.meta.id}`)
+    console.log(`label:  ${res.meta.label}`)
+    console.log(`kind:   ${res.meta.kind}`)
+    console.log(`scopes: ${res.meta.scopes.join(' ')}`)
     console.log(
       `expires: ${res.meta.expiresAt ? new Date(res.meta.expiresAt).toISOString() : '(never)'}`,
     )

@@ -1,7 +1,7 @@
 ---
 id: BAZ-055
 title: Scoped device credentials and one-paste pairing (OpenClaw's authz model, adapted)
-status: todo
+status: in_progress
 size: L (1-2 weeks, sequenced as M + S + S)
 created: 2026-09-17
 refined: 2026-09-17
@@ -131,3 +131,34 @@ non-interactive turn behavior (BAZ-006).
    gate-off-but-should-be-on homes.
 5. The BAZ-032 security gate still passes — scope denial must not leak token
    existence or scope values in error bodies.
+
+## Progress
+
+**Slice 1 — done on `feat/scoped-device-credentials` (PR A):**
+
+- `0002_device_token_scopes.sql` — the first forward migration after BAZ-047: adds
+  `web_tokens.scopes` with a behavior-preserving `DEFAULT 'read write approvals admin'`
+  backfill. The upgrade matrix now exercises a real forward migration.
+- Scope→route table in `apps/daemon/src/lib/scopes.ts` (`requiredScope`/`scopeAllows`):
+  admin carve-outs (config/MCP/backup/tokens/auth-openai/providers/communication — all
+  methods), approvals carve-outs (approvals/shell-approvals/notifications mutations,
+  queue resolution, question answers, attention acknowledgement), read/write defaults.
+  Bootstrap holds all scopes implicitly; session cookies inherit the device token's
+  scopes; enforcement in `middleware-auth.ts` returns structured 403s with
+  `code: 'insufficient_scope'` and the required scope named.
+- Minting: `POST /api/tokens` accepts an optional `scopes` subset (absent = all —
+  zero behavior change); web tokens page gains a scope checkbox group and a scopes
+  column; CLI `token create --scope` (repeatable) and `token list` show scopes.
+- **Backup validator migrated off the hard-coded contract** — `backup-schema.ts` had
+  its own copy of the schema contract (exact single-migration ledger assertion + a
+  frozen schema fingerprint), which broke on the first new migration — precisely the
+  failure mode BAZ-047 predicted. It now delegates to
+  `assertSchemaMatchesCanonicalChain` (daemon `migrate.ts`): ledger must equal the
+  full chain, schema objects diff per-object against the canonical replay (missing /
+  unexpected / altered SQL each get actionable errors), result-blob verification
+  unchanged.
+- Tests: 50 exhaustive `requiredScope` unit cases over the table + 7 HTTP cases
+  (bootstrap full access, read-only, approvals-only, admin-only, mint validation,
+  session-scope inheritance, 401 unchanged). Full suite 1,843 passed / 0 failed.
+
+**Slices 2 (pairing codes) and 3 (posture probe) — next, as PR B.**

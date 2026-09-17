@@ -12,6 +12,7 @@ interface RawSession {
   csrf_hash: string
   device_token_id: string
   device_label: string
+  device_scopes: string
   created_at: number
   last_seen_at: number
   idle_expires_at: number
@@ -29,6 +30,7 @@ export interface AuthenticatedSession {
   id: string
   deviceTokenId: string
   deviceLabel: string
+  deviceScopes: string
   csrfHash: string
 }
 
@@ -99,7 +101,7 @@ export function authenticate(
   if (!secret) return null
   const row = db.raw
     .query<RawSession, [string, string, number, number, number]>(
-      `SELECT s.*, t.label AS device_label
+      `SELECT s.*, t.label AS device_label, t.scopes AS device_scopes
        FROM web_sessions s JOIN web_tokens t ON t.id = s.device_token_id
        WHERE s.id = ? AND s.secret_hash = ? AND s.revoked_at IS NULL
          AND s.idle_expires_at > ? AND s.absolute_expires_at > ?
@@ -117,6 +119,7 @@ export function authenticate(
     id,
     deviceTokenId: row.device_token_id,
     deviceLabel: row.device_label,
+    deviceScopes: row.device_scopes,
     csrfHash: row.csrf_hash,
   }
 }
