@@ -27,7 +27,7 @@ docs/backlog/
 
 ---
 
-## Draft (7)
+## Draft (6)
 
 | ID | Title | Size | Notes |
 |----|-------|------|-------|
@@ -37,7 +37,6 @@ docs/backlog/
 | [BAZ-051](draft/BAZ-051-failure-mode-visibility-audit.md) | Failure-mode visibility audit — every recovery is seen or surfaced | M | Beta blocker. Recovery machinery (BAZ-019/023/025, ctx recovery) is correct but visibility under real failure is unproven: seven deterministic fault-injection cases, silent failure is the only unacceptable outcome. |
 | [BAZ-052](draft/BAZ-052-beta-supportability-gates-and-growth.md) | Beta supportability — security gate in CI, log rotation, growth documentation | M | Verified gaps: BAZ-032's 60-case security gate is manual-only, `logs/` has no rotation, DB growth expectations undocumented. Three small closes. |
 | [BAZ-054](draft/BAZ-054-native-ios-android-apps.md) | Native iOS and Android apps (post-1.0) | XL — split before refinement | Deferred to post-1.0 (operator decision). Successor to the removed Expo app over the existing gateway/device-credential model. Push-notification architecture is the gating open question; held as a design-constraint holder meanwhile. |
-| [BAZ-055](draft/BAZ-055-scoped-device-credentials-and-pairing.md) | Scoped device credentials and one-paste pairing (OpenClaw's authz model, adapted) | L (scope-1 alone is M) | Adopted from the [auth comparison](design/authn-authz-comparison-openclaw-hermes.md): per-device scopes (`read/write/approvals/admin`) enforced in middleware with zero upgrade-behavior change, plus `bazilion-pair://` setup codes (10-min single-use token + TLS pin). Capability-approval lifecycle moves with BAZ-054. Trusted-proxy mode rejected. |
 
 The original coding stories were drafted on 2026-09-07 from the OpenClaw 2.0 / Hermes desktop
 review. BAZ-034 through BAZ-038 shipped in v0.15.0 through PRs #44 and #45; their decisions and
@@ -72,12 +71,13 @@ Writer coordination already exists; checkout lifecycle and deployment integratio
 later from a concrete use case. Automatic Git publication, managed services/previews and ambient Pi
 extension loading remain separate, uncommitted scope.
 
-## Todo (2)
+## Todo (3)
 
 | ID | Title | Size | Notes |
 |----|-------|------|-------|
 | [BAZ-047](todo/BAZ-047-stable-schema-contract.md) | Stable schema contract and in-place upgrades for beta | L (1-2 weeks) | Retires the alpha clean-install contract: forward-only migrations with receipts, refuse-newer-schema, backup-before-upgrade, tested upgrade matrix, release-gate step. Grounded in [OpenClaw/Hermes findings](design/storage-comparison-openclaw-hermes.md). In flight on `feat/beta-schema-contract` (PR #54). |
-| [BAZ-053](todo/BAZ-053-remove-expo-mobile-app.md) | Remove the Expo mobile app; mobile story becomes responsive web | S | Operator decision 2026-09-17: the thin Expo app (v0.0.0, 4 screens) ships neither in beta nor 1.0. Delete cleanly; keep the private gateway + device credentials — the auth path BAZ-054's native apps will use. |
+| [BAZ-053](todo/BAZ-053-remove-expo-mobile-app.md) | Remove the Expo mobile app; mobile story becomes responsive web | S | Operator decision 2026-09-17: the thin Expo app (v0.0.0, 4 screens) ships neither in beta nor 1.0. Delete cleanly; keep the private gateway + device credentials — the auth path BAZ-054's native apps will use. Shipped on `feat/beta-schema-contract` (PR #54). |
+| [BAZ-055](todo/BAZ-055-scoped-device-credentials-and-pairing.md) | Scoped device credentials and one-paste pairing (OpenClaw's authz model, adapted) | L (M + S + S) | Refined from the [auth comparison](design/authn-authz-comparison-openclaw-hermes.md): per-device scopes (`read/write/approvals/admin`) with a fixture-generated route test table, `bazilion-pair://` setup codes (10-min single-use token + TLS pin), Hermes-style auth-posture introspection. The `0002` scopes migration doubles as the first live test of the BAZ-047 contract. Capability-approval lifecycle moves with BAZ-054. |
 
 ## In Progress (0)
 
