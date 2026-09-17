@@ -23,9 +23,12 @@ export type { BazilionDb } from './db/client.ts'
 export { openDb, openInMemoryDb } from './db/client.ts'
 export {
   assertMigrationCompatibility,
+  DatabaseNewerThanBinaryError,
   INCOMPATIBLE_DATABASE_MESSAGE,
   IncompatibleDatabaseError,
+  listMigrations,
   runMigrations,
+  schemaMigrationsSql,
 } from './db/migrate.ts'
 export type { Paths } from './paths.ts'
 export { resolvePaths } from './paths.ts'

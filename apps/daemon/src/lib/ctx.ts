@@ -1,4 +1,5 @@
 import { chmodSync, existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import {
   type BazilionDb,
   openDb,
@@ -87,7 +88,15 @@ function bootstrap(paths: Paths): { db: BazilionDb; authToken: string } {
 
   const db = openDb(paths.db)
   try {
-    runMigrations(db)
+    runMigrations(db, {
+      // Before the first forward migration of an existing home, preserve the
+      // pre-upgrade state beside the database. A failed migration then leaves
+      // a restorable copy instead of a half-migrated home.
+      preMigrationSnapshotPath: join(
+        dirname(paths.db),
+        `bazilion.pre-migration-${new Date().toISOString().replace(/[-:T]/g, '').replace(/\..*/, '')}.db`,
+      ),
+    })
 
     // When both artifacts existed at entry, validate the plaintext credential
     // against the active bootstrap row before refreshing templates or starting

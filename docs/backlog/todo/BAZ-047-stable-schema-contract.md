@@ -86,6 +86,46 @@ novelty.
 7. Re-running the upgrade (interrupted then resumed) is idempotent and applies each
    migration at most once.
 
+## Progress
+
+**Slice 1 (this branch, `feat/beta-schema-contract`) — implemented:**
+
+- `apps/daemon/src/core/db/migrate.ts` reworked from exact-match to a prefix contract:
+  - An existing home upgrades forward on open: its ledger may be an unbroken **prefix** of
+    the chain; pending migrations apply transactionally and are then integrity-checked
+    against the canonical replay of the full chain.
+  - **Tamper detection kept:** a home whose applied schema diverges from the canonical
+    replay of its applied prefix (edited-in-place migration, corruption) still fails closed
+    with `IncompatibleDatabaseError` and the existing reset guidance.
+  - **Unknown ledger names** (newer *or* historical — indistinguishable by name) fail closed
+    as incompatible, preserving the established contract in `legacy-schema-startup.test.ts`.
+  - **Numeric refuse-newer** landed via `PRAGMA user_version` (= number of migrations in the
+    chain), stamped by `runMigrations` on every fully migrated home. From the first future
+    schema change onward, a database with `user_version` above the binary's supported
+    version is refused with `DatabaseNewerThanBinaryError` (upgrade guidance; downgrades
+    unsupported). OpenClaw-style versioning.
+  - **Backup before upgrade:** `runMigrations(db, { preMigrationSnapshotPath })` snapshots
+    the live home via synchronous `VACUUM INTO` before the first forward migration,
+    integrity-checks the copy, and refuses to migrate if the snapshot is unusable. The
+    daemon bootstrap (`ctx.ts`) always supplies a timestamped snapshot path beside the DB.
+    `VACUUM INTO` never overwrites, so a retried upgrade keeps the first snapshot.
+- Tests: `apps/daemon/test/core/db/migrations.test.ts` (8 cases: fresh install + idempotence,
+  no snapshot on fresh DB, in-place upgrade with data preservation + verified snapshot,
+  refuse-newer via `user_version` untouched, unknown-name refusal untouched,
+  tampered-schema refusal, ledger-less refusal without mutation, version stamping).
+  Full suite green (1814 passed).
+
+**Still open in this BAZ:**
+
+- First real `0002_*.sql` migration to exercise the forward path in production (the chain
+  is still single-file, so the upgrade test self-skips its data-preservation assertion
+  until then).
+- Upgrade-matrix CI: boot a seeded home from the previous release tag and upgrade it
+  (release-gate step extending the BAZ-032 pattern).
+- Operator upgrade guide + "which file does what" ownership one-pager.
+- Exported `listMigrations`/`schemaMigrationsSql`/`currentSchemaVersion` are groundwork for
+  a future `bazilion doctor` / preflight CLI.
+
 ## As-built
 
 _TBD._

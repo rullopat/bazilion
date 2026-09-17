@@ -7,7 +7,11 @@
 import { writeSync } from 'node:fs'
 import { serve } from '@hono/node-server'
 import { createApp } from './app.ts'
-import { IncompatibleDatabaseError, resolvePaths } from './core/index.ts'
+import {
+  DatabaseNewerThanBinaryError,
+  IncompatibleDatabaseError,
+  resolvePaths,
+} from './core/index.ts'
 import { closeCtxForShutdown, getCtx, IncompatibleBootstrapIdentityError } from './lib/ctx.ts'
 import { acquireDaemonLiveness } from './lib/daemon-liveness.ts'
 import { startNotifications } from './lib/notifications.ts'
@@ -51,6 +55,7 @@ try {
 } catch (error) {
   const detail =
     error instanceof IncompatibleDatabaseError ||
+    error instanceof DatabaseNewerThanBinaryError ||
     error instanceof IncompatibleBootstrapIdentityError
       ? error.message
       : error instanceof Error
