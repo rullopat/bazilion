@@ -7,5 +7,5 @@
   "access": "public",
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
-  "ignore": ["@bazilion/daemon", "@bazilion/web", "@bazilion/mobile"]
+  "ignore": ["@bazilion/daemon", "@bazilion/web"]
 }
