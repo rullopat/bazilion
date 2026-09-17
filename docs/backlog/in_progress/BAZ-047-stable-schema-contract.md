@@ -1,7 +1,7 @@
 ---
 id: BAZ-047
 title: Stable schema contract and in-place upgrades for beta
-status: todo
+status: in_progress
 size: L (1-2 weeks)
 created: 2026-09-17
 refined: 2026-09-17
@@ -85,6 +85,61 @@ novelty.
 6. The release gate runs green from a fresh install and from each supported prior release.
 7. Re-running the upgrade (interrupted then resumed) is idempotent and applies each
    migration at most once.
+
+## Progress
+
+**Slice 1 (this branch, `feat/beta-schema-contract`) — implemented:**
+
+- `apps/daemon/src/core/db/migrate.ts` reworked from exact-match to a prefix contract:
+  - An existing home upgrades forward on open: its ledger may be an unbroken **prefix** of
+    the chain; pending migrations apply transactionally and are then integrity-checked
+    against the canonical replay of the full chain.
+  - **Tamper detection kept:** a home whose applied schema diverges from the canonical
+    replay of its applied prefix (edited-in-place migration, corruption) still fails closed
+    with `IncompatibleDatabaseError` and the existing reset guidance.
+  - **Unknown ledger names** (newer *or* historical — indistinguishable by name) fail closed
+    as incompatible, preserving the established contract in `legacy-schema-startup.test.ts`.
+  - **Numeric refuse-newer** landed via `PRAGMA user_version` (= number of migrations in the
+    chain), stamped by `runMigrations` on every fully migrated home. From the first future
+    schema change onward, a database with `user_version` above the binary's supported
+    version is refused with `DatabaseNewerThanBinaryError` (upgrade guidance; downgrades
+    unsupported). OpenClaw-style versioning.
+  - **Backup before upgrade:** `runMigrations(db, { preMigrationSnapshotPath })` snapshots
+    the live home via synchronous `VACUUM INTO` before the first forward migration,
+    integrity-checks the copy, and refuses to migrate if the snapshot is unusable. The
+    daemon bootstrap (`ctx.ts`) always supplies a timestamped snapshot path beside the DB.
+    `VACUUM INTO` never overwrites, so a retried upgrade keeps the first snapshot.
+- Tests: `apps/daemon/test/core/db/migrations.test.ts` (8 cases: fresh install + idempotence,
+  no snapshot on fresh DB, in-place upgrade with data preservation + verified snapshot,
+  refuse-newer via `user_version` untouched, unknown-name refusal untouched,
+  tampered-schema refusal, ledger-less refusal without mutation, version stamping).
+  Full suite green (1814 passed).
+
+**Still open in this BAZ:**
+
+- First real `0002_*.sql` migration to exercise the forward path in production (the chain
+  is still single-file, so the upgrade test self-skips its data-preservation assertion
+  until then).
+- Operator upgrade guide + "which file does what" ownership one-pager.
+- Exported `listMigrations`/`schemaMigrationsSql`/`currentSchemaVersion` are groundwork for
+  a future `bazilion doctor` / preflight CLI.
+
+**Slice 2 — CI release upgrade matrix (this branch):**
+
+- `scripts/migration-upgrade-matrix.mjs`: for each matrix entry, checks the release tag out
+  into a `git worktree`, installs its own dependency tree, seeds a **genuine home by booting
+  that release's own daemon**, plants sentinel data, then brings the home up under the
+  current branch:
+  - `upgrade` entries must serve HTTP, preserve the sentinel, take a pre-migration snapshot
+    iff the chain grew, and survive a second boot (idempotence).
+  - `refuse` entries must fail closed: no HTTP, actionable stderr, ledger/sentinel/snapshot
+    state untouched.
+- Matrix today: `v0.20.0 → upgrade` (current chain, becomes a real forward upgrade the
+  moment the first `0002_*.sql` lands) and `v0.19.0 → refuse` (BAZ-046's "0.19.x homes
+  cannot be upgraded in place", now enforced by CI rather than only documented).
+- CI: new `upgrade-matrix` job in `.github/workflows/ci.yml` (`fetch-depth: 0` for tags);
+  verified locally against both real releases. Matrix maintenance is part of the release
+  checklist (header note in the script).
 
 ## As-built
 

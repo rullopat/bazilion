@@ -1,7 +1,7 @@
 ---
 id: BAZ-053
 title: Remove the Expo mobile app; mobile story becomes responsive web
-status: todo
+status: done
 size: S (afternoon)
 created: 2026-09-17
 priority: medium
