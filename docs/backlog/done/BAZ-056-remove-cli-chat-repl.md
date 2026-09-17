@@ -4,6 +4,7 @@ title: Remove the interactive chat REPL from the CLI; one-shot chat stays
 status: done
 size: S (afternoon)
 created: 2026-09-17
+release: v0.21.0-beta.1
 priority: medium
 note: Operator decision 2026-09-17 — the bare readline REPL in `agent chat` is not worth completing; 1.0 keeps one-shot chat + dedicated question/approval/attention commands + web. A full TUI client is a possible post-1.0 project (would be its own BAZ, built properly or not at all).
 ---

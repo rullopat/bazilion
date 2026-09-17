@@ -32,6 +32,7 @@ const REPO_ROOT = process.cwd()
 const MATRIX = process.env.BAZILION_UPGRADE_MATRIX
   ? JSON.parse(process.env.BAZILION_UPGRADE_MATRIX)
   : [
+      { tag: 'v0.21.0-beta.1', expect: 'upgrade' },
       { tag: 'v0.20.0', expect: 'upgrade' },
       { tag: 'v0.19.0', expect: 'refuse' },
     ]

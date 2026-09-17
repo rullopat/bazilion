@@ -4,6 +4,7 @@ title: Scoped device credentials and one-paste pairing (OpenClaw's authz model, 
 status: done
 size: L (1-2 weeks, sequenced as M + S + S)
 created: 2026-09-17
+release: v0.21.0-beta.1
 refined: 2026-09-17
 priority: high
 note: Refined 2026-09-17 with the completed OpenClaw + Hermes findings (design/authn-authz-comparison-openclaw-hermes.md). The scopes migration is deliberately the first 0002_*.sql — the production shakedown of the BAZ-047 contract.

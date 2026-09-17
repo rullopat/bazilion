@@ -4,6 +4,7 @@ title: Stable schema contract and in-place upgrades for beta
 status: done
 size: L (1-2 weeks)
 created: 2026-09-17
+release: v0.21.0-beta.1
 refined: 2026-09-17
 priority: high
 note: Retires the alpha clean-install contract. Grounded in the OpenClaw/Hermes storage comparison — see design/storage-comparison-openclaw-hermes.md.

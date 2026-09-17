@@ -4,6 +4,7 @@ title: Remove the Expo mobile app; mobile story becomes responsive web
 status: done
 size: S (afternoon)
 created: 2026-09-17
+release: v0.21.0-beta.1
 priority: medium
 note: Operator decision 2026-09-17 — the Expo app ships neither in beta nor 1.0. Successor vision in BAZ-054 (post-1.0 native apps). Removal must preserve the private gateway (BAZ-028), which serves mobile browsers and future native clients.
 ---
