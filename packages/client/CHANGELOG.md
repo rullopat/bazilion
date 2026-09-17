@@ -1,5 +1,12 @@
 # @bazilion/client
 
+## 0.21.0-beta.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @bazilion/api-types@0.21.0-beta.0
+
 ## 0.20.0
 
 ### Minor Changes

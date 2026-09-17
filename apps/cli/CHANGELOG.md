@@ -1,5 +1,17 @@
 # bazilion
 
+## 0.21.0-beta.0
+
+### Minor Changes
+
+- [`0dd314d`](https://github.com/rullopat/bazilion/commit/0dd314dd9ee3f51e5f6c00acc3feff87ca23a9a5) Thanks [@rullopat](https://github.com/rullopat)! - BAZ-047: stable schema contract — homes upgrade in place. Forward-only prefix migrations with a receipt ledger, numeric refuse-newer (`PRAGMA user_version`), automatic verified pre-migration snapshots beside the database, and a CI release-upgrade matrix proven against real prior releases. Retires the alpha clean-install (wipe-on-change) contract.
+
+- [`0dd314d`](https://github.com/rullopat/bazilion/commit/0dd314dd9ee3f51e5f6c00acc3feff87ca23a9a5) Thanks [@rullopat](https://github.com/rullopat)! - BAZ-053: the Expo mobile app is removed. Mobile is responsive web over the private gateway with named device credentials — the auth path future native clients will use.
+
+- [`0dd314d`](https://github.com/rullopat/bazilion/commit/0dd314dd9ee3f51e5f6c00acc3feff87ca23a9a5) Thanks [@rullopat](https://github.com/rullopat)! - BAZ-055: per-device scopes on web tokens (`read`/`write`/`approvals`/`admin`, enforced in the auth middleware with structured 403s; bootstrap keeps implicit full access; sessions inherit device scopes), one-paste `bazilion-pair://` pairing setup codes (10-minute, single-use, scoped), and an auth-posture probe on `GET /api/health`. Token minting accepts optional scope subsets; existing credentials keep full access.
+
+- [`0dd314d`](https://github.com/rullopat/bazilion/commit/0dd314dd9ee3f51e5f6c00acc3feff87ca23a9a5) Thanks [@rullopat](https://github.com/rullopat)! - BAZ-056: the interactive chat REPL is removed from `bazilion agent chat`; one-shot mode (`--message`, `--image`, `--file`), piped stdin (fail-closed `auto_deny`), and the chat management commands remain.
+
 ## 0.20.0
 
 ### Minor Changes

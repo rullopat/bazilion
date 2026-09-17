@@ -8,5 +8,10 @@
     "@bazilion/api-types": "0.20.0",
     "@bazilion/client": "0.20.0"
   },
-  "changesets": []
+  "changesets": [
+    "baz-047-schema-contract",
+    "baz-053-mobile-removal",
+    "baz-055-scoped-credentials",
+    "baz-056-chat-repl"
+  ]
 }
