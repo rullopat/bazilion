@@ -108,9 +108,14 @@ test('login --clear removes the stored remote', async () => {
   expect(after.remote).toBeUndefined()
 })
 
-test('public health is liveness-only and detailed health requires authentication', async () => {
+test('public health is liveness + posture only; detailed health requires authentication', async () => {
   const publicResponse = await fetch(`${server.url}/api/health`)
-  expect(await publicResponse.json()).toEqual({ ok: true })
+  const publicBody = (await publicResponse.json()) as {
+    ok: boolean
+    auth: { required: boolean }
+  }
+  // BAZ-055: public posture is intentional and secret-free.
+  expect(publicBody).toMatchObject({ ok: true, auth: { required: true } })
   expect(await fetch(`${server.url}/api/health/details`)).toHaveProperty('status', 401)
   const detailed = await fetch(`${server.url}/api/health/details`, {
     headers: { authorization: `Bearer ${server.token}` },

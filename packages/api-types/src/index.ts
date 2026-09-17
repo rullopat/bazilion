@@ -8,6 +8,7 @@ export type {
 } from './repository-context.ts'
 
 import type { ConversationSelection } from './conversations.ts'
+import type { Timestamp } from './entities.ts'
 
 export type {
   NotificationDeliveryState,
@@ -868,6 +869,50 @@ export interface AuthenticatedOwnerResponse {
 
 export interface PublicHealthResponse {
   ok: true
+  /**
+   * BAZ-055 slice 3: introspectable auth posture — kills the "server is up
+   * but the client can't connect" support class. No secrets, no user data.
+   */
+  auth: {
+    /** Always true: every surface requires a credential. */
+    required: true
+    /** Credential kinds the daemon currently accepts. */
+    credentialKinds: Array<'bootstrap' | 'device' | 'pairing-code'>
+    /** First-run setup gate state (409 source). */
+    setupComplete: boolean
+  }
+}
+
+// --- pairing setup codes (BAZ-055 slice 2) ---
+
+export interface CreatePairingCodeRequest {
+  /** Authorization scopes the minted device credential will carry. Defaults to all. */
+  scopes?: DeviceTokenScope[]
+}
+
+export interface PairingCodeResource {
+  id: string
+  scopes: DeviceTokenScope[]
+  createdAt: Timestamp
+  expiresAt: Timestamp
+  usedAt: Timestamp | null
+  usedByTokenId: string | null
+}
+
+export interface CreatePairingCodeResponse {
+  code: string
+  meta: PairingCodeResource
+  /** Full `bazilion-pair://` setup URL, ready to paste or render as QR. */
+  setupUrl: string
+}
+
+export interface PairingExchangeRequest {
+  code: string
+}
+
+export interface PairingExchangeResponse {
+  token: string
+  meta: WebToken
 }
 
 // --- health (doctor) ---

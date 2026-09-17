@@ -4,10 +4,16 @@
 
 import type {
   AuthenticatedOwnerResponse,
+  CreatePairingCodeRequest,
+  CreatePairingCodeResponse,
+  DeviceTokenScope,
   ListSessionsResponse,
+  PairingExchangeRequest,
+  PairingExchangeResponse,
   ProviderTestRequest,
   ProviderTestResponse,
 } from '@bazilion/api-types'
+import { ALL_DEVICE_TOKEN_SCOPES, DEVICE_TOKEN_SCOPES } from '@bazilion/api-types'
 import { Hono } from 'hono'
 import { deleteCookie, setCookie } from 'hono/cookie'
 import {
@@ -15,6 +21,7 @@ import {
   isSetupComplete,
   mergeSecretsIntoEnv,
   providerStateRepo,
+  webPairingTokenRepo,
   webSessionRepo,
   webTokenRepo,
 } from '../core/index.ts'
@@ -264,4 +271,65 @@ authRouter.delete('/sessions/:id', (c) => {
     return c.json({ error: 'session not found or already revoked' }, 409)
   }
   return c.body(null, 204)
+})
+
+// ─── Pairing setup codes (BAZ-055 slice 2) ──────────────────────────────
+
+/**
+ * Mint a pairing setup code. `admin`-gated (the scope table routes /api/pair
+ * there): the code carries the scopes its device credential will get.
+ * The setup URL is shown once, like the credential it eventually mints.
+ */
+authRouter.post('/pair/codes', async (c) => {
+  const body = (await c.req.json().catch(() => null)) as CreatePairingCodeRequest | null
+  let scopes: DeviceTokenScope[] = [...ALL_DEVICE_TOKEN_SCOPES]
+  if (body?.scopes !== undefined) {
+    if (
+      !Array.isArray(body.scopes) ||
+      body.scopes.length === 0 ||
+      body.scopes.some((s) => !(DEVICE_TOKEN_SCOPES as readonly string[]).includes(s))
+    ) {
+      return c.json(
+        { error: `scopes must be a non-empty subset of: ${DEVICE_TOKEN_SCOPES.join(', ')}` },
+        400,
+      )
+    }
+    scopes = [...new Set(body.scopes)]
+  }
+  const created = webPairingTokenRepo.create(getCtx().db, { scopes })
+  // The public origin (gateway HTTPS) is what remote devices reach; fall back
+  // to the request origin for loopback development.
+  const serverOrigin = process.env.BAZILION_PUBLIC_ORIGIN?.replace(/\/$/, '')
+  const setupUrl = `bazilion-pair://pair?server=${encodeURIComponent(serverOrigin ?? new URL(c.req.url).origin)}&code=${encodeURIComponent(created.code)}`
+  return c.json(
+    { code: created.code, meta: created.meta, setupUrl } satisfies CreatePairingCodeResponse,
+    201,
+  )
+})
+
+/**
+ * Exchange a setup code for a durable scoped device credential. Public path
+ * (like /api/login): the code itself is the secret. Single-use under a
+ * transaction — a code cannot mint two credentials.
+ */
+authRouter.post('/pair/exchange', async (c) => {
+  const body = (await c.req.json().catch(() => null)) as PairingExchangeRequest | null
+  if (!body || typeof body.code !== 'string' || !body.code.trim()) {
+    return c.json({ error: 'code is required' }, 400)
+  }
+  const { db } = getCtx()
+  const outcome = db.raw.transaction(() => {
+    const result = webPairingTokenRepo.exchange(db, body.code.trim())
+    if (!result.ok) return result
+    const minted = webTokenRepo.create(db, 'paired device', { scopes: result.scopes })
+    webPairingTokenRepo.completeExchange(db, body.code.trim(), minted.meta.id)
+    return { ok: true as const, minted }
+  })()
+  if (!outcome.ok) {
+    return c.json({ error: `pairing code ${outcome.reason}` }, 400)
+  }
+  return c.json(
+    { token: outcome.minted.token, meta: outcome.minted.meta } satisfies PairingExchangeResponse,
+    201,
+  )
 })

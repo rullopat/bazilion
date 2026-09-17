@@ -1,4 +1,6 @@
 import type {
+  CreatePairingCodeRequest,
+  CreatePairingCodeResponse,
   CreateTokenRequest,
   CreateTokenResponse,
   ListTokensResponse,
@@ -99,6 +101,47 @@ const createCmd = defineCommand({
   },
 })
 
+const pairCmd = defineCommand({
+  meta: {
+    name: 'pair',
+    description: 'Mint a one-paste pairing setup code for a new device (10 min, single use)',
+  },
+  args: {
+    scope: {
+      type: 'string',
+      description:
+        'Authorization scope for the minted device credential; repeat for more. Default: all scopes.',
+    },
+    server: {
+      type: 'string',
+      description:
+        'Server URL to embed in the setup code (default: detect LAN IP; pass the gateway HTTPS origin for remote devices)',
+    },
+  },
+  async run({ args, rawArgs }) {
+    const client = createClient()
+    const scopes = collectFlagValues(rawArgs, 'scope')
+    const res = await client.post<CreatePairingCodeResponse>('/api/pair/codes', {
+      ...(scopes.length > 0 ? { scopes: scopes as CreatePairingCodeRequest['scopes'] } : {}),
+    })
+    // Re-point the setup URL at the requested server origin if overridden.
+    let setupUrl = res.setupUrl
+    if (args.server) {
+      const serverUrl = resolveQrServer(args.server)
+      setupUrl = `bazilion-pair://pair?server=${encodeURIComponent(serverUrl)}&code=${encodeURIComponent(res.code)}`
+    }
+    console.log(`id:     ${res.meta.id}`)
+    console.log(`scopes: ${res.meta.scopes.join(' ')}`)
+    console.log(`expires: ${new Date(res.meta.expiresAt).toISOString()} (10 minutes, single use)`)
+    console.log('')
+    console.log(`setup URL (paste or scan on the new device):`)
+    console.log(setupUrl)
+    console.log('')
+    console.log('the code admits exactly one credential exchange; after that it is inert.')
+    qrcode.generate(setupUrl, { small: true }, (qr) => console.log(qr))
+  },
+})
+
 const listCmd = defineCommand({
   meta: { name: 'list', description: 'List web tokens' },
   args: {
@@ -143,6 +186,7 @@ export const tokenCommand = defineCommand({
   meta: { name: 'token', description: 'Manage web tokens for API/CLI clients' },
   subCommands: {
     create: createCmd,
+    pair: pairCmd,
     list: listCmd,
     revoke: revokeCmd,
     'show-local': showLocalCmd,

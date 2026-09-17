@@ -15,7 +15,7 @@ import { resolvePublicOrigin } from './public-origin.ts'
 import { scopeAllows } from './scopes.ts'
 
 /** Reachable without a token. The login route mints them; health is a probe. */
-const PUBLIC_PATHS = new Set(['/api/login', '/api/health'])
+const PUBLIC_PATHS = new Set(['/api/login', '/api/health', '/api/pair/exchange'])
 
 /**
  * Once authenticated, these paths still pass through the first-run gate so
