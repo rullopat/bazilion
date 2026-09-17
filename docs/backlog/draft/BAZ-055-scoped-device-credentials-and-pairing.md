@@ -68,6 +68,13 @@ is the don't-reinvent-the-wheel move; the mapping is nearly mechanical.
   token ≠ device credential, one-shot, expiring — the properties are already the
   product's stance, made paste-able/QR-able.
 
+### 2b. Auth-posture introspection (S, from Hermes)
+
+- The public health surface (`/api/health` or a sibling status endpoint) reports
+  whether the auth gate is engaged and which credential kinds are accepted — the
+  Hermes pattern that kills the "server is up but the client can't connect" support
+  class. No secrets, no user data: just posture booleans.
+
 ### 3. Capability-approval lifecycle (with BAZ-054, not here)
 
 - A paired device *declares* the scope surface it wants; requests beyond the minted
@@ -96,3 +103,5 @@ is the don't-reinvent-the-wheel move; the mapping is nearly mechanical.
 5. Scope enforcement is covered by route-level tests generated from the
    scope→route table itself (the table is the test fixture, so adding a route
    without a scope decision fails the build).
+6. The posture endpoint reports gate state correctly for loopback, gateway, and
+   misconfigured (gate-off-but-should-be-on) homes.

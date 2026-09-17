@@ -41,6 +41,10 @@ must not foreclose it.
 - The daemon remains local-first and private: no new always-on cloud dependency is
   introduced *for the core loop* (see push question below).
 - The web UI keeps full operator parity, so the apps are additive surfaces.
+- **Socket auth follows the Hermes pattern** (see the auth comparison): live
+  connections upgrade via **single-use tickets** minted after normal sign-in — no
+  long-lived credentials in socket URLs; peer-IP/Host-header guards are checked
+  independently of credentials; failures get distinct, documented close codes.
 
 ## Candidate capability slices (to be split into individual BAZs)
 

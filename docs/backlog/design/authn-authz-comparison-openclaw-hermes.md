@@ -85,31 +85,54 @@ device-identity/capability registries, protocol version constants) and
 `@openclaw/gateway-client` (reference connection implementation), pinned exactly,
 with documented wire-version rules.
 
-## Hermes: deliberately thin client authz, strong unattended-surface defaults
+## Hermes: thin client authz, but a disciplined local-gateway model
 
 Sources: `website/docs/user-guide/features/api-server.md`,
-`website/docs/user-guide/security.md`.
+`website/docs/user-guide/security.md`,
+`website/docs/user-guide/features/web-dashboard.md`,
+`website/docs/user-guide/desktop.md`, `apps/` layout.
 
-- **Client authn is one static bearer key** (`API_SERVER_KEY`) on the
-  OpenAI-compatible API server, localhost-bound by default, optional CORS. No
-  per-device identity, no scopes — Hermes is effectively single-user, and its client
-  story is "any OpenAI-compatible frontend."
-- The eight-layer security model is about *agent* security (command approval, file
-  safety, container isolation, MCP env filtering, context scanning, session
-  isolation, input sanitization) and *messaging ingress* authorization (allowlists,
-  DM pairing) — not operator-client authz.
-- **The adoptable bit — deny-by-default for unattended surfaces:** approval behavior
-  is configurable per context (`cron_mode`, `single_query_mode`, `unattended_mode`),
-  and all unattended contexts **default to `deny`** — an unattended surface that
-  hits a dangerous command blocks instantly instead of waiting out an approval
-  timeout. Clean, explicit treatment of "no human is here to answer."
+- **Two client stories, not one.** The OpenAI-compatible API server is the thin one:
+  a single static bearer key (`API_SERVER_KEY`), localhost-bound, optional CORS, no
+  per-device identity or scopes. But the **web dashboard + desktop app path is more
+  disciplined** (the desktop app is Electron around the same agent core, and can
+  attach to a *remote* backend):
+  - **Fail-closed auth gate:** when the dashboard binds a non-loopback address, an
+    auth provider must be configured or **the dashboard fails closed at startup**.
+  - **Single-use WebSocket tickets:** the desktop app signs in once (bundled
+    username/password provider, no OAuth IdP), then upgrades `/api/ws` via a
+    **one-time ticket** — no long-lived credential ever rides the socket. Distinct
+    close codes (4401 ticket-auth failure, 4403 request-guard rejection) make support
+    triage deterministic.
+  - **Bind-host guards:** loopback binds reject non-loopback peers at the socket
+    layer regardless of credentials; a **DNS-rebinding guard** requires the Host
+    header to match the bound host. Credential correctness and network-position
+    correctness are checked independently.
+  - **Introspectable auth posture:** `/api/status` publicly reports
+    `auth_required` and the provider list, precisely because "backend says ready but
+    chat never works" is their most common support report.
+- **Layered ingress authorization (messaging):** per-platform allowlists → DM pairing
+  (unknown users get a one-time code the owner approves via CLI) → global allowlist →
+  documented check order ending in **default deny**, with a startup warning naming
+  the grant source when open access is configured.
+- **Credential vault** (agent-side, not client authz): site logins are encrypted on
+  device, injected into pages, never shown to the model, and registered with a
+  redactor so page reads cannot echo them back. Noted for completeness — a product
+  direction, not an adoptable mechanism.
+
+**Correction to an earlier draft of this page:** the first pass summarized Hermes as
+"one static bearer key." That is true only of the API-server surface; the
+dashboard/desktop surface carries the fail-closed gate, ticket pattern, and bind
+guards above.
 
 ## Verdict
 
 | Aspect | OpenClaw | Hermes | Bazilion today |
 |---|---|---|---|
-| Client identity | Per-device record + signing keys | None (one shared key) | Named device credentials, no signing |
-| Authorization | Scoped per device (method-level) | None | All-or-nothing |
+| Client identity | Per-device record + signing keys | Shared username/password (desktop sign-in) | Named device credentials, no signing |
+| Authorization | Scoped per device (method-level) | None (gate is binary) | All-or-nothing |
+| Remote-client gate | Trusted-proxy mode / Tailscale | Fail-closed non-loopback gate + single-use WS tickets + Host/peer guards | Gateway device credentials + loopback-only Tailscale preflight |
+| Diagnosability | `models status --probe`, scope reference | `/api/status` auth posture + close-code triage | Health endpoint only |
 | Companion pairing | Two layers (connect / capability), pending-approval lifecycle | — | Token mint + show-once |
 | Onboarding UX | One-paste setup code, 10-min single-use token, TLS pin | — | Manual token copy, shown once |
 | Unattended defaults | Per-surface command policy | Deny-by-default per context | Fail-closed non-interactive turns (BAZ-006) |
@@ -140,7 +163,14 @@ model.
    has no effective commands" is the invariant to copy verbatim.
 4. **Unattended deny-by-default** — Bazilion already fails closed on non-interactive
    turns (BAZ-006); worth an audit line in BAZ-051 rather than new work.
-5. **Trusted-proxy mode** — not adopted. It exists for shared/Kubernetes-style
+5. **Auth-posture introspection** (from Hermes; cheap): the public health/status
+   surface reports whether the auth gate is engaged and which credential kinds are
+   valid — kills the whole "ready but the client can't connect" support class.
+6. **Single-use socket tickets + bind guards** (from Hermes; with BAZ-054): when a
+   native app or WS surface arrives, upgrade sockets via one-time tickets, keep
+   peer-IP/Host-header guards independent of credential checks, and give failures
+   distinct, documented close codes.
+7. **Trusted-proxy mode** — not adopted. It exists for shared/Kubernetes-style
    deployments; Bazilion's single-operator, Tailscale-first stance makes it scope
    creep. Revisit only if multi-operator becomes real.
 6. **Published protocol package** — with BAZ-054, not before.
