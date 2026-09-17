@@ -55,3 +55,30 @@ and the app is ~1,600 self-contained lines.
 3. Telegram pairing verified end-to-end from the web UI on a fresh home.
 4. Responsive web UI reaches every operator action from a phone browser over the
    gateway (evidence screenshots, per the BAZ-033 viewport pattern).
+
+## As-built
+
+**Done, on `feat/beta-schema-contract` (PR #54), 2026-09-17.**
+
+- `apps/mobile/` deleted (Expo app was ~1,600 lines, 4 screens, version 0.0.0);
+  `pnpm-lock.yaml` regenerated (−4,204 lines); `.changeset/config.json` no longer
+  ignores `@bazilion/mobile`.
+- Verified zero remaining references: `apps/mobile` / `@bazilion/mobile` appear nowhere
+  in source, workflows, scripts, or config (backlog history excepted).
+- **Gateway untouched, as scoped:** the BAZ-028 private gateway, named device
+  credentials, and the "native clients always require a device credential" auth path
+  remain — mobile browsers today, BAZ-054's native apps later.
+- **Pairing unaffected:** pairing is daemon-side logic (covered by
+  `telegram-pairing.test.ts`, `telegram-routing`, `telegram-queue-binding` tests) with
+  the web route `routes/config/integrations/telegram.tsx` as the operator surface; the
+  app's `pair.tsx` screen was an alternative native entry point that nothing depended
+  on.
+- Mobile story is now: phone browser → gateway HTTPS origin → named device credential,
+  identical to desktop. Responsive-web evidence remains covered by the
+  `check-*-ui.mjs` mobile-viewport screenshot scripts in CI.
+- Verification: full suite 1,786 passed / 0 failed (the mobile test files' cases gone);
+  typecheck clean; lint clean on touched files (76 pre-existing warnings unchanged,
+  tracked on main).
+- Remaining from the Tests section: a one-time manual pass of Telegram pairing and the
+  phone-browser gateway flow on a real device, folded into the beta acceptance run
+  (BAZ-050's audit covers the responsive-web assertions systematically).
