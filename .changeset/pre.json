@@ -1,0 +1,12 @@
+{
+  "mode": "pre",
+  "tag": "beta",
+  "initialVersions": {
+    "bazilion": "0.20.0",
+    "@bazilion/daemon": "0.0.0",
+    "@bazilion/web": "0.0.0",
+    "@bazilion/api-types": "0.20.0",
+    "@bazilion/client": "0.20.0"
+  },
+  "changesets": []
+}
