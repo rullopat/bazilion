@@ -74,19 +74,16 @@ extension loading remain separate, uncommitted scope.
 ## Todo (0)
 
 Nothing refined and waiting. Capture the next story in `draft/` and refine it here.
-| [BAZ-055](todo/BAZ-055-scoped-device-credentials-and-pairing.md) | Scoped device credentials and one-paste pairing (OpenClaw's authz model, adapted) | L (M + S + S) | Refined from the [auth comparison](design/authn-authz-comparison-openclaw-hermes.md): per-device scopes (`read/write/approvals/admin`) with a fixture-generated route test table, `bazilion-pair://` setup codes (10-min single-use token + TLS pin), Hermes-style auth-posture introspection. The `0002` scopes migration doubles as the first live test of the BAZ-047 contract. Capability-approval lifecycle moves with BAZ-054. |
 
-## In Progress (1)
+## In Progress (0)
 
-| ID | Title | Size | Notes |
-|----|-------|------|-------|
-| [BAZ-055](in_progress/BAZ-055-scoped-device-credentials-and-pairing.md) | Scoped device credentials and one-paste pairing (OpenClaw's authz model, adapted) | L (M + S + S) | Refined from the [auth comparison](design/authn-authz-comparison-openclaw-hermes.md): per-device scopes (`read/write/approvals/admin`) with a fixture-generated route test table, `bazilion-pair://` setup codes (10-min single-use token + TLS pin), Hermes-style auth-posture introspection. The `0002` scopes migration doubles as the first live test of the BAZ-047 contract. Slice 1 in flight on `feat/scoped-device-credentials` (PR #57). |
+Nothing in flight. Move an item here from `todo/` when implementation starts.
 
+## Done (45)
 
-| ID | Title | Size | Notes |
-|----|-------|------|-------|
-
-## Done (44)
+| ID | Title | Size | Shipped | Release | Notes |
+|----|-------|------|---------|---------|-------|
+| [BAZ-055](done/BAZ-055-scoped-device-credentials-and-pairing.md) | Scoped device credentials and one-paste pairing (OpenClaw's authz model, adapted) | L (M + S + S) | 2026-09-17 | — | Per-device scopes (`read/write/approvals/admin`) with fixture-generated route tests; `0002` scopes migration (first live exercise of the BAZ-047 contract); backup validator moved onto the canonical chain; `bazilion-pair://` single-use setup codes; Hermes-style auth-posture probe. PRs #57, #58. Unreleased. |
 
 | ID | Title | Size | Shipped | Release | Notes |
 | [BAZ-047](done/BAZ-047-stable-schema-contract.md) | Stable schema contract and in-place upgrades for beta | L (1-2 weeks) | 2026-09-17 | — | Forward-only prefix migrations with receipts, `PRAGMA user_version` refuse-newer, `VACUUM INTO` pre-upgrade snapshots, CI release-upgrade matrix verified against real prior releases (v0.20.0 upgrades, v0.19.0 refused). PR #54. Unreleased. |
