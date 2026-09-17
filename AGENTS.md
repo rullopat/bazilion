@@ -206,6 +206,21 @@ API in `apps/daemon/src/core/`: `openSecrets(db, password)` and `openConfig(db)`
 
 These are shipped and load-bearing; none of them is a proposal.
 
+- **BAZ-046: publication to a code host is an operator decision with no model in the path.** A reviewed
+  packet's revision is committed to a new branch and opened as a pull request by the daemon itself — there is
+  no publication worker, tool or capability, because publishing is deterministic and a capability an Agent
+  must be denied is weaker than no path at all. Content is read from the working tree **only while every
+  path's digest still matches the capture**, and a mismatch refuses rather than substituting bytes. A refusal
+  (`refused`) means nothing was sent — no commit, no push, no pull request — and the schema enforces that only
+  a refusal carries a reason. `published` means the branch exists on the host, and a pull request is recorded
+  only when the host returned one. `uncertain` is an interrupted attempt: a push may have landed, so it is
+  never replayed. No force push, ever; a head branch that already exists on the remote is refused before the
+  commit is built; protected branches are never the head; commits are unsigned and the schema refuses to store
+  anything else; the credential travels only as an environment `http.extraheader`, never as an argument or a
+  URL; and the remote comes from configuration, never from the Team repository's own `origin`. A
+  `PUBLICATION_HOST=local` bare-repository adapter exists so a publication can be observed end to end without
+  a network. See `docs/publication.md`.
+
 - **BAZ-034: durable Agent results.** Explicit `deliver_file` calls await turn-bound daemon IPC
   publication into `agent_results` in `Paths.db`. Bytes, SHA-256 and source provenance commit
   together; canonical Pi tool-result details retain the opaque reference. Private receipts become

@@ -440,6 +440,14 @@ export function recordReviewConclusion(
     )
     .get(input.packetId, input.reviewerKind, input.reviewerAgentId ?? null)
   if (!row) throw new ReviewPacketError('packet_not_found', 'the conclusion could not be read back')
+  // A packet with a conclusion *is* reviewed, whoever recorded it.
+  //
+  // The reviewer's path already moved the packet when its attempt settled, and the operator's path did
+  // not: a concluded operator packet stayed `open` forever, so the panel showed `reviewed: true` in its
+  // facts while the state said nothing had been reviewed — and a publication of it was refused as
+  // "not reviewed" (found by BAZ-046, which is the first thing that consumes this state).
+  const packet = getReviewPacket(db, input.packetId)
+  if (packet?.state === 'open') setReviewPacketState(db, input.packetId, 'reviewed')
   return toConclusion(row)
 }
 

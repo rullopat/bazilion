@@ -1,7 +1,8 @@
 ---
 id: BAZ-046
 title: Publish an accepted change to a code host
-status: draft
+status: in_progress
+refined: 2026-09-16
 size: L
 created: 2026-09-16
 priority: high
@@ -56,27 +57,37 @@ that would put bytes on another machine as a consequence of work rather than as 
 - **Fail closed everywhere**: no credential, an unsupported host, a stale revision, a protected branch, or a
   signing requirement that cannot be met refuses the publication with a reason and publishes nothing.
 
-## Open questions (operator decisions)
+## Decisions (2026-09-16, before refinement)
 
-1. **Which hosts?** GitHub only (it is what the repository and the release workflow use), or a host-agnostic
-   interface with GitHub as the first implementation? My recommendation: GitHub first, behind a narrow
-   interface, because a generic "any Git host" abstraction with one implementation is the kind of unexercised
-   seam this project's reviews keep finding.
-2. **What is "acceptance"?** A new operator action on a reviewed packet (`publish`), or a state change
-   (`reported.committed` set by the operator)? My recommendation: an explicit action, because the reported
-   states exist to record what the operator did *elsewhere* and should not become a control surface.
-3. **Is a push ever automatic?** The alternative — an agent that pushed after its own conclusion — would
-   contradict every story so far. My recommendation: never.
-4. **Protected branches and force-push.** No force-push, ever? My recommendation: refuse to publish to a
-   branch whose remote would require a force update, and never force-push.
-5. **Signing.** Does a publication need signed commits? If yes, what supplies the key, and what happens when
-   it is unavailable (refuse, or publish unsigned and say so)? My recommendation: publish unsigned and record
-   that fact, unless the operator says a signature is required, in which case refuse without one.
-6. **Multiple remotes and non-GitHub origins.** Refuse, or support any reachable remote with no PR? My
-   recommendation: refuse an origin that is not a configured host, and say which one was found.
-7. **What may an Agent learn?** The publication outcome (branch, SHA, PR URL) — and nothing about the
-   credential. My recommendation: yes, exactly that, delivered as a result message through the canonical
-   messenger like BAZ-044's.
+1. **Hosts: GitHub first, behind a narrow interface.** One `CodeHost` with one operation — open a pull
+   request — and two implementations: GitHub (REST, credential from the `secrets` table) and a local
+   adapter used only by tests. A generic "any Git host" interface with one implementation is the
+   unexercised seam this project's reviews keep finding, so the interface exists only to make the local
+   bare repository usable as a stand-in, not to promise other hosts.
+2. **Acceptance is an explicit operator action**, not a reported-state edit. `POST /api/teams/:id/publications`
+   is the decision; the `reported` states keep recording what the operator did *elsewhere* and do not become a
+   control surface.
+3. **Never automatic.** An Agent cannot publish, and no conclusion, verification result or approval causes a
+   publication. The operator's action is the only trigger.
+4. **Never a force push.** A source that would require one, or a non-fast-forward update of the head branch
+   (including a head branch that already exists on the remote), refuses and says so.
+5. **Unsigned, and said out loud.** Publication commits are unsigned and the record states `signed: false`. No
+   code path may claim a signature. If signed commits are required, the operator says so first — with a key
+   source — and until then the truth is recorded rather than manufactured.
+6. **An origin that is not the configured host is refused, naming the origin.** No inference from a remote URL,
+   and no attempting anyway because the credential happens to be there.
+7. **An Agent learns the outcome and nothing else**: branch, commit SHA, pull-request URL or the refusal
+   reason — delivered through the canonical messenger. Never the credential, never the remote URL, never
+   anything about the host's API.
+
+### Design decision that overrides the draft
+
+The draft imagined a **publication turn** — a restricted worker, dispatched by the daemon, holding a closed
+capability. On reflection that is wrong, and building it would have added a capability for no reason: nothing
+about publishing is a judgement call. There is no content to read, no finding to record, no command to choose.
+Publication is a **deterministic daemon-side operation** triggered by an operator action, like the verification
+executor. So there is no publication worker, no publication tool and no new capability to leak — the security
+property is that no model is ever in this path, which is stronger than a capability a model must be refused.
 
 ## Out of scope
 
@@ -95,3 +106,19 @@ that would put bytes on another machine as a consequence of work rather than as 
 - The recorded outcome comes from the host's response, and a claim the host did not make is never recorded.
 - A browser observation of the operator's decision surface, so a stopped publication is visible rather than
   silent.
+
+## As built (2026-09-16)
+
+Implemented and observed; evidence in [BAZ-046-acceptance.md](BAZ-046-acceptance.md). Released in
+**v0.20.0**. Three things are not what the draft assumed:
+
+1. **No publication turn, no publication capability.** The draft's restricted worker would have added a
+   capability for a deterministic operation. The daemon does the work in-process, so the property is that no
+   model is in this path at all.
+2. **A `local` host adapter is a second real implementation, not a test fake.** It makes a publication
+   observable against a bare repository — a genuine commit, branch and ref, with no network and no
+   credential — and it says it opens no pull request instead of inventing a URL.
+3. **Building it surfaced a pre-existing defect in BAZ-043**: an operator conclusion recorded a verdict and
+   left the packet `open`, while the report's own `facts.reviewed` already derived from the conclusions. One
+   report, two answers. Fixed at the source; the trade-off (an operator conclusion settles the packet) is
+   recorded in the acceptance record.

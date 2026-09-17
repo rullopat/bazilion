@@ -231,8 +231,13 @@ test('a waiting packet can be cancelled, and a reviewed one cannot be rewritten'
   // Nothing was running, so nothing was aborted — and the two cannot disagree because one owner decides.
   expect(body.aborted).toBe(false)
 
-  // An operator's own conclusion does not settle the packet: only a completed reviewer attempt makes it
-  // `reviewed`, because the review state machine owns that transition.
+  // BAZ-046 correction: whatever records the conclusion settles the packet.
+  //
+  // This used to assert the opposite — that only a completed reviewer attempt made a packet `reviewed` —
+  // while the *report* derived `facts.reviewed` from the conclusions, so the same report said `open` and
+  // `reviewed: true` at once. An operator could conclude a packet and nothing downstream would accept it,
+  // which is how the disagreement was found: BAZ-046 refuses to publish a packet that is not reviewed, and
+  // an operator-concluded packet was never reviewed. One rule now: a conclusion means reviewed.
   const reviewed = (await (await create(snapshot)).json()) as ReviewPacketResponse
   const reviewedId = reviewed.report.packet.id
   await teamsRouter.request(`/${env.teamId}/reviews/${reviewedId}/conclusion`, {
@@ -240,16 +245,14 @@ test('a waiting packet can be cancelled, and a reviewed one cannot be rewritten'
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ conclusion: 'commented' }),
   })
-  expect(
-    (
-      (await (
-        await teamsRouter.request(`/${env.teamId}/reviews/${reviewedId}`)
-      ).json()) as ReviewPacketResponse
-    ).report.packet.state,
-  ).toBe('open')
+  const concluded = (await (
+    await teamsRouter.request(`/${env.teamId}/reviews/${reviewedId}`)
+  ).json()) as ReviewPacketResponse
+  expect(concluded.report.packet.state).toBe('reviewed')
+  // State and facts agree, which is the point.
+  expect(concluded.report.facts.reviewed).toBe(true)
 
   // A settled review keeps what the reviewer found: cancelling it is refused rather than rewriting it.
-  setReviewPacketState(env.db, reviewedId, 'reviewed')
   const refused = await teamsRouter.request(`/${env.teamId}/reviews/${reviewedId}/cancel`, {
     method: 'POST',
   })

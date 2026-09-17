@@ -1154,6 +1154,20 @@ export type {
 } from './git-review.ts'
 export { REVIEW_LIMITS } from './git-review.ts'
 export type {
+  CreatePublicationRequest,
+  Publication,
+  PublicationBlockedResponse,
+  PublicationFacts,
+  PublicationHost,
+  PublicationListResponse,
+  PublicationRefusalReason,
+  PublicationReport,
+  PublicationRequest,
+  PublicationResponse,
+  PublicationState,
+} from './publication.ts'
+export { PUBLICATION_LIMITS } from './publication.ts'
+export type {
   AddReviewFindingRequest,
   CreateReviewPacketRequest,
   RecordReviewConclusionRequest,

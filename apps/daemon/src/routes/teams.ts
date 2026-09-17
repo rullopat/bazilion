@@ -3,7 +3,7 @@
 // `<team.path>/memory/` and is shared by every agent in the team.
 
 import { join } from 'node:path'
-import type { CreateVerificationRequest } from '@bazilion/api-types'
+import type { CreateVerificationRequest, Publication as WirePublication } from '@bazilion/api-types'
 import {
   type CodingCommandLogView,
   REVIEW_LIMITS,
@@ -36,6 +36,8 @@ import {
 } from '../core/repos/coding-command-logs.ts'
 import { getCodingCommand } from '../core/repos/coding-commands.ts'
 import { CodingEnvironmentRevisionError } from '../core/repos/coding-environment.ts'
+import type { PublicationRecord } from '../core/repos/publications.ts'
+import { getPublication, listPublications, PublicationError } from '../core/repos/publications.ts'
 import {
   addReviewFinding,
   getTeamReviewPacket,
@@ -80,6 +82,9 @@ import {
   requireTeam,
 } from '../lib/git-review/service.ts'
 import { sanitizeNativeModuleError } from '../lib/native-module-error.ts'
+import { capturePublication } from '../lib/publication/capture.ts'
+import { executePublication } from '../lib/publication/execute.ts'
+import { buildPublicationReport } from '../lib/publication/report.ts'
 import { resolveRepositoryContext } from '../lib/repository-context/index.ts'
 import {
   captureReviewPacket,
@@ -1326,4 +1331,111 @@ teamsRouter.post('/:id/verifications/:requestId/cancel', async (c) => {
 
 async function report(db: BazilionDb, paths: Paths, record: VerificationRequestRecord) {
   return readVerificationReport(db, paths, record.teamId, record.id)
+}
+
+// ---------------------------------------------------------------------------------------------
+// Publication to a code host (BAZ-046)
+//
+// One operator decision, one daemon-side operation, one recorded outcome. There is no publication turn
+// and no publication capability: nothing here is a judgement call, so no Agent is involved at all. The
+// daemon does the Git work itself, in-process, and records only what the host answered.
+// ---------------------------------------------------------------------------------------------
+
+teamsRouter.get('/:id/publications', async (c) => {
+  const { db, paths } = getCtx()
+  c.header('Cache-Control', 'no-store')
+  try {
+    const team = requireTeam(db, paths, c.req.param('id'))
+    return c.json({ publications: listPublications(db, team.id).map(toWirePublication) })
+  } catch (error) {
+    return reviewFailure(c, error)
+  }
+})
+
+teamsRouter.post('/:id/publications', async (c) => {
+  const { db, paths, authToken } = getCtx()
+  c.header('Cache-Control', 'no-store')
+  const body: unknown = await c.req.json().catch(() => null)
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return c.json({ error: 'Invalid publication request' }, 400)
+  }
+  const input = body as { packetId?: unknown; headBranch?: unknown; commitMessage?: unknown }
+  if (typeof input.packetId !== 'string') {
+    return c.json({ error: 'Invalid publication request' }, 400)
+  }
+  if (input.headBranch !== undefined && typeof input.headBranch !== 'string') {
+    return c.json({ error: 'Invalid publication request' }, 400)
+  }
+  if (input.commitMessage !== undefined && typeof input.commitMessage !== 'string') {
+    return c.json({ error: 'Invalid publication request' }, 400)
+  }
+  try {
+    const team = requireTeam(db, paths, c.req.param('id'))
+    const captured = await capturePublication(db, paths, authToken, {
+      teamId: team.id,
+      packetId: input.packetId,
+      ...(typeof input.headBranch === 'string' ? { headBranch: input.headBranch } : {}),
+      ...(typeof input.commitMessage === 'string' ? { commitMessage: input.commitMessage } : {}),
+    })
+    if (captured.kind === 'refused') {
+      // A refusal is a result with a reason: it says which input could not be honoured, and it sent nothing.
+      return c.json({ blocked: { reason: captured.reason, detail: captured.detail } }, 409)
+    }
+    // The decision is recorded before the attempt, so an interrupted attempt is visible as such.
+    await executePublication(db, paths, authToken, captured.publication.id)
+    const settled = getPublication(db, captured.publication.id)
+    if (!settled) return c.json({ error: 'Publication not found' }, 404)
+    return c.json({ report: buildPublicationReport(settled) }, 201)
+  } catch (error) {
+    if (error instanceof PublicationError) {
+      return c.json({ blocked: { reason: error.code, detail: error.message } }, 409)
+    }
+    return reviewFailure(c, error)
+  }
+})
+
+teamsRouter.get('/:id/publications/:publicationId', async (c) => {
+  const { db, paths } = getCtx()
+  c.header('Cache-Control', 'no-store')
+  try {
+    const team = requireTeam(db, paths, c.req.param('id'))
+    const publication = getPublication(db, c.req.param('publicationId'))
+    if (!publication || publication.teamId !== team.id) {
+      return c.json({ error: 'Publication not found' }, 404)
+    }
+    return c.json({ report: buildPublicationReport(publication) })
+  } catch (error) {
+    return reviewFailure(c, error)
+  }
+})
+
+/**
+ * The wire form, field by field.
+ *
+ * Written out rather than cast, because a cast is how an internal field escapes: the first version of this
+ * function returned the record cast to the wire type, and the notification target went out with it.
+ */
+function toWirePublication(record: PublicationRecord): WirePublication {
+  return {
+    id: record.id,
+    teamId: record.teamId,
+    packetId: record.packetId,
+    snapshotId: record.snapshotId,
+    host: record.host,
+    repository: record.repository,
+    baseBranch: record.baseBranch,
+    headBranch: record.headBranch,
+    baseOid: record.baseOid,
+    commitMessage: record.commitMessage,
+    state: record.state,
+    signed: record.signed,
+    commitOid: record.commitOid,
+    pullRequestNumber: record.pullRequestNumber,
+    pullRequestUrl: record.pullRequestUrl,
+    refusalReason: record.refusalReason,
+    refusalDetail: record.refusalDetail,
+    error: record.error,
+    createdAt: record.createdAt,
+    finishedAt: record.finishedAt,
+  }
 }

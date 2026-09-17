@@ -184,6 +184,28 @@ export function createClient(cfg: ClientConfig) {
       }
     },
     /**
+     * Publications to a code host (BAZ-046).
+     *
+     * One operator decision about a reviewed revision. Nothing here can merge, deploy, force a push or
+     * name a remote: the request has a packet, an optional branch and an optional commit message, and the
+     * rest is configuration the operator owns.
+     */
+    publications: (teamId: string) => {
+      const base = `/api/teams/${encodeURIComponent(teamId)}/publications`
+      return {
+        list: (): Promise<import('@bazilion/api-types').PublicationListResponse> =>
+          request('GET', base),
+        show: (publicationId: string): Promise<import('@bazilion/api-types').PublicationResponse> =>
+          request('GET', `${base}/${encodeURIComponent(publicationId)}`),
+        create: (
+          input: import('@bazilion/api-types').CreatePublicationRequest,
+        ): Promise<
+          | import('@bazilion/api-types').PublicationResponse
+          | import('@bazilion/api-types').PublicationBlockedResponse
+        > => request('POST', base, input),
+      }
+    },
+    /**
      * Revision-bound review packets (BAZ-043).
      *
      * A packet binds one captured revision. Findings are append-only, and resolving one requires an

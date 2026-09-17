@@ -602,6 +602,45 @@ export const SERVICES: ServiceDef[] = [
       },
     ],
   },
+  {
+    id: 'publication',
+    displayName: 'Code host publication',
+    category: 'integration',
+    hint: 'Where an accepted change is committed and opened as a pull request',
+    fields: [
+      {
+        envVar: 'PUBLICATION_HOST',
+        kind: 'config',
+        label: 'Host',
+        placeholder: 'github',
+        description:
+          'The only supported host today. "local" points at a bare repository path and opens no pull request.',
+      },
+      {
+        envVar: 'PUBLICATION_REPOSITORY',
+        kind: 'config',
+        label: 'Repository',
+        placeholder: 'owner/name',
+        description:
+          "For github: owner/name. For local: an absolute path to a bare repository. The Team repository's own origin is never used.",
+      },
+      {
+        envVar: 'PUBLICATION_BASE_BRANCH',
+        kind: 'config',
+        label: 'Base branch',
+        placeholder: 'main',
+        description: 'The branch a publication is based on and its pull request targets.',
+      },
+      {
+        envVar: 'GITHUB_TOKEN',
+        kind: 'secret',
+        label: 'GitHub token',
+        placeholder: 'ghp_...',
+        description:
+          'Needs contents:write and pull_requests:write on that repository. Used only for one push and one pull request.',
+      },
+    ],
+  },
 ]
 
 /**

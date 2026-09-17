@@ -41,6 +41,7 @@ import {
   triggerDispatchRepo,
   triggerRepo,
 } from '../core/index.ts'
+import { recoverExpiredPublications } from '../core/repos/publications.ts'
 import { isActiveAgent, registerAgent, unregisterAgent } from './agent-cancel.ts'
 import { acquireAgentLifecycleLease } from './agent-lifecycle-lease.ts'
 import { selectCausalParent } from './agent-loop-guard.ts'
@@ -531,6 +532,9 @@ async function tick(): Promise<void> {
     // dedup-gates and bails if the agent already has an active run.
     work.push(fireInboxWake(agentId))
   }
+  // BAZ-046: a publication whose publishing process died is settled as uncertain on the next tick, so a
+  // stuck attempt is visible in the operator's list rather than looking like work still in progress.
+  recoverExpiredPublications(ctx.db, now)
   work.push(dispatchClaimableReviews(now))
   // BAZ-044: specialist verification requests are dispatched by their own state machine, never by the
   // inbox path — an eligible pending request is claimed under its own lease and admitted with the

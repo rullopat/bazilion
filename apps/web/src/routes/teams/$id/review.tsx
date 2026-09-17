@@ -8,6 +8,7 @@ import { useState } from 'react'
 import { Button } from '../../../components/Button'
 import { PageShell } from '../../../components/Page'
 import { TeamTabs } from '../../../components/TeamTabs'
+import { PublicationPanel } from '../../../components/PublicationPanel'
 import { ReviewPacketPanel } from '../../../components/ReviewPacketPanel'
 import { fetchTeamReviewPackets } from '../../../lib/review-packets'
 import {
@@ -379,7 +380,11 @@ function ReviewPage() {
       </section>
 
       {loaded.packets ? (
-        <ReviewPacketPanel teamId={teamId} view={loaded.packets} />
+        <>
+          <ReviewPacketPanel teamId={teamId} view={loaded.packets} />
+          {/* A publication is a decision about a reviewed packet, so it lives beside the packets. */}
+          <PublicationPanel teamId={teamId} />
+        </>
       ) : null}
     </PageShell>
   )

@@ -1052,3 +1052,49 @@ CREATE TABLE verification_check_outcomes (
   CHECK (exit_code IS NULL OR state IN ('succeeded', 'failed'))
 );
 CREATE INDEX verification_check_outcomes_command ON verification_check_outcomes(command_id);
+
+-- BAZ-046: one operator-approved publication of a reviewed revision to a code host.
+--
+-- One row is one decision, one attempt and one observed outcome. There is no workflow: a publication
+-- either published, was refused before anything was sent, or ended in a state that says honestly what is
+-- and is not known. Retrying a refused publication is a new row, so the earlier refusal stays visible.
+CREATE TABLE publications (
+  id TEXT PRIMARY KEY,
+  team_id TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  packet_id TEXT NOT NULL REFERENCES review_packets(id) ON DELETE CASCADE,
+  snapshot_id TEXT NOT NULL,
+  -- The host adapter that was used, and the repository as the operator configured it.
+  host TEXT NOT NULL CHECK (host IN ('github', 'local')),
+  repository TEXT NOT NULL CHECK (length(repository) BETWEEN 1 AND 200),
+  base_branch TEXT NOT NULL CHECK (length(base_branch) BETWEEN 1 AND 200),
+  head_branch TEXT NOT NULL CHECK (length(head_branch) BETWEEN 1 AND 200),
+  base_oid TEXT NOT NULL CHECK (length(base_oid) = 40),
+  commit_message TEXT NOT NULL CHECK (length(commit_message) BETWEEN 1 AND 2000),
+  -- The Agent that asked for the review, if one did: it is told the outcome and nothing else.
+  notify_agent_id TEXT REFERENCES agents(id) ON DELETE SET NULL,
+  state TEXT NOT NULL CHECK (state IN (
+    'pending', 'publishing', 'published', 'refused', 'failed', 'uncertain'
+  )),
+  refusal_reason TEXT CHECK (refusal_reason IS NULL OR length(refusal_reason) <= 64),
+  refusal_detail TEXT CHECK (refusal_detail IS NULL OR length(refusal_detail) <= 400),
+  commit_oid TEXT CHECK (commit_oid IS NULL OR length(commit_oid) = 40),
+  -- Always 0 today: publication commits are unsigned and no code path may claim otherwise.
+  signed INTEGER NOT NULL DEFAULT 0 CHECK (signed = 0),
+  pull_request_number INTEGER,
+  pull_request_url TEXT CHECK (pull_request_url IS NULL OR length(pull_request_url) <= 400),
+  error TEXT CHECK (error IS NULL OR length(error) <= 400),
+  -- Lease ownership, so a restarted daemon can recover an interrupted attempt as unknown rather than
+  -- replaying a push that may already have landed.
+  claimed_by TEXT,
+  lease_expires_at INTEGER,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  finished_at INTEGER,
+  -- A refusal is the only state that carries no attempt: everything else was, or may have been, sent.
+  CHECK ((state = 'refused') = (refusal_reason IS NOT NULL)),
+  CHECK ((state IN ('published', 'refused', 'failed', 'uncertain')) = (finished_at IS NOT NULL))
+);
+CREATE INDEX publications_team_time ON publications(team_id, created_at, id);
+-- One successful publication per packet. A refused or failed one does not block a corrected retry.
+CREATE UNIQUE INDEX publications_packet_published ON publications(packet_id) WHERE state = 'published';
+CREATE INDEX publications_lease ON publications(state, lease_expires_at);

@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import type { DatabaseSync } from 'node:sqlite'
 
 const CANONICAL_MIGRATION = '0001_init'
-const CANONICAL_SCHEMA_HASH = 'da37324d58fa517941ec0557529d00a7a812413f9fda7e5d611287ad42b47595'
+const CANONICAL_SCHEMA_HASH = '469e6610e0f1030aa9e699bff1083a54305a77bc48f573eeae908d96a48d5396'
 
 // Explicit objects created by migrate.ts + 0001_init.sql. SQLite's implicit
 // auto-indexes have `sql = NULL` and are deliberately represented through the
@@ -132,6 +132,12 @@ export const CANONICAL_OBJECTS = [
   ['trigger', 'validate_team_policy_baseline_update'],
   ['trigger', 'validate_team_policy_edge_insert'],
   ['trigger', 'validate_team_template_edge_insert'],
+
+  // BAZ-046: one operator-approved publication of a reviewed revision to a code host.
+  ['table', 'publications'],
+  ['index', 'publications_team_time'],
+  ['index', 'publications_packet_published'],
+  ['index', 'publications_lease'],
 ] as const
 
 interface SchemaRow {

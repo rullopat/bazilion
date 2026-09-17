@@ -11,6 +11,7 @@ import {
 } from '../core/index.ts'
 import { interruptCodingCommands } from '../core/repos/coding-commands.ts'
 import { recoverInterrupted as recoverInterruptedNotifications } from '../core/repos/notifications.ts'
+import { recoverExpiredPublications } from '../core/repos/publications.ts'
 import { recoverInterrupted as recoverInterruptedQuestions } from '../core/repos/questions.ts'
 import { recoverInterruptedReviewAttempts } from '../core/repos/review-packets.ts'
 import {
@@ -114,6 +115,9 @@ function bootstrap(paths: Paths): { db: BazilionDb; authToken: string } {
     // BAZ-043: the same rule for a packet's reviewer turn — an interrupted attempt becomes uncertain and
     // is never replayed, and the packet returns to `open` for an explicit decision.
     recoverInterruptedReviewAttempts(db, Date.now())
+    // BAZ-046: an interrupted publication becomes `uncertain` rather than failed, because a push that was
+    // already in flight may have landed. Nothing here retries it: the operator checks the host first.
+    recoverExpiredPublications(db)
     reconcileApprovalHolds(db)
     recoverInterruptedResultDeliveries(db)
     reconcilePrivateResults(db)

@@ -407,3 +407,32 @@ test('the finding limit is explicit rather than silently dropping findings', () 
     env.cleanup()
   }
 })
+
+// BAZ-045/BAZ-046: a packet with a conclusion is reviewed, whichever entry point recorded it.
+// The reviewer's path moved the packet when its attempt settled; the operator's path recorded the
+// conclusion and left the packet `open`, so the panel's own facts said `reviewed: true` while the state
+// said nothing had been reviewed, and nothing downstream would accept it. Found by BAZ-046, the first
+// feature that consumes this state.
+test('a recorded conclusion moves an open packet to reviewed', () => {
+  const env = packetEnv()
+  try {
+    const created = packetFor(env, {
+      reviewerAgentId: null,
+      requesterKind: 'operator',
+      requesterAgentId: null,
+    })
+    expect(created.state).toBe('open')
+    recordReviewConclusion(env.db, {
+      packetId: created.id,
+      reviewerKind: 'operator',
+      conclusion: 'recommended',
+      note: 'the operator reviewed it',
+      snapshotId: created.snapshotId,
+    })
+    expect(getReviewPacket(env.db, created.id)?.state).toBe('reviewed')
+    // The conclusion is readable either way, so the state is not standing in for the record.
+    expect(listReviewConclusions(env.db, created.id)).toHaveLength(1)
+  } finally {
+    env.cleanup()
+  }
+})

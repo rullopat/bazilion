@@ -322,6 +322,122 @@ try {
   await page.goto(`${url}/teams/plain/verifications`)
   await page.getByText('No verification requests yet.').waitFor()
 
+  // ---------------------------------------------------------------------------------------------
+  // BAZ-046: the publication panel, observed. The host is a real bare repository, so the push is real.
+  // ---------------------------------------------------------------------------------------------
+  const bare = join(daemon.home, 'publication-host.git')
+  execFileSync('git', ['init', '--bare', '--quiet', bare], { encoding: 'utf8' })
+  await mustCli(['config', 'set', 'PUBLICATION_HOST', 'local'])
+  await mustCli(['config', 'set', 'PUBLICATION_REPOSITORY', bare])
+  await mustCli(['config', 'set', 'PUBLICATION_BASE_BRANCH', 'main'])
+  await mustCli(['config', 'set', 'GITHUB_TOKEN', 'ui-acceptance-credential'])
+
+  // A *fresh* reviewed revision: the packet observed above was captured before the tree moved, so its
+  // content is no longer reproducible and publishing it is refused — correctly. This one is captured,
+  // reviewed and concluded for the publication itself.
+  const freshSnapshot = await fetch(`${url}/api/teams/default/review/snapshots`, {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${token}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({}),
+  }).then((response) => response.json())
+  const freshSnapshotId = freshSnapshot?.reference?.id
+  assert(freshSnapshotId, 'no fresh snapshot for the publication')
+  const publishable = await mustCli([
+    'team',
+    'review',
+    'packet',
+    'create',
+    'default',
+    '--snapshot',
+    freshSnapshotId,
+    '--summary',
+    'publish this reviewed change',
+    '--json',
+  ])
+  const publishableId = publishable.stdout.match(/"id":\s*"([0-9a-f-]{36})"/)?.[1]
+  assert(publishableId, 'no publishable packet')
+  await mustCli([
+    'team',
+    'review',
+    'packet',
+    'conclude',
+    'default',
+    publishableId,
+    '--conclusion',
+    'recommended',
+    '--note',
+    'reviewed before publishing',
+  ])
+
+  await page.goto(`${url}/teams/default/review`)
+  const publications = page.getByRole('region', { name: 'Publications' })
+  await publications.getByRole('heading', { name: 'Publications' }).waitFor()
+  await publications.getByRole('button', { name: 'Load publications' }).click()
+  await publications.getByText('No publications yet.').waitFor()
+  await publications.getByLabel('Reviewed packet id').fill(publishableId)
+  await publications.getByRole('button', { name: 'Publish', exact: true }).click()
+  await publications.getByText('published', { exact: true }).waitFor({ timeout: 30_000 })
+  const publicationText = await publications.innerText()
+  await page.screenshot({ path: join(evidence, 'publication.png') })
+  writeFileSync(join(evidence, 'publication.txt'), publicationText)
+  // The outcome, and the three things the panel must never let an operator assume.
+  assert(publicationText.includes('published'), 'the outcome is not stated')
+  assert(
+    /commit [0-9a-f]{12} · unsigned/.test(publicationText),
+    `unsigned commit not stated: ${publicationText}`,
+  )
+  assert(
+    publicationText.includes('no pull request was opened'),
+    'a local host must not claim a pull request',
+  )
+  assert(
+    publicationText.includes('never merges'),
+    'the panel stopped saying it never merges or deploys',
+  )
+  assert(
+    publicationText.includes('Nothing was merged and nothing was deployed.'),
+    'the panel stopped stating that nothing was merged',
+  )
+  // The branch is real: it exists in the bare repository, at the commit the panel showed.
+  const shownCommit = publicationText.match(/commit ([0-9a-f]{12})/)?.[1]
+  assert(shownCommit, 'no commit shown')
+  const branches = execFileSync('git', ['-C', bare, 'for-each-ref', '--format=%(refname)'], {
+    encoding: 'utf8',
+  }).trim()
+  assert(branches.startsWith('refs/heads/bazilion/'), `no published branch: ${branches}`)
+
+  // A refusal is stated as a refusal, with the reason, and sends nothing.
+  await page.goto(`${url}/teams/default/review`)
+  const refusing = page.getByRole('region', { name: 'Publications' })
+  await refusing.getByRole('button', { name: 'Load publications' }).click()
+  // The packet that was reviewed *before* the tree moved: its content is gone, so this must refuse and
+  // say that nothing was sent rather than publishing bytes nobody reviewed.
+  await refusing.getByLabel('Reviewed packet id').fill(packetId)
+  await refusing.getByRole('button', { name: 'Publish', exact: true }).click()
+  await refusing.getByText(/Refused \(/).waitFor({ timeout: 30_000 })
+  const refusalText = await refusing.innerText()
+  writeFileSync(join(evidence, 'publication-refusal.txt'), refusalText)
+  assert(
+    refusalText.includes('nothing was sent'),
+    `a refusal must say nothing was sent: ${refusalText}`,
+  )
+  assert(
+    refusalText.includes('revision_not_reproducible'),
+    `the refusal must name why: ${refusalText}`,
+  )
+
+  // Narrow screen on the publication panel.
+  await page.setViewportSize({ width: 390, height: 844 })
+  await refusing.getByRole('heading', { name: 'Publications' }).waitFor()
+  assert(
+    await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    'Horizontal overflow on a narrow screen (publications)',
+  )
+  await page.setViewportSize({ width: 1280, height: 1000 })
+
   assert.deepEqual(errors, [])
   writeFileSync(
     join(evidence, 'result.json'),
@@ -339,6 +455,9 @@ try {
           'review packet panel: no horizontal overflow on a narrow screen',
           'verification panel: captured check, pending state, and both stated limits',
           'verification panel: empty state for a Team with no requests',
+          'publication panel: a real push to a bare repository, with the commit unsigned and no invented pull request',
+          'publication panel: a refusal states its reason and that nothing was sent',
+          'publication panel: no horizontal overflow on a narrow screen',
         ],
         artifacts: [
           'desktop.png',
@@ -350,6 +469,9 @@ try {
           'packet-narrow.png',
           'verifications.png',
           'verifications.txt',
+          'publication.png',
+          'publication.txt',
+          'publication-refusal.txt',
         ],
         errors,
       },

@@ -870,6 +870,54 @@
       "owner": "BAZ-045",
       "file": "apps/daemon/test/lib/review-e2e.test.ts",
       "test": "a review turn runs nothing, with container isolation switched on"
+    },
+    {
+      "id": "PUBLICATION-NEVER-SENDS-WITHOUT-A-CONFIGURED-TARGET",
+      "owner": "BAZ-046",
+      "file": "apps/daemon/test/lib/publication-e2e.test.ts",
+      "test": "every refusal happens before anything is sent, and leaves no attempt behind"
+    },
+    {
+      "id": "PUBLICATION-CONTENT-IS-THE-REVIEWED-REVISION",
+      "owner": "BAZ-046",
+      "file": "apps/daemon/test/lib/publication-e2e.test.ts",
+      "test": "a revision whose content moved is refused, never committed as reviewed"
+    },
+    {
+      "id": "PUBLICATION-COMMITS-AND-PUSHES-THE-REVIEWED-BYTES",
+      "owner": "BAZ-046",
+      "file": "apps/daemon/test/lib/publication-e2e.test.ts",
+      "test": "a reviewed revision is committed and pushed to a real branch, and the outcome is read back"
+    },
+    {
+      "id": "PUBLICATION-NEVER-FORCES-OVER-AN-EXISTING-BRANCH",
+      "owner": "BAZ-046",
+      "file": "apps/daemon/test/lib/publication-e2e.test.ts",
+      "test": "a branch that already exists on the host is refused, and nothing is overwritten"
+    },
+    {
+      "id": "PUBLICATION-INTERRUPTED-ATTEMPT-IS-NEVER-REPLAYED",
+      "owner": "BAZ-046",
+      "file": "apps/daemon/test/lib/publication-e2e.test.ts",
+      "test": "an interrupted attempt becomes uncertain, never failed"
+    },
+    {
+      "id": "PUBLICATION-REMOTE-COMES-FROM-CONFIGURATION",
+      "owner": "BAZ-046",
+      "file": "apps/daemon/test/lib/publication-github.test.ts",
+      "test": "the remote is built from configuration, never from a repository that is on the machine"
+    },
+    {
+      "id": "PUBLICATION-PULL-REQUEST-ONLY-IF-THE-HOST-SAID-SO",
+      "owner": "BAZ-046",
+      "file": "apps/daemon/test/lib/publication-github.test.ts",
+      "test": "a pull request is reported only when the host returned one"
+    },
+    {
+      "id": "PUBLICATION-WIRE-FORM-CARRIES-NO-INTERNAL-FIELDS",
+      "owner": "BAZ-046",
+      "file": "apps/daemon/test/routes/publications.test.ts",
+      "test": "an operator publishes a reviewed revision and reads the report back"
     }
   ]
 }
