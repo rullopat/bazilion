@@ -1,6 +1,6 @@
 # bazilion
 
-## 0.21.0-beta.0
+## 0.21.0-beta.1
 
 ### Minor Changes
 

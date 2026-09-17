@@ -1,6 +1,6 @@
 # @bazilion/api-types
 
-## 0.21.0-beta.0
+## 0.21.0-beta.1
 
 ## 0.20.0
 
