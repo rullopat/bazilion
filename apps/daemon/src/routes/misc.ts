@@ -10,6 +10,11 @@ import type {
   ListTokensResponse,
   PublicHealthResponse,
 } from '@bazilion/api-types'
+import {
+  ALL_DEVICE_TOKEN_SCOPES,
+  DEVICE_TOKEN_SCOPES,
+  type DeviceTokenScope,
+} from '@bazilion/api-types'
 import { Hono } from 'hono'
 import {
   agentRepo,
@@ -351,10 +356,28 @@ miscRouter.post('/tokens', async (c) => {
   if (!Number.isInteger(expiresInDays) || expiresInDays < 1 || expiresInDays > 365) {
     return c.json({ error: 'expiresInDays must be an integer from 1 to 365' }, 400)
   }
+  // BAZ-055: optional scope subset. Absent/empty = all scopes (pre-055 behavior).
+  let scopes: DeviceTokenScope[] = [...ALL_DEVICE_TOKEN_SCOPES]
+  if (body.scopes !== undefined) {
+    if (
+      !Array.isArray(body.scopes) ||
+      body.scopes.length === 0 ||
+      body.scopes.some((s) => !(DEVICE_TOKEN_SCOPES as readonly string[]).includes(s))
+    ) {
+      return c.json(
+        {
+          error: `scopes must be a non-empty subset of: ${DEVICE_TOKEN_SCOPES.join(', ')}`,
+        },
+        400,
+      )
+    }
+    scopes = [...new Set(body.scopes)]
+  }
   const { db } = getCtx()
   const created = webTokenRepo.create(db, body.label.trim(), {
     kind: 'device',
     expiresAt: Date.now() + expiresInDays * 86_400_000,
+    scopes,
   })
   return c.json({ token: created.token, meta: created.meta } satisfies CreateTokenResponse, 201)
 })

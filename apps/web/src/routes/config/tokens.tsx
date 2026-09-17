@@ -1,4 +1,5 @@
 import type { ListSessionsResponse, ListTokensResponse, WebSession, WebToken } from '@bazilion/api-types'
+import { DEVICE_TOKEN_SCOPES } from '@bazilion/api-types'
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { useState } from 'react'
@@ -39,6 +40,7 @@ function TokensPage() {
   const [label, setLabel] = useState('')
   const [created, setCreated] = useState<string | null>(null)
   const [expiresDays, setExpiresDays] = useState('90')
+  const [selectedScopes, setSelectedScopes] = useState<Set<string>>(new Set())
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [revokeTokenTarget, setRevokeTokenTarget] = useState<WebToken | null>(null)
@@ -52,7 +54,12 @@ function TokensPage() {
       const res = await fetch('/api/tokens', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ label, expiresInDays: Number(expiresDays) }),
+        // Empty selection = all scopes (pre-BAZ-055 behavior).
+        body: JSON.stringify({
+          label,
+          expiresInDays: Number(expiresDays),
+          ...(selectedScopes.size > 0 ? { scopes: [...selectedScopes] } : {}),
+        }),
       })
       if (!res.ok) {
         const j = (await res.json().catch(() => ({}))) as { error?: string }
@@ -61,6 +68,7 @@ function TokensPage() {
       const body = (await res.json()) as { token: string }
       setCreated(body.token)
       setLabel('')
+      setSelectedScopes(new Set())
       await router.invalidate()
     } catch (e) {
       setErr((e as Error).message)
@@ -138,6 +146,28 @@ function TokensPage() {
               className="mt-1 block w-full rounded-md border bg-background px-3 py-2 text-sm sm:w-36"
             />
           </label>
+          <fieldset className="w-full text-sm sm:w-auto">
+            <legend className="text-muted-foreground">Scopes (none checked = all)</legend>
+            <div className="mt-1 flex flex-wrap gap-3">
+              {DEVICE_TOKEN_SCOPES.map((s) => (
+                <label key={s} className="flex items-center gap-1.5 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={selectedScopes.has(s)}
+                    onChange={(e) =>
+                      setSelectedScopes((prev) => {
+                        const next = new Set(prev)
+                        if (e.target.checked) next.add(s)
+                        else next.delete(s)
+                        return next
+                      })
+                    }
+                  />
+                  {s}
+                </label>
+              ))}
+            </div>
+          </fieldset>
           <Button variant="primary" type="submit" disabled={busy}>
             {busy ? 'creating…' : 'create'}
           </Button>
@@ -172,6 +202,7 @@ function TokensPage() {
             <tr>
               <th className="py-2">label</th>
               <th>kind</th>
+              <th>scopes</th>
               <th>id</th>
               <th>state</th>
               <th>created</th>
@@ -183,7 +214,7 @@ function TokensPage() {
           <tbody>
             {tokens.length === 0 && (
               <tr>
-                <td colSpan={8} className="py-6 text-center text-muted-foreground italic">
+                <td colSpan={9} className="py-6 text-center text-muted-foreground italic">
                   no tokens yet — mint one above
                 </td>
               </tr>
@@ -201,6 +232,7 @@ function TokensPage() {
                     )}
                   </td>
                   <td>{t.kind}</td>
+                  <td className="font-mono text-xs">{t.scopes.join(' ')}</td>
                   <td>
                     <code className="font-mono text-xs">{t.id}</code>
                   </td>

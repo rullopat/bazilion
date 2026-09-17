@@ -258,13 +258,80 @@ function userVersion(db: BazilionDb): number {
   return typeof value === 'number' ? value : Number(value ?? 0)
 }
 
+/**
+ * Prove a database (typically a backup snapshot about to be restored) is
+ * byte-equivalent to the current release's fully-migrated canonical schema:
+ * its ledger must list the complete migration chain, and its schema objects
+ * must match the canonical replay. Throws with an actionable message on any
+ * mismatch. Accepts a raw node:sqlite handle so non-daemon consumers (the
+ * CLI's backup/restore path) can validate without opening a full BazilionDb.
+ */
+export function assertSchemaMatchesCanonicalChain(raw: DatabaseSync): void {
+  const files = listMigrations()
+  const expectedVersions = files.map((file) => file.version)
+  const applied = (
+    raw.prepare('SELECT version FROM schema_migrations ORDER BY version').all() as Array<{
+      version: string
+    }>
+  ).map((row) => row.version)
+  if (
+    applied.length !== expectedVersions.length ||
+    applied.some((version, index) => version !== expectedVersions[index])
+  ) {
+    throw new Error(
+      `schema_migrations must contain exactly ${expectedVersions.join(', ')}; found ` +
+        (applied.join(', ') || 'none'),
+    )
+  }
+  const rows = raw
+    .prepare(
+      `SELECT type, name, tbl_name, sql
+       FROM sqlite_schema
+       WHERE sql IS NOT NULL AND substr(name, 1, 7) <> 'sqlite_'
+       ORDER BY type, name`,
+    )
+    .all() as unknown as Array<{ type: string; name: string; tbl_name: string; sql: string }>
+  const canonical = expectedSchema(files, files.length)
+
+  // Per-object diff first: restore failures deserve actionable detail
+  // (which object is missing or unexpected), not just a fingerprint mismatch.
+  const canonicalKeys = new Set(canonical.map((row) => `${row.type}\0${row.name}`))
+  const actualKeys = new Map(rows.map((row) => [`${row.type}\0${row.name}`, row]))
+  for (const row of canonical) {
+    if (!actualKeys.has(`${row.type}\0${row.name}`)) {
+      throw new Error(`required canonical schema ${row.type} is missing: ${row.name}`)
+    }
+  }
+  for (const row of rows) {
+    if (!canonicalKeys.has(`${row.type}\0${row.name}`)) {
+      throw new Error(`unexpected schema ${row.type} is not canonical: ${row.name}`)
+    }
+  }
+
+  // Same object set — now verify the SQL of each object is unaltered.
+  const payload = rows
+    .map((row) => [row.type, row.name, row.tbl_name, normalizeSql(row.sql)].join('\0'))
+    .join('\n')
+  const canonicalPayload = canonical
+    .map((row) => [row.type, row.name, row.tbl_name, normalizeSql(row.sql)].join('\0'))
+    .join('\n')
+  if (payload !== canonicalPayload) {
+    throw new Error(
+      'database schema does not match this release’s canonical migration chain; ' +
+        'restore a backup created from the current release',
+    )
+  }
+}
+
 function verifySnapshot(path: string): void {
   const snapshot = new DatabaseSync(path)
   try {
-    const status = snapshot.prepare('PRAGMA integrity_check').get() as Record<string, unknown>
-    if (status['integrity_check'] !== 'ok') {
+    const row = snapshot.prepare('PRAGMA integrity_check').get() as {
+      integrity_check?: unknown
+    }
+    if (row.integrity_check !== 'ok') {
       throw new Error(
-        `Pre-migration snapshot failed integrity check: ${String(status['integrity_check'])}`,
+        `Pre-migration snapshot failed integrity check: ${String(row.integrity_check)}`,
       )
     }
   } finally {

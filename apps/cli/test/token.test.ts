@@ -27,7 +27,7 @@ test('token show-local prints the bootstrap token from auth.json', async () => {
 test('token create mints a token and prints the plaintext exactly once', async () => {
   const res = await server.cli(['token', 'create', 'laptop'])
   expect(res.exitCode).toBe(0)
-  expect(res.stdout).toMatch(/label: laptop/)
+  expect(res.stdout).toMatch(/label:\s+laptop/)
   expect(res.stdout).toMatch(/token: [0-9a-f]{48}/)
   expect(res.stdout).toMatch(/id: /)
 })

@@ -121,7 +121,10 @@ export type {
   WebSession,
   WebToken,
 } from './entities.ts'
-export { REASONING_LEVELS } from './entities.ts'
+export { ALL_DEVICE_TOKEN_SCOPES, DEVICE_TOKEN_SCOPES, REASONING_LEVELS } from './entities.ts'
+
+import type { DeviceTokenScope } from './entities.ts'
+
 export type {
   BashApprovalMode,
   ChatFrame,
@@ -145,6 +148,7 @@ export type {
   ResultReference,
   ResultSourceResponse,
 } from './results.ts'
+export type { DeviceTokenScope }
 
 import type {
   Agent,
@@ -829,6 +833,11 @@ export interface CreateTokenRequest {
   label: string
   /** Device lifetime in days. Defaults to 90 and must be between 1 and 365. */
   expiresInDays?: number
+  /**
+   * Authorization scopes for the new device token. Defaults to all scopes
+   * (pre-BAZ-055 behavior). Must be a non-empty subset of DEVICE_TOKEN_SCOPES.
+   */
+  scopes?: DeviceTokenScope[]
 }
 
 export interface CreateTokenResponse {

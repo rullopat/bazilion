@@ -8,9 +8,11 @@
 import type { Context, Next } from 'hono'
 import { getCookie } from 'hono/cookie'
 import { isSetupComplete, webSessionRepo, webTokenRepo } from '../core/index.ts'
+import { parseScopes } from '../core/repos/webTokens.ts'
 import { authenticateToken, extractBearer } from './auth.ts'
 import { getCtx } from './ctx.ts'
 import { resolvePublicOrigin } from './public-origin.ts'
+import { scopeAllows } from './scopes.ts'
 
 /** Reachable without a token. The login route mints them; health is a probe. */
 const PUBLIC_PATHS = new Set(['/api/login', '/api/health'])
@@ -62,6 +64,7 @@ export async function authMiddleware(c: Context, next: Next): Promise<Response |
           kind: 'session' as const,
           tokenId: session.deviceTokenId,
           label: session.deviceLabel,
+          scopes: parseScopes(session.deviceScopes),
           sessionId: session.id,
         }
       : null)
@@ -87,6 +90,23 @@ export async function authMiddleware(c: Context, next: Next): Promise<Response |
   }
   c.set('authPrincipal', principal)
   if (session) c.set('authSession', session)
+
+  // BAZ-055: per-device authorization. The bootstrap token carries every scope
+  // implicitly (single operator); device tokens are checked against the
+  // scope→route table. Session principals inherit their device token's scopes.
+  if (principal.kind !== 'bootstrap') {
+    const check = scopeAllows(principal.scopes, c.req.method, path)
+    if (!check.allowed) {
+      return c.json(
+        {
+          error: `credential is missing the '${check.required}' scope`,
+          code: 'insufficient_scope',
+          requiredScope: check.required,
+        },
+        403,
+      )
+    }
+  }
 
   if (!isSetupOpen(path) && !isSetupComplete(getCtx().db)) {
     return c.json({ error: 'setup incomplete' }, 409)
