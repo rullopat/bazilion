@@ -1,7 +1,7 @@
 ---
 id: BAZ-055
 title: Scoped device credentials and one-paste pairing (OpenClaw's authz model, adapted)
-status: in_progress
+status: done
 size: L (1-2 weeks, sequenced as M + S + S)
 created: 2026-09-17
 refined: 2026-09-17
@@ -186,3 +186,7 @@ non-interactive turn behavior (BAZ-006).
   if a self-TLS mode ever exists.
 - Verification: full suite 1,848 passed / 0 failed (5 new pairing/posture HTTP
   cases); typecheck clean.
+
+**Shipped 2026-09-17 across PRs #57 (slice 1) and #58 (slices 2+3).** The `0002`
+migration exercised the BAZ-047 contract end-to-end on CI (upgrade matrix ran a real
+v0.20.0-home forward migration). Unreleased — ships with the next version bump.
