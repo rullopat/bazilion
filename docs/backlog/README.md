@@ -27,11 +27,16 @@ docs/backlog/
 
 ---
 
-## Draft (1)
+## Draft (6)
 
 | ID | Title | Size | Notes |
 |----|-------|------|-------|
 | [BAZ-048](draft/BAZ-048-storage-refinements-post-1.0.md) | Storage refinements from the OpenClaw/Hermes comparison (post-1.0) | L (likely split) | Menu, not commitment: FTS over conversations, cold `jsonl.zst` archives, per-agent data-plane split, bounded-memory injection, upgrade preflight. Graduates only on a concrete trigger. [Findings](design/storage-comparison-openclaw-hermes.md) |
+| [BAZ-049](draft/BAZ-049-cross-platform-ci-and-installer-e2e.md) | Cross-platform CI matrix and fresh-machine installer E2E | M | Beta blocker. CI is ubuntu-only while the code ships win32/darwin branches and non-technical-user installers; run the suite and an install→uninstall E2E on all three OSes. |
+| [BAZ-050](draft/BAZ-050-post-coding-sequence-ui-consistency-sweep.md) | UI/UX consistency sweep of the post-hardening coding surfaces | L (1-2 weeks) | Beta blocker. BAZ-033 hardened v0.14; the v0.16–0.20 coding sequence added ~10 surfaces after it. State triplets, destructive-action disclosure, Attention routing, a11y, viewport matrix — observed, not asserted (BAZ-045 methodology). |
+| [BAZ-051](draft/BAZ-051-failure-mode-visibility-audit.md) | Failure-mode visibility audit — every recovery is seen or surfaced | M | Beta blocker. Recovery machinery (BAZ-019/023/025, ctx recovery) is correct but visibility under real failure is unproven: seven deterministic fault-injection cases, silent failure is the only unacceptable outcome. |
+| [BAZ-052](draft/BAZ-052-beta-supportability-gates-and-growth.md) | Beta supportability — security gate in CI, log rotation, growth documentation | M | Verified gaps: BAZ-032's 60-case security gate is manual-only, `logs/` has no rotation, DB growth expectations undocumented. Three small closes. |
+| [BAZ-054](draft/BAZ-054-native-ios-android-apps.md) | Native iOS and Android apps (post-1.0) | XL — split before refinement | Deferred to post-1.0 (operator decision). Successor to the removed Expo app over the existing gateway/device-credential model. Push-notification architecture is the gating open question; held as a design-constraint holder meanwhile. |
 
 The original coding stories were drafted on 2026-09-07 from the OpenClaw 2.0 / Hermes desktop
 review. BAZ-034 through BAZ-038 shipped in v0.15.0 through PRs #44 and #45; their decisions and
@@ -66,11 +71,12 @@ Writer coordination already exists; checkout lifecycle and deployment integratio
 later from a concrete use case. Automatic Git publication, managed services/previews and ambient Pi
 extension loading remain separate, uncommitted scope.
 
-## Todo (1)
+## Todo (2)
 
 | ID | Title | Size | Notes |
 |----|-------|------|-------|
-| [BAZ-047](todo/BAZ-047-stable-schema-contract.md) | Stable schema contract and in-place upgrades for beta | L (1-2 weeks) | Retires the alpha clean-install contract: forward-only migrations with receipts, refuse-newer-schema, backup-before-upgrade, tested upgrade matrix, release-gate step. Grounded in [OpenClaw/Hermes findings](design/storage-comparison-openclaw-hermes.md). |
+| [BAZ-047](todo/BAZ-047-stable-schema-contract.md) | Stable schema contract and in-place upgrades for beta | L (1-2 weeks) | Retires the alpha clean-install contract: forward-only migrations with receipts, refuse-newer-schema, backup-before-upgrade, tested upgrade matrix, release-gate step. Grounded in [OpenClaw/Hermes findings](design/storage-comparison-openclaw-hermes.md). In flight on `feat/beta-schema-contract` (PR #54). |
+| [BAZ-053](todo/BAZ-053-remove-expo-mobile-app.md) | Remove the Expo mobile app; mobile story becomes responsive web | S | Operator decision 2026-09-17: the thin Expo app (v0.0.0, 4 screens) ships neither in beta nor 1.0. Delete cleanly; keep the private gateway + device credentials — the auth path BAZ-054's native apps will use. |
 
 ## In Progress (0)
 
