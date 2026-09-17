@@ -1,7 +1,7 @@
 ---
 id: BAZ-056
 title: Remove the interactive chat REPL from the CLI; one-shot chat stays
-status: todo
+status: in_progress
 size: S (afternoon)
 created: 2026-09-17
 priority: medium
@@ -60,3 +60,21 @@ product decision for later (post-1.0), not a 1.0 obligation.
    interactively; non-TTY callers still get fail-closed `auto_deny`.
 3. Full suite green — `chat.test.ts` / `command-approval.test.ts` untouched in
    behavior.
+
+## As-built
+
+**Done on `feat/remove-cli-chat-repl`, 2026-09-17.**
+
+- The interactive TTY REPL loop removed from `chatCmd.run` (~70 lines: the
+  `while (true)` prompt loop, `/exit` handling for interactive use, retry-draft
+  preservation, inline question/approval prompts — those plumbed only into the loop;
+  one-shot mode keeps its own prompt plumbing for TTY approvals).
+- `bazilion agent chat <id>` without `--message` now exits non-zero with usage
+  guidance pointing at one-shot mode and the web UI.
+- **Piped stdin kept, deliberately:** `echo msg | bazilion agent chat <id>` was never
+  TUI — it is a scripting surface that runs each line as a turn under fail-closed
+  `auto_deny` (no caller could answer an approval). `/exit` still terminates a piped
+  stream.
+- Verification: full suite 1,806 passed / 0 failed; typecheck clean; `chat.test.ts` /
+  `command-approval.test.ts` (35 cases) untouched in behavior — they exercise
+  one-shot mode only.

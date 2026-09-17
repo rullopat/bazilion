@@ -553,75 +553,43 @@ const chatCmd = defineCommand({
       return
     }
 
+    // No --message. BAZ-056 removed the interactive REPL (an unfinished
+    // mini-TUI: no slash commands, no session management, no history). What
+    // remains is the piped-stdin scripting surface: `echo msg | bazilion agent
+    // chat <id>` runs each line as a turn under fail-closed `auto_deny` — no
+    // caller exists who could answer an approval prompt.
+    if (bashApprovalMode === 'interactive') {
+      console.error(
+        `usage: bazilion agent chat ${args.id} --message "..." (one-shot) — for a conversational surface, use the web UI`,
+      )
+      process.exitCode = 1
+      return
+    }
+
     console.log(`chatting with ${resolved.agent.name} (${resolved.model})`)
-    console.log('(type /exit to quit)')
+    console.log('(type /exit to quit; input is piped, commands run with auto_deny)')
 
     const rl = createInterface({ input: stdin, output: stdout })
     try {
-      if (bashApprovalMode === 'interactive') {
-        // Sequential questions keep one readline instance as the sole stdin
-        // owner. A command-approval question can safely run after the chat
-        // question resolves; no async iterator is consuming lines in parallel.
-        let retryDraft = ''
-        while (true) {
-          const observed = await client.get<SessionHeadResponse>(
-            `/api/agents/${resolved.agent.id}/sessions/head`,
-          )
-          let line: string
-          try {
-            const answer = rl.question('> ')
-            if (retryDraft) {
-              rl.write(retryDraft)
-              retryDraft = ''
-            }
-            line = await answer
-          } catch {
-            break
-          }
-          const trimmed = line.trim()
-          if (trimmed === '/exit' || trimmed === '/quit') break
-          if (!trimmed) continue
-          try {
-            await streamTurn(client, resolved.agent.id, trimmed, undefined, {
-              bashApprovalMode,
-              expectedSelection: observed.selection,
-              questionPrompt: {
-                question: (text, signal) => rl.question(text, { signal }),
-                write: (line) => console.log(line),
-              },
-              approvalPrompt: {
-                question: (question) => rl.question(question),
-                write: (output) => console.log(output),
-              },
-            })
-          } catch (err) {
-            retryDraft = trimmed
-            console.error(
-              `error: ${(err as Error).message}. Review the preserved draft before retrying.`,
-            )
-          }
-        }
-      } else {
-        // Preserve piped multi-line chat input, but never claim that this
-        // caller can answer an approval request.
-        rl.setPrompt('> ')
-        rl.prompt()
-        for await (const line of rl) {
-          const trimmed = line.trim()
-          if (trimmed === '/exit' || trimmed === '/quit') break
-          if (!trimmed) {
-            rl.prompt()
-            continue
-          }
-          try {
-            await streamTurn(client, resolved.agent.id, trimmed, undefined, {
-              bashApprovalMode,
-            })
-          } catch (err) {
-            console.error(`error: ${(err as Error).message}`)
-          }
+      // Preserve piped multi-line chat input, but never claim that this
+      // caller can answer an approval request.
+      rl.setPrompt('> ')
+      rl.prompt()
+      for await (const line of rl) {
+        const trimmed = line.trim()
+        if (trimmed === '/exit' || trimmed === '/quit') break
+        if (!trimmed) {
           rl.prompt()
+          continue
         }
+        try {
+          await streamTurn(client, resolved.agent.id, trimmed, undefined, {
+            bashApprovalMode,
+          })
+        } catch (err) {
+          console.error(`error: ${(err as Error).message}`)
+        }
+        rl.prompt()
       }
     } finally {
       rl.close()
