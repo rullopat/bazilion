@@ -71,24 +71,24 @@ Writer coordination already exists; checkout lifecycle and deployment integratio
 later from a concrete use case. Automatic Git publication, managed services/previews and ambient Pi
 extension loading remain separate, uncommitted scope.
 
-## Todo (2)
+## Todo (1)
 
 | ID | Title | Size | Notes |
 |----|-------|------|-------|
-| [BAZ-047](todo/BAZ-047-stable-schema-contract.md) | Stable schema contract and in-place upgrades for beta | L (1-2 weeks) | Retires the alpha clean-install contract: forward-only migrations with receipts, refuse-newer-schema, backup-before-upgrade, tested upgrade matrix, release-gate step. Grounded in [OpenClaw/Hermes findings](design/storage-comparison-openclaw-hermes.md). In flight on `feat/beta-schema-contract` (PR #54). |
 | [BAZ-055](todo/BAZ-055-scoped-device-credentials-and-pairing.md) | Scoped device credentials and one-paste pairing (OpenClaw's authz model, adapted) | L (M + S + S) | Refined from the [auth comparison](design/authn-authz-comparison-openclaw-hermes.md): per-device scopes (`read/write/approvals/admin`) with a fixture-generated route test table, `bazilion-pair://` setup codes (10-min single-use token + TLS pin), Hermes-style auth-posture introspection. The `0002` scopes migration doubles as the first live test of the BAZ-047 contract. Capability-approval lifecycle moves with BAZ-054. |
-| [BAZ-056](todo/BAZ-056-remove-cli-chat-repl.md) | Remove the interactive chat REPL from the CLI; one-shot chat stays | S | Operator decision 2026-09-17: the bare readline REPL in `agent chat` is not worth completing; 1.0 keeps one-shot chat + dedicated commands + web. A real TUI client would be a post-1.0 project of its own. |
 
 ## In Progress (1)
 
 | ID | Title | Size | Notes |
 |----|-------|------|-------|
-| [BAZ-053](in_progress/BAZ-053-remove-expo-mobile-app.md) | Remove the Expo mobile app; mobile story becomes responsive web | S | Operator decision 2026-09-17: the thin Expo app (v0.0.0, 4 screens) ships neither in beta nor 1.0. Keep the private gateway + device credentials — the auth path BAZ-054's native apps will use. In flight on `chore/remove-expo-mobile-app`. |
+| [BAZ-047](in_progress/BAZ-047-stable-schema-contract.md) | Stable schema contract and in-place upgrades for beta | L (1-2 weeks) | Retires the alpha clean-install contract: forward-only migrations with receipts, refuse-newer-schema, backup-before-upgrade, tested upgrade matrix, release-gate step. Grounded in [OpenClaw/Hermes findings](design/storage-comparison-openclaw-hermes.md). In flight on `feat/beta-schema-contract` (PR #54). |
 
-## Done (41)
+## Done (43)
 
 | ID | Title | Size | Shipped | Release | Notes |
 |----|-------|------|---------|---------|-------|
+| [BAZ-056](done/BAZ-056-remove-cli-chat-repl.md) | Remove the interactive chat REPL from the CLI; one-shot chat stays | S | 2026-09-17 | — | Operator decision: the bare readline REPL in `agent chat` was not worth completing; 1.0 keeps one-shot chat + dedicated commands + web. Piped stdin scripting kept (fail-closed `auto_deny`). PR #56. |
+| [BAZ-053](done/BAZ-053-remove-expo-mobile-app.md) | Remove the Expo mobile app; mobile story becomes responsive web | S | 2026-09-17 | — | The thin Expo app (v0.0.0, 4 screens) removed; mobile = responsive web over the private gateway + device credentials — the auth path BAZ-054's native apps will use. PR #55. |
 | [BAZ-046](done/BAZ-046-publish-accepted-change.md) | Publish an accepted change to a code host | L | 2026-09-16 | [v0.20.0](https://github.com/rullopat/bazilion/releases/tag/v0.20.0) | An operator decision with no model in the path: the daemon commits the reviewed revision and opens a pull request. Refusals send nothing; never a force push; unsigned and said so. [Acceptance record](BAZ-046-acceptance.md) |
 | [BAZ-045](done/BAZ-045-boundary-claims-observed.md) | Boundary claims observed where they are claimed | M | 2026-09-16 | [v0.20.0](https://github.com/rullopat/bazilion/releases/tag/v0.20.0) | Three guards existed and were asserted; none was observed where the claim is made. Also found the operator-conclusion defect. [Acceptance record](BAZ-045-acceptance.md) |
 | [BAZ-043](done/BAZ-043-coding-review-handoff.md) | Revision-bound coding review and handoff | L | 2026-09-16 | [v0.19.0](https://github.com/rullopat/bazilion/releases/tag/v0.19.0) | One captured revision per packet; a reviewer restricted to four read-only tools; operator-reported completion facts; exports as durable publications. [Acceptance record](BAZ-043-acceptance.md) |

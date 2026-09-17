@@ -1,7 +1,7 @@
 ---
 id: BAZ-047
 title: Stable schema contract and in-place upgrades for beta
-status: todo
+status: in_progress
 size: L (1-2 weeks)
 created: 2026-09-17
 refined: 2026-09-17

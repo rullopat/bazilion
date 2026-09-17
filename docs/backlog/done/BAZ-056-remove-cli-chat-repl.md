@@ -1,7 +1,7 @@
 ---
 id: BAZ-056
 title: Remove the interactive chat REPL from the CLI; one-shot chat stays
-status: in_progress
+status: done
 size: S (afternoon)
 created: 2026-09-17
 priority: medium
