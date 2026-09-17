@@ -254,7 +254,7 @@ export function runMigrations(db: BazilionDb, options: RunMigrationsOptions = {}
 
 function userVersion(db: BazilionDb): number {
   const row = db.raw.query<Record<string, unknown>, []>('PRAGMA user_version').all()[0]
-  const value = row?.['user_version']
+  const value = row?.user_version
   return typeof value === 'number' ? value : Number(value ?? 0)
 }
 

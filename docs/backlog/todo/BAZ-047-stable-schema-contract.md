@@ -120,11 +120,26 @@ novelty.
 - First real `0002_*.sql` migration to exercise the forward path in production (the chain
   is still single-file, so the upgrade test self-skips its data-preservation assertion
   until then).
-- Upgrade-matrix CI: boot a seeded home from the previous release tag and upgrade it
-  (release-gate step extending the BAZ-032 pattern).
 - Operator upgrade guide + "which file does what" ownership one-pager.
 - Exported `listMigrations`/`schemaMigrationsSql`/`currentSchemaVersion` are groundwork for
   a future `bazilion doctor` / preflight CLI.
+
+**Slice 2 — CI release upgrade matrix (this branch):**
+
+- `scripts/migration-upgrade-matrix.mjs`: for each matrix entry, checks the release tag out
+  into a `git worktree`, installs its own dependency tree, seeds a **genuine home by booting
+  that release's own daemon**, plants sentinel data, then brings the home up under the
+  current branch:
+  - `upgrade` entries must serve HTTP, preserve the sentinel, take a pre-migration snapshot
+    iff the chain grew, and survive a second boot (idempotence).
+  - `refuse` entries must fail closed: no HTTP, actionable stderr, ledger/sentinel/snapshot
+    state untouched.
+- Matrix today: `v0.20.0 → upgrade` (current chain, becomes a real forward upgrade the
+  moment the first `0002_*.sql` lands) and `v0.19.0 → refuse` (BAZ-046's "0.19.x homes
+  cannot be upgraded in place", now enforced by CI rather than only documented).
+- CI: new `upgrade-matrix` job in `.github/workflows/ci.yml` (`fetch-depth: 0` for tags);
+  verified locally against both real releases. Matrix maintenance is part of the release
+  checklist (header note in the script).
 
 ## As-built
 
