@@ -71,15 +71,17 @@ Writer coordination already exists; checkout lifecycle and deployment integratio
 later from a concrete use case. Automatic Git publication, managed services/previews and ambient Pi
 extension loading remain separate, uncommitted scope.
 
-## Todo (1)
+## Todo (0)
+
+Nothing refined and waiting. Capture the next story in `draft/` and refine it here.
+| [BAZ-055](todo/BAZ-055-scoped-device-credentials-and-pairing.md) | Scoped device credentials and one-paste pairing (OpenClaw's authz model, adapted) | L (M + S + S) | Refined from the [auth comparison](design/authn-authz-comparison-openclaw-hermes.md): per-device scopes (`read/write/approvals/admin`) with a fixture-generated route test table, `bazilion-pair://` setup codes (10-min single-use token + TLS pin), Hermes-style auth-posture introspection. The `0002` scopes migration doubles as the first live test of the BAZ-047 contract. Capability-approval lifecycle moves with BAZ-054. |
+
+## In Progress (1)
 
 | ID | Title | Size | Notes |
 |----|-------|------|-------|
-| [BAZ-055](todo/BAZ-055-scoped-device-credentials-and-pairing.md) | Scoped device credentials and one-paste pairing (OpenClaw's authz model, adapted) | L (M + S + S) | Refined from the [auth comparison](design/authn-authz-comparison-openclaw-hermes.md): per-device scopes (`read/write/approvals/admin`) with a fixture-generated route test table, `bazilion-pair://` setup codes (10-min single-use token + TLS pin), Hermes-style auth-posture introspection. The `0002` scopes migration doubles as the first live test of the BAZ-047 contract. Capability-approval lifecycle moves with BAZ-054. |
+| [BAZ-055](in_progress/BAZ-055-scoped-device-credentials-and-pairing.md) | Scoped device credentials and one-paste pairing (OpenClaw's authz model, adapted) | L (M + S + S) | Refined from the [auth comparison](design/authn-authz-comparison-openclaw-hermes.md): per-device scopes (`read/write/approvals/admin`) with a fixture-generated route test table, `bazilion-pair://` setup codes (10-min single-use token + TLS pin), Hermes-style auth-posture introspection. The `0002` scopes migration doubles as the first live test of the BAZ-047 contract. Slice 1 in flight on `feat/scoped-device-credentials` (PR #57). |
 
-## In Progress (0)
-
-Nothing in flight. Move an item here from `todo/` when implementation starts.
 
 | ID | Title | Size | Notes |
 |----|-------|------|-------|
