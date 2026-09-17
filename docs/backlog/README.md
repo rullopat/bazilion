@@ -27,10 +27,11 @@ docs/backlog/
 
 ---
 
-## Draft (0)
+## Draft (1)
 
 | ID | Title | Size | Notes |
 |----|-------|------|-------|
+| [BAZ-048](draft/BAZ-048-storage-refinements-post-1.0.md) | Storage refinements from the OpenClaw/Hermes comparison (post-1.0) | L (likely split) | Menu, not commitment: FTS over conversations, cold `jsonl.zst` archives, per-agent data-plane split, bounded-memory injection, upgrade preflight. Graduates only on a concrete trigger. [Findings](design/storage-comparison-openclaw-hermes.md) |
 
 The original coding stories were drafted on 2026-09-07 from the OpenClaw 2.0 / Hermes desktop
 review. BAZ-034 through BAZ-038 shipped in v0.15.0 through PRs #44 and #45; their decisions and
@@ -65,9 +66,11 @@ Writer coordination already exists; checkout lifecycle and deployment integratio
 later from a concrete use case. Automatic Git publication, managed services/previews and ambient Pi
 extension loading remain separate, uncommitted scope.
 
-## Todo (0)
+## Todo (1)
 
-Nothing refined and waiting. Capture the next story in `draft/` and refine it here.
+| ID | Title | Size | Notes |
+|----|-------|------|-------|
+| [BAZ-047](todo/BAZ-047-stable-schema-contract.md) | Stable schema contract and in-place upgrades for beta | L (1-2 weeks) | Retires the alpha clean-install contract: forward-only migrations with receipts, refuse-newer-schema, backup-before-upgrade, tested upgrade matrix, release-gate step. Grounded in [OpenClaw/Hermes findings](design/storage-comparison-openclaw-hermes.md). |
 
 ## In Progress (0)
 
