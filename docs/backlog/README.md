@@ -27,11 +27,10 @@ docs/backlog/
 
 ---
 
-## Draft (1)
+## Draft (0)
 
 | ID | Title | Size | Notes |
 |----|-------|------|-------|
-| [BAZ-046](draft/BAZ-046-publish-accepted-change.md) | Publish an accepted change to a code host | L | The gap that caps the coding sequence. Needs operator decisions (which hosts, what acceptance means, signing) before implementation. |
 
 The original coding stories were drafted on 2026-09-07 from the OpenClaw 2.0 / Hermes desktop
 review. BAZ-034 through BAZ-038 shipped in v0.15.0 through PRs #44 and #45; their decisions and
@@ -63,14 +62,13 @@ extension loading remain separate, uncommitted scope.
 ## Todo (0)
 
 Nothing refined and waiting. Capture the next story in `draft/` and refine it here.
-[BAZ-046](draft/BAZ-046-publish-accepted-change.md) is drafted with its open questions listed; answering
-them refines it into `todo`.
 
-## In Progress (1)
+## In Progress (2)
 
 | ID | Title | Size | Started | Notes |
 |----|-------|------|---------|-------|
-| [BAZ-045](in_progress/BAZ-045-boundary-claims-observed.md) | Boundary claims observed where they are claimed | M | 2026-09-16 | Implemented and observed; [acceptance record](BAZ-045-acceptance.md). Not yet released. |
+| [BAZ-045](in_progress/BAZ-045-boundary-claims-observed.md) | Boundary claims observed where they are claimed | M | 2026-09-16 | Implemented and observed; [acceptance record](BAZ-045-acceptance.md). Ships in v0.20.0. |
+| [BAZ-046](in_progress/BAZ-046-publish-accepted-change.md) | Publish an accepted change to a code host | L | 2026-09-16 | Implemented and observed; [acceptance record](BAZ-046-acceptance.md). Ships in v0.20.0. |
 
 ## Done (39)
 
