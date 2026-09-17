@@ -1,7 +1,9 @@
 ---
 id: BAZ-045
 title: Boundary claims observed where they are claimed
-status: in_progress
+status: done
+shipped: 2026-09-16
+release: v0.20.0
 refined: 2026-09-16
 size: M
 created: 2026-09-16

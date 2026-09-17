@@ -1,7 +1,9 @@
 ---
 id: BAZ-046
 title: Publish an accepted change to a code host
-status: in_progress
+status: done
+shipped: 2026-09-16
+release: v0.20.0
 refined: 2026-09-16
 size: L
 created: 2026-09-16

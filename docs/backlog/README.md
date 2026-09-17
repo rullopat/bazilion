@@ -46,6 +46,12 @@ BAZ-041 and BAZ-042 shipped in **v0.17.0** on 2026-09-16. They were paired in on
 share the receipt and snapshot evidence model: 042 attaches source identity to the receipts 041 makes
 observable, and a two-release split would need two clean-install schema revisions for one feature area.
 
+BAZ-045 and BAZ-046 shipped in **v0.20.0** on 2026-09-16. BAZ-046 adds the publication step the rest of the
+sequence was building towards — an operator decision, with no model in the path at all — and BAZ-045 closes
+the boundary claims that were asserted but never observed in the configuration where they are claimed. The
+same release fixed a pre-existing BAZ-043 defect found by building on top of it: a recorded conclusion left
+the packet `open` while the report's own facts said it was reviewed.
+
 BAZ-043 shipped in **v0.19.0** on 2026-09-16, completing the coding sequence. The v0.19.0 work also closed
 three gaps in BAZ-044: a container check now runs with the posture its receipt claims, declared output paths
 are *checked* rather than trusted, and a coding Agent can ask for verification at all — which is what makes
@@ -63,17 +69,16 @@ extension loading remain separate, uncommitted scope.
 
 Nothing refined and waiting. Capture the next story in `draft/` and refine it here.
 
-## In Progress (2)
+## In Progress (0)
 
-| ID | Title | Size | Started | Notes |
-|----|-------|------|---------|-------|
-| [BAZ-045](in_progress/BAZ-045-boundary-claims-observed.md) | Boundary claims observed where they are claimed | M | 2026-09-16 | Implemented and observed; [acceptance record](BAZ-045-acceptance.md). Ships in v0.20.0. |
-| [BAZ-046](in_progress/BAZ-046-publish-accepted-change.md) | Publish an accepted change to a code host | L | 2026-09-16 | Implemented and observed; [acceptance record](BAZ-046-acceptance.md). Ships in v0.20.0. |
+Nothing in flight. Move an item here from `todo/` when implementation starts.
 
-## Done (39)
+## Done (41)
 
 | ID | Title | Size | Shipped | Release | Notes |
 |----|-------|------|---------|---------|-------|
+| [BAZ-046](done/BAZ-046-publish-accepted-change.md) | Publish an accepted change to a code host | L | 2026-09-16 | [v0.20.0](https://github.com/rullopat/bazilion/releases/tag/v0.20.0) | An operator decision with no model in the path: the daemon commits the reviewed revision and opens a pull request. Refusals send nothing; never a force push; unsigned and said so. [Acceptance record](BAZ-046-acceptance.md) |
+| [BAZ-045](done/BAZ-045-boundary-claims-observed.md) | Boundary claims observed where they are claimed | M | 2026-09-16 | [v0.20.0](https://github.com/rullopat/bazilion/releases/tag/v0.20.0) | Three guards existed and were asserted; none was observed where the claim is made. Also found the operator-conclusion defect. [Acceptance record](BAZ-045-acceptance.md) |
 | [BAZ-043](done/BAZ-043-coding-review-handoff.md) | Revision-bound coding review and handoff | L | 2026-09-16 | [v0.19.0](https://github.com/rullopat/bazilion/releases/tag/v0.19.0) | One captured revision per packet; a reviewer restricted to four read-only tools; operator-reported completion facts; exports as durable publications. [Acceptance record](BAZ-043-acceptance.md) |
 | [BAZ-044](done/BAZ-044-specialist-verification-handoff.md) | Specialist verification of a captured code change | L | 2026-09-16 | [v0.18.0](https://github.com/rullopat/bazilion/releases/tag/v0.18.0) | Snapshot-bound finite checks handed to a selected same-Team specialist, with the capability closed to two tools; adds four tables. [Acceptance record](BAZ-044-acceptance.md) · [Review](BAZ-044-review.md) |
 | [BAZ-041](done/BAZ-041-coding-command-verification.md) | Live coding progress and retained diagnostics in chat | M | 2026-09-16 | [v0.17.0](https://github.com/rullopat/bazilion/releases/tag/v0.17.0) | Bounded live command progress plus retained diagnostics with explicit disclosure states; adds the `coding_command_logs` table. [Acceptance record](BAZ-041-acceptance.md) |
