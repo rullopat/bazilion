@@ -10,6 +10,7 @@ import {
   listReviewConclusions,
   listReviewFindings,
 } from '../../src/core/repos/review-packets.ts'
+import { workspaceLifecycle } from '../../src/lib/coding-environment/lifecycle.ts'
 import { captureTeamSnapshot } from '../../src/lib/git-review/service.ts'
 import { captureReviewPacket } from '../../src/lib/review/capture.ts'
 import { dispatchReviewPacket } from '../../src/lib/review/dispatch.ts'
@@ -191,4 +192,97 @@ test('a reviewer that finishes without concluding has not reviewed anything', as
   expect(listReviewConclusions(env.db, packetId)).toHaveLength(0)
   // Nothing was delivered: there is no review outcome to report.
   expect(env.db.raw.query<{ n: number }, []>('SELECT count(*) AS n FROM messages').get()?.n).toBe(0)
+})
+
+// BAZ-045: the read-only claim observed in the configuration that *turns execution on*. The claim is
+// true by construction — `spawnWorker` clears the container, coding, browser, MCP and messaging hosts
+// for every restricted kind — but "true by construction" is exactly what BAZ-044's review found hiding
+// two unwired guards. So this observes it: the reviewer still cannot reach anything, and the run
+// creates no container and holds no workspace writer while the sandbox mode is active.
+test('a review turn runs nothing, with container isolation switched on', async () => {
+  seed(env.db, env.teamId)
+  git(env, 'init', '-q', '-b', 'main')
+  writeFileSync(join(env.paths.teamDir(env.teamId), 'app.txt'), 'one\ntwo\n')
+  git(env, 'add', '.')
+  git(env, 'commit', '-qm', 'base')
+  writeFileSync(join(env.paths.teamDir(env.teamId), 'app.txt'), 'one\ntwo\nthree\n')
+  const captured = await captureTeamSnapshot(env.db, env.paths, env.teamId, {
+    capturedBy: 'agent',
+    agentId: 'coder',
+    turnId: 'turn-before',
+    toolCallId: 'call-before',
+    base: 'HEAD',
+  })
+  const captureResult = captureReviewPacket(env.db, env.paths, {
+    teamId: env.teamId,
+    snapshotId: captured.reference.id,
+    reviewerAgentId: 'reviewer',
+    summary: 'the new branch is untested',
+    requesterKind: 'agent',
+    requesterAgentId: 'coder',
+  })
+  if (captureResult.kind !== 'captured') throw new Error('capture blocked')
+
+  const previous = process.env.BAZILION_BASH_SANDBOX
+  process.env.BAZILION_BASH_SANDBOX = 'docker'
+  let outcome: string
+  try {
+    outcome = await dispatchReviewPacket(captureResult.packet.id, { workerEntryPath })
+  } finally {
+    if (previous === undefined) delete process.env.BAZILION_BASH_SANDBOX
+    else process.env.BAZILION_BASH_SANDBOX = previous
+  }
+
+  // The turn really ran — a completion here is the fixture's own assertion that every capability a
+  // reviewer must not have was refused by the daemon, container and coding ones included.
+  expect(outcome).toBe('dispatched')
+  expect(listReviewAttempts(env.db, captureResult.packet.id)[0]).toMatchObject({
+    state: 'completed',
+    error: null,
+  })
+
+  // And it created nothing: no container registered against any workspace writer, and no writer left
+  // behind holding the Team tree.
+  const resources = env.db.raw
+    .query<{ kind: string }, []>('SELECT kind FROM workspace_resources')
+    .all()
+  expect(resources.filter((row) => row.kind === 'container')).toEqual([])
+  const writers = env.db.raw
+    .query<{ state: string }, []>('SELECT state FROM workspace_writers')
+    .all()
+  expect(writers.filter((row) => row.state === 'active')).toEqual([])
+
+  // Control: the same measurement, pointed at a container that does exist. Without this, "no container"
+  // could be an assertion that is simply always true — the failure mode this story exists to stop. The
+  // control covers the *read* only; it deletes its own rows rather than tearing down a container that
+  // never existed, because confirming that cleanup needs real Docker and this test must not.
+  const lease = await workspaceLifecycle(env.db).claim(
+    env.teamId,
+    env.paths.teamDir(env.teamId),
+    'agent',
+  )
+  const containers = workspaceLifecycle(env.db).containers(lease)
+  const controlName = containers.name('bash')
+  const containerRows = () =>
+    env.db.raw
+      .query<{ kind: string }, []>('SELECT kind FROM workspace_resources')
+      .all()
+      .filter((row) => row.kind === 'container')
+  await containers.beforeCreate({
+    dockerPath: '/usr/bin/docker',
+    endpoint: 'unix:///var/run/docker.sock',
+    executableIdentity: {
+      device: '2065',
+      inode: '2',
+      mode: '100755',
+      size: '0',
+      modifiedTimeNs: '0',
+      changedTimeNs: '0',
+    },
+    containerName: controlName,
+  })
+  expect(containerRows()).toHaveLength(1)
+  env.db.raw.run('DELETE FROM workspace_resources')
+  env.db.raw.run('DELETE FROM workspace_writers')
+  expect(containerRows()).toEqual([])
 })

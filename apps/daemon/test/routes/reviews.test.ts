@@ -299,3 +299,48 @@ test('checks are current only when a verification of this revision actually exec
   expect(stale.report.facts.checksCurrent).toBe(false)
   expect(stale.report.applicability.stale).toBe(true)
 })
+
+// BAZ-045: the operator entry point answers the correlation question the same way the reviewer's does.
+// Before the fix the operator route stored every finding as `open`, because it never asked whether the
+// revision's content was still reproducible — so an operator finding about a revision nobody can read
+// was resolvable, while the identical finding from an Agent was `unverified` and could not be. Two
+// entry points, two answers to a question the product states one rule for.
+test('an operator finding about an unreproducible revision is unverified, and cannot be resolved', async () => {
+  const { packetId } = await packetWithFinding()
+  // The tree moves after the capture, so the reviewed revision's content is no longer reproducible.
+  writeFileSync(join(env.paths.teamDir(env.teamId), 'app.txt'), 'one\ntwo\nthree\nfour\n')
+  const response = await teamsRouter.request(`/${env.teamId}/reviews/${packetId}/findings`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      path: 'app.txt',
+      severity: 'info',
+      note: 'recorded after the tree moved',
+    }),
+  })
+  expect(response.status).toBe(201)
+  const body = (await response.json()) as {
+    finding: { id: string; state: string }
+    report: ReviewPacketReport
+  }
+  expect(body.finding.state).toBe('unverified')
+  expect(body.report.applicability.comparison).toBe('changed')
+
+  // The rule the state exists to enforce: an unverified finding cannot be resolved.
+  const resolved = await teamsRouter.request(
+    `/${env.teamId}/reviews/${packetId}/findings/${body.finding.id}/resolve`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ resolutionKind: 'explicit', resolutionNote: 'looks fine to me' }),
+    },
+  )
+  expect(resolved.status).toBeGreaterThanOrEqual(400)
+
+  // The finding recorded while the content was still there stays open, so the guard is not blanket.
+  const detail = (await (
+    await teamsRouter.request(`/${env.teamId}/reviews/${packetId}`)
+  ).json()) as ReviewPacketResponse
+  const still = detail.report.findings.find((finding) => finding.state === 'open')
+  expect(still).toBeTruthy()
+})

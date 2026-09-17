@@ -289,9 +289,9 @@ try {
   const attempt = settled.attempts.at(-1)
   const outcome = attempt?.outcomes?.[0]
   // The commands are the *model's* choice, so they are printed rather than asserted.
-  settled.checks.forEach((check) =>
-    out(`asked for: [${check.ordinal}] ${check.command} (${check.purpose})`),
-  )
+  for (const check of settled.checks) {
+    out(`asked for: [${check.ordinal}] ${check.command} (${check.purpose})`)
+  }
   // The receipt's provenance comes from the daemon's own store, not from the report: it must name the
   // exact revision the request captured.
   const receiptRow = outcome?.commandId

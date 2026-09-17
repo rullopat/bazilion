@@ -846,6 +846,30 @@
       "owner": "BAZ-031",
       "file": "apps/daemon/test/runtime/pi-model-routing.test.ts",
       "test": "the registry carries the endpoint too, so every caller can admit an upstream model"
+    },
+    {
+      "id": "VERIFICATION-CAPTURE-SCOPES-CHECK-CWD",
+      "owner": "BAZ-045",
+      "file": "apps/daemon/test/lib/verification-capture.test.ts",
+      "test": "a check working directory outside the workspace is refused at capture, before any row exists"
+    },
+    {
+      "id": "REVIEW-OPERATOR-FINDING-CANNOT-BE-OPEN-WHEN-CONTENT-IS-GONE",
+      "owner": "BAZ-045",
+      "file": "apps/daemon/test/routes/reviews.test.ts",
+      "test": "an operator finding about an unreproducible revision is unverified, and cannot be resolved"
+    },
+    {
+      "id": "VERIFICATION-LIMITS-STATED-ON-BOTH-SURFACES",
+      "owner": "BAZ-045",
+      "file": "apps/web/test/verification-limits.test.ts",
+      "test": "the verification limits statement names both limits, and both surfaces render it"
+    },
+    {
+      "id": "REVIEW-TURN-RUNS-NOTHING-UNDER-ISOLATION",
+      "owner": "BAZ-045",
+      "file": "apps/daemon/test/lib/review-e2e.test.ts",
+      "test": "a review turn runs nothing, with container isolation switched on"
     }
   ]
 }

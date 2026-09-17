@@ -115,6 +115,15 @@ test('a capture that cannot be honoured comes back as a blocker, not a crash', a
     [{ snapshotId: 'never-captured' }, 'snapshot_unavailable'],
     [{ recipientAgentId: 'missing' }, 'recipient_unavailable'],
     [{ checks: [] }, 'unsupported'],
+    // BAZ-045: the operator producer goes through the same capture, so the same escapes are refused
+    // here. This is the surface a request actually arrives on, and it had no test for either guard.
+    [{ writablePaths: ['..'] }, 'unsupported'],
+    [{ writablePaths: ['/etc'] }, 'unsupported'],
+    [{ writablePaths: ['dist/../../etc'] }, 'unsupported'],
+    [
+      { checks: [{ command: 'pnpm test', cwd: '../../etc', purpose: 's', timeoutMs: 60_000 }] },
+      'unsupported',
+    ],
   ]
   for (const [override, reason] of cases) {
     const response = await create(snapshot, override)
@@ -123,6 +132,19 @@ test('a capture that cannot be honoured comes back as a blocker, not a crash', a
     expect(body.blocked.reason, JSON.stringify(override)).toBe(reason)
     expect(body.blocked.detail.length).toBeGreaterThan(0)
   }
+  // The refusals above left no request behind, and a legitimate request still works on this route.
+  const listed = await teamsRouter.request(`/${env.teamId}/verifications`)
+  expect(((await listed.json()) as { requests: unknown[] }).requests).toHaveLength(0)
+  const ok = await create(snapshot, { writablePaths: ['build/out'] })
+  expect(ok.status).toBe(201)
+  const okBody = (await ok.json()) as VerificationResponse
+  expect(okBody.request.request.id).toBeTruthy()
+  const isUndeclared = await create(snapshot, {
+    checks: [
+      { command: 'node build.mjs', cwd: 'packages/app', purpose: 'build', timeoutMs: 60_000 },
+    ],
+  })
+  expect(isUndeclared.status).toBe(201)
   // A malformed body is refused before anything is read.
   const malformed = await teamsRouter.request(`/${env.teamId}/verifications`, {
     method: 'POST',

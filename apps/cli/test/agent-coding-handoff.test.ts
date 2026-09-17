@@ -22,8 +22,9 @@ const fake = createServer(async (request, response) => {
     let step: [string, unknown] | undefined
     try {
       const writers = db.raw.query<{ id: string }, []>('SELECT id FROM workspace_writers').all()
-      if (writers.length !== 1) throw new Error('Expected exactly one workspace writer')
-      leases.push(writers[0]!.id)
+      const writer = writers[0]
+      if (writers.length !== 1 || !writer) throw new Error('Expected exactly one workspace writer')
+      leases.push(writer.id)
       switch (requests++) {
         case 0:
           step = [
@@ -47,10 +48,11 @@ const fake = createServer(async (request, response) => {
           ]
           break
         case 3: {
-          const receipt = db.raw.query<{ id: string }, []>('SELECT id FROM coding_commands').get()!
+          const receipt = db.raw.query<{ id: string }, []>('SELECT id FROM coding_commands').get()
           const message = db.raw
             .query<{ id: string }, [string]>('SELECT id FROM messages WHERE from_agent_id = ?')
-            .get(owner)!
+            .get(owner)
+          if (!receipt || !message) throw new Error('Expected a receipt and its reply target')
           step = [
             'send_message',
             {
@@ -64,10 +66,11 @@ const fake = createServer(async (request, response) => {
         case 4:
           break
         case 5: {
-          const receipt = db.raw.query<{ id: string }, []>('SELECT id FROM coding_commands').get()!
+          const receipt = db.raw.query<{ id: string }, []>('SELECT id FROM coding_commands').get()
           const message = db.raw
             .query<{ id: string }, [string]>('SELECT id FROM messages WHERE from_agent_id = ?')
-            .get(helper)!
+            .get(helper)
+          if (!receipt || !message) throw new Error('Expected a receipt and its reply target')
           if (!JSON.stringify(body.messages).includes('HANDOFF_RESULT'))
             throw new Error('Missing result wake')
           step = ['coding_receipt', { id: receipt.id, messageId: message.id }]

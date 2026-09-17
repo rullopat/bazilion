@@ -90,6 +90,7 @@ import { deliverReviewExport } from '../lib/review/deliver-export.ts'
 import { cancelReviewDispatch } from '../lib/review/dispatch.ts'
 import { buildReviewExport } from '../lib/review/export.ts'
 import { buildFileLink, openFileLink } from '../lib/review/file-link.ts'
+import { readRevisionContentAvailability } from '../lib/review/revision.ts'
 import { validateTopicNameFormat } from '../lib/telegram/naming.ts'
 import { syncGroupTopicNames } from '../lib/telegram/topic-rename.ts'
 import {
@@ -339,6 +340,11 @@ teamsRouter.post('/:id/reviews/:packetId/findings', async (c) => {
     return c.json({ error: 'The path is outside the reviewed scope', code: 'invalid_path' }, 400)
   }
   try {
+    // BAZ-045: the operator's finding gets the same state the reviewer's would. Computing this only in
+    // the capability host made `unverified` an agent-only outcome: an operator finding about a revision
+    // whose content could no longer be reproduced was stored `open`, and being `open` it could be
+    // resolved — the one rule the state exists to enforce.
+    const availability = await readRevisionContentAvailability(db, paths, packet)
     const finding = addReviewFinding(db, {
       packetId,
       authorKind: 'operator',
@@ -349,6 +355,7 @@ teamsRouter.post('/:id/reviews/:packetId/findings', async (c) => {
       lineEnd: readLine(body.lineEnd),
       // The finding is about the revision this packet captured — not about whatever is on disk now.
       snapshotId: packet.snapshotId,
+      state: availability.contentAvailable ? 'open' : 'unverified',
     })
     const report = await readReviewPacketReport(db, paths, packet.teamId, packetId)
     return c.json({ finding, report }, 201)

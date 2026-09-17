@@ -3,6 +3,7 @@
 // state machine claims it, revalidates the change, and executes only the captured checks. This panel
 // therefore shows a comparison and per-check outcomes — never a pass, and never a merge verdict.
 
+import { VERIFICATION_OUTCOME_LIMITS } from '@bazilion/api-types'
 import { createFileRoute, Link, redirect } from '@tanstack/react-router'
 import { useState } from 'react'
 import { Button } from '../../../components/Button'
@@ -278,6 +279,15 @@ function VerificationsPage() {
             })}
           </ul>
         )}
+        {/*
+          BAZ-045: the same two facts the result message carries, from the same definition. Without them,
+          "all inside the declared paths" reads as confinement and a completed request reads as an
+          approval — neither of which this panel can claim. Stated always, not only once something ran:
+          a request waiting to be verified is exactly when those two assumptions get made.
+        */}
+        <p className="muted">
+          {VERIFICATION_OUTCOME_LIMITS[0]} {VERIFICATION_OUTCOME_LIMITS[1]}
+        </p>
       </section>
     </PageShell>
   )

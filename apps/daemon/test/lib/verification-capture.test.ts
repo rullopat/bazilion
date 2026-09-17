@@ -122,7 +122,7 @@ test('capture refuses unavailable or unsound inputs with a specific blocker', as
        VALUES ('archived-tester', 'profile', 'Archived', 'archived', '/tmp/a', ?, 1)`,
       [env.teamId],
     )
-    const cases: Array<[Record<string, unknown>, string]> = [
+    const cases: Array<[Record<string, unknown>, string, string?]> = [
       [{ snapshotId: 'never-captured' }, 'snapshot_unavailable'],
       [{ snapshotId: '' }, 'snapshot_unavailable'],
       [{ recipientAgentId: 'missing' }, 'recipient_unavailable'],
@@ -134,7 +134,35 @@ test('capture refuses unavailable or unsound inputs with a specific blocker', as
       [{ checks: [] }, 'unsupported'],
       [{ writablePaths: Array.from({ length: 17 }, (_, i) => `dist/${i}`) }, 'unsupported'],
     ]
-    for (const [override, reason] of cases) {
+    // BAZ-045: every branch of the declared-writable-path contract, not just the count. The escape
+    // shapes matter most: a declaration that covers the tree turns the receipt's "writes outside the
+    // declared output paths" line into a false negative, which is the only reason the line exists.
+    for (const path of [
+      '..',
+      '../..',
+      'dist/../../etc',
+      '.',
+      '././',
+      '/etc',
+      '/',
+      '~/.ssh',
+      'dist\\out',
+      '',
+      'x'.repeat(1_001),
+      42,
+    ]) {
+      cases.push([{ writablePaths: [path] }, 'unsupported'])
+    }
+    // BAZ-045: a check's working directory is refused at capture with a reason, instead of being
+    // accepted and then failing as an execution that did not happen.
+    for (const cwd of ['../../etc', '/etc', '..', '.git', 'a//b', 'a/./b', 'dist\\out']) {
+      cases.push([
+        { checks: [{ ...checks[0], cwd }] },
+        'unsupported',
+        cwd, // the refusal names the value it refused, so the caller can act on it
+      ])
+    }
+    for (const [override, reason, expected] of cases) {
       const result: VerificationCaptureResult = captureVerificationRequest(
         env.db,
         env.paths,
@@ -144,12 +172,45 @@ test('capture refuses unavailable or unsound inputs with a specific blocker', as
       if (result.kind !== 'blocked') continue
       expect(result.blocker.reason, JSON.stringify(override)).toBe(reason)
       expect(result.blocker.detail.length).toBeGreaterThan(0)
+      if (expected) expect(result.blocker.detail).toContain(expected)
     }
-    // A blocked capture writes nothing at all.
+    // Every refusal above wrote nothing at all.
     const stored = env.db.raw
       .query<{ count: number }, []>('SELECT count(*) AS count FROM verification_requests')
       .get()
     expect(stored?.count).toBe(0)
+    // Refusal is not blanket refusal: a legitimate declaration normalises, and a legitimate
+    // directory still captures — so the guard cannot pass by rejecting everything.
+    // Normalising and refusing are different answers: `./`, `//` and `.` segments resolve inside the
+    // workspace, so they are accepted *as the path they name* rather than treated as suspect.
+    for (const [declared, expected] of [
+      ['./build//out/', 'build/out'],
+      ['dist/./out', 'dist/out'],
+      ['build', 'build'],
+    ] as const) {
+      const deep = captureVerificationRequest(
+        env.db,
+        env.paths,
+        intent(env, snapshotId, { writablePaths: [declared] }),
+      )
+      expect(deep.kind, `declared=${declared}`).toBe('captured')
+      if (deep.kind === 'captured') {
+        expect(deep.request.environment.writablePaths).toEqual([expected])
+      }
+    }
+    const nested = captureVerificationRequest(
+      env.db,
+      env.paths,
+      intent(env, snapshotId, { checks: [{ ...checks[0], cwd: 'packages/app' }] }),
+    )
+    expect(nested.kind).toBe('captured')
+    if (nested.kind === 'captured') {
+      expect(nested.request.id).toBeTruthy()
+    }
+    const written = env.db.raw
+      .query<{ count: number }, []>('SELECT count(*) AS count FROM verification_requests')
+      .get()
+    expect(written?.count).toBe(4)
   } finally {
     env.cleanup()
   }
@@ -250,6 +311,48 @@ test('a captured request is not a peer message, so an inbox wake has nothing to 
       env.db.raw.query<{ count: number }, []>('SELECT count(*) AS count FROM messages').get()
         ?.count,
     ).toBe(0)
+  } finally {
+    env.cleanup()
+  }
+})
+
+// BAZ-045: the check's working directory is part of the captured contract, so it is refused where the
+// request is captured rather than where the check runs. Observed before the fix as a check that was
+// accepted, had rows written, and then surfaced as an execution that mysteriously did not happen.
+test('a check working directory outside the workspace is refused at capture, before any row exists', async () => {
+  const env = makeTestEnv()
+  try {
+    seedAgents(env.db, env.teamId)
+    repo(env)
+    const snapshotId = await snapshot(env)
+    for (const cwd of ['../../..', '/etc', 'src/../../outside', '.git', 'a\\b']) {
+      const result = captureVerificationRequest(
+        env.db,
+        env.paths,
+        intent(env, snapshotId, { checks: [{ ...checks[0], cwd }] }),
+      )
+      expect(result.kind, `cwd=${cwd}`).toBe('blocked')
+      if (result.kind !== 'blocked') continue
+      expect(result.blocker.reason).toBe('unsupported')
+      // The refusal names the value, so the caller can fix the request instead of guessing.
+      expect(result.blocker.detail).toContain(cwd)
+    }
+    // Nothing was written for any refusal.
+    const rows = env.db.raw
+      .query<{ count: number }, []>('SELECT count(*) AS count FROM verification_requests')
+      .get()
+    expect(rows?.count).toBe(0)
+    const checksWritten = env.db.raw
+      .query<{ count: number }, []>('SELECT count(*) AS count FROM verification_checks')
+      .get()
+    expect(checksWritten?.count).toBe(0)
+    // And the guard is not blanket: a legitimate directory is captured as given.
+    const ok = captureVerificationRequest(
+      env.db,
+      env.paths,
+      intent(env, snapshotId, { checks: [{ ...checks[0], cwd: 'packages/app' }] }),
+    )
+    expect(ok.kind).toBe('captured')
   } finally {
     env.cleanup()
   }

@@ -225,3 +225,17 @@ export interface CreateVerificationRequest {
 export interface VerificationBlockedResponse {
   blocked: VerificationBlocker
 }
+
+/**
+ * What a verification outcome is, and what it is not.
+ *
+ * One wording with two readers: the result message an Agent receives and the panel the operator reads
+ * in the browser. A limit stated on one surface and not the other is how an operator comes to read
+ * "all inside the declared paths" as confinement, or a completed request as an approval.
+ *
+ * The last sentence is the one that matters most: declared output paths are **reported**, not enforced.
+ */
+export const VERIFICATION_OUTCOME_LIMITS: readonly [string, string] = [
+  'Facts above are executor-owned. A non-zero exit is a result about the commands that ran, never proof about later code, and this is not an approval to publish, merge or deploy.',
+  'Declared output paths are not enforced, so a change they do not cover appears above rather than being prevented.',
+]

@@ -1214,3 +1214,4 @@ export type {
   VerificationResponse,
   VerificationSummary,
 } from './verification.ts'
+export { VERIFICATION_OUTCOME_LIMITS } from './verification.ts'

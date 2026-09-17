@@ -63,6 +63,21 @@ const web = spawn(
   },
 )
 
+/**
+ * Run a CLI command that the observation depends on, and fail loudly if it did not succeed. The CLI
+ * fixture resolves with the exit code rather than throwing, so an unexplained failure would leave the
+ * harness asserting against state that was never created.
+ */
+async function mustCli(args) {
+  const result = await daemon.cli(args)
+  assert.equal(
+    result.exitCode,
+    0,
+    `cli ${args.join(' ')} failed: ${result.stderr.trim() || result.stdout.trim()}`,
+  )
+  return result
+}
+
 let browser
 try {
   const deadline = Date.now() + 20_000
@@ -148,6 +163,165 @@ try {
   assert.equal(await page.getByRole('region', { name: 'Changes since baseline' }).count(), 0)
   await page.screenshot({ path: join(evidence, 'unavailable.png') })
 
+  // ---------------------------------------------------------------------------------------------
+  // BAZ-045: the review-packet panel and the verification panel, observed rather than unit-tested.
+  // ---------------------------------------------------------------------------------------------
+  // A packet with two findings in different states, so "an unverified finding cannot be resolved" is
+  // observed as a contrast: exactly one resolve control, on the finding that is open.
+  const snapshotList = await mustCli(['team', 'review', 'snapshots', 'default', '--json'])
+  const snapshotId = snapshotList.stdout.match(/[0-9a-f]{64}/)?.[0]
+  assert(snapshotId, 'no retained snapshot to review')
+  await mustCli([
+    'agent',
+    'spawn',
+    '--profile',
+    'default',
+    '--name',
+    'reviewer',
+    '--team',
+    'default',
+  ])
+  const packetOut = await mustCli([
+    'team',
+    'review',
+    'packet',
+    'create',
+    'default',
+    '--snapshot',
+    snapshotId,
+    '--summary',
+    'the new line is untested',
+    '--json',
+  ])
+  const packetId = packetOut.stdout.match(/"id":\s*"([0-9a-f-]{36})"/)?.[1]
+  assert(packetId, `packet id not found in: ${packetOut.stdout.slice(0, 200)}`)
+  await mustCli([
+    'team',
+    'review',
+    'packet',
+    'finding',
+    'default',
+    packetId,
+    '--path',
+    'src/app.txt',
+    '--severity',
+    'major',
+    '--note',
+    'the new branch has no test',
+    '--lines',
+    '3',
+  ])
+  // Move the tree, so the next finding cannot be correlated to the reviewed revision.
+  writeFileSync(join(workspace, 'src/app.txt'), 'alpha\nbeta\ngamma\ndelta\n')
+  await mustCli([
+    'team',
+    'review',
+    'packet',
+    'finding',
+    'default',
+    packetId,
+    '--path',
+    'notes.txt',
+    '--severity',
+    'info',
+    '--note',
+    'untracked scratch should not ship',
+  ])
+  await mustCli([
+    'team',
+    'review',
+    'packet',
+    'conclude',
+    'default',
+    packetId,
+    '--conclusion',
+    'changes_requested',
+    '--note',
+    'one issue, one note',
+  ])
+
+  await page.setViewportSize({ width: 1280, height: 1000 })
+  await page.goto(`${url}/teams/default/review`)
+  const packets = page.getByRole('region', { name: 'Review packets' })
+  await packets.getByRole('heading', { name: 'Review packets' }).waitFor()
+  const packetText = await packets.innerText()
+  assert(packetText.includes('changes_requested'), 'the conclusion is not stated')
+  assert(/2 finding\(s\), 2 unresolved/.test(packetText), `counts missing: ${packetText}`)
+  await packets.getByRole('button', { name: 'Details', exact: true }).first().click()
+  const detail = await packets.innerText()
+  await page.waitForFunction(() => document.body.innerText.includes('applicability:'), undefined, {
+    timeout: 10_000,
+  })
+  await page.screenshot({ path: join(evidence, 'packet.png') })
+  writeFileSync(join(evidence, 'packet.txt'), await packets.innerText())
+  const reviewed = await packets.innerText()
+  assert(reviewed.includes('the new branch has no test'), 'the open finding is not readable')
+  assert(
+    reviewed.includes('untracked scratch should not ship'),
+    'the unverified finding is not readable',
+  )
+  assert(reviewed.includes('UNVERIFIED'), 'an uncorrelated finding is not labelled')
+  assert(reviewed.includes('applicability:'), 'applicability is not stated')
+  assert(
+    reviewed.includes('conclusion is not acceptance'),
+    'the panel stopped saying a conclusion is not acceptance',
+  )
+  // The discriminator: the open finding offers a resolve control, the unverified one must not.
+  assert.equal(
+    await packets.getByRole('button', { name: 'Resolve explicitly', exact: true }).count(),
+    1,
+    'an unverified finding must not offer a resolve control, and an open one must',
+  )
+  assert(packetText.length > 0 && detail.length > 0)
+
+  // Narrow screen on the packet panel: still readable, still no horizontal overflow.
+  await page.setViewportSize({ width: 390, height: 844 })
+  await packets.getByRole('heading', { name: 'Review packets' }).waitFor()
+  assert(
+    await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    'Horizontal overflow on a narrow screen (review packets)',
+  )
+  await page.screenshot({ path: join(evidence, 'packet-narrow.png') })
+
+  // The verification panel: a captured request with nothing run yet, and the limits it must state.
+  await page.setViewportSize({ width: 1280, height: 1000 })
+  await mustCli([
+    'team',
+    'verify',
+    'create',
+    'default',
+    '--agent',
+    'reviewer',
+    '--snapshot',
+    snapshotId,
+    '--check',
+    'pnpm test :: unit suite',
+    '--summary',
+    'confirm the change before review',
+  ])
+  await page.goto(`${url}/teams/default/verifications`)
+  const requests = page.getByRole('region', { name: 'Verification requests' })
+  await requests.getByRole('heading', { name: 'Requests' }).waitFor()
+  await requests.getByText('pnpm test').waitFor({ timeout: 15_000 })
+  const requestText = await requests.innerText()
+  await page.screenshot({ path: join(evidence, 'verifications.png') })
+  writeFileSync(join(evidence, 'verifications.txt'), requestText)
+  assert(requestText.includes('pending'), `the request state is not stated: ${requestText}`)
+  assert(requestText.includes('pnpm test'), 'the captured check is not readable')
+  // BAZ-045: the two facts the result message carries, stated on the surface the operator reads.
+  assert(
+    requestText.includes('not an approval to publish, merge or deploy'),
+    'the panel stopped saying this is not an approval',
+  )
+  assert(
+    requestText.includes('Declared output paths are not enforced'),
+    'the panel implies declared output paths are confined',
+  )
+
+  // A Team with no requests reads as an empty state, never as an error.
+  await page.goto(`${url}/teams/plain/verifications`)
+  await page.getByText('No verification requests yet.').waitFor()
+
   assert.deepEqual(errors, [])
   writeFileSync(
     join(evidence, 'result.json'),
@@ -161,15 +335,29 @@ try {
           'snapshot capture reaches the retained list',
           'narrow screen without horizontal overflow',
           'non-repository Team reports unavailable, not empty',
+          'review packet panel: counts, conclusion, open vs unverified finding, applicability, and one resolve control',
+          'review packet panel: no horizontal overflow on a narrow screen',
+          'verification panel: captured check, pending state, and both stated limits',
+          'verification panel: empty state for a Team with no requests',
         ],
-        artifacts: ['desktop.png', 'narrow.png', 'unavailable.png', 'panel.txt'],
+        artifacts: [
+          'desktop.png',
+          'narrow.png',
+          'unavailable.png',
+          'panel.txt',
+          'packet.png',
+          'packet.txt',
+          'packet-narrow.png',
+          'verifications.png',
+          'verifications.txt',
+        ],
         errors,
       },
       null,
       2,
     ),
   )
-  console.log(`Git review UI acceptance passed. Evidence: ${evidence}`)
+  console.log(`Coding review and verification UI acceptance passed. Evidence: ${evidence}`)
 } finally {
   await browser?.close()
   if (web.exitCode === null) {

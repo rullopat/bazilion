@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process'
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { VERIFICATION_OUTCOME_LIMITS } from '@bazilion/api-types'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import type { BazilionDb } from '../../src/core/db/client.ts'
 import { getCodingCommand } from '../../src/core/repos/coding-commands.ts'
@@ -166,7 +167,11 @@ test('a captured dirty change is verified end to end and the receipts identify i
   expect(inbox[0]?.payload).toContain(`coding-receipt:${outcomes[0]?.commandId}`)
   expect(inbox[0]?.payload).toContain('completed')
   expect(inbox[0]?.payload).toContain('snapshot')
-  expect(inbox[0]?.payload).toContain('not an approval to publish')
+  // BAZ-045: the result message carries the limits statement from the one definition the web panel
+  // also renders, so a limit cannot be stated on one surface and quietly dropped from the other.
+  for (const sentence of VERIFICATION_OUTCOME_LIMITS) {
+    expect(inbox[0]?.payload).toContain(sentence)
+  }
   // Declared output paths are advisory, so the result reports the write outside the declaration
   // instead of implying it was prevented.
   expect(inbox[0]?.payload).toContain('Writes outside the declared output paths (build): stray.txt')

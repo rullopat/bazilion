@@ -1,3 +1,4 @@
+import { VERIFICATION_OUTCOME_LIMITS } from '@bazilion/api-types'
 import type { BazilionDb } from '../../core/db/client.ts'
 import type { Paths } from '../../core/paths.ts'
 import type {
@@ -125,12 +126,9 @@ function renderResult(input: VerificationResultInput): string {
     }
   }
   if (attempt.error) lines.push('', `Limitation: ${attempt.error}`)
-  lines.push(
-    '',
-    'Facts above are executor-owned. A non-zero exit is a result about the commands that ran, never',
-    'proof about later code, and this is not an approval to publish, merge or deploy. Declared output',
-    'paths are not enforced, so a change they do not cover appears above rather than being prevented.',
-  )
+  // The same two facts the web panel shows, from one definition: a limit the operator can read on one
+  // surface and not the other is a limit they will assume does not exist.
+  lines.push('', VERIFICATION_OUTCOME_LIMITS[0], VERIFICATION_OUTCOME_LIMITS[1])
   const payload = lines.join('\n')
   return payload.length > MAX_RESULT_CHARACTERS
     ? `${payload.slice(0, MAX_RESULT_CHARACTERS)}\n[result truncated]`

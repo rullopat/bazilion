@@ -15,8 +15,11 @@ import {
   recordReviewConclusion,
 } from '../../core/repos/review-packets.ts'
 import type { ReviewCapabilityHost } from '../../runtime/tools/review.ts'
-import { readSnapshotApplicability } from '../git-review/service.ts'
-import { readRevisionChanges, readRevisionPatch } from './revision.ts'
+import {
+  readRevisionChanges,
+  readRevisionContentAvailability,
+  readRevisionPatch,
+} from './revision.ts'
 
 // BAZ-043: what a reviewer Agent is allowed to reach.
 //
@@ -53,21 +56,15 @@ export function createReviewCapabilityHost(input: ReviewCapabilityInput): Review
         contentUnavailableReason: revision.reason,
       }
     }
-    const applicability = await readSnapshotApplicability(
+    const { contentAvailable, contentUnavailableReason } = await readRevisionContentAvailability(
       input.db,
       input.paths,
-      packet.teamId,
-      packet.snapshotId,
-    ).catch(() => null)
-    const contentAvailable = applicability?.comparison === 'identical'
+      packet,
+    )
     return {
       changes: revision.changes,
       contentAvailable,
-      contentUnavailableReason: contentAvailable
-        ? null
-        : applicability?.comparison === 'changed'
-          ? 'the working tree changed after the capture, so the reviewed revision’s content is no longer reproducible'
-          : 'the reviewed revision could not be compared with the working tree',
+      contentUnavailableReason,
     }
   }
 

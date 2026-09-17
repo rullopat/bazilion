@@ -3,7 +3,7 @@ import type { BazilionDb } from '../../core/db/client.ts'
 import type { Paths } from '../../core/paths.ts'
 import type { ReviewPacketRecord } from '../../core/repos/review-packets.ts'
 import { getSourceSnapshot } from '../../core/repos/source-snapshots.ts'
-import { readTeamReview, requireTeam } from '../git-review/service.ts'
+import { readSnapshotApplicability, readTeamReview, requireTeam } from '../git-review/service.ts'
 
 // BAZ-043: reading the *captured* revision, as narrowly as it can honestly be read.
 //
@@ -77,7 +77,7 @@ export async function readRevisionPatch(
   packet: ReviewPacketRecord,
   path: string,
 ): Promise<ReviewPathContent> {
-  let review
+  let review: Awaited<ReturnType<typeof readTeamReview>>
   try {
     review = await readTeamReview(db, paths, packet.teamId, {
       base: packet.baseOid,
@@ -115,4 +115,43 @@ export async function readRevisionPatch(
     }
   }
   return { path, patch: change.patch, truncated: change.patchTruncated, reason: null }
+}
+
+/**
+ * Can the reviewed revision's content still be reproduced?
+ *
+ * One answer, because two entry points ask it: the reviewer's capability host, which decides whether a
+ * finding it records is `open` or `unverified`, and the operator's HTTP route, which records findings too.
+ * While the route answered it by omission, an operator finding was always `open` — so the rule that an
+ * unverified finding cannot be resolved held for agents and not for the operator, and a finding that could
+ * not be correlated to the revision it named looked resolvable.
+ *
+ * `identical` is the only answer that means the content is there. `changed` means the tree moved; anything
+ * else (including a comparison that could not be made) means unknown, which is not the same as fine.
+ */
+export async function readRevisionContentAvailability(
+  db: BazilionDb,
+  paths: Paths,
+  packet: ReviewPacketRecord,
+): Promise<{ contentAvailable: boolean; contentUnavailableReason: string | null }> {
+  let comparison: string | null = null
+  try {
+    const applicability = await readSnapshotApplicability(
+      db,
+      paths,
+      packet.teamId,
+      packet.snapshotId,
+    )
+    comparison = applicability.comparison
+  } catch {
+    comparison = null
+  }
+  if (comparison === 'identical') return { contentAvailable: true, contentUnavailableReason: null }
+  return {
+    contentAvailable: false,
+    contentUnavailableReason:
+      comparison === 'changed'
+        ? 'the working tree changed after the capture, so the reviewed revision’s content is no longer reproducible'
+        : 'the reviewed revision could not be compared with the working tree',
+  }
 }

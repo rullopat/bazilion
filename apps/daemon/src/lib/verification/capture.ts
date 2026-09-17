@@ -6,6 +6,7 @@ import type {
   VerificationRequest as VerificationRequestWire,
   VerificationSummary,
 } from '@bazilion/api-types'
+import { codingRelativePath } from '../../core/coding-environment/config.ts'
 import type { BazilionDb } from '../../core/db/client.ts'
 import type { Paths } from '../../core/paths.ts'
 import { get as getAgent } from '../../core/repos/agents.ts'
@@ -124,6 +125,20 @@ export function captureVerificationRequest(
       return blocked('unsupported', 'too many declared writable paths')
     }
     environment.writablePaths = bounded
+  }
+  // BAZ-045: a check's working directory is scoped here, where a refusal costs nothing, rather than
+  // only in the executor, where an out-of-workspace `cwd` threw mid-run and surfaced as a check that
+  // mysteriously did not execute. `codingRelativePath` is the daemon's existing rule for this — the
+  // executor keeps its copy as the last line of defence, not the only one.
+  for (const check of intent.checks) {
+    try {
+      codingRelativePath(check.cwd)
+    } catch {
+      return blocked(
+        'unsupported',
+        `a check working directory must be a path inside the workspace: ${String(check.cwd)}`,
+      )
+    }
   }
 
   try {
