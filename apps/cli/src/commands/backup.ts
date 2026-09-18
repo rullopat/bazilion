@@ -790,7 +790,9 @@ function fsyncDirectory(path: string): void {
 }
 
 function fsyncFile(path: string): void {
-  const fd = openSync(path, 'r')
+  // 'r+': Windows FlushFileBuffers (fsync) requires a write handle; fsync on a
+  // read-only descriptor is EPERM there. POSIX fsyncs either.
+  const fd = openSync(path, 'r+')
   try {
     fsyncSync(fd)
   } finally {

@@ -253,7 +253,13 @@ try {
   const install = await run('npm', ['install', '-g', '--prefix', npmPrefix, tarball])
   if (install.code !== 0) fail('npm install -g', install.stderr + install.stdout)
   globalBinDir = npmPrefix
-  const bazilionBin = IS_WIN ? join(npmPrefix, 'bazilion.cmd') : join(npmPrefix, 'bin', 'bazilion')
+  // npm's shim layout differs per OS (and the shim is not on PATH for child
+  // processes on Windows), so invoke the installed bin entry through node
+  // directly: lib/node_modules on unix, node_modules on Windows.
+  const moduleRoot = existsSync(join(npmPrefix, 'lib', 'node_modules', 'bazilion'))
+    ? join(npmPrefix, 'lib', 'node_modules', 'bazilion')
+    : join(npmPrefix, 'node_modules', 'bazilion')
+  const bazilionBin = join(moduleRoot, 'dist', 'cli.js')
 
   const version = await run(bazilionBin, ['--version'])
   if (version.code !== 0 || !/\d+\.\d+\.\d+/.test(version.stdout)) {
