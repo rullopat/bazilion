@@ -253,6 +253,12 @@ try {
   const install = await run('npm', ['install', '-g', '--prefix', npmPrefix, tarball])
   if (install.code !== 0) fail('npm install -g', install.stderr + install.stdout)
   globalBinDir = npmPrefix
+  // Diagnostic: what did the packed tarball actually contain? A Windows-pack
+  // that missed the build shows up here as a tarball without dist/.
+  const tarballListing = await run('tar', ['-tzf', tarball])
+  console.log(
+    `    tarball contents (${tarballListing.stdout.split('\n').length} entries): ${tarballListing.stdout.split('\n').slice(0, 8).join(' | ')}`,
+  )
   // npm's shim layout differs per OS (and the shim is not on PATH for child
   // processes on Windows), so invoke the installed bin entry through node
   // directly. npm nests modules under lib/node_modules on unix and
