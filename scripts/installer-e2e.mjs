@@ -265,7 +265,7 @@ try {
   if (!bazilionBinFound) {
     const layout = []
     const walk = (dir, depth) => {
-      if (depth > 2) return
+      if (depth > 4) return
       for (const entry of readdirSync(dir, { withFileTypes: true })) {
         const child = join(dir, entry.name)
         layout.push(child)
@@ -283,6 +283,7 @@ try {
     )
   }
   const bazilionBin = bazilionBinFound
+  if (!bazilionBin) process.exit(1)
 
   const version = await run(bazilionBin, ['--version'])
   if (version.code !== 0 || !/\d+\.\d+\.\d+/.test(version.stdout)) {
