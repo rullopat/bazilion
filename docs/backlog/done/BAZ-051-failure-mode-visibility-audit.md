@@ -1,10 +1,12 @@
 ---
 id: BAZ-051
 title: Failure-mode visibility audit — every recovery is seen or surfaced
-status: todo
-size: M (1 week)
+status: done
+size: M (1 week), ran ~a day
 created: 2026-09-17
 refined: 2026-09-18
+shipped: 2026-09-18
+release: v0.21.0-beta.3
 priority: high
 note: Beta blocker. Recovery machinery exists and is tested for correctness; visibility under real failure is not.
 
@@ -89,6 +91,28 @@ CLI where applicable):
 
 - New recovery mechanisms (the existing ones are sound).
 - Performance under failure (soak testing is separate; candidate for post-1.0).
+
+## As-built
+
+- **`queue_interrupted` attention kind** shipped as refined: projected from
+  `user_queue_controls WHERE paused=1 AND reason='interrupted'`, action-required,
+  non-acknowledgeable, agent-page href, diagnostic names the crash + uncertain
+  count (PR #63). Web kind dropdown + notification settings gained the kind;
+  Telegram message labels + resolution path map it.
+- **OAuth refresh failures** wrap pi-ai's raw error in an actionable re-login
+  message; stored credentials stay untouched for the operator to replace.
+- **Enqueue-while-paused stays accepted**, as decided; the audit test pins the
+  full operator flow — crash → pause visible → resume clears the item → the
+  uncertain head still blocks the pump by design until resolved (never silently
+  skipped) → exact-retry/supersede → drain.
+- **Build race fixed en route:** `pnpm -r` ran the web build and the CLI build
+  (which builds web itself) concurrently — ENOTEMPTY flake on macOS. Root build
+  is now web first, then the remaining workspaces in topological order with
+  explicit positive filters (negation-only `-r` filters selected nothing on CI —
+  an empty tarball would have packed had the race not fired first).
+- **Windows note:** the chmod-based backup-failure injection is unix-only
+  (POSIX dir perms are advisory on Windows); the delivery-failure path is
+  separately pinned by the failed-download test.
 
 ## Tests
 

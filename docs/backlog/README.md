@@ -80,10 +80,11 @@ Nothing refined and waiting. Capture the next story in `draft/` and refine it he
 
 Nothing in flight. Move an item here from `todo/` when implementation starts.
 
-## Done (46)
+## Done (47)
 
 | ID | Title | Size | Shipped | Release | Notes |
 |----|-------|------|---------|---------|-------|
+| [BAZ-051](done/BAZ-051-failure-mode-visibility-audit.md) | Failure-mode visibility audit — every recovery is seen or surfaced | M | 2026-09-18 | v0.21.0-beta.3 | Two silent failures fixed: the post-crash queue stall (new `queue_interrupted` attention kind) and opaque OAuth refresh errors. Six failure modes pinned by deterministic injection tests asserting the observed surface. Build race (web ∥ CLI vite on one dist) fixed en route. |
 | [BAZ-049](done/BAZ-049-cross-platform-ci-and-installer-e2e.md) | Cross-platform CI matrix and fresh-machine installer E2E | M (ran longer) | 2026-09-18 | — | 3-OS test matrix + hermetic installer E2E, all green at merge (PR #61). Caught six real product defects incl. Windows breaking every conversation write (dir-fsync) and `pnpm pack` shipping an empty tarball from Windows (build filters matched nothing). Workspace-claim identity portable; turns stay Linux-only until BAZ-057 (content-read portability); off-Linux refusal is a structured 422 naming `safe_reads_unavailable`. |
 | [BAZ-056](done/BAZ-056-remove-cli-chat-repl.md) | Remove the interactive chat REPL from the CLI; one-shot chat stays | S | 2026-09-17 | [v0.21.0-beta.1](https://github.com/rullopat/bazilion/releases/tag/v0.21.0-beta.1) | Operator decision: the bare readline REPL in `agent chat` was not worth completing; 1.0 keeps one-shot chat + dedicated commands + web. Piped stdin scripting kept (fail-closed `auto_deny`). PR #56. |
 | [BAZ-055](done/BAZ-055-scoped-device-credentials-and-pairing.md) | Scoped device credentials and one-paste pairing (OpenClaw's authz model, adapted) | L (M + S + S) | 2026-09-17 | [v0.21.0-beta.1](https://github.com/rullopat/bazilion/releases/tag/v0.21.0-beta.1) | Per-device scopes (`read/write/approvals/admin`) with fixture-generated route tests; `0002` scopes migration (first live exercise of the BAZ-047 contract); backup validator moved onto the canonical chain; `bazilion-pair://` single-use setup codes; Hermes-style auth-posture probe. PRs #57, #58. |
