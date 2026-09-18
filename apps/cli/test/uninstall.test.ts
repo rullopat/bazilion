@@ -36,6 +36,11 @@ function runUninstall(args: string[], home: string, input?: string): CliResult {
   }
 }
 
+/** The CLI reports the canonical spelling of the home (resolveCliPaths). */
+function canonicalHomeSpelling(home: string): string {
+  return realpathSync(home)
+}
+
 function exitedProcessId(): number {
   const result = spawnSync(process.execPath, ['-e', 'process.stdout.write(String(process.pid))'], {
     encoding: 'utf8',
@@ -121,6 +126,7 @@ describe('uninstall command', () => {
       writeFileSync(join(h.home, 'secrets.enc'), 'legacy secrets')
       writeFileSync(join(externalGroups, 'external.txt'), 'keep me')
       symlinkSync(externalGroups, join(h.home, 'groups'), 'dir')
+      const expectedSpelling = canonicalHomeSpelling(h.home)
 
       const result = runUninstall(['uninstall', '--yes', '--all'], h.home)
 
@@ -128,7 +134,7 @@ describe('uninstall command', () => {
       expect(result.stderr).toBe('')
       expect(existsSync(h.home)).toBe(false)
       expect(readFileSync(join(externalGroups, 'external.txt'), 'utf8')).toBe('keep me')
-      expect(result.stdout).toContain(`removed ${realpathSync(h.home)}`)
+      expect(result.stdout).toContain(`removed ${expectedSpelling}`)
     } finally {
       h.cleanup()
       rmSync(externalGroups, { recursive: true, force: true })
@@ -157,12 +163,13 @@ describe('uninstall command', () => {
       writeManagedResetState(h.home)
       writeFileSync(join(h.home, 'operator-note.txt'), 'keep me')
 
+      const expectedSpelling = canonicalHomeSpelling(h.home)
       const result = runUninstall(['uninstall', '--yes', '--all'], h.home)
 
       expect(result.exitCode).toBe(0)
       expect(result.stderr).toBe('')
       expect(readFileSync(join(h.home, 'operator-note.txt'), 'utf8')).toBe('keep me')
-      expect(result.stdout).toContain(`${realpathSync(h.home)} still has unmanaged files; left in place`)
+      expect(result.stdout).toContain(`${expectedSpelling} still has unmanaged files; left in place`)
     } finally {
       h.cleanup()
     }
@@ -194,6 +201,7 @@ describe('uninstall command', () => {
     try {
       writeManagedResetState(h.home)
       writeRetainedState(h.home)
+      const expectedSpelling = canonicalHomeSpelling(h.home)
 
       const interactive = runUninstall(['uninstall'], h.home, 'y\nn\n')
       expect(interactive.exitCode).toBe(0)
@@ -201,7 +209,7 @@ describe('uninstall command', () => {
         'remove DB + auth/config + agent / profile / team data? [y/N]',
       )
       expect(interactive.stdout).toContain(
-        `also remove logs and skills? (full wipe of ${realpathSync(h.home)}) [y/N]`,
+        `also remove logs and skills? (full wipe of ${expectedSpelling}) [y/N]`,
       )
       expect(existsSync(join(h.home, 'auth.json'))).toBe(false)
       expect(existsSync(join(h.home, 'logs'))).toBe(true)
@@ -407,6 +415,7 @@ describe('uninstall command', () => {
     try {
       writeManagedResetState(h.home)
 
+      const expectedSpelling = canonicalHomeSpelling(h.home)
       const interrupted = spawnSync(
         process.execPath,
         [...STRIP_TYPES_ARGS, interruptedUninstallEntry, h.home, 'full-home'],
@@ -420,7 +429,7 @@ describe('uninstall command', () => {
       const resumed = runUninstall(['uninstall', '--yes', '--all'], h.home)
       expect(resumed.exitCode, resumed.stderr + resumed.stdout).toBe(0)
       expect(resumed.stderr + resumed.stdout).toContain('resuming interrupted Bazilion uninstall')
-      expect(resumed.stdout).toContain(`nothing to remove: ${realpathSync(h.home)} does not exist`)
+      expect(resumed.stdout).toContain(`nothing to remove: ${expectedSpelling} does not exist`)
       expect(existsSync(runtimePath)).toBe(false)
     } finally {
       rmSync(runtimePath, { force: true })
