@@ -66,7 +66,8 @@ jobs:
   installer-e2e:
     name: Fresh-machine installer E2E (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+    # The windows npm install of the package's dependency tree is slow.
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:

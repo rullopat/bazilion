@@ -262,6 +262,7 @@ try {
   const npmPrefix = mkdtempSync(join(tmpdir(), 'bazilion-e2e-npm-'))
   step(`npm install -g --prefix ${npmPrefix} ${tarball}`)
   const install = await run('npm', ['install', '-g', '--prefix', npmPrefix, tarball], {
+    env: { PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1' },
     shell: IS_WIN,
   })
   if (install.code !== 0) fail('npm install -g', install.stderr + install.stdout)
