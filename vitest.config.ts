@@ -1,12 +1,15 @@
 import { defineConfig } from 'vitest/config'
 
-// Repository-context safe reads pin ancestry with Linux directory descriptors and
-// /proc (apps/daemon/src/lib/repository-context/files.ts) and deliberately refuse a
-// weaker path-based fallback off-Linux; the portability story is BAZ-057. The suites
-// below exercise that boundary, so they only run where the product supports it
-// (BAZ-049): macOS/Windows CI exercises everything else. Keep this list in sync with
-// the platform-support statement in README.md — a suite belongs here only if it
-// constructs a ContextDirectory or drives the coding pipeline through it.
+// Repository-context safe reads pin content ancestry with Linux directory
+// descriptors and /proc (apps/daemon/src/lib/repository-context/files.ts) and
+// deliberately refuse a weaker fallback off-Linux; the portability story is
+// BAZ-057. Coding CONTEXT is therefore Linux-only, and so is every suite that
+// drives a coding turn — but plain chat turns run everywhere: the workspace
+// claim's identity capture is portable (workspaceIdentity takes the same
+// dev/ino identity from a stat off-Linux; only the fd-pinned ancestry window
+// is Linux-strong). Keep this list in sync with the platform-support statement
+// in README.md — a suite belongs here only if it constructs a
+// ContextDirectory or drives the coding pipeline through it.
 const LINUX_ONLY = [
   // Safe reads + repository context directly.
   'apps/daemon/test/core/repository-context.test.ts',
@@ -25,9 +28,6 @@ const LINUX_ONLY = [
   // safe_reads_unavailable belongs here.
   'apps/cli/test/agent-coding.test.ts',
   'apps/cli/test/agent-coding-handoff.test.ts',
-  'apps/cli/test/chat.test.ts',
-  'apps/cli/test/team.test.ts',
-  'apps/cli/test/trigger.test.ts',
   'apps/daemon/test/lib/agent-coding.test.ts',
   'apps/daemon/test/lib/publication-e2e.test.ts',
   'apps/daemon/test/lib/result-delivery.test.ts',
@@ -37,15 +37,12 @@ const LINUX_ONLY = [
   'apps/daemon/test/lib/review-export-delivery.test.ts',
   'apps/daemon/test/lib/review-export.test.ts',
   'apps/daemon/test/lib/review-file-link.test.ts',
-  'apps/daemon/test/lib/scheduler.test.ts',
   'apps/daemon/test/lib/turn-preparation.test.ts',
   'apps/daemon/test/lib/verification-admission.test.ts',
   'apps/daemon/test/lib/verification-capture.test.ts',
   'apps/daemon/test/lib/verification-e2e.test.ts',
   'apps/daemon/test/lib/verification-executor.test.ts',
   'apps/daemon/test/lib/verification-request-capability.test.ts',
-  'apps/daemon/test/routes/communication.test.ts',
-  'apps/daemon/test/routes/conversations.test.ts',
   'apps/daemon/test/routes/git-review.test.ts',
   'apps/daemon/test/routes/publications.test.ts',
   'apps/daemon/test/routes/results.test.ts',

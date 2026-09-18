@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto'
-import { realpathSync } from 'node:fs'
+import { realpathSync, statSync } from 'node:fs'
 import { isAbsolute, relative } from 'node:path'
 import { type BazilionDb, inTx } from '../../core/db/client.ts'
-import { ContextDirectory } from '../repository-context/files.ts'
+import { ContextDirectory, hash, identity as directoryIdentity } from '../repository-context/files.ts'
 
 export class WorkspaceBusyError extends Error {
   readonly status = 409
@@ -50,14 +50,26 @@ export function overlappingWorkspaceRoots(a: string, b: string): boolean {
 
 /** Pin the registered root (including its deliberate symlink) during identity capture. */
 export function workspaceIdentity(registeredRoot: string): { root: string; rootIdentity: string } {
-  const directory = new ContextDirectory(registeredRoot)
-  try {
-    const root = realpathSync(registeredRoot)
-    directory.validate()
-    return { root, rootIdentity: directory.identity }
-  } finally {
-    directory.close()
+  if (process.platform === 'linux') {
+    // Linux pins the root with a directory descriptor: the identity is captured
+    // from the open fd and validated against a re-stat, closing the
+    // swap-between-realpath-and-stat window entirely.
+    const directory = new ContextDirectory(registeredRoot)
+    try {
+      const root = realpathSync(registeredRoot)
+      directory.validate()
+      return { root, rootIdentity: directory.identity }
+    } finally {
+      directory.close()
+    }
   }
+  // Off-Linux (BAZ-049 option A; BAZ-057 holds full content-read portability):
+  // the claim needs a *stable root identity*, not content ancestry, so the
+  // same dev/ino identity is taken from a stat of the canonical root. The
+  // fd-pinned ancestry window is the documented cost; the identity semantics
+  // — and every receipt and recovery built on them — are unchanged.
+  const root = realpathSync(registeredRoot)
+  return { root, rootIdentity: hash(directoryIdentity(statSync(root))) }
 }
 
 function view(row: WriterRow): WorkspaceWriter {
