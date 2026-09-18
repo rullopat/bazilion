@@ -3,11 +3,11 @@ import { defineConfig } from 'vitest/config'
 // Repository-context safe reads pin content ancestry with Linux directory
 // descriptors and /proc (apps/daemon/src/lib/repository-context/files.ts) and
 // deliberately refuse a weaker fallback off-Linux; the portability story is
-// BAZ-057. Coding CONTEXT is therefore Linux-only, and so is every suite that
-// drives a coding turn — but plain chat turns run everywhere: the workspace
-// claim's identity capture is portable (workspaceIdentity takes the same
-// dev/ino identity from a stat off-Linux; only the fd-pinned ancestry window
-// is Linux-strong). Keep this list in sync with the platform-support statement
+// BAZ-057. Every agent turn resolves repository context for the team root and
+// requires it complete (turn-preparation.ts), so ALL turns — plain chat
+// included — are Linux-only until BAZ-057 lands; the portable workspace-claim
+// identity (workspaceIdentity) just makes the refusal surface the right,
+// explicit error. Keep this list in sync with the platform-support statement
 // in README.md — a suite belongs here only if it constructs a
 // ContextDirectory or drives the coding pipeline through it.
 const LINUX_ONLY = [
@@ -26,8 +26,12 @@ const LINUX_ONLY = [
   // surface) hits the same Linux-only boundary. List derived from the first
   // macOS/Windows matrix run (BAZ-049); a new suite that fails off-Linux with
   // safe_reads_unavailable belongs here.
+  'apps/cli/test/chat.test.ts',
+  'apps/cli/test/team.test.ts',
+  'apps/cli/test/trigger.test.ts',
   'apps/cli/test/agent-coding.test.ts',
   'apps/cli/test/agent-coding-handoff.test.ts',
+  'apps/daemon/test/lib/scheduler.test.ts',
   'apps/daemon/test/lib/agent-coding.test.ts',
   'apps/daemon/test/lib/publication-e2e.test.ts',
   'apps/daemon/test/lib/result-delivery.test.ts',
@@ -43,6 +47,8 @@ const LINUX_ONLY = [
   'apps/daemon/test/lib/verification-e2e.test.ts',
   'apps/daemon/test/lib/verification-executor.test.ts',
   'apps/daemon/test/lib/verification-request-capability.test.ts',
+  'apps/daemon/test/routes/communication.test.ts',
+  'apps/daemon/test/routes/conversations.test.ts',
   'apps/daemon/test/routes/git-review.test.ts',
   'apps/daemon/test/routes/publications.test.ts',
   'apps/daemon/test/routes/results.test.ts',

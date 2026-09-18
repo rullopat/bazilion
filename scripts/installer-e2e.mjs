@@ -374,8 +374,27 @@ try {
     [bazilionBin, 'agent', 'chat', agentId, '--message', 'please answer with the fixed reply'],
     { env: { BAZILION_HOME: home } },
   )
-  if (turn.code !== 0 || !turn.stdout.includes(provider.finalText)) {
-    fail('one-shot chat turn', (turn.stderr + turn.stdout).slice(0, 400))
+  if (IS_LINUX) {
+    if (turn.code !== 0 || !turn.stdout.includes(provider.finalText)) {
+      fail('one-shot chat turn', (turn.stderr + turn.stdout).slice(0, 400))
+    }
+  } else {
+    // Off-Linux the turn must refuse cleanly and explicitly: repository
+    // context reads are Linux-only by design (safe reads pin ancestry with
+    // dir-fds; BAZ-057 holds portability). A clean, visible refusal — not a
+    // crash, not a partial turn, daemon still healthy afterwards.
+    const output = turn.stderr + turn.stdout
+    if (turn.code === 0 || !output.includes('safe_reads_unavailable')) {
+      fail(
+        'off-Linux turn refusal is not clean/explicit',
+        `exit ${turn.code}: ${output.slice(0, 400)}`,
+      )
+    }
+    const healthAfter = await (await fetch(`http://127.0.0.1:${daemonPort}/api/health`)).json()
+    if (healthAfter?.auth?.setupComplete !== true) {
+      fail('daemon unhealthy after refused turn', JSON.stringify(healthAfter?.auth))
+    }
+    console.log('    refused cleanly with safe_reads_unavailable (documented boundary)')
   }
 
   if (IS_LINUX) {

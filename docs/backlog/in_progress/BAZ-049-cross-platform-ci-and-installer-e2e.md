@@ -112,27 +112,30 @@ Diagnosis before the matrix landed — CI logs from the earlier failures are exp
   to 120s; not gated, so the matrix gives it real signal. If it flakes again, gate it
   behind an env flag like `BAZILION_TEST_DOCKER=1`.
 
-## Decision needed before this can merge: the workspace claim is Linux-only
+## Decision (2026-09-18): claim identity portable, turns Linux-only until BAZ-057
 
-The E2E (round 10+) proved it on real packaged installs: `prepareAgentTurn` claims the
-agent's team workspace **unconditionally on every turn**, and the claim pins root identity
-via `workspaceIdentity` → `ContextDirectory` (dir-fd + `/proc`) → `safe_reads_unavailable`
-off-Linux. So today **no agent turn works on macOS or Windows at all** — not just coding.
-chat.test etc. are gated off-Linux, which is why the suite is green there.
+Operator chose option A; implementing it surfaced the deeper layer: the workspace claim
+was only the FIRST Linux-only site in the turn path. After it, `prepareAgentTurn`
+resolves repository context for the team root on EVERY turn and requires it complete
+(`requireCompleteRepositoryContext`) — and those content reads are exactly BAZ-057's
+ancestry-pinned scope. Weakening them is what the design refuses, so the honest landing:
 
-- **Option A** — make `workspaceIdentity` portable off-Linux: same identity semantics
-  (dev/ino hash, realpath), dropping only the fd-pinned ancestry window, with the weaker
-  posture documented. Turns + chat work everywhere; coding context stays Linux-only.
-- **Option B** — keep the fail-closed claim: the E2E on macOS/Windows asserts the turn
-  refuses cleanly (it already does — a visible 500/`safe_reads_unavailable`, no crash,
-  no mutation), README + website say agent turns require Linux, and the Windows install
-  instructions come down until BAZ-057 lands.
+- **Kept (option A):** `workspaceIdentity` is portable — same identity semantics
+  (sha256 of `dev:ino` of the canonical root), fd-pinned + re-stat-validated on Linux,
+  plain stat off-Linux with the ancestry window documented. The off-Linux refusal now
+  surfaces the RIGHT error (`Repository instructions incomplete (safe_reads_unavailable)`)
+  instead of the claim's internal error.
+- **Turns stay Linux-only** (option B at the content layer) until BAZ-057 lands. README
+  states it; the E2E on macOS/Windows asserts the refusal is clean, explicit, and leaves
+  the daemon healthy; the plain-turn suites stay gated.
+
+Follow-up for the operator: the website ships `install.ps1` — decide whether Windows
+install instructions stay up while turns are Linux-only.
 
 Everything else in the story is done: matrix green on all three OSes (test suites),
 Windows-specific product fixes (dir-fsync, fsync-on-read-only handle, ownership-record
 retry, symlink rejection, fingerprint separators, build filters), installer E2E green on
-ubuntu, windows E2E reaches the chat turn in ~14 min (npm install dominates), mac E2E
-blocked on this decision only.
+ubuntu, windows E2E reaches the turn refusal in ~14 min (npm install dominates).
 
 ## Tests
 
