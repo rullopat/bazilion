@@ -134,3 +134,31 @@ jobs:
       # of the release checklist.
       - name: Run upgrade matrix
         run: node scripts/migration-upgrade-matrix.mjs
+
+  security-acceptance:
+    name: Security acceptance gate (BAZ-032)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # The BAZ-032 adversarial acceptance suite (153 required cases,
+      # docker-free, ~2 min). The script itself fails closed: a missing,
+      # duplicate or renamed required case is a hard error, so a security
+      # regression or a quietly deleted case cannot merge. The manifest is the
+      # gate, not a convention — see docs/security-acceptance.md.
+      - name: Run security acceptance
+        run: pnpm security:acceptance
