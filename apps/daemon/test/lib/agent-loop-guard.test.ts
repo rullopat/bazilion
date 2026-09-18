@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, test } from 'vitest'
+import { projectAttention } from '../../src/core/attention.ts'
 import { spawnAgent } from '../../src/core/agent/spawn.ts'
 import { createProfile } from '../../src/core/profile/create.ts'
 import { AgentLoopLimitError, listAgentLoopBreaks } from '../../src/lib/agent-loop-guard.ts'
@@ -90,6 +91,15 @@ test('causal ancestry survives omitted reply_to and stops a three-Agent cycle', 
     .query<Record<string, unknown>, []>('SELECT * FROM agent_loop_break_events')
     .get()
   expect(JSON.stringify(raw)).not.toContain('would exceed the limit')
+
+  // BAZ-051 visibility: the breach surfaces in the Attention Center, payload-free.
+  const item = projectAttention(env.db, { state: 'open', limit: 100 }).items.find(
+    (i) => i.kind === 'agent_loop_break',
+  )
+  expect(item).toBeDefined()
+  expect(item?.agentId).toBe(c.id)
+  expect(item?.diagnostic).toContain('hop 2')
+  expect(JSON.stringify(item)).not.toContain('would exceed the limit')
 })
 
 test('explicit replies inherit causality while unrelated sends open a fresh chain', () => {

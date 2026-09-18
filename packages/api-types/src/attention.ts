@@ -4,6 +4,7 @@ export type AttentionKind =
   | 'review_failure'
   | 'trigger_failure'
   | 'agent_loop_break'
+  | 'queue_interrupted'
 
 export type AttentionSeverity = 'action_required' | 'error' | 'warning'
 export type AttentionState = 'open' | 'acknowledged' | 'all'

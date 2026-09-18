@@ -101,6 +101,24 @@ test('loadAccessToken returns the stored access when still fresh', async () => {
   await expect(loadAccessToken(db, authToken)).resolves.toBe(access)
 })
 
+test('a failed refresh surfaces an actionable re-login error, not the raw upstream failure', async () => {
+  saveLoginCredentials(db, authToken, {
+    refresh: 'revoked-refresh-token',
+    access: fakeAccessJwt('acct-expired'),
+    expires: Date.now() - 1,
+  })
+  oauthMocks.refreshOpenAICodexToken.mockRejectedValue(
+    new Error('invalid_grant: token has been revoked'),
+  )
+
+  // BAZ-051: the operator must see the fix, not an opaque upstream error.
+  await expect(loadAccessToken(db, authToken)).rejects.toThrow(
+    /could not be refreshed.*bazilion auth openai login/s,
+  )
+  // The stored credentials are left untouched for the operator to replace.
+  expect(hasCredentials(db, authToken)).toBe(true)
+})
+
 test('loadAccessToken single-flights concurrent refreshes and persists rotated credentials', async () => {
   const access = fakeAccessJwt('acct-refreshed')
   saveLoginCredentials(db, authToken, {

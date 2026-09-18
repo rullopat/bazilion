@@ -2,6 +2,7 @@ import { join } from 'node:path'
 import type { ChatFrame } from '@bazilion/api-types'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import * as agentRepo from '../../src/core/repos/agents.ts'
+import { projectAttention } from '../../src/core/attention.ts'
 import * as approvalRepo from '../../src/core/repos/communicationApprovals.ts'
 import * as conversations from '../../src/core/repos/conversations.ts'
 import * as messageRepo from '../../src/core/repos/messages.ts'
@@ -351,6 +352,16 @@ describe('durable scheduler dispatches', () => {
       lastError: 'Protected Agent turn failed. Check Bazilion Config or bazilion doctor.',
       finishedAt: expect.any(Number),
     })
+
+    // BAZ-051 visibility: the terminal failure is not just a row — the
+    // operator's Attention Center shows it with the bounded-retry diagnostic.
+    const attention = projectAttention(env.db, { state: 'open', limit: 100 }).items
+    const failureItem = attention.find(
+      (item) => item.kind === 'trigger_failure' && item.sourceId === dispatch.id,
+    )
+    expect(failureItem).toBeDefined()
+    expect(failureItem?.severity).toBe('error')
+    expect(failureItem?.diagnostic).toContain('Protected Agent turn failed')
   })
 
   test('defers without consuming an attempt while the target agent is busy', async () => {

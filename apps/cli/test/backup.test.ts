@@ -622,6 +622,29 @@ test('backup output inside BAZILION_HOME is rejected to prevent nested backups',
   expect(existsSync(output)).toBe(false)
 })
 
+test('BAZ-051: a failed backup is a clean failure — home intact, daemon healthy, no partial file', async () => {
+  // Inject the failure at the target: an unwritable directory makes every
+  // temp-file + rename attempt fail without touching the served home.
+  const scratch = join(tmpdir(), `bz-diskfull-${randomUUID()}`)
+  mkdirSync(scratch)
+  const readonly = join(scratch, 'read-only')
+  mkdirSync(readonly, 0o555)
+  const output = join(readonly, 'backup.tar.gz')
+  try {
+    const result = await server.cli(['backup', 'create', output, '--plaintext'])
+    expect(result.exitCode).not.toBe(0)
+    expect(result.stderr + result.stdout).not.toMatch(/Traceback|ENOENT.*bazilion\.db/)
+    expect(existsSync(output)).toBe(false)
+    // The served home is untouched and the daemon is still healthy.
+    const health = await fetch(`${server.url}/api/health`)
+    expect(health.ok).toBe(true)
+    expect(existsSync(join(server.home, 'bazilion.db'))).toBe(true)
+  } finally {
+    chmodSync(readonly, 0o755)
+    rmSync(scratch, { recursive: true, force: true })
+  }
+})
+
 test('failed download preserves an existing output and removes temporary files', async () => {
   const scratch = join(tmpdir(), `bz-failed-download-${randomUUID()}`)
   mkdirSync(scratch)
