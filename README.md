@@ -183,6 +183,7 @@ create a fresh encrypted backup.
 bazilion/
 ├── docs/                         # engineer-to-engineer references
 │   ├── architecture.md           # components, flows, invariants
+│   ├── growth-and-retention.md   # what grows in a home, what is safe to prune
 │   └── agent-engine.md           # the LLM turn loop, end to end
 ├── apps/
 │   ├── cli/                      # bazilion binary
