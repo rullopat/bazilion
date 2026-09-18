@@ -48,17 +48,19 @@ function fail(name, detail) {
   console.error(`✗ ${name}${detail ? `: ${detail}` : ''}`)
 }
 
-function run(cmd, args, { env } = {}) {
+function run(cmd, args, { env, shell = false } = {}) {
   return new Promise((resolve) => {
-    // No shell anywhere: cmd.exe mangles quoted args and backslash paths
-    // (even `node -e` breaks through it). Every spawned thing is a real
-    // executable or a JS entry run through process.execPath.
+    // Default: no shell. cmd.exe mangles quoted args and backslash paths (even
+    // `node -e` breaks through it), so everything runs as a real executable or
+    // a JS entry through process.execPath — except the npm install, which
+    // needs npm's own platform shim and opts back in.
     const child = spawn(cmd, args, {
       env: {
         ...process.env,
         ...daemonEnv(),
         ...env,
       },
+      shell,
       stdio: ['ignore', 'pipe', 'pipe'],
     })
     let stdout = ''
@@ -251,31 +253,23 @@ try {
   // reliably resolvable for child processes on Windows ('bazilion' is not
   // recognized), and `--prefix` makes the shim location deterministic on
   // every OS (<prefix>/bazilion.cmd on Windows, <prefix>/bin/bazilion else).
+  // Install through npm (its own platform shim works on every runner; the
+  // child shell only mangles OUR later node spawns, which go shell-less
+  // through process.execPath + the installed dist/cli.js). This is the
+  // operator's actual `npm install -g` step, and it also installs the
+  // package's production dependencies — without which the bundled cli.js
+  // cannot load.
   const npmPrefix = mkdtempSync(join(tmpdir(), 'bazilion-e2e-npm-'))
   step(`npm install -g --prefix ${npmPrefix} ${tarball}`)
-  const nodeBinDir = dirname(process.execPath)
-  const npmBin = [
-    // Windows: node.exe and npm sit directly under the install root.
-    join(nodeBinDir, 'node_modules', 'npm', 'bin', 'npm-cli.js'),
-    // Unix: bin/node next to lib/node_modules/npm.
-    join(dirname(nodeBinDir), 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js'),
-  ].find((candidate) => existsSync(candidate))
-  const install = await run(process.execPath, [
-    npmBin,
-    'install',
-    '-g',
-    '--prefix',
-    npmPrefix,
-    tarball,
-  ])
+  const install = await run('npm', ['install', '-g', '--prefix', npmPrefix, tarball], {
+    shell: IS_WIN,
+  })
   if (install.code !== 0) fail('npm install -g', install.stderr + install.stdout)
-  // npm's shim layout differs per OS (and the shim is not on PATH for child
-  // processes on Windows), so invoke the installed bin entry through node
-  // directly. npm nests modules under lib/node_modules on unix and
-  // node_modules on Windows — probe both and show the layout if absent.
+  // npm nests modules under node_modules on Windows and lib/node_modules on
+  // unix — probe both and show the layout if absent.
   const cliCandidates = [
-    join(npmPrefix, 'lib', 'node_modules', 'bazilion', 'dist', 'cli.js'),
     join(npmPrefix, 'node_modules', 'bazilion', 'dist', 'cli.js'),
+    join(npmPrefix, 'lib', 'node_modules', 'bazilion', 'dist', 'cli.js'),
   ]
   const bazilionBinFound = cliCandidates.find((candidate) => existsSync(candidate))
   if (!bazilionBinFound) {
