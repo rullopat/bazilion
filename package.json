@@ -12,7 +12,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "security:acceptance": "node scripts/security-acceptance.mjs",
-    "build": "pnpm --filter @bazilion/web build && pnpm -r --filter '!@bazilion/web' run build",
+    "build": "pnpm --filter @bazilion/web build && pnpm -r --filter @bazilion/api-types --filter @bazilion/client --filter bazilion run build",
     "build:packages": "pnpm -r --filter='./packages/*' --filter='./apps/cli' run build",
     "changeset": "changeset",
     "version-packages": "changeset version",
