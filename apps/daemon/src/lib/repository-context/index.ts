@@ -220,10 +220,19 @@ export async function resolveRepositoryContext(
   return report
 }
 
+export class RepositoryContextIncompleteError extends Error {
+  readonly codes: string[]
+  constructor(codes: string[]) {
+    super(`Repository instructions incomplete (${codes.join(', ')}). Inspect Team repository context before coding.`)
+    this.name = 'RepositoryContextIncompleteError'
+    this.codes = codes
+  }
+}
+
 export function requireCompleteRepositoryContext(report: RepositoryContextReport): void {
   if (report.instructions.state !== 'complete') {
-    throw new Error(
-      `Repository instructions incomplete (${report.instructions.issues.map((i) => i.code).join(', ')}). Inspect Team repository context before coding.`,
+    throw new RepositoryContextIncompleteError(
+      report.instructions.issues.map((i) => i.code),
     )
   }
 }

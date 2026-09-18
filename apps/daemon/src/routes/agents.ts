@@ -1,6 +1,7 @@
 import * as conversationRepo from '../core/repos/conversations.ts'
 import { WorkspaceBusyError } from '../lib/coding-environment/workspace.ts'
 import { ContextReadError } from '../lib/repository-context/files.ts'
+import { RepositoryContextIncompleteError } from '../lib/repository-context/index.ts'
 import { selectedConversationTarget } from '../lib/conversation-target.ts'
 // /api/agents/* — agent CRUD + lifecycle + sub-resources (team, skills,
 // triggers, messages, sessions, chat). Memory is per-team and lives on
@@ -1159,14 +1160,14 @@ agentsRouter.post('/:id/chat', async (c) => {
   } catch (error) {
     if (error instanceof WorkspaceBusyError)
       return c.json({ error: error.message, code: error.message }, 409)
-    if (error instanceof ContextReadError)
+    if (error instanceof ContextReadError || error instanceof RepositoryContextIncompleteError)
       // Off-Linux turns fail here by design (safe reads pin ancestry with
       // Linux-only primitives); the refusal must name the boundary, not
       // collapse into a plain-text 500.
       return c.json(
         {
-          error: `this turn needs repository context, which this platform cannot prepare (${error.code}); agent turns currently require Linux`,
-          code: error.code,
+          error: `this turn needs repository context, which this platform cannot prepare (${error instanceof RepositoryContextIncompleteError ? error.codes.join(', ') : error.code}); agent turns currently require Linux`,
+          code: error instanceof RepositoryContextIncompleteError ? error.codes[0] : error.code,
         },
         422,
       )
