@@ -11,6 +11,7 @@
   "changesets": [
     "baz-047-schema-contract",
     "baz-049-cross-platform",
+    "baz-051-failure-visibility",
     "baz-053-mobile-removal",
     "baz-055-scoped-credentials",
     "baz-056-chat-repl"
