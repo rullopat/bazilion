@@ -1,5 +1,11 @@
 # bazilion
 
+## 0.21.0-beta.3
+
+### Patch Changes
+
+- [`ddafd9f`](https://github.com/rullopat/bazilion/commit/ddafd9f6d282c6b66bf882e76efb0ae0f0307c8c) Thanks [@rullopat](https://github.com/rullopat)! - BAZ-051: failure-mode visibility audit — no recoverable failure may stay silent. New Attention kind `queue_interrupted`: after a daemon restart interrupts queue processing, the affected Agent's paused queue now appears in the Attention Center (action required, naming the uncertain count) instead of silently buffering messages until someone noticed. A failed OpenAI ChatGPT OAuth refresh now surfaces an actionable re-login error instead of the raw upstream failure. The remaining failure modes (provider outage mid-turn, bounded trigger retries, Telegram delivery failures, loop breaches, failed backups) are pinned by deterministic fault-injection tests asserting the operator-visible surface.
+
 ## 0.21.0-beta.2
 
 ### Patch Changes
