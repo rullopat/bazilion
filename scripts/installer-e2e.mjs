@@ -23,7 +23,8 @@
 
 import { spawn } from 'node:child_process'
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
-import { createServer } from 'node:net'
+import { createServer as createHttpServer } from 'node:http'
+import { createServer as createNetServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { delimiter, join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
@@ -80,7 +81,7 @@ function killTree(child) {
 
 function freePort() {
   return new Promise((resolve, reject) => {
-    const probe = createServer()
+    const probe = createNetServer()
     probe.listen(0, '127.0.0.1', () => {
       const { port } = probe.address()
       probe.close(() => resolve(port))
@@ -103,28 +104,31 @@ async function waitForHealthy(url, timeoutMs = 60_000) {
   throw new Error(`daemon did not become healthy at ${url}`)
 }
 
-/** Deterministic OpenAI-compatible provider: one assistant reply, no tools. */
+/** Deterministic OpenAI-compatible provider: one streamed assistant reply, no tools. */
 function startFinalAnswerProvider() {
-  const server = createServer((request, response) => {
+  const server = createHttpServer((request, response) => {
     if (!request.url?.includes('/chat/completions')) {
       response.writeHead(404).end()
       return
     }
-    response.writeHead(200, { 'content-type': 'application/json' })
-    response.end(
-      JSON.stringify({
-        id: 'e2e-final',
-        object: 'chat.completion',
-        choices: [
-          {
-            index: 0,
-            finish_reason: 'stop',
-            message: { role: 'assistant', content: 'e2e final answer reached the transcript' },
-          },
-        ],
-        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
-      }),
+    // pi consumes the response as an SSE stream: emit the assistant delta,
+    // a terminal finish_reason, and the [DONE] sentinel.
+    response.writeHead(200, {
+      'content-type': 'text/event-stream',
+      'cache-control': 'no-cache',
+      connection: 'keep-alive',
+    })
+    const chunk = (delta, finishReason = null) => ({
+      id: 'e2e-final',
+      object: 'chat.completion.chunk',
+      choices: [{ index: 0, delta, finish_reason: finishReason }],
+    })
+    response.write(
+      `data: ${JSON.stringify(chunk({ role: 'assistant', content: 'e2e final answer reached the transcript' }))}\n\n`,
     )
+    response.write(`data: ${JSON.stringify(chunk({}, 'stop'))}\n\n`)
+    response.write('data: [DONE]\n\n')
+    response.end()
   })
   return new Promise((resolve) => {
     server.listen(0, '127.0.0.1', () => {
@@ -138,33 +142,80 @@ function startFinalAnswerProvider() {
   })
 }
 
-/** Linux: the BAZ-041 scripted provider — coding_command round, then final answer. */
-function startCodingProvider() {
-  return freePort().then(
-    (p) =>
-      new Promise((resolve, reject) => {
-        const child = spawn(
-          'node',
-          [
-            join(import.meta.dirname, 'fake-coding-provider.mjs'),
-            String(p),
-            'echo e2e-coding-tick',
-          ],
-          { stdio: 'ignore' },
-        )
-        child.on('error', reject)
-        setTimeout(
-          () =>
-            resolve({
-              model: 'baz041-stub',
-              finalText: 'The command finished; I inspected the output.',
-              url: `http://127.0.0.1:${p}/v1`,
-              close: () => child.kill(),
-            }),
-          500,
-        )
-      }),
+/**
+ * Linux-only phase 2: the coding-command turn. Uses a second fresh home and
+ * daemon with the BAZ-041 scripted provider (coding_command round, then final
+ * answer), executed host-side with the sandbox off, asserting the receipt
+ * lands in `coding_commands`.
+ */
+async function runCodingPhase(bazilionBin) {
+  const codingHome = mkdtempSync(join(tmpdir(), 'bazilion-e2e-coding-'))
+  const codingProviderPort = await freePort()
+  const codingDaemonPort = await freePort()
+  const codingProvider = spawn(
+    'node',
+    [
+      join(import.meta.dirname, 'fake-coding-provider.mjs'),
+      String(codingProviderPort),
+      'echo e2e-coding-tick',
+    ],
+    { stdio: 'ignore' },
   )
+  let codingDaemon = null
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 500))
+    codingDaemon = spawn(bazilionBin, ['serve', '--port', String(codingDaemonPort)], {
+      env: {
+        ...process.env,
+        BAZILION_HOME: codingHome,
+        LMSTUDIO_URL: `http://127.0.0.1:${codingProviderPort}/v1`,
+        BAZILION_BASH_SANDBOX: 'off',
+      },
+      shell: IS_WIN,
+      stdio: 'ignore',
+    })
+    await waitForHealthy(`http://127.0.0.1:${codingDaemonPort}/api/health`)
+    // Phase-2 CLI calls must reach THIS phase's daemon — the shared run()
+    // helper defaults to the phase-1 daemon via daemonEnv().
+    const codingEnv = {
+      BAZILION_HOME: codingHome,
+      BAZILION_SERVER: `http://127.0.0.1:${codingDaemonPort}`,
+      BAZILION_TOKEN: JSON.parse(readFileSync(join(codingHome, 'auth.json'), 'utf8')).token,
+    }
+    for (const args of [
+      ['provider', 'enable', 'lmstudio'],
+      ['provider', 'models-set', 'lmstudio', 'baz041-stub'],
+    ]) {
+      const result = await run(bazilionBin, args, { env: codingEnv })
+      if (result.code !== 0)
+        fail(`coding phase: bazilion ${args.join(' ')}`, result.stderr + result.stdout)
+    }
+    const spawned = await run(bazilionBin, ['agent', 'spawn', '--profile', 'default'], {
+      env: codingEnv,
+    })
+    const codingAgentId = spawned.stdout.match(/spawned agent (\S+)/)?.[1]
+    if (spawned.code !== 0 || !codingAgentId) {
+      fail('coding phase: agent spawn', spawned.stderr + spawned.stdout)
+      return
+    }
+    const turn = await run(
+      bazilionBin,
+      ['agent', 'chat', codingAgentId, '--message', 'run the check'],
+      { env: codingEnv },
+    )
+    if (turn.code !== 0) {
+      fail('coding phase: coding-command turn', (turn.stderr + turn.stdout).slice(0, 400))
+      return
+    }
+    const receipts = new DatabaseSync(join(codingHome, 'bazilion.db'), { readOnly: true })
+      .prepare('SELECT COUNT(*) AS count FROM coding_commands')
+      .get()
+    if (!receipts || receipts.count < 1) fail('coding receipt recorded', JSON.stringify(receipts))
+  } finally {
+    if (codingDaemon && codingDaemon.exitCode === null) killTree(codingDaemon)
+    codingProvider.kill()
+    rmSync(codingHome, { recursive: true, force: true })
+  }
 }
 
 // CLI discovery defaults to 127.0.0.1:4321; these E2E daemons never sit
@@ -198,12 +249,13 @@ try {
   if (install.code !== 0) fail('npm install -g', install.stderr + install.stdout)
   // The npm global bin dir is not reliably on PATH for child processes on
   // Windows runners ('bazilion' is not recognized). Resolve the prefix and
-  // prepend it for every subsequent spawn.
+  // invoke the shim by absolute path everywhere.
   const prefix = (await run('npm', ['config', 'get', 'prefix'])).stdout.trim()
   if (!prefix) fail('npm config get prefix', 'empty output')
   globalBinDir = prefix
+  const bazilionBin = IS_WIN ? join(prefix, 'bazilion.cmd') : join(prefix, 'bin', 'bazilion')
 
-  const version = await run('bazilion', ['--version'])
+  const version = await run(bazilionBin, ['--version'])
   if (version.code !== 0 || !/\d+\.\d+\.\d+/.test(version.stdout)) {
     fail('bazilion --version after global install', version.stderr + version.stdout)
   } else {
@@ -211,9 +263,12 @@ try {
   }
 
   step(`start deterministic provider and daemon on a fresh home (${process.platform})`)
-  provider = IS_LINUX ? await startCodingProvider() : await startFinalAnswerProvider()
+  // Phase 1 (every OS): a final-answer-only provider — a plain chat turn,
+  // which works off-Linux. The coding turn needs the Linux-only workspace
+  // claim, so it runs as phase 2 in its own home (Linux only).
+  provider = await startFinalAnswerProvider()
   daemonPort = await freePort()
-  daemon = spawn('bazilion', ['serve', '--port', String(daemonPort)], {
+  daemon = spawn(bazilionBin, ['serve', '--port', String(daemonPort)], {
     env: {
       ...process.env,
       ...(globalBinDir ? { PATH: `${globalBinDir}${delimiter}${process.env.PATH}` } : {}),
@@ -237,7 +292,7 @@ try {
     ['provider', 'enable', 'lmstudio'],
     ['provider', 'models-set', 'lmstudio', provider.model],
   ]) {
-    const result = await run('bazilion', args, { env: { BAZILION_HOME: home } })
+    const result = await run(bazilionBin, args, { env: { BAZILION_HOME: home } })
     if (result.code !== 0) fail(`bazilion ${args.join(' ')}`, result.stderr + result.stdout)
   }
   const afterSetup = await (await fetch(`http://127.0.0.1:${daemonPort}/api/health`)).json()
@@ -246,7 +301,7 @@ try {
   }
 
   step('spawn an agent into the auto-created default team')
-  const spawned = await run('bazilion', [
+  const spawned = await run(bazilionBin, [
     'agent',
     'spawn',
     '--profile',
@@ -259,24 +314,23 @@ try {
 
   step('one-shot chat turn through the deterministic provider')
   const turn = await run(
-    'bazilion',
+    bazilionBin,
     ['agent', 'chat', agentId, '--message', 'please answer with the fixed reply'],
     { env: { BAZILION_HOME: home } },
   )
   if (turn.code !== 0 || !turn.stdout.includes(provider.finalText)) {
     fail('one-shot chat turn', (turn.stderr + turn.stdout).slice(0, 400))
   }
+
   if (IS_LINUX) {
-    const receipts = new DatabaseSync(join(home, 'bazilion.db'), { readOnly: true })
-      .prepare('SELECT COUNT(*) AS count FROM coding_commands')
-      .get()
-    if (!receipts || receipts.count < 1) fail('coding receipt recorded', JSON.stringify(receipts))
+    step('linux only: coding-command turn host-side in a second fresh home')
+    await runCodingPhase(bazilionBin)
   }
 
   step('stop the daemon and uninstall the home')
   killTree(daemon)
   await new Promise((resolve) => setTimeout(resolve, 1_000))
-  const uninstall = await run('bazilion', ['uninstall', '--yes'], { env: { BAZILION_HOME: home } })
+  const uninstall = await run(bazilionBin, ['uninstall', '--yes'], { env: { BAZILION_HOME: home } })
   if (uninstall.code !== 0) fail('uninstall --yes', uninstall.stderr + uninstall.stdout)
   if (existsSync(join(home, 'bazilion.db')) || existsSync(join(home, 'auth.json'))) {
     fail('home reset removes db + auth.json', `left: ${readdirSync(home).join(', ')}`)

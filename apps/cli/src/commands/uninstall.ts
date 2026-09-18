@@ -126,6 +126,18 @@ export const uninstallCommand = defineCommand({
   async run({ args }) {
     const paths = resolveCliPaths(args.home)
     const targetHome = assertSafeUninstallHome(paths.home)
+    // resolveCliPaths canonicalizes (the daemon validates paths against the
+    // canonical spelling), so a symlinked BAZILION_HOME arrives here spelled
+    // as its real target. Detect the alias from the requested spelling: an
+    // uninstall through a symlink keeps the root slot stable (below).
+    const requestedHome = resolve(args.home ?? process.env.BAZILION_HOME ?? join(homedir(), '.bazilion'))
+    let requestedIsSymlink = false
+    try {
+      requestedIsSymlink = lstatSync(requestedHome).isSymbolicLink()
+    } catch {
+      // A missing requested spelling cannot be a symlink.
+    }
+    const homeIsSymlink = requestedIsSymlink
     const dbFile = join(targetHome, 'bazilion.db')
     const profilesDir = join(targetHome, 'profiles')
     const agentsDir = join(targetHome, 'agents')
@@ -150,7 +162,6 @@ export const uninstallCommand = defineCommand({
       }
       return
     }
-    const homeIsSymlink = lstatSync(targetHome).isSymbolicLink()
 
     console.log(`about to uninstall bazilion at ${targetHome}`)
     console.log('')

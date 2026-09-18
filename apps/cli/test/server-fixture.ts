@@ -240,7 +240,7 @@ export async function startTestServer(
  * so an immediate recursive rm can fail with EPERM/EBUSY/ENOTEMPTY. Retry a
  * few times with backoff before giving up — the fixture owns this temp dir.
  */
-async function rmWithRetry(target: string, attempts = 5): Promise<void> {
+async function rmWithRetry(target: string, attempts = 10): Promise<void> {
   for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
       rmSync(target, { recursive: true, force: true })
@@ -250,7 +250,7 @@ async function rmWithRetry(target: string, attempts = 5): Promise<void> {
       if (attempt === attempts || !['EPERM', 'EBUSY', 'ENOTEMPTY', 'EACCES'].includes(code ?? '')) {
         throw error
       }
-      await new Promise((resolve) => setTimeout(resolve, attempt * 500))
+      await new Promise((resolve) => setTimeout(resolve, attempt * 1_000))
     }
   }
 }

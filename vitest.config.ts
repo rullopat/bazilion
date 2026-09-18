@@ -59,9 +59,11 @@ const LINUX_ONLY = [
   'apps/daemon/test/runtime/worker-api-key-refresh.test.ts',
   'apps/daemon/test/runtime/session-head.test.ts',
   'apps/daemon/test/runtime/protected-session-prompt.test.ts',
+  'apps/daemon/test/runtime/review-worker.test.ts',
   'apps/daemon/test/core/workspace-coordination.test.ts',
   // Docker-stubbed, but cwd mapping goes through ContextDirectory (/proc).
   'apps/daemon/test/runtime/shell-docker.test.ts',
+  'apps/cli/test/backup-coding-recovery.test.ts',
 ]
 
 export default defineConfig({

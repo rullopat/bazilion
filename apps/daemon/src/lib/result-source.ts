@@ -1,4 +1,4 @@
-import { closeSync, constants, fstatSync, openSync, readSync, realpathSync } from 'node:fs'
+import { closeSync, constants, fstatSync, lstatSync, openSync, readSync, realpathSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import type { FileEntry } from '@earendil-works/pi-coding-agent'
 import type { Paths } from '../core/paths.ts'
@@ -25,8 +25,14 @@ export function readCanonicalSessionFile(
 ): FileEntry[] {
   if (basename(filename) !== filename) throw new Error('Invalid session filename')
   if (realpathSync(directory) !== directory) throw new Error('Result session escaped its owner')
+  const target = join(directory, filename)
+  // Windows opens symlinked files despite O_NOFOLLOW (no native support there),
+  // so the link is rejected explicitly before the pinned open. On POSIX,
+  // O_NOFOLLOW keeps guarding the open itself against a post-lstat swap.
+  if (lstatSync(target).isSymbolicLink())
+    throw new Error('Result session file must not be a symlink')
   const fd = openSync(
-    join(directory, filename),
+    target,
     constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
   )
   try {
