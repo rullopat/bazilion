@@ -124,5 +124,5 @@ restart proves the old local processes are gone. Docker recovery uses recorded c
 
 Restore never adopts copied process/container records as permission to terminate the original
 home's resources. A backup containing active work remains recovery-blocked after restore. Prefer
-backups taken after all Agent turns finish. This PR uses the clean-install alpha schema: no legacy
-probe tables, routes or data importers are retained.
+backups taken after all Agent turns finish. This uses the canonical schema with forward-only
+migrations: no legacy probe tables, routes or data importers are retained.

@@ -126,8 +126,8 @@ Each phase below is a self-contained PR. The format mirrors v1: **User story →
 Design decisions → Schema & code sketch → Depends on → Open questions.** Open
 questions are decisions to lock *during* the phase's PR review, not now.
 The features described below shipped originally as incremental migrations. BAZ-018 later folded
-all surviving columns and tables into the clean-install-only `0001_init.sql`; the old migration
-filenames are retained in this roadmap only as historical references.
+all surviving columns and tables into the canonical `0001_init.sql`; the old migration filenames
+are retained in this roadmap only as historical references.
 
 ---
 

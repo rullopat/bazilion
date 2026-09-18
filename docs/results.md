@@ -85,6 +85,6 @@ the result reference in tool-result details, and remains the authoritative conve
 
 SQLite online backup captures result metadata and bytes in the same database snapshot. The
 stored size/hash is their manifest, checked by both backup creation and restore validation. Ordinary
-workspace files retain the existing backup consistency contract. This is an alpha schema change:
-older homes/backups require the documented clean-install/reset workflow, with no ALTER migration
-or compatibility importer.
+workspace files retain the existing backup consistency contract. Backup restore validates that an
+archive matches the current release's full migration chain, so archives from before the
+forward-migration contract require the documented reset workflow rather than an import.

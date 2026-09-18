@@ -8,7 +8,7 @@ import { assertSchemaMatchesCanonicalChain } from '../../daemon/src/core/db/migr
 // fingerprint: a new forward migration cannot silently break backup restore,
 // and there is nothing to recompute when the chain grows.
 
-/** Prove the restored DB implements the complete current clean-install schema. */
+/** Prove the restored DB implements the complete canonical schema. */
 export function assertCanonicalBackupSchema(db: DatabaseSync): void {
   assertSchemaMatchesCanonicalChain(db)
   // Result bytes are in the same SQLite snapshot as the provenance manifest.

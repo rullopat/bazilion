@@ -48,5 +48,5 @@ an admitted retained target does not change active selection. Private reviewer s
 not listed or selected.
 
 Backups include metadata and canonical files, preserving source IDs and saved-file provenance.
-This follows the clean-install alpha schema contract; older homes require the documented reset and
-rebootstrap workflow. Search, manual resume, branching and history purge are deferred.
+This follows the forward-migration schema contract; homes that predate it require the documented
+reset and rebootstrap workflow. Search, manual resume, branching and history purge are deferred.

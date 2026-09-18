@@ -127,14 +127,17 @@ Uses Node 22's built-in `node:sqlite` (`DatabaseSync`). No `better-sqlite3`, no 
 `schema_migrations(version, applied_at)` bookkeeping table, loads numbered `*.sql` files from
 `db/migrations/` in lexical order, and runs each unapplied file inside a transaction. Called from
 `apps/daemon/src/lib/ctx.ts:bootstrap()` at daemon startup — the daemon eagerly initializes the
-context so the bootstrap message + auth.json land before the HTTP port binds. While the alpha
-contract remains clean-install-only, startup rejects an older or structurally incompatible schema
-before starting background services or binding HTTP and points the operator to the safe reset path;
-it does not attempt an in-place upgrade.
+context so the bootstrap message + auth.json land before the HTTP port binds. Schema changes are
+**forward-only and append-only**: pending migrations are applied in place, a verified `VACUUM INTO`
+snapshot of the live database is written beside it first when an existing home has pending work, and
+a database written by a newer release (numeric `PRAGMA user_version`) is refused rather than mutated.
+Unknown or pre-contract schemas (0.19.x and earlier) fail closed with reset guidance before
+background services start or HTTP binds.
 
 ### 2.3 Schema (migrations)
 
-`0001_init.sql` is the consolidated authoritative baseline (the project is alpha; the prior chain has been collapsed multiple times rather than maintaining ALTER history). Live tables:
+`0001_init.sql` is the authoritative baseline; every later schema change is appended as a numbered
+forward migration (`0002_…`, `0003_…`). Live tables:
 
 | Table | Purpose |
 |---|---|
@@ -522,7 +525,7 @@ getCtx()
   └─ bootstrap()
        └─ require bazilion.db + auth.json to be both present or both absent
        └─ on a fresh pair, mkdir ~/.bazilion + {profiles,agents,skills,teams,logs}
-       └─ openDb + runMigrations (reject an incompatible alpha schema)
+       └─ openDb + runMigrations (reject an unknown or newer schema)
        └─ if both identity artifacts were absent:
             webTokenRepo.create(db, 'bootstrap') → randomBytes(24).toString('hex')
             writeFile auth.json {token}          → mode 0600
@@ -532,7 +535,7 @@ getCtx()
 ```
 
 Idempotent: existing current installs short-circuit the mkdir + token-mint steps. A missing identity
-half or incompatible alpha schema fails before the listener and background services start.
+half or incompatible schema fails before the listener and background services start.
 
 The web UI is **not** booted by `serve`. Published installs use `bazilion dashboard`, which spawns `dist/web-server.js` against the copied production build in `dist/web`. Source development still usually runs the Vite dev server separately with `cd apps/web && pnpm dev`.
 
