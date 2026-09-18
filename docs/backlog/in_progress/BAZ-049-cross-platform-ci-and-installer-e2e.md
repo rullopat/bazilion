@@ -112,6 +112,28 @@ Diagnosis before the matrix landed — CI logs from the earlier failures are exp
   to 120s; not gated, so the matrix gives it real signal. If it flakes again, gate it
   behind an env flag like `BAZILION_TEST_DOCKER=1`.
 
+## Decision needed before this can merge: the workspace claim is Linux-only
+
+The E2E (round 10+) proved it on real packaged installs: `prepareAgentTurn` claims the
+agent's team workspace **unconditionally on every turn**, and the claim pins root identity
+via `workspaceIdentity` → `ContextDirectory` (dir-fd + `/proc`) → `safe_reads_unavailable`
+off-Linux. So today **no agent turn works on macOS or Windows at all** — not just coding.
+chat.test etc. are gated off-Linux, which is why the suite is green there.
+
+- **Option A** — make `workspaceIdentity` portable off-Linux: same identity semantics
+  (dev/ino hash, realpath), dropping only the fd-pinned ancestry window, with the weaker
+  posture documented. Turns + chat work everywhere; coding context stays Linux-only.
+- **Option B** — keep the fail-closed claim: the E2E on macOS/Windows asserts the turn
+  refuses cleanly (it already does — a visible 500/`safe_reads_unavailable`, no crash,
+  no mutation), README + website say agent turns require Linux, and the Windows install
+  instructions come down until BAZ-057 lands.
+
+Everything else in the story is done: matrix green on all three OSes (test suites),
+Windows-specific product fixes (dir-fsync, fsync-on-read-only handle, ownership-record
+retry, symlink rejection, fingerprint separators, build filters), installer E2E green on
+ubuntu, windows E2E reaches the chat turn in ~14 min (npm install dominates), mac E2E
+blocked on this decision only.
+
 ## Tests
 
 1. CI green on all three OSes for the current `main` (first run is the real test).
