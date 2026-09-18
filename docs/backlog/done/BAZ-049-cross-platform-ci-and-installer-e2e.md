@@ -1,10 +1,11 @@
 ---
 id: BAZ-049
 title: Cross-platform CI matrix and fresh-machine installer E2E
-status: in_progress
-size: M (1 week)
+status: done
+size: M (1 week), ran longer — three OSes and eleven CI iterations
 created: 2026-09-17
 refined: 2026-09-17
+shipped: 2026-09-18
 priority: high
 note: Beta blocker. CI is ubuntu-only while the product ships win32/darwin branches, an install.ps1, and non-technical-user installers.
 ---
@@ -136,6 +137,15 @@ Everything else in the story is done: matrix green on all three OSes (test suite
 Windows-specific product fixes (dir-fsync, fsync-on-read-only handle, ownership-record
 retry, symlink rejection, fingerprint separators, build filters), installer E2E green on
 ubuntu, windows E2E reaches the turn refusal in ~14 min (npm install dominates).
+
+## As-built
+
+- **Matrix:** `ci` + `installer-e2e` jobs on ubuntu/macos/windows (`fail-fast: false`); upgrade-matrix stayed ubuntu-only. All seven checks green at merge (PR #61).
+- **Found and fixed in product:** Windows dir-fsync EPERM broke every conversation write; fsync-on-read-only-handle broke bootstrap rotation; Windows followed symlinked session files despite the no-follow boundary (now explicitly rejected); the root build's `'./packages/*'` pnpm filters matched nothing on Windows so `pnpm pack` silently shipped an empty tarball (a Windows release would publish an empty npm package — build filters made path-agnostic); symlinked `BAZILION_HOME` broke uninstall's keep-the-root semantics (detected from the requested spelling).
+- **Platform boundary, landed as option A + B:** the workspace-claim identity is portable off-Linux (same dev/ino semantics, fd-pinned + re-stat-validated on Linux only); turns STILL require Linux because every turn resolves repository context and requires it complete — that content-read portability is BAZ-057, fail-closed until then. The off-Linux refusal is a structured 422 naming `safe_reads_unavailable` (was a plain-text 500); the E2E asserts the refusal is clean and leaves the daemon healthy.
+- **E2E:** hermetic (no API key/egress/docker): npm install of the packed tarball (playwright browser download skipped), fresh-home bootstrap, provider + curated model via CLI, agent spawn, one-shot chat turn (linux: also a coding-command turn via the BAZ-041 fake provider in a second home), uninstall leaves db/auth.json gone. Windows spawns are shell-less (`cmd /c` mangles even `node -e`); npm keeps its own shim.
+- **Known flake watch:** browser-live timed out once under load (timeouts raised to 120s); backup/git-review-snapshot did not reproduce since. One uninstall timeout seen once on macOS.
+- **Follow-ups:** website `install.ps1` vs turns-Linux-only (operator decision); qmd memory on Windows (gated with named reason); graceful-shutdown RPC for Windows service managers (signal-based shutdown is TerminateProcess there).
 
 ## Tests
 

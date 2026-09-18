@@ -34,7 +34,7 @@ docs/backlog/
 | [BAZ-048](draft/BAZ-048-storage-refinements-post-1.0.md) | Storage refinements from the OpenClaw/Hermes comparison (post-1.0) | L (likely split) | Menu, not commitment: FTS over conversations, cold `jsonl.zst` archives, per-agent data-plane split, bounded-memory injection, upgrade preflight. Graduates only on a concrete trigger. [Findings](design/storage-comparison-openclaw-hermes.md) |
 | [BAZ-050](draft/BAZ-050-post-coding-sequence-ui-consistency-sweep.md) | UI/UX consistency sweep of the post-hardening coding surfaces | L (1-2 weeks) | Beta blocker. BAZ-033 hardened v0.14; the v0.16–0.20 coding sequence added ~10 surfaces after it. State triplets, destructive-action disclosure, Attention routing, a11y, viewport matrix — observed, not asserted (BAZ-045 methodology). |
 | [BAZ-051](draft/BAZ-051-failure-mode-visibility-audit.md) | Failure-mode visibility audit — every recovery is seen or surfaced | M | Beta blocker. Recovery machinery (BAZ-019/023/025, ctx recovery) is correct but visibility under real failure is unproven: seven deterministic fault-injection cases, silent failure is the only unacceptable outcome. |
-| [BAZ-052](draft/BAZ-052-beta-supportability-gates-and-growth.md) | Beta supportability — security gate in CI, log rotation, growth documentation | M | Verified gaps: BAZ-032's 60-case security gate is manual-only, `logs/` has no rotation, DB growth expectations undocumented. Three small closes. |
+| [BAZ-052](draft/BAZ-052-beta-supportability-gates-and-growth.md) | Beta supportability — security gate in CI, log rotation, growth documentation | M | Verified gaps: BAZ-032's 60-case security gate is manual-only, DB growth expectations undocumented. NOTE (2026-09-18, BAZ-049 work): the log-rotation premise is stale — the daemon writes no log files (`logs/` is created and never written; output goes to stdout/journal). Rewrite that item during refinement; growth docs should cover sessions JSONL, uploads, evidence stores and pre-migration snapshots. |
 | [BAZ-054](draft/BAZ-054-native-ios-android-apps.md) | Native iOS and Android apps (post-1.0) | XL — split before refinement | Deferred to post-1.0 (operator decision). Successor to the removed Expo app over the existing gateway/device-credential model. Push-notification architecture is the gating open question; held as a design-constraint holder meanwhile. |
 | [BAZ-057](draft/BAZ-057-portable-safe-reads.md) | Portable safe reads — repository context off-Linux | L (likely split) | Split out of BAZ-049 refinement. The coding sequence is Linux-only by design (`safe_reads_unavailable`); `install.ps1` exists, so Windows operators hit this wall. Holder with the security constraints written down; graduates on a real trigger. |
 
@@ -71,21 +71,20 @@ Writer coordination already exists; checkout lifecycle and deployment integratio
 later from a concrete use case. Automatic Git publication, managed services/previews and ambient Pi
 extension loading remain separate, uncommitted scope.
 
-## Todo (1)
+## Todo (0)
 
-| ID | Title | Size | Notes |
-|----|-------|------|-------|
-| [BAZ-049](todo/BAZ-049-cross-platform-ci-and-installer-e2e.md) | Cross-platform CI matrix and fresh-machine installer E2E | M | Beta blocker, next up. CI is ubuntu-only while the code ships win32/darwin branches, `install.ps1`, and non-technical-user installers. Refined 2026-09-17: 3-OS matrix + hermetic installer E2E (fake provider, no docker needed), platform-support boundary locked (coding sequence = Linux-only → BAZ-057), flake stabilization in scope. |
+Nothing refined and waiting. Capture the next story in `draft/` and refine it here.
 
 ## In Progress (0)
 
 
 Nothing in flight. Move an item here from `todo/` when implementation starts.
 
-## Done (45)
+## Done (46)
 
 | ID | Title | Size | Shipped | Release | Notes |
 |----|-------|------|---------|---------|-------|
+| [BAZ-049](done/BAZ-049-cross-platform-ci-and-installer-e2e.md) | Cross-platform CI matrix and fresh-machine installer E2E | M (ran longer) | 2026-09-18 | — | 3-OS test matrix + hermetic installer E2E, all green at merge (PR #61). Caught six real product defects incl. Windows breaking every conversation write (dir-fsync) and `pnpm pack` shipping an empty tarball from Windows (build filters matched nothing). Workspace-claim identity portable; turns stay Linux-only until BAZ-057 (content-read portability); off-Linux refusal is a structured 422 naming `safe_reads_unavailable`. |
 | [BAZ-056](done/BAZ-056-remove-cli-chat-repl.md) | Remove the interactive chat REPL from the CLI; one-shot chat stays | S | 2026-09-17 | [v0.21.0-beta.1](https://github.com/rullopat/bazilion/releases/tag/v0.21.0-beta.1) | Operator decision: the bare readline REPL in `agent chat` was not worth completing; 1.0 keeps one-shot chat + dedicated commands + web. Piped stdin scripting kept (fail-closed `auto_deny`). PR #56. |
 | [BAZ-055](done/BAZ-055-scoped-device-credentials-and-pairing.md) | Scoped device credentials and one-paste pairing (OpenClaw's authz model, adapted) | L (M + S + S) | 2026-09-17 | [v0.21.0-beta.1](https://github.com/rullopat/bazilion/releases/tag/v0.21.0-beta.1) | Per-device scopes (`read/write/approvals/admin`) with fixture-generated route tests; `0002` scopes migration (first live exercise of the BAZ-047 contract); backup validator moved onto the canonical chain; `bazilion-pair://` single-use setup codes; Hermes-style auth-posture probe. PRs #57, #58. |
 | [BAZ-053](done/BAZ-053-remove-expo-mobile-app.md) | Remove the Expo mobile app; mobile story becomes responsive web | S | 2026-09-17 | [v0.21.0-beta.1](https://github.com/rullopat/bazilion/releases/tag/v0.21.0-beta.1) | The thin Expo app (v0.0.0, 4 screens) removed; mobile = responsive web over the private gateway + device credentials — the auth path BAZ-054's native apps will use. PR #55. |
