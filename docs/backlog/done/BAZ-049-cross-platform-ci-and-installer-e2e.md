@@ -6,6 +6,7 @@ size: M (1 week), ran longer — three OSes and eleven CI iterations
 created: 2026-09-17
 refined: 2026-09-17
 shipped: 2026-09-18
+release: v0.21.0-beta.2
 priority: high
 note: Beta blocker. CI is ubuntu-only while the product ships win32/darwin branches, an install.ps1, and non-technical-user installers.
 ---
