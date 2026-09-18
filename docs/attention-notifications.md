@@ -87,8 +87,8 @@ prove what Telegram received after its capture.
 Receipts contain source/destination identity, timestamps, attempt state, fixed diagnostics and known
 message IDs, without source payloads or bot credentials. Up to 100,000 deduplication keys are retained
 per home. At capacity, new admission stops visibly while existing admitted notices can still finish;
-confirmed keys are not evicted to create accidental resends. The alpha schema changes follow the
-existing clean-install contract and are included in canonical backup validation.
+confirmed keys are not evicted to create accidental resends. Schema changes follow the
+forward-migration contract and are included in canonical backup validation.
 
 ## Repeatable local demonstration
 

@@ -149,7 +149,7 @@ The supergroup membership *is* the auth boundary. If the user adds family/teamma
 
 Not committing to these paths yet — this is a shape preview, not the implementation plan.
 
-- **Schema.** These fields now live directly in the canonical clean-install
+- **Schema.** These fields now live directly in the canonical
   `apps/daemon/src/core/db/migrations/0001_init.sql` (the original incremental migration was
   folded away):
   - `agents.telegram_topic_id INTEGER NULL UNIQUE` (one topic ↔ one agent).

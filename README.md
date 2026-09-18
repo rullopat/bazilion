@@ -25,10 +25,11 @@ bazilion dashboard
 
 `dashboard` starts the daemon on `127.0.0.1:4321`, starts the bundled web UI on `127.0.0.1:4322`, and opens the dashboard in your browser. The daemon auto-bootstraps `~/.bazilion` on first run (creates dirs, runs migrations, mints the bootstrap token, writes `auth.json`). The local CLI reads that token automatically. While provider setup is still incomplete, you can also paste it into the browser login to obtain a bounded setup session; remote CLI and mobile clients always use separately minted device credentials.
 
-> **Alpha database contract:** the schema is a clean-install-only `0001_init.sql`. Bazilion does
-> not carry database, API, URL, or filesystem compatibility adapters yet. After a breaking schema
-> change, export anything you need and run `bazilion uninstall --yes` before bootstrapping
-> again.
+> **Schema contract:** Bazilion migrates its database forward on startup. Before the first migration
+> touches an existing home it writes a verified `bazilion.pre-migration-<timestamp>.db` snapshot
+> beside `bazilion.db`, and a database written by a newer release is refused rather than mutated.
+> Homes from before this contract (0.19.x and earlier) fail closed with reset guidance. There are
+> still no database, API, URL, or filesystem compatibility adapters. See `docs/upgrades.md`.
 
 For a daemon-only CLI flow:
 

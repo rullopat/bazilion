@@ -20,6 +20,7 @@ Canonical surfaces:
 Agent spawn, move, and deletion are revision checked. Spawn and move require an explicit placement
 (`isolated` or `profile_defaults`). Missing edges deny when enforcement is enabled.
 
-The database is a clean-install-only alpha schema consolidated in `0001_init.sql`. There are no
-Profile Group adapters, Group APIs, legacy URLs, compatibility membership modes, or upgrade paths.
-Changing the schema requires recreating `~/.bazilion`.
+The database is one canonical schema consolidated in `0001_init.sql` and extended by forward-only
+numbered migrations. There are no Profile Group adapters, Group APIs, legacy URLs, or compatibility
+membership modes. An existing home migrates forward on startup; only pre-contract homes (0.19.x and
+earlier) are refused and need recreating.

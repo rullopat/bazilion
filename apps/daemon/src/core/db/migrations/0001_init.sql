@@ -1,4 +1,5 @@
--- Canonical clean-install schema. Bazilion is alpha and does not support legacy DB upgrades.
+-- Canonical schema baseline (migration 0001). Later schema changes are appended as numbered
+-- forward migrations in this directory; startup applies pending migrations in place (BAZ-047).
 CREATE TABLE IF NOT EXISTS "teams" (
   id          TEXT PRIMARY KEY,
   name        TEXT NOT NULL,
