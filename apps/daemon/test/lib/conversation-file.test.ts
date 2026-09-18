@@ -33,7 +33,9 @@ test('an empty conversation is durable and opens with its exact canonical identi
   const session = SessionManager.open(path)
   expect(session.getSessionId()).toBe(id)
   expect(session.buildSessionContext().messages).toEqual([])
-  expect(statSync(path).mode & 0o777).toBe(0o600)
+  // Windows has no POSIX mode bits (stat mode is always 0o666); NTFS ACLs own
+  // the permission there.
+  if (process.platform !== 'win32') expect(statSync(path).mode & 0o777).toBe(0o600)
   expect(readdirSync(join(env.paths.agentDir(agentId), 'sessions'))).toEqual([filename])
 })
 

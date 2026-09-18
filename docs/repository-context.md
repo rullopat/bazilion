@@ -87,6 +87,9 @@ or written. Git metadata beyond these limits is unavailable; instructions can st
 Current implementation uses Linux directory descriptors and `/proc` to pin ancestry during safe
 reads. Other platforms report `safe_reads_unavailable` and cannot prepare coding context through this
 resolver. Linux is the validated safe-read platform; no weaker path-based fallback is used.
+Portability is held as [BAZ-057](backlog/draft/BAZ-057-portable-safe-reads.md); until then, CI runs
+the coding suites on Linux only (BAZ-049) and the platform-support statement in `README.md` is the
+operator-facing version of this boundary.
 
 ## Development and acceptance
 

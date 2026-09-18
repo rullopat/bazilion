@@ -39,7 +39,10 @@ export interface WorkspaceFingerprint {
 async function fingerprintPath(root: string, path: string, digest: boolean): Promise<string> {
   const absolute = join(root, path)
   const info = await lstat(absolute)
-  if (info.isSymbolicLink()) return `link:${await readlink(absolute)}`
+  if (info.isSymbolicLink())
+    // Normalize the recorded target: receipts and digests must not depend on
+    // the platform's path separator (Windows readlink returns backslashes).
+    return `link:${(await readlink(absolute)).replaceAll('\\', '/')}`
   if (!info.isFile()) return `other:${info.mode}`
   if (!digest || info.size > FINGERPRINT_LIMITS.fileBytes) return `size:${info.size}`
   return `sha256:${createHash('sha256')

@@ -424,7 +424,20 @@ export function acquireDaemonLiveness(paths: Paths): DaemonLivenessHandle {
       const ownsPath = stillOwnsPath()
       closeSync(fd as number)
       fd = null
-      if (ownsPath) rmSync(path, { force: true })
+      if (!ownsPath) return
+      // Windows releases file handles lazily past close; a single unlink can
+      // race the last reader (EPERM/EBUSY) and leave a stale ownership record.
+      for (let attempt = 1; attempt <= 8; attempt++) {
+        try {
+          rmSync(path, { force: true })
+          return
+        } catch (error) {
+          const code = (error as NodeJS.ErrnoException).code
+          if (attempt === 8 || !['EPERM', 'EBUSY', 'ENOTEMPTY'].includes(code ?? '')) throw error
+          const wait = attempt * 250
+          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, wait)
+        }
+      }
     },
   }
 }

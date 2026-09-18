@@ -846,22 +846,26 @@ test('a crashed daemon record is reclaimed only after its PID is dead', async ()
   }
 })
 
-test('graceful daemon shutdown closes SQLite and removes its ownership record', async () => {
-  const isolated = await startTestServer()
-  const runtimePath = daemonLivenessPath(isolated.home)
-  expect(existsSync(runtimePath)).toBe(true)
+test(
+  'graceful daemon shutdown closes SQLite and removes its ownership record',
+  { skip: process.platform === 'win32' }, // Windows kill() is TerminateProcess: no graceful handler runs; the stale record is reclaimed by dead PID on next start.
+  async () => {
+    const isolated = await startTestServer()
+    const runtimePath = daemonLivenessPath(isolated.home)
+    expect(existsSync(runtimePath)).toBe(true)
 
-  await isolated.stop({ keepHome: true })
-  try {
-    expect(existsSync(runtimePath)).toBe(false)
-    const db = new DatabaseSync(join(isolated.home, 'bazilion.db'), { readOnly: true })
-    expect(db.prepare('PRAGMA integrity_check').get()).toEqual({ integrity_check: 'ok' })
-    db.close()
-  } finally {
-    cleanupLivenessArtifacts(isolated.home)
-    rmSync(isolated.home, { recursive: true, force: true })
-  }
-})
+    await isolated.stop({ keepHome: true })
+    try {
+      expect(existsSync(runtimePath)).toBe(false)
+      const db = new DatabaseSync(join(isolated.home, 'bazilion.db'), { readOnly: true })
+      expect(db.prepare('PRAGMA integrity_check').get()).toEqual({ integrity_check: 'ok' })
+      db.close()
+    } finally {
+      cleanupLivenessArtifacts(isolated.home)
+      rmSync(isolated.home, { recursive: true, force: true })
+    }
+  },
+)
 
 test('concurrent contenders cannot replace the winner after reclaiming one dead owner', async () => {
   const target = makeHome()

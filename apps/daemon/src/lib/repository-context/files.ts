@@ -23,7 +23,7 @@ export class ContextReadError extends Error {
   }
 }
 
-function identity(stat: Stats): string {
+export function identity(stat: Stats): string {
   return `${stat.dev}:${stat.ino}`
 }
 function stamp(stat: Stats): string {

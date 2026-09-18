@@ -52,7 +52,11 @@ export function createConversationFile(
     }
     const directoryFd = openSync(directory, constants.O_RDONLY | constants.O_DIRECTORY)
     try {
+      // Windows cannot fsync a directory handle (EPERM); the file fsync above
+      // is the durability floor there. POSIX keeps the directory-entry sync.
       fsyncSync(directoryFd)
+    } catch (error) {
+      if (process.platform !== 'win32') throw error
     } finally {
       closeSync(directoryFd)
     }

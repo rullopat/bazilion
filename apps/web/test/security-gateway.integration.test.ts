@@ -154,7 +154,12 @@ let web: RunningWeb
 
 beforeAll(async () => {
   if (process.env.BAZILION_SECURITY_ACCEPTANCE !== '1') {
-    execFileSync('pnpm', ['--filter', '@bazilion/web', 'build'], { cwd: root, stdio: 'inherit' })
+    execFileSync('pnpm', ['--filter', '@bazilion/web', 'build'], {
+      cwd: root,
+      stdio: 'inherit',
+      // Windows resolves pnpm.cmd only through the shell.
+      shell: process.platform === 'win32',
+    })
   }
   const port = await findFreePort()
   const origin = `https://127.0.0.1:${port}`

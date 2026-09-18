@@ -230,7 +230,27 @@ export async function startTestServer(
           if (proc.exitCode === null) proc.kill('SIGKILL')
         }, 5_000)
       })
-      if (!options.keepHome) rmSync(home, { recursive: true, force: true })
+      if (!options.keepHome) await rmWithRetry(home)
     },
+  }
+}
+
+/**
+ * Windows keeps handles open past process exit (AV scanning, late watchers),
+ * so an immediate recursive rm can fail with EPERM/EBUSY/ENOTEMPTY. Retry a
+ * few times with backoff before giving up — the fixture owns this temp dir.
+ */
+async function rmWithRetry(target: string, attempts = 10): Promise<void> {
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      rmSync(target, { recursive: true, force: true })
+      return
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code
+      if (attempt === attempts || !['EPERM', 'EBUSY', 'ENOTEMPTY', 'EACCES'].includes(code ?? '')) {
+        throw error
+      }
+      await new Promise((resolve) => setTimeout(resolve, attempt * 1_000))
+    }
   }
 }

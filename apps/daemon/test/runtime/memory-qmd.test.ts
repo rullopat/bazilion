@@ -13,7 +13,19 @@ beforeEach(async () => {
   mem = qmdBackend(root)
   await mem.init()
 })
-afterEach(() => rmSync(root, { recursive: true, force: true }))
+afterEach(async () => {
+  // The qmd indexer child can hold the directory briefly past the test; a
+  // plain rm races it on Windows (EPERM).
+  for (let attempt = 1; attempt <= 8; attempt++) {
+    try {
+      rmSync(root, { recursive: true, force: true })
+      return
+    } catch (error) {
+      if (attempt === 8) throw error
+      await new Promise((resolve) => setTimeout(resolve, attempt * 500))
+    }
+  }
+})
 
 test('write then read returns the content', async () => {
   await mem.write('notes.md', 'hello world')

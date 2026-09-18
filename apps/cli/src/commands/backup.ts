@@ -22,12 +22,13 @@ import {
   readdirSync,
   readFileSync,
   readSync,
+  realpathSync,
   renameSync,
   rmSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { basename, dirname, isAbsolute, parse, posix, relative, resolve } from 'node:path'
+import { basename, dirname, isAbsolute, join, parse, posix, relative, resolve } from 'node:path'
 import { DatabaseSync, backup as sqliteBackup } from 'node:sqlite'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
@@ -70,8 +71,11 @@ const createCmd = defineCommand({
     const defaultSuffix = args.recipient ? '.tar.gz.age' : '.tar.gz'
     const outAbs = resolve(args.output ?? `bazilion-backup-${date}${defaultSuffix}`)
     if (existsSync(outAbs)) throw new Error(`refusing to overwrite existing backup: ${outAbs}`)
-    const configuredHome = resolve(resolveCliPaths().home)
-    const outputFromHome = relative(configuredHome, outAbs)
+    // Compare canonical spellings both sides: on macOS the configured home is
+    // spelled through /private/var while the operator's output argument may
+    // use /var — the same file must still be refused as nested.
+    const configuredHome = canonicalHome(resolveCliPaths().home)
+    const outputFromHome = relative(configuredHome, canonicalHome(outAbs))
     if (!outputFromHome || (!outputFromHome.startsWith('..') && !isAbsolute(outputFromHome))) {
       throw new Error(
         `backup output must be outside BAZILION_HOME (${configuredHome}) to avoid nesting backups`,
@@ -424,6 +428,28 @@ interface StoredEntityId {
   id: unknown
 }
 
+/**
+ * Canonicalize a path the same way resolvePaths does (apps/daemon/src/core/paths.ts
+ * and apps/cli/src/paths.ts): follow symlinks through every existing segment and
+ * keep a not-yet-existing tail unresolved. Keep the three in sync.
+ */
+function canonicalHome(root: string): string {
+  let resolved = resolve(root)
+  const unresolvedTail: string[] = []
+  while (true) {
+    try {
+      resolved = realpathSync(resolved)
+      break
+    } catch {
+      const parent = dirname(resolved)
+      if (parent === resolved) break // reached the filesystem root
+      unresolvedTail.unshift(basename(resolved))
+      resolved = parent
+    }
+  }
+  return join(resolved, ...unresolvedTail)
+}
+
 const SLUG_ID = /^[a-z0-9][a-z0-9-]*$/
 const AGENT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 
@@ -474,8 +500,18 @@ function rebaseRestoredHomeDirectories(
   payload: string,
   targetHome: string,
 ): void {
+  // Store canonical paths: the daemon resolves the home once at startup
+  // (paths.ts) and validates directories against its canonical form, so a
+  // row written from a symlinked path spelling (macOS /var/folders →
+  // /private/var/folders) would fail identity checks on the next boot. The
+  // target home does not exist yet for a fresh-target restore (install
+  // creates it), so canonicalize the same way resolvePaths does: follow
+  // symlinks through the existing segments and keep the not-yet-existing
+  // tail unresolved.
   let db: DatabaseSync | null = null
   try {
+    const canonicalTarget = canonicalHome(targetHome)
+    const canonicalPayload = realpathSync(payload)
     db = new DatabaseSync(database)
     db.exec('PRAGMA foreign_keys = ON')
 
@@ -495,8 +531,8 @@ function rebaseRestoredHomeDirectories(
       ['agents', agents, AGENT_ID],
     ] as const) {
       const collection = table
-      const stagedRoot = resolve(payload, collection)
-      const targetRoot = resolve(targetHome, collection)
+      const stagedRoot = resolve(canonicalPayload, collection)
+      const targetRoot = resolve(canonicalTarget, collection)
       for (const row of rows) {
         const id = validateEntityId(row.id, idPattern, `${table} row`)
         const rowLabel = `${table} row ${JSON.stringify(id)}`
@@ -514,7 +550,7 @@ function rebaseRestoredHomeDirectories(
     // they need no DB rewrite. Their DB IDs are nevertheless path components;
     // validate them and require the archived canonical slot without following
     // an intentionally external linked-Team target.
-    const stagedTeamsRoot = resolve(payload, 'teams')
+    const stagedTeamsRoot = resolve(canonicalPayload, 'teams')
     for (const row of teams) {
       const id = validateEntityId(row.id, SLUG_ID, 'teams row')
       const rowLabel = `teams row ${JSON.stringify(id)}`
@@ -754,7 +790,9 @@ function fsyncDirectory(path: string): void {
 }
 
 function fsyncFile(path: string): void {
-  const fd = openSync(path, 'r')
+  // 'r+': Windows FlushFileBuffers (fsync) requires a write handle; fsync on a
+  // read-only descriptor is EPERM there. POSIX fsyncs either.
+  const fd = openSync(path, 'r+')
   try {
     fsyncSync(fd)
   } finally {
