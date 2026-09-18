@@ -284,6 +284,7 @@ try {
   }
   const bazilionBin = bazilionBinFound
   if (!bazilionBin) process.exit(1)
+  const moduleRoot = dirname(bazilionBin)
 
   const version = await run(bazilionBin, ['--version'])
   if (version.code !== 0 || !/\d+\.\d+\.\d+/.test(version.stdout)) {
