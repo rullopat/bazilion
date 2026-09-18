@@ -5,8 +5,10 @@ Telegram → Attention notifications**, after configuring and pairing the privat
 Choose its service topic explicitly, select the kinds to include, and save. Bazilion uses the
 existing bot; it does not create another recipient list.
 
-The five kinds are communication approvals, lesson proposals, review failures, scheduled trigger
-failures and Agent message loop breaks. Notifications contain minimal authorized metadata and a
+The six kinds are communication approvals, lesson proposals, review failures, scheduled trigger
+failures, Agent message loop breaks and restart-paused Agent queues. A queue kind item appears when
+a daemon restart interrupts queue processing: the affected Agent's queue is paused until you inspect
+the uncertain items and resume it, so the stall is never silent (BAZ-051). Notifications contain minimal authorized metadata and a
 link to the existing decision screen when a private HTTPS gateway origin is configured. Otherwise
 there are instructions for finding the item in the web Attention page. Receiving or opening a
 notice does not approve, acknowledge, retry or otherwise resolve its source.

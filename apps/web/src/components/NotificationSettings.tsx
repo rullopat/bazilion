@@ -15,6 +15,7 @@ const kinds: Record<AttentionKind, string> = {
   review_failure: 'Review failures',
   trigger_failure: 'Scheduled trigger failures',
   agent_loop_break: 'Agent message loop breaks',
+  queue_interrupted: 'Queues paused after restart',
 }
 async function request<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
   const response = await fetch(`/api/notifications${path}`, {

@@ -14,6 +14,7 @@ export const ATTENTION_KINDS = [
   'review_failure',
   'trigger_failure',
   'agent_loop_break',
+  'queue_interrupted',
 ] as const satisfies readonly AttentionKind[]
 
 type RawItem = Omit<AttentionItem, 'key' | 'acknowledgedAt'> & { acknowledged_at: number | null }
@@ -38,6 +39,9 @@ interface DiagnosticSourceRow extends BaseSourceRow {
 interface LoopSourceRow extends BaseSourceRow {
   attempted_hop: number
   max_hops: number
+}
+interface QueueInterruptedSourceRow extends BaseSourceRow {
+  uncertain_count: number
 }
 
 const bounded = (value: string | null, fallback: string): string =>
@@ -175,6 +179,40 @@ const sources: Source[] = [
             diagnostic: `Message chain stopped at hop ${r.attempted_hop} (limit ${r.max_hops}).`,
             href: `/agents/${encodeURIComponent(r.agentId ?? '')}/inbox`,
             acknowledgeable: true,
+          }),
+        ),
+  },
+  {
+    kind: 'queue_interrupted',
+    query: (db) =>
+      // BAZ-051: a daemon crash pauses the agent's queue until an operator
+      // resumes it. Without this projection the pause is invisible — messages
+      // enqueue fine and never drain. Resuming (the real action) clears it.
+      db.raw
+        .query<QueueInterruptedSourceRow, []>(
+          `SELECT 'queue:' || c.agent_id sourceId,
+          COALESCE((SELECT MAX(q.updated_at) FROM user_queue_items q WHERE q.agent_id = c.agent_id), a.created_at) occurredAt,
+          COALESCE((SELECT MAX(q.updated_at) FROM user_queue_items q WHERE q.agent_id = c.agent_id), a.created_at) updatedAt,
+          c.agent_id agentId, a.name agentName, a.team_id teamId, t.name teamName,
+          (SELECT COUNT(*) FROM user_queue_items q WHERE q.agent_id = c.agent_id AND q.status = 'uncertain') uncertain_count,
+          NULL acknowledged_at
+          FROM user_queue_controls c
+          JOIN agents a ON a.id = c.agent_id JOIN teams t ON t.id = a.team_id
+          WHERE c.paused = 1 AND c.reason = 'interrupted'`,
+        )
+        .all()
+        .map(
+          (r): RawItem => ({
+            ...r,
+            kind: 'queue_interrupted',
+            severity: 'action_required',
+            title: 'Agent queue paused after a daemon restart',
+            diagnostic:
+              r.uncertain_count > 0
+                ? `The daemon restarted mid-turn; ${r.uncertain_count} queued item${r.uncertain_count === 1 ? ' is' : 's are'} uncertain and the queue is paused. Inspect the items, then resume the queue.`
+                : 'The daemon restarted during queue processing and paused this agent. Resume the queue.',
+            href: `/agents/${encodeURIComponent(r.agentId ?? '')}`,
+            acknowledgeable: false,
           }),
         ),
   },

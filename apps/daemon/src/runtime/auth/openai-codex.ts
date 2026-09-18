@@ -150,7 +150,19 @@ async function refreshExpiredAccessToken(db: BazilionDb, authToken: string): Pro
   if (!creds) throw credentialsMissingError()
   if (creds.expires > Date.now() + REFRESH_MARGIN_MS) return creds.access
 
-  const next = await refreshOpenAICodexToken(creds)
+  // BAZ-051: a failed refresh must be actionable, not a raw upstream error
+  // (a revoked or expired refresh token otherwise surfaces as an opaque
+  // provider 4xx mid-turn). Name the re-login action.
+  let next: StoredCredentials
+  try {
+    next = await refreshOpenAICodexToken(creds)
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error)
+    throw new Error(
+      `OpenAI ChatGPT credentials could not be refreshed (${detail}). Sign in again: run ` +
+        '`bazilion auth openai login` or click Connect on /config.',
+    )
+  }
 
   // A logout or a new login can happen while the network request is pending.
   // Never resurrect cleared credentials or overwrite a newer credential set.

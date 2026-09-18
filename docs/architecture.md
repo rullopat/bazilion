@@ -347,7 +347,7 @@ Agent messages retain durable causal ancestry (`causal_chain_id`, `causal_hop`).
 independently of Team Policy. Inbox-wake turns pass a causal parent into their
 turn-scoped `MessagingHost`, preventing a model from resetting the budget by
 omitting `reply_to`. Stops are stored without payloads in
-`agent_loop_break_events` and exposed through the Agent API, CLI, and inbox UI.
+`agent_loop_break_events` and exposed through the Agent API, CLI, and inbox UI. A daemon restart that interrupts queue processing additionally pauses the affected Agent's queue with reason `interrupted`; the pause is projected as a `queue_interrupted` attention item (BAZ-051) so the stall is never silent.
 
 **Profiles** (`routes/profiles.ts`): list, create (POST, seeds markdown files), get, update (PATCH: name, default_model, skills_mode, default_skills), delete. Profile-file editing: `GET / PUT /api/profiles/:id/files/:file` where `:file` is whitelisted to `PROFILE_FILES`. `GET /api/profiles/_/templates` returns the default SOUL/IDENTITY/BOOTSTRAP/AGENTS/TOOLS strings.
 

@@ -7,6 +7,7 @@ const labels: Record<AttentionKind, { title: string; action: string }> = {
   review_failure: { title: 'Agent review stopped', action: 'Inspect Agent learning' },
   trigger_failure: { title: 'Scheduled trigger failed', action: 'Inspect Agent triggers' },
   agent_loop_break: { title: 'Agent message loop stopped', action: 'Inspect Agent inbox' },
+  queue_interrupted: { title: 'Agent queue paused after restart', action: 'Inspect Agent queue' },
 }
 
 function escapeHtml(value: string): string {
@@ -40,6 +41,7 @@ function resolutionPath(item: AttentionItem): string | null {
     case 'agent_loop_break':
       return `${base}/inbox`
     case 'trigger_failure':
+    case 'queue_interrupted':
       return base
   }
 }
