@@ -25,7 +25,7 @@ import { spawn } from 'node:child_process'
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { delimiter, join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 
 const IS_WIN = process.platform === 'win32'
@@ -51,7 +51,12 @@ function run(cmd, args, { env } = {}) {
   return new Promise((resolve) => {
     // `shell` resolves the global `bazilion` shim (bazilion.cmd) on Windows.
     const child = spawn(cmd, args, {
-      env: { ...process.env, ...daemonEnv(), ...env },
+      env: {
+        ...process.env,
+        ...(globalBinDir ? { PATH: `${globalBinDir}${delimiter}${process.env.PATH}` } : {}),
+        ...daemonEnv(),
+        ...env,
+      },
       shell: IS_WIN,
       stdio: ['ignore', 'pipe', 'pipe'],
     })
@@ -165,6 +170,7 @@ function startCodingProvider() {
 // CLI discovery defaults to 127.0.0.1:4321; these E2E daemons never sit
 // there. Point every CLI call at this run's daemon explicitly.
 let daemonPort = null
+let globalBinDir = null
 function daemonEnv() {
   return daemonPort
     ? {
@@ -190,6 +196,13 @@ try {
   step(`npm install -g ${tarball}`)
   const install = await run('npm', ['install', '-g', tarball])
   if (install.code !== 0) fail('npm install -g', install.stderr + install.stdout)
+  // The npm global bin dir is not reliably on PATH for child processes on
+  // Windows runners ('bazilion' is not recognized). Resolve the prefix and
+  // prepend it for every subsequent spawn.
+  const prefix = (await run('npm', ['config', 'get', 'prefix'])).stdout.trim()
+  if (!prefix) fail('npm config get prefix', 'empty output')
+  globalBinDir = prefix
+
   const version = await run('bazilion', ['--version'])
   if (version.code !== 0 || !/\d+\.\d+\.\d+/.test(version.stdout)) {
     fail('bazilion --version after global install', version.stderr + version.stdout)
@@ -203,6 +216,7 @@ try {
   daemon = spawn('bazilion', ['serve', '--port', String(daemonPort)], {
     env: {
       ...process.env,
+      ...(globalBinDir ? { PATH: `${globalBinDir}${delimiter}${process.env.PATH}` } : {}),
       BAZILION_HOME: home,
       LMSTUDIO_URL: provider.url,
       BAZILION_BASH_SANDBOX: 'off',

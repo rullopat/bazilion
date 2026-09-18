@@ -8,14 +8,60 @@ import { defineConfig } from 'vitest/config'
 // the platform-support statement in README.md — a suite belongs here only if it
 // constructs a ContextDirectory or drives the coding pipeline through it.
 const LINUX_ONLY = [
+  // Safe reads + repository context directly.
   'apps/daemon/test/core/repository-context.test.ts',
+  'apps/daemon/test/core/repository-context-git-errors.test.ts',
+  'apps/daemon/test/runtime/repository-context.test.ts',
+  'apps/cli/test/repository-context.test.ts',
+  // These four construct a ContextDirectory in their fixtures.
   'apps/daemon/test/core/git-capture.test.ts',
   'apps/daemon/test/core/git-review-changes.test.ts',
   'apps/daemon/test/core/git-review-identity.test.ts',
   'apps/daemon/test/core/git-review-snapshot.test.ts',
-  'apps/cli/test/repository-context.test.ts',
+  // The coding pipeline: turns prepare coding context through safe reads, so
+  // every suite that drives one (directly or through the daemon HTTP/CLI
+  // surface) hits the same Linux-only boundary. List derived from the first
+  // macOS/Windows matrix run (BAZ-049); a new suite that fails off-Linux with
+  // safe_reads_unavailable belongs here.
   'apps/cli/test/agent-coding.test.ts',
   'apps/cli/test/agent-coding-handoff.test.ts',
+  'apps/cli/test/chat.test.ts',
+  'apps/cli/test/team.test.ts',
+  'apps/cli/test/trigger.test.ts',
+  'apps/daemon/test/lib/agent-coding.test.ts',
+  'apps/daemon/test/lib/publication-e2e.test.ts',
+  'apps/daemon/test/lib/result-delivery.test.ts',
+  'apps/daemon/test/lib/review-capability.test.ts',
+  'apps/daemon/test/lib/review-capture.test.ts',
+  'apps/daemon/test/lib/review-e2e.test.ts',
+  'apps/daemon/test/lib/review-export-delivery.test.ts',
+  'apps/daemon/test/lib/review-export.test.ts',
+  'apps/daemon/test/lib/review-file-link.test.ts',
+  'apps/daemon/test/lib/scheduler.test.ts',
+  'apps/daemon/test/lib/turn-preparation.test.ts',
+  'apps/daemon/test/lib/verification-admission.test.ts',
+  'apps/daemon/test/lib/verification-capture.test.ts',
+  'apps/daemon/test/lib/verification-e2e.test.ts',
+  'apps/daemon/test/lib/verification-executor.test.ts',
+  'apps/daemon/test/lib/verification-request-capability.test.ts',
+  'apps/daemon/test/routes/communication.test.ts',
+  'apps/daemon/test/routes/conversations.test.ts',
+  'apps/daemon/test/routes/git-review.test.ts',
+  'apps/daemon/test/routes/publications.test.ts',
+  'apps/daemon/test/routes/results.test.ts',
+  'apps/daemon/test/routes/reviews.test.ts',
+  'apps/daemon/test/routes/team-templates.test.ts',
+  'apps/daemon/test/routes/verifications.test.ts',
+  // Worker/session identity: spawn validates agent dirs against their
+  // canonical realpath — the same canonical-path boundary safe reads pin.
+  'apps/daemon/test/runtime/worker-runtime.test.ts',
+  'apps/daemon/test/runtime/worker-process-identity.test.ts',
+  'apps/daemon/test/runtime/worker-api-key-refresh.test.ts',
+  'apps/daemon/test/runtime/session-head.test.ts',
+  'apps/daemon/test/runtime/protected-session-prompt.test.ts',
+  'apps/daemon/test/core/workspace-coordination.test.ts',
+  // Docker-stubbed, but cwd mapping goes through ContextDirectory (/proc).
+  'apps/daemon/test/runtime/shell-docker.test.ts',
 ]
 
 export default defineConfig({

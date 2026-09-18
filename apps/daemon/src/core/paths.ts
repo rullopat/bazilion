@@ -1,5 +1,6 @@
+import { realpathSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 
 export interface Paths {
   home: string
@@ -30,7 +31,9 @@ export interface Paths {
 }
 
 export function resolvePaths(home?: string): Paths {
-  const root = home ?? process.env.BAZILION_HOME ?? join(homedir(), '.bazilion')
+  const root = canonicalHome(
+    resolve(home ?? process.env.BAZILION_HOME ?? join(homedir(), '.bazilion')),
+  )
   return {
     home: root,
     db: join(root, 'bazilion.db'),
@@ -53,4 +56,31 @@ export function resolvePaths(home?: string): Paths {
       return join(root, 'teams', slug)
     },
   }
+}
+
+/**
+ * Resolve the home root to its canonical realpath (following symlinks in every
+ * existing segment; a not-yet-existing tail is kept). The daemon and the CLI
+ * validate each other's absolute paths against their canonical form —
+ * `realpathSync(dir) === dir` guards against symlink escapes — so a home
+ * reached through a symlinked segment (macOS ships /tmp and /var as symlinks
+ * to /private/…) would turn every derived path non-canonical and fail closed
+ * on every worker spawn and session read (BAZ-049). Resolving once, here,
+ * makes every derived path canonical for the process lifetime.
+ */
+function canonicalHome(root: string): string {
+  let resolved = root
+  const unresolvedTail: string[] = []
+  while (true) {
+    try {
+      resolved = realpathSync(resolved)
+      break
+    } catch {
+      const parent = dirname(resolved)
+      if (parent === resolved) break // reached the filesystem root
+      unresolvedTail.unshift(basename(resolved))
+      resolved = parent
+    }
+  }
+  return join(resolved, ...unresolvedTail)
 }
