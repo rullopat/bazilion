@@ -622,7 +622,11 @@ test('backup output inside BAZILION_HOME is rejected to prevent nested backups',
   expect(existsSync(output)).toBe(false)
 })
 
-test('BAZ-051: a failed backup is a clean failure — home intact, daemon healthy, no partial file', async () => {
+test.skipIf(process.platform === 'win32')(
+  // chmod cannot make a directory read-only on Windows; the delivery-failure
+  // path is separately pinned by the failed-download test above.
+  'BAZ-051: a failed backup is a clean failure — home intact, daemon healthy, no partial file',
+  async () => {
   // Inject the failure at the target: an unwritable directory makes every
   // temp-file + rename attempt fail without touching the served home.
   const scratch = join(tmpdir(), `bz-diskfull-${randomUUID()}`)
