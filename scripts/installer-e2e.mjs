@@ -244,16 +244,16 @@ let daemon = null
 let provider = null
 
 try {
-  step(`npm install -g ${tarball}`)
-  const install = await run('npm', ['install', '-g', tarball])
+  // Install into a controlled prefix: the runner's global prefix is not
+  // reliably resolvable for child processes on Windows ('bazilion' is not
+  // recognized), and `--prefix` makes the shim location deterministic on
+  // every OS (<prefix>/bazilion.cmd on Windows, <prefix>/bin/bazilion else).
+  const npmPrefix = mkdtempSync(join(tmpdir(), 'bazilion-e2e-npm-'))
+  step(`npm install -g --prefix ${npmPrefix} ${tarball}`)
+  const install = await run('npm', ['install', '-g', '--prefix', npmPrefix, tarball])
   if (install.code !== 0) fail('npm install -g', install.stderr + install.stdout)
-  // The npm global bin dir is not reliably on PATH for child processes on
-  // Windows runners ('bazilion' is not recognized). Resolve the prefix and
-  // invoke the shim by absolute path everywhere.
-  const prefix = (await run('npm', ['config', 'get', 'prefix'])).stdout.trim()
-  if (!prefix) fail('npm config get prefix', 'empty output')
-  globalBinDir = prefix
-  const bazilionBin = IS_WIN ? join(prefix, 'bazilion.cmd') : join(prefix, 'bin', 'bazilion')
+  globalBinDir = npmPrefix
+  const bazilionBin = IS_WIN ? join(npmPrefix, 'bazilion.cmd') : join(npmPrefix, 'bin', 'bazilion')
 
   const version = await run(bazilionBin, ['--version'])
   if (version.code !== 0 || !/\d+\.\d+\.\d+/.test(version.stdout)) {

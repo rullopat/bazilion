@@ -71,8 +71,11 @@ const createCmd = defineCommand({
     const defaultSuffix = args.recipient ? '.tar.gz.age' : '.tar.gz'
     const outAbs = resolve(args.output ?? `bazilion-backup-${date}${defaultSuffix}`)
     if (existsSync(outAbs)) throw new Error(`refusing to overwrite existing backup: ${outAbs}`)
-    const configuredHome = resolve(resolveCliPaths().home)
-    const outputFromHome = relative(configuredHome, outAbs)
+    // Compare canonical spellings both sides: on macOS the configured home is
+    // spelled through /private/var while the operator's output argument may
+    // use /var — the same file must still be refused as nested.
+    const configuredHome = canonicalHome(resolveCliPaths().home)
+    const outputFromHome = relative(configuredHome, canonicalHome(outAbs))
     if (!outputFromHome || (!outputFromHome.startsWith('..') && !isAbsolute(outputFromHome))) {
       throw new Error(
         `backup output must be outside BAZILION_HOME (${configuredHome}) to avoid nesting backups`,

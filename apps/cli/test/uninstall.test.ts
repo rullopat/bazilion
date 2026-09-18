@@ -6,6 +6,7 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -127,7 +128,7 @@ describe('uninstall command', () => {
       expect(result.stderr).toBe('')
       expect(existsSync(h.home)).toBe(false)
       expect(readFileSync(join(externalGroups, 'external.txt'), 'utf8')).toBe('keep me')
-      expect(result.stdout).toContain(`removed ${h.home}`)
+      expect(result.stdout).toContain(`removed ${realpathSync(h.home)}`)
     } finally {
       h.cleanup()
       rmSync(externalGroups, { recursive: true, force: true })
@@ -161,7 +162,7 @@ describe('uninstall command', () => {
       expect(result.exitCode).toBe(0)
       expect(result.stderr).toBe('')
       expect(readFileSync(join(h.home, 'operator-note.txt'), 'utf8')).toBe('keep me')
-      expect(result.stdout).toContain(`${h.home} still has unmanaged files; left in place`)
+      expect(result.stdout).toContain(`${realpathSync(h.home)} still has unmanaged files; left in place`)
     } finally {
       h.cleanup()
     }
@@ -200,7 +201,7 @@ describe('uninstall command', () => {
         'remove DB + auth/config + agent / profile / team data? [y/N]',
       )
       expect(interactive.stdout).toContain(
-        `also remove logs and skills? (full wipe of ${h.home}) [y/N]`,
+        `also remove logs and skills? (full wipe of ${realpathSync(h.home)}) [y/N]`,
       )
       expect(existsSync(join(h.home, 'auth.json'))).toBe(false)
       expect(existsSync(join(h.home, 'logs'))).toBe(true)
@@ -419,7 +420,7 @@ describe('uninstall command', () => {
       const resumed = runUninstall(['uninstall', '--yes', '--all'], h.home)
       expect(resumed.exitCode, resumed.stderr + resumed.stdout).toBe(0)
       expect(resumed.stderr + resumed.stdout).toContain('resuming interrupted Bazilion uninstall')
-      expect(resumed.stdout).toContain(`nothing to remove: ${h.home} does not exist`)
+      expect(resumed.stdout).toContain(`nothing to remove: ${realpathSync(h.home)} does not exist`)
       expect(existsSync(runtimePath)).toBe(false)
     } finally {
       rmSync(runtimePath, { force: true })
