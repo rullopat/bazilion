@@ -12,7 +12,11 @@ Whole-run subprocess isolation with worker↔daemon Node-IPC for messaging, Chat
 
 ## Quickstart
 
-Requires **Node 24 or newer**.
+Requires **Node 24 or newer**. Linux is the fully validated platform; macOS and
+Windows are supported for the daemon, web UI, chat, schedules and backups. The
+coding sequence (repository context, coding review/verification) is Linux-only —
+safe reads pin repository ancestry with Linux-only primitives by design and refuse
+a weaker fallback. See `docs/repository-context.md`.
 
 ```sh
 # One-shot — npx downloads `bazilion`, starts the daemon, and opens the web UI.

@@ -28,7 +28,7 @@ afterAll(async () => {
 })
 
 test('navigate → snapshot → screenshot round-trips through the pool', {
-  timeout: 60_000,
+  timeout: 120_000,
 }, async () => {
   let nav: Awaited<ReturnType<typeof invokeBrowserAction>>
   try {
@@ -54,7 +54,7 @@ test('navigate → snapshot → screenshot round-trips through the pool', {
   }
 })
 
-test('reuses one session per agent across calls', { timeout: 60_000 }, async () => {
+test('reuses one session per agent across calls', { timeout: 120_000 }, async () => {
   if (!available) return
   // Two snapshots in a row should hit the same cached session (no relaunch).
   const a = await invokeBrowserAction('browser-smoke', 'snapshot', {}, CONFIG)
@@ -62,7 +62,7 @@ test('reuses one session per agent across calls', { timeout: 60_000 }, async () 
 })
 
 test('a stale/unknown ref recovers with a fresh snapshot instead of dead-ending', {
-  timeout: 60_000,
+  timeout: 120_000,
 }, async () => {
   if (!available) return
   await invokeBrowserAction('browser-smoke', 'navigate', { url: PAGE }, CONFIG)
@@ -75,7 +75,7 @@ test('a stale/unknown ref recovers with a fresh snapshot instead of dead-ending'
 })
 
 test('screenshot/snapshot on a fresh (un-navigated) session return a navigate hint', {
-  timeout: 60_000,
+  timeout: 120_000,
 }, async () => {
   if (!available) return
   // A brand-new session sits on about:blank — perception must steer the model

@@ -1,7 +1,7 @@
 ---
 id: BAZ-049
 title: Cross-platform CI matrix and fresh-machine installer E2E
-status: todo
+status: in_progress
 size: M (1 week)
 created: 2026-09-17
 refined: 2026-09-17
@@ -96,6 +96,21 @@ clean-install contract had.
 - Per-OS release packaging changes (release.yml matrix) — follow-up if the E2E finds gaps.
 - Portable safe reads / making the coding sequence work off-Linux → BAZ-057 (draft).
 - The mobile app — removed by BAZ-053.
+
+## Flake watch (2026-09-17, during implementation)
+
+Diagnosis before the matrix landed — CI logs from the earlier failures are expired:
+
+- `backup.test.ts` (SQLITE_BUSY): no local reproduction (3× targeted runs plus a
+  30-backup probe against a 4 000-transaction hammering writer — the test's own
+  5s busy-timeout fix from an earlier flake covers both connections; the daemon
+  opens with `timeout: 5_000` in `client.ts:113`). Watch in the matrix.
+- `git-review-snapshot.test.ts`: no local reproduction (5× runs). Watch in the matrix.
+- `browser-live.test.ts`: reproduced once in three full-suite runs (passes in
+  isolation). Likeliest casualty: the 60s per-test timeouts under 8-fork load with
+  daemons + chromium (local run: 10.6s). Hardened by raising the four test timeouts
+  to 120s; not gated, so the matrix gives it real signal. If it flakes again, gate it
+  behind an env flag like `BAZILION_TEST_DOCKER=1`.
 
 ## Tests
 
