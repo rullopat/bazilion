@@ -287,9 +287,17 @@ try {
 
   const version = await run(bazilionBin, ['--version'])
   if (version.code !== 0 || !/\d+\.\d+\.\d+/.test(version.stdout)) {
+    const distListing = existsSync(join(moduleRoot, 'dist'))
+      ? readdirSync(join(moduleRoot, 'dist')).slice(0, 12).join(', ')
+      : '(no dist)'
+    const nodeProbe = await run(process.execPath, ['-e', 'console.log("node-probe-ok")'])
+    const retry = await run(bazilionBin, ['--version'])
     fail(
       'bazilion --version after global install',
-      `exit ${version.code}: ${version.stderr + version.stdout}`,
+      `exit ${version.code}, stdout ${version.stdout.length}B, stderr ${version.stderr.length}B: ${version.stderr + version.stdout}` +
+        `\n    dist: ${distListing}` +
+        `\n    node probe: exit ${nodeProbe.code}, out ${nodeProbe.stdout.trim()}` +
+        `\n    retry: exit ${retry.code}, out ${retry.stdout.length}B: ${retry.stdout.trim()}`,
     )
   } else {
     console.log(`    installed bazilion ${version.stdout.trim()}`)
