@@ -26,7 +26,7 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node
 import { createServer as createHttpServer } from 'node:http'
 import { createServer as createNetServer } from 'node:net'
 import { tmpdir } from 'node:os'
-import { delimiter, dirname, join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 
 const IS_WIN = process.platform === 'win32'
@@ -50,15 +50,15 @@ function fail(name, detail) {
 
 function run(cmd, args, { env } = {}) {
   return new Promise((resolve) => {
-    // `shell` resolves the global `bazilion` shim (bazilion.cmd) on Windows.
+    // No shell anywhere: cmd.exe mangles quoted args and backslash paths
+    // (even `node -e` breaks through it). Every spawned thing is a real
+    // executable or a JS entry run through process.execPath.
     const child = spawn(cmd, args, {
       env: {
         ...process.env,
-        ...(globalBinDir ? { PATH: `${globalBinDir}${delimiter}${process.env.PATH}` } : {}),
         ...daemonEnv(),
         ...env,
       },
-      shell: IS_WIN,
       stdio: ['ignore', 'pipe', 'pipe'],
     })
     let stdout = ''
@@ -70,15 +70,6 @@ function run(cmd, args, { env } = {}) {
   })
 }
 
-// Killing a shell shim on Windows orphans the real child unless the tree dies.
-function killTree(child) {
-  if (IS_WIN) {
-    spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' })
-  } else {
-    child.kill('SIGTERM')
-  }
-}
-
 function freePort() {
   return new Promise((resolve, reject) => {
     const probe = createNetServer()
@@ -88,6 +79,16 @@ function freePort() {
     })
     probe.on('error', reject)
   })
+}
+
+// The daemon spawns workers; on Windows terminate the whole tree. taskkill is
+// a real executable, so no shell is involved.
+function killTree(child) {
+  if (IS_WIN) {
+    spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' })
+  } else {
+    child.kill('SIGTERM')
+  }
 }
 
 async function waitForHealthy(url, timeoutMs = 60_000) {
@@ -164,16 +165,19 @@ async function runCodingPhase(bazilionBin) {
   let codingDaemon = null
   try {
     await new Promise((resolve) => setTimeout(resolve, 500))
-    codingDaemon = spawn(bazilionBin, ['serve', '--port', String(codingDaemonPort)], {
-      env: {
-        ...process.env,
-        BAZILION_HOME: codingHome,
-        LMSTUDIO_URL: `http://127.0.0.1:${codingProviderPort}/v1`,
-        BAZILION_BASH_SANDBOX: 'off',
+    codingDaemon = spawn(
+      process.execPath,
+      [bazilionBin, 'serve', '--port', String(codingDaemonPort)],
+      {
+        env: {
+          ...process.env,
+          BAZILION_HOME: codingHome,
+          LMSTUDIO_URL: `http://127.0.0.1:${codingProviderPort}/v1`,
+          BAZILION_BASH_SANDBOX: 'off',
+        },
+        stdio: 'ignore',
       },
-      shell: IS_WIN,
-      stdio: 'ignore',
-    })
+    )
     await waitForHealthy(`http://127.0.0.1:${codingDaemonPort}/api/health`)
     // Phase-2 CLI calls must reach THIS phase's daemon — the shared run()
     // helper defaults to the phase-1 daemon via daemonEnv().
@@ -221,7 +225,6 @@ async function runCodingPhase(bazilionBin) {
 // CLI discovery defaults to 127.0.0.1:4321; these E2E daemons never sit
 // there. Point every CLI call at this run's daemon explicitly.
 let daemonPort = null
-let globalBinDir = null
 function daemonEnv() {
   return daemonPort
     ? {
@@ -250,9 +253,22 @@ try {
   // every OS (<prefix>/bazilion.cmd on Windows, <prefix>/bin/bazilion else).
   const npmPrefix = mkdtempSync(join(tmpdir(), 'bazilion-e2e-npm-'))
   step(`npm install -g --prefix ${npmPrefix} ${tarball}`)
-  const install = await run('npm', ['install', '-g', '--prefix', npmPrefix, tarball])
+  const nodeBinDir = dirname(process.execPath)
+  const npmBin = [
+    // Windows: node.exe and npm sit directly under the install root.
+    join(nodeBinDir, 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+    // Unix: bin/node next to lib/node_modules/npm.
+    join(dirname(nodeBinDir), 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+  ].find((candidate) => existsSync(candidate))
+  const install = await run(process.execPath, [
+    npmBin,
+    'install',
+    '-g',
+    '--prefix',
+    npmPrefix,
+    tarball,
+  ])
   if (install.code !== 0) fail('npm install -g', install.stderr + install.stdout)
-  globalBinDir = npmPrefix
   // npm's shim layout differs per OS (and the shim is not on PATH for child
   // processes on Windows), so invoke the installed bin entry through node
   // directly. npm nests modules under lib/node_modules on unix and
@@ -310,15 +326,13 @@ try {
   // claim, so it runs as phase 2 in its own home (Linux only).
   provider = await startFinalAnswerProvider()
   daemonPort = await freePort()
-  daemon = spawn(bazilionBin, ['serve', '--port', String(daemonPort)], {
+  daemon = spawn(process.execPath, [bazilionBin, 'serve', '--port', String(daemonPort)], {
     env: {
       ...process.env,
-      ...(globalBinDir ? { PATH: `${globalBinDir}${delimiter}${process.env.PATH}` } : {}),
       BAZILION_HOME: home,
       LMSTUDIO_URL: provider.url,
       BAZILION_BASH_SANDBOX: 'off',
     },
-    shell: IS_WIN,
     stdio: ['ignore', 'pipe', 'pipe'],
   })
   daemon.stdout.on('data', (chunk) => daemonLogs.push(chunk))
