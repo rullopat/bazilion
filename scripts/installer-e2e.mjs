@@ -255,11 +255,34 @@ try {
   globalBinDir = npmPrefix
   // npm's shim layout differs per OS (and the shim is not on PATH for child
   // processes on Windows), so invoke the installed bin entry through node
-  // directly: lib/node_modules on unix, node_modules on Windows.
-  const moduleRoot = existsSync(join(npmPrefix, 'lib', 'node_modules', 'bazilion'))
-    ? join(npmPrefix, 'lib', 'node_modules', 'bazilion')
-    : join(npmPrefix, 'node_modules', 'bazilion')
-  const bazilionBin = join(moduleRoot, 'dist', 'cli.js')
+  // directly. npm nests modules under lib/node_modules on unix and
+  // node_modules on Windows — probe both and show the layout if absent.
+  const cliCandidates = [
+    join(npmPrefix, 'lib', 'node_modules', 'bazilion', 'dist', 'cli.js'),
+    join(npmPrefix, 'node_modules', 'bazilion', 'dist', 'cli.js'),
+  ]
+  const bazilionBinFound = cliCandidates.find((candidate) => existsSync(candidate))
+  if (!bazilionBinFound) {
+    const layout = []
+    const walk = (dir, depth) => {
+      if (depth > 2) return
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const child = join(dir, entry.name)
+        layout.push(child)
+        if (entry.isDirectory()) walk(child, depth + 1)
+      }
+    }
+    try {
+      walk(npmPrefix, 0)
+    } catch {
+      layout.push(`(cannot list ${npmPrefix})`)
+    }
+    fail(
+      'installed bin entry not found',
+      `looked for ${cliCandidates.join(', ')}; prefix layout:\n${layout.slice(0, 60).join('\n')}`,
+    )
+  }
+  const bazilionBin = bazilionBinFound
 
   const version = await run(bazilionBin, ['--version'])
   if (version.code !== 0 || !/\d+\.\d+\.\d+/.test(version.stdout)) {
