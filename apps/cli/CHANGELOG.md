@@ -1,5 +1,11 @@
 # bazilion
 
+## 0.21.0-beta.4
+
+### Patch Changes
+
+- [`455c92c`](https://github.com/rullopat/bazilion/commit/455c92cfc68d5ce2c975ad584a88e2efe70c17e1) Thanks [@rullopat](https://github.com/rullopat)! - BAZ-052: beta supportability. The BAZ-032 adversarial security gate (153 required cases) now runs as a CI job on every PR — the script fails closed on a missing, duplicate or renamed required case, so a security regression or a quietly deleted case cannot merge. New operator doc `docs/growth-and-retention.md` states the per-artifact growth model: coding evidence is bounded by design (7-day TTLs, 256 MB home-wide budget, content-addressed snapshots), messages and sessions grow with use (that is the record), pre-migration snapshots are safe to delete once an upgrade is confirmed good, and `logs/` is intentionally empty — the daemon writes no log files.
+
 ## 0.21.0-beta.3
 
 ### Patch Changes

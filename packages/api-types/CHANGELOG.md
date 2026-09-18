@@ -1,5 +1,7 @@
 # @bazilion/api-types
 
+## 0.21.0-beta.4
+
 ## 0.21.0-beta.3
 
 ### Patch Changes
