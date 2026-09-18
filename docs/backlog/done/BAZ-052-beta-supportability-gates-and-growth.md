@@ -1,10 +1,12 @@
 ---
 id: BAZ-052
 title: Beta supportability — security gate in CI, growth documentation
-status: todo
+status: done
 size: S (1 day; the M estimate assumed log rotation, which is a stale premise)
 created: 2026-09-17
 refined: 2026-09-18
+shipped: 2026-09-18
+release: v0.21.0-beta.4
 priority: medium
 note: Beta blocker (cheap half). Security gap verified present on 2026-09-17; growth docs verified missing on 2026-09-18.
 ---
@@ -86,6 +88,23 @@ small; together they define whether a months-old beta home is supportable.
 - Structural DB retention / cold archives (BAZ-048, post-1.0).
 - External log shipping / telemetry (none, by product stance).
 - Log rotation for `logs/` (nothing writes there; see refinement decision 1).
+
+## As-built
+
+- **`security-acceptance` CI job** (PR #65): ubuntu, 15-minute timeout, runs
+  `pnpm security:acceptance` on every PR alongside the 3-OS matrix. Failure
+  behavior is by construction: the script hard-fails on missing/duplicate/renamed
+  required cases, so the manifest is the gate. First run green (8/8 checks).
+- **`docs/growth-and-retention.md`**: per-artifact growth model as refined.
+  Backed the claims against source: `CODING_LOG_TTL_MS` (7d) +
+  `CODING_LOG_HOME_BYTES` (256 MB) with eviction on coding-command completion
+  (`pruneCodingCommandLogs` in agent-host); `SOURCE_SNAPSHOT_TTL_MS` (7d) +
+  content-addressed dedup, pruned on save; backups tar the whole home (so
+  pre-migration snapshots are included in archives); `logs/` confirmed
+  never-written. Cross-references are plain-text (repo docs don't link website
+  slugs); the website mirror uses real links, gated by `check:docs`.
+- README tree updated. Soak-home numbers intentionally absent (refinement
+  decision 3): the doc states structural facts, not invented data.
 
 ## Tests
 

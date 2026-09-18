@@ -70,21 +70,20 @@ Writer coordination already exists; checkout lifecycle and deployment integratio
 later from a concrete use case. Automatic Git publication, managed services/previews and ambient Pi
 extension loading remain separate, uncommitted scope.
 
-## Todo (1)
+## Todo (0)
 
-| ID | Title | Size | Refined | Notes |
-|----|-------|------|---------|-------|
-| [BAZ-052](todo/BAZ-052-beta-supportability-gates-and-growth.md) | Beta supportability — security gate in CI, growth documentation | S | 2026-09-18 | Log rotation dropped (stale premise: the daemon writes no log files — `logs/` is created and never written). Security gate: one ubuntu CI job, the 153-case suite is docker-free and ~1m50s. Growth doc: new operator page with the per-artifact growth model (bounded coding evidence vs unbounded messages/sessions), mirrored to the website. |
+Nothing refined and waiting. Only BAZ-050 (UI sweep, L) remains before 1.0.0-beta.1; capture anything new in `draft/`.
 
 ## In Progress (0)
 
 
 Nothing in flight. Move an item here from `todo/` when implementation starts.
 
-## Done (47)
+## Done (48)
 
 | ID | Title | Size | Shipped | Release | Notes |
 |----|-------|------|---------|---------|-------|
+| [BAZ-052](done/BAZ-052-beta-supportability-gates-and-growth.md) | Beta supportability — security gate in CI, growth documentation | S | 2026-09-18 | v0.21.0-beta.4 | 153-case adversarial security gate now runs on every PR (fails closed on a deleted case). New growth-and-retention operator doc: bounded coding evidence (7-day TTLs, 256 MB budget), unbounded messages/sessions (the record), pre-migration snapshot hygiene, `logs/` documented as intentionally empty. Log rotation dropped — stale premise (the daemon writes no log files). |
 | [BAZ-051](done/BAZ-051-failure-mode-visibility-audit.md) | Failure-mode visibility audit — every recovery is seen or surfaced | M | 2026-09-18 | v0.21.0-beta.3 | Two silent failures fixed: the post-crash queue stall (new `queue_interrupted` attention kind) and opaque OAuth refresh errors. Six failure modes pinned by deterministic injection tests asserting the observed surface. Build race (web ∥ CLI vite on one dist) fixed en route. |
 | [BAZ-049](done/BAZ-049-cross-platform-ci-and-installer-e2e.md) | Cross-platform CI matrix and fresh-machine installer E2E | M (ran longer) | 2026-09-18 | — | 3-OS test matrix + hermetic installer E2E, all green at merge (PR #61). Caught six real product defects incl. Windows breaking every conversation write (dir-fsync) and `pnpm pack` shipping an empty tarball from Windows (build filters matched nothing). Workspace-claim identity portable; turns stay Linux-only until BAZ-057 (content-read portability); off-Linux refusal is a structured 422 naming `safe_reads_unavailable`. |
 | [BAZ-056](done/BAZ-056-remove-cli-chat-repl.md) | Remove the interactive chat REPL from the CLI; one-shot chat stays | S | 2026-09-17 | [v0.21.0-beta.1](https://github.com/rullopat/bazilion/releases/tag/v0.21.0-beta.1) | Operator decision: the bare readline REPL in `agent chat` was not worth completing; 1.0 keeps one-shot chat + dedicated commands + web. Piped stdin scripting kept (fail-closed `auto_deny`). PR #56. |
