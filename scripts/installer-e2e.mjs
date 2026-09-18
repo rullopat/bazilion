@@ -192,21 +192,23 @@ async function runCodingPhase(bazilionBin) {
       ['provider', 'enable', 'lmstudio'],
       ['provider', 'models-set', 'lmstudio', 'baz041-stub'],
     ]) {
-      const result = await run(bazilionBin, args, { env: codingEnv })
+      const result = await run(process.execPath, [bazilionBin, ...args], { env: codingEnv })
       if (result.code !== 0)
         fail(`coding phase: bazilion ${args.join(' ')}`, result.stderr + result.stdout)
     }
-    const spawned = await run(bazilionBin, ['agent', 'spawn', '--profile', 'default'], {
-      env: codingEnv,
-    })
+    const spawned = await run(
+      process.execPath,
+      [bazilionBin, 'agent', 'spawn', '--profile', 'default'],
+      { env: codingEnv },
+    )
     const codingAgentId = spawned.stdout.match(/spawned agent (\S+)/)?.[1]
     if (spawned.code !== 0 || !codingAgentId) {
       fail('coding phase: agent spawn', spawned.stderr + spawned.stdout)
       return
     }
     const turn = await run(
-      bazilionBin,
-      ['agent', 'chat', codingAgentId, '--message', 'run the check'],
+      process.execPath,
+      [bazilionBin, 'agent', 'chat', codingAgentId, '--message', 'run the check'],
       { env: codingEnv },
     )
     if (turn.code !== 0) {
@@ -297,13 +299,13 @@ try {
   if (!bazilionBin) process.exit(1)
   const moduleRoot = dirname(bazilionBin)
 
-  const version = await run(bazilionBin, ['--version'])
+  const version = await run(process.execPath, [bazilionBin, '--version'])
   if (version.code !== 0 || !/\d+\.\d+\.\d+/.test(version.stdout)) {
     const distListing = existsSync(join(moduleRoot, 'dist'))
       ? readdirSync(join(moduleRoot, 'dist')).slice(0, 12).join(', ')
       : '(no dist)'
     const nodeProbe = await run(process.execPath, ['-e', 'console.log("node-probe-ok")'])
-    const retry = await run(bazilionBin, ['--version'])
+    const retry = await run(process.execPath, [bazilionBin, '--version'])
     fail(
       'bazilion --version after global install',
       `exit ${version.code}, stdout ${version.stdout.length}B, stderr ${version.stderr.length}B: ${version.stderr + version.stdout}` +
@@ -343,7 +345,9 @@ try {
     ['provider', 'enable', 'lmstudio'],
     ['provider', 'models-set', 'lmstudio', provider.model],
   ]) {
-    const result = await run(bazilionBin, args, { env: { BAZILION_HOME: home } })
+    const result = await run(process.execPath, [bazilionBin, ...args], {
+      env: { BAZILION_HOME: home },
+    })
     if (result.code !== 0) fail(`bazilion ${args.join(' ')}`, result.stderr + result.stdout)
   }
   const afterSetup = await (await fetch(`http://127.0.0.1:${daemonPort}/api/health`)).json()
@@ -352,7 +356,8 @@ try {
   }
 
   step('spawn an agent into the auto-created default team')
-  const spawned = await run(bazilionBin, [
+  const spawned = await run(process.execPath, [
+    bazilionBin,
     'agent',
     'spawn',
     '--profile',
@@ -365,8 +370,8 @@ try {
 
   step('one-shot chat turn through the deterministic provider')
   const turn = await run(
-    bazilionBin,
-    ['agent', 'chat', agentId, '--message', 'please answer with the fixed reply'],
+    process.execPath,
+    [bazilionBin, 'agent', 'chat', agentId, '--message', 'please answer with the fixed reply'],
     { env: { BAZILION_HOME: home } },
   )
   if (turn.code !== 0 || !turn.stdout.includes(provider.finalText)) {
@@ -381,7 +386,9 @@ try {
   step('stop the daemon and uninstall the home')
   killTree(daemon)
   await new Promise((resolve) => setTimeout(resolve, 1_000))
-  const uninstall = await run(bazilionBin, ['uninstall', '--yes'], { env: { BAZILION_HOME: home } })
+  const uninstall = await run(process.execPath, [bazilionBin, 'uninstall', '--yes'], {
+    env: { BAZILION_HOME: home },
+  })
   if (uninstall.code !== 0) fail('uninstall --yes', uninstall.stderr + uninstall.stdout)
   if (existsSync(join(home, 'bazilion.db')) || existsSync(join(home, 'auth.json'))) {
     fail('home reset removes db + auth.json', `left: ${readdirSync(home).join(', ')}`)
