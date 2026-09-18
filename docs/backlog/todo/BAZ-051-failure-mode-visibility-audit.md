@@ -1,11 +1,47 @@
 ---
 id: BAZ-051
 title: Failure-mode visibility audit — every recovery is seen or surfaced
-status: draft
+status: todo
 size: M (1 week)
 created: 2026-09-17
+refined: 2026-09-18
 priority: high
 note: Beta blocker. Recovery machinery exists and is tested for correctness; visibility under real failure is not.
+
+## Refinement decisions (2026-09-18, after tracing every path)
+
+1. **Found silent gap → new attention kind `queue_interrupted`.** After a daemon
+   crash, `recoverInterrupted` pauses the agent's queue control with
+   `reason: 'interrupted'` and marks interrupted items `uncertain` — but nothing
+   surfaces the pause. `accept()` enqueues onto a paused queue by design
+   (deliberate pauses buffer; that stays), the pump never drains, and neither the
+   web UI nor the Attention Center shows why the agent went quiet. The kind is
+   projected from `user_queue_controls WHERE paused=1 AND reason='interrupted'`:
+   `action_required`, not acknowledgeable (resuming — the real action — clears it),
+   href the agent page, diagnostic names the crash and the uncertain count.
+2. **OAuth refresh failure → actionable error, no new kind.** A failed refresh
+   currently throws pi-ai's raw error into the turn. Wrap it: name the re-login
+   action (`bazilion auth openai login` / Connect on /config). `/config` already
+   shows connected state and expiry; turns fail loudly. A credential attention
+   kind would duplicate that.
+3. **Enqueue-while-paused stays accepted** (documented): messages buffer and drain
+   on resume; the attention item is the operator's signal. A 409 would break
+   legitimate deliberate pauses.
+4. **Observe-only rows** (surface exists; the audit asserts it): provider outage
+   (turn `event:error`/`fatal` frame + queue item `failed` with protected-failure
+   diagnostic), Telegram send failure (receipt terminal `failed`/`uncertain` with
+   diagnostic + the underlying attention item stays open in the web UI), loop
+   breach (`agent_loop_break` item), disk-full backup (CLI error, home and daemon
+   intact), queue-dispatch lease recovery after kill (lease reclaimed; terminal
+   failure lands `trigger_failure` attention).
+5. **Web surfaces to touch:** attention page kind dropdown,
+   `NotificationSettings` kind map (drives subscription checkboxes), api-types
+   union. CLI `attention` output is projection-driven.
+6. **Test layout:** daemon-level rows in a new
+   `test/runtime/failure-visibility.integration.test.ts`; the mid-coding-run SIGKILL
+   row joins the docker-gated `coding-recovery.integration.test.ts` as a
+   visibility assertion. One test per table row, asserting the OBSERVED surface
+   (attention projection, queue diagnostics, receipt state), not internals.
 ---
 
 # BAZ-051 - Failure-mode visibility audit — every recovery is seen or surfaced
@@ -58,4 +94,5 @@ CLI where applicable):
 
 The table above *is* the test plan: one deterministic injection test per row, asserting
 the observed surface (web Attention badge/queue, CLI parity, Telegram where opted in).
-No code path recovers silently.
+No code path recovers silently. The `queue_interrupted` row asserts: crash mid-turn →
+restart → attention item present → resume → item gone, queued input drains.
