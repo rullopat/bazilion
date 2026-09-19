@@ -1,5 +1,6 @@
 import type { Agent, SourceSlotBinding } from '@bazilion/api-types'
 import { createFileRoute } from '@tanstack/react-router'
+import { RecoveryState } from '../../../components/RecoveryState'
 import { createServerFn } from '@tanstack/react-start'
 import { EmptyState, PageShell, SectionCard, StatusBadge } from '../../../components/Page'
 import { TeamTabs } from '../../../components/TeamTabs'
@@ -17,6 +18,7 @@ interface MembersProjection {
 }
 
 export const Route = createFileRoute('/teams/$id/members')({
+  errorComponent: ({ error, reset }) => <RecoveryState title="Team members unavailable" error={error} reset={reset} fallbackHref="/teams" />,
   loader: ({ params }) => fetchMembers({ data: params }),
   component: TeamMembersPage,
 })

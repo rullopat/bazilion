@@ -7,6 +7,7 @@ import type {
   ResolvedTeamPolicy,
 } from '@bazilion/api-types'
 import { createFileRoute, redirect, useRouter } from '@tanstack/react-router'
+import { RecoveryState } from '../../../components/RecoveryState'
 import { createServerFn } from '@tanstack/react-start'
 import { useEffect, useState } from 'react'
 import { Button } from '../../../components/Button'
@@ -42,6 +43,7 @@ const fetchGroup = createServerFn({ method: 'POST' })
   })
 
 export const Route = createFileRoute('/teams/$id/')({
+  errorComponent: ({ error, reset }) => <RecoveryState title="Team overview unavailable" error={error} reset={reset} fallbackHref="/teams" />,
   loader: async ({ params }) => {
     const data = await fetchGroup({ data: { id: params.id } })
     if (!data) throw redirect({ to: '/teams' })

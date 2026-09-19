@@ -8,6 +8,7 @@ import type {
   ResolvedAgent,
 } from '@bazilion/api-types'
 import { createFileRoute, redirect } from '@tanstack/react-router'
+import { RecoveryState } from '../../../components/RecoveryState'
 import { createServerFn } from '@tanstack/react-start'
 import { AgentTabs } from '../../../components/AgentTabs'
 import { PageShell } from '../../../components/Page'
@@ -67,6 +68,7 @@ const fetchInbox = createServerFn({ method: 'POST' })
   })
 
 export const Route = createFileRoute('/agents/$id/inbox')({
+  errorComponent: ({ error, reset }) => <RecoveryState title="Agent inbox unavailable" error={error} reset={reset} fallbackHref="/agents" />,
   validateSearch: (s: Record<string, unknown>): { unread?: '1'; id?: string } => ({
     unread: s.unread === '1' ? '1' : undefined,
     id: typeof s.id === 'string' ? s.id : undefined,

@@ -1,5 +1,6 @@
 import type { ResultListResponse, Team } from '@bazilion/api-types'
 import { createFileRoute } from '@tanstack/react-router'
+import { RecoveryState } from '../../../components/RecoveryState'
 import { createServerFn } from '@tanstack/react-start'
 import { useEffect, useState } from 'react'
 import { Button } from '../../../components/Button'
@@ -16,6 +17,7 @@ const fetchTeam = createServerFn({ method: 'POST' })
     daemonClient().get<Team>(`/api/teams/${encodeURIComponent(data.id)}`),
   )
 export const Route = createFileRoute('/teams/$id/results')({
+  errorComponent: ({ error, reset }) => <RecoveryState title="Saved results unavailable" error={error} reset={reset} fallbackHref="/teams" />,
   loader: ({ params }) => fetchTeam({ data: { id: params.id } }),
   component: ResultsPage,
 })

@@ -1,6 +1,7 @@
 import type { ListSessionsResponse, ListTokensResponse, WebSession, WebToken } from '@bazilion/api-types'
 import { DEVICE_TOKEN_SCOPES } from '@bazilion/api-types'
 import { createFileRoute, useRouter } from '@tanstack/react-router'
+import { RecoveryState } from '../../components/RecoveryState'
 import { createServerFn } from '@tanstack/react-start'
 import { useState } from 'react'
 import { Button } from '../../components/Button'
@@ -20,6 +21,7 @@ const fetchTokens = createServerFn({ method: 'POST' })
   })
 
 export const Route = createFileRoute('/config/tokens')({
+  errorComponent: ({ error, reset }) => <RecoveryState title="Access tokens unavailable" error={error} reset={reset} fallbackHref="/config" />,
   validateSearch: (s: Record<string, unknown>): { all?: '1' } => ({
     all: s.all === '1' ? '1' : undefined,
   }),
@@ -211,7 +213,7 @@ function TokensPage() {
             above, or all if none are).
           </p>
           <Button
-            variant="secondary"
+            variant="ghost"
             type="button"
             disabled={busy}
             onClick={() => {

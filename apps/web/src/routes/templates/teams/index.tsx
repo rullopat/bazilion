@@ -1,5 +1,6 @@
 import type { TeamTemplateWithCount } from '@bazilion/api-types'
 import { createFileRoute, useRouter } from '@tanstack/react-router'
+import { RecoveryState } from '../../../components/RecoveryState'
 import { createServerFn } from '@tanstack/react-start'
 import { useState } from 'react'
 import { Button } from '../../../components/Button'
@@ -12,6 +13,7 @@ const fetchTeams = createServerFn({ method: 'GET' }).handler(() =>
 )
 
 export const Route = createFileRoute('/templates/teams/')({
+  errorComponent: ({ error, reset }) => <RecoveryState title="Team templates unavailable" error={error} reset={reset} fallbackHref="/templates" />,
   loader: () => fetchTeams(),
   component: TeamTemplatesPage,
 })

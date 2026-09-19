@@ -5,8 +5,10 @@
 
 import { VERIFICATION_OUTCOME_LIMITS } from '@bazilion/api-types'
 import { createFileRoute, Link, redirect } from '@tanstack/react-router'
+import { RecoveryState } from '../../../components/RecoveryState'
 import { useState } from 'react'
 import { Button } from '../../../components/Button'
+import { ConfirmDialog } from '../../../components/ConfirmDialog'
 import { PageShell } from '../../../components/Page'
 import { TeamTabs } from '../../../components/TeamTabs'
 import {
@@ -18,6 +20,7 @@ import {
 } from '../../../lib/verification'
 
 export const Route = createFileRoute('/teams/$id/verifications')({
+  errorComponent: ({ error, reset }) => <RecoveryState title="Specialist verification unavailable" error={error} reset={reset} fallbackHref="/teams" />,
   loader: async ({ params }) => {
     const data = await fetchTeamVerifications({ data: { id: params.id } })
     if (!data) throw redirect({ to: '/teams' })
@@ -51,6 +54,8 @@ function VerificationsPage() {
   const [summary, setSummary] = useState('')
   const [status, setStatus] = useState<{ kind: 'info' | 'error'; message: string } | null>(null)
   const [busy, setBusy] = useState(false)
+  // BAZ-050: cancelling discards the captured checks; say so before it happens.
+  const [cancelling, setCancelling] = useState<{ requestId: string; summary: string | null } | null>(null)
   // Applicability is asked for per request: comparing the live tree is real work, and a list that
   // computed it for every row would walk the repository once per request.
   const [applicability, setApplicability] = useState<Record<string, string>>({})
@@ -270,7 +275,11 @@ function VerificationsPage() {
                     Check applicability
                   </Button>{' '}
                   {cancellable ? (
-                    <Button variant="danger" disabled={busy} onClick={() => cancel(report.request.id)}>
+                    <Button
+                      variant="danger"
+                      disabled={busy}
+                      onClick={() => setCancelling({ requestId: report.request.id, summary: report.request.summary })}
+                    >
                       Cancel
                     </Button>
                   ) : null}
@@ -289,6 +298,20 @@ function VerificationsPage() {
           {VERIFICATION_OUTCOME_LIMITS[0]} {VERIFICATION_OUTCOME_LIMITS[1]}
         </p>
       </section>
+      <ConfirmDialog
+        open={cancelling !== null}
+        title="Cancel this verification request?"
+        description={`The pending checks will not run and the request is discarded${cancelling?.summary ? ` (captured change: “${cancelling.summary}”)` : ''}. You can request verification of the same captured change again.`}
+        confirmLabel="Cancel the request"
+        confirmVariant="danger"
+        onConfirm={async () => {
+          if (cancelling) await cancel(cancelling.requestId)
+          setCancelling(null)
+        }}
+        onOpenChange={(open) => {
+          if (!open) setCancelling(null)
+        }}
+      />
     </PageShell>
   )
 }

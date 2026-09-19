@@ -4,6 +4,7 @@
 
 import type { SourceSnapshot } from '@bazilion/api-types'
 import { createFileRoute, redirect } from '@tanstack/react-router'
+import { RecoveryState } from '../../../components/RecoveryState'
 import { useState } from 'react'
 import { Button } from '../../../components/Button'
 import { PageShell } from '../../../components/Page'
@@ -30,6 +31,7 @@ import {
 } from '../../../lib/git-review'
 
 export const Route = createFileRoute('/teams/$id/review')({
+  errorComponent: ({ error, reset }) => <RecoveryState title="Change review unavailable" error={error} reset={reset} fallbackHref="/teams" />,
   loader: async ({ params }) => {
     const [data, packets] = await Promise.all([
       fetchTeamReview({ data: { id: params.id } }),
