@@ -5,6 +5,7 @@
 import { ApiClientError } from '@bazilion/client'
 import type { Agent, Team, MemoryEntry, MemoryHit } from '@bazilion/api-types'
 import { createFileRoute, redirect } from '@tanstack/react-router'
+import { RecoveryState } from '../../../components/RecoveryState'
 import { createServerFn } from '@tanstack/react-start'
 import { useEffect, useRef, useState } from 'react'
 import { Button } from '../../../components/Button'
@@ -40,6 +41,7 @@ const fetchMemory = createServerFn({ method: 'POST' })
   })
 
 export const Route = createFileRoute('/teams/$id/memory')({
+  errorComponent: ({ error, reset }) => <RecoveryState title="Team memory unavailable" error={error} reset={reset} fallbackHref="/teams" />,
   loader: async ({ params }) => {
     const data = await fetchMemory({ data: { id: params.id } })
     if (!data) throw redirect({ to: '/teams' })

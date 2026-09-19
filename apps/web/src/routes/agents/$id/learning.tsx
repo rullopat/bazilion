@@ -8,6 +8,7 @@ import type {
   ResolvedAgent,
 } from '@bazilion/api-types'
 import { createFileRoute, redirect, useRouter } from '@tanstack/react-router'
+import { RecoveryState } from '../../../components/RecoveryState'
 import { createServerFn } from '@tanstack/react-start'
 import { useState } from 'react'
 import { AgentTabs } from '../../../components/AgentTabs'
@@ -44,6 +45,7 @@ const fetchLearning = createServerFn({ method: 'POST' })
   })
 
 export const Route = createFileRoute('/agents/$id/learning')({
+  errorComponent: ({ error, reset }) => <RecoveryState title="Agent learning unavailable" error={error} reset={reset} fallbackHref="/agents" />,
   loader: async ({ params }) => {
     const data = await fetchLearning({ data: { id: params.id } })
     if (!data) throw redirect({ to: '/agents' })

@@ -1,5 +1,6 @@
 import type { McpServer, McpToolInfo, McpTransport } from '@bazilion/api-types'
 import { createFileRoute, useRouter } from '@tanstack/react-router'
+import { RecoveryState } from '../../components/RecoveryState'
 import { createServerFn } from '@tanstack/react-start'
 import { useState } from 'react'
 import { Button } from '../../components/Button'
@@ -12,6 +13,7 @@ const fetchServers = createServerFn({ method: 'GET' }).handler(() =>
 )
 
 export const Route = createFileRoute('/config/mcp')({
+  errorComponent: ({ error, reset }) => <RecoveryState title="MCP servers unavailable" error={error} reset={reset} fallbackHref="/config" />,
   loader: () => fetchServers(),
   component: McpPage,
 })

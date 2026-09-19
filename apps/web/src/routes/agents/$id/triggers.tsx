@@ -1,6 +1,7 @@
 import { ApiClientError } from '@bazilion/client'
 import type { AgentTrigger, ResolvedAgent, TriggerDispatch } from '@bazilion/api-types'
 import { createFileRoute, redirect, useRouter } from '@tanstack/react-router'
+import { RecoveryState } from '../../../components/RecoveryState'
 import { createServerFn } from '@tanstack/react-start'
 import { useState } from 'react'
 import { AgentTabs } from '../../../components/AgentTabs'
@@ -36,6 +37,7 @@ const fetchTriggers = createServerFn({ method: 'POST' })
   })
 
 export const Route = createFileRoute('/agents/$id/triggers')({
+  errorComponent: ({ error, reset }) => <RecoveryState title="Agent triggers unavailable" error={error} reset={reset} fallbackHref="/agents" />,
   loader: async ({ params }) => {
     const data = await fetchTriggers({ data: { id: params.id } })
     if (!data) throw redirect({ to: '/agents' })

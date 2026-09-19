@@ -27,12 +27,11 @@ docs/backlog/
 
 ---
 
-## Draft (5)
+## Draft (4)
 
 | ID | Title | Size | Notes |
 |----|-------|------|-------|
 | [BAZ-048](draft/BAZ-048-storage-refinements-post-1.0.md) | Storage refinements from the OpenClaw/Hermes comparison (post-1.0) | L (likely split) | Menu, not commitment: FTS over conversations, cold `jsonl.zst` archives, per-agent data-plane split, bounded-memory injection, upgrade preflight. Graduates only on a concrete trigger. [Findings](design/storage-comparison-openclaw-hermes.md) |
-| [BAZ-050](draft/BAZ-050-post-coding-sequence-ui-consistency-sweep.md) | UI/UX consistency sweep of the post-hardening coding surfaces | L (1-2 weeks) | Beta blocker. BAZ-033 hardened v0.14; the v0.16–0.20 coding sequence added ~10 surfaces after it. State triplets, destructive-action disclosure, Attention routing, a11y, viewport matrix — observed, not asserted (BAZ-045 methodology). |
 | [BAZ-051](draft/BAZ-051-failure-mode-visibility-audit.md) | Failure-mode visibility audit — every recovery is seen or surfaced | M | Beta blocker. Recovery machinery (BAZ-019/023/025, ctx recovery) is correct but visibility under real failure is unproven: seven deterministic fault-injection cases, silent failure is the only unacceptable outcome. |
 | [BAZ-054](draft/BAZ-054-native-ios-android-apps.md) | Native iOS and Android apps (post-1.0) | XL — split before refinement | Deferred to post-1.0 (operator decision). Successor to the removed Expo app over the existing gateway/device-credential model. Push-notification architecture is the gating open question; held as a design-constraint holder meanwhile. |
 | [BAZ-057](draft/BAZ-057-portable-safe-reads.md) | Portable safe reads — repository context off-Linux | L (likely split) | Split out of BAZ-049 refinement. The coding sequence is Linux-only by design (`safe_reads_unavailable`); `install.ps1` exists, so Windows operators hit this wall. Holder with the security constraints written down; graduates on a real trigger. |
@@ -70,9 +69,11 @@ Writer coordination already exists; checkout lifecycle and deployment integratio
 later from a concrete use case. Automatic Git publication, managed services/previews and ambient Pi
 extension loading remain separate, uncommitted scope.
 
-## Todo (0)
+## Todo (1)
 
-Nothing refined and waiting. Only BAZ-050 (UI sweep, L) remains before 1.0.0-beta.1; capture anything new in `draft/`.
+| ID | Title | Size | Refined | Notes |
+|----|-------|------|---------|-------|
+| [BAZ-050](todo/BAZ-050-post-coding-sequence-ui-consistency-sweep.md) | UI/UX consistency sweep of the post-hardening coding surfaces | L | 2026-09-18 | Audit found: 27/33 routes lack errorComponent (the real gap — non-4xx loader failures hit TanStack's default screen), no pending surface, one unconfirmed destructive action (cancel-verification). Fix: router-level default error+pending components, route-specific errorComponents on the coding surfaces, ConfirmDialog on cancel-verification, browser-acceptance walk (desktop/narrow/empty/error-with-daemon-killed). Empty states and Attention routing audited as already conforming. |
 
 ## In Progress (0)
 

@@ -1,5 +1,6 @@
 import type { ServiceCard, ServiceConfigResponse } from '@bazilion/api-types'
 import { createFileRoute } from '@tanstack/react-router'
+import { RecoveryState } from '../../components/RecoveryState'
 import { createServerFn } from '@tanstack/react-start'
 import { ConfigPage } from '../../components/ConfigPage'
 import { FieldRow } from '../../components/FieldRow'
@@ -13,6 +14,7 @@ const fetchServices = createServerFn({ method: 'GET' }).handler(() =>
 )
 
 export const Route = createFileRoute('/config/services')({
+  errorComponent: ({ error, reset }) => <RecoveryState title="Services unavailable" error={error} reset={reset} fallbackHref="/config" />,
   loader: () => fetchServices(),
   component: ServicesPage,
 })

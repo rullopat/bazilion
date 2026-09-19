@@ -1,6 +1,7 @@
 import { ApiClientError } from '@bazilion/client'
 import type { LoadedProfile, SkillInfo } from '@bazilion/api-types'
 import { createFileRoute, redirect, useRouter } from '@tanstack/react-router'
+import { RecoveryState } from '../../../../components/RecoveryState'
 import { createServerFn } from '@tanstack/react-start'
 import { useCallback, useEffect, useState } from 'react'
 import { PageShell } from '../../../../components/Page'
@@ -44,6 +45,7 @@ const fetchProfile = createServerFn({ method: 'POST' })
   })
 
 export const Route = createFileRoute('/templates/agents/$id/')({
+  errorComponent: ({ error, reset }) => <RecoveryState title="Agent template unavailable" error={error} reset={reset} fallbackHref="/templates/agents" />,
   loader: async ({ params }) => {
     const data = await fetchProfile({ data: { id: params.id } })
     if (!data) throw redirect({ to: '/templates/agents' })

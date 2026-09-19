@@ -1,5 +1,6 @@
 import type { ImportSkillsResponse, SkillInfo, SkillScanFinding } from '@bazilion/api-types'
 import { createFileRoute, useRouter } from '@tanstack/react-router'
+import { RecoveryState } from '../../components/RecoveryState'
 import { createServerFn } from '@tanstack/react-start'
 import { type ChangeEvent, type DragEvent, useRef, useState } from 'react'
 import { Button } from '../../components/Button'
@@ -12,6 +13,7 @@ const fetchSkills = createServerFn({ method: 'GET' }).handler(() =>
 )
 
 export const Route = createFileRoute('/skills/')({
+  errorComponent: ({ error, reset }) => <RecoveryState title="Skills unavailable" error={error} reset={reset} fallbackHref="/" />,
   loader: () => fetchSkills(),
   component: SkillsPage,
 })

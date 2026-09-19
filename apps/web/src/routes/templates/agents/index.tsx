@@ -1,5 +1,6 @@
 import type { Profile, SkillInfo } from '@bazilion/api-types'
 import { createFileRoute, useRouter } from '@tanstack/react-router'
+import { RecoveryState } from '../../../components/RecoveryState'
 import { createServerFn } from '@tanstack/react-start'
 import { useState } from 'react'
 import { Button } from '../../../components/Button'
@@ -50,6 +51,7 @@ const fetchProfiles = createServerFn({ method: 'GET' }).handler(async (): Promis
 })
 
 export const Route = createFileRoute('/templates/agents/')({
+  errorComponent: ({ error, reset }) => <RecoveryState title="Agent templates unavailable" error={error} reset={reset} fallbackHref="/templates" />,
   loader: () => fetchProfiles(),
   component: ProfilesPage,
 })

@@ -9,7 +9,7 @@
   "scripts": {
     "lint": "biome check .",
     "format": "biome check --write .",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && pnpm --filter @bazilion/web typecheck",
     "test": "vitest run",
     "security:acceptance": "node scripts/security-acceptance.mjs",
     "build": "pnpm --filter @bazilion/web build && pnpm -r --filter @bazilion/api-types --filter @bazilion/client --filter bazilion run build",
