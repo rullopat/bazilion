@@ -1,10 +1,12 @@
 ---
 id: BAZ-050
 title: UI/UX consistency sweep of the post-hardening coding surfaces
-status: todo
+status: done
 size: L (ran ~2 days as a focused sweep)
 created: 2026-09-17
 refined: 2026-09-18
+shipped: 2026-09-18
+release: v0.21.0-beta.5
 priority: high
 note: Beta blocker. BAZ-033 (v0.14) hardened the UI; BAZ-039–046 (v0.16–0.20) added ~10 surfaces after it.
 ---
@@ -95,6 +97,25 @@ hardening pass.
 - The Expo app (removed by BAZ-053); mobile = responsive web.
 - Rewriting the server-fn error-swallowing pattern (it is the right degradation for
   4xx; the sweep ensures non-4xx failures also degrade well).
+
+## As-built
+
+- **Router defaults** (`RouteStates.tsx`): `defaultErrorComponent` + `defaultPendingComponent`
+  wired in `router.tsx`. The error fallback mirrors RecoveryState's shape with generic wording;
+  the pending state is `aria-busy` with a spinner.
+- **Route-specific errorComponents on 18 routes** (team tabs incl. context/members/memory,
+  templates + deep pages, agent tabs, skills, config pages) via a scripted, uniform edit;
+  RecoveryState's body copy generalized (said "stale **policy**" everywhere).
+- **Cancel-verification** now opens ConfirmDialog with the consequence + re-requestability.
+- **CI typecheck gap closed en route:** root tsconfig excluded `apps/web` and CI only ran the
+  root typecheck — a pre-existing `variant="secondary"` error sat in main. Root `typecheck` now
+  chains the web typecheck; the invalid variant fixed to `ghost`.
+- **`scripts/check-coding-surfaces-ui.mjs`**: 18 walked routes × 2 viewports with overflow
+  assertions, empty-state assertions, then a real daemon-kill error walk asserting `role="alert"`
+  with the surface name + retry on 7 named routes and the router default on an untouched route.
+  85 evidence files per run. Two fixture learnings: the test home already bootstraps the
+  `default` Team, and `daemon.stop()` cannot be awaited twice ('close' does not re-fire).
+- Suite: 1854 passed, typecheck clean incl. web.
 
 ## Tests
 

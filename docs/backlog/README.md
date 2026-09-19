@@ -69,21 +69,20 @@ Writer coordination already exists; checkout lifecycle and deployment integratio
 later from a concrete use case. Automatic Git publication, managed services/previews and ambient Pi
 extension loading remain separate, uncommitted scope.
 
-## Todo (1)
+## Todo (0)
 
-| ID | Title | Size | Refined | Notes |
-|----|-------|------|---------|-------|
-| [BAZ-050](todo/BAZ-050-post-coding-sequence-ui-consistency-sweep.md) | UI/UX consistency sweep of the post-hardening coding surfaces | L | 2026-09-18 | Audit found: 27/33 routes lack errorComponent (the real gap — non-4xx loader failures hit TanStack's default screen), no pending surface, one unconfirmed destructive action (cancel-verification). Fix: router-level default error+pending components, route-specific errorComponents on the coding surfaces, ConfirmDialog on cancel-verification, browser-acceptance walk (desktop/narrow/empty/error-with-daemon-killed). Empty states and Attention routing audited as already conforming. |
+Nothing refined and waiting. The 0.21 ladder is complete; next: 1.0.0-beta.1.
 
 ## In Progress (0)
 
 
 Nothing in flight. Move an item here from `todo/` when implementation starts.
 
-## Done (48)
+## Done (49)
 
 | ID | Title | Size | Shipped | Release | Notes |
 |----|-------|------|---------|---------|-------|
+| [BAZ-050](done/BAZ-050-post-coding-sequence-ui-consistency-sweep.md) | UI/UX consistency sweep of the post-hardening coding surfaces | L | 2026-09-18 | v0.21.0-beta.5 | Router-level default error+pending components (every route degrades well); surface-named error components on 18 coding routes; cancel-verification confirmed; apps/web typecheck added to CI (it was excluded — a type error sat in main); browser-acceptance walk with a real daemon-kill error-state pass (85 evidence files). |
 | [BAZ-052](done/BAZ-052-beta-supportability-gates-and-growth.md) | Beta supportability — security gate in CI, growth documentation | S | 2026-09-18 | v0.21.0-beta.4 | 153-case adversarial security gate now runs on every PR (fails closed on a deleted case). New growth-and-retention operator doc: bounded coding evidence (7-day TTLs, 256 MB budget), unbounded messages/sessions (the record), pre-migration snapshot hygiene, `logs/` documented as intentionally empty. Log rotation dropped — stale premise (the daemon writes no log files). |
 | [BAZ-051](done/BAZ-051-failure-mode-visibility-audit.md) | Failure-mode visibility audit — every recovery is seen or surfaced | M | 2026-09-18 | v0.21.0-beta.3 | Two silent failures fixed: the post-crash queue stall (new `queue_interrupted` attention kind) and opaque OAuth refresh errors. Six failure modes pinned by deterministic injection tests asserting the observed surface. Build race (web ∥ CLI vite on one dist) fixed en route. |
 | [BAZ-049](done/BAZ-049-cross-platform-ci-and-installer-e2e.md) | Cross-platform CI matrix and fresh-machine installer E2E | M (ran longer) | 2026-09-18 | — | 3-OS test matrix + hermetic installer E2E, all green at merge (PR #61). Caught six real product defects incl. Windows breaking every conversation write (dir-fsync) and `pnpm pack` shipping an empty tarball from Windows (build filters matched nothing). Workspace-claim identity portable; turns stay Linux-only until BAZ-057 (content-read portability); off-Linux refusal is a structured 422 naming `safe_reads_unavailable`. |
