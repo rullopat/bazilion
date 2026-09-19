@@ -11,6 +11,7 @@
   "changesets": [
     "baz-047-schema-contract",
     "baz-049-cross-platform",
+    "baz-050-ui-consistency-sweep",
     "baz-051-failure-visibility",
     "baz-052-supportability",
     "baz-053-mobile-removal",

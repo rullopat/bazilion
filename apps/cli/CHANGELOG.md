@@ -1,5 +1,11 @@
 # bazilion
 
+## 0.21.0-beta.5
+
+### Patch Changes
+
+- [`195dc04`](https://github.com/rullopat/bazilion/commit/195dc04a72ce3d940a1eb4d3bbb93aff7476766a) Thanks [@rullopat](https://github.com/rullopat)! - BAZ-050: UI consistency sweep of the post-hardening coding surfaces. Router-level defaults: every route now degrades to a calm recovery fallback (named failure, retry, safe exit — nothing substituted) on loader errors, and shows a marked loading state during navigation, instead of TanStack's default error screen and a blank area. Surface-named error components on the 18 coding-sequence routes that lacked them. Cancel-verification now requires a confirmation stating the consequence. apps/web is now typechecked by the root typecheck (it was excluded — a pre-existing type error sat in main). New browser-acceptance walk (scripts/check-coding-surfaces-ui.mjs) covers desktop/narrow overflow, empty states, and a real daemon-kill error-state walk with evidence screenshots.
+
 ## 0.21.0-beta.4
 
 ### Patch Changes
