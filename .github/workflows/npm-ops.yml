@@ -88,8 +88,11 @@ jobs:
           done
       - run: pnpm install --frozen-lockfile || pnpm install
       - run: pnpm build
-      - name: Publish
-        run: pnpm publish --access public --tag "${{ inputs.npm-tag }}" --no-git-checks
+      - name: Publish each public package
+        run: |
+          for pkg in apps/cli packages/client packages/api-types; do
+            (cd "$pkg" && pnpm publish --access public --tag "${{ inputs.npm-tag }}" --no-git-checks)
+          done
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_PROVENANCE: 'true'
