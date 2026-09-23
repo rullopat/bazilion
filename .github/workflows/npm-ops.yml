@@ -10,13 +10,14 @@ on:
         type: choice
         options:
           - remove-dist-tag
+          - add-dist-tag
           - publish-ref-as-version
         required: true
       package:
         description: 'Package name (bazilion, @bazilion/client, @bazilion/api-types)'
         required: true
       tag:
-        description: 'remove-dist-tag: the dist-tag to remove.'
+        description: 'remove-dist-tag: the dist-tag to remove. add-dist-tag: the dist-tag to create.'
         required: false
       ref:
         description: 'publish-ref-as-version: the git ref to publish from.'
@@ -44,6 +45,19 @@ jobs:
           registry-url: https://registry.npmjs.org
       - name: Remove dist-tag
         run: npm dist-tag rm "${{ inputs.package }}" "${{ inputs.tag }}"
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  add-dist-tag:
+    if: inputs.action == 'add-dist-tag'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - name: Add dist-tag
+        run: npm dist-tag add "${{ inputs.package }}" "${{ inputs.version }}" "${{ inputs.tag }}"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
