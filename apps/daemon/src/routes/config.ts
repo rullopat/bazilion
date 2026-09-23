@@ -10,6 +10,7 @@ import type {
   SetProviderModelsRequest,
 } from '@bazilion/api-types'
 import { Hono } from 'hono'
+import { imageGenerationConfig, OPENROUTER_IMAGE_MODELS } from '../core/image-generation-config.ts'
 import {
   ensureSetupSeeded,
   findFieldByEnvVar,
@@ -23,6 +24,7 @@ import {
   servicesByCategory,
 } from '../core/index.ts'
 import { getCtx } from '../lib/ctx.ts'
+import { hasCredentials } from '../runtime/auth/openai-codex.ts'
 import {
   listAllProviders,
   listCatalogModels,
@@ -34,7 +36,7 @@ export const configRouter = new Hono()
 
 // /api/config/providers
 configRouter.get('/providers', async (c) => {
-  const { db, paths, authToken } = getCtx()
+  const { db, authToken } = getCtx()
   const env = mergeSecretsIntoEnv(db, authToken)
   const registryProviders = listAllProviders(loadProviderConfigFromEnv(env, { db, authToken }))
   const registryByName = new Map(registryProviders.map((p) => [p.name, p]))
@@ -63,8 +65,15 @@ configRouter.get('/providers', async (c) => {
           enabled,
           envHint,
           fields: resolveFieldStates(svc, configValues, secretValues),
-          catalog,
-          ...(live ? { live } : {}),
+          catalog: catalog.filter((model) => !isImageChoice(svc.id, model)),
+          ...(live
+            ? {
+                live: {
+                  ...live,
+                  models: live.models.filter((model) => !isImageChoice(svc.id, model)),
+                },
+              }
+            : {}),
           curated: providerModelRepo.list(db, svc.id),
         }
       } finally {
@@ -83,7 +92,13 @@ configRouter.get('/services', (c) => {
   const configValues = readAll(() => openConfig(db).getAll())
   const secretValues = readAll(() => openSecrets(db, authToken).getAll())
 
+  const imageStatus = imageGenerationConfig(
+    mergeSecretsIntoEnv(db, authToken),
+    hasCredentials(db, authToken),
+    { enabledProviders: providerStateRepo.listEnabled(db) },
+  ).status
   const services: ServiceCard[] = servicesByCategory('service').map((svc) => ({
+    ...(svc.id === 'image-generation' ? { status: imageStatus } : {}),
     id: svc.id,
     displayName: svc.displayName,
     ...(svc.hint ? { hint: svc.hint } : {}),
@@ -143,6 +158,12 @@ configRouter.put('/providers/:name/models', async (c) => {
     )
   }
 
+  if (models.some((model) => isImageChoice(name, model.trim()))) {
+    return c.json(
+      { error: 'Configure image models in Services → Image generation, not as chat models.' },
+      400,
+    )
+  }
   const { db, paths } = getCtx()
   providerModelRepo.replace(db, name, models)
   ensureSetupSeeded(db, paths)
@@ -158,6 +179,9 @@ configRouter.put('/fields/:envVar', async (c) => {
   const body = (await c.req.json().catch(() => null)) as { value?: unknown } | null
   if (!body || typeof body.value !== 'string') {
     return c.json({ error: 'body must be {"value": "<string>"}' }, 400)
+  }
+  if (body.value && found.field.options && !found.field.options.includes(body.value)) {
+    return c.json({ error: `Choose one of: ${found.field.options.join(', ')}` }, 400)
   }
 
   const { db, authToken } = getCtx()
@@ -197,6 +221,13 @@ configRouter.delete('/fields/:envVar', (c) => {
 
 // ─── helpers ─────────────────────────────────────────────────────────────
 
+function isImageChoice(provider: string, model: string): boolean {
+  return (
+    (provider === 'openrouter' && OPENROUTER_IMAGE_MODELS.some((id) => id === model)) ||
+    ((provider === 'openai' || provider === 'openai-codex') && model === 'gpt-image-2')
+  )
+}
+
 function mask(value: string): string {
   if (value.length === 0) return ''
   return value.length > 8 ? `${value.slice(0, 6)}…` : '***'
@@ -216,6 +247,8 @@ function resolveFieldStates(
       set: val.length > 0,
       ...(f.placeholder ? { placeholder: f.placeholder } : {}),
       ...(f.description ? { description: f.description } : {}),
+      ...(f.options ? { options: f.options } : {}),
+      ...(f.optionLabels ? { optionLabels: f.optionLabels } : {}),
     }
     if (f.kind === 'config') {
       state.value = val

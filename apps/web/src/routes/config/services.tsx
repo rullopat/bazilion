@@ -97,6 +97,7 @@ function ServicesPage() {
                   {service.hint && (
                     <p className="mb-2 text-sm text-muted-foreground">{service.hint}</p>
                   )}
+                  {service.status && <p role="status" className="mb-2 text-sm">{service.status}</p>}
                   {service.fields.map((field) => (
                     <FieldRow key={field.envVar} field={field} />
                   ))}

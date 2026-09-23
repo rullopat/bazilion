@@ -16,6 +16,7 @@ export interface ToolCall {
 
 export interface ProviderMessage {
   result?: ResultReference
+  results?: ResultReference[]
   role: Role
   content: string
   toolCalls?: ToolCall[]
