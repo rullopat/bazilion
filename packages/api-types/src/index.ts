@@ -141,7 +141,10 @@ export type {
   ToolDef,
   ToolResultImage,
 } from './events.ts'
+export type { ImageGenerationInput, ImageGenerationOutput } from './image-generation.ts'
+export { imageGenerationRouteLabel } from './image-generation.ts'
 export type { MemoryEntry, MemoryHit } from './memory.ts'
+
 export type {
   AgentResult,
   ResultListResponse,
@@ -763,6 +766,8 @@ export interface ListTriggerDispatchesResponse {
 
 /** Per-field UI + storage descriptor — source-of-truth is SERVICES in apps/daemon/src/core/services.ts. */
 export interface ServiceFieldState {
+  options?: readonly string[]
+  optionLabels?: Readonly<Record<string, string>>
   envVar: string
   kind: 'secret' | 'config'
   label: string
@@ -777,6 +782,7 @@ export interface ServiceFieldState {
 }
 
 export interface ServiceCard {
+  status?: string
   id: string
   displayName: string
   /** Present for category==='provider' cards — tracks whether the pi-adapter sees it as configured. */

@@ -38,6 +38,15 @@ const listCmd = defineCommand({
       return
     }
     for (const line of columnize(rows)) console.log(line)
+    for (const svc of services) {
+      if (svc.status) console.log(`\n${svc.displayName}: ${svc.status}`)
+      for (const field of svc.fields) {
+        if (field.options)
+          console.log(
+            `${field.envVar} choices: ${field.options.map((value) => (field.optionLabels?.[value] ? `${value} (${field.optionLabels[value]})` : value)).join(', ')}`,
+          )
+      }
+    }
   },
 })
 

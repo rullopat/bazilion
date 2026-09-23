@@ -183,6 +183,23 @@ export async function startTestServer(
   fixtureOptions: TestServerFixtureOptions = {},
 ): Promise<TestServer> {
   const { home, token } = initHome(fixtureOptions)
+  return bootTestServer(home, token, extraServerEnv)
+}
+
+/** Restart an already-stopped disposable fixture without reseeding or rewriting its identity. */
+export function restartTestServer(
+  previous: Pick<TestServer, 'home' | 'token'>,
+  extraServerEnv: NodeJS.ProcessEnv = {},
+): Promise<TestServer> {
+  return bootTestServer(previous.home, previous.token, extraServerEnv, true)
+}
+
+async function bootTestServer(
+  home: string,
+  token: string,
+  extraServerEnv: NodeJS.ProcessEnv,
+  preserveOnFailure = false,
+): Promise<TestServer> {
   const port = await findFreePort()
   const url = `http://127.0.0.1:${port}`
 
@@ -197,13 +214,15 @@ export async function startTestServer(
     stdio: 'ignore',
   })
 
+  const closed = new Promise<void>((resolve) => proc.once('close', () => resolve()))
   try {
     // /api/health is unauthenticated — perfect liveness probe. Daemon should
     // come up in well under a second; 20s is paranoia headroom.
     await waitForHttp(`${url}/api/health`, 20_000)
   } catch (err) {
     proc.kill()
-    rmSync(home, { recursive: true, force: true })
+    await closed
+    if (!preserveOnFailure) rmSync(home, { recursive: true, force: true })
     throw err
   }
 
@@ -222,14 +241,15 @@ export async function startTestServer(
       resetHome(home)
     },
     async stop(options = {}) {
-      await new Promise<void>((resolve) => {
-        proc.on('close', () => resolve())
-        proc.kill(options.signal ?? 'SIGTERM')
-        // Failsafe: if the process hasn't exited in 5s, force it.
-        setTimeout(() => {
-          if (proc.exitCode === null) proc.kill('SIGKILL')
-        }, 5_000)
-      })
+      if (proc.exitCode === null && proc.signalCode === null) proc.kill(options.signal ?? 'SIGTERM')
+      const timer = setTimeout(() => {
+        if (proc.exitCode === null && proc.signalCode === null) proc.kill('SIGKILL')
+      }, 5_000)
+      try {
+        await closed
+      } finally {
+        clearTimeout(timer)
+      }
       if (!options.keepHome) await rmWithRetry(home)
     },
   }

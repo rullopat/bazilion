@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -57,6 +58,84 @@ describe('migration contract', () => {
       expect(appliedAgain).toBe(files.length)
       db.close()
     } finally {
+      rmSync(home, { recursive: true, force: true })
+    }
+  })
+
+  it('BAZ-059 upgrades beta.5 results without losing bytes, release state or deletion tombstones', () => {
+    const home = makeHome()
+    const prefix = files.findIndex((file) => file.version === '0004_image_generation')
+    expect(prefix).toBe(3)
+    const { db } = seedOldHome(home, prefix)
+    try {
+      db.raw.exec('PRAGMA user_version = 3')
+      db.raw.run(
+        "INSERT INTO teams (id, name, user_md, created_at) VALUES ('survivor', 'Survivor', '', 1)",
+      )
+      const bytes = Buffer.from('pre-image-release result')
+      const hash = createHash('sha256').update(bytes).digest('hex')
+      for (const deleted of [false, true]) {
+        db.raw.run(
+          `INSERT INTO agent_results (id, team_id, agent_id, source_kind, session_id, tool_call_id,
+          name, mime_type, byte_length, sha256, created_at, released_at, deleted_at, bytes)
+          VALUES (?, 'survivor', 'original-agent', 'session_tool', 'session', ?, 'report.txt', 'text/plain', ?, ?, 1, 2, ?, ?)`,
+          [
+            deleted ? 'deleted' : 'retained',
+            deleted ? 'deleted-call' : 'call',
+            bytes.length,
+            hash,
+            deleted ? 3 : null,
+            deleted ? null : bytes,
+          ],
+        )
+      }
+      runMigrations(db, { preMigrationSnapshotPath: join(home, 'pre-image.db') })
+      const rows = db.raw
+        .query<
+          {
+            id: string
+            bytes: Uint8Array | null
+            source_index: number
+            released_at: number
+            deleted_at: number | null
+            image_model: string | null
+          },
+          []
+        >(
+          'SELECT id, bytes, source_index, released_at, deleted_at, image_model FROM agent_results ORDER BY id',
+        )
+        .all()
+      expect(rows[0]).toMatchObject({
+        id: 'deleted',
+        bytes: null,
+        source_index: 0,
+        released_at: 2,
+        deleted_at: 3,
+        image_model: null,
+      })
+      expect(rows[1]).toMatchObject({
+        id: 'retained',
+        source_index: 0,
+        released_at: 2,
+        deleted_at: null,
+        image_model: null,
+      })
+      expect(Buffer.from(rows[1]?.bytes ?? [])).toEqual(bytes)
+      runMigrations(db)
+      const snapshot = openDb(join(home, 'pre-image.db'))
+      try {
+        expect(
+          snapshot.raw.query<{ user_version: number }, []>('PRAGMA user_version').get()
+            ?.user_version,
+        ).toBe(3)
+        expect(
+          snapshot.raw.query<{ n: number }, []>('SELECT count(*) AS n FROM agent_results').get()?.n,
+        ).toBe(2)
+      } finally {
+        snapshot.close()
+      }
+    } finally {
+      db.close()
       rmSync(home, { recursive: true, force: true })
     }
   })

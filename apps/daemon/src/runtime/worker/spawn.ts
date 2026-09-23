@@ -159,6 +159,8 @@ export interface WorkerResourceLifecycle {
 }
 
 interface CommonSpawnWorkerOpts {
+  imageGenerationHost?: import('./ipc-protocol.ts').ImageGenerationHost
+  webSearchHost?: import('./ipc-protocol.ts').WebSearchHost
   containerHost?: import('./ipc-protocol.ts').ContainerLifecycleHost
   resourceLifecycle?: WorkerResourceLifecycle
   codingHost?: import('../pi/coding-contract.ts').CodingHost
@@ -556,6 +558,13 @@ function assertSpawnCombination(spec: SpecWithCapabilityHost, opts: SpawnWorkerO
   const record = opts as unknown as Record<string, unknown>
   if (
     !isRestrictedWorkerKind(spec) &&
+    (Boolean(spec.imageGenerationEnabled) !== Boolean(record.imageGenerationHost) ||
+      (record.imageGenerationHost && !hostHasMethods(record.imageGenerationHost, ['generate'])))
+  ) {
+    throw new Error('Image generation capability requires its bound host')
+  }
+  if (
+    !isRestrictedWorkerKind(spec) &&
     (Boolean(spec.questionEnabled) !== Boolean(record.questionHost) ||
       (record.questionHost &&
         !hostHasMethods(record.questionHost, ['ask', 'close', 'subscribe', 'consumed'])))
@@ -602,6 +611,7 @@ function assertSpawnCombination(spec: SpecWithCapabilityHost, opts: SpawnWorkerO
       'containerHost',
       'repositoryContextHost',
       'resultHost',
+      'imageGenerationHost',
       'resourceLifecycle',
       // Not just "a restricted turn has no reason to ask": the requester capability captures a
       // snapshot and writes a request, so handing it to any restricted kind would give that turn a
@@ -671,6 +681,8 @@ function spawnHosts(
     codingHost: restricted ? undefined : opts.codingHost,
     repositoryContextHost: restricted ? undefined : opts.repositoryContextHost,
     resultHost: restricted ? undefined : opts.resultHost,
+    imageGenerationHost: restricted ? undefined : opts.imageGenerationHost,
+    webSearchHost: restricted ? undefined : opts.webSearchHost,
     // A verification turn reads its request and runs captured checks; it does not message peers,
     // edit USER.md, drive a browser or call MCP. Cleared here rather than trusting the caller.
     messagingHost: restricted
@@ -732,6 +744,8 @@ function parseFrame(line: string, accessTokens: readonly string[]): ChatFrame {
 }
 
 interface IpcHosts {
+  imageGenerationHost?: import('./ipc-protocol.ts').ImageGenerationHost
+  webSearchHost?: import('./ipc-protocol.ts').WebSearchHost
   containerHost?: import('./ipc-protocol.ts').ContainerLifecycleHost
   codingHost?: import('../pi/coding-contract.ts').CodingHost
   repositoryContextHost?: import('../pi/repository-context.ts').RepositoryContextHost
@@ -860,6 +874,26 @@ async function dispatch(req: IpcRequest, hosts: IpcHosts): Promise<IpcReply> {
           req.args.toolCallId,
           req.args.question,
         )
+        break
+      }
+      case 'generateImages':
+        hosts.ipcSignal?.throwIfAborted()
+        result = await require(hosts.imageGenerationHost, 'image generation', req.method).generate(
+          req.args,
+        )
+        break
+      case 'webSearch': {
+        hosts.ipcSignal?.throwIfAborted()
+        const args = req.args as import('./ipc-protocol.ts').WebSearchArgs | undefined
+        if (
+          !args ||
+          typeof args.query !== 'string' ||
+          args.query.length > 512 ||
+          (args.count !== undefined &&
+            (!Number.isInteger(args.count) || args.count < 1 || args.count > 8))
+        )
+          throw new Error('Invalid web search IPC request')
+        result = await require(hosts.webSearchHost, 'web search', req.method).search(args)
         break
       }
       case 'publishResult':

@@ -639,7 +639,11 @@ function exampleModelFor(providerId: string): string {
     case 'opencode-go':
       return 'kimi-k2.7-code'
     case 'zai-coding-cn':
-      return 'glm-5.2'
+      return 'glm-5.3'
+    case 'meta':
+      return 'muse-spark-1.3'
+    case 'radius':
+      return 'claude-sonnet-5'
     case 'azure-openai':
       return 'gpt-5.6-luna'
     case 'bedrock':

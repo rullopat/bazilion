@@ -27,13 +27,34 @@ docs/backlog/
 
 ---
 
-## Draft (3)
+## Draft (9)
 
 | ID | Title | Size | Notes |
 |----|-------|------|-------|
 | [BAZ-048](draft/BAZ-048-storage-refinements-post-1.0.md) | Storage refinements from the OpenClaw/Hermes comparison (post-1.0) | L (likely split) | Menu, not commitment: FTS over conversations, cold `jsonl.zst` archives, per-agent data-plane split, bounded-memory injection, upgrade preflight. Graduates only on a concrete trigger. [Findings](design/storage-comparison-openclaw-hermes.md) |
 | [BAZ-054](draft/BAZ-054-native-ios-android-apps.md) | Native iOS and Android apps (post-1.0) | XL — split before refinement | Deferred to post-1.0 (operator decision). Successor to the removed Expo app over the existing gateway/device-credential model. Push-notification architecture is the gating open question; held as a design-constraint holder meanwhile. |
 | [BAZ-057](draft/BAZ-057-portable-safe-reads.md) | Portable safe reads — repository context off-Linux | L (likely split) | Split out of BAZ-049 refinement. The coding sequence is Linux-only by design (`safe_reads_unavailable`); `install.ps1` exists, so Windows operators hit this wall. Holder with the security constraints written down; graduates on a real trigger. |
+| [BAZ-058](draft/BAZ-058-content-proposals-and-editorial-review.md) | Content proposals with revision-bound editorial review | L | Durable variants, human rework, preview and manual export; not communication approval or code review. |
+| [BAZ-060](draft/BAZ-060-approved-social-delivery.md) | Deterministic delivery of approved social posts | L | Exact revision/account/schedule, credential isolation, per-target receipts and uncertainty; no Agent publishing tool. |
+| [BAZ-061](draft/BAZ-061-meta-page-and-instagram-publishing.md) | Facebook Page and Instagram photo connectors | L | Official APIs, actual grants and approved-asset staging without exposing Bazilion; split if refinement exceeds L. |
+| [BAZ-062](draft/BAZ-062-linkedin-publishing.md) | LinkedIn text and image connector | M | Granted member/org authors, official Posts API, write/read capability distinction. |
+| [BAZ-063](draft/BAZ-063-content-team-real-world-acceptance.md) | Scheduled content Team — parent acceptance checklist | S | Consolidation/review only; broader-beta core evidence from BAZ-064/065/066. Topic is an input. [Protocol and ownership](../testing/beta-readiness/content-team-acceptance.md). |
+| [BAZ-066](draft/BAZ-066-content-team-live-and-human-acceptance.md) | Content Team live and independent-user acceptance | S | 0.23.0 (moved from a withdrawn 0.22 gate) | Authorized live core and independent human evidence on BAZ-064/065; two selected topics. Estimate excludes access/recruitment waits and product fixes. |
+| [BAZ-069](draft/BAZ-069-browser-backed-default-web-search.md) | Browser-backed web search by default for ordinary turns | M | 0.23.0 (first implementation story of the next release) | Operator decision 2026-09-21: defaults must just work; search rides the existing browser pool (real Chromium, the OpenClaw approach). SearXNG/Brave stay opt-ins; BAZ-067 repositioned as the opt-in protected-turn backend. Next implementation story. |
+| [BAZ-068](draft/BAZ-068-workspace-recovery-surface.md) | Operator recovery for workspace rows after failed turns | S | Harness finding: failed turns leave a Team `recovery`-blocked with no supported surface. Security-adjacent; refine with review. [Evidence](BAZ-064-acceptance.md). |
+
+
+BAZ-058–067 capture the content capabilities, split acceptance work and discovered prerequisites. See the
+[capability audit, platform research and implementation sequence](design/social-content-team.md).
+BAZ-059 is the scoped **0.22.0** image-generation story below. BAZ-064 has started with an
+experimental recipe and management/policy checks; BAZ-067 (done) unblocked its protected
+discovery cells. The other items remain drafts. BAZ-063 consolidates BAZ-064/065/066 rather than implementing the whole
+journey. Their generic-topic core acceptance is required for broader beta maturity, with manual
+handoff and a reusable Team recipe; it is not added feature scope for frozen 0.22. Native
+social connectors and direct publication remain conditional later scope, not prerequisites for the
+manual journey or this limited image release. The [first-platform decision](design/content-platform-first-test.md)
+selects Mastodon for manual handoff; its future direct adapter would need separate refinement, not
+BAZ-061/062 evidence. No composed acceptance or beta.5 support is claimed.
 
 The original coding stories were drafted on 2026-09-07 from the OpenClaw 2.0 / Hermes desktop
 review. BAZ-034 through BAZ-038 shipped in v0.15.0 through PRs #44 and #45; their decisions and
@@ -70,12 +91,28 @@ extension loading remain separate, uncommitted scope.
 
 ## Todo (0)
 
-Nothing refined and waiting. The 0.21 ladder is complete; next: 1.0.0-beta.1.
+Nothing is waiting in Todo. BAZ-067 (previously the only Todo item) is done; its merge still
+coordinates with the BAZ-059 release because it touches the frozen fingerprint.
 
-## In Progress (0)
+The 0.21 hardening ladder is complete; the operator requested an image-capable **0.22.0**
+feature checkpoint before considering 1.0. **Retargeted 2026-09-21:** 0.22.0 ships **as-is** —
+no beta tag, **alpha maturity**, current frozen scope only. The earlier 0.22.0-beta.1 plan was
+dropped as premature, and the same-day "release on defaults" gate was withdrawn: the
+browser-backed default search ([BAZ-069](draft/BAZ-069-browser-backed-default-web-search.md)) and
+the live/human content-Team acceptance (BAZ-066) target the **next release (0.23.0)**. The
+[beta readiness campaign](../testing/beta-readiness/README.md) continues as the pre-1.0
+qualification campaign rather than a release gate.
+Neither this plan nor a target version is completed acceptance or authorization to publish now;
+a 1.0.0-beta.1 release remains an explicit operator decision.
 
+## In Progress (4)
 
-Nothing in flight. Move an item here from `todo/` when implementation starts.
+| ID | Title | Size | Target | Notes |
+|----|-------|------|--------|-------|
+| [BAZ-059](in_progress/BAZ-059-pi-image-generation.md) | Image generation with explicit OpenAI, ChatGPT and OpenRouter routes | L | 0.22.0 (alpha) | Scope frozen; local regression, synthetic-provider Docker/crash and version rehearsal recorded. Live/protected-origin qualification, risk decisions and release review pending. [Evidence](../testing/0.22.0-freeze.md) · [Usage](../image-generation.md). |
+| [BAZ-064](in_progress/BAZ-064-content-team-recipe-and-manual-handoff.md) | Topic-neutral content Team recipe and manual handoff | M | Broader beta, not frozen 0.22 | Recipe/install/policy, delegation, protected wake, approval sequencing, image-once oracle, exact handoff delivery, two-topic reuse and restart retention — all canned-model plumbing. Discovery blocked on BAZ-067. [Evidence](BAZ-064-acceptance.md) · [Recipe](../../examples/content-team/README.md). |
+| [BAZ-065](in_progress/BAZ-065-content-team-scheduling-and-recovery.md) | Content Team scheduling and recovery acceptance | M | Broader beta, not frozen 0.22 | Real cron cycles, busy/deferred exactly-once, restart/missed-minute semantics, lifecycle, bounded retries, UTC contract, scheduled container posture. Approval-hold model behavior + DST clocks remain. |
+| [BAZ-067](done/BAZ-067-protected-web-discovery.md) | Bounded public-web discovery for protected Agent turns | M | 0.22.0 (alpha) | Done (2026-09-21): SearXNG via daemon-owned IPC host; worker sees only bounded results; restricted workers denied. Accepted and repositioned as the opt-in protected-turn backend; the default search story is BAZ-069. |
 
 ## Done (49)
 

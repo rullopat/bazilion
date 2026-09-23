@@ -30,6 +30,8 @@ const LINUX_ONLY = [
   'apps/cli/test/team.test.ts',
   'apps/cli/test/trigger.test.ts',
   'apps/cli/test/agent-coding.test.ts',
+  'apps/cli/test/image-generation.test.ts',
+  'apps/cli/test/image-crash.test.ts',
   'apps/cli/test/agent-coding-handoff.test.ts',
   'apps/daemon/test/lib/scheduler.test.ts',
   'apps/daemon/test/lib/agent-coding.test.ts',

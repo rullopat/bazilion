@@ -5,6 +5,13 @@ Agent-to-user delivery is authorized, you can download those captured bytes afte
 finishes, chat reloads, or the daemon restarts. Editing, moving, or deleting the workspace source
 does not change the saved file.
 
+The opt-in [`image_generate` tool](image-generation.md) captures provider-generated images into the
+same Results store and uses the same disclosure rules. One generation may produce several saved
+images; each retains its ordinal within the original tool call and the selected image route/model
+(OpenAI API key, ChatGPT/Codex login, or OpenRouter). This records the request, not independent
+attestation of the backend's actual model.
+Rework creates new Results rather than replacing the original.
+
 ## Find and download
 
 - **Web:** open a Team and choose **Results**, or use the saved-file card in chat. Filter by the

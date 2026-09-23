@@ -61,6 +61,8 @@ export interface ConfiguredOperatorHttpWorkerSpec {
   repositoryContext: import('@bazilion/api-types').RepositoryContextReport
   questionEnabled?: boolean
   conversation: import('@bazilion/api-types').ConversationTarget
+  imageGenerationEnabled?: boolean
+  webSearchEnabled?: boolean
   kind: 'configured_operator_http'
   /** Pre-resolved agent record — the worker never queries the DB itself. */
   agent: ResolvedAgent
@@ -79,6 +81,7 @@ export interface ProtectedWorkerSpec {
   repositoryContext: import('@bazilion/api-types').RepositoryContextReport
   questionEnabled?: boolean
   conversation: import('@bazilion/api-types').ConversationTarget
+  imageGenerationEnabled?: boolean
   kind: 'protected'
   agent: ResolvedAgent
   message: string
@@ -90,6 +93,8 @@ export interface ProtectedWorkerSpec {
   docker: ProtectedDockerRuntime
   /** The only general web capability in the protected normal surface. */
   webFetchEnabled: true
+  /** BAZ-067: discovery host present only when the operator configured a backend. */
+  webSearchEnabled?: boolean
 }
 
 export interface RestrictedReviewWorkerSpec {
@@ -178,6 +183,8 @@ const REASONING_LEVELS = new Set<ReasoningLevel>([
 const CONFIGURED_KEYS = new Set([
   'containerNamespace',
   'configuredDocker',
+  'imageGenerationEnabled',
+  'webSearchEnabled',
   'repositoryContext',
   'questionEnabled',
   'conversation',
@@ -205,6 +212,7 @@ const CONFIGURED_REQUIRED_KEYS = new Set([
   'bashApprovalMode',
 ])
 const PROTECTED_KEYS = new Set([
+  'imageGenerationEnabled',
   'containerNamespace',
   'repositoryContext',
   'questionEnabled',
@@ -219,12 +227,18 @@ const PROTECTED_KEYS = new Set([
   'paths',
   'docker',
   'webFetchEnabled',
+  'webSearchEnabled',
   'apiKeyRefreshEnabled',
   'scratch',
 ])
 const PROTECTED_REQUIRED_KEYS = new Set(
   [...PROTECTED_KEYS].filter(
-    (key) => key !== 'images' && key !== 'questionEnabled' && key !== 'containerNamespace',
+    (key) =>
+      key !== 'images' &&
+      key !== 'questionEnabled' &&
+      key !== 'containerNamespace' &&
+      key !== 'imageGenerationEnabled' &&
+      key !== 'webSearchEnabled',
   ),
 )
 const STATIC_REVIEW_KEYS = new Set([
@@ -357,6 +371,13 @@ export function parseWorkerInput(value: unknown): WorkerInput {
       !/^[a-f0-9-]{36}$/.test(input.containerNamespace))
   )
     throw new Error('Invalid container namespace')
+  if (
+    input.imageGenerationEnabled !== undefined &&
+    typeof input.imageGenerationEnabled !== 'boolean'
+  )
+    throw new Error('Invalid worker image capability')
+  if (input.webSearchEnabled !== undefined && typeof input.webSearchEnabled !== 'boolean')
+    throw new Error('Invalid worker web search capability')
   if (input.questionEnabled !== undefined && typeof input.questionEnabled !== 'boolean')
     throw new Error('Invalid worker question capability')
   if (kind === 'configured_operator_http') {

@@ -1,15 +1,16 @@
-import type { AgentResult } from '@bazilion/api-types'
+import { type AgentResult, imageGenerationRouteLabel } from '@bazilion/api-types'
 import { useEffect, useRef, useState } from 'react'
 import { Button } from './Button'
 
 export function ResultCard({
   resultId,
-  showPreview = false,
+  showPreview: requestedPreview = false,
 }: {
   resultId: string
   showPreview?: boolean
 }) {
   const [result, setResult] = useState<AgentResult | null>(null)
+  const showPreview = requestedPreview || Boolean(result?.imageModel)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState<'download' | 'preview' | null>(null)
@@ -120,6 +121,7 @@ export function ResultCard({
             {' · '}
             {result.mimeType}
           </p>
+          {result.imageModel && <p className="text-xs text-muted-foreground">Generated via {imageGenerationRouteLabel(result.imageModel)} · Selected: {result.imageModel}</p>}
           {result.deletedAt !== null ? (
             <p role="status">This result was deleted.</p>
           ) : (

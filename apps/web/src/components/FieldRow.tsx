@@ -86,7 +86,19 @@ export function FieldRow({ field }: { field: ServiceFieldState }) {
         </details>
       </div>
       <div className="min-w-0">
-        {field.kind === 'config' ? (
+        {field.kind === 'config' && field.options ? (
+          <select
+            id={inputId}
+            aria-describedby={field.description ? descriptionId : undefined}
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            className="w-full rounded-md border bg-background px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring/30"
+          >
+            <option value="">Not set (default)</option>
+            {value && !field.options.includes(value) && <option value={value}>Unsupported: {value}</option>}
+            {field.options.map((option) => <option key={option} value={option}>{field.optionLabels?.[option] ?? option}</option>)}
+          </select>
+        ) : field.kind === 'config' ? (
           <input
             id={inputId}
             type="text"

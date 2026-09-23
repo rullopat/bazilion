@@ -10,6 +10,8 @@
 // When adding a new provider or service, append an entry here and the
 // config page + CLI pick it up automatically.
 
+import { IMAGE_MODEL_CHOICES } from './image-generation-config.ts'
+
 export type FieldKind = 'secret' | 'config'
 
 export interface ServiceField {
@@ -19,6 +21,8 @@ export interface ServiceField {
   label: string
   placeholder?: string
   description?: string
+  options?: readonly string[]
+  optionLabels?: Readonly<Record<string, string>>
 }
 
 export type ServiceCategory = 'provider' | 'service' | 'integration'
@@ -306,6 +310,20 @@ export const SERVICES: ServiceDef[] = [
     fields: [{ envVar: 'ZAI_CODING_CN_API_KEY', kind: 'secret', label: 'API key' }],
   },
   {
+    id: 'meta',
+    displayName: 'Meta',
+    category: 'provider',
+    hint: 'Meta model API · api.meta.ai',
+    fields: [{ envVar: 'META_API_KEY', kind: 'secret', label: 'API key' }],
+  },
+  {
+    id: 'radius',
+    displayName: 'Radius',
+    category: 'provider',
+    hint: 'Radius gateway · radius.pi.dev',
+    fields: [{ envVar: 'RADIUS_API_KEY', kind: 'secret', label: 'API key' }],
+  },
+  {
     id: 'huggingface',
     displayName: 'Hugging Face',
     category: 'provider',
@@ -431,6 +449,38 @@ export const SERVICES: ServiceDef[] = [
   },
 
   // --- Ancillary services (web search, etc) ---
+  {
+    id: 'image-generation',
+    displayName: 'Image generation',
+    category: 'service',
+    team: 'Content tools',
+    hint: 'Automatic (default) follows your enabled OpenAI text providers: API key → separate API billing; ChatGPT/Codex login → subscription usage. If both are enabled, OpenAI/ChatGPT Agents use their own text provider; other Agents need an explicit image choice. Saved credentials alone never select a route. OpenRouter is explicit only. Provider failures never switch billing routes. Image generation still requires the separate on switch. Four requests/turn, one in flight/home; environment variables override saved settings.',
+    fields: [
+      {
+        envVar: 'BAZILION_IMAGE_MODEL',
+        kind: 'config',
+        label: 'Default image route / model',
+        options: IMAGE_MODEL_CHOICES,
+        optionLabels: {
+          auto: 'Automatic · follow enabled OpenAI text providers',
+          'google/gemini-3.1-flash-image': 'OpenRouter · Gemini 3.1 Flash Image',
+          'openai/gpt-image-2': 'OpenRouter · GPT Image 2',
+          'openai:gpt-image-2': 'OpenAI API key · GPT Image 2',
+          'openai-codex:gpt-image-2': 'ChatGPT/Codex login · GPT Image 2 (requested)',
+        },
+        description:
+          'Unset or Automatic follows enabled text providers. Explicit selections override automatic routing. API-key routes incur API charges; ChatGPT image entitlement is account-dependent and not tested by saving settings.',
+      },
+      {
+        envVar: 'BAZILION_IMAGE_GENERATION',
+        kind: 'config',
+        label: 'Image generation',
+        options: ['off', 'on'],
+        description:
+          'Off by default. Enabling permits image requests (API charges or subscription usage) from normal Agent turns, including background turns.',
+      },
+    ],
+  },
   {
     id: 'firecrawl',
     displayName: 'Firecrawl',

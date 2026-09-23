@@ -49,6 +49,8 @@ export interface ProviderConfig {
   opencode?: { apiKey: string; baseURL?: string }
   opencodeGo?: { apiKey: string; baseURL?: string }
   zaiCodingCn?: { apiKey: string; baseURL?: string }
+  meta?: { apiKey: string; baseURL?: string }
+  radius?: { apiKey: string; baseURL?: string }
   githubCopilot?: { apiKey: string }
   cloudflareAiGateway?: { apiKey: string; accountId?: string; gatewayId?: string }
   cloudflareWorkersAi?: { apiKey: string; accountId?: string }
@@ -155,6 +157,8 @@ export function loadProviderConfigFromEnv(
   if (env.OPENCODE_API_KEY) config.opencode = { apiKey: env.OPENCODE_API_KEY }
   if (env.OPENCODE_GO_API_KEY) config.opencodeGo = { apiKey: env.OPENCODE_GO_API_KEY }
   if (env.ZAI_CODING_CN_API_KEY) config.zaiCodingCn = { apiKey: env.ZAI_CODING_CN_API_KEY }
+  if (env.META_API_KEY) config.meta = { apiKey: env.META_API_KEY }
+  if (env.RADIUS_API_KEY) config.radius = { apiKey: env.RADIUS_API_KEY }
   if (env.COPILOT_GITHUB_TOKEN) config.githubCopilot = { apiKey: env.COPILOT_GITHUB_TOKEN }
   if (env.CLOUDFLARE_API_KEY && env.CLOUDFLARE_ACCOUNT_ID) {
     config.cloudflareWorkersAi = {
@@ -555,6 +559,26 @@ const PROVIDERS: Record<string, ProviderEntry> = {
         baseUrl: c.zaiCodingCn?.baseURL,
       }),
     hint: 'ZAI_CODING_CN_API_KEY',
+  },
+  meta: {
+    configured: (c) => !!c.meta,
+    build: (c) =>
+      piProvider({
+        providerName: 'meta',
+        apiKey: c.meta?.apiKey,
+        baseUrl: c.meta?.baseURL,
+      }),
+    hint: 'META_API_KEY',
+  },
+  radius: {
+    configured: (c) => !!c.radius,
+    build: (c) =>
+      piProvider({
+        providerName: 'radius',
+        apiKey: c.radius?.apiKey,
+        baseUrl: c.radius?.baseURL,
+      }),
+    hint: 'RADIUS_API_KEY',
   },
   'github-copilot': {
     configured: (c) => !!c.githubCopilot,

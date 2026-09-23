@@ -8,7 +8,8 @@ export const MAX_RETAINED_RESULT_BYTES = 1024 * 1024 * 1024
 const columns = `id, team_id AS teamId, agent_id AS agentId, source_kind AS sourceKind,
   session_id AS sessionId, tool_call_id AS toolCallId, review_packet_id AS reviewPacketId,
   review_revision AS reviewRevision, name, mime_type AS mimeType, byte_length AS byteLength,
-  sha256, created_at AS createdAt, released_at AS releasedAt, deleted_at AS deletedAt`
+  sha256, created_at AS createdAt, released_at AS releasedAt, deleted_at AS deletedAt,
+  source_index AS sourceIndex, image_model AS imageModel`
 
 /**
  * What produced a result: a turn's `deliver_file` call, or an artifact a daemon surface produced from a
@@ -27,6 +28,9 @@ export interface PublishResultInput {
   /** A turn's tool call: the source unless a review packet is named instead. */
   sessionId?: string
   toolCallId?: string
+  /** Image blocks share their real canonical tool call; never synthesize transcript identities. */
+  sourceIndex?: number
+  imageModel?: string
   /** A review export: the packet and the revision it describes. */
   reviewPacketId?: string
   reviewRevision?: string
@@ -80,6 +84,10 @@ export function publish(db: BazilionDb, input: PublishResultInput): AgentResult 
   if (!(input.bytes instanceof Uint8Array) || input.bytes.byteLength > MAX_RESULT_BYTES) {
     throw new Error('Result exceeds the 25 MiB per-file limit')
   }
+  const sourceIndex = input.sourceIndex ?? 0
+  if (!Number.isInteger(sourceIndex) || sourceIndex < 0 || sourceIndex > 3) {
+    throw new Error('Invalid result source index')
+  }
   const bytes = Buffer.from(input.bytes)
   const sha256 = createHash('sha256').update(bytes).digest('hex')
   return db.raw.transaction(() => {
@@ -88,12 +96,12 @@ export function publish(db: BazilionDb, input: PublishResultInput): AgentResult 
     const existing =
       source === 'session_tool'
         ? db.raw
-            .query<AgentResult, [string, string, string]>(
+            .query<AgentResult, [string, string, string, number]>(
               `SELECT ${columns} FROM agent_results
-               WHERE agent_id = ? AND source_kind = 'session_tool' AND session_id = ? AND tool_call_id = ?`,
+               WHERE agent_id = ? AND source_kind = 'session_tool' AND session_id = ? AND tool_call_id = ? AND source_index = ?`,
             )
             // Narrowed by the validation above; the assertion is what the strings are.
-            .get(input.agentId, input.sessionId as string, input.toolCallId as string)
+            .get(input.agentId, input.sessionId as string, input.toolCallId as string, sourceIndex)
         : db.raw
             .query<AgentResult, [string, string, string]>(
               `SELECT ${columns} FROM agent_results
@@ -107,7 +115,8 @@ export function publish(db: BazilionDb, input: PublishResultInput): AgentResult 
         existing.teamId !== input.teamId ||
         existing.sha256 !== sha256 ||
         existing.name !== input.name ||
-        existing.mimeType !== input.mimeType
+        existing.mimeType !== input.mimeType ||
+        existing.imageModel !== (input.imageModel ?? null)
       ) {
         throw new Error('Result publication retry does not match the captured operation')
       }
@@ -133,8 +142,8 @@ export function publish(db: BazilionDb, input: PublishResultInput): AgentResult 
     db.raw.run(
       `INSERT INTO agent_results
       (id, team_id, agent_id, source_kind, session_id, tool_call_id, review_packet_id, review_revision,
-       name, mime_type, byte_length, sha256, created_at, bytes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       name, mime_type, byte_length, sha256, created_at, bytes, source_index, image_model)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         input.teamId,
@@ -150,6 +159,8 @@ export function publish(db: BazilionDb, input: PublishResultInput): AgentResult 
         sha256,
         Date.now(),
         bytes,
+        sourceIndex,
+        input.imageModel ?? null,
       ],
     )
     const result = getReceipt(db, id)

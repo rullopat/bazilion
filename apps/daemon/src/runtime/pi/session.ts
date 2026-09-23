@@ -143,6 +143,7 @@ export interface CreateBazilionSessionOptions {
   mcpTools?: InjectedMcpTool[]
   /** If provided, enables the `deliver_file` tool — the agent's outbound file channel. */
   askUser?: AskUser
+  imageGenerationHost?: import('../worker/ipc-protocol.ts').ImageGenerationHost
   fileSink?: import('../tools/deliver-file.ts').FileSink
   /** Turn-scoped bridge for dangerous bash commands. Omit to fail closed. */
   bashApprovalHost?: BashApprovalHost
@@ -192,6 +193,9 @@ export interface CreateProtectedBazilionSessionOptions {
   messagingHost: MessagingHost
   userMdHost: UserMdHost
   askUser?: AskUser
+  imageGenerationHost?: import('../worker/ipc-protocol.ts').ImageGenerationHost
+  /** BAZ-067: discovery host present only when the operator configured a backend. */
+  webSearchHost?: import('../worker/ipc-protocol.ts').WebSearchHost
   fileSink: import('../tools/deliver-file.ts').FileSink
   bashApprovalHost: BashApprovalHost
   refreshApiKey: (providerName: string) => Promise<string>
@@ -364,6 +368,7 @@ export async function createBazilionSession(
         mcpHost,
         mcpTools,
         fileSink,
+        imageGenerationHost: opts.imageGenerationHost,
         askUser,
         sessionId: sessionManager.getSessionId(),
         env,
@@ -525,6 +530,8 @@ export async function createProtectedBazilionSession(
     messagingHost: opts.messagingHost,
     userMdHost: opts.userMdHost,
     fileSink: opts.fileSink,
+    webSearchHost: opts.webSearchHost,
+    imageGenerationHost: opts.imageGenerationHost,
     askUser: opts.askUser,
     sessionId: sessionManager.getSessionId(),
     verificationRequestHost: opts.verificationRequestHost,

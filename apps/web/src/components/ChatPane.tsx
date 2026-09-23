@@ -209,8 +209,8 @@ function projectMessages(msgs: ProviderMessage[]): RenderEntry[] {
         body: m.content,
         ...(m.codingLog ? { codingLog: m.codingLog } : {}),
       })
-      if (m.result) {
-        entries.push({ type: 'result', resultId: m.result.resultId })
+      for (const ref of m.results ?? (m.result ? [m.result] : [])) {
+        entries.push({ type: 'result', resultId: ref.resultId })
         openTool = null
       }
       // Images are deliverables — emit them as a standalone block OUTSIDE the

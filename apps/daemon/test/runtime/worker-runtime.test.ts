@@ -38,6 +38,8 @@ import {
 import {
   formatWorkerExitFailure,
   spawnReviewWorker,
+  spawnStaticReviewWorker,
+  spawnVerificationWorker,
   spawnWorkerTurn,
 } from '../../src/runtime/worker/spawn.ts'
 import { seedConversationTarget } from '../fixtures/conversation.ts'
@@ -358,7 +360,7 @@ describe('minimal worker runtime', () => {
     }
   })
 
-  test('builds the closed protected custom-tool projection without search, browser, MCP, or review', () => {
+  test('builds the closed protected custom-tool projection: scoped discovery, no browser/MCP/review', () => {
     const root = tempRoot()
     const spec = protectedSpec(root)
     const hosts = scopedHosts()
@@ -384,9 +386,21 @@ describe('minimal worker runtime', () => {
 
     expect(names).toContain('web_fetch')
     expect(names).toContain('deliver_file')
+    // BAZ-067: discovery is scoped — absent without the host, present only with it.
     expect(names).not.toContain('web_search')
     expect(names).not.toContain('propose_lesson')
     expect(names).not.toContain('ask_user')
+    expect(names).not.toContain('image_generate')
+    const withImages = createProtectedBazilionCustomTools({
+      agent: spec.agent,
+      memory,
+      messagingHost: hosts.messagingHost,
+      userMdHost: hosts.userMdHost,
+      fileSink: async () => ({ resultId: 'fixture-result' }),
+      imageGenerationHost: { generate: vi.fn() },
+    }).map((tool) => tool.name)
+    expect(withImages).toContain('image_generate')
+    expect(withImages.filter((name) => name !== 'image_generate')).toEqual(names)
     const withQuestion = createProtectedBazilionCustomTools({
       agent: spec.agent,
       memory,
@@ -488,6 +502,72 @@ describe('minimal worker runtime', () => {
       // the capability cannot reach the repository even through a spawn-time option.
     ).rejects.toThrow(/rejects repositoryContextHost/)
     expect(host).not.toHaveBeenCalled()
+  })
+
+  test('image generation cannot widen any restricted worker through input or host injection', async () => {
+    const prepared = protectedSpec(tempRoot())
+    const imageGenerationHost = { generate: vi.fn() }
+    const opts = {
+      imageGenerationHost,
+      apiKeyRefreshHost: { refresh: async () => 'fixture-token' },
+    }
+    const base = {
+      agentId: prepared.agent.agent.id,
+      message: 'valid',
+      turnId: 'image-denied',
+      runtime: prepared.runtime,
+    }
+    const specs = [
+      { ...base, kind: 'restricted_review' as const, review: { reviewId: 'review', evidence: [] } },
+      {
+        ...base,
+        kind: 'packet_review' as const,
+        review: { packetId: 'packet', attemptId: 'attempt' },
+      },
+      {
+        ...base,
+        kind: 'specialist_verification' as const,
+        verification: { requestId: 'request', attemptId: 'attempt' },
+      },
+    ]
+    const scratch = createMinimalWorkerScratch(tempRoot())
+    try {
+      for (const spec of specs) {
+        expect(() =>
+          parseWorkerInput({
+            ...spec,
+            scratch,
+            apiKeyRefreshEnabled: true,
+            imageGenerationEnabled: true,
+          }),
+        ).toThrow()
+        const run = async () => {
+          if (spec.kind === 'restricted_review') return spawnReviewWorker(spec, opts)
+          const frames =
+            spec.kind === 'packet_review'
+              ? spawnStaticReviewWorker(spec, {
+                  ...opts,
+                  changeReviewHost: {
+                    read: vi.fn(),
+                    path: vi.fn(),
+                    addFinding: vi.fn(),
+                    conclude: vi.fn(),
+                  },
+                })
+              : spawnVerificationWorker(spec, {
+                  ...opts,
+                  verificationHost: { read: vi.fn(), run: vi.fn() },
+                })
+          for await (const _frame of frames) {
+            /* Must refuse before spawn. */
+          }
+        }
+        await expect(run()).rejects.toThrow('rejects imageGenerationHost')
+      }
+    } finally {
+      cleanupMinimalWorkerScratch(scratch)
+    }
+    expect(imageGenerationHost.generate).not.toHaveBeenCalled()
   })
 
   test('a restricted turn cannot be handed the requester capability', async () => {

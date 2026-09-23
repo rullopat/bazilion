@@ -7,3 +7,8 @@ dist
 .DS_Store
 bazilion-backup-*.tar.gz
 .understand-anything/
+
+# Local acceptance-harness artifacts (BAZ-064/065 runs)
+/handoff-*.md
+/fresh-handoff.md
+/orchid-v*.png

@@ -12,6 +12,10 @@ export interface AgentResult {
   createdAt: number
   releasedAt: number | null
   deletedAt: number | null
+  /** Ordinal within one tool call (zero for ordinary files). */
+  sourceIndex?: number
+  /** Selected image route/model, not a backend attestation; null for ordinary files. */
+  imageModel?: string | null
 }
 
 /** Persisted in the canonical tool-result details; resolved through the daemon. */
