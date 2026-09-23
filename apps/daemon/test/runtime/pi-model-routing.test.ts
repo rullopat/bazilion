@@ -118,7 +118,7 @@ test('an uncatalogued id is built for the endpoint its adapter actually calls', 
   const model = resolvePiModel(
     runtime,
     'fireworks',
-    'accounts/fireworks/models/deepseek-v4p1-flash',
+    'accounts/fireworks/models/not-in-any-catalog',
     providerBaseUrl('fireworks', {}),
   )
   expect(model.api).toBe('openai-completions')

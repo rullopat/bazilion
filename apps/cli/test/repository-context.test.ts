@@ -40,7 +40,12 @@ const fake = createServer(async (request, response) => {
     capturedPrompts.push(
       JSON.stringify(
         body.messages.filter(
-          (message) => message.role === 'system' || message.role === 'developer',
+          (message) =>
+            message.role === 'system' ||
+            message.role === 'developer' ||
+            // 0.87.1: a repository-context refresh rides in the tool result.
+            message.role === 'tool' ||
+            message.role === 'user',
         ),
       ),
     )

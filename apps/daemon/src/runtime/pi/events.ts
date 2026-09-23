@@ -284,6 +284,7 @@ export function piMessagesToProviderView(
           toolCallId: tr.toolCallId,
           toolName: tr.toolName,
           result: extractResultReference(m),
+          results: extractResultReferences(m),
           ...(images.length > 0 ? { images } : {}),
         })
         break
@@ -295,6 +296,18 @@ export function piMessagesToProviderView(
     }
   }
   return out
+}
+
+function extractResultReferences(
+  value: unknown,
+): import('@bazilion/api-types').ResultReference[] | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const refs = (value as { details?: { results?: unknown } }).details?.results
+  if (!Array.isArray(refs) || refs.length > 4) return undefined
+  return refs.flatMap((ref) => {
+    const parsed = extractResultReference({ details: { result: ref } })
+    return parsed ? [parsed] : []
+  })
 }
 
 /** Structured tool details are opaque references, never filesystem paths or inline bytes. */

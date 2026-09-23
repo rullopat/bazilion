@@ -18,7 +18,7 @@ import {
 // canned event streams. Wire-format correctness (SSE framing, provider-specific
 // request shapes) is pi-ai's responsibility and covered by its own test suite.
 
-test('Pi 0.85.1 catalog includes Astra for API keys and Codex subscriptions', () => {
+test('Pi 0.87.1 catalog includes Astra for API keys and Codex subscriptions', () => {
   for (const provider of ['openai', 'openai-codex'] as const) {
     expect(getBuiltinModels(provider).find((model) => model.id === 'gpt-6-astra')).toMatchObject({
       name: 'GPT-6 Astra',
@@ -38,6 +38,29 @@ test('Pi catalog retains the refreshed model families and provider additions', (
     'qwen3.8-max',
   )
   expect(getBuiltinModels('baseten').map((model) => model.id)).toContain('moonshotai/Kimi-K3')
+})
+
+test('Pi 0.87.1 adds the meta and radius providers with curated examples present', () => {
+  const meta = getBuiltinModels('meta').map((model) => model.id)
+  expect(meta).toContain('muse-spark-1.3')
+  expect(meta.some((id) => id.startsWith('muse-spark-1.'))).toBe(true)
+
+  const radius = getBuiltinModels('radius').map((model) => model.id)
+  expect(radius).toContain('claude-sonnet-5')
+  expect(radius).toContain('gpt-6-astra')
+
+  // The zai-coding-cn example moved to the current GLM family.
+  expect(getBuiltinModels('zai-coding-cn').map((model) => model.id)).toContain('glm-5.3')
+  expect(getBuiltinModels('zai-coding-cn').map((model) => model.id)).not.toContain('glm-5.2')
+})
+
+test('the new providers are admitted provider surfaces with env credentials', () => {
+  const config = loadProviderConfigFromEnv({
+    META_API_KEY: 'meta-key',
+    RADIUS_API_KEY: 'radius-key',
+  })
+  expect(config.meta).toEqual({ apiKey: 'meta-key' })
+  expect(config.radius).toEqual({ apiKey: 'radius-key' })
 })
 
 function fauxRuntime(response: ReturnType<typeof fauxAssistantMessage>) {

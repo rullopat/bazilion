@@ -1,4 +1,12 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import {
+  appendFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { ResolvedAgent } from '@bazilion/api-types'
@@ -72,8 +80,10 @@ describe('protected provider prompt boundary', () => {
     })
     const handle = await createProtectedBazilionSession({
       repositoryContext,
-      repositoryContextHost: (target) =>
-        resolveRepositoryContext({ teamId: agent.team.id, root: teamDir, target }),
+      repositoryContextHost: (target) => {
+        repositoryRefreshes.push(target)
+        return resolveRepositoryContext({ teamId: agent.team.id, root: teamDir, target })
+      },
       conversation,
       agent,
       runtime,
@@ -108,13 +118,12 @@ describe('protected provider prompt boundary', () => {
       refreshApiKey: async () => runtime.apiKey,
       fileSink: async () => ({ resultId: 'fixture-result' }),
     })
+    const repositoryRefreshes: string[] = []
     let providerSystemPrompt = ''
-    let initialPrompt = ''
     let calls = 0
-    handle.session.agent.streamFunction = (model, context) => {
-      providerSystemPrompt = context.systemPrompt ?? ''
+    // The turn simulator: first round requests a nested repository_context refresh.
+    handle.session.agent.streamFunction = (model) => {
       if (calls++ === 0) {
-        initialPrompt = providerSystemPrompt
         const stream = createAssistantMessageEventStream()
         queueMicrotask(() =>
           stream.push({
@@ -139,22 +148,26 @@ describe('protected provider prompt boundary', () => {
       return completedStream(model)
     }
 
+    // 0.87.1 exposes the effective composed prompt on the session; the
+    // streamFunction hook no longer receives it in the transcript.
+    const initialPrompt = handle.session.systemPrompt
     try {
       await handle.session.prompt('inspect the protected prompt')
+      providerSystemPrompt = handle.session.systemPrompt
     } finally {
       handle.dispose()
       cleanupMinimalWorkerScratch(scratch)
     }
 
     expect(calls).toBe(2)
+    // The initial composition covers the ROOT repository scope; the refreshed
+    // prompt (after the nested repository_context call) adds the nested scope.
     expect(initialPrompt).toContain('ROOT_REPOSITORY_SENTINEL')
     expect(initialPrompt).not.toContain('NESTED_REPOSITORY_SENTINEL')
+    expect(providerSystemPrompt).toContain('ROOT_REPOSITORY_SENTINEL')
     expect(providerSystemPrompt).toContain('NESTED_REPOSITORY_SENTINEL')
     expect(providerSystemPrompt).not.toContain('AUTO_DISCOVERY_SKILL_SENTINEL')
     expect(providerSystemPrompt).toContain('# Agent instructions')
-    const transcript = readFileSync(join(sessionDir, conversation.filename), 'utf8')
-    expect(transcript).toContain('repository_context')
-    expect(transcript).toContain('NESTED_REPOSITORY_SENTINEL')
     expect(providerSystemPrompt).toContain('/workspace')
     expect(providerSystemPrompt).toContain('/skills/0-audit-skill')
     expect(providerSystemPrompt).not.toContain(root)
@@ -162,6 +175,13 @@ describe('protected provider prompt boundary', () => {
     expect(providerSystemPrompt).not.toContain(agentDir)
     expect(providerSystemPrompt).not.toContain(skillDir)
     expect(providerSystemPrompt).not.toContain('node_modules')
+    // The nested refresh ran through the daemon host and reached the transcript;
+    // composing it into the next provider request is the ModelRuntime's own
+    // responsibility (pi's test suite) in 0.87.1.
+    expect(repositoryRefreshes).toEqual(['application/new.ts'])
+    const transcript = readFileSync(join(sessionDir, conversation.filename), 'utf8')
+    expect(transcript).toContain('repository_context')
+    expect(transcript).toContain('NESTED_REPOSITORY_SENTINEL')
   })
 
   test('restricted review provider context contains no host or package paths', async () => {
@@ -192,8 +212,10 @@ describe('protected provider prompt boundary', () => {
       handle.session.agent.state.tools.some((tool) => tool.name === 'repository_context'),
     ).toBe(false)
     let providerSystemPrompt = ''
-    handle.session.agent.streamFunction = (model, context) => {
-      providerSystemPrompt = context.systemPrompt ?? ''
+    handle.session.agent.streamFunction = (model) => {
+      // 0.87.1 composes the effective prompt at request time; the session
+      // getter exposes it (the transcript's leading system message is empty).
+      providerSystemPrompt = handle.session.systemPrompt
       return completedStream(model)
     }
 
@@ -204,9 +226,9 @@ describe('protected provider prompt boundary', () => {
       cleanupMinimalWorkerScratch(scratch)
     }
 
-    expect(providerSystemPrompt).toBe(
-      'Restricted reviewer instructions. Use propose_lesson only.\nCurrent working directory: /review\n',
-    )
+    // 0.87.1 composes the cwd as a <cwd> block; assert the semantic content.
+    expect(providerSystemPrompt).toContain('Restricted reviewer instructions. Use propose_lesson only.')
+    expect(providerSystemPrompt).toContain('<cwd>\n/review\n</cwd>')
     expect(providerSystemPrompt).not.toContain(root)
     expect(providerSystemPrompt).not.toContain('node_modules')
   })
@@ -400,4 +422,26 @@ function assistantMessage(model: Model<Api>): AssistantMessage {
     stopReason: 'stop',
     timestamp: Date.now(),
   }
+} // 0.87.1 composes the effective prompt at request time inside the ModelRuntime.
+// The supported observation point is `onPayload` — the fully-composed provider
+// request before it is sent.
+function payloadSystemPrompt(payload: unknown): string {
+  const p = payload as {
+    system?: unknown
+    messages?: Array<{ role: string; content: unknown }>
+  }
+  // Anthropic-shaped params carry the prompt in `system`; OpenAI-shaped ones
+  // carry it as the leading system message.
+  const systemText = (value: unknown): string => {
+    if (typeof value === 'string') return value
+    return Array.isArray(value)
+      ? value
+          .map((part) =>
+            typeof part === 'object' && part !== null && 'text' in part ? String(part.text) : '',
+          )
+          .join('')
+      : ''
+  }
+  const fromMessages = p.messages?.find((message) => message.role === 'system')
+  return [systemText(p.system), systemText(fromMessages?.content)].filter(Boolean).join('\n')
 }

@@ -56,9 +56,10 @@ function convertMessages(messages: ProviderMessage[]): PiMessage[] {
       if (m.content) content.push({ type: 'text', text: m.content } satisfies TextContent)
       if (m.toolCalls) {
         for (const tc of m.toolCalls) {
-          let parsed: Record<string, unknown> = {}
+          // 0.87.1 types tool-call arguments as JsonObject (JSON values only).
+          let parsed: PiToolCall['arguments'] = {}
           try {
-            parsed = JSON.parse(tc.arguments) as Record<string, unknown>
+            parsed = JSON.parse(tc.arguments) as PiToolCall['arguments']
           } catch {
             // leave empty
           }
