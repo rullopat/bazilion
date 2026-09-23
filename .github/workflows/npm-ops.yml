@@ -57,7 +57,7 @@ jobs:
           node-version: 24
           registry-url: https://registry.npmjs.org
       - name: Add dist-tag
-        run: npm dist-tag add "${{ inputs.package }}" "${{ inputs.version }}" "${{ inputs.tag }}"
+        run: npm dist-tag add "${{ inputs.package }}@${{ inputs.version }}" "${{ inputs.tag }}"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
