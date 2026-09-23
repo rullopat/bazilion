@@ -16,6 +16,10 @@
     "baz-052-supportability",
     "baz-053-mobile-removal",
     "baz-055-scoped-credentials",
-    "baz-056-chat-repl"
+    "baz-056-chat-repl",
+    "baz-059-pi-image-generation",
+    "baz-064-worker-prompt-exit",
+    "baz-067-pi-0-87-1-refresh",
+    "baz-067-protected-web-discovery"
   ]
 }
