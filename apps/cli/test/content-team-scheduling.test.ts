@@ -1,4 +1,3 @@
-import { appendFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Agent, ListTriggerDispatchesResponse } from '@bazilion/api-types'
 import { afterAll, beforeAll, expect, test } from 'vitest'
@@ -177,7 +176,6 @@ test.skipIf(!docker)(
     const first = new Date(nextMinute)
     const second = new Date(nextMinute + 60_000)
     const expr = `${first.getMinutes()},${second.getMinutes()} * * * *`
-    appendFileSync('/tmp/baz064-cron-plan.log', `${new Date().toISOString()} cron=${expr}\n`)
 
     // Two cron cycles: each delegates once, then finishes.
     const coordinator: CannedResponse[] = []
@@ -259,7 +257,6 @@ test.runIf(docker)(
     const coordinator: CannedResponse[] = []
     const researcher: CannedResponse[] = []
     const containerRounds: number[] = []
-    const trace = (line: string) => appendFileSync('/tmp/baz064-ct16-trace.log', `${line}\n`)
     let cronRound = 0
     const ownRouter = async (
       req: import('node:http').IncomingMessage,
@@ -282,7 +279,6 @@ test.runIf(docker)(
         return
       }
       sseFromCanned(res, item)
-      trace(`cron round ${cronRound} at ${new Date().toISOString()}`)
     }
     mock.setFallback(ownRouter)
 

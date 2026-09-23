@@ -1,4 +1,3 @@
-import { appendFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Agent, ListTriggerDispatchesResponse } from '@bazilion/api-types'
 import { afterAll, beforeAll, expect, test } from 'vitest'
@@ -76,7 +75,6 @@ async function until(
 
 async function addCronTrigger(atMinute: Date, message: string): Promise<string> {
   const expr = `${atMinute.getMinutes()} ${atMinute.getHours()} * * *`
-  appendFileSync('/tmp/baz064-cron-plan.log', `${new Date().toISOString()} cron=${expr}\n`)
   const added = await server.cli([
     'trigger',
     'add',
@@ -200,11 +198,6 @@ test.skipIf(!docker)(
     // The busy turn ends; the cron dispatch then runs exactly once — never
     // concurrently with the busy turn and never twice for one occurrence.
     await busy.then((result) => {
-      if (result.exitCode !== 0)
-        appendFileSync(
-          '/tmp/baz064-busy-fail.log',
-          `busy chat failed: ${result.stderr || result.stdout}\n`,
-        )
       expect(result.exitCode).toBe(0)
     })
     expect(busyDone).toBe(true)
@@ -228,46 +221,38 @@ test.skipIf(!docker)(
   240_000,
 )
 
-test('CT-12a: a trigger created before a due minute survives a daemon restart and fires once', async () => {
-  // Due well past the restart (stop+boot take seconds, not minutes).
-  const due = new Date(Math.ceil((Date.now() + 80_000) / 60_000) * 60_000)
-  const triggerId = await addCronTrigger(due, 'Preparation cron: start the cycle.')
-  let cronRounds = 0
-  mock.setFallback(
-    async (req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse) => {
-      for await (const _bytes of req) void _bytes
-      cronRounds++
-      sseFromCanned(res, reply('POST_RESTART_CYCLE_DONE'))
-    },
-  )
+test.skipIf(!docker)(
+  'CT-12a: a trigger created before a due minute survives a daemon restart and fires once',
+  async () => {
+    // Due well past the restart (stop+boot take seconds, not minutes).
+    const due = new Date(Math.ceil((Date.now() + 80_000) / 60_000) * 60_000)
+    const triggerId = await addCronTrigger(due, 'Preparation cron: start the cycle.')
+    let cronRounds = 0
+    mock.setFallback(
+      async (req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse) => {
+        for await (const _bytes of req) void _bytes
+        cronRounds++
+        sseFromCanned(res, reply('POST_RESTART_CYCLE_DONE'))
+      },
+    )
 
-  await server.stop({ keepHome: true })
-  // Restart comfortably before the due minute.
-  expect(Date.now()).toBeLessThan(due.getTime() - 5_000)
-  server = await restartTestServer(server, daemonEnv)
+    await server.stop({ keepHome: true })
+    // Restart comfortably before the due minute.
+    expect(Date.now()).toBeLessThan(due.getTime() - 5_000)
+    server = await restartTestServer(server, daemonEnv)
 
-  // Diagnostic: watch dispatch attempts while waiting.
-  for (let i = 0; i < 6; i++) {
-    await new Promise((r) => setTimeout(r, 15_000))
-    try {
-      const history = await dispatches(triggerId)
-      appendFileSync(
-        '/tmp/baz064-recovery-trace.log',
-        `[12a t+${i * 15}s] rounds=${cronRounds} dispatches=${JSON.stringify(history.dispatches)}\n`,
-      )
-    } catch (e) {
-      appendFileSync('/tmp/baz064-recovery-trace.log', `[12a] probe failed: ${e}\n`)
-    }
-    if (cronRounds >= 1) break
-  }
-  await until(() => cronRounds >= 1, 60_000, 'the post-restart cron occurrence')
-  await new Promise((r) => setTimeout(r, 3_000))
-  expect(cronRounds).toBe(1)
-  const history = await dispatches(triggerId)
-  expect(history.dispatches.length).toBeGreaterThanOrEqual(1)
-  const disabled = await server.cli(['trigger', 'disable', triggerId])
-  expect(disabled.exitCode).toBe(0)
-}, 300_000)
+    // The due minute sits ~80s ahead (comfortably after the restart); wait long
+    // enough to cover the whole gap, not just the turn itself.
+    await until(() => cronRounds >= 1, 180_000, 'the post-restart cron occurrence')
+    await new Promise((r) => setTimeout(r, 3_000))
+    expect(cronRounds).toBe(1)
+    const history = await dispatches(triggerId)
+    expect(history.dispatches.length).toBeGreaterThanOrEqual(1)
+    const disabled = await server.cli(['trigger', 'disable', triggerId])
+    expect(disabled.exitCode).toBe(0)
+  },
+  300_000,
+)
 
 test('CT-12b: a cron minute missed while the daemon is down does not fire after restart', async () => {
   const due = new Date(Math.ceil((Date.now() + 15_000) / 60_000) * 60_000)
