@@ -1,5 +1,36 @@
 # bazilion
 
+## 0.22.0-beta.1
+
+### Minor Changes
+
+- [#69](https://github.com/rullopat/bazilion/pull/69) [`f365601`](https://github.com/rullopat/bazilion/commit/f36560173e2eadc50e30a55b0421f796880f71f7) Thanks [@rullopat](https://github.com/rullopat)! - BAZ-059: opt-in image generation through direct OpenAI API-key access, ChatGPT/Codex login, or Pi's OpenRouter image API. Automatic mode follows enabled OpenAI text providers, with the Agent's own route resolving dual enablement; explicit image choices remain available. Stored credentials alone, errors and quota failures never cause credential/billing fallback. Normal Agents save generated images as durable, policy-authorized Results; rework preserves previous versions. Daemon-bound IPC, response limits, cancellation and durable receipts prevent automatic retries of uncertain operations. Restricted reviewers and verification specialists remain denied. Account-dependent live acceptance remains a release gate; no social publishing. The image schema upgrades existing beta homes forward without resetting Results.
+
+- [#69](https://github.com/rullopat/bazilion/pull/69) [`242f239`](https://github.com/rullopat/bazilion/commit/242f23951dbf0a9800148d36f066aff78eef2ddd) Thanks [@rullopat](https://github.com/rullopat)! - Refresh the bundled Pi engine to 0.87.1 (BAZ-067 companion). The model catalog gains the current
+  upstream families (latest OpenAI gpt-5.x/5.6/6 families, GLM 5.3, and more across the existing
+  providers), and two new Pi providers get Bazilion surfaces: **Meta** (`META_API_KEY`, api.meta.ai)
+  and **Radius** (`RADIUS_API_KEY`, radius.pi.dev gateway), both admitted for protected turns with
+  catalog-backed model lists. The zai-coding-cn example moves from the retired glm-5.2 to glm-5.3.
+  No `/compat` dependency was introduced.
+
+- [#69](https://github.com/rullopat/bazilion/pull/69) [`cd1d303`](https://github.com/rullopat/bazilion/commit/cd1d3031831b7ddb1af881ba96ca89301fa90dca) Thanks [@rullopat](https://github.com/rullopat)! - Bounded public-web discovery for protected Agent turns (BAZ-067). Scheduled and inbox turns previously
+  had `web_fetch` but no discovery: configuring a search backend did nothing there. A protected turn now
+  includes `web_search` when the operator configures `BAZILION_WEB_SEARCH_URL` (a self-hosted SearXNG
+  base URL, https or loopback). The backend URL stays daemon-side — the worker sees only bounded,
+  untrusted titles/URLs/snippets (max 8 results, capped fields), one request per invocation, no retry,
+  no fallback, and a hard deadline. Configuration is re-validated per request, so drift between claim
+  and dispatch is refused. Restricted review/verification workers never receive the capability, and
+  fetching a returned URL still goes through the SSRF-guarded `web_fetch`.
+
+### Patch Changes
+
+- [#69](https://github.com/rullopat/bazilion/pull/69) [`1da65c8`](https://github.com/rullopat/bazilion/commit/1da65c81415ef1fbd109433b97baf5d85322404b) Thanks [@rullopat](https://github.com/rullopat)! - Worker turns exit immediately when their work is done. A lingering post-turn handle kept the worker
+  process alive for about thirty seconds, so a scheduled or inbox wake held its Team's exclusive
+  workspace lease long after finishing and every interleaved turn on that Team failed with
+  `workspace_busy` until the process finally exited. Found by the content-Team acceptance harness
+  (BAZ-064); the success path now exits explicitly once the session is disposed and IPC is disconnected,
+  matching the error path.
+
 ## 0.21.0-beta.5
 
 ### Patch Changes

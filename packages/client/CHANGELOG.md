@@ -1,5 +1,12 @@
 # @bazilion/client
 
+## 0.22.0-beta.1
+
+### Patch Changes
+
+- Updated dependencies [[`f365601`](https://github.com/rullopat/bazilion/commit/f36560173e2eadc50e30a55b0421f796880f71f7)]:
+  - @bazilion/api-types@0.22.0-beta.1
+
 ## 0.21.0-beta.5
 
 ### Patch Changes
