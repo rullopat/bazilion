@@ -1,10 +1,10 @@
 # Releasing Bazilion
 
-**Current preparation: frozen, unpublished `0.22.0`; ships as-is at alpha maturity (no beta tag) —
-retargeted 2026-09-21. BAZ-069 (browser-backed default search) and BAZ-066 (live/human content-Team
-acceptance) move to 0.23.0. Publication plan: publish `0.21.0` final from the v0.21.0-beta.5
-commit (version-only republish; npm versions are immutable), make `0.22.0` `latest`, then remove
-the `beta` dist-tag.**
+**Published 2026-09-23: `0.22.0` is live on npm with `latest`; the `beta` dist-tag points at
+0.22.0 (the token cannot delete tags, so it was moved — same outcome); `0.21` → `0.21.0` (the
+version-only republish of `v0.21.0-beta.5` that closes the 0.21 line). Umbrella release:
+`v0.22.0`. The site's 0.22 page and version claims are deployed. 0.23.0 work starts with BAZ-069
+(browser-backed default search) and BAZ-066 (live/human content-Team acceptance).**
 The published baseline is `0.21.0-beta.5`. This procedure was rewritten on 2026-09-20 to match the
 implemented image-generation candidate and its observed validation. It does not authorize any
 version change, merge that triggers publishing, npm/tag operation or website deployment.
@@ -152,7 +152,7 @@ Presentation conventions:
 ```text
 0.20.0          last recorded stable feature release
 0.21.0-beta.5   published hardening baseline
-0.22.0   frozen image-generation candidate; qualification/release approval pending
+0.22.0   published 2026-09-23 (image generation, bounded discovery, Pi 0.87.1)
 1.0.0-beta.1    separate broader readiness and operator decision, not automatic
 1.0.0          separate stable-release decision
 ```
