@@ -15,6 +15,7 @@ import { restartTestServer, startTestServer, type TestServer } from './server-fi
 // canned model proves scheduler plumbing, not model judgment. The documented
 // no-catch-up limitation for missed minutes is asserted as observed behavior.
 const recipe = join(import.meta.dirname, '../../../examples/content-team')
+const docker = process.env.BAZILION_TEST_DOCKER === '1'
 const roles = ['coordinator', 'researcher', 'writer', 'designer'] as const
 
 let mock: MockLlm
@@ -151,77 +152,81 @@ afterAll(async () => {
   await mock.stop()
 })
 
-test('CT-10: a due minute while the Agent is busy defers the dispatch; it runs exactly once after release', async () => {
-  const due = new Date(Math.ceil((Date.now() + 6_000) / 60_000) * 60_000)
-  const triggerId = await addCronTrigger(due, 'Preparation cron: start the cycle.')
+test.skipIf(!docker)(
+  'CT-10: a due minute while the Agent is busy defers the dispatch; it runs exactly once after release',
+  async () => {
+    const due = new Date(Math.ceil((Date.now() + 6_000) / 60_000) * 60_000)
+    const triggerId = await addCronTrigger(due, 'Preparation cron: start the cycle.')
 
-  // Busy the coordinator with a real blocking tool call (no LLM round while it
-  // waits). 75s covers any due minute up to 60s out, so the minute arrives
-  // while the Agent has an active turn.
-  let cronRounds = 0
-  let sawBusyTool = false
-  let busyDone = false
-  mock.setFallback(
-    async (req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse) => {
-      // Always drain the request body before responding.
-      for await (const _bytes of req) void _bytes
-      if (!sawBusyTool) {
-        sawBusyTool = true
-        sseFromCanned(
-          res,
-          toolCall('wait_for_reply', { message_id: 'no-such-message', timeout_ms: 75_000 }),
+    // Busy the coordinator with a real blocking tool call (no LLM round while it
+    // waits). 75s covers any due minute up to 60s out, so the minute arrives
+    // while the Agent has an active turn.
+    let cronRounds = 0
+    let sawBusyTool = false
+    let busyDone = false
+    mock.setFallback(
+      async (req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse) => {
+        // Always drain the request body before responding.
+        for await (const _bytes of req) void _bytes
+        if (!sawBusyTool) {
+          sawBusyTool = true
+          sseFromCanned(
+            res,
+            toolCall('wait_for_reply', { message_id: 'no-such-message', timeout_ms: 75_000 }),
+          )
+          return
+        }
+        if (!busyDone) {
+          busyDone = true
+          sseFromCanned(res, reply('BUSY_TURN_FINISHED'))
+          return
+        }
+        cronRounds++
+        sseFromCanned(res, reply('CRON_CYCLE_DONE'))
+      },
+    )
+
+    const busy = server.cli([
+      'agent',
+      'chat',
+      agentId('coordinator'),
+      '--message',
+      'Long-running work; keep going.',
+    ])
+
+    // Wait for the due minute to pass while the turn is busy.
+    await until(() => Date.now() >= due.getTime() + 2_500, 75_000, 'due minute to pass')
+
+    // The busy turn ends; the cron dispatch then runs exactly once — never
+    // concurrently with the busy turn and never twice for one occurrence.
+    await busy.then((result) => {
+      if (result.exitCode !== 0)
+        appendFileSync(
+          '/tmp/baz064-busy-fail.log',
+          `busy chat failed: ${result.stderr || result.stdout}\n`,
         )
-        return
-      }
-      if (!busyDone) {
-        busyDone = true
-        sseFromCanned(res, reply('BUSY_TURN_FINISHED'))
-        return
-      }
-      cronRounds++
-      sseFromCanned(res, reply('CRON_CYCLE_DONE'))
-    },
-  )
+      expect(result.exitCode).toBe(0)
+    })
+    expect(busyDone).toBe(true)
+    await until(() => cronRounds >= 1, 90_000, 'the deferred cron turn to run')
+    // Under machine load the LLM round itself may retry; the dispatch-level
+    // history below is the exactly-once oracle, not the raw request count.
+    await new Promise((r) => setTimeout(r, 3_000))
+    expect(cronRounds).toBeGreaterThanOrEqual(1)
+    expect(cronRounds).toBeLessThanOrEqual(3)
 
-  const busy = server.cli([
-    'agent',
-    'chat',
-    agentId('coordinator'),
-    '--message',
-    'Long-running work; keep going.',
-  ])
-
-  // Wait for the due minute to pass while the turn is busy.
-  await until(() => Date.now() >= due.getTime() + 2_500, 75_000, 'due minute to pass')
-
-  // The busy turn ends; the cron dispatch then runs exactly once — never
-  // concurrently with the busy turn and never twice for one occurrence.
-  await busy.then((result) => {
-    if (result.exitCode !== 0)
-      appendFileSync(
-        '/tmp/baz064-busy-fail.log',
-        `busy chat failed: ${result.stderr || result.stdout}\n`,
-      )
-    expect(result.exitCode).toBe(0)
-  })
-  expect(busyDone).toBe(true)
-  await until(() => cronRounds >= 1, 90_000, 'the deferred cron turn to run')
-  // Under machine load the LLM round itself may retry; the dispatch-level
-  // history below is the exactly-once oracle, not the raw request count.
-  await new Promise((r) => setTimeout(r, 3_000))
-  expect(cronRounds).toBeGreaterThanOrEqual(1)
-  expect(cronRounds).toBeLessThanOrEqual(3)
-
-  const history = await dispatches(triggerId)
-  const cronDispatches = history.dispatches.filter((d) => d.scheduledAt === due.getTime())
-  // One occurrence identity; claim/defers under load may raise the attempt
-  // count, but the dispatch must be terminal-successful exactly once.
-  expect(cronDispatches.length).toBe(1)
-  expect(cronDispatches[0]?.status).toBe('succeeded')
-  expect(cronDispatches[0]?.attemptCount).toBeGreaterThanOrEqual(1)
-  const disabled = await server.cli(['trigger', 'disable', triggerId])
-  expect(disabled.exitCode).toBe(0)
-}, 240_000)
+    const history = await dispatches(triggerId)
+    const cronDispatches = history.dispatches.filter((d) => d.scheduledAt === due.getTime())
+    // One occurrence identity; claim/defers under load may raise the attempt
+    // count, but the dispatch must be terminal-successful exactly once.
+    expect(cronDispatches.length).toBe(1)
+    expect(cronDispatches[0]?.status).toBe('succeeded')
+    expect(cronDispatches[0]?.attemptCount).toBeGreaterThanOrEqual(1)
+    const disabled = await server.cli(['trigger', 'disable', triggerId])
+    expect(disabled.exitCode).toBe(0)
+  },
+  240_000,
+)
 
 test('CT-12a: a trigger created before a due minute survives a daemon restart and fires once', async () => {
   // Due well past the restart (stop+boot take seconds, not minutes).

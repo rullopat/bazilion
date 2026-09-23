@@ -167,81 +167,85 @@ afterAll(async () => {
   await mock.stop()
 })
 
-test('two actual cron minutes drive coordinator cycles with distinct dispatches', async () => {
-  // Two cron minutes, one minute apart, in the daemon's own local time — the
-  // explicitly recorded acceleration for this test; the requested cadence for
-  // real use is a separate operator decision (no per-trigger timezone exists).
-  const nextMinute = Math.ceil((Date.now() + 5_000) / 60_000) * 60_000
-  const first = new Date(nextMinute)
-  const second = new Date(nextMinute + 60_000)
-  const expr = `${first.getMinutes()},${second.getMinutes()} * * * *`
-  appendFileSync('/tmp/baz064-cron-plan.log', `${new Date().toISOString()} cron=${expr}\n`)
+test.skipIf(!docker)(
+  'two actual cron minutes drive coordinator cycles with distinct dispatches',
+  async () => {
+    // Two cron minutes, one minute apart, in the daemon's own local time — the
+    // explicitly recorded acceleration for this test; the requested cadence for
+    // real use is a separate operator decision (no per-trigger timezone exists).
+    const nextMinute = Math.ceil((Date.now() + 5_000) / 60_000) * 60_000
+    const first = new Date(nextMinute)
+    const second = new Date(nextMinute + 60_000)
+    const expr = `${first.getMinutes()},${second.getMinutes()} * * * *`
+    appendFileSync('/tmp/baz064-cron-plan.log', `${new Date().toISOString()} cron=${expr}\n`)
 
-  // Two cron cycles: each delegates once, then finishes.
-  const coordinator: CannedResponse[] = []
-  const researcher: CannedResponse[] = []
-  for (const [n, target] of [
-    [1, 'researcher'],
-    [2, 'researcher'],
-  ] as const) {
-    coordinator.push(delegateCall(agentId(target), `Cron cycle ${n}: prepare the next cycle.`))
-    coordinator.push(reply(`CYCLE_${n}_DELEGATED`))
-    if (docker) {
-      // A wake turn without tool calls ends after a single model round.
-      researcher.push(reply(`RESEARCH_CYCLE_${n}_DONE`))
+    // Two cron cycles: each delegates once, then finishes.
+    const coordinator: CannedResponse[] = []
+    const researcher: CannedResponse[] = []
+    for (const [n, target] of [
+      [1, 'researcher'],
+      [2, 'researcher'],
+    ] as const) {
+      coordinator.push(delegateCall(agentId(target), `Cron cycle ${n}: prepare the next cycle.`))
+      coordinator.push(reply(`CYCLE_${n}_DELEGATED`))
+      if (docker) {
+        // A wake turn without tool calls ends after a single model round.
+        researcher.push(reply(`RESEARCH_CYCLE_${n}_DONE`))
+      }
     }
-  }
-  mock.setFallback(router(coordinator, researcher))
+    mock.setFallback(router(coordinator, researcher))
 
-  const added = await server.cli([
-    'trigger',
-    'add',
-    agentId('coordinator'),
-    '--cron',
-    expr,
-    '--message',
-    'Preparation cron: start the next cycle.',
-  ])
-  expect(added.exitCode, added.stderr).toBe(0)
-  triggerId = added.stdout.split('\t')[0] ?? ''
-  expect(triggerId).toMatch(/^[0-9a-f-]{36}$/)
+    const added = await server.cli([
+      'trigger',
+      'add',
+      agentId('coordinator'),
+      '--cron',
+      expr,
+      '--message',
+      'Preparation cron: start the next cycle.',
+    ])
+    expect(added.exitCode, added.stderr).toBe(0)
+    triggerId = added.stdout.split('\t')[0] ?? ''
+    expect(triggerId).toMatch(/^[0-9a-f-]{36}$/)
 
-  // Occurrence 1: coordinator round pair.
-  await until(() => rounds.filter((r) => !r.wake).length >= 2, 150_000, 'first cron occurrence')
-  // Occurrence 2 happens one minute later.
-  await until(() => rounds.filter((r) => !r.wake).length >= 4, 150_000, 'second cron occurrence')
-  await until(
-    () => (docker ? rounds.filter((r) => r.wake).length >= 2 : true),
-    120_000,
-    'researcher wakes',
-  )
-  const cycles = rounds.filter((r) => !r.wake).length
-  expect(cycles).toBe(4)
+    // Occurrence 1: coordinator round pair.
+    await until(() => rounds.filter((r) => !r.wake).length >= 2, 150_000, 'first cron occurrence')
+    // Occurrence 2 happens one minute later.
+    await until(() => rounds.filter((r) => !r.wake).length >= 4, 150_000, 'second cron occurrence')
+    await until(
+      () => (docker ? rounds.filter((r) => r.wake).length >= 2 : true),
+      120_000,
+      'researcher wakes',
+    )
+    const cycles = rounds.filter((r) => !r.wake).length
+    expect(cycles).toBe(4)
 
-  // Let the occurrence-2 turn fully settle (its final round may still be in
-  // flight), then disable; afterward several fast ticks produce no new rounds.
-  let settleMarker = rounds.length
-  for (;;) {
-    await new Promise((r) => setTimeout(r, 1_500))
-    if (rounds.length === settleMarker) break
-    settleMarker = rounds.length
-  }
-  const disabled = await server.cli(['trigger', 'disable', triggerId])
-  expect(disabled.exitCode).toBe(0)
-  const marker = rounds.length
-  await new Promise((r) => setTimeout(r, 3_000))
-  expect(rounds.length).toBe(marker)
+    // Let the occurrence-2 turn fully settle (its final round may still be in
+    // flight), then disable; afterward several fast ticks produce no new rounds.
+    let settleMarker = rounds.length
+    for (;;) {
+      await new Promise((r) => setTimeout(r, 1_500))
+      if (rounds.length === settleMarker) break
+      settleMarker = rounds.length
+    }
+    const disabled = await server.cli(['trigger', 'disable', triggerId])
+    expect(disabled.exitCode).toBe(0)
+    const marker = rounds.length
+    await new Promise((r) => setTimeout(r, 3_000))
+    expect(rounds.length).toBe(marker)
 
-  // Dispatch history: two actual occurrences with distinct scheduled minutes.
-  const response = await fetch(`${server.url}/api/triggers/${triggerId}/dispatches?limit=10`, {
-    headers: { authorization: `Bearer ${server.token}` },
-  })
-  expect(response.status).toBe(200)
-  const history = (await response.json()) as ListTriggerDispatchesResponse
-  expect(history.dispatches.length).toBeGreaterThanOrEqual(2)
-  const scheduled = new Set(history.dispatches.map((d) => String(d.scheduledAt)))
-  expect(scheduled.size).toBeGreaterThanOrEqual(2)
-}, 300_000)
+    // Dispatch history: two actual occurrences with distinct scheduled minutes.
+    const response = await fetch(`${server.url}/api/triggers/${triggerId}/dispatches?limit=10`, {
+      headers: { authorization: `Bearer ${server.token}` },
+    })
+    expect(response.status).toBe(200)
+    const history = (await response.json()) as ListTriggerDispatchesResponse
+    expect(history.dispatches.length).toBeGreaterThanOrEqual(2)
+    const scheduled = new Set(history.dispatches.map((d) => String(d.scheduledAt)))
+    expect(scheduled.size).toBeGreaterThanOrEqual(2)
+  },
+  300_000,
+)
 
 test.runIf(docker)(
   'CT-16 partial: the scheduled turn itself runs in the protected container posture',
