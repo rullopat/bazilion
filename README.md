@@ -12,12 +12,16 @@ Whole-run subprocess isolation with worker↔daemon Node-IPC for messaging, Chat
 
 ## Quickstart
 
-Requires **Node 24 or newer**. **Linux is the validated platform**; macOS and
-Windows can install and run the daemon, web UI and first-run setup, but **agent
-turns (chat) currently require Linux**: every turn resolves repository context
-through safe reads that pin ancestry with Linux-only primitives, by design —
-they fail closed with a visible error elsewhere rather than read with a weaker
-guarantee. See `docs/repository-context.md`; portability is tracked as BAZ-057.
+Requires **Node 24 or newer**. **Linux is the validated platform.** macOS can
+install and run the daemon, web UI and first-run setup, but **agent turns (chat)
+require Linux**: every turn resolves repository context through safe reads that
+pin ancestry with Linux-only primitives, by design — they fail closed with a
+visible error elsewhere rather than read with a weaker guarantee. See
+`docs/repository-context.md`; portability is tracked as BAZ-057.
+
+**Windows is unsupported.** It is untested end to end, no CI covers it, and turns
+require Linux everywhere anyway. A contributor who wants Windows support
+maintains it; the PowerShell installer script is kept as-is for the curious.
 
 ```sh
 # One-shot — npx downloads `bazilion`, starts the daemon, and opens the web UI.
