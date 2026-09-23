@@ -2,20 +2,9 @@
   "mode": "pre",
   "tag": "beta",
   "initialVersions": {
-    "bazilion": "0.20.0",
-    "@bazilion/daemon": "0.0.0",
-    "@bazilion/web": "0.0.0",
-    "@bazilion/api-types": "0.20.0",
-    "@bazilion/client": "0.20.0"
+    "bazilion": "0.21.0-beta.5",
+    "@bazilion/client": "0.21.0-beta.5",
+    "@bazilion/api-types": "0.21.0-beta.5"
   },
-  "changesets": [
-    "baz-047-schema-contract",
-    "baz-049-cross-platform",
-    "baz-050-ui-consistency-sweep",
-    "baz-051-failure-visibility",
-    "baz-052-supportability",
-    "baz-053-mobile-removal",
-    "baz-055-scoped-credentials",
-    "baz-056-chat-repl"
-  ]
+  "changesets": []
 }
