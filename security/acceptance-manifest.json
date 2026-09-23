@@ -251,7 +251,7 @@
       "id": "PROTECTED-CAPABILITY-CLOSURE",
       "owner": "BAZ-027",
       "file": "apps/daemon/test/runtime/worker-runtime.test.ts",
-      "test": "minimal worker runtime > builds the closed protected custom-tool projection without search, browser, MCP, or review"
+      "test": "minimal worker runtime > builds the closed protected custom-tool projection: scoped discovery, no browser/MCP/review"
     },
     {
       "id": "PROTECTED-FAILURE-OUTCOME",
@@ -918,6 +918,126 @@
       "owner": "BAZ-046",
       "file": "apps/daemon/test/routes/publications.test.ts",
       "test": "an operator publishes a reviewed revision and reads the report back"
+    },
+    {
+      "id": "IMAGE-BOUND-SOURCE-NO-FALLBACK",
+      "owner": "BAZ-059",
+      "file": "apps/daemon/test/lib/image-generation.test.ts",
+      "test": "refuses absent catalogue model, arbitrary IPC keys, altered prompt and old source"
+    },
+    {
+      "id": "IMAGE-PRIVATE-SNAPSHOTS-NO-REPLAY",
+      "owner": "BAZ-059",
+      "file": "apps/daemon/test/lib/image-generation.test.ts",
+      "test": "captures all image bytes privately, keeps real source identity, and never bills duplicate IPC"
+    },
+    {
+      "id": "IMAGE-HELD-DISCLOSURE",
+      "owner": "BAZ-059",
+      "file": "apps/daemon/test/lib/image-generation.test.ts",
+      "test": "generated file disclosure obeys approval_required without tool-result preview bypass"
+    },
+    {
+      "id": "IMAGE-DENIED-DISCLOSURE",
+      "owner": "BAZ-059",
+      "file": "apps/daemon/test/lib/image-generation.test.ts",
+      "test": "generated file disclosure obeys deny without tool-result preview bypass"
+    },
+    {
+      "id": "IMAGE-RESTORE-NO-REPLAY",
+      "owner": "BAZ-059",
+      "file": "apps/daemon/test/lib/image-generation.test.ts",
+      "test": "backup/reopen preserves bytes and uncertain operations cannot dispatch in a clone"
+    },
+    {
+      "id": "IMAGE-TRANSPORT-BOUND",
+      "owner": "BAZ-059",
+      "file": "apps/daemon/test/lib/image-generation.test.ts",
+      "test": "bounded transport refuses another origin/path, redirects, oversized headers and streaming growth"
+    },
+    {
+      "id": "IMAGE-RESTRICTED-CAPABILITY-DENIED",
+      "owner": "BAZ-059",
+      "file": "apps/daemon/test/runtime/worker-runtime.test.ts",
+      "test": "minimal worker runtime > image generation cannot widen any restricted worker through input or host injection"
+    },
+    {
+      "id": "IMAGE-NO-MODEL-INITIATED-UNCERTAIN-RETRY",
+      "owner": "BAZ-059",
+      "file": "apps/daemon/test/lib/image-generation.test.ts",
+      "test": "an uncertain request also blocks model-initiated retries with a fresh tool-call ID"
+    },
+    {
+      "id": "IMAGE-EXPLICIT-BILLING-CREDENTIAL-ROUTE",
+      "owner": "BAZ-059",
+      "file": "apps/daemon/test/lib/image-transports.test.ts",
+      "test": "direct image routes select credentials explicitly with no API-key or subscription fallback"
+    },
+    {
+      "id": "IMAGE-CODEX-REFRESH-NO-KEY-FALLBACK",
+      "owner": "BAZ-059",
+      "file": "apps/daemon/test/lib/image-generation.test.ts",
+      "test": "Codex credential refresh failure is actionable, private and cannot fall back to an API key"
+    },
+    {
+      "id": "IMAGE-CODEX-LATE-REFRESH-NO-DISPATCH",
+      "owner": "BAZ-059",
+      "file": "apps/daemon/test/lib/image-generation.test.ts",
+      "test": "cancelling a shared Codex credential refresh prevents late image dispatch"
+    },
+    {
+      "id": "IMAGE-CODEX-TRUNCATED-REFUSED",
+      "owner": "BAZ-059",
+      "file": "apps/daemon/test/lib/image-transports.test.ts",
+      "test": "Codex image stream fails closed on truncated"
+    },
+    {
+      "id": "IMAGE-CODEX-STALE-DONE-REFUSED",
+      "owner": "BAZ-059",
+      "file": "apps/daemon/test/lib/image-transports.test.ts",
+      "test": "Codex image stream fails closed on empty final overrides earlier image"
+    },
+    {
+      "id": "IMAGE-DIRECT-NO-URL-FETCH",
+      "owner": "BAZ-059",
+      "file": "apps/daemon/test/lib/image-transports.test.ts",
+      "test": "direct OpenAI never downloads provider-returned URLs"
+    },
+    {
+      "id": "IMAGE-AUTO-TEXT-ENABLEMENT-ONLY",
+      "owner": "BAZ-059",
+      "file": "apps/daemon/test/lib/image-transports.test.ts",
+      "test": "automatic image selection follows enabled text providers, not stored credentials or failures"
+    },
+    {
+      "id": "IMAGE-AUTO-ADMITTED-ROUTE-IMMUTABLE",
+      "owner": "BAZ-059",
+      "file": "apps/daemon/test/lib/image-generation.test.ts",
+      "test": "automatic text enablement switches future image calls but never rewrites an admitted route or replays it"
+    },
+    {
+      "id": "IMAGE-AUTO-REFRESH-ENABLEMENT-DRIFT",
+      "owner": "BAZ-059",
+      "file": "apps/daemon/test/lib/image-generation.test.ts",
+      "test": "automatic routing refuses dispatch when text enablement changes during OAuth refresh"
+    },
+    {
+      "id": "IMAGE-AUTO-NO-UNCERTAIN-REROUTE",
+      "owner": "BAZ-059",
+      "file": "apps/daemon/test/lib/image-generation.test.ts",
+      "test": "automatic routing never retries an uncertain operation through a newly enabled text provider"
+    },
+    {
+      "id": "IMAGE-SIGKILL-BEFORE-PROVIDER-ACK",
+      "owner": "BAZ-059",
+      "file": "apps/cli/test/image-crash.test.ts",
+      "test": "real daemon SIGKILL at before_provider_ack preserves image intent without replay or private disclosure"
+    },
+    {
+      "id": "IMAGE-SIGKILL-AFTER-CAPTURE",
+      "owner": "BAZ-059",
+      "file": "apps/cli/test/image-crash.test.ts",
+      "test": "real daemon SIGKILL at after_capture preserves image intent without replay or private disclosure"
     }
   ]
 }

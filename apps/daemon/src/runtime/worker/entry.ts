@@ -302,6 +302,29 @@ async function createSessionForInput(
     !input.repositoryContext
   )
     throw new Error('Coding turn requires daemon-prepared repository context')
+  const imageGenerationHost =
+    (input.kind === 'configured_operator_http' || input.kind === 'protected') &&
+    input.imageGenerationEnabled
+      ? {
+          generate: async (request: import('@bazilion/api-types').ImageGenerationInput) => {
+            const output = await ipcCall<import('@bazilion/api-types').ImageGenerationOutput>(
+              'generateImages',
+              request,
+            )
+            for (const file of output.files)
+              emit({ kind: 'event', event: { type: 'file', ...file } })
+            return output
+          },
+        }
+      : undefined
+  const webSearchHost =
+    (input.kind === 'configured_operator_http' || input.kind === 'protected') &&
+    input.webSearchEnabled
+      ? {
+          search: async (args: import('./ipc-protocol.ts').WebSearchArgs) =>
+            ipcCall<import('./ipc-protocol.ts').WebSearchOutput>('webSearch', args),
+        }
+      : undefined
   if (input.kind === 'configured_operator_http') {
     const paths = resolvePaths()
     const memory = qmdBackend(`${input.agent.team.path}/memory`)
@@ -341,6 +364,7 @@ async function createSessionForInput(
       // worker kind reaches this builder, and it is an ordinary coding turn.
       verificationRequestHost: createIpcVerificationRequestHost(ipcCall),
       reviewRequestHost: createIpcReviewRequestHost(ipcCall),
+      imageGenerationHost,
       apiKey: input.apiKey,
       refreshApiKey,
       browserHost,
@@ -424,6 +448,8 @@ async function createSessionForInput(
     repositoryContext: input.repositoryContext,
     repositoryContextHost: (target) => ipcCall('repositoryContext', { target }),
     codingHost: { invoke: (request) => ipcCall('coding', request) },
+    imageGenerationHost,
+    webSearchHost,
     runtime: input.runtime,
     paths: input.paths,
     scratch: input.scratch,
@@ -580,6 +606,11 @@ async function main(): Promise<void> {
       process.disconnect?.()
     } catch {}
   }
+  // The turn is complete: session disposed, IPC disconnected. Some underlying
+  // handle (native store/provider socket) can otherwise keep this process alive
+  // for tens of seconds after its work is done, holding the Team workspace
+  // lease and blocking every interleaved turn on it. Exit explicitly instead.
+  process.exit(process.exitCode ?? 0)
 }
 
 main().catch((error) => {

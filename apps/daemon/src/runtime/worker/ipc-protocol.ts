@@ -24,6 +24,7 @@ import type { ToolResultPart } from '../tools/types.ts'
 export type RpcMethod =
   | 'coding'
   | 'repositoryContext'
+  | 'webSearch'
   | 'containerBeforeCreate'
   | 'containerAfterCreate'
   | 'containerAfterRemove'
@@ -50,6 +51,7 @@ export type RpcMethod =
   | 'refreshApiKey'
   | 'bashApproval'
   | 'publishResult'
+  | 'generateImages'
 
 export interface AgentExistsArgs {
   agentId: string
@@ -167,6 +169,27 @@ export interface InjectedMcpTool {
 
 export type PublishResultArgs = import('@bazilion/api-types').ResultPublicationInput
 
+export interface ImageGenerationHost {
+  generate(
+    input: import('@bazilion/api-types').ImageGenerationInput,
+  ): Promise<import('@bazilion/api-types').ImageGenerationOutput>
+}
+
+export interface WebSearchArgs {
+  query: string
+  count?: number
+}
+
+export interface WebSearchOutput {
+  results: Array<{ title: string; url: string; snippet: string }>
+  backend: string
+}
+
+/** BAZ-067: the worker sees only bounded results; the backend URL stays daemon-side. */
+export interface WebSearchHost {
+  search(args: WebSearchArgs): Promise<WebSearchOutput>
+}
+
 export interface ResultHost {
   publish(input: PublishResultArgs): Promise<import('@bazilion/api-types').ResultReference>
 }
@@ -184,6 +207,8 @@ export type RpcArgs =
       args: { toolCallId: string; question: import('@bazilion/api-types').AgentQuestionInput }
     }
   | { method: 'publishResult'; args: PublishResultArgs }
+  | { method: 'generateImages'; args: import('@bazilion/api-types').ImageGenerationInput }
+  | { method: 'webSearch'; args: WebSearchArgs }
   | { method: 'agentExists'; args: AgentExistsArgs }
   | { method: 'sendMessage'; args: SendMessageArgs }
   | { method: 'listInbox'; args: ListInboxArgs }
@@ -218,6 +243,8 @@ export type RpcArgs =
   | { method: 'bashApproval'; args: BashApprovalArgs }
 
 export type RpcResult =
+  | { method: 'generateImages'; value: import('@bazilion/api-types').ImageGenerationOutput }
+  | { method: 'webSearch'; value: WebSearchOutput }
   | { method: 'coding'; value: import('../pi/coding-contract.ts').CodingResponse }
   | {
       method: 'containerBeforeCreate' | 'containerAfterCreate' | 'containerAfterRemove'

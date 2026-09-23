@@ -24,6 +24,7 @@ import { bootstrapTool } from '../tools/bootstrap.ts'
 import { browserTools } from '../tools/browser.ts'
 import { deliverFileTool, type FileSink } from '../tools/deliver-file.ts'
 import { homeTools } from '../tools/home.ts'
+import { imageGenerateTool } from '../tools/image-generate.ts'
 import { mcpProxyTools } from '../tools/mcp.ts'
 import { memoryTools } from '../tools/memory.ts'
 import { messagingTools } from '../tools/messaging.ts'
@@ -31,7 +32,7 @@ import { type ReviewRequestHost, reviewRequestTool } from '../tools/review.ts'
 import type { ToolHandler, ToolOutput } from '../tools/types.ts'
 import { userMdTools } from '../tools/user-md.ts'
 import { type VerificationRequestHost, verificationRequestTool } from '../tools/verification.ts'
-import { protectedWebFetchTool, webTools } from '../tools/web.ts'
+import { protectedWebFetchTool, protectedWebSearchTool, webTools } from '../tools/web.ts'
 import type {
   BrowserHost,
   InjectedMcpTool,
@@ -63,7 +64,9 @@ export function ourToolToPiTool(h: ToolHandler): ToolDefinition {
           typeof out === 'object' && !Array.isArray(out)
             ? 'result' in out
               ? { result: out.result }
-              : { questionReceipt: out.questionReceipt }
+              : 'results' in out
+                ? { results: out.results }
+                : { questionReceipt: out.questionReceipt }
             : {},
       }
     },
@@ -103,6 +106,7 @@ export interface BazilionCustomToolsOpts {
   /** If provided, enables the `deliver_file` tool (emits a `file` event). */
   sessionId?: string
   fileSink?: FileSink
+  imageGenerationHost?: import('../worker/ipc-protocol.ts').ImageGenerationHost
   /** Merged env (process.env + secrets). */
   env?: NodeJS.ProcessEnv
   /** BAZ-044: present only in an ordinary coding turn, and only when the daemon bound it. */
@@ -119,6 +123,9 @@ export interface ProtectedBazilionCustomToolsOpts {
   userMdHost: UserMdHost
   sessionId?: string
   fileSink: FileSink
+  imageGenerationHost?: import('../worker/ipc-protocol.ts').ImageGenerationHost
+  /** BAZ-067: present only when the operator configured discovery. */
+  webSearchHost?: import('../worker/ipc-protocol.ts').WebSearchHost
   /** BAZ-044: present only in an ordinary protected coding turn. */
   verificationRequestHost?: VerificationRequestHost
   /** BAZ-043: present only in an ordinary protected coding turn. */
@@ -157,6 +164,14 @@ export function createBazilionCustomTools(opts: BazilionCustomToolsOpts): ToolDe
   if (opts.fileSink) {
     handlers.push(deliverFileTool(opts.agent.team.path, opts.fileSink, opts.sessionId))
   }
+  if (opts.imageGenerationHost) {
+    handlers.push(
+      imageGenerateTool(
+        opts.imageGenerationHost.generate.bind(opts.imageGenerationHost),
+        opts.sessionId ?? '',
+      ),
+    )
+  }
   if (opts.verificationRequestHost) {
     // The requester's half of specialist verification. It asks; it never approves or executes.
     handlers.push(verificationRequestTool(opts.verificationRequestHost))
@@ -182,10 +197,29 @@ export function createProtectedBazilionCustomTools(
     ...homeTools(opts.agent.agent.dir),
     bootstrapTool(opts.agent.agent.dir),
     protectedWebFetchTool(),
+    ...(opts.webSearchHost
+      ? [
+          protectedWebSearchTool({
+            search: (args) => {
+              const host = opts.webSearchHost
+              if (!host) throw new Error('web search host disappeared mid-turn')
+              return host.search(args)
+            },
+          }),
+        ]
+      : []),
     ...messagingTools(opts.messagingHost, opts.agent.agent.id),
     ...userMdTools(opts.userMdHost, opts.agent.team.id),
     deliverFileTool(opts.agent.team.path, opts.fileSink, opts.sessionId),
   ]
+  if (opts.imageGenerationHost) {
+    handlers.push(
+      imageGenerateTool(
+        opts.imageGenerationHost.generate.bind(opts.imageGenerationHost),
+        opts.sessionId ?? '',
+      ),
+    )
+  }
   if (opts.verificationRequestHost) {
     // The requester's half of specialist verification. It asks; it never approves or executes.
     handlers.push(verificationRequestTool(opts.verificationRequestHost))
