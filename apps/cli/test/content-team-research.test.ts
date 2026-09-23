@@ -21,6 +21,9 @@ const recipe = join(import.meta.dirname, '../../../examples/content-team')
 const templatePath = join(recipe, 'team-template.json')
 const roles = ['coordinator', 'researcher', 'writer', 'designer'] as const
 const docker = process.env.BAZILION_TEST_DOCKER === '1'
+// Even a never-woken turn first delivers through an operator turn, whose
+// repository-context preparation is Linux-only until BAZ-057.
+const linux = process.platform === 'linux'
 const WAKE_MARKER = '[[bazilion:inbox-wake]]'
 
 // Public-shaped fixture page with an embedded injection attempt. Loopback
@@ -282,36 +285,39 @@ afterAll(async () => {
   searx.close()
 })
 
-test('dead protected runtime: delegation is delivered but never wakes the specialist', async () => {
-  const brief = 'Please retrieve the orchid page and summarize it.'
-  mock.setFallback(
-    router([delegateCall(agentId(lockedAgents, 'researcher'), brief), reply('Delegated.')], []),
-  )
-  const chat = await locked.cli([
-    'agent',
-    'chat',
-    agentId(lockedAgents, 'coordinator'),
-    '--message',
-    'Start the current cycle.',
-  ])
-  expect(chat.exitCode, chat.stderr).toBe(0)
-  const callsAfterChat = mock.callCount()
-  expect(callsAfterChat).toBe(2)
+test.skipIf(!linux)(
+  'dead protected runtime: delegation is delivered but never wakes the specialist',
+  async () => {
+    const brief = 'Please retrieve the orchid page and summarize it.'
+    mock.setFallback(
+      router([delegateCall(agentId(lockedAgents, 'researcher'), brief), reply('Delegated.')], []),
+    )
+    const chat = await locked.cli([
+      'agent',
+      'chat',
+      agentId(lockedAgents, 'coordinator'),
+      '--message',
+      'Start the current cycle.',
+    ])
+    expect(chat.exitCode, chat.stderr).toBe(0)
+    const callsAfterChat = mock.callCount()
+    expect(callsAfterChat).toBe(2)
 
-  // Several fast ticks: the researcher wake must refuse at protected preflight
-  // before any provider use, and the message must stay unread.
-  await new Promise((r) => setTimeout(r, 1_200))
-  expect(mock.callCount()).toBe(callsAfterChat)
-  expect(pageHits).toHaveLength(0)
-  const inbox = await api<ListInboxResponse>(
-    locked,
-    `/api/agents/${agentId(lockedAgents, 'researcher')}/messages`,
-  )
-  const delegated = inbox.messages.find(
-    (m: Message) => m.fromAgentId === agentId(lockedAgents, 'coordinator'),
-  )
-  expect(delegated?.readAt).toBeNull()
-})
+    // Several fast ticks: the researcher wake must refuse at protected preflight
+    // before any provider use, and the message must stay unread.
+    await new Promise((r) => setTimeout(r, 1_200))
+    expect(mock.callCount()).toBe(callsAfterChat)
+    expect(pageHits).toHaveLength(0)
+    const inbox = await api<ListInboxResponse>(
+      locked,
+      `/api/agents/${agentId(lockedAgents, 'researcher')}/messages`,
+    )
+    const delegated = inbox.messages.find(
+      (m: Message) => m.fromAgentId === agentId(lockedAgents, 'coordinator'),
+    )
+    expect(delegated?.readAt).toBeNull()
+  },
+)
 
 test.runIf(docker)(
   'researcher wake runs protected: private fetch refused, cross-specialist send denied',
