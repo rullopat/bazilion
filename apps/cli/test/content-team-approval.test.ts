@@ -12,6 +12,8 @@ import { startTestServer, type TestServer } from './server-fixture.ts'
 // counted; Results are retained per call) — not model judgment about approval.
 // That judgment is observed in the L lane (BAZ-066). Nothing is published.
 const recipe = join(import.meta.dirname, '../../../examples/content-team')
+// Real Agent turns are Linux-only until BAZ-057 (safe_reads_unavailable).
+const linux = process.platform === 'linux'
 const roles = ['coordinator', 'researcher', 'writer', 'designer'] as const
 const directory = mkdtempSync(join(tmpdir(), 'baz064-approval-'))
 const callsFile = join(directory, 'image-calls.jsonl')
@@ -146,65 +148,71 @@ async function results(): Promise<ResultListResponse> {
   return (await response.json()) as ResultListResponse
 }
 
-test('zero image calls while drafting; generation only on the approval turn', async () => {
-  // Turn 1: draft text and visual concept only.
-  mock.push([reply('DRAFT_V1: orchid-care post text plus a visual concept description.')])
-  const draft = await chat('Here is the confirmed brief; draft the post.')
-  expect(draft).toContain('DRAFT_V1')
-  expect(imageCalls()).toEqual([])
+test.skipIf(!linux)(
+  'zero image calls while drafting; generation only on the approval turn',
+  async () => {
+    // Turn 1: draft text and visual concept only.
+    mock.push([reply('DRAFT_V1: orchid-care post text plus a visual concept description.')])
+    const draft = await chat('Here is the confirmed brief; draft the post.')
+    expect(draft).toContain('DRAFT_V1')
+    expect(imageCalls()).toEqual([])
 
-  // Turn 2: the operator's approval message; the model generates exactly once.
-  mock.push([
-    toolCall('image_generate', { prompt: 'Orchid illustration v1', name: 'orchid-v1' }),
-    reply('IMAGE_V1_GENERATED_AND_PRESENTED'),
-  ])
-  const generated = await chat('Text and concept approved as-is; generate the image.')
-  expect(generated).toContain('IMAGE_V1_GENERATED')
-  const calls = imageCalls()
-  expect(calls).toHaveLength(1)
-  expect(calls[0]).toMatchObject({ route: 'openrouter', model: 'google/gemini-3.1-flash-image' })
-  expect(calls[0]?.prompt).toContain('Orchid illustration v1')
+    // Turn 2: the operator's approval message; the model generates exactly once.
+    mock.push([
+      toolCall('image_generate', { prompt: 'Orchid illustration v1', name: 'orchid-v1' }),
+      reply('IMAGE_V1_GENERATED_AND_PRESENTED'),
+    ])
+    const generated = await chat('Text and concept approved as-is; generate the image.')
+    expect(generated).toContain('IMAGE_V1_GENERATED')
+    const calls = imageCalls()
+    expect(calls).toHaveLength(1)
+    expect(calls[0]).toMatchObject({ route: 'openrouter', model: 'google/gemini-3.1-flash-image' })
+    expect(calls[0]?.prompt).toContain('Orchid illustration v1')
 
-  const list = await results()
-  expect(list.results).toHaveLength(1)
-  const image = list.results[0]
-  expect(image?.imageModel).toBeTruthy()
-  expect(image?.mimeType).toBe('image/png')
-  expect(image?.byteLength).toBeGreaterThan(0)
-  expect(image?.sha256).toMatch(/^[0-9a-f]{64}$/)
-})
+    const list = await results()
+    expect(list.results).toHaveLength(1)
+    const image = list.results[0]
+    expect(image?.imageModel).toBeTruthy()
+    expect(image?.mimeType).toBe('image/png')
+    expect(image?.byteLength).toBeGreaterThan(0)
+    expect(image?.sha256).toMatch(/^[0-9a-f]{64}$/)
+  },
+)
 
-test('text-only correction does not regenerate; explicit rework is a new retained Result', async () => {
-  // Turn 3: text-only edit after the image exists.
-  mock.push([reply('DRAFT_V2: corrected one claim; image unchanged.')])
-  const edited = await chat('Small wording correction, keep the image.')
-  expect(edited).toContain('DRAFT_V2')
-  expect(imageCalls()).toHaveLength(1)
+test.skipIf(!linux)(
+  'text-only correction does not regenerate; explicit rework is a new retained Result',
+  async () => {
+    // Turn 3: text-only edit after the image exists.
+    mock.push([reply('DRAFT_V2: corrected one claim; image unchanged.')])
+    const edited = await chat('Small wording correction, keep the image.')
+    expect(edited).toContain('DRAFT_V2')
+    expect(imageCalls()).toHaveLength(1)
 
-  // Turn 4: explicit rework approval; a new generation, new Result.
-  mock.push([
-    toolCall('image_generate', {
-      prompt: 'Orchid illustration v2 with the requested rework',
-      name: 'orchid-v2',
-    }),
-    reply('IMAGE_V2_GENERATED_AND_PRESENTED'),
-  ])
-  const reworked = await chat('Approved; rework the image with this change.')
-  expect(reworked).toContain('IMAGE_V2_GENERATED')
-  const calls = imageCalls()
-  expect(calls).toHaveLength(2)
-  expect(calls[1]?.prompt).toContain('v2')
+    // Turn 4: explicit rework approval; a new generation, new Result.
+    mock.push([
+      toolCall('image_generate', {
+        prompt: 'Orchid illustration v2 with the requested rework',
+        name: 'orchid-v2',
+      }),
+      reply('IMAGE_V2_GENERATED_AND_PRESENTED'),
+    ])
+    const reworked = await chat('Approved; rework the image with this change.')
+    expect(reworked).toContain('IMAGE_V2_GENERATED')
+    const calls = imageCalls()
+    expect(calls).toHaveLength(2)
+    expect(calls[1]?.prompt).toContain('v2')
 
-  const list = await results()
-  expect(list.results).toHaveLength(2)
-  expect(list.results.map((result) => result.name).sort()).toEqual([
-    'orchid-v1.png',
-    'orchid-v2.png',
-  ])
-  // The fixture returns identical bytes, so equal hashes are expected; what
-  // matters is that both generations were separately captured and retained.
-  expect(list.results.every((result) => result.imageModel && result.byteLength > 0)).toBe(true)
-})
+    const list = await results()
+    expect(list.results).toHaveLength(2)
+    expect(list.results.map((result) => result.name).sort()).toEqual([
+      'orchid-v1.png',
+      'orchid-v2.png',
+    ])
+    // The fixture returns identical bytes, so equal hashes are expected; what
+    // matters is that both generations were separately captured and retained.
+    expect(list.results.every((result) => result.imageModel && result.byteLength > 0)).toBe(true)
+  },
+)
 
 async function download(resultId: string): Promise<Buffer> {
   const response = await fetch(`${server.url}/api/results/${resultId}/download`, {
@@ -214,73 +222,89 @@ async function download(resultId: string): Promise<Buffer> {
   return Buffer.from(await response.arrayBuffer())
 }
 
-test('manual handoff delivers the exact approved file through the authorizer', async () => {
-  const handoff = [
-    '# Mastodon handoff — cycle 1',
-    '',
-    'Copy-ready text (approved DRAFT_V2):',
-    'Orchids thrive on neglect and indirect light. #orchids',
-    '',
-    'Image: orchid-v2 (approved rework) — attach from the saved Result.',
-    'Alt text (verify visually before posting): potted orchid on a windowsill.',
-    'Sources: operator-supplied facts; no external claims retained.',
-    'Intended time: manually chosen by the operator; Bazilion does not post.',
-    'Composer steps: open the server, paste text, attach image, fill alt text, review, then stop.',
-  ].join('\n')
-  mock.push([
-    toolCall('write', { path: 'handoff-cycle-1.md', content: handoff }),
-    reply('HANDOFF_WRITTEN'),
-  ])
-  const written = await chat('Write the handoff file.')
-  expect(written).toContain('HANDOFF_WRITTEN')
+test.skipIf(!linux)(
+  'manual handoff delivers the exact approved file through the authorizer',
+  async () => {
+    const handoff = [
+      '# Mastodon handoff — cycle 1',
+      '',
+      'Copy-ready text (approved DRAFT_V2):',
+      'Orchids thrive on neglect and indirect light. #orchids',
+      '',
+      'Image: orchid-v2 (approved rework) — attach from the saved Result.',
+      'Alt text (verify visually before posting): potted orchid on a windowsill.',
+      'Sources: operator-supplied facts; no external claims retained.',
+      'Intended time: manually chosen by the operator; Bazilion does not post.',
+      'Composer steps: open the server, paste text, attach image, fill alt text, review, then stop.',
+    ].join('\n')
+    mock.push([
+      toolCall('write', { path: 'handoff-cycle-1.md', content: handoff }),
+      reply('HANDOFF_WRITTEN'),
+    ])
+    const written = await chat('Write the handoff file.')
+    expect(written).toContain('HANDOFF_WRITTEN')
 
-  mock.push([toolCall('deliver_file', { path: 'handoff-cycle-1.md' }), reply('HANDOFF_DELIVERED')])
-  const delivered = await chat('Deliver it to me.')
-  expect(delivered).toContain('HANDOFF_DELIVERED')
+    mock.push([
+      toolCall('deliver_file', { path: 'handoff-cycle-1.md' }),
+      reply('HANDOFF_DELIVERED'),
+    ])
+    const delivered = await chat('Deliver it to me.')
+    expect(delivered).toContain('HANDOFF_DELIVERED')
 
-  const list = await results()
-  const handoffResult = list.results.find((result) => result.name === 'handoff-cycle-1.md')
-  if (!handoffResult) throw new Error('handoff Result was not retained')
-  const bytes = await download(handoffResult.id)
-  expect(bytes.toString('utf8')).toBe(handoff)
-  // The handoff flow itself made no image call; generation count stays at 2.
-  expect(imageCalls()).toHaveLength(2)
-}, 30_000)
+    const list = await results()
+    const handoffResult = list.results.find((result) => result.name === 'handoff-cycle-1.md')
+    if (!handoffResult) throw new Error('handoff Result was not retained')
+    const bytes = await download(handoffResult.id)
+    expect(bytes.toString('utf8')).toBe(handoff)
+    // The handoff flow itself made no image call; generation count stays at 2.
+    expect(imageCalls()).toHaveLength(2)
+  },
+  30_000,
+)
 
-test('CT-14: a selected route without credentials fails honestly with no billing fallback', async () => {
-  // Switch the selection to the OpenAI API-key route; this daemon has no
-  // OPENAI_API_KEY, so the request must fail before any provider call —
-  // without falling back to the enabled OpenRouter route.
-  const switched = await server.cli(['config', 'set', 'BAZILION_IMAGE_MODEL', 'openai:gpt-image-2'])
-  expect(switched.exitCode).toBe(0)
-  const before = imageCalls().length
+test.skipIf(!linux)(
+  'CT-14: a selected route without credentials fails honestly with no billing fallback',
+  async () => {
+    // Switch the selection to the OpenAI API-key route; this daemon has no
+    // OPENAI_API_KEY, so the request must fail before any provider call —
+    // without falling back to the enabled OpenRouter route.
+    const switched = await server.cli([
+      'config',
+      'set',
+      'BAZILION_IMAGE_MODEL',
+      'openai:gpt-image-2',
+    ])
+    expect(switched.exitCode).toBe(0)
+    const before = imageCalls().length
 
-  mock.push([
-    toolCall('image_generate', {
-      prompt: 'Orchid illustration via the wrong route',
-      name: 'orchid-wrong-route',
-    }),
-    reply('ROUTE_FAILURE_SURFACED'),
-  ])
-  const failed = await chat('Approved; generate via the OpenAI route.')
-  expect(failed).toContain('ROUTE_FAILURE_SURFACED')
-  // The OpenRouter route must not have been used as a fallback.
-  expect(imageCalls().length).toBe(before)
+    mock.push([
+      toolCall('image_generate', {
+        prompt: 'Orchid illustration via the wrong route',
+        name: 'orchid-wrong-route',
+      }),
+      reply('ROUTE_FAILURE_SURFACED'),
+    ])
+    const failed = await chat('Approved; generate via the OpenAI route.')
+    expect(failed).toContain('ROUTE_FAILURE_SURFACED')
+    // The OpenRouter route must not have been used as a fallback.
+    expect(imageCalls().length).toBe(before)
 
-  // Restoring the selection makes the next approved generation work again.
-  const restored = await server.cli([
-    'config',
-    'set',
-    'BAZILION_IMAGE_MODEL',
-    'google/gemini-3.1-flash-image',
-  ])
-  expect(restored.exitCode).toBe(0)
-  mock.push([
-    toolCall('image_generate', { prompt: 'Orchid illustration v3', name: 'orchid-v3' }),
-    reply('IMAGE_V3_GENERATED'),
-  ])
-  const recovered = await chat('Approved; generate via the usual route.')
-  expect(recovered).toContain('IMAGE_V3_GENERATED')
-  expect(imageCalls().length).toBe(before + 1)
-  expect(imageCalls().every((call) => call.route === 'openrouter')).toBe(true)
-}, 60_000)
+    // Restoring the selection makes the next approved generation work again.
+    const restored = await server.cli([
+      'config',
+      'set',
+      'BAZILION_IMAGE_MODEL',
+      'google/gemini-3.1-flash-image',
+    ])
+    expect(restored.exitCode).toBe(0)
+    mock.push([
+      toolCall('image_generate', { prompt: 'Orchid illustration v3', name: 'orchid-v3' }),
+      reply('IMAGE_V3_GENERATED'),
+    ])
+    const recovered = await chat('Approved; generate via the usual route.')
+    expect(recovered).toContain('IMAGE_V3_GENERATED')
+    expect(imageCalls().length).toBe(before + 1)
+    expect(imageCalls().every((call) => call.route === 'openrouter')).toBe(true)
+  },
+  60_000,
+)

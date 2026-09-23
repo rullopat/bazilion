@@ -9,6 +9,8 @@ import { restartTestServer, startTestServer, type TestServer } from './server-fi
 // isolation observable (results, messaging, no cross-Team delivery). This is
 // plumbing evidence for recipe reuse, not model judgment about topics.
 const recipe = join(import.meta.dirname, '../../../examples/content-team')
+// Real Agent turns are Linux-only until BAZ-057 (safe_reads_unavailable).
+const linux = process.platform === 'linux'
 const roles = ['coordinator', 'researcher', 'writer', 'designer'] as const
 
 let mock: MockLlm
@@ -145,45 +147,51 @@ async function runCycle(team: (typeof teams)[number]): Promise<void> {
   await chat(agent(team, 'coordinator'), 'Deliver it.')
 }
 
-test('two Teams reuse the recipe with isolated briefs, results and messaging', async () => {
-  await runCycle('content-a')
-  await runCycle('content-b')
+test.skipIf(!linux)(
+  'two Teams reuse the recipe with isolated briefs, results and messaging',
+  async () => {
+    await runCycle('content-a')
+    await runCycle('content-b')
 
-  const a = await results('content-a')
-  const b = await results('content-b')
-  expect(a.results.map((r) => r.name)).toEqual([briefs['content-a'].file])
-  expect(b.results.map((r) => r.name)).toEqual([briefs['content-b'].file])
+    const a = await results('content-a')
+    const b = await results('content-b')
+    expect(a.results.map((r) => r.name)).toEqual([briefs['content-a'].file])
+    expect(b.results.map((r) => r.name)).toEqual([briefs['content-b'].file])
 
-  // Cross-Team delivery through the operator route stays denied both ways.
-  for (const [from, to] of [
-    [agent('content-a', 'coordinator'), agent('content-b', 'researcher')],
-    [agent('content-b', 'researcher'), agent('content-a', 'coordinator')],
-  ]) {
-    const denied = await fetch(`${server.url}/api/agents/${to}/messages`, {
-      method: 'POST',
-      headers: { authorization: `Bearer ${server.token}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ from, payload: { text: 'Cross-team handoff attempt.' } }),
-    })
-    expect(denied.status).toBe(403)
-  }
-})
+    // Cross-Team delivery through the operator route stays denied both ways.
+    for (const [from, to] of [
+      [agent('content-a', 'coordinator'), agent('content-b', 'researcher')],
+      [agent('content-b', 'researcher'), agent('content-a', 'coordinator')],
+    ]) {
+      const denied = await fetch(`${server.url}/api/agents/${to}/messages`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${server.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ from, payload: { text: 'Cross-team handoff attempt.' } }),
+      })
+      expect(denied.status).toBe(403)
+    }
+  },
+)
 
-test('both Teams handoffs survive a daemon restart with identical hashes', async () => {
-  const before = new Map<string, string>()
-  for (const team of teams) {
-    const list = await results(team)
-    for (const result of list.results) before.set(result.id, result.sha256)
-  }
-  expect(before.size).toBe(2)
+test.skipIf(!linux)(
+  'both Teams handoffs survive a daemon restart with identical hashes',
+  async () => {
+    const before = new Map<string, string>()
+    for (const team of teams) {
+      const list = await results(team)
+      for (const result of list.results) before.set(result.id, result.sha256)
+    }
+    expect(before.size).toBe(2)
 
-  await server.stop({ keepHome: true })
-  server = await restartTestServer(server, daemonEnv)
+    await server.stop({ keepHome: true })
+    server = await restartTestServer(server, daemonEnv)
 
-  for (const team of teams) {
-    const list = await results(team)
-    expect(list.results).toHaveLength(1)
-    const result = list.results[0]
-    if (!result) throw new Error(`missing retained result for ${team}`)
-    expect(result.sha256).toBe(before.get(result.id))
-  }
-})
+    for (const team of teams) {
+      const list = await results(team)
+      expect(list.results).toHaveLength(1)
+      const result = list.results[0]
+      if (!result) throw new Error(`missing retained result for ${team}`)
+      expect(result.sha256).toBe(before.get(result.id))
+    }
+  },
+)

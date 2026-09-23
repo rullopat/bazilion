@@ -10,6 +10,8 @@ import { startTestServer, type TestServer } from './server-fixture.ts'
 // inbox), NOT model judgment, research quality or the composed CT acceptance journey.
 // Discovery stays blocked (BAZ-067); image generation stays off; nothing is published.
 const recipe = join(import.meta.dirname, '../../../examples/content-team')
+// Real Agent turns are Linux-only until BAZ-057 (safe_reads_unavailable).
+const linux = process.platform === 'linux'
 const templatePath = join(recipe, 'team-template.json')
 const roles = ['coordinator', 'researcher', 'writer', 'designer'] as const
 let mock: MockLlm
@@ -120,58 +122,67 @@ function finalReply(content: string) {
   }
 }
 
-test('a real coordinator turn delegates through policy into the researcher inbox', async () => {
-  const brief = 'Please research the confirmed topic and return source URLs.'
-  mock.push([
-    delegationCall(agentId('researcher'), brief),
-    finalReply('Delegated to the researcher.'),
-  ])
+test.skipIf(!linux)(
+  'a real coordinator turn delegates through policy into the researcher inbox',
+  async () => {
+    const brief = 'Please research the confirmed topic and return source URLs.'
+    mock.push([
+      delegationCall(agentId('researcher'), brief),
+      finalReply('Delegated to the researcher.'),
+    ])
 
-  const chat = await server.cli([
-    'agent',
-    'chat',
-    agentId('coordinator'),
-    '--message',
-    'Start the current cycle.',
-  ])
-  expect(chat.exitCode, chat.stderr).toBe(0)
-  expect(chat.stdout).toContain('Delegated to the researcher.')
+    const chat = await server.cli([
+      'agent',
+      'chat',
+      agentId('coordinator'),
+      '--message',
+      'Start the current cycle.',
+    ])
+    expect(chat.exitCode, chat.stderr).toBe(0)
+    expect(chat.stdout).toContain('Delegated to the researcher.')
 
-  const inbox = await api<ListInboxResponse>(`/api/agents/${agentId('researcher')}/messages`)
-  const delegated = inbox.messages.find(
-    (message: Message) => message.fromAgentId === agentId('coordinator'),
-  )
-  expect(delegated).toBeDefined()
-  expect(delegated?.toAgentId).toBe(agentId('researcher'))
-  expect(JSON.parse(delegated?.payload ?? '{}')).toMatchObject({ text: brief })
-  expect(delegated?.readAt).toBeNull()
+    const inbox = await api<ListInboxResponse>(`/api/agents/${agentId('researcher')}/messages`)
+    const delegated = inbox.messages.find(
+      (message: Message) => message.fromAgentId === agentId('coordinator'),
+    )
+    expect(delegated).toBeDefined()
+    expect(delegated?.toAgentId).toBe(agentId('researcher'))
+    expect(JSON.parse(delegated?.payload ?? '{}')).toMatchObject({ text: brief })
+    expect(delegated?.readAt).toBeNull()
 
-  // Scheduler/inbox auto-delivery is off: delivery must not itself start a
-  // researcher turn. Exactly two LLM responses were consumed, both the
-  // coordinator's; no research/image capability ran anywhere.
-  expect(mock.callCount()).toBe(2)
-})
+    // Scheduler/inbox auto-delivery is off: delivery must not itself start a
+    // researcher turn. Exactly two LLM responses were consumed, both the
+    // coordinator's; no research/image capability ran anywhere.
+    expect(mock.callCount()).toBe(2)
+  },
+)
 
-test('the operator HTTP message route cannot launder a specialist-to-specialist send', async () => {
-  const denied = await api<{ decision?: string; reasonCode?: string }>(
-    `/api/agents/${agentId('writer')}/messages`,
-    {
-      from: agentId('researcher'),
-      payload: { text: 'Skip the coordinator; work with me directly.' },
-    },
-    403,
-  )
-  expect(denied.decision).toBe('deny')
+test.skipIf(!linux)(
+  'the operator HTTP message route cannot launder a specialist-to-specialist send',
+  async () => {
+    const denied = await api<{ decision?: string; reasonCode?: string }>(
+      `/api/agents/${agentId('writer')}/messages`,
+      {
+        from: agentId('researcher'),
+        payload: { text: 'Skip the coordinator; work with me directly.' },
+      },
+      403,
+    )
+    expect(denied.decision).toBe('deny')
 
-  const inbox = await api<ListInboxResponse>(`/api/agents/${agentId('writer')}/messages`)
-  expect(inbox.messages).toHaveLength(0)
-  expect(mock.callCount()).toBe(2)
-})
+    const inbox = await api<ListInboxResponse>(`/api/agents/${agentId('writer')}/messages`)
+    expect(inbox.messages).toHaveLength(0)
+    expect(mock.callCount()).toBe(2)
+  },
+)
 
-test('the canned model never touched image generation, search or publishing tools', async () => {
-  // Structural: the fixture exposes no image/search/publish endpoint to call, and
-  // the recorded LLM calls are the only provider requests in the whole suite.
-  expect(mock.callCount()).toBe(2)
-  expect(agents.size).toBe(4)
-  expect(readFileSync(join(recipe, 'team-template.json'), 'utf8')).not.toContain('image_generate')
-})
+test.skipIf(!linux)(
+  'the canned model never touched image generation, search or publishing tools',
+  async () => {
+    // Structural: the fixture exposes no image/search/publish endpoint to call, and
+    // the recorded LLM calls are the only provider requests in the whole suite.
+    expect(mock.callCount()).toBe(2)
+    expect(agents.size).toBe(4)
+    expect(readFileSync(join(recipe, 'team-template.json'), 'utf8')).not.toContain('image_generate')
+  },
+)
