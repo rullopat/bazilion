@@ -1,0 +1,105 @@
+{
+  "version": 1,
+  "kind": "bazilion.team-template",
+  "template": {
+    "id": "content-preparation",
+    "name": "Content preparation — manual Mastodon handoff",
+    "userMd": "# Content preparation\n\nThis Team prepares Mastodon content for human review and manual handoff only. The coordinator is the user's contact. Topic, purpose, audience and timing must be confirmed before work; no brief or usage grant is prefilled. Store project briefs in Team memory, not as invented user preferences. No social credentials, posting, recurring triggers or automatic approval are authorized by creating this Team. The operator must supply the current same-Team role UUIDs from the canonical roster before delegation. Native web_search is currently absent in protected peer/scheduled turns: report the discovery blocker, never silently switch posture or call supplied-URL retrieval a search.\n"
+  },
+  "slots": [
+    {
+      "key": "coordinator",
+      "profileId": "content-coordinator",
+      "agentName": "Content Coordinator",
+      "modelOverride": null,
+      "reasoningLevel": null,
+      "layoutPosition": { "x": 0, "y": 0 },
+      "display": null
+    },
+    {
+      "key": "researcher",
+      "profileId": "content-researcher",
+      "agentName": "Content Researcher",
+      "modelOverride": null,
+      "reasoningLevel": null,
+      "layoutPosition": { "x": 240, "y": -160 },
+      "display": null
+    },
+    {
+      "key": "writer",
+      "profileId": "content-writer",
+      "agentName": "Content Writer",
+      "modelOverride": null,
+      "reasoningLevel": null,
+      "layoutPosition": { "x": 240, "y": 0 },
+      "display": null
+    },
+    {
+      "key": "designer",
+      "profileId": "content-designer",
+      "agentName": "Content Designer",
+      "modelOverride": null,
+      "reasoningLevel": null,
+      "layoutPosition": { "x": 240, "y": 160 },
+      "display": null
+    }
+  ],
+  "edges": [
+    {
+      "sourceKind": "user",
+      "sourceKey": null,
+      "targetKind": "slot",
+      "targetKey": "coordinator",
+      "posture": "allow"
+    },
+    {
+      "sourceKind": "slot",
+      "sourceKey": "coordinator",
+      "targetKind": "user",
+      "targetKey": null,
+      "posture": "allow"
+    },
+    {
+      "sourceKind": "slot",
+      "sourceKey": "coordinator",
+      "targetKind": "slot",
+      "targetKey": "researcher",
+      "posture": "allow"
+    },
+    {
+      "sourceKind": "slot",
+      "sourceKey": "researcher",
+      "targetKind": "slot",
+      "targetKey": "coordinator",
+      "posture": "allow"
+    },
+    {
+      "sourceKind": "slot",
+      "sourceKey": "coordinator",
+      "targetKind": "slot",
+      "targetKey": "writer",
+      "posture": "allow"
+    },
+    {
+      "sourceKind": "slot",
+      "sourceKey": "writer",
+      "targetKind": "slot",
+      "targetKey": "coordinator",
+      "posture": "allow"
+    },
+    {
+      "sourceKind": "slot",
+      "sourceKey": "coordinator",
+      "targetKind": "slot",
+      "targetKey": "designer",
+      "posture": "allow"
+    },
+    {
+      "sourceKind": "slot",
+      "sourceKey": "designer",
+      "targetKind": "slot",
+      "targetKey": "coordinator",
+      "posture": "allow"
+    }
+  ]
+}

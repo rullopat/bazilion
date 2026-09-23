@@ -47,6 +47,11 @@ per-table `SELECT COUNT(*)` on the tables named below.
   the conversation record the product exists to keep. Structural retention and
   cold-archiving are deliberately deferred (BAZ-048, post-1.0); today the honest
   guidance is: the database grows with use, and a full backup (`bazilion backup create`) is the way to snapshot it.
+- **Image generation receipts** (`image_generations`, BAZ-059): at most four admissions per turn,
+  with bounded identities, request digest, selected model and reported usage — never prompts or
+  image bytes. No TTL: replay protection survives restart/restore; original Team deletion removes
+  the rows. Generated image bytes use the existing **1 GiB/home Results** budget and deletion
+  tombstones, not a second media store. These structural limits are not soak measurements.
 - Audit rows (`trigger_dispatches`, `agent_loop_break_events`,
   `communication_approval_events`, …) grow slowly — single rows per event, no
   blob content.

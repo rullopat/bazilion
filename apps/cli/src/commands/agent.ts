@@ -404,8 +404,17 @@ function printEvent(e: SessionEvent, state: PrintState): void {
         state.inDeltaStream = false
       }
       const out = basename(e.name).replace(/[^\w.-]/g, '_') || 'file'
-      writeFileSync(out, Buffer.from(e.data, 'base64'))
-      console.log(`  [file received: saved to ./${out} (${e.mimeType})]`)
+      try {
+        writeFileSync(out, Buffer.from(e.data, 'base64'), { flag: 'wx' })
+        console.log(`  [file received: saved to ./${out} (${e.mimeType})]`)
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+        console.log(`  [file not written: ./${out} already exists and was left unchanged]`)
+        if (e.result)
+          console.log(
+            `  [saved result: ${e.result.resultId}; use bazilion result download with a new --output path]`,
+          )
+      }
       break
     }
     case 'error':
