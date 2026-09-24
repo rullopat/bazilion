@@ -27,7 +27,7 @@ docs/backlog/
 
 ---
 
-## Draft (9)
+## Draft (8)
 
 | ID | Title | Size | Notes |
 |----|-------|------|-------|
@@ -105,6 +105,12 @@ qualification campaign rather than a release gate.
 Neither this plan nor a target version is completed acceptance or authorization to publish now;
 a 1.0.0-beta.1 release remains an explicit operator decision.
 
+## Todo (0.23.0 slate)
+
+| ID | Title | Size | Notes |
+|----|-------|------|-------|
+| [BAZ-069](todo/BAZ-069-browser-backed-default-web-search.md) | Browser-backed web search by default for ordinary turns | M | Refined 2026-09-23 with a live detection probe: plain headless pool config passes Bing + Brave Search HTML (no marker tampering needed); Google/DDG wall regardless. All backends move daemon-side (env asymmetry resolved). Tests 1–6 in the story. |
+
 ### 0.23.0 plan (operator decision 2026-09-23)
 
 0.22.0 published 2026-09-23; work moves to the `0.23.0` branch with this ordered slate. Live
@@ -115,8 +121,9 @@ time each lane runs.
    call per advertised route/model, with recorded provider/model, output, usage and human
    inspection (test 9). No mock-only claim of live support.
 2. **BAZ-069 — browser-backed default web search** (M): `web_search` via the existing daemon
-   browser pool; SearXNG/Brave become explicit opt-ins; protected turns unchanged. Refine first
-   (headless-automation-marker verification, config precedence), then implement.
+   browser pool; SearXNG/Brave API become explicit opt-ins; protected turns unchanged.
+   **Refined 2026-09-23 → Todo** with the detection probe recorded (plain headless passes
+   Bing + Brave Search HTML; Google/DDG wall; no marker tampering).
 3. **BAZ-066 — live and independent-user content-Team acceptance** (S): after BAZ-069, on the
    defaults. Needs Mastodon access and spend limits. Supplies BAZ-063 evidence and closes out
    BAZ-064's remaining composed-journey evidence.
