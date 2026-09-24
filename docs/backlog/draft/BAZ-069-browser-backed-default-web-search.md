@@ -4,6 +4,7 @@ title: Browser-backed web search by default for ordinary turns
 status: draft
 size: M
 created: 2026-09-21
+target_release: 0.23.0
 note: Operator decision 2026-09-21 — by default Bazilion should just work. Search rides the existing daemon browser pool (real Chromium fingerprint, the OpenClaw approach); SearXNG/Brave stay as explicit opt-ins. Target 0.23.0 (first implementation story of the next release; a withdrawn plan had made it a 0.22.0 prerequisite).
 ---
 

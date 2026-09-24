@@ -5,6 +5,7 @@ status: in_progress
 size: M
 created: 2026-09-20
 refined: 2026-09-21
+target_release: 0.23.0 (remaining lanes: real-cycle approval-hold, restricted-tool negative, DST clocks)
 note: First real-cron slice implemented (two due minutes, disable semantics, wake handoff); recovery/DST/contested coverage remains.
 ---
 

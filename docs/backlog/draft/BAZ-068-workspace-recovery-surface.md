@@ -4,6 +4,7 @@ title: Operator recovery for workspace rows after failed turns
 status: draft
 size: S
 created: 2026-09-21
+target_release: 0.23.0
 note: Found by the BAZ-064/065 acceptance harness; security-adjacent (BAZ-027/032/045 fail-closed contract) — refine with review before implementing.
 ---
 

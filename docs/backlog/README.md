@@ -105,13 +105,38 @@ qualification campaign rather than a release gate.
 Neither this plan nor a target version is completed acceptance or authorization to publish now;
 a 1.0.0-beta.1 release remains an explicit operator decision.
 
+### 0.23.0 plan (operator decision 2026-09-23)
+
+0.22.0 published 2026-09-23; work moves to the `0.23.0` branch with this ordered slate. Live
+spend (BAZ-059 samples, BAZ-066 access) still requires explicit authorization and limits at the
+time each lane runs.
+
+1. **BAZ-059 — live image qualification** (top story): an authorized, spending-bounded real
+   call per advertised route/model, with recorded provider/model, output, usage and human
+   inspection (test 9). No mock-only claim of live support.
+2. **BAZ-069 — browser-backed default web search** (M): `web_search` via the existing daemon
+   browser pool; SearXNG/Brave become explicit opt-ins; protected turns unchanged. Refine first
+   (headless-automation-marker verification, config precedence), then implement.
+3. **BAZ-066 — live and independent-user content-Team acceptance** (S): after BAZ-069, on the
+   defaults. Needs Mastodon access and spend limits. Supplies BAZ-063 evidence and closes out
+   BAZ-064's remaining composed-journey evidence.
+4. **BAZ-068 — workspace recovery surface** (S): supported operator path out of
+   `workspace_recovery_required`; observably-dead workers confirmable, live ones stay blocked.
+   Refine with review before Todo.
+5. **BAZ-065 — remaining lanes**: approval-hold across real cron cycles, restricted-tool
+   negative at the scheduled level, DST on controlled clocks.
+
+Deliberately out: BAZ-058/060 (L stories, 0.24.0 candidates), BAZ-061/062 (depend on BAZ-060),
+post-1.0 holders (BAZ-048/054/057). Open question carried from the release review: the 14
+pre-existing lint errors get cleaned up or formally waived during this cycle.
+
 ## In Progress (4)
 
 | ID | Title | Size | Target | Notes |
 |----|-------|------|--------|-------|
-| [BAZ-059](in_progress/BAZ-059-pi-image-generation.md) | Image generation with explicit OpenAI, ChatGPT and OpenRouter routes | L | 0.22.0 (alpha) | Scope frozen; local regression, synthetic-provider Docker/crash and version rehearsal recorded. Live/protected-origin qualification, risk decisions and release review pending. [Evidence](../testing/0.22.0-freeze.md) · [Usage](../image-generation.md). |
-| [BAZ-064](in_progress/BAZ-064-content-team-recipe-and-manual-handoff.md) | Topic-neutral content Team recipe and manual handoff | M | Broader beta, not frozen 0.22 | Recipe/install/policy, delegation, protected wake, approval sequencing, image-once oracle, exact handoff delivery, two-topic reuse and restart retention — all canned-model plumbing. Discovery blocked on BAZ-067. [Evidence](BAZ-064-acceptance.md) · [Recipe](../../examples/content-team/README.md). |
-| [BAZ-065](in_progress/BAZ-065-content-team-scheduling-and-recovery.md) | Content Team scheduling and recovery acceptance | M | Broader beta, not frozen 0.22 | Real cron cycles, busy/deferred exactly-once, restart/missed-minute semantics, lifecycle, bounded retries, UTC contract, scheduled container posture. Approval-hold model behavior + DST clocks remain. |
+| [BAZ-059](in_progress/BAZ-059-pi-image-generation.md) | Image generation with explicit OpenAI, ChatGPT and OpenRouter routes | L | 0.22.0 shipped; live qualification is the 0.23.0 top story | Published in 0.22.0 (2026-09-23). Remaining lane: authorized live sample per advertised route/model (test 9). [Evidence](../testing/0.22.0-freeze.md) · [Usage](../image-generation.md). |
+| [BAZ-064](in_progress/BAZ-064-content-team-recipe-and-manual-handoff.md) | Topic-neutral content Team recipe and manual handoff | M | Close-out rides BAZ-066 (0.23.0) | Canned-model plumbing done (delegation, protected wake, approval sequencing, image-once oracle, handoff, two-topic reuse, restart retention). Remaining composed-journey evidence comes from BAZ-066's live run. [Evidence](BAZ-064-acceptance.md) · [Recipe](../../examples/content-team/README.md). |
+| [BAZ-065](in_progress/BAZ-065-content-team-scheduling-and-recovery.md) | Content Team scheduling and recovery acceptance | M | 0.23.0 (remaining lanes) | Real cron cycles, busy/deferred exactly-once, restart/missed-minute semantics, lifecycle, bounded retries, UTC contract, scheduled container posture. Remaining: approval-hold across real cycles, restricted-tool negative, DST clocks. |
 | [BAZ-067](done/BAZ-067-protected-web-discovery.md) | Bounded public-web discovery for protected Agent turns | M | 0.22.0 (alpha) | Done (2026-09-21): SearXNG via daemon-owned IPC host; worker sees only bounded results; restricted workers denied. Accepted and repositioned as the opt-in protected-turn backend; the default search story is BAZ-069. |
 
 ## Done (49)

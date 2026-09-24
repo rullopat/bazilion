@@ -5,7 +5,7 @@ status: in_progress
 size: L
 created: 2026-09-19
 refined: 2026-09-19
-target_release: 0.22.0
+target_release: 0.22.0 (shipped 2026-09-23); live qualification carried into 0.23.0 as its top story
 ---
 
 # BAZ-059 — Image generation with explicit credential routes
@@ -31,9 +31,11 @@ explicitly enabled OpenAI text providers, never credential presence or provider 
 Codex Agent uses its own enabled text provider; other Agents use the sole enabled option, or must
 choose an explicit image route if both are enabled. Image generation still needs its own opt-in.
 
-Release qualification remains on hold: authorized live samples for all four selections,
-a protected-origin image turn, composed browser/recovery tasks, private-output-loss and lint
-decisions, reviewed-candidate CI and the actual Changesets transition remain open. The rewritten
+Release qualification remains on hold: authorized live samples for all four selections
+(a protected-origin image turn, composed browser/recovery tasks, private-output-loss and lint
+decisions, reviewed-candidate CI and the Changesets transition closed with the 0.22.0 publication).
+The live-sample lane is now the **top story of 0.23.0** (operator decision 2026-09-23): an
+authorized, spending-bounded real call per route — see test 9. The rewritten
 [readiness plan](../../testing/beta-readiness/README.md) separates those release gates from broader
 pre-1.0 usability/accessibility and endurance qualification. No paid calls, social publishing or
 release has occurred.

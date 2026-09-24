@@ -5,7 +5,7 @@ status: in_progress
 size: M
 created: 2026-09-20
 refined: 2026-09-20
-note: Initial recipe and management/policy preflight implemented; composed journey blocked on BAZ-067 discovery. No live usage or publication authorized.
+note: Close-out folded into BAZ-066's 0.23.0 run; remaining composed-journey evidence comes from that live qualification. Initial recipe and management/policy preflight implemented; composed journey blocked on BAZ-067 discovery. No live usage or publication authorized.
 ---
 
 # BAZ-064 — Content Team recipe and manual handoff
