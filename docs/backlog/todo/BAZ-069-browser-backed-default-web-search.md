@@ -37,33 +37,56 @@ remain explicit operator opt-ins. BAZ-067 stays as implemented but is **repositi
 the opt-in *protected-turn* discovery backend (protected workers keep their no-browser posture),
 not Bazilion's default search story.
 
-## Detection reality-check (probe, 2026-09-23)
+## Detection reality-check (probes, 2026-09-23/24 + OpenClaw transcript)
 
-Recorded from the refinement probe (`/tmp/baz069-refine/probe*.mjs`; pool-equivalent Playwright
-1.61 Chromium 149, headless, pool's UA resolution, Linux, residential IP). Two variants were
-compared: the pool's plain headless configuration, and the same with
-`--disable-blink-features=AutomationControlled` (`navigator.webdriver: false`).
+Recorded from the refinement probes (`/tmp/baz069-refine/probe*.mjs`; pool-equivalent Playwright
+1.61 Chromium 149, Linux, home IP) plus one live transcript observation.
 
-| Engine | Plain headless | No-Controlled variant | Outcome |
+### Matrix: engines × postures
+
+| Engine | Headless (pool config) | Headed | Headed + persistent profile + human pass |
 | --- | --- | --- | --- |
-| Google `www.google.com/search` | 200 but CAPTCHA wall ("unusual traffic"), 0 results | identical | **Not viable** as a default in any tested posture |
-| DuckDuckGo `html.` / `lite.` | **403** | **403** | **Not viable** |
-| Bing `/search` | 200, 8/8 results, 3/3 repeat queries, no wall | identical | **Viable** — result URLs are Bing redirect wrappers; the `u` parameter decodes deterministically (`a1`-prefixed base64 of the target URL, verified) |
-| Brave Search `search.brave.com/search` | 200, 8/8 results, 3/3 repeat queries, no wall | identical | **Viable** — clean direct result URLs |
+| Google | 200 but `/sorry/` wall, 0 results | same wall | **still walled** — the checkbox was clicked by the operator and the wall did not lift |
+| DuckDuckGo `html.` / `lite.` | **403** | — | — |
+| Bing `/search` | 200, 8/8 results, 3/3 repeat queries | — | — |
+| Brave Search HTML | 200, 8/8 results, 3/3 repeat queries | — | — |
 
-Conclusions pinned by this evidence:
+The wall page names the cause: "unusual traffic from your computer network. IP address:
+83.22.219.85" — the **IP range is flagged**. `--disable-blink-features=AutomationControlled`
+(`navigator.webdriver: false`) changed nothing on any engine.
 
-- **No automation-marker tampering.** The no-Controlled variant changed nothing on any engine —
-  walls are IP/behavior-driven, and the viable engines do not check `navigator.webdriver`. The
-  default ships as the pool's plain configuration (honest UA, `HeadlessChrome` stripped), which
-  the pool already resolves. Keeping `navigator.webdriver` honest stays consistent with the
+### Cross-machine observation (operator, OpenClaw transcript 2026-09-19)
+
+On the operator's **macOS** machine (different, unflagged home IP), OpenClaw's agent — finding its
+HTTP `web_search` unconfigured — fell back to its **headed managed browser** and searched Google
+successfully: real, verifiable results (Eurostat, EC, PIP, WEF URLs). The transcript also shows
+the agent stating the fallback explicitly: "The dedicated search service was unavailable, so I
+used browser-based search."
+
+### Conclusions pinned by this evidence
+
+- **Engine viability is IP-reputation-dependent, not browser-posture-dependent.** Google works
+  through a real managed browser on an unflagged network (macOS observation) and walls even a
+  headed, human-assisted browser on a flagged one (probe). No posture choice fixes or breaks
+  Google universally — so the tool must **report walls truthfully** and never pretend an engine
+  is universally available.
+- **No automation-marker tampering.** The `webdriver` toggle changed nothing; walls are
+  IP-driven. The default ships as the pool's plain configuration (honest UA,
+  `HeadlessChrome` stripped). Keeping `navigator.webdriver` honest stays consistent with the
   no-CAPTCHA-circumvention boundary.
-- **Engine allowlist: Brave Search HTML (default) and Bing.** Both passed repeated queries with
-  full result extraction. Brave HTML gives clean URLs; Bing requires the redirect decode. The
-  "Brave Search HTML" surface is distinct from the Brave Search **API** (`BRAVE_API_KEY`) — the
-  story must document the two names to avoid operator confusion.
-- **Google is documented as not viable from this posture**, not silently attempted-and-walled
-  every turn; the docs say what the default uses and what it can hit.
+- **Engine allowlist: Brave Search HTML (default), Bing, and Google as an explicit opt-in**
+  documented as IP-reputation-dependent (works on clean networks, walls on flagged ones with a
+  truthful block report). Bing requires redirect-URL decoding (the `u` parameter decodes
+  deterministically — `a1`-prefixed base64, verified). The "Brave Search HTML" surface is
+  distinct from the Brave Search **API** (`BRAVE_API_KEY`) — the docs must separate the two
+  names.
+- **Documented browser fallback for the Agent:** when `web_search` fails or is disabled, the
+  Agent may use the existing `browser_*` tools to search directly — the OpenClaw transcript is
+  evidence that models execute this fallback well. The recipe/docs say so; walls found that way
+  are reported, not fought.
+- **The human-pass escape hatch is not a mechanism**: on a flagged IP, a solved checkbox does
+  not lift the wall in an automation browser (probed). The skill must not instruct the Agent to
+  try; it reports the block instead.
 
 ## Design
 
@@ -98,11 +121,11 @@ Conclusions pinned by this evidence:
   (`domcontentloaded` + a short settle), extract results in-page, return them. No scrolling,
   pagination, link-following, form submission or CAPTCHA interaction. The engine page is
   **untrusted data**: the extractor only reads anchors/text; it never acts on page content.
-- Engine allowlist (closed, no fuzzy resolution): `brave` (default) and `bing`. Engine choice
-  via an explicit config knob (default `brave`); **no automatic fallback across engines** — a
-  walled/failed engine surfaces as a tool error stating which engine failed and that the
-  operator can switch explicitly. A wall (CAPTCHA/403/rate limit) is reported truthfully as a
-  block, not as "no results".
+- Engine allowlist (closed, no fuzzy resolution): `brave` (default), `bing`, and `google`
+  (explicit opt-in; documented as IP-reputation-dependent — walls are reported, not fought).
+  **No automatic fallback across engines** — a walled/failed engine surfaces as a tool error
+  stating which engine failed and that the operator can switch explicitly. A wall
+  (CAPTCHA/403/rate limit) is reported truthfully as a block, not as "no results".
 - Bing URLs are decoded from the redirect wrapper (`u` parameter, optional `a1` base64 prefix)
   before returning; undecodable URLs are dropped, not passed through as `bing.com/ck/…` noise.
   The decoder is a pure, unit-tested function against recorded fixtures.
@@ -135,9 +158,9 @@ Conclusions pinned by this evidence:
 ## Out of scope
 
 - Protected turns (BAZ-067 unchanged); scraping result URLs in-browser; CAPTCHA/rate-limit
-  circumvention; any paid-API default; engine auto-fallback; Google in the allowlist while the
-  wall persists; image/video/news verticals; changing BAZ-067's implemented bounds or env
-  contract.
+  circumvention (including advising a human pass-through — probed: it does not lift a
+  Google `/sorry/` wall in an automation browser); any paid-API default; engine auto-fallback;
+  image/video/news verticals; changing BAZ-067's implemented bounds or env contract.
 
 ## Tests
 
@@ -159,10 +182,11 @@ Conclusions pinned by this evidence:
 5. **Session hygiene:** a search navigation does not change the agent's interactive session
    tabs/active index; the search session obeys the reaper and agent-delete teardown; two agents'
    search sessions share nothing.
-6. **Live reality-check (one-time, recorded):** rerun the probe configuration against the live
-   engines once before release and record the outcome in the acceptance file — the default
-   engine choice must still pass, or the recorded wall reality is updated and the release
-   review re-decides the default.
+6. **Live reality-check (per-machine, recorded):** run the chosen engine config against the
+   live engines once per release on the qualification machine and record the outcome in the
+   acceptance file. Google's result is recorded as IP-reputation-dependent: on an unflagged
+   network it serves results; on a flagged one it reports a block. Either outcome is a
+   truthful record, not a failure — the wall report is the product behavior under test.
 
 ## Implementation notes
 

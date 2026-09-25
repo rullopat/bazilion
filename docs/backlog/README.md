@@ -109,7 +109,7 @@ a 1.0.0-beta.1 release remains an explicit operator decision.
 
 | ID | Title | Size | Notes |
 |----|-------|------|-------|
-| [BAZ-069](todo/BAZ-069-browser-backed-default-web-search.md) | Browser-backed web search by default for ordinary turns | M | Refined 2026-09-23 with a live detection probe: plain headless pool config passes Bing + Brave Search HTML (no marker tampering needed); Google/DDG wall regardless. All backends move daemon-side (env asymmetry resolved). Tests 1–6 in the story. |
+| [BAZ-069](todo/BAZ-069-browser-backed-default-web-search.md) | Browser-backed web search by default for ordinary turns | M | Refined 2026-09-23/24 with a live detection matrix + an OpenClaw transcript cross-check: Bing + Brave Search HTML pass headless (no marker tampering); Google is IP-reputation-dependent (works on the operator's unflagged macOS network, walls the flagged Linux IP even headed + human pass). All backends move daemon-side (env asymmetry resolved). Tests 1–6 in the story. |
 
 ### 0.23.0 plan (operator decision 2026-09-23)
 
