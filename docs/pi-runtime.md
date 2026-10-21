@@ -69,6 +69,11 @@ for a remaining descendant. A Linux ownership wrapper handles anchored original 
 that ignore SIGTERM, refusing unknown/reused identities. This is not a replacement MCP protocol
 stack. Native cross-platform closure has no claimed Linux proof.
 
+**0.23.0 platform update:** required macOS CI observed the surviving-descendant edge. With explicit
+operator approval, stdio now refuses before slot allocation/spawn off-Linux; Streamable HTTP stays
+available. The Linux retirement guard is unchanged. Earlier cross-platform limits below remain
+historical observations, not acceptance of native-close fallback.
+
 See [MCP operator contract and evidence](mcp.md). MCP account/OAuth trials, native research,
 human UI acceptance and publication remain separate approvals.
 

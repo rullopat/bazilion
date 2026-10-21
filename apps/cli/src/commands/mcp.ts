@@ -19,7 +19,10 @@ const addCmd = defineCommand({
   meta: { name: 'add', description: 'Register an MCP server' },
   args: {
     name: { type: 'positional', required: true, description: 'Unique name ([a-zA-Z0-9_])' },
-    transport: { type: 'string', description: 'stdio | http (Streamable HTTP; default stdio)' },
+    transport: {
+      type: 'string',
+      description: 'stdio (Linux only) | http (Streamable HTTP; default stdio)',
+    },
     command: { type: 'string', description: 'stdio: executable to run (e.g. npx)' },
     args: { type: 'string', description: 'stdio: space-separated args (quote the whole string)' },
     url: { type: 'string', description: 'http: Streamable HTTP endpoint URL' },

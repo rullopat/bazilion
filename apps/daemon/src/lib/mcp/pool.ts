@@ -14,7 +14,7 @@ import type { ToolResultPart } from '../../runtime/tools/types.ts'
 import type { InjectedMcpTool } from '../../runtime/worker/ipc-protocol.ts'
 import { ensureResourceReaper, resources } from '../resources.ts'
 import { retainTransport, retireMcpClient } from './retirement.ts'
-import { OwnedStdioTransport } from './stdio-owner.ts'
+import { assertStdioPlatform, OwnedStdioTransport } from './stdio-owner.ts'
 
 export type { InjectedMcpTool, McpTransport }
 
@@ -331,6 +331,8 @@ export async function getOrCreateMcpConnection(
     throw new Error('Unsupported MCP transport or namespace')
   if (server.transport === 'stdio' ? !server.command : !server.url)
     throw new Error('Missing MCP command or URL')
+  // Refuse before allocating a client/slot or spawning an unowned process tree.
+  if (server.transport === 'stdio') assertStdioPlatform()
   if (server.transport === 'http') {
     const url = new URL(required(server.url))
     if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.hash)

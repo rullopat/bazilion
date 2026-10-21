@@ -17,6 +17,10 @@ bazilion mcp disable <server-id>
 bazilion mcp rm <server-id>
 ```
 
+**Stdio execution is Linux-only.** Other platforms refuse before creating a connection or spawning
+any server process; use **Streamable HTTP** instead. Registration remains portable and does not
+launch a server. HTTP MCP remains available on macOS.
+
 The equivalent UI is **Config → MCP**; HTTP is `/api/mcp-servers[/:id[/test]]`.
 Bearer tokens supplied via `--token` or the UI are encrypted under `MCP_TOKEN_<id>` and are
 write-only. Command-line credentials may be visible in shell history/process arguments; use
@@ -88,8 +92,9 @@ failure; ownership cannot disappear before cleanup settles or after it rejects.
 
 These are observed normal-lifecycle checks, not atomic `/proc`/PID proofs or containment of
 processes that detach into another session. Abrupt daemon exit/Pi's emergency exit hook is not
-qualified by this normal-retirement evidence. Other platforms use Pi's native close and have no
-claimed Linux ownership proof. Cross-platform/manual qualification remains separate.
+qualified by this normal-retirement evidence. Other platforms refuse stdio before spawn rather
+than using Pi's native close without equivalent ownership checks. No portable stdio cleanup or
+abnormal-exit guarantee is claimed.
 
 ## Migration evidence
 

@@ -18,8 +18,9 @@
   are qualified under the recorded limited scope; other paid image routes remain live-unqualified.
 
   Upgrade embedded Pi and daemon-owned standalone MCP to 1.0.0, retire legacy MCP SSE, and align the
-  repository package manager with mise-selected pnpm 12.14.0. Streamable HTTP and stdio remain supported;
-  no automatic MCP OAuth, ambient discovery or uncertain tool-call replay is added.
+  repository package manager with mise-selected pnpm 12.14.0. Streamable HTTP remains portable;
+  stdio execution requires Linux's owned process-tree retirement and refuses before spawn elsewhere.
+  No automatic MCP OAuth, ambient discovery or uncertain tool-call replay is added.
 
   **Runtime:** require Node 24.22.0+ within 24.x or 26.4.0+ within 26.x, which include the upstream
   native cleanup-hook fix. Source and packed CLI/daemon launchers refuse unsupported releases before

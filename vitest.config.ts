@@ -34,6 +34,8 @@ const LINUX_ONLY = [
   'apps/cli/test/image-crash.test.ts',
   'apps/cli/test/agent-coding-handoff.test.ts',
   'apps/daemon/test/lib/scheduler.test.ts',
+  // This wrapper selects the Linux-only scheduler fixture above in fresh TZ processes.
+  'apps/daemon/test/cron-scheduler-timezone.test.ts',
   'apps/daemon/test/lib/agent-coding.test.ts',
   'apps/daemon/test/lib/publication-e2e.test.ts',
   'apps/daemon/test/lib/result-delivery.test.ts',

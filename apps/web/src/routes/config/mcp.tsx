@@ -141,8 +141,9 @@ function McpPage() {
         <>
           Expose tools from local or remote Model Context Protocol servers to ordinary interactive agents under
           the <code className="font-mono">mcp__&lt;server&gt;__&lt;tool&gt;</code> namespace.
-          Local stdio servers inherit configured secrets; Streamable HTTP servers can use a bearer
-          token. Protected and background turns do not receive these tools. Legacy SSE is unsupported.
+          Local stdio servers run on Linux only and inherit configured secrets; use Streamable HTTP
+          on other platforms. HTTP servers can use a bearer token. Protected and background turns do
+          not receive these tools. Legacy SSE is unsupported.
         </>
       }
     >

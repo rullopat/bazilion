@@ -48,7 +48,17 @@ beforeEach(() => {
 })
 afterEach(() => {
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
   vi.useRealTimers()
+})
+test.each([
+  'darwin',
+  'win32',
+] as const)('direct owned transport refuses controlled %s before Pi can spawn', async (platform) => {
+  vi.stubGlobal('process', { ...process, platform })
+  const transport = new OwnedStdioTransport({ command: 'fixture' })
+  await expect(transport.start()).rejects.toThrow(/stdio requires Linux.*use Streamable HTTP/)
+  expect(StdioTransport.prototype.start).not.toHaveBeenCalled()
 })
 test.skipIf(process.platform !== 'linux')(
   'a reused leader identity is unknown, never permission to signal its group',

@@ -59,11 +59,19 @@ function group(pid: number): Member[] {
   }
   return members
 }
+export function assertStdioPlatform(): void {
+  if (process.platform !== 'linux')
+    throw new Error(
+      'MCP stdio requires Linux for owned process-tree retirement; use Streamable HTTP on this platform.',
+    )
+}
+
 export class OwnedStdioTransport extends StdioTransport {
   private leader: Member | null = null
   private ownedPid?: number
   private retirement?: Promise<void>
   override async start(): Promise<void> {
+    assertStdioPlatform()
     // Capture before yielding: another daemon child cannot be spawned/reaped into
     // this pid between the native spawn and our initial identity admission.
     const starting = super.start()

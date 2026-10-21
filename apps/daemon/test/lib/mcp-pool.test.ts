@@ -2,6 +2,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { StdioTransport } from '@earendil-works/pi-mcp'
 import { afterEach, expect, test, vi } from 'vitest'
 import { createMcpHost } from '../../src/lib/mcp/host.ts'
 import {
@@ -22,6 +23,7 @@ afterEach(async () => {
   for (const f of fixtures.splice(0)) await f.close()
   for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true })
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
 })
 async function setup() {
   const f = await mcpHttpFixture()
@@ -245,56 +247,85 @@ test('daemon revalidation after asynchronous admission prevents stale dispatch',
   await rejected
   expect(count(f, 'tools/call')).toBe(0)
 })
-test('Pi stdio receives only daemon-supplied env and retires the whole process group', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'baz-mcp-stdio-'))
-  dirs.push(dir)
-  const pidFile = join(dir, 'descendant.pid')
+test.each([
+  'darwin',
+  'win32',
+] as const)('stdio refuses before native start on controlled %s while HTTP remains available', async (platform) => {
+  vi.stubGlobal('process', { ...process, platform })
+  const nativeStart = vi
+    .spyOn(StdioTransport.prototype, 'start')
+    .mockRejectedValue(new Error('Unexpected native stdio start'))
   const server: McpServerConfig = {
-    id: 'stdio_fixture',
-    name: 'stdio_fixture',
+    id: `unsupported_stdio_${platform}`,
+    name: 'unsupported_stdio',
     transport: 'stdio',
     command: process.execPath,
-    args: [fileURLToPath(new URL('../fixtures/mcp-stdio.mjs', import.meta.url)), pidFile],
+    args: [],
     url: null,
   }
-  const old = process.env.MCP_FIXTURE_AMBIENT
-  process.env.MCP_FIXTURE_AMBIENT = 'must-not-be-inherited'
-  try {
-    const parts = await callMcpTool(
-      server,
-      'foo',
-      {},
-      { env: { MCP_FIXTURE_SECRET: 'supplied' }, idleMs: 1000 },
-    )
-    const text = parts[0]?.type === 'text' ? parts[0].text : '{}'
-    const result = JSON.parse(text)
-    expect(result.provided).toBe('supplied')
-    expect(result.ambient).toBeNull()
-    const childPid = Number(readFileSync(pidFile, 'utf8'))
-    await closeMcpConnection(server.id)
-    await vi.waitFor(
-      () => {
-        const alive = (pid: number) => {
-          try {
-            process.kill(pid, 0)
-            // Reparented Linux zombies have stopped executing; the test cannot reap init's child.
-            if (
-              process.platform === 'linux' &&
-              /^State:\s+Z/m.test(readFileSync(`/proc/${pid}/status`, 'utf8'))
-            )
-              return false
-            return true
-          } catch {
-            return false
-          }
-        }
-        expect(alive(result.pid)).toBe(false)
-        expect(alive(childPid)).toBe(false)
-      },
-      { timeout: 4000 },
-    )
-  } finally {
-    if (old === undefined) delete process.env.MCP_FIXTURE_AMBIENT
-    else process.env.MCP_FIXTURE_AMBIENT = old
-  }
+  await expect(getOrCreateMcpConnection(server, opts)).rejects.toThrow(
+    /stdio requires Linux.*use Streamable HTTP/,
+  )
+  await closeMcpConnection(server.id)
+  expect(nativeStart).not.toHaveBeenCalled()
+  expect(resources().mcp.has(server.id)).toBe(false)
+  const { server: http } = await setup()
+  expect((await discoverMcpTools(http, opts))[0]?.rawName).toBe('foo')
 })
+
+test.skipIf(process.platform !== 'linux')(
+  'Pi stdio receives only daemon-supplied env and retires the whole process group',
+  async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'baz-mcp-stdio-'))
+    dirs.push(dir)
+    const pidFile = join(dir, 'descendant.pid')
+    const server: McpServerConfig = {
+      id: 'stdio_fixture',
+      name: 'stdio_fixture',
+      transport: 'stdio',
+      command: process.execPath,
+      args: [fileURLToPath(new URL('../fixtures/mcp-stdio.mjs', import.meta.url)), pidFile],
+      url: null,
+    }
+    const old = process.env.MCP_FIXTURE_AMBIENT
+    process.env.MCP_FIXTURE_AMBIENT = 'must-not-be-inherited'
+    try {
+      const parts = await callMcpTool(
+        server,
+        'foo',
+        {},
+        { env: { MCP_FIXTURE_SECRET: 'supplied' }, idleMs: 1000 },
+      )
+      const text = parts[0]?.type === 'text' ? parts[0].text : '{}'
+      const result = JSON.parse(text)
+      expect(result.provided).toBe('supplied')
+      expect(result.ambient).toBeNull()
+      const childPid = Number(readFileSync(pidFile, 'utf8'))
+      await closeMcpConnection(server.id)
+      await vi.waitFor(
+        () => {
+          const alive = (pid: number) => {
+            try {
+              process.kill(pid, 0)
+              // Reparented Linux zombies have stopped executing; the test cannot reap init's child.
+              if (
+                process.platform === 'linux' &&
+                /^State:\s+Z/m.test(readFileSync(`/proc/${pid}/status`, 'utf8'))
+              )
+                return false
+              return true
+            } catch {
+              return false
+            }
+          }
+          expect(alive(result.pid)).toBe(false)
+          expect(alive(childPid)).toBe(false)
+        },
+        { timeout: 4000 },
+      )
+    } finally {
+      if (old === undefined) delete process.env.MCP_FIXTURE_AMBIENT
+      else process.env.MCP_FIXTURE_AMBIENT = old
+    }
+  },
+)

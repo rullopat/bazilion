@@ -94,7 +94,8 @@ extensions. Legacy SSE is retired across the schema/API/CLI/web; prior schemas n
 rebootstrap, never ALTER/import/fallback adapters. Keep turn-specific tool/config/credential
 revalidation, no POST/tool-call replay, opening-client retirement, busy reaping and ownership
 until close settles. Linux `stdio-owner.ts` guards Pi 1.0's surviving-descendant close edge;
-unknown identity/cleanup retains a blocked slot. See `docs/mcp.md` and `docs/pi-runtime.md`.
+unknown identity/cleanup retains a blocked slot. Stdio admission refuses before spawn off-Linux;
+Streamable HTTP remains available. See `docs/mcp.md` and `docs/pi-runtime.md`.
 
 ### SQLite driver
 
