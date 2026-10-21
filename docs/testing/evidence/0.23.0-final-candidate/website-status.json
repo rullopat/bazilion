@@ -1,0 +1,159 @@
+{
+  "websiteCommit": "066151c30f3d2cf1b4bfd5f3d410dcd5bab56e7c",
+  "source": "https://github.com/rullopat/bazilion-web/commit/066151c30f3d2cf1b4bfd5f3d410dcd5bab56e7c",
+  "sourceChecks": {
+    "code": 0,
+    "seconds": 4.47198748588562,
+    "correction": "Independent review current-growth-guide migration guarantee corrected to historical0.21/0.22;0.23 no automatic pre-refusal snapshot; network traffic honesty clarified. Original fixture/anchor failures retained.",
+    "runtime": "Node24.22.0",
+    "pnpm": "pinned10.29.2",
+    "scope": "23policy tests;Astro;32pages/1762links;source/rendered homepage rule;no install/network/model calls"
+  },
+  "preview": {
+    "passed": true,
+    "cases": [
+      {
+        "slug": "home",
+        "width": 1280,
+        "status": 200,
+        "scroll": 1265,
+        "viewport": 1280,
+        "pageErrors": 0
+      },
+      {
+        "slug": "release",
+        "width": 1280,
+        "status": 200,
+        "scroll": 1280,
+        "viewport": 1280,
+        "pageErrors": 0
+      },
+      {
+        "slug": "upgrade",
+        "width": 1280,
+        "status": 200,
+        "scroll": 1280,
+        "viewport": 1280,
+        "pageErrors": 0
+      },
+      {
+        "slug": "home",
+        "width": 390,
+        "status": 200,
+        "scroll": 375,
+        "viewport": 390,
+        "pageErrors": 0
+      },
+      {
+        "slug": "release",
+        "width": 390,
+        "status": 200,
+        "scroll": 390,
+        "viewport": 390,
+        "pageErrors": 0
+      },
+      {
+        "slug": "upgrade",
+        "width": 390,
+        "status": 200,
+        "scroll": 390,
+        "viewport": 390,
+        "pageErrors": 0
+      }
+    ],
+    "limits": "Local static preview with installed Chromium,fresh profile,private network;external fonts/requests blocked. No real sites/accounts/providers. Normal browser/server close,not arbitrary-host cleanup proof."
+  },
+  "independentReview": "ACCEPT; initial P1 snapshot guarantee corrected, affected checks rerun",
+  "deployment": {
+    "verified": true,
+    "websiteCommit": "066151c30f3d2cf1b4bfd5f3d410dcd5bab56e7c",
+    "worker": "bazilion-web",
+    "versionId": "bfa2e04d-7f99-4a46-a5db-3d1a8ccf5c1d",
+    "activeTraffic": "100%;confirmed by authenticated deployment history",
+    "method": "First direct static-assets deployment using existing cachedWrangler4.127.1 after operator renewed existing OAuth;previous active version confirmed September24.",
+    "guardrails": "Exact reviewed21-file freeze rechecked;existingWorker/operatoraccount,keep-vars,autoconfig=false;no dependency/tool installation or account/build-integration changes.",
+    "control": {
+      "code": 0,
+      "seconds": 13.853151798248291,
+      "websiteCommit": "066151c30f3d2cf1b4bfd5f3d410dcd5bab56e7c",
+      "operation": "First authenticated direct static deployment after querying old active Worker;no blind retry",
+      "guardrails": "Existing cacheCLI4.127.1,existingnamedWorker/operatoraccount,keep-vars,no autoconfig,no config/dependency changes"
+    },
+    "publicResponses": [
+      {
+        "path": "/",
+        "status": 200,
+        "curlCode": 0,
+        "sha256": "ea335ac9a307a2e1a6a590c53dd99516a8c5ce5cdf95db85b249dfa8e40af548",
+        "equalsReviewedLocalBuild": true
+      },
+      {
+        "path": "/docs/whats-new-0-23/",
+        "status": 200,
+        "curlCode": 0,
+        "sha256": "26d231f45d0ffe30d9be211e3ced0161a42d7ef4002eff6fececbc3410e32836",
+        "equalsReviewedLocalBuild": true
+      },
+      {
+        "path": "/docs/getting-started/",
+        "status": 200,
+        "curlCode": 0,
+        "sha256": "b4a196118cc5d3da04804732456ee3cb751904642f323a30ab90dac31fa8d9fc",
+        "equalsReviewedLocalBuild": true
+      },
+      {
+        "path": "/docs/tools/",
+        "status": 200,
+        "curlCode": 0,
+        "sha256": "d6a10c229c532101bc311db9416f229d65bb83d8eddeb3def408b362cf1e84f6",
+        "equalsReviewedLocalBuild": true
+      },
+      {
+        "path": "/docs/growth-and-retention/",
+        "status": 200,
+        "curlCode": 0,
+        "sha256": "6255c9de4d51c1536d3a5343a9f9ab049b98caac86528e832e9365d90247abc9",
+        "equalsReviewedLocalBuild": true
+      },
+      {
+        "path": "/docs/results/",
+        "status": 200,
+        "curlCode": 0,
+        "sha256": "96ba753a5aa6c2a964dd8f2634f76e7767494848e42da954ab84fdf64de93392",
+        "equalsReviewedLocalBuild": true
+      },
+      {
+        "path": "/llms-full.txt",
+        "status": 200,
+        "curlCode": 0,
+        "sha256": "f7f232c0d3e6c9c277dc185796886611dd161947c36ecd5144b517f207fdf74b",
+        "equalsReviewedLocalBuild": true
+      },
+      {
+        "path": "/install.sh",
+        "status": 200,
+        "curlCode": 0,
+        "sha256": "cc5daa77ac5c476468d7f4abbf9ba7373b9aa48b07bc70212dcc6c31ee0b4b96",
+        "equalsReviewedLocalBuild": true
+      }
+    ],
+    "homepagePolicy": {
+      "passed": true,
+      "actualProductionHomepage": true,
+      "noPiVersion": true,
+      "release": "0.23.0",
+      "sameBytesAsReviewedBuild": true
+    },
+    "initialBlockerRetained": {
+      "attempt": "One normal main push,existing Git-driven Cloudflare flow; no replay/direct deployment",
+      "verified": false,
+      "observed": "Production homepage still0.22/Pi-version claim;new0.23page404;old installer. Bounded readiness and final direct read retained privately.",
+      "githubVisibility": "No status/check-run/deployment record exposed; not proof whether build started",
+      "controlPlane": "Existing cachedWrangler4.127.1 found without installation. Read-only whoami/deployments lookup refused:existing OAuth expired/could not refresh in noninteractive session; no API token available.",
+      "causality": "Expired local login is why control-plane inspection is unavailable,not a proven cause of Git-driven deployment not appearing.",
+      "next": "Operator renews existing Cloudflare login or inspects Workers Builds for this commit. Inspect current build/deployment before any new deployment attempt."
+    },
+    "limits": "Normal main push did not yield an observed deployment;why the Git-driven flow did not publish remains unestablished. It was not reconfigured/replayed. Actual public-byte verification closes deployment,not general browser-site/account qualification."
+  },
+  "safety": "Operator renewed existing Cloudflare login;agent used only existing approved hosting auth/tool. No new tool/dependency,temporary account,credential export,provider/search/image call or blind deployment replay."
+}
