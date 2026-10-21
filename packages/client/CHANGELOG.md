@@ -1,5 +1,37 @@
 # @bazilion/client
 
+## 0.23.0
+
+### Minor Changes
+
+- Add source-grounded native OpenAI/ChatGPT research with guarded page reading and explicit provenance,
+  while retaining managed browsing as an optional separate capability. API-key native search remains
+  experimental/live-unqualified; configuration readiness is not entitlement or successful execution.
+
+  Add operator CLI/API/web workspace blocker reporting and limited recorded-cleanup attempts. Unknown
+  ownership remains blocked; this does not guarantee recovery of abnormal host commands. Preserve
+  occurrence-specific communication approvals, restricted scheduled/inbox posture and policy-import
+  postures. The accepted scheduler/process slice does not qualify composed content-Team journeys.
+
+  Harden image provenance and completed-stream capture/rework handling, browser profile/backup lifecycle,
+  worker output draining and packaged web runtime dependencies. Required ChatGPT-only image samples
+  are qualified under the recorded limited scope; other paid image routes remain live-unqualified.
+
+  Upgrade embedded Pi and daemon-owned standalone MCP to 1.0.0, retire legacy MCP SSE, and align the
+  repository package manager with mise-selected pnpm 12.14.0. Streamable HTTP and stdio remain supported;
+  no automatic MCP OAuth, ambient discovery or uncertain tool-call replay is added.
+
+  **Compatibility:** this alpha candidate uses the canonical clean-install schema. Prior SSE-capable
+  homes, including 0.22.0, require fail-closed refusal and operator-controlled reset/rebootstrap, not an
+  in-place migration or compatibility importer. Preserve the entire old home with paired DB/auth and
+  any external Team work before an explicitly authorized reset; use the matching old binary/schema
+  for old backups. No prior-home upgrade/refusal matrix result or final release approval is implied.
+
+### Patch Changes
+
+- Updated dependencies:
+  - @bazilion/api-types@0.23.0
+
 ## 0.22.0
 
 ### Minor Changes

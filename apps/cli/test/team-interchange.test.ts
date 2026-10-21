@@ -1,6 +1,7 @@
 import type { TeamTemplateDetail } from '@bazilion/api-types'
 import { describe, expect, test } from 'vitest'
 import {
+  edgeDiff,
   exportTeamDocument,
   parseTeamDocument,
   parseTeamPolicyDocument,
@@ -82,6 +83,49 @@ test('Team export is portable and dry-run import is semantically lossless with r
   ])
 })
 
+test('delimiter-shaped slot keys preserve distinct directed edges', () => {
+  const doc = exportTeamDocument(detail)
+  const slot = doc.slots[0]
+  if (!slot) throw new Error('Missing fixture slot')
+  doc.slots = ['a->slot:b', 'c', 'a', 'b->slot:c'].map((key) => ({ ...slot, key }))
+  doc.edges = [
+    {
+      sourceKind: 'slot',
+      sourceKey: 'a->slot:b',
+      targetKind: 'slot',
+      targetKey: 'c',
+      posture: 'allow',
+    },
+    {
+      sourceKind: 'slot',
+      sourceKey: 'a',
+      targetKind: 'slot',
+      targetKey: 'b->slot:c',
+      posture: 'allow',
+    },
+  ]
+  expect(parseTeamDocument(doc).edges).toHaveLength(2)
+})
+
+test('delimiter-shaped identifiers cannot hide an edge diff', () => {
+  const before = [
+    { sourceKind: 'slot', sourceId: 'a -> slot:b', targetKind: 'slot', targetId: 'c' },
+  ]
+  const after = [{ sourceKind: 'slot', sourceId: 'a', targetKind: 'slot', targetId: 'b -> slot:c' }]
+  expect(edgeDiff(before, after).added).toHaveLength(1)
+  expect(edgeDiff(before, after).removed).toHaveLength(1)
+})
+
+test('portable slot mapping uses recorded position rather than incidental array order', () => {
+  const exported = exportTeamDocument(detail)
+  const reordered = { ...detail, slots: [...detail.slots].reverse() }
+  expect(teamImportBody(exported, reordered).slots.map((slot) => slot.slotId)).toEqual([
+    'server-a',
+    'server-b',
+  ])
+  expect(exportTeamDocument(reordered).slots.map((slot) => slot.key)).toEqual(['slot-2', 'slot-1'])
+})
+
 describe.each([
   'open_team',
   'coordinator',
@@ -140,6 +184,52 @@ test.each([
   ],
 ])('rejects %s before mutation', (_label, document, expected) => {
   expect(() => parseTeamDocument(document)).toThrow(expected)
+})
+
+const liveDocument = {
+  version: 1,
+  kind: 'bazilion.team-policy',
+  teamId: 'g',
+  expectedRevision: 1,
+  edges: [{ sourceKind: 'user', sourceId: null, targetKind: 'agent', targetId: 'a' }],
+}
+
+test.each([
+  'allow',
+  'approval_required',
+] as const)('live policy import preserves explicit %s posture rather than downgrading it', (posture) => {
+  const document = { ...liveDocument, edges: [{ ...liveDocument.edges[0], posture }] }
+  expect(parseTeamPolicyDocument(JSON.parse(JSON.stringify(document))).edges[0]?.posture).toBe(
+    posture,
+  )
+})
+
+test('only omitted live posture defaults to allow', () => {
+  expect(parseTeamPolicyDocument(liveDocument).edges[0]?.posture).toBe('allow')
+})
+
+test.each(
+  [null, false, true, 0, [], {}, 'deny', 'ALLOW', 'approvalRequired'].map((posture) => ({
+    posture,
+  })),
+)('live policy import refuses invalid posture $posture before mutation', ({ posture }) => {
+  const document = { ...liveDocument, edges: [{ ...liveDocument.edges[0], posture }] }
+  expect(() => parseTeamPolicyDocument(document)).toThrow(/invalid posture/)
+})
+
+test('empty non-resource endpoint ids cannot bypass self-edge validation', () => {
+  expect(() =>
+    parseTeamPolicyDocument({
+      ...liveDocument,
+      edges: [{ sourceKind: 'user', sourceId: null, targetKind: 'user', targetId: '' }],
+    }),
+  ).toThrow()
+  expect(() =>
+    parseTeamDocument({
+      ...exportTeamDocument(detail),
+      edges: [{ sourceKind: 'user', sourceKey: null, targetKind: 'user', targetKey: '' }],
+    }),
+  ).toThrow()
 })
 
 test('Team policy validation rejects portable Agent self edges', () => {

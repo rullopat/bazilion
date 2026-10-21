@@ -1,0 +1,63 @@
+{
+  "recordedAt": "2026-10-19T21:56:56.257284+00:00",
+  "authorization": "Operator approved read-only safe historical evidence recovery from retained assistant/session logs/project archives; no original ~/.bazilion, daemon, credential/account or provider access",
+  "source": {
+    "sessionFileBasename": "2026-10-03T06-18-37-608Z_01a1006a-20a8-7629-ab4f-72fa0c5d594a.jsonl",
+    "pinnedPrefixBytes": 182733952,
+    "pinnedPrefixSha256": "2c59eacc6af80d29ce4d8674a7df8b765f722da9827cfe50226fdb9ede1ea2d3",
+    "prefixRechecked": true,
+    "scan": "Known log only; tool-call/result envelopes and exact approved records; unrelated payloads discarded, no full-log export"
+  },
+  "recovered": [
+    {
+      "label": "original",
+      "resultId": "b6e6771e-6ad9-4cd2-a550-3674bc48c26f",
+      "byteLength": 2240614,
+      "recordedSha256": "40dbca4d9a1a7d35f7d20866130b6514db3f9ebbd542e1de805b85e9dafc6096",
+      "recordedDispatches": 1,
+      "source": "historical logged extracted fields; not new raw-provider/PNG verification"
+    },
+    {
+      "label": "rework",
+      "resultId": "d42c7f34-879c-44ed-a153-15d951384d42",
+      "byteLength": 1840520,
+      "recordedSha256": "4209bc5ef2b5064194036cc8a0c9e6445c82be6b95af18c926d0044b73868d58",
+      "recordedDispatches": 1,
+      "source": "historical logged extracted fields; not new raw-provider/PNG verification"
+    },
+    {
+      "label": "protected",
+      "resultId": "6ada1f91-48b3-4be7-bdc0-d93f8f219bff",
+      "byteLength": 2395695,
+      "recordedSha256": "6e4d8b4c89e7220b30e8c9d044f56c7ee60d589fc3fcb1745a6e53d4f2c4f7b0",
+      "recordedDispatches": 1,
+      "source": "historical logged extracted fields; not new raw-provider/PNG verification"
+    }
+  ],
+  "originalIndependentReview": {
+    "sha256": "ee24ec44cb4876732db832608ce169843ddc4be70e5a06587f071d6daf729e4c",
+    "bytes": 3593,
+    "recovery": "Exact contiguous logged final-answer text, CLI trailing delimiter removed, existing immutable artifact hash matches. Not rewritten/narrative regeneration; old external read-only review, not a new native review."
+  },
+  "operatorDecisions": "Exact short visual/scope phrase projections retain record IDs/time/character offsets and omit unrelated content",
+  "observerLimit": "Actual recorded protected kind/image host; recovered observer code checks truthiness of four named env vars and NODE_OPTIONS, not a full environment/key-presence or raw-input audit",
+  "initialFailures": "No hash match before stripping a CLI logger newline; unchanged preexisting hash then matched exact artifact. Separate third-stdout-line original-digest assumption failed; line excluded, no projection created or expected digest changed. Original diagnostics retained.",
+  "notRecovered": [
+    "original PNG bytes",
+    "full raw canonical conversations",
+    "raw upstream response bodies",
+    "guard/dispatch marker files",
+    "complete old source-pin manifest",
+    "a newly computed original-image hash after later restarts"
+  ],
+  "scopeLimits": [
+    "Historical records, not new live generation",
+    "Summaries contain selected canonical/guard fields, not full raw transcripts/input",
+    "Reported restart/hash checks are historical harness facts",
+    "Geometry mismatch retained; no backend-model attestation or invoice",
+    "Earlier failed/uncertain requests remain failures; never replay",
+    "Historical BAZ066 reference in exact oldreview does not revive canceled work"
+  ],
+  "independentEvidenceReview": "PENDING; no story/source/artifact/release approval inferred",
+  "publicationPerformed": false
+}

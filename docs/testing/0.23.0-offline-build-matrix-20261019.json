@@ -1,0 +1,79 @@
+{
+  "format": "bazilion-source-freeze-amendment-v1",
+  "revision": 11,
+  "recordedAt": "2026-10-19T18:44:01.246030+00:00",
+  "authorization": "Operator approved remaining non-publication checks including offline project-allowlisted build scripts and genuine prior-home testing, no browser downloads/providers/unknown-build or skill approvals",
+  "parentAmendment": "docs/testing/0.23.0-registry-availability-20261019.json",
+  "parentAmendmentSha256": "a256acbd618acb860e41e330a72ced0f8f80625133cc632ab974b819a314e333",
+  "parentSourceInputAggregateSha256": "558a7b1191f768f0aebcaef8a4a5ff19fc950a2014ee6566bdc4b85ca06bfdff",
+  "amendedSourceInputAggregateSha256": "e8dc9da214ca29645329585a8198d812f580b8f447ab1c565aca616d7ac45f89",
+  "amendedCoreEntryCount": 1139,
+  "reconstruction": "Apply preserved r10 core then this inputDelta; membership unchanged; inherited aggregate algorithm",
+  "inputDelta": [
+    {
+      "path": "docs/releases.md",
+      "before": {
+        "path": "docs/releases.md",
+        "kind": "file",
+        "sha256": "a948fd51382b86507a613610f8d062f6f260aefa2a2a2fd70bb1fce511662a13",
+        "bytes": 14339,
+        "executable": false
+      },
+      "after": {
+        "path": "docs/releases.md",
+        "kind": "file",
+        "sha256": "a53ff4c2502494875beae7c764beaf9b16d4176b8cde00751fbf01afcb8e07aa",
+        "bytes": 14594,
+        "executable": false
+      }
+    },
+    {
+      "path": "scripts/migration-upgrade-matrix.mjs",
+      "before": {
+        "path": "scripts/migration-upgrade-matrix.mjs",
+        "kind": "file",
+        "sha256": "d6b40d8be0bc74d233691aa5bbd2a3f0946273fff11759ba2d41dac17fe0db0f",
+        "bytes": 14236,
+        "executable": false
+      },
+      "after": {
+        "path": "scripts/migration-upgrade-matrix.mjs",
+        "kind": "file",
+        "sha256": "03f13ab3c6912ee97f6be03c12e0e5b410edd49929ddf5c6afebc41c6d2438d2",
+        "bytes": 14831,
+        "executable": false
+      }
+    }
+  ],
+  "qualification": {
+    "runtime": "Node24.20.0; candidatepnpm12.14.0 and real priorpnpm11.14.0",
+    "candidateNormalInstall": "exit0 but no deferred scripts ran; explicit positive allowlist rebuild followed",
+    "candidateAllowlistedRebuild": "exit0, native in-memory query under ABI137 passed; browser download skipped, denied scripts remain pending",
+    "controlledHarnessTests": "13 pass /0fail /0skip after digest-only fact output change",
+    "genuinePriorHomes": "8 actual old-source seeds;8 clean exit0 old closes;8 current exit1 refusals, no signal/force/overflow; identical before/after ledger and state manifests for each",
+    "genuineInstallers": "8 exit0 real11.14.0 offline frozen installs, script policy retained, real archive identities matched",
+    "diagnostic": "All8 explicit incompatible-schema preservation/paired-auth/reset guidance observed, no reset performed",
+    "freshDependencyTypes": "root+web exit0",
+    "freshDependencyUnversionedBuild": "web and3 public packages exit0;0.22.0 source outputs, not final artifacts",
+    "originalNativeBinaryUnchanged": true,
+    "matrixFixtureRootsRemaining": 0
+  },
+  "status": "Offline lifecycle/source build and eight genuine-release seeded refusal cases passed; final version/artifact/CI/independent risk/release acceptance remain open",
+  "additionalPlanningAndEvidence": [
+    {
+      "path": "docs/testing/0.23.0-offline-build-matrix-20261019.md",
+      "sha256": "403505b75b219292cdcd8b53b11a1aadba88f9acc6ec772b66a86e0a1b6ca541"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-offline-build-matrix-20261019/qualification.json",
+      "sha256": "a86ad0a2da9c1ddb2c8bd47044b1ecbaf5b61306cf6837c539bf40b98635dc0b"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-offline-build-matrix-20261019/transcripts.json.gz",
+      "sha256": "b2a5e0ce85497a965d62add04fe6e6220f6d6236e05ee00875cccd6f4d0d1b80"
+    }
+  ],
+  "limits": "Synthetic genuine-source homes, no in-place upgrade/restore/abnormal-host/descendant/macOS/final artifact acceptance. Earlier image intermittency remains preserved for final review.",
+  "publicVersions": "0.22.0 unchanged at this checkpoint; pending minor changeset retained",
+  "publicationAuthorized": false
+}

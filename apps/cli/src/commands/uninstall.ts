@@ -1,4 +1,4 @@
-import { existsSync, lstatSync, readdirSync, realpathSync, rmSync } from 'node:fs'
+import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, rmSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { isAbsolute, join, parse, relative, resolve, sep } from 'node:path'
 import { defineCommand } from 'citty'
@@ -54,6 +54,108 @@ async function askYes(readLine: () => Promise<string>, prompt: string): Promise<
   process.stdout.write(`${prompt} [y/N] `)
   const answer = (await readLine()).trim().toLowerCase()
   return answer === 'y' || answer === 'yes'
+}
+
+const BROWSER_OWNER_REMEDY =
+  'Leave the browser profile, owner marker and lock files untouched. ' +
+  'Use supported browser status/stop controls; if ownership remains uncertain, ' +
+  'keep uninstall blocked and seek operator support.'
+
+/**
+ * BAZ-069 T12: refuse the destructive uninstall while any managed browser
+ * slot's owner marker names a process that may still be alive. CLI-local —
+ * reads only `browsers/<id>/owner.json`; never imports daemon runtime. A
+ * symlinked `browsers` root is unlinked (never followed), so no external
+ * target is scanned or touched.
+ */
+function assertNoLiveBrowserOwner(browsersDir: string): void {
+  let rootStat: import('node:fs').Stats
+  try {
+    rootStat = lstatSync(browsersDir)
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return
+    throw error
+  }
+  if (rootStat.isSymbolicLink()) return // removed by unlink below; never followed
+
+  let slots: string[] = []
+  try {
+    slots = readdirSync(browsersDir)
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return
+    throw error
+  }
+  for (const slot of slots) {
+    const markerPath = join(browsersDir, slot, 'owner.json')
+    let raw: string
+    try {
+      raw = readFileSync(markerPath, 'utf8')
+    } catch (error) {
+      if (error instanceof Error && 'code' in error && error.code === 'ENOENT') continue
+      // An unreadable marker is unknown ownership: fail closed.
+      throw new Error(
+        `refusing to uninstall: browser slot ${slot} has an unreadable owner marker. ` +
+          BROWSER_OWNER_REMEDY,
+      )
+    }
+    let marker: unknown
+    try {
+      marker = JSON.parse(raw)
+    } catch {
+      throw new Error(
+        `refusing to uninstall: browser slot ${slot} has a corrupt owner marker. ` +
+          BROWSER_OWNER_REMEDY,
+      )
+    }
+    const presence = markerOwnerPresence(marker)
+    if (presence === 'alive') {
+      throw new Error(
+        `refusing to uninstall: browser slot ${slot} is owned by a process that is still ` +
+          'alive (orphaned browser). ' +
+          BROWSER_OWNER_REMEDY,
+      )
+    }
+    if (presence === 'unknown') {
+      throw new Error(
+        `refusing to uninstall: cannot prove browser slot ${slot}'s owner process is gone. ` +
+          BROWSER_OWNER_REMEDY,
+      )
+    }
+  }
+}
+
+function markerOwnerPresence(marker: unknown): 'alive' | 'absent' | 'unknown' {
+  if (!marker || typeof marker !== 'object' || Array.isArray(marker)) return 'unknown'
+  const record = marker as Record<string, unknown>
+  if (!['starting', 'running', 'stopping'].includes(String(record.phase))) return 'unknown'
+  const probes: number[] = []
+  for (const key of ['pid', 'processGroupId']) {
+    const value = record[key]
+    if (value === undefined) continue
+    if (
+      typeof value !== 'number' ||
+      !Number.isSafeInteger(value) ||
+      value <= 0 ||
+      value > 0x7fffffff
+    ) {
+      return 'unknown'
+    }
+    probes.push(key === 'pid' ? value : -value)
+  }
+  // A crash can occur after spawn and before the PID is persisted. No phase
+  // without process identity is positive proof of absence.
+  if (probes.length === 0) return 'unknown'
+  for (const pid of probes) {
+    try {
+      process.kill(pid, 0)
+      return 'alive' // probe success: the process exists
+    } catch (error) {
+      const code = error instanceof Error && 'code' in error ? error.code : undefined
+      if (code === 'ESRCH') continue // positively absent
+      return 'unknown' // EPERM and anything else never reads as "safe"
+    }
+  }
+  return 'absent'
 }
 
 function removePath(p: string): boolean {
@@ -130,7 +232,9 @@ export const uninstallCommand = defineCommand({
     // canonical spelling), so a symlinked BAZILION_HOME arrives here spelled
     // as its real target. Detect the alias from the requested spelling: an
     // uninstall through a symlink keeps the root slot stable (below).
-    const requestedHome = resolve(args.home ?? process.env.BAZILION_HOME ?? join(homedir(), '.bazilion'))
+    const requestedHome = resolve(
+      args.home ?? process.env.BAZILION_HOME ?? join(homedir(), '.bazilion'),
+    )
     let requestedIsSymlink = false
     try {
       requestedIsSymlink = lstatSync(requestedHome).isSymbolicLink()
@@ -166,6 +270,13 @@ export const uninstallCommand = defineCommand({
     console.log(`about to uninstall bazilion at ${targetHome}`)
     console.log('')
 
+    // BAZ-069 T12: the reset tier also removes the root browser slot tree —
+    // managed profiles hold site credentials. A slot whose owner marker names
+    // a LIVE process (an orphaned browser the daemon no longer tracks) blocks
+    // the destructive uninstall: never delete a live browser's profile.
+    const browsersDir = join(targetHome, 'browsers')
+    assertNoLiveBrowserOwner(browsersDir)
+
     const resetTargets = [
       dbFile,
       `${dbFile}-wal`,
@@ -178,6 +289,7 @@ export const uninstallCommand = defineCommand({
       agentsDir,
       teamsDir,
       legacyGroupsDir,
+      browsersDir,
     ]
 
     const needsPrompt = !args.yes
@@ -212,6 +324,9 @@ export const uninstallCommand = defineCommand({
     // fails closed before removing any state.
     const uninstallLock = await acquireHomeRestoreLock(targetHome, 'uninstalling')
     try {
+      // The earlier check is advisory: prompts can leave time for a daemon to
+      // start, spawn a browser and exit. Revalidate under exclusive ownership.
+      assertNoLiveBrowserOwner(browsersDir)
       for (const p of resetTargets) {
         if (removePath(p)) console.log(`removed ${p}`)
       }

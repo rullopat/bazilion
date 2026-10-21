@@ -30,6 +30,45 @@ export interface ResultListResponse {
   limit: number
 }
 
+/** Approved owner-only inventory: deliberately no filename, prompt, model, hash or source. */
+export interface PrivateImageCapture {
+  id: string
+  teamId: string
+  agentId: string
+  createdAt: number
+  byteLength: number
+}
+
+export interface PrivateImageCaptureListResponse {
+  captures: PrivateImageCapture[]
+  total: number
+  privateBytes: number
+  /** All retained Results bytes in this home, including ordinary and released files. */
+  retainedBytes: number
+  limit: number
+  offset: number
+}
+
+export type PrivateImageRecoveryResponse =
+  | { resultId: string; status: 'released' | 'already_released' }
+  | { resultId: string; status: 'approval_required'; approvalId: string }
+  | {
+      resultId: string
+      status: 'blocked'
+      reason:
+        | 'producer_active'
+        | 'producer_unavailable'
+        | 'delivery_pending'
+        | 'delivery_closed'
+        | 'policy_denied'
+      approvalStatus?: import('./entities.ts').CommunicationApprovalStatus
+    }
+
+export interface PrivateImageDiscardResponse {
+  resultId: string
+  discarded: true
+}
+
 /** Private worker-to-daemon publication message; ownership is bound by the daemon. */
 export interface ResultPublicationInput {
   sessionId: string

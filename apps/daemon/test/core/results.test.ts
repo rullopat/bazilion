@@ -29,6 +29,33 @@ afterEach(() => {
 })
 
 describe('durable result snapshots', () => {
+  test('preserves complete composite tool identities without widening other provenance ids', () => {
+    const composite = { ...input, toolCallId: 'call_fixture|fc_fixture' }
+    const first = results.publish(env.db, composite)
+    expect(first.toolCallId).toBe(composite.toolCallId)
+    expect(results.publish(env.db, composite).id).toBe(first.id)
+    expect(results.publish(env.db, { ...input, toolCallId: 'call_fixture' }).id).not.toBe(first.id)
+    expect(results.publish(env.db, { ...input, toolCallId: 'call_fixture|fc_other' }).id).not.toBe(
+      first.id,
+    )
+    expect(() => results.publish(env.db, { ...composite, bytes: Buffer.from('changed') })).toThrow(
+      'retry',
+    )
+    for (const key of ['teamId', 'agentId', 'sessionId'] as const) {
+      expect(() => results.publish(env.db, { ...composite, [key]: 'a|b' })).toThrow('provenance')
+    }
+    for (const id of [
+      'call|',
+      '|item',
+      'call||item',
+      'call|item|extra',
+      'call/item',
+      'a'.repeat(257),
+      'call|item\n',
+    ]) {
+      expect(() => results.publish(env.db, { ...input, toolCallId: id })).toThrow('provenance')
+    }
+  })
   test('keeps publication private and releases the immutable original bytes', () => {
     const receipt = results.publish(env.db, input)
     input.bytes.fill(0)

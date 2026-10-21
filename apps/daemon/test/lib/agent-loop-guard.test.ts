@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, test } from 'vitest'
-import { projectAttention } from '../../src/core/attention.ts'
 import { spawnAgent } from '../../src/core/agent/spawn.ts'
+import { projectAttention } from '../../src/core/attention.ts'
 import { createProfile } from '../../src/core/profile/create.ts'
 import { AgentLoopLimitError, listAgentLoopBreaks } from '../../src/lib/agent-loop-guard.ts'
 import { sendAgentMessage } from '../../src/lib/communication.ts'

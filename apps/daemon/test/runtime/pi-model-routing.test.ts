@@ -16,7 +16,8 @@ import { loadProviderConfigFromEnv } from '../../src/runtime/providers/registry.
 // string therefore sent, for example, a Fireworks key to OpenAI. These tests pin
 // the refusal and the endpoint catalogued models actually carry.
 
-const FIREWORKS_CATALOG_ID = 'accounts/fireworks/models/deepseek-v4-flash-0731'
+// Pi 1.0 retires the dated 0731 entry; pin its current catalogued successor.
+const FIREWORKS_CATALOG_ID = 'accounts/fireworks/models/deepseek-v4p1-flash'
 
 test('an uncatalogued model id with no endpoint is refused instead of misrouted', async () => {
   const runtime = await createBazilionPiRuntime({ providerName: 'fireworks', env: {} })
@@ -72,8 +73,8 @@ test('an explicit base URL override wins for an uncatalogued model', async () =>
 test('fireworks has its own endpoint, so a model newer than the catalog stays on Fireworks', async () => {
   // The fail-closed rule exists to stop an uncatalogued id reaching *another vendor's* default with this
   // provider's credential. Fireworks publishes one inference endpoint for everything it hosts, so pinning
-  // it keeps that intent while letting an upstream model (here the 4.1 flash, absent from this build's
-  // catalog) be used without waiting for a catalog update.
+  // it keeps that intent while letting an explicitly configured uncatalogued model be used without
+  // waiting for a catalog update. A fixture ID avoids accidentally testing the new 4.1 catalog entry.
   const endpoint = providerBaseUrl('fireworks', {})
   expect(endpoint).toContain('api.fireworks.ai')
   expect(endpoint).not.toContain('openai.com')
@@ -82,7 +83,7 @@ test('fireworks has its own endpoint, so a model newer than the catalog stays on
   const model = resolvePiModel(
     runtime,
     'fireworks',
-    'accounts/fireworks/models/deepseek-v4p1-flash',
+    'accounts/fireworks/models/fixture-next-model',
     endpoint,
   )
   expect(model.provider).toBe('fireworks')

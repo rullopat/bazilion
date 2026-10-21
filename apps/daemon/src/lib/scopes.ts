@@ -55,7 +55,10 @@ const READ_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
  */
 export function requiredScope(method: string, path: string): DeviceTokenScope {
   const isRead = READ_METHODS.has(method.toUpperCase())
-  if (ADMIN_PREFIXES.some((p) => path === p || path.startsWith(`${p}/`))) {
+  if (
+    /^\/api\/teams\/[^/]+\/workspace\/recovery(?:\/|$)/.test(path) ||
+    ADMIN_PREFIXES.some((p) => path === p || path.startsWith(`${p}/`))
+  ) {
     return 'admin'
   }
   if (!isRead) {

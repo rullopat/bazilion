@@ -5,7 +5,7 @@ status: draft
 size: S
 created: 2026-09-19
 refined: 2026-09-20
-note: Parent evidence review only; execution split into BAZ-064/065/066. Broader beta gate, not frozen 0.22 feature scope.
+note: Parent evidence review only; execution split into BAZ-064/065. Broader beta gate, not frozen 0.22 feature scope.
 ---
 
 # BAZ-063 — Content Team parent acceptance
@@ -39,8 +39,9 @@ being presented as a successful end-to-end journey.
 | Child | Size | Deliverable |
 | --- | --- | --- |
 | [BAZ-064](../in_progress/BAZ-064-content-team-recipe-and-manual-handoff.md) | M | Topic-neutral Team recipe, parameterized briefs, deterministic collaboration/research/rework/manual-handoff coverage |
-| [BAZ-065](../in_progress/BAZ-065-content-team-scheduling-and-recovery.md) | M | Actual preparation cron, protected handoffs, time semantics, contention, lifecycle/recovery and bounded recurring-test execution |
-| [BAZ-066](BAZ-066-content-team-live-and-human-acceptance.md) | S | Authorized live core, second-topic reuse, independent user/accessibility observations and redacted evidence |
+| [BAZ-065](../done/BAZ-065-content-team-scheduling-and-recovery.md) | M | Limited scheduler/process slice independently accepted for 0.23.0; remaining original composed D/S qualification stays open, execution unassigned/not scheduled |
+
+Live/human execution is unassigned and not scheduled.
 
 Size S is **parent consolidation/review only**, not the total programme. Children are additional work;
 the combined core is roughly 2–3 engineering weeks before prerequisite fixes, waiting for access or
@@ -61,7 +62,7 @@ CT-01–18 and PUB-01–06, including case/lane ownership. Do not duplicate the 
 - [ ] BAZ-064's reproducible recipe and deterministic case evidence are reviewed.
 - [ ] BAZ-065's real scheduler, protected-origin and recovery evidence is reviewed; manual turns do
   not substitute for cron. Unsupported safe research or timing requirements remain explicitly blocked.
-- [ ] BAZ-066's live and independent-user evidence covers every required L/H configuration, including
+- [ ] Live and independent-user evidence covers every required L/H configuration, including
   the actual scheduled journey, two distinct topics and exact approved downloads after restart.
 - [ ] Evidence identifies the same candidate/recipe/fixture versions, or affected checks are rerun
   after changes. Preserve first failures and required retests; different snapshots are not one pass.
@@ -78,9 +79,9 @@ CT-01–18 and PUB-01–06, including case/lane ownership. Do not duplicate the 
 
 ## Dependencies and open prerequisites
 
-Core depends on BAZ-064 → BAZ-065 → BAZ-066 and the actual admitted image/research capabilities.
+Core depends on BAZ-064 → BAZ-065 and the actual admitted image/research capabilities.
 BAZ-064's first recipe/management preflight is implemented, not composed acceptance. Protected
-source discovery is blocked on [BAZ-067](../in_progress/BAZ-067-protected-web-discovery.md); see the
+source discovery is implemented by [BAZ-067](../done/BAZ-067-protected-web-discovery.md), but backend qualification remains separate; see the
 [preflight evidence](../BAZ-064-acceptance.md).
 The children may prepare in parallel, but final live qualification consumes their reviewed outputs.
 Native editorial packets and social adapters are not prerequisites for manual handoff; conversational

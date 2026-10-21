@@ -14,6 +14,7 @@ import { teamCodingLogCommand } from './team-coding-log.ts'
 import { teamEnvironmentCommand } from './team-environment.ts'
 import { teamPolicyCommand } from './team-policy.ts'
 import { teamPublishCommand } from './team-publish.ts'
+import { teamRecoveryCommand } from './team-recovery.ts'
 import { teamReviewCommand } from './team-review.ts'
 import { verifyCommand } from './team-verify.ts'
 
@@ -250,6 +251,7 @@ const contextCmd = defineCommand({
 export const teamCommand = defineCommand({
   meta: { name: 'team', description: 'Manage teams (collaboration contexts)' },
   subCommands: {
+    recovery: teamRecoveryCommand,
     environment: teamEnvironmentCommand,
     log: teamCodingLogCommand,
     review: teamReviewCommand,

@@ -1,10 +1,148 @@
 # Releasing Bazilion
 
+## Current target: 0.23.0 — release HOLD
+
+**Current checklist:** [0.23.0 release status](testing/0.23.0-release-status.md). Reuse the applicable
+passes below; final candidate commit/CI/artifact review and publication remain pending. Historical
+anomalies are retained for final review, not new standalone diagnostic tracks. The dated preparation
+records below keep their original applicability; routine amendment chains ended at r30.
+
+[Current r26 local runtime/source qualification](testing/0.23.0-node-runtime-floor-20261021.md) uses
+the operator-admitted private Node24.22.0 and enforces `^24.22.0 || ^26.4.0` before CLI/daemon payload
+linking or state bootstrap. Dependencies/Pi/package managers did not change. Root/web types,28focused,
+2642whole-suite passes (49pending),41helpers and the unchanged397-case gate (1326passes,0pending)
+pass. Actual oldNode24.20 source/packed refusal and supported built-CLI checks pass after a documented
+verification-helper cleanup correction. Current provisional0.23tarballs include the image controls
+and guarded entry layout; old r12 tarballs do not represent this source. No global installation,
+standalone crash probe, new live qualification, source commit, publication or website deployment.
+Independent final review, final-source/CI, current installed-prefix closure/backup/refusal/affected-
+feature qualification and public artifact/provenance/install checks remain required.
+[Fresh r27 runtime-floor component review](testing/0.23.0-runtime-floor-component-review-20261021.md)
+returned **ACCEPT WITH NOTES**, no issues found. It covers the correction and supplied small artifact
+projections, not complete installed closure or final release acceptance; no source change followed.
+[Current r28 installed-artifact trial](testing/0.23.0-current-installed-artifacts-20261021.md) now passes
+both installed libraries and the unchanged guarded CLI installer on private Node24.22.0. Dependency
+metadata/native digests were captured from the actual trial prefix before its confirmed removal.
+That npm graph differs from the source-test pnpm graph; it has the same version sets as the admitted
+r13 cache tree, not proven identical bytes. No hidden npm lock is claimed. Backup/refusal/affected-
+feature qualification, final-source/CI/review and public release gates remain open.
+[The r29 installed feature/backup fixture stopped](testing/0.23.0-installed-backup-checkpoint-20261021.md)
+after installed qmd/private-image checks and plaintext backup creation passed: its archive-inspection
+helper failed `tar.list is not a function`. The failure/fixture are retained; encrypted restore,
+exclusion/refusal and packed prior-home checks were not reached. Bounded helper-interop correction
+and continuation await operator confirmation. No product failure or backup acceptance is inferred.
+[The operator-approved r30 helper correction and new fixture](testing/0.23.0-installed-backup-closeout-20261021.md)
+now pass all originally declared installed backup/refusal/affected-feature checks, including encrypted
+restore, retained/private/tombstoned Result hashes, browser-root exclusion, three unchanged-target
+restore refusals and eight actual packed genuine-prior-home refusals. Only one helper import line
+changed; the r29 failure and originals remain intact. No provider request or product/dependency
+change occurred. Historical intermittency/risk disposition, final-source/CI/artifact/final-review
+and public release/website gates remain open.
+
+### Earlier preparation records — retain their original applicability
+
+**Historical full-suite qualification failure:** [r22 failure record](testing/0.23.0-current-qualification-hold-20261019.md)
+retains2,618 passes/17 failures/49 pending on r21 source, plus error-free lint with112 warnings/14 infos.
+The approved [r23 offline diagnostic checkpoint](testing/0.23.0-native-vm-diagnostic-20261019.md) now
+reproduces the native assertion during standalone VM-context creation with dropped SQLite statements;
+the retained-reference control exited normally. This is no production fix or qualification pass.
+The exact original worker caller/supported fix and private CWD/output-profile corrections remain open.
+A parent API risk rejection interrupted the turn; affected execution stopped with no replay, fallback,
+account access or bypass. No397-case gate or release action followed. The historical security pass and
+new diagnostic are not substitutes for current qualification or waivers of older intermittency.
+
+The operator-confirmed [r24 routine tranche](testing/0.23.0-routine-qualification-20261019.md) passes
+root/web types, whole lint (0errors/112warnings/14infos),41 helper cases,33 selected CLI cases and the
+source web build. All eight prior non-chat fixture failures pass under a corrected nested/writable
+**private** checkout; seven fake received files were actually created and source hashes stayed fixed.
+No native-chat/probe, whole-suite or397-case gate rerun occurred; the native investigation stays
+paused. [r25 operator-approved official metadata lookup](testing/0.23.0-upstream-compatibility-metadata-20261020.md)
+found the upstream cleanup-hook explanation matching the observed mechanism and its inclusion in
+Node24.22.0/26.4.0 release notes. No runtime was installed/tested and no supported-version policy changed.
+Private-runtime admission, the support-floor decision and actual qualification of this candidate fix
+remain open; publisher notes are not a test pass. No driver/Pi upgrade or production GC workaround.
+
+The authoritative current preparation packet is the
+[0.23.0 scope/source freeze](testing/0.23.0-freeze.md) and
+[current release checklist](testing/0.23.0-release-checklist.md), recorded 2026-10-19.
+The [pnpm 12.14.0 amendment](testing/0.23.0-pnpm-amendment-20261019.md) supersedes the initial
+package-manager selection only; the original freeze remains retained. The dirty working-tree
+baseline is identified, not approved for publication. The
+[uninstall-guidance amendment](testing/0.23.0-uninstall-guidance-20261019.md) resolves H2 with
+focused fixture checks; independent final-candidate review remains pending. BAZ-069 and the
+explicitly limited BAZ-068/065 slices are accepted; required ChatGPT-only BAZ-059 samples are
+satisfied, with final evidence/story/release closeout still required. Optional paid-route trials
+and missing broader composed/live/human qualification are not silently converted into passes.
+
+All three public **source manifest versions are now 0.23.0, not published**; the owned minor changeset
+was consumed after checked offline generation/idempotence with the unchanged Changesets plugin.
+[Current versioned-candidate preparation](testing/0.23.0-versioned-candidate-20261019.md) records the
+exact three tarballs, real versioned types/build/pack passes and two installed library smokes.
+The first pnpm automatic-store mismatch/build failure and its private-config correction are
+preserved; dependency verification was not disabled. [Npm cache population and the guarded installed
+CLI trial now pass](testing/0.23.0-guarded-installer-20261019.md): exact0.23 tarball, scripts-off install,
+project-positive offline rebuilds, SSR/fake chat/MCP/coding/reset and29 settled owned process outcomes.
+[Independent component review BLOCKED the initial harness](testing/0.23.0-installer-independent-review-20261019.md)
+on failure-state erasure before uninstall. [Three bounded corrections now pass32 controlled tests](testing/0.23.0-installer-review-corrections-20261019.md),
+including19 installer/13 upgrade-helper cases. [Independent corrective re-review ACCEPTED this
+component, no issues found](testing/0.23.0-installer-corrective-review-20261019.md);
+[receipt r15](testing/0.23.0-installer-component-closeout-20261019.json) binds the review and unchanged
+source/artifacts. The historical installed trial was not rerun. No unrestricted npm-script approval,
+trial-prefix closure identity inference or whole-release acceptance is implied.
+
+[The single approved serial security sequence](testing/0.23.0-security-sequence-20261019.md)
+passed all366 required cases (1,294 selected tests, no failures/skips). The earlier intermittency is
+unexplained and retained for final review, not waived. [Registry-only availability](testing/0.23.0-registry-availability-20261019.md)
+and [offline allowlisted builds plus eight genuine prior-home refusals](testing/0.23.0-offline-build-matrix-20261019.md)
+passed with actual clean old exits/current exit1 and unchanged ledger/state manifests. Those are
+scoped source/fixture observations, not final installed0.23 backup/platform acceptance. No personal
+home reset, compatibility adapter, unknown-build/agent-skill approval, provider call or publication
+is inferred. Final installed CLI/affected features, applicable source/platform CI, risk/story
+closeout, exact source commit and fresh independent source/artifact/release acceptance remain open.
+[The operator-requested image-retention repair](testing/0.23.0-image-retention-fix-20261019.md)
+now has96 focused/crash passes and root types. [Independent review accepts the intermediate retention
+component with notes but BLOCKS full recovery/release](testing/0.23.0-image-retention-independent-review-20261019.md):
+private images can strand quota without recovery/discard controls. The operator approved the bounded
+follow-up: [minimal owner inventory, policy-gated recovery and confirmed discard are implemented](testing/0.23.0-image-recovery-controls-20261019.md),
+with125 current focused/CLI passes, root/web types, fresh web build and actual browser projection.
+[Fresh independent complete-repair review ACCEPTED WITH NOTES, no issues found](testing/0.23.0-image-recovery-independent-review-20261019.md),
+resolving that P1 within the approved contract; no automatic release, provider retry or policy bypass.
+The397-case full gate, whole suite and final pack/installed/CI gates remain open; old tarballs do not
+contain this runtime/API/UI/wire change.
+The confirmed Sisyphus goal authorizes non-publishing candidate commits after local checks and stable
+0.23/latest publication plus website deployment **only after applicable gates pass**. No such release
+operation has occurred. The website homepage must not state the Pi version, including future updates.
+**Do not apply the old 0.22 prerelease transition below**.
+
+The operator approved [bounded recovery of genuine retained BAZ-059 evidence](testing/0.23.0-baz059-evidence-recovery-20261019.md).
+Three complete historical logged summaries, image/restart checks, observer source and exact operator
+phrase projections are now archived; the original independent review matches its unchanged recorded
+SHA256. This does not restore original PNGs/full canonical input/source-pin files or establish a new
+live pass. [Fresh independent historical evidence review ACCEPTED WITH NOTES](testing/0.23.0-baz059-live-evidence-review-20261019.md);
+[additive corrections](testing/0.23.0-baz059-evidence-closeout-20261019.md) bind the actual journal pin
+and limit observer truthiness claims. The old `/tmp` loss and recovery limits remain recorded; no
+trial replay, original home/account/daemon access or invented replacement. BAZ-059 remains in progress
+for current-candidate and actual release closeout.
+
+This packet authorizes no tests/services/installations, new live requests, version mutation,
+commit/merge/push, npm/tag/workflow operation or website deployment. Obtain explicit authorization
+for execution and publication boundaries. The main-branch Release workflow can publish
+conditionally on any push; merging the version PR is not a draft-only step.
+
+## Historical 0.22.0 release procedure — not the current checklist
+
+The record below is retained for history. Its version recipes, qualification requirements,
+platform counts, baseline claims and old lint counts do not define the 0.23.0 gate. Use the
+current packet above; do not reuse historical results as final-candidate evidence.
+
+<details>
+<summary>Recorded 0.22.0 procedure and historical decisions</summary>
+
 **Published 2026-09-23: `0.22.0` is live on npm with `latest`; the `beta` dist-tag points at
 0.22.0 (the token cannot delete tags, so it was moved — same outcome); `0.21` → `0.21.0` (the
 version-only republish of `v0.21.0-beta.5` that closes the 0.21 line). Umbrella release:
-`v0.22.0`. The site's 0.22 page and version claims are deployed. 0.23.0 work starts with BAZ-069
-(browser-backed default search) and BAZ-066 (live/human content-Team acceptance).**
+`v0.22.0`. The site's 0.22 page and version claims are deployed. The 0.23.0 slate starts with
+BAZ-059 live image qualification, then BAZ-069 Agent-led browser research; see the [ordered backlog](backlog/README.md#0230-plan-operator-decision-2026-09-23).**
 The published baseline is `0.21.0-beta.5`. This procedure was rewritten on 2026-09-20 to match the
 implemented image-generation candidate and its observed validation. It does not authorize any
 version change, merge that triggers publishing, npm/tag operation or website deployment.
@@ -159,3 +297,5 @@ Presentation conventions:
 
 Reconfirm actual registry/tag state before publishing. Preparing documents or passing a rehearsal
 changes none of these release permissions.
+
+</details>

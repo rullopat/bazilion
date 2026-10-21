@@ -1,0 +1,806 @@
+
+### .github/workflows/ci.yml
+--- r25/.github/workflows/ci.yml
++++ r26/.github/workflows/ci.yml
+@@ -10,6 +10,9 @@
+   cancel-in-progress: true
+ 
+ permissions: {}
++
++env:
++  PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+ 
+ jobs:
+   ci:
+@@ -34,7 +37,7 @@
+       - name: Set up Node
+         uses: actions/setup-node@v6
+         with:
+-          node-version: 24
++          node-version: '24.22.0'
+           cache: pnpm
+ 
+       - name: Install
+@@ -87,7 +90,7 @@
+       - name: Set up Node
+         uses: actions/setup-node@v6
+         with:
+-          node-version: 24
++          node-version: '24.22.0'
+           cache: pnpm
+ 
+       - name: Install
+@@ -132,7 +135,7 @@
+       - name: Set up Node
+         uses: actions/setup-node@v6
+         with:
+-          node-version: 24
++          node-version: '24.22.0'
+           cache: pnpm
+ 
+       - name: Install
+@@ -163,7 +166,7 @@
+       - name: Set up Node
+         uses: actions/setup-node@v6
+         with:
+-          node-version: 24
++          node-version: '24.22.0'
+           cache: pnpm
+ 
+       - name: Install
+
+### .github/workflows/npm-ops.yml
+--- r25/.github/workflows/npm-ops.yml
++++ r26/.github/workflows/npm-ops.yml
+@@ -34,6 +34,9 @@
+   contents: read
+   id-token: write
+ 
++env:
++  PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
++
+ jobs:
+   remove-dist-tag:
+     if: inputs.action == 'remove-dist-tag'
+@@ -41,7 +44,7 @@
+     steps:
+       - uses: actions/setup-node@v4
+         with:
+-          node-version: 24
++          node-version: '24.22.0'
+           registry-url: https://registry.npmjs.org
+       - name: Remove dist-tag
+         run: npm dist-tag rm "${{ inputs.package }}" "${{ inputs.tag }}"
+@@ -54,7 +57,7 @@
+     steps:
+       - uses: actions/setup-node@v4
+         with:
+-          node-version: 24
++          node-version: '24.22.0'
+           registry-url: https://registry.npmjs.org
+       - name: Add dist-tag
+         run: npm dist-tag add "${{ inputs.package }}@${{ inputs.version }}" "${{ inputs.tag }}"
+@@ -71,7 +74,7 @@
+       - uses: pnpm/action-setup@v6
+       - uses: actions/setup-node@v4
+         with:
+-          node-version: 24
++          node-version: '24.22.0'
+           registry-url: https://registry.npmjs.org
+           cache: pnpm
+       - name: Set the target version
+
+### .github/workflows/release.yml
+--- r25/.github/workflows/release.yml
++++ r26/.github/workflows/release.yml
+@@ -11,6 +11,9 @@
+ 
+ # Default permissions = none; the job grants only what it needs.
+ permissions: {}
++
++env:
++  PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+ 
+ jobs:
+   release:
+@@ -32,7 +35,7 @@
+       - name: Set up Node
+         uses: actions/setup-node@v6
+         with:
+-          node-version: 24
++          node-version: '24.22.0'
+           cache: pnpm
+           registry-url: https://registry.npmjs.org
+ 
+
+### AGENTS.md
+--- r25/AGENTS.md
++++ r26/AGENTS.md
+@@ -5,14 +5,17 @@
+ 
+ ## Dev commands
+ 
+-Node 24+ is required (for built-in `node:sqlite` and the TypeScript ecosystem). pnpm 10+
+-is the package manager. Everything runs via `tsx`, pinned as a root dev-dependency.
++Supported Node lines are **24.22.0+ within 24.x or 26.4.0+ within 26.x**
++(`^24.22.0 || ^26.4.0`). Earlier/other lines are refused before bootstrap because the native
++cleanup-hook API needs the upstream fix. CLI/daemon launchers must guard before linking payloads;
++keep manifests, guards and CI aligned. pnpm 10+ is the package manager. Everything runs via `tsx`,
++pinned as a root dev-dependency.
+ 
+ ```sh
+ pnpm install
+ pnpm test              # vitest run across the whole tree
+ pnpm security:acceptance # deterministic 0.13 adversarial security release gate
+-pnpm typecheck         # tsc --noEmit (excludes apps/web — see below)
++pnpm typecheck         # root tsc --noEmit plus web typecheck
+ pnpm lint              # biome check
+ pnpm format            # biome check --write
+ ```
+
+### README.md
+--- r25/README.md
++++ r26/README.md
+@@ -12,7 +12,9 @@
+ 
+ ## Quickstart
+ 
+-Requires **Node 24 or newer**. **Linux is the validated platform.** macOS can
++Requires **Node 24.22.0+ within 24.x, or 26.4.0+ within 26.x**. Earlier releases and other
++major lines are refused before opening Bazilion state; this excludes an upstream native cleanup-hook
++bug. See `docs/upgrades.md`. **Linux is the validated platform.** macOS can
+ install and run the daemon, web UI and first-run setup, but **agent turns (chat)
+ require Linux**: every turn resolves repository context through safe reads that
+ pin ancestry with Linux-only primitives, by design — they fail closed with a
+@@ -69,7 +71,7 @@
+ 
+ ## Develop from source
+ 
+-Contributors: clone the repo. Node 24+ and pnpm 10+ are required. If `corepack` is unavailable, install pnpm directly with `npm install -g pnpm`.
++Contributors: clone the repo. Node 24.22.0+ within 24.x or 26.4.0+ within 26.x, and pnpm 10+, are required. If `corepack` is unavailable, install pnpm directly with `npm install -g pnpm`.
+ The exact development versions are pinned in `mise.toml`; with mise, run `mise install` and prefix
+ commands with `mise exec --`. After changing Node versions, rebuild native dependencies before
+ starting Bazilion so the worker and qmd use the same Node module ABI.
+
+### apps/cli/CHANGELOG.md
+--- r25/apps/cli/CHANGELOG.md
++++ r26/apps/cli/CHANGELOG.md
+@@ -20,6 +20,10 @@
+   Upgrade embedded Pi and daemon-owned standalone MCP to 1.0.0, retire legacy MCP SSE, and align the
+   repository package manager with mise-selected pnpm 12.14.0. Streamable HTTP and stdio remain supported;
+   no automatic MCP OAuth, ambient discovery or uncertain tool-call replay is added.
++
++  **Runtime:** require Node 24.22.0+ within 24.x or 26.4.0+ within 26.x, which include the upstream
++  native cleanup-hook fix. Source and packed CLI/daemon launchers refuse unsupported releases before
++  linking application payloads or opening state; there is no automatic runtime fallback.
+ 
+   **Compatibility:** this alpha candidate uses the canonical clean-install schema. Prior SSE-capable
+   homes, including 0.22.0, require fail-closed refusal and operator-controlled reset/rebootstrap, not an
+
+### apps/cli/README.md
+--- r25/apps/cli/README.md
++++ r26/apps/cli/README.md
+@@ -8,7 +8,9 @@
+ 
+ ## Install
+ 
+-Requires **Node 24 or newer**.
++Requires **Node 24.22.0+ within 24.x, or 26.4.0+ within 26.x**. Earlier releases and other
++major lines are refused before application imports or state bootstrap. This floor includes the
++upstream native cleanup-hook fix; upgrading Node does not authorize resetting any Bazilion data.
+ 
+ ```sh
+ npx bazilion dashboard     # one-shot
+@@ -93,7 +95,7 @@
+ bazilion dashboard
+ ```
+ 
+-For source development, clone the repo and run the daemon plus Vite dev server. Node 24+ and pnpm 10+ are required; if `corepack` is unavailable, install pnpm directly with `npm install -g pnpm`.
++For source development, clone the repo and run the daemon plus Vite dev server. Node 24.22.0+ within 24.x or 26.4.0+ within 26.x, and pnpm 10+, are required; if `corepack` is unavailable, install pnpm directly with `npm install -g pnpm`.
+ 
+ ```sh
+ git clone https://github.com/rullopat/bazilion
+
+### apps/cli/package.json
+--- r25/apps/cli/package.json
++++ r26/apps/cli/package.json
+@@ -37,7 +37,7 @@
+     "build": "pnpm --filter @bazilion/web build && tsup"
+   },
+   "engines": {
+-    "node": ">=24.0.0"
++    "node": "^24.22.0 || ^26.4.0"
+   },
+   "publishConfig": {
+     "access": "public"
+
+### apps/cli/src/commands/serve.ts
+--- r25/apps/cli/src/commands/serve.ts
++++ r26/apps/cli/src/commands/serve.ts
+@@ -3,8 +3,8 @@
+ import { join } from 'node:path'
+ import { defineCommand } from 'citty'
+ 
+-// In published builds, serve.ts is inlined into dist/cli.js — the daemon
+-// sits next to it as dist/daemon.js. In dev (running .ts source via tsx),
++// In published builds, serve.ts is inlined into dist/cli-main.js — the guarded
++// daemon launcher sits next to it as dist/daemon.js. In dev (running .ts source via tsx),
+ // fall back to walking up to apps/daemon/src/index.ts.
+ const bundledDaemonEntry = join(import.meta.dirname, 'daemon.js')
+ const sourceDaemonEntry = join(import.meta.dirname, '..', '..', '..', 'daemon', 'src', 'index.ts')
+
+### apps/cli/src/index.ts
+--- r25/apps/cli/src/index.ts
++++ r26/apps/cli/src/index.ts
+@@ -1,246 +1,4 @@
+-import { defineCommand, runCommand, showUsage } from 'citty'
+-import pkg from '../package.json' with { type: 'json' }
+-import { ApiClientError } from './client.ts'
+-import { conversationCommand } from './commands/conversation.ts'
+-import { notificationCommand } from './commands/notification.ts'
+-import { questionCommand } from './commands/question.ts'
+-import { queueCommand } from './commands/queue.ts'
++// Refuse unsupported Node releases before linking application dependencies.
++import './runtime-version.ts'
+ 
+-const VERSION = pkg.version
+-
+-import { agentCommand } from './commands/agent.ts'
+-import { approvalCommand } from './commands/approval.ts'
+-import { attentionCommand } from './commands/attention.ts'
+-import { authCommand } from './commands/auth.ts'
+-import { backupCommand } from './commands/backup.ts'
+-import { completionCommand } from './commands/completion.ts'
+-import { configCommand } from './commands/config.ts'
+-import { dashboardCommand } from './commands/dashboard.ts'
+-import { doctorCommand } from './commands/doctor.ts'
+-import { gatewayCommand } from './commands/gateway.ts'
+-import { inboxCommand } from './commands/inbox.ts'
+-import { loginCommand } from './commands/login.ts'
+-import { mcpCommand } from './commands/mcp.ts'
+-import { memoryCommand } from './commands/memory.ts'
+-import { profileCommand } from './commands/profile.ts'
+-import { providerCommand } from './commands/provider.ts'
+-import { resultCommand } from './commands/result.ts'
+-import { sendCommand } from './commands/send.ts'
+-import { serveCommand } from './commands/serve.ts'
+-import { sessionCommand } from './commands/session.ts'
+-import { skillCommand } from './commands/skill.ts'
+-import { teamCommand } from './commands/team.ts'
+-import { teamTemplateCommand } from './commands/team-template.ts'
+-import { telegramCommand } from './commands/telegram.ts'
+-import { tokenCommand } from './commands/token.ts'
+-import { triggerCommand } from './commands/trigger.ts'
+-import { uninstallCommand } from './commands/uninstall.ts'
+-
+-const main = defineCommand({
+-  meta: {
+-    name: 'bazilion',
+-    version: VERSION,
+-    description: 'Multi-agent runtime',
+-  },
+-  subCommands: {
+-    login: loginCommand,
+-    profile: profileCommand,
+-    team: teamCommand,
+-    'team-template': teamTemplateCommand,
+-    agent: agentCommand,
+-    approval: approvalCommand,
+-    attention: attentionCommand,
+-    result: resultCommand,
+-    conversation: conversationCommand,
+-    queue: queueCommand,
+-    question: questionCommand,
+-    notification: notificationCommand,
+-    skill: skillCommand,
+-    memory: memoryCommand,
+-    mcp: mcpCommand,
+-    provider: providerCommand,
+-    send: sendCommand,
+-    session: sessionCommand,
+-    inbox: inboxCommand,
+-    config: configCommand,
+-    serve: serveCommand,
+-    dashboard: dashboardCommand,
+-    doctor: doctorCommand,
+-    gateway: gatewayCommand,
+-    backup: backupCommand,
+-    trigger: triggerCommand,
+-    token: tokenCommand,
+-    auth: authCommand,
+-    telegram: telegramCommand,
+-    uninstall: uninstallCommand,
+-  },
+-})
+-
+-// Mutate the command tree after definition so `completion` can introspect its
+-// own siblings without a circular import. Cast is safe — citty keeps the
+-// object reference on `main` after defineCommand, and we know its shape.
+-;(main.subCommands as Record<string, unknown>).completion = completionCommand(main as never)
+-
+-// Resolve `bazilion <a> <b> --help` to the right subcommand for showUsage.
+-// citty's built-in version is private, so we re-implement it for plain
+-// subCommands objects (the shape we use throughout the tree).
+-type AnyCmd = Parameters<typeof showUsage>[0]
+-type CmdWithSubs = AnyCmd & { subCommands?: Record<string, AnyCmd> }
+-async function resolveSubCommand(
+-  cmd: CmdWithSubs,
+-  rawArgs: string[],
+-  parent?: AnyCmd,
+-): Promise<[AnyCmd, AnyCmd | undefined]> {
+-  const subs = cmd.subCommands
+-  if (subs && Object.keys(subs).length > 0) {
+-    const idx = rawArgs.findIndex((a) => !a.startsWith('-'))
+-    const name = idx >= 0 ? rawArgs[idx] : undefined
+-    if (name && subs[name]) {
+-      return resolveSubCommand(subs[name] as CmdWithSubs, rawArgs.slice(idx + 1), cmd)
+-    }
+-  }
+-  return [cmd, parent]
+-}
+-
+-function printError(err: unknown): void {
+-  if (err instanceof ApiClientError) {
+-    console.error(`error: ${err.body.error}`)
+-    if (err.status === 401) {
+-      console.error('  hint: token mismatch. Check ~/.bazilion/auth.json "token"')
+-      console.error('        or re-run "bazilion login" for a remote server.')
+-    } else if (err.status === 403) {
+-      console.error('  hint: request was rejected by the server. If you hit this from a')
+-      console.error('        fresh CLI build, check that BAZILION_SERVER matches the')
+-      console.error('        server origin exactly (scheme + host + port).')
+-    }
+-    return
+-  }
+-  const msg = err instanceof Error ? err.message : String(err)
+-  console.error(`error: ${msg}`)
+-  // Friendly hints for the most common connection failures. node's fetch
+-  // wraps the syscall error in err.cause.code, so we peek there too.
+-  const cause = err instanceof Error ? (err as { cause?: { code?: string } }).cause : undefined
+-  const code = cause?.code
+-  if (code === 'ECONNREFUSED' || /ECONNREFUSED/.test(msg)) {
+-    console.error('  hint: the bazilion server is not running. Start it with "bazilion serve"')
+-    console.error('        or point BAZILION_SERVER at a running instance.')
+-  } else if (code === 'ENOTFOUND' || /ENOTFOUND/.test(msg)) {
+-    console.error('  hint: host not found. Check BAZILION_SERVER / ~/.bazilion/auth.json.')
+-  }
+-}
+-
+-function exitCodeForError(err: unknown): number {
+-  if (err instanceof ApiClientError) {
+-    if (err.status === 401 || err.status === 403) return 4
+-    if (err.status === 409) return 3
+-    if (err.status === 400 || err.status === 422) return 2
+-    return 1
+-  }
+-  const message = err instanceof Error ? err.message : String(err)
+-  return /invalid|unsupported|must be|require|refusing mutation|document belongs/.test(message)
+-    ? 2
+-    : 1
+-}
+-
+-/**
+- * Top-level `bazilion --help` renders a categorized layout instead of citty's
+- * default `sub1|sub2|…` pipe-soup USAGE line. Subcommand `--help` still uses
+- * citty's built-in renderer.
+- */
+-function printTopLevelHelp(): void {
+-  console.log(`Multi-agent runtime (bazilion v${VERSION})`)
+-  console.log('')
+-  console.log('USAGE bazilion <command> [args]')
+-  console.log('')
+-  const teams: { title: string; items: [string, string][] }[] = [
+-    {
+-      title: 'setup',
+-      items: [
+-        ['serve', 'Start the bazilion daemon (auto-bootstraps ~/.bazilion on first run)'],
+-        ['dashboard', 'Start the daemon + bundled web UI, then open the dashboard'],
+-        ['doctor', 'Diagnose your bazilion install'],
+-        ['uninstall', 'Wipe bazilion state from ~/.bazilion (or BAZILION_HOME)'],
+-      ],
+-    },
+-    {
+-      title: 'catalog',
+-      items: [
+-        ['profile', 'Manage profiles (templates agents are spawned from)'],
+-        ['team-template', 'Inspect and exchange reusable Team Templates'],
+-        ['team', 'Manage teams (collaboration context — filesystem root + USER.md + roster)'],
+-        ['skill', 'Manage the skill library'],
+-        ['provider', 'Manage and test LLM providers'],
+-        ['config', 'Manage service config (credentials + URLs/IDs)'],
+-        ['auth', 'OAuth provider sign-in (ChatGPT account, …)'],
+-      ],
+-    },
+-    {
+-      title: 'agents',
+-      items: [
+-        ['approval', 'Review and decide communication approval attempts'],
+-        ['attention', 'See everything that needs operator attention'],
+-        ['agent', 'Spawn, list, chat, archive agents'],
+-        ['memory', "Read/write a team's shared memory"],
+-        ['send', 'Send a message from one agent to another'],
+-        ['inbox', 'Inspect agent inboxes'],
+-        ['trigger', 'Manage scheduled agent triggers'],
+-      ],
+-    },
+-    {
+-      title: 'integrations',
+-      items: [['telegram', 'Telegram bot setup, health, lifecycle']],
+-    },
+-    {
+-      title: 'ops',
+-      items: [['backup', 'Encrypted backup, restore, and credential recovery']],
+-    },
+-    {
+-      title: 'remote',
+-      items: [
+-        ['login', 'Save a remote bazilion server + token pair to auth.json'],
+-        ['token', 'Manage web tokens for API/CLI clients'],
+-      ],
+-    },
+-    {
+-      title: 'shell',
+-      items: [['completion', 'Print shell completion script (bash | zsh | fish)']],
+-    },
+-  ]
+-  const nameWidth = 15
+-  for (const g of teams) {
+-    console.log(`  ${g.title}`)
+-    for (const [name, desc] of g.items) {
+-      console.log(`    ${name.padEnd(nameWidth)}${desc}`)
+-    }
+-    console.log('')
+-  }
+-  console.log('Use `bazilion <command> --help` for more information about a command.')
+-}
+-
+-async function entry(): Promise<void> {
+-  const rawArgs = process.argv.slice(2)
+-  try {
+-    if (rawArgs.includes('--help') || rawArgs.includes('-h')) {
+-      // For the top-level `bazilion --help`, render our grouped layout.
+-      // Subcommand help still goes through citty (preserves native formatting).
+-      const firstPositional = rawArgs.find((a) => !a.startsWith('-'))
+-      if (!firstPositional) {
+-        printTopLevelHelp()
+-        process.exit(0)
+-      }
+-      const [target, parent] = await resolveSubCommand(main as CmdWithSubs, rawArgs)
+-      await showUsage(target, parent)
+-      process.exit(0)
+-    }
+-    if (rawArgs.length === 1 && (rawArgs[0] === '--version' || rawArgs[0] === '-v')) {
+-      console.log(VERSION)
+-      return
+-    }
+-    await runCommand(main, { rawArgs })
+-  } catch (err) {
+-    printError(err)
+-    process.exit(exitCodeForError(err))
+-  }
+-}
+-
+-entry()
++await import('./main.ts')
+
+### apps/cli/test/published-dependencies.test.ts
+Before bytes not projected here; inspect current source directly. r26 before/after identities remain in sealed receipt.
+
+### apps/cli/tsup.config.ts
+--- r25/apps/cli/tsup.config.ts
++++ r26/apps/cli/tsup.config.ts
+@@ -10,19 +10,17 @@
+ import { join } from 'node:path'
+ import { defineConfig } from 'tsup'
+ 
+-// Three separate ESM bundles, all written to dist/:
+-//   - cli.js     → the `bazilion` bin (shebang via banner)
+-//   - daemon.js  → spawned by `bazilion serve`
+-//   - worker.js  → spawned per chat turn by the daemon
+-//   - web-server.js → spawned by `bazilion dashboard`
+-// tsup auto-externalizes everything in package.json `dependencies`
+-// (so native modules like better-sqlite3 stay external); workspace
+-// packages are in devDependencies and therefore bundled inline, which
+-// we double-declare via noExternal for clarity.
++// Five ESM bundles, plus guarded cli.js/daemon.js launchers written below.
++// The public launchers check the runtime before dynamically linking application
++// dependencies; a banner alone cannot run before static external ESM imports.
++// Payloads and resources remain siblings in dist/, preserving relative paths.
++// tsup auto-externalizes package.json dependencies (including native modules);
++// workspace client/wire packages stay bundled inline.
+ export default defineConfig({
+   entry: {
+-    cli: 'src/index.ts',
+-    daemon: '../daemon/src/index.ts',
++    'cli-main': 'src/main.ts',
++    'daemon-main': '../daemon/src/main.ts',
++    'runtime-version': 'src/runtime-version.ts',
+     worker: '../daemon/src/runtime/worker/entry.ts',
+     'web-server': 'src/web-server.ts',
+   },
+@@ -51,10 +49,17 @@
+       if (fixed !== src) writeFileSync(path, fixed)
+     }
+ 
+-    // Copy SQL migrations next to the bundled daemon. `migrate.ts`
++    for (const name of ['cli', 'daemon']) {
++      writeFileSync(
++        join(distDir, `${name}.js`),
++        `#!/usr/bin/env node\nimport './runtime-version.js'\n\nawait import('./${name}-main.js')\n`,
++        { mode: 0o755 },
++      )
++    }
++
++    // Copy SQL migrations next to the bundled daemon payload. `migrate.ts`
+     // resolves them relative to `import.meta.url`, which lands at
+-    // `dist/daemon.js` in the published package; tsup itself only
+-    // emits JS, so the .sql files need to be staged here manually.
++    // `dist/daemon-main.js`; tsup only emits JS, so stage SQL here manually.
+     const migrationsSrc = join(process.cwd(), '../daemon/src/core/db/migrations')
+     const migrationsDst = join(distDir, 'migrations')
+     mkdirSync(migrationsDst, { recursive: true })
+
+### apps/daemon/package.json
+--- r25/apps/daemon/package.json
++++ r26/apps/daemon/package.json
+@@ -11,7 +11,7 @@
+     "start": "node --experimental-strip-types src/index.ts"
+   },
+   "engines": {
+-    "node": ">=24.0.0"
++    "node": "^24.22.0 || ^26.4.0"
+   },
+   "dependencies": {
+     "@bazilion/api-types": "workspace:*",
+
+### apps/daemon/src/index.ts
+--- r25/apps/daemon/src/index.ts
++++ r26/apps/daemon/src/index.ts
+@@ -1,164 +1,4 @@
+-// Daemon entry point. Reads HOST/PORT env, boots the Hono app, and waits on
+-// SIGINT/SIGTERM for shutdown.
+-//
+-// This process is the single owner of `~/.bazilion`. The web app, CLI, and
+-// mobile clients all talk to it over HTTP via @bazilion/client.
++// Refuse unsupported Node releases before linking or bootstrapping the daemon.
++import './runtime-version.ts'
+ 
+-import { writeSync } from 'node:fs'
+-import { serve } from '@hono/node-server'
+-import { createApp } from './app.ts'
+-import {
+-  DatabaseNewerThanBinaryError,
+-  IncompatibleDatabaseError,
+-  resolvePaths,
+-} from './core/index.ts'
+-import { closeCtxForShutdown, getCtx, IncompatibleBootstrapIdentityError } from './lib/ctx.ts'
+-import { acquireDaemonLiveness } from './lib/daemon-liveness.ts'
+-import { startNotifications } from './lib/notifications.ts'
+-import { isLoopbackHost, resolvePublicOrigin } from './lib/public-origin.ts'
+-import { shutdownResources } from './lib/resources.ts'
+-import {
+-  isTelegramBotRunning,
+-  maybeStartTelegramBot,
+-  setTelegramAuthToken,
+-  stopTelegramBot,
+-} from './lib/telegram/bot.ts'
+-import { startUserQueuePump } from './lib/user-queue-pump.ts'
+-
+-const host = process.env.HOST ?? '127.0.0.1'
+-const port = Number.parseInt(process.env.PORT ?? '4321', 10)
+-const publicOrigin = resolvePublicOrigin()
+-if (publicOrigin.production && !isLoopbackHost(host)) {
+-  console.error('BAZILION_PUBLIC_ORIGIN requires the daemon to bind loopback only')
+-  process.exit(1)
+-}
+-
+-// Claim the home before bootstrap opens SQLite. This closes the startup race
+-// where an offline restore or second daemon could otherwise begin while the
+-// first process already held a DB handle but had not bound its HTTP port yet.
+-let daemonLiveness: ReturnType<typeof acquireDaemonLiveness>
+-try {
+-  daemonLiveness = acquireDaemonLiveness(resolvePaths())
+-} catch (error) {
+-  console.error(
+-    'failed to acquire daemon ownership:',
+-    error instanceof Error ? error.message : error,
+-  )
+-  process.exit(1)
+-}
+-// Eagerly bootstrap ~/.bazilion (mkdir, openDb, runMigrations, mint token,
+-// write auth.json) before binding the port. Otherwise the first request
+-// would race with bootstrap and the operator wouldn't see the bootstrap
+-// message until something actually hits the daemon.
+-try {
+-  getCtx()
+-} catch (error) {
+-  const detail =
+-    error instanceof IncompatibleDatabaseError ||
+-    error instanceof DatabaseNewerThanBinaryError ||
+-    error instanceof IncompatibleBootstrapIdentityError
+-      ? error.message
+-      : error instanceof Error
+-        ? (error.stack ?? error.message)
+-        : String(error)
+-  writeSync(process.stderr.fd, `bazilion daemon failed to start: ${detail}\n`)
+-  try {
+-    closeCtxForShutdown()
+-  } catch {
+-    // Bootstrap owns and closes a not-yet-published DB handle. This is only a
+-    // defensive cleanup in case a later startup step publishes one first.
+-  }
+-  try {
+-    daemonLiveness.stop()
+-  } catch {
+-    // The process is exiting; a dead PID makes a retained record reclaimable.
+-  }
+-  process.exit(1)
+-}
+-
+-const app = createApp()
+-let shuttingDown = false
+-let queuePump: ReturnType<typeof startUserQueuePump> | undefined
+-let notificationPump: ReturnType<typeof startNotifications> | undefined
+-
+-const server = serve({ fetch: app.fetch, hostname: host, port }, (info) => {
+-  console.log(`bazilion daemon listening at http://${info.address}:${info.port}`)
+-  if (host !== '127.0.0.1' && host !== 'localhost' && host !== '::1') {
+-    console.error('')
+-    console.error(`⚠ binding to ${host} — the daemon is now reachable beyond loopback.`)
+-    console.error('  anyone on this network who has a valid token can reach every API.')
+-    console.error('  put a TLS proxy in front for untrusted networks.')
+-    console.error('')
+-  }
+-  try {
+-    daemonLiveness.publishEndpoint({ host, port: info.port })
+-  } catch (error) {
+-    console.error(
+-      'failed to publish daemon liveness record:',
+-      error instanceof Error ? error.message : error,
+-    )
+-    server.close(() => process.exit(1))
+-    return
+-  }
+-  // Background bot boot. Errors are logged but never crash the daemon — the
+-  // user can fix credentials via the web UI even if the bot can't start.
+-  const { db, authToken } = getCtx()
+-  queuePump = startUserQueuePump()
+-  notificationPump = startNotifications(db, authToken)
+-  setTelegramAuthToken(authToken)
+-  maybeStartTelegramBot(db, authToken).catch((err) => {
+-    console.error('telegram: background start failed:', err instanceof Error ? err.message : err)
+-  })
+-})
+-
+-const shutdown = (signal: NodeJS.Signals): void => {
+-  if (shuttingDown) return
+-  shuttingDown = true
+-  notificationPump?.stop()
+-  const queueStop = queuePump?.stop() ?? Promise.resolve()
+-  console.log(`\nbazilion daemon caught ${signal}, shutting down…`)
+-  // Stop the telegram bot before HTTP server close — the in-flight getUpdates
+-  // long-poll can hold us for up to ~25s, so we run it in parallel with the
+-  // server's connection drain. The DB stays open until process.exit so any
+-  // late watermark writes from the poll loop don't crash on a closed handle.
+-  const botStop = isTelegramBotRunning()
+-    ? stopTelegramBot().catch((e) =>
+-        console.error('telegram: stop on shutdown failed:', e instanceof Error ? e.message : e),
+-      )
+-    : Promise.resolve()
+-  // Close long-lived resources (browser sessions, MCP connections) in parallel
+-  // with the bot stop. Best-effort — never block shutdown on them.
+-  const resourcesStop = shutdownResources().catch((e) =>
+-    console.error('resources: shutdown failed:', e instanceof Error ? e.message : e),
+-  )
+-  Promise.race([
+-    Promise.all([botStop, resourcesStop, queueStop]),
+-    new Promise((r) => setTimeout(r, 30_000)), // hard cap: don't wait forever
+-  ]).finally(() => {
+-    server.close((err) => {
+-      if (err) {
+-        console.error('shutdown error:', err)
+-        process.exit(1)
+-      }
+-      try {
+-        // Release ownership only after the sole SQLite handle is closed, then
+-        // exit without yielding so no background callback can touch the DB in
+-        // the unlock-before-death interval.
+-        closeCtxForShutdown()
+-        daemonLiveness.stop()
+-      } catch (closeError) {
+-        console.error(
+-          'database shutdown error:',
+-          closeError instanceof Error ? closeError.message : closeError,
+-        )
+-        // Keep the ownership file when close fails. The dead PID makes it
+-        // reclaimable after exit without ever advertising an open DB as free.
+-        process.exit(1)
+-      }
+-      process.exit(0)
+-    })
+-  })
+-}
+-
+-process.on('SIGINT', () => shutdown('SIGINT'))
+-process.on('SIGTERM', () => shutdown('SIGTERM'))
++await import('./main.ts')
+
+### apps/daemon/src/runtime/worker/spawn.ts
+--- r25/apps/daemon/src/runtime/worker/spawn.ts
++++ r26/apps/daemon/src/runtime/worker/spawn.ts
+@@ -65,18 +65,16 @@
+ 
+ // In dev, this file is at apps/daemon/src/runtime/worker/spawn.ts and the
+ // worker entry is its `entry.ts` sibling. In the published bundle, all of
+-// spawn.ts's code is inlined into dist/daemon.js, where `./entry.ts` does
++// spawn.ts's code is inlined into dist/daemon-main.js, where `./entry.ts` does
+ // not exist — the worker is bundled separately to dist/worker.js. Pick at
+ // load time by probing the filesystem.
+ const sourceEntryPath = fileURLToPath(new URL('./entry.ts', import.meta.url))
+ const bundledEntryPath = fileURLToPath(new URL('./worker.js', import.meta.url))
+ const entryPath = existsSync(sourceEntryPath) ? sourceEntryPath : bundledEntryPath
+ 
+-// .ts dev entry: Node 24+ runs TS directly via native type-stripping (no
+-// `--experimental-strip-types` flag needed in stable 24, but we still pass
+-// it for older 22.x dev environments). tsx is the fallback for any runtime
+-// where strip-types is missing. `--no-warnings` silences the experimental
+-// banner that older Node versions emit on every child start.
++// .ts dev entry: admitted stable Node releases support native type-stripping.
++// The loader detection below does not widen the CLI/daemon runtime policy.
++// `--no-warnings` also avoids version-dependent startup banners in the protocol.
+ //
+ // .js bundled entry: plain `node entry.js` — no type stripping, no tsx.
+ function workerSpawnArgs(workerEntryPath = entryPath): string[] {
+
+### docs/releases.md
+Before bytes not projected here; inspect current source directly. r26 before/after identities remain in sealed receipt.
+
+### docs/upgrades.md
+--- r25/docs/upgrades.md
++++ r26/docs/upgrades.md
+@@ -6,6 +6,17 @@
+ canonical schema is `apps/daemon/src/core/db/migrations/0001_init.sql`; this release does not add
+ ALTER migrations, legacy importers or compatibility adapters. A prior release number is not proof
+ that its home can be opened by the candidate.
++
++## Runtime prerequisite before opening a home
++
++Use **Node 24.22.0+ within 24.x or 26.4.0+ within 26.x** (`^24.22.0 || ^26.4.0`).
++The CLI and daemon refuse earlier/other release lines before linking their application payloads or
++opening a home/ownership record. Upgrade the runtime when this refusal occurs—do not reset the DB,
++replace auth.json, clear ownership or bypass the guard. The upstream cleanup-hook API fix is listed
++in the official24.22.0/26.4.0 notes; [recorded publisher evidence](testing/0.23.0-upstream-compatibility-metadata-20261020.md)
++is not itself a qualification pass. Rebuild native dependencies if changing their Node ABI.
++
++## Schema boundary
+ 
+ Legacy MCP SSE has been retired. The canonical MCP transport constraint admits only `stdio` and
+ Streamable `http`. All eight locally inspected sources in the release matrix—including **v0.22.0**,
+
+### package.json
+--- r25/package.json
++++ r26/package.json
+@@ -4,7 +4,7 @@
+   "type": "module",
+   "packageManager": "pnpm@12.14.0",
+   "engines": {
+-    "node": ">=24.0.0"
++    "node": "^24.22.0 || ^26.4.0"
+   },
+   "scripts": {
+     "lint": "biome check .",
+
+### apps/cli/src/main.ts
+Before bytes not projected here; inspect current source directly. r26 before/after identities remain in sealed receipt.
+
+### apps/daemon/src/main.ts
+Before bytes not projected here; inspect current source directly. r26 before/after identities remain in sealed receipt.
+
+### apps/cli/src/runtime-version.ts
+Before bytes not projected here; inspect current source directly. r26 before/after identities remain in sealed receipt.
+
+### apps/daemon/src/runtime-version.ts
+Before bytes not projected here; inspect current source directly. r26 before/after identities remain in sealed receipt.
+
+### apps/cli/test/runtime-version.test.ts
+Before bytes not projected here; inspect current source directly. r26 before/after identities remain in sealed receipt.

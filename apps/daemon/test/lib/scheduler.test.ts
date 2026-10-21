@@ -1,8 +1,8 @@
 import { join } from 'node:path'
 import type { ChatFrame } from '@bazilion/api-types'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import * as agentRepo from '../../src/core/repos/agents.ts'
 import { projectAttention } from '../../src/core/attention.ts'
+import * as agentRepo from '../../src/core/repos/agents.ts'
 import * as approvalRepo from '../../src/core/repos/communicationApprovals.ts'
 import * as conversations from '../../src/core/repos/conversations.ts'
 import * as messageRepo from '../../src/core/repos/messages.ts'
@@ -152,6 +152,82 @@ describe('durable scheduler dispatches', () => {
     if (oldTickMs === undefined) delete process.env.BAZILION_SCHEDULER_TICK_MS
     else process.env.BAZILION_SCHEDULER_TICK_MS = oldTickMs
   })
+
+  // Collected only by the fresh-TZ parent fixture. Changing TZ inside a Vitest worker
+  // would not reliably change the process-local calendar, so the parent starts Node first.
+  if (process.env.BAZILION_TEST_CRON_CALENDAR === '1') {
+    const calendars = {
+      'America/New_York': {
+        gapStart: '2026-03-08T06:00:00Z',
+        before: '2026-03-07T07:30:00Z',
+        after: '2026-03-09T06:30:00Z',
+        repeatStart: '2026-11-01T04:00:00Z',
+        repeatCron: '30 1 * * *',
+        repeated: ['2026-11-01T05:30:00Z', '2026-11-01T06:30:00Z'],
+      },
+      'Europe/Berlin': {
+        gapStart: '2026-03-29T00:00:00Z',
+        before: '2026-03-28T01:30:00Z',
+        after: '2026-03-30T00:30:00Z',
+        repeatStart: '2026-10-24T23:00:00Z',
+        repeatCron: '30 2 * * *',
+        repeated: ['2026-10-25T00:30:00Z', '2026-10-25T01:30:00Z'],
+      },
+    }
+    const calendar = calendars[process.env.TZ as keyof typeof calendars]
+    if (!calendar) throw new Error('Unsupported isolated scheduler calendar zone')
+
+    async function ticks(instant: number) {
+      // Multiple real scheduler invocations per matching minute, not just matcher calls.
+      for (const offset of [0, 25_000, 55_000]) {
+        vi.setSystemTime(instant + offset)
+        await scheduler._tickOnce()
+      }
+    }
+    function cron(expression: string) {
+      return triggerRepo.insert(env.db, {
+        agentId: 'a1',
+        kind: 'cron',
+        intervalSec: null,
+        cronExpr: expression,
+        message: 'isolated calendar fixture',
+      })
+    }
+
+    test('controlled DST dispatcher: spring gap materializes no invented catch-up', async () => {
+      vi.setSystemTime(Date.parse(calendar.before))
+      const trigger = cron('30 2 * * *')
+      await ticks(Date.parse(calendar.before))
+      expect(turnCalls).toHaveLength(1)
+      const start = Date.parse(calendar.gapStart)
+      for (let i = 0; i < 180; i++) await ticks(start + i * 60_000)
+      expect(turnCalls).toHaveLength(1)
+      expect(triggerDispatchRepo.listForTrigger(env.db, trigger.id)).toHaveLength(1)
+      await ticks(Date.parse(calendar.after))
+      const dispatches = triggerDispatchRepo.listForTrigger(env.db, trigger.id)
+      expect(dispatches.map((d) => d.scheduledAt).sort()).toEqual(
+        [Date.parse(calendar.before), Date.parse(calendar.after)].sort(),
+      )
+      expect(dispatches.every((d) => d.status === 'succeeded' && d.attemptCount === 1)).toBe(true)
+      expect(turnCalls).toHaveLength(2)
+      expect(triggerRepo.get(env.db, trigger.id)?.lastFiredAt).toBe(Date.parse(calendar.after))
+    })
+
+    test('controlled DST dispatcher: repeated hour has two UTC occurrences without same-minute replay', async () => {
+      const start = Date.parse(calendar.repeatStart)
+      vi.setSystemTime(start)
+      const trigger = cron(calendar.repeatCron)
+      for (let i = 0; i < 240; i++) await ticks(start + i * 60_000)
+      const dispatches = triggerDispatchRepo.listForTrigger(env.db, trigger.id)
+      const expected = calendar.repeated.map((instant) => Date.parse(instant)).sort()
+      expect(dispatches.map((d) => d.scheduledAt).sort()).toEqual(expected)
+      expect(new Set(dispatches.map((d) => d.id)).size).toBe(2)
+      expect(dispatches.every((d) => d.status === 'succeeded' && d.attemptCount === 1)).toBe(true)
+      expect(turnCalls).toHaveLength(2)
+      expect((expected[1] ?? Number.NaN) - (expected[0] ?? Number.NaN)).toBe(3_600_000)
+      expect(triggerRepo.get(env.db, trigger.id)?.lastFiredAt).toBe(expected[1])
+    })
+  }
 
   function materialize() {
     const now = Date.now()

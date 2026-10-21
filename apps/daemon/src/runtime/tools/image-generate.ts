@@ -55,6 +55,9 @@ export function imageGenerateTool(
           },
         ],
         results: output.files.map((file) => file.result),
+        ...(output.outputSource === 'terminal' || output.outputSource === 'completed_stream'
+          ? { imageEvidence: { outputSource: output.outputSource } }
+          : {}),
       }
     },
   }

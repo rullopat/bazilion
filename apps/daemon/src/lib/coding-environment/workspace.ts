@@ -2,7 +2,11 @@ import { randomUUID } from 'node:crypto'
 import { realpathSync, statSync } from 'node:fs'
 import { isAbsolute, relative } from 'node:path'
 import { type BazilionDb, inTx } from '../../core/db/client.ts'
-import { ContextDirectory, hash, identity as directoryIdentity } from '../repository-context/files.ts'
+import {
+  ContextDirectory,
+  identity as directoryIdentity,
+  hash,
+} from '../repository-context/files.ts'
 
 export class WorkspaceBusyError extends Error {
   readonly status = 409
@@ -155,6 +159,7 @@ export class WorkspaceCoordinator {
   async recover(
     writerId: string,
     teardown: (writer: WorkspaceWriter) => Promise<boolean>,
+    canRelease?: () => boolean,
   ): Promise<boolean> {
     const row = this.db.raw
       .query<WriterRow, [string]>('SELECT * FROM workspace_writers WHERE id = ?')
@@ -170,8 +175,26 @@ export class WorkspaceCoordinator {
     this.db.raw.run("UPDATE workspace_writers SET state = 'recovery' WHERE id = ?", [writerId])
     if (!(await teardown(view(row)))) return false
     // The row remains blocking during asynchronous cleanup; no execution is ever replayed.
-    this.db.raw.run("DELETE FROM workspace_writers WHERE id = ? AND state = 'recovery'", [writerId])
-    return true
+    // Management's final checks and deletion share one synchronous transaction: there must
+    // be no await/microtask gap after validating resource identity and confirmations.
+    return inTx(this.db, () => {
+      if (canRelease && canRelease() !== true) return false
+      const result = this.db.raw.run(
+        `DELETE FROM workspace_writers WHERE id = ? AND state = 'recovery'
+         AND team_id = ? AND root_path = ? AND root_identity = ? AND daemon_identity = ?
+         AND recovery_mode = 'owned' AND resources_json = ? AND created_at = ?`,
+        [
+          writerId,
+          row.team_id,
+          row.root_path,
+          row.root_identity,
+          row.daemon_identity,
+          row.resources_json,
+          row.created_at,
+        ],
+      )
+      return result.changes === 1
+    })
   }
 
   attach(id: string, resource: WorkspaceResource): void {

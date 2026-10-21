@@ -1,0 +1,359 @@
+{
+  "format": "bazilion-source-freeze-amendment-v1",
+  "revision": 18,
+  "recordedAt": "2026-10-19T21:15:58.702255+00:00",
+  "authority": "Operator approved r17 proposed minimal owner inventory, existing-policy immutable-ID recovery, closed/ineligible refusal, confirmed private discard and CLI/web parity; confirmed goal conditional publication remains gated; no new provider/network/browser-download or system authority inferred",
+  "parentAmendment": "docs/testing/0.23.0-image-retention-review-20261019.json",
+  "parentAmendmentSha256": "1711bff3818f2693546be7b2947c8450203f7ed3c4558a739e2eb844e2c6a042",
+  "parentSourceInputAggregateSha256": "8eab16f81f1547bb654006751cb9dd572d3a771dab46f430ea18cac3d8db542b",
+  "amendedSourceInputAggregateSha256": "550f3e63c5c27fec4bb8490dac4e13d0bdbd75dfe8c4d41927bb58a470db581d",
+  "amendedCoreEntryCount": 1146,
+  "inputDelta": [
+    {
+      "path": "apps/cli/src/commands/result.ts",
+      "before": {
+        "path": "apps/cli/src/commands/result.ts",
+        "kind": "file",
+        "sha256": "d2ecf2e1cea2cbfd2d8ccb71b3de8a56480cee768a68af60e9da09cf5585c501",
+        "bytes": 3303,
+        "executable": false
+      },
+      "after": {
+        "path": "apps/cli/src/commands/result.ts",
+        "kind": "file",
+        "sha256": "4548f7be1e4d4e07963d119ba1d1329aa8290bf3987e3977eacac0a582a99f8a",
+        "bytes": 6378,
+        "executable": false
+      }
+    },
+    {
+      "path": "apps/cli/test/image-crash.test.ts",
+      "before": {
+        "path": "apps/cli/test/image-crash.test.ts",
+        "kind": "file",
+        "sha256": "4454b66c9e72cb6aaff3bbe4e8ba6c5c313a9b07cfe99e0d009c39ff8f76701e",
+        "bytes": 8733,
+        "executable": false
+      },
+      "after": {
+        "path": "apps/cli/test/image-crash.test.ts",
+        "kind": "file",
+        "sha256": "d501bda9a003607bda2829c07b201ffc24ce2507e39fc5d3dae5bbadbdf4e186",
+        "bytes": 9860,
+        "executable": false
+      }
+    },
+    {
+      "path": "apps/cli/test/result.test.ts",
+      "before": {
+        "path": "apps/cli/test/result.test.ts",
+        "kind": "file",
+        "sha256": "3ceca55e7eca719ec636fd69d0331f7a29bde38ee752546bc932c21cc8976771",
+        "bytes": 2575,
+        "executable": false
+      },
+      "after": {
+        "path": "apps/cli/test/result.test.ts",
+        "kind": "file",
+        "sha256": "c70d502203360bd71056ed9ec42fe7166871c60093531f915094d72c93bcb610",
+        "bytes": 4610,
+        "executable": false
+      }
+    },
+    {
+      "path": "apps/daemon/src/core/repos/image-generations.ts",
+      "before": {
+        "path": "apps/daemon/src/core/repos/image-generations.ts",
+        "kind": "file",
+        "sha256": "994663d2fb22a3d85a10e4a15a4c02ee8e9c0675bc7469c98fa612fb5b8d7f95",
+        "bytes": 3367,
+        "executable": false
+      },
+      "after": {
+        "path": "apps/daemon/src/core/repos/image-generations.ts",
+        "kind": "file",
+        "sha256": "9263d683a11d7fa791070693a4a21033d3c8da700e7191563dc95a14b2c2a7d8",
+        "bytes": 3774,
+        "executable": false
+      }
+    },
+    {
+      "path": "apps/daemon/src/lib/result-library-delivery.ts",
+      "before": {
+        "path": "apps/daemon/src/lib/result-library-delivery.ts",
+        "kind": "file",
+        "sha256": "4bbfc3bdd1a9fb111490a6f2e63fb066aaae3f51d92b324cc40069f1499521fa",
+        "bytes": 1156,
+        "executable": false
+      },
+      "after": {
+        "path": "apps/daemon/src/lib/result-library-delivery.ts",
+        "kind": "file",
+        "sha256": "e891de3dd6038c9cecb37e01b870c704ededb92288722933739b16b81c817eaa",
+        "bytes": 1791,
+        "executable": false
+      }
+    },
+    {
+      "path": "apps/daemon/src/lib/result-retention.ts",
+      "before": {
+        "path": "apps/daemon/src/lib/result-retention.ts",
+        "kind": "file",
+        "sha256": "06f41f4d24c44c44903821cf38729a9e09a9f01ddc0320d0f6e3c1e3edcfeac6",
+        "bytes": 2579,
+        "executable": false
+      },
+      "after": {
+        "path": "apps/daemon/src/lib/result-retention.ts",
+        "kind": "file",
+        "sha256": "ab6d6e10e1a455048ad48832a195d18de592f84db166f7b6f331086cc522a63c",
+        "bytes": 2450,
+        "executable": false
+      }
+    },
+    {
+      "path": "apps/daemon/src/routes/results.ts",
+      "before": {
+        "path": "apps/daemon/src/routes/results.ts",
+        "kind": "file",
+        "sha256": "1ec41534951ec695e29d8703310b49be7ce16898aa9c423db57566596a0ec986",
+        "bytes": 5244,
+        "executable": false
+      },
+      "after": {
+        "path": "apps/daemon/src/routes/results.ts",
+        "kind": "file",
+        "sha256": "6ce1a2e77c4882e680d46d7d8268d4c2646cc32ac02204333c6e978d9a4e8a59",
+        "bytes": 8142,
+        "executable": false
+      }
+    },
+    {
+      "path": "apps/web/src/routes/teams/$id/results.tsx",
+      "before": {
+        "path": "apps/web/src/routes/teams/$id/results.tsx",
+        "kind": "file",
+        "sha256": "cedb6c25bdefcba5b3f94af42106716a440e6f1ced10a77092957201d9593c8c",
+        "bytes": 6219,
+        "executable": false
+      },
+      "after": {
+        "path": "apps/web/src/routes/teams/$id/results.tsx",
+        "kind": "file",
+        "sha256": "726640a6895068d202ebd4222377c2957f3fd3f6895d39b37c954fbfeb6377e6",
+        "bytes": 6467,
+        "executable": false
+      }
+    },
+    {
+      "path": "docs/image-generation.md",
+      "before": {
+        "path": "docs/image-generation.md",
+        "kind": "file",
+        "sha256": "d054424aee130855ab9ca0731cdd109a512813fdcf57ab9556b39d72eb357868",
+        "bytes": 15472,
+        "executable": false
+      },
+      "after": {
+        "path": "docs/image-generation.md",
+        "kind": "file",
+        "sha256": "579e6e2ade0e5818d2cba71489af4dc5ef0a6b69cf2b38b6d25e7a076b67ead2",
+        "bytes": 15864,
+        "executable": false
+      }
+    },
+    {
+      "path": "docs/releases.md",
+      "before": {
+        "path": "docs/releases.md",
+        "kind": "file",
+        "sha256": "63e6b32801aa4a7caf10b93f712cda32f398c684128e0d37d7782cbed14088e9",
+        "bytes": 16041,
+        "executable": false
+      },
+      "after": {
+        "path": "docs/releases.md",
+        "kind": "file",
+        "sha256": "b346d598a3b6ac40b57232e3342635f24170553e1e81007ba011212514099074",
+        "bytes": 16329,
+        "executable": false
+      }
+    },
+    {
+      "path": "docs/results.md",
+      "before": {
+        "path": "docs/results.md",
+        "kind": "file",
+        "sha256": "2fff528d9937d5017d5408b6a6ad1223536dfed447d5214989123cc7935aa087",
+        "bytes": 7200,
+        "executable": false
+      },
+      "after": {
+        "path": "docs/results.md",
+        "kind": "file",
+        "sha256": "0f8811acd587db90be8855b6d43c36ef8f90c53718695eff8ce661e6aeec2691",
+        "bytes": 9508,
+        "executable": false
+      }
+    },
+    {
+      "path": "packages/api-types/src/index.ts",
+      "before": {
+        "path": "packages/api-types/src/index.ts",
+        "kind": "file",
+        "sha256": "3ca33ff41456cb3f32dda5e1621a4781d05f252b3601d5707e9b9f3549f06aea",
+        "bytes": 36137,
+        "executable": false
+      },
+      "after": {
+        "path": "packages/api-types/src/index.ts",
+        "kind": "file",
+        "sha256": "f5d623728d4436e0aa4934ec1d7ed5f9ed6eb345c7bc59757bdb4fe6a34b35e3",
+        "bytes": 36258,
+        "executable": false
+      }
+    },
+    {
+      "path": "packages/api-types/src/results.ts",
+      "before": {
+        "path": "packages/api-types/src/results.ts",
+        "kind": "file",
+        "sha256": "beea7aa051e4c90ae3d9ba2118b42c5a83531c9b9b031a4cc5c52658aeba5e6d",
+        "bytes": 1226,
+        "executable": false
+      },
+      "after": {
+        "path": "packages/api-types/src/results.ts",
+        "kind": "file",
+        "sha256": "155f0f96fd5087e02e2cb848f421a8a5482cfd3ebcffffa31cd844f6d42b15ac",
+        "bytes": 2288,
+        "executable": false
+      }
+    },
+    {
+      "path": "security/acceptance-manifest.json",
+      "before": {
+        "path": "security/acceptance-manifest.json",
+        "kind": "file",
+        "sha256": "c99bac13b7df34173275a1ee836c2e653516ac7670334030f48010d51dbff916",
+        "bytes": 94711,
+        "executable": false
+      },
+      "after": {
+        "path": "security/acceptance-manifest.json",
+        "kind": "file",
+        "sha256": "ccfa5b84ae45bb65c03081f38d25cc45facfa58f58d0f12a99624c450db13554",
+        "bytes": 100138,
+        "executable": false
+      }
+    },
+    {
+      "path": "apps/daemon/src/lib/private-image-captures.ts",
+      "before": null,
+      "after": {
+        "path": "apps/daemon/src/lib/private-image-captures.ts",
+        "kind": "file",
+        "sha256": "3d63de2119cb81f8f90e11aaf05ab703bf84b6f0589cb66d2727127146265b96",
+        "bytes": 6750,
+        "executable": false
+      }
+    },
+    {
+      "path": "apps/daemon/test/routes/private-images.test.ts",
+      "before": null,
+      "after": {
+        "path": "apps/daemon/test/routes/private-images.test.ts",
+        "kind": "file",
+        "sha256": "d7d435cd91b8691c28d0c0b257c9bc4c8f1fb4ac8c9b44a516293eccd2483c74",
+        "bytes": 17366,
+        "executable": false
+      }
+    },
+    {
+      "path": "apps/cli/test/fixtures/private-images.ts",
+      "before": null,
+      "after": {
+        "path": "apps/cli/test/fixtures/private-images.ts",
+        "kind": "file",
+        "sha256": "78b399204c3c3f1cd0092a6276defbb2e3b50dbfa71a046b590ba76799abd8b4",
+        "bytes": 2739,
+        "executable": false
+      }
+    },
+    {
+      "path": "apps/web/src/components/PrivateImageCaptures.tsx",
+      "before": null,
+      "after": {
+        "path": "apps/web/src/components/PrivateImageCaptures.tsx",
+        "kind": "file",
+        "sha256": "e631bca0670c83b5135be19b9f31866d70eb21c74eeeab316090182d01969985",
+        "bytes": 6228,
+        "executable": false
+      }
+    },
+    {
+      "path": "scripts/check-private-images-ui.mjs",
+      "before": null,
+      "after": {
+        "path": "scripts/check-private-images-ui.mjs",
+        "kind": "file",
+        "sha256": "cfec512d4868585f457f9f2055ea1c3a8959f7fa1ee0220c937b022b43ae6d21",
+        "bytes": 7628,
+        "executable": false
+      }
+    }
+  ],
+  "qualification": {
+    "feature": "Typed owner-auth/CSRF inventory/recover/discard; only approved metadata, shared completion witness and canonical library authorizer/approval; no model/turn/replay or private content before release",
+    "focused": "Final121focused+4CLI/crash=125unique actual passes,0fail/pending; root/webTSC/scopedBiomePASS",
+    "browser": "Private current web-source build PASS; real source daemon+web+installedChromium projection at1280/390 passes minimal inventory, policy/CSRF recovery, exact download and confirmeddiscard;3ownedNode normal exits, synthetichomes retained; no live/provider/nativeMobile claim",
+    "initialIssues": "Types literalreturn/JSON typing, invalid explicitdeny fixture118pass1fail, newnonNull warnings and prefix-overselected archivalcase preserved/corrected without schema/guards/assertions/old-case weakening or timeout changes",
+    "manifest": "22additive observed cases; current397required, previous375bytes reconstructed/hash exact; full397gate NOT run",
+    "independentReview": "PENDING; complete recovery P1 not self-cleared",
+    "artifact": "Old tarballs immutable historical evidence; they do not contain current runtime/API/UI/wire and cannot qualify it. Final build/pack/install/closure/backup/refusal/CI still required"
+  },
+  "status": "Approved recovery/discard implemented and focused-tested; awaiting fresh independent component review; release HOLD",
+  "additionalPlanningAndEvidence": [
+    {
+      "path": "docs/testing/0.23.0-image-recovery-controls-20261019.md",
+      "sha256": "1e71d9a11703ff826f7c87d88ec547f792ecb4c5634ef9937f946608e99da680"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-image-recovery-controls-20261019/crash-report.json.gz",
+      "sha256": "893bb0f1c2e89a2d223dbaeddc56cf9fa2c281aeccb472246299d5f1a26d01d2"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-image-recovery-controls-20261019/focused-corrected-report.json.gz",
+      "sha256": "be731d62abe61e351035422e695253850f5842c1ee617def885f87e812259320"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-image-recovery-controls-20261019/focused-final-report.json.gz",
+      "sha256": "6346aa8c7bdf3db6000564b58d4c4106a54f5dbb343a25569a5ad4961419f0c3"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-image-recovery-controls-20261019/focused-initial-report.json.gz",
+      "sha256": "13aa510d5ec93374d13c34b2945a03536ff231a57eb74f7cde21f6c1c2b67a24"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-image-recovery-controls-20261019/qualification.json",
+      "sha256": "274d64f90060a47060db376b4e81bc966493eaf8e12e66c56addf9274fa75070"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-image-recovery-controls-20261019/screenshots/private-1280.png",
+      "sha256": "3fb0edc581201459d3cd105e9b86800f6bcc74ea79712905e7562da7a07cf576"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-image-recovery-controls-20261019/screenshots/private-390.png",
+      "sha256": "82b8726f3952684da95fd014104d15edb2c31deef0346e124dea36ee07b9ce68"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-image-recovery-controls-20261019/screenshots/recovered-and-discarded.png",
+      "sha256": "9da8c923a2038b8a807ae21e3b924c506046d95551561acd5d76e69f68a58099"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-image-recovery-controls-20261019/transcripts.json.gz",
+      "sha256": "67d48fe630e0bd4ed5bebb2e9cffd91b0bdf34b498ca9010f001df85fa68a43e"
+    }
+  ],
+  "publicationPerformed": false
+}

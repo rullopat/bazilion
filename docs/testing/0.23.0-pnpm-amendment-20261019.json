@@ -1,0 +1,109 @@
+{
+  "format": "bazilion-source-freeze-amendment-v1",
+  "revision": 2,
+  "recordedAt": "2026-10-19T10:44:49.526747+00:00",
+  "operatorDecision": "Use latest pnpm selected by mise; installed selected version is 12.14.0, not registry-latest qualification",
+  "parentManifest": "docs/testing/0.23.0-candidate-inputs-20261019.json",
+  "parentManifestSha256": "9d540ceab62bc3a15216626307318a8eb9abcdfd1e130c2eb2bedb6c82cb6ccf",
+  "parentSourceInputAggregateSha256": "ffcd339e6e55470d2dc62488a7473ef7894d11956eb7fdaa7f0a678cba63fc29",
+  "amendedSourceInputAggregateSha256": "0c67009f2dd1960bf716704ebdd0050c4b282588b5ff4f932c542becc1df4eac",
+  "amendedCoreEntryCount": 1134,
+  "reconstruction": "Apply after entries in inputDelta to parent entries by path, keeping original sorted membership; use parent canonical aggregate algorithm. Additional planning records are separately hash-bound, not in the core aggregate.",
+  "resolvedHold": "H1 version-selection/configuration mismatch only",
+  "remainingHold": "H2 uninstall unknown-owner guidance; not modified",
+  "selectedPnpmVersion": "12.14.0",
+  "projectVersionQueries": {
+    "mise exec -- pnpm --version": "12.14.0",
+    "pnpm --version": "12.14.0"
+  },
+  "inputDelta": [
+    {
+      "path": "docs/releases.md",
+      "before": {
+        "path": "docs/releases.md",
+        "kind": "file",
+        "sha256": "d9eea0e1fb55c0334be093047cfd8c2bc30f9aa3f8bab609cebb656bae1819a6",
+        "bytes": 12718,
+        "executable": false
+      },
+      "after": {
+        "path": "docs/releases.md",
+        "kind": "file",
+        "sha256": "b01caca91886d2e82a3d10c26beda209d01c6351b59bb75c9ed749989bbd1a49",
+        "bytes": 12883,
+        "executable": false
+      }
+    },
+    {
+      "path": "package.json",
+      "before": {
+        "path": "package.json",
+        "kind": "file",
+        "sha256": "ea19a7f6832e52c3b1a1d14933a61373a2e512f675d4a88ee51bcd7e8f480a15",
+        "bytes": 1078,
+        "executable": false
+      },
+      "after": {
+        "path": "package.json",
+        "kind": "file",
+        "sha256": "158b3dd43b0947cd3787f93aa59e5b250253b4a295b5700cae917f6ca5845e0b",
+        "bytes": 1078,
+        "executable": false
+      }
+    },
+    {
+      "path": "pnpm-lock.yaml",
+      "before": {
+        "path": "pnpm-lock.yaml",
+        "kind": "file",
+        "sha256": "97d06a6a253eb70fc5aed7aa8f8d21bffddc0c638d58562e6132ed338f3bb81f",
+        "bytes": 397727,
+        "executable": false
+      },
+      "after": {
+        "path": "pnpm-lock.yaml",
+        "kind": "file",
+        "sha256": "1df2acc146febd43f7c082c8bebd67bf208659d8d22611565fde964a2359798a",
+        "bytes": 402333,
+        "executable": false
+      }
+    }
+  ],
+  "workspaceLockPreservation": {
+    "originalBytes": 397727,
+    "originalSha256": "97d06a6a253eb70fc5aed7aa8f8d21bffddc0c638d58562e6132ed338f3bb81f",
+    "exactOriginalSuffixPreserved": true,
+    "addedManagerDocumentBytes": 4606,
+    "addedManagerDocumentSha256": "118190e9d5365fec05f6805c01a23feee63201426310d4fb0dde93f9bad7bc12",
+    "workspaceDependencyResolutionsChanged": false,
+    "internalRegistryCacheEffectsObserved": false
+  },
+  "originalPacketDocuments": [
+    {
+      "path": "docs/testing/0.23.0-freeze.md",
+      "sha256": "7ddc10f67ca1742e99a67f48b01c5f028875d4ef035666d8586e092ba65e3007"
+    },
+    {
+      "path": "docs/testing/0.23.0-release-checklist.md",
+      "sha256": "8874eeaadd39e6167fe3a60d5a0e4fced24e3f440f785a11024db641e53ecbed"
+    }
+  ],
+  "additionalPlanningDocuments": [
+    {
+      "path": "docs/testing/0.23.0-input-disposition-20261019.md",
+      "sha256": "33446f20a4c5ba721b1b3d645cb7b25d15f5e8e352334558b75cb81c716f18e0"
+    },
+    {
+      "path": "docs/testing/0.23.0-input-disposition-20261019.json",
+      "sha256": "a5d3ec7ebd8b1e7db46f9aff161268e659058dc385c137a7d571ffca522c0c9f"
+    },
+    {
+      "path": "docs/testing/0.23.0-pnpm-amendment-20261019.md",
+      "sha256": "ec4ad1835037d940e7a4d7f68a7f408e7a73eaff4ed17d971eb4f062d187bc56"
+    }
+  ],
+  "productQualificationExecuted": false,
+  "dependencyInstallCommandExecuted": false,
+  "publicVersionsChanged": false,
+  "publicationAuthorized": false
+}

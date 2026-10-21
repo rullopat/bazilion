@@ -19,15 +19,19 @@ const addCmd = defineCommand({
   meta: { name: 'add', description: 'Register an MCP server' },
   args: {
     name: { type: 'positional', required: true, description: 'Unique name ([a-zA-Z0-9_])' },
-    transport: { type: 'string', description: 'stdio | http | sse (default stdio)' },
+    transport: { type: 'string', description: 'stdio | http (Streamable HTTP; default stdio)' },
     command: { type: 'string', description: 'stdio: executable to run (e.g. npx)' },
     args: { type: 'string', description: 'stdio: space-separated args (quote the whole string)' },
-    url: { type: 'string', description: 'http/sse: endpoint URL' },
-    token: { type: 'string', description: 'http/sse: bearer token (stored encrypted)' },
+    url: { type: 'string', description: 'http: Streamable HTTP endpoint URL' },
+    token: { type: 'string', description: 'http: bearer token (stored encrypted)' },
     disabled: { type: 'boolean', description: 'Create disabled' },
   },
   async run({ args }) {
     const transport = (args.transport ?? 'stdio') as McpTransport
+    if (transport !== 'stdio' && transport !== 'http')
+      throw new Error(
+        'transport must be stdio or http (Streamable HTTP); legacy SSE is unsupported',
+      )
     const body: McpServerInput = {
       name: args.name,
       transport,

@@ -24,6 +24,7 @@ import {
   servicesByCategory,
 } from '../core/index.ts'
 import { getCtx } from '../lib/ctx.ts'
+import { ordinarySearchStatus } from '../lib/ordinary-search-config.ts'
 import { hasCredentials } from '../runtime/auth/openai-codex.ts'
 import {
   listAllProviders,
@@ -99,6 +100,14 @@ configRouter.get('/services', (c) => {
   ).status
   const services: ServiceCard[] = servicesByCategory('service').map((svc) => ({
     ...(svc.id === 'image-generation' ? { status: imageStatus } : {}),
+    ...(svc.id === 'web-search'
+      ? {
+          status: ordinarySearchStatus({
+            env: mergeSecretsIntoEnv(db, authToken),
+            codexConnected: hasCredentials(db, authToken),
+          }).message,
+        }
+      : {}),
     id: svc.id,
     displayName: svc.displayName,
     ...(svc.hint ? { hint: svc.hint } : {}),

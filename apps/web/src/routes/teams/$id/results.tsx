@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react'
 import { Button } from '../../../components/Button'
 import { ConfirmDialog } from '../../../components/ConfirmDialog'
 import { PageShell } from '../../../components/Page'
+import { PrivateImageCaptures } from '../../../components/PrivateImageCaptures'
 import { ResultSourceLink } from '../../../components/ResultSourceConversation'
 import { ResultCard } from '../../../components/ResultCard'
 import { TeamTabs } from '../../../components/TeamTabs'
@@ -83,6 +84,8 @@ function ResultsPage() {
           Refresh
         </Button>
       </form>
+      <PrivateImageCaptures key={`${team.id}:${filter}`} teamId={team.id} agentId={filter || undefined}
+        onReleased={() => setRevision((value) => value + 1)} />
       {error && (
         <p role="alert" className="text-danger">
           {error}

@@ -7,6 +7,7 @@ import {
   sseFromCanned,
   startLmStudioMock,
 } from './fixtures/mock-lmstudio.ts'
+import { schedulingEvidence } from './fixtures/scheduling-evidence.ts'
 import { startTestServer, type TestServer } from './server-fixture.ts'
 
 // BAZ-065 third slice: trigger lifecycle through supported management (CT-11),
@@ -130,6 +131,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await server.stop()
   await mock.stop()
+  schedulingEvidence('lifecycle-fixture-stopped', { daemonClosed: true, mockClosed: true })
 })
 
 test.skipIf(!docker)(
@@ -170,6 +172,14 @@ test.skipIf(!docker)(
     const atRemove = rounds
     await new Promise((r) => setTimeout(r, 5_000))
     expect(rounds).toBe(atRemove)
+    schedulingEvidence('trigger-lifecycle', {
+      roundsAtDisable: atDisable,
+      roundsAtRemoval: atRemove,
+      roundsAfterRemoval: rounds,
+      disableStatus: disabled.exitCode,
+      enableStatus: enabled.exitCode,
+      removalStatus: removed.exitCode,
+    })
   },
   240_000,
 )
@@ -198,6 +208,8 @@ test.skipIf(!docker)(
       180_000,
       'bounded failures to go terminal',
     )
+    // Preflight-only failures must not masquerade as the intended provider-failure test.
+    expect(providerHits).toBeGreaterThan(0)
     const atCheck = providerHits
     const history = await dispatches(triggerId)
     // A recurring trigger always materializes fresh dispatches; the invariant is
@@ -211,6 +223,16 @@ test.skipIf(!docker)(
     // Terminal: no further provider attempts once every dispatch failed.
     await new Promise((r) => setTimeout(r, 4_000))
     expect(providerHits).toBeLessThanOrEqual(atCheck + 3)
+    schedulingEvidence('bounded-failed-attempts', {
+      providerHitsAtCheck: atCheck,
+      providerHitsAfterWait: providerHits,
+      terminal: terminal.map(({ id, status, attemptCount, lastError }) => ({
+        id,
+        status,
+        attemptCount,
+        hasError: !!lastError,
+      })),
+    })
     await server.cli(['trigger', 'rm', triggerId])
   },
   300_000,
@@ -246,6 +268,17 @@ test.skipIf(!docker)(
     )
     const history = await dispatches(triggerId)
     expect(history.dispatches[0]?.scheduledAt).toBe(dueMs)
+    schedulingEvidence('daemon-utc-cron', {
+      daemonTZ: 'UTC',
+      due: dueMs,
+      providerRounds: cronRounds,
+      dispatches: history.dispatches.map(({ id, scheduledAt, status, attemptCount }) => ({
+        id,
+        scheduledAt,
+        status,
+        attemptCount,
+      })),
+    })
     const disabled = await server.cli(['trigger', 'disable', triggerId])
     expect(disabled.exitCode).toBe(0)
   },

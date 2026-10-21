@@ -11,7 +11,9 @@ export function resolveCliPaths(home?: string): CliPaths {
   // Canonicalize exactly like the daemon's resolvePaths (apps/daemon/src/core/paths.ts):
   // the two processes hand each other absolute paths and validate them against
   // their canonical form, so they must agree on one spelling of the home.
-  const root = canonicalHome(resolve(home ?? process.env.BAZILION_HOME ?? join(homedir(), '.bazilion')))
+  const root = canonicalHome(
+    resolve(home ?? process.env.BAZILION_HOME ?? join(homedir(), '.bazilion')),
+  )
   return { home: root, authFile: join(root, 'auth.json') }
 }
 

@@ -1,0 +1,185 @@
+{
+  "format": "bazilion-source-freeze-amendment-v1",
+  "revision": 29,
+  "recordedAt": "2026-10-21T11:02:44.011693+00:00",
+  "parentAmendment": "docs/testing/0.23.0-current-installed-artifacts-20261021.json",
+  "parentAmendmentSha256": "11cc809ed62d0cf6b74024156db63496c81ab72dac580cfec3441233302c54a0",
+  "parentSourceInputAggregateSha256": "58c3722b66123dff5eb1a9e866266858641c48aa84b2ad23bcc6fb356af7719e",
+  "amendedSourceInputAggregateSha256": "b1690e1223ea8f7a34480572a6691a45dfdde1eec30807c50e82212f33b34afc",
+  "amendedCoreEntryCount": 1151,
+  "inputDelta": [
+    {
+      "path": "docs/releases.md",
+      "before": {
+        "path": "docs/releases.md",
+        "kind": "file",
+        "bytes": 21317,
+        "sha256": "99439ff9e73aa3d9f5276f57d5b9273bfef62048628aa7f94c18247394fad727",
+        "executable": false
+      },
+      "after": {
+        "path": "docs/releases.md",
+        "kind": "file",
+        "bytes": 21821,
+        "sha256": "337c7e330451046d1f39b56b1d912ceb7b5296c0c1616eeab7fe142f5c13db96",
+        "executable": false
+      }
+    }
+  ],
+  "authority": "Existing goal installed backup/refusal/affected-feature qualification; approved privateNode24.22,existing offline cache and positive builds; no new origin/dependency declaration/build admission/realprovider call",
+  "results": {
+    "passed": false,
+    "completedChecks": [
+      "fresh installed prefix production version sets equal actual r28 prefix",
+      "source: actual installed qmd lexical read/list/search",
+      "packed owner-only minimal inventory, private404, canonical policy release/exact PNG, confirmed discard; no provider request"
+    ],
+    "error": "TypeError: tar.list is not a function\n    at file:///control/check.mjs:114:29\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)",
+    "ownedChildren": 18,
+    "ownedChildOutcomes": "all code0/no signal/force/overflow/spawn or cleanup error",
+    "outer": {
+      "returncode": 1,
+      "forced": false,
+      "deadlineExceeded": false,
+      "seconds": 15.593352794647217,
+      "stdoutBytes": 477,
+      "stderrBytes": 0,
+      "stdin": "DEVNULL",
+      "closure": "owned bwrap leader settled; private PID/proc namespace; not arbitrary-host cleanup proof"
+    },
+    "providerRequests": 0,
+    "priorCasesExecuted": 0,
+    "plainBackupCreated": {
+      "bytes": 32349,
+      "sha256": "194fa5d21727ab7f7d1cf2206a3d3d1e9d91c0238fa8526fc5a4bc289dd57a8c"
+    },
+    "notReached": [
+      "independent archive-member oracle",
+      "encrypted backup/restore",
+      "browser/qmd exclusions",
+      "restored Results/provenance/private/tombstone checks",
+      "three restore-refusal cases",
+      "eight packed genuine-prior-home refusals"
+    ],
+    "hypothesis": "Helper resolved the installed tar CommonJS entry then imported it as if named ESM exports; no correcting probe/trial executed",
+    "nextAuthority": "Ask operator to correct only helper interop and continue original declared oracles in a new isolated fixture; original failure/fixture unchanged; no product/source/artifact/dependency/timeout changes",
+    "limits": "synthetic offline seeded image/Result data, not provider/tool-journey acceptance; local tarball,not final committed/public identity; owned closes narrower than arbitrary-host cleanup proof"
+  },
+  "applicability": "Product/runtime/test/build sources and r26 tarball unchanged; only release pointer/additive evidence. No completed source/installer/full/security check replayed or reclassified. New partial feature/backup fixture failed in helper, no application-backup failure or full qualification acceptance inferred.",
+  "status": "HOLD at helper interop failure; preserve fixture and ask operator before correction/continuation. Remaining qualification/finalsource/CI/finalreview/publication/website open; no task complete.",
+  "additionalPlanningAndEvidence": [
+    {
+      "path": "docs/testing/0.23.0-installed-backup-checkpoint-20261021.md",
+      "sha256": "5d3a4f335668271fdabdcf7c55d8b1488c1e71d736251cf2fd20851b5c1f761a"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-checkpoint-20261021/001-npm-version.json.gz",
+      "sha256": "8b0bd1c624c0ab499d346ba4610a318565bd25510520d47573c17ec9733bd219"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-checkpoint-20261021/002-install.json.gz",
+      "sha256": "ca8fd38d0d8e885b30d6de40358f511f58ec0a0d791e9ba107dbd98c706703ab"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-checkpoint-20261021/003-positive-rebuild.json.gz",
+      "sha256": "022a225d298add4dc03bf5e942e88837c1a214e4f184bb3e0f7793ae6e59367a"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-checkpoint-20261021/004-production-tree.json.gz",
+      "sha256": "746ec86fc1030d879f36bcf92b094758fb5c611e511f499dde658476de1b2cd1"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-checkpoint-20261021/005-provider-enable.json.gz",
+      "sha256": "af2aaf60ce61c2dc5a82053c227aaab24e1d7ac334a88bacaec09423a4d1e545"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-checkpoint-20261021/006-models-set.json.gz",
+      "sha256": "7798d721e605a9a7b05e58b144ccf58b0a2c36e63ab293811ebc154b869e6b1e"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-checkpoint-20261021/007-spawn-agent.json.gz",
+      "sha256": "72d48a8b99af73baaa3e6b569521601c45afda08009c3ce338f8565d4939d74f"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-checkpoint-20261021/008-memory-write.json.gz",
+      "sha256": "7ec75bdb934ade5fc2b76d8812d97899e27dafc38ea9299861598a36e2efc0f6"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-checkpoint-20261021/009-source-memory-read.json.gz",
+      "sha256": "d28f906f5ebb0f8d2a9126aef559f0c42d87f0f49218af5f18dbfc302d85ae41"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-checkpoint-20261021/010-source-memory-list.json.gz",
+      "sha256": "a83d877fcfa7a61a49da46346190f715d47b8e769a2e5d7549cf8b5be226404d"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-checkpoint-20261021/011-source-memory-search.json.gz",
+      "sha256": "5906e1b39a00f1805b820201b5fe64b68351e4803926a732aaabcdb6681ae85d"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-checkpoint-20261021/012-private-inventory.json.gz",
+      "sha256": "36f20360b1e24c1e91f1cf009359b0b9a8e1f3fafab1618418390728877a29ba"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-checkpoint-20261021/013-recover-image.json.gz",
+      "sha256": "474453e4579c70d1928b8182cb5e10147f9474cfdb3295972e52c6025dbe09ad"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-checkpoint-20261021/014-recovered-download.json.gz",
+      "sha256": "e78774a985d72306ef8c1f234157b85205018ce2a7fb00824a060d7c46fdaa02"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-checkpoint-20261021/015-discard-image.json.gz",
+      "sha256": "31d826a4c48d7bcf8fce9349d4a298ea73efa2a5c147d844f02de50605127668"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-checkpoint-20261021/016-backup-plain.json.gz",
+      "sha256": "062b2882c83cc4c79274f90d7d3546badaaeea70b415d2b5e2c5e90b271bae62"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-checkpoint-20261021/check.mjs.txt",
+      "sha256": "bdb6f58ee680a242d022a9c4402a01b87daf3e71ae66745b11ce5bfbc037f970"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-checkpoint-20261021/installed-tar-package.json",
+      "sha256": "31b18f4fb83ba7183f54fa9e2cdca610897108c37ba80570c2c6fa7ccf112d97"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-checkpoint-20261021/isolate.sh.txt",
+      "sha256": "7803420d0ff4aa5547e6d2c96b85c987c1f168b3f4edaaf83a65060fbe7ac187"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-checkpoint-20261021/outcomes.json.gz",
+      "sha256": "fd2b7bc828641225a70a87abd95d726747a6efc50808bedd4273426e68245fca"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-checkpoint-20261021/outer-control.json.gz",
+      "sha256": "89a8b6eda987ffd8d1618292d4630e17fbce19079b6685416b726a20cc21d87c"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-checkpoint-20261021/outer.stderr.log.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-checkpoint-20261021/outer.stdout.log.txt",
+      "sha256": "256e49b74fa347a5ca54315889edbe8e315146c2684efa0c14ade12c397d45a9"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-checkpoint-20261021/plan.json.gz",
+      "sha256": "e79ed7036b56010a1c003c8146ee4863b69b86d2f0628590de9c8a1a8296891c"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-checkpoint-20261021/prior-sources-verified.json.gz",
+      "sha256": "4e44686aecc83598b7f9c6b83696c5c63e87691e2808dff7692627eb1de23611"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-checkpoint-20261021/qualification.json",
+      "sha256": "496c50bb7b8c3b1fdfccc773a3ac73b30f0af32e283142728b2203d0b8d7522f"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-checkpoint-20261021/uncompressed-identities.json",
+      "sha256": "fd4feebf4ab613fe9b454c9d7c47453c8cfd93c0022b23850f242829984042fa"
+    }
+  ],
+  "publicationPerformed": false
+}

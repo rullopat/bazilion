@@ -145,6 +145,7 @@ export interface CreateBazilionSessionOptions {
   askUser?: AskUser
   imageGenerationHost?: import('../worker/ipc-protocol.ts').ImageGenerationHost
   fileSink?: import('../tools/deliver-file.ts').FileSink
+  webSearchHost?: import('../worker/ipc-protocol.ts').WebSearchHost
   /** Turn-scoped bridge for dangerous bash commands. Omit to fail closed. */
   bashApprovalHost?: BashApprovalHost
   /**
@@ -310,6 +311,8 @@ export async function createBazilionSession(
   // via /compact), retry on with Bazilion-tuned caps matching what withRetry
   // used to apply before pi-adoption.
   const settingsManager = SettingsManager.inMemory({
+    // Auxiliary provider requests must be explicitly admitted by Bazilion, not idle/streaming warming.
+    cacheWarming: 'off',
     compaction: { enabled: false },
     retry: {
       enabled: true,
@@ -328,6 +331,10 @@ export async function createBazilionSession(
     buildSystemPrompt(agent, {
       skills: promptSkills,
       sandboxMode: shellTools?.config.sandboxMode ?? 'off',
+      // Guide iff the browser tools are admitted — the same host presence
+      // that registers `browser_*` in createBazilionCustomTools (T10).
+      ...(opts.browserHost ? { browserGuide: true } : {}),
+      ...(opts.webSearchHost ? { searchGuide: true } : {}),
     })
   const repository =
     !restricted && opts.repositoryContext && opts.repositoryContextHost
@@ -369,6 +376,7 @@ export async function createBazilionSession(
         mcpTools,
         fileSink,
         imageGenerationHost: opts.imageGenerationHost,
+        webSearchHost: opts.webSearchHost,
         askUser,
         sessionId: sessionManager.getSessionId(),
         env,
@@ -663,6 +671,7 @@ function materializeProtectedCredentialFile(
 
 function createInMemorySettingsManager(): SettingsManager {
   return SettingsManager.inMemory({
+    cacheWarming: 'off',
     compaction: { enabled: false },
     retry: {
       enabled: true,

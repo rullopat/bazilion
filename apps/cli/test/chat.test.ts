@@ -191,6 +191,37 @@ test('agent chat --message round-trips with the provider', async () => {
   expect(r.stdout).toContain('hello from mock')
 })
 
+test('large Unicode completion survives real worker exit and releases the next turn', async () => {
+  const agentId = await spawnLmStudioAgent()
+  const message = '日本語🌍'.repeat(40_000)
+  for (const prompt of [message, 'follow-up after large completion']) {
+    mock.push([
+      { choices: [{ message: { role: 'assistant', content: 'complete' }, finish_reason: 'stop' }] },
+    ])
+    const selected = (await fetch(`${server.url}/api/agents/${agentId}/conversations`, {
+      headers: authHeaders(),
+    }).then((r) => r.json())) as { selection: { conversationId: string | null; revision: number } }
+    const response = await fetch(`${server.url}/api/agents/${agentId}/chat`, {
+      method: 'POST',
+      headers: authHeaders(true),
+      body: JSON.stringify({ message: prompt, expectedSelection: selected.selection }),
+      signal: AbortSignal.timeout(30_000),
+    })
+    expect(response.status).toBe(200)
+    const frames = (await response.text())
+      .split('\n')
+      .filter((line) => line.trim())
+      .map((line) => JSON.parse(line) as ChatFrame)
+    expect(frames.filter((frame) => frame.kind === 'fatal')).toEqual([])
+    const done = frames.find((frame) => frame.kind === 'done')
+    expect(done?.kind).toBe('done')
+    if (done?.kind !== 'done') throw new Error('missing terminal completion')
+    expect(done.messages.some((m) => m.role === 'user' && m.content === message)).toBe(true)
+    expect(done.messages.at(-1)?.content).toBe('complete')
+  }
+  expect(mock.callCount()).toBe(2)
+}, 90_000)
+
 test('chat rejects an unknown approval capability before starting a turn', async () => {
   const agentId = await spawnLmStudioAgent()
   const response = await fetch(`${server.url}/api/agents/${agentId}/chat`, {

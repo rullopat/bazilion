@@ -1,0 +1,80 @@
+{
+  "basis": "011b3e14279913a1807c30bedf62684286b46542a964f4a285072fd004ce2672",
+  "executedSourceUnchanged": true,
+  "types": "root+web exit0",
+  "lintTail": [
+    "Diagnostics not shown: 106.",
+    "Checked 817 files in 363ms. No fixes applied.",
+    "Found 112 warnings.",
+    "Found 14 infos."
+  ],
+  "helpers": {
+    "tests": 41,
+    "pass": 41,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0,
+    "todo": 0
+  },
+  "fixtureProfile": {
+    "success": true,
+    "numPassedTests": 33,
+    "numFailedTests": 0,
+    "numPendingTests": 0,
+    "numPassedTestSuites": 5,
+    "numFailedTestSuites": 0,
+    "fileCount": 4
+  },
+  "allEightPriorNonChatFailuresNowPassed": true,
+  "priorNativeChatFailuresNotRerun": true,
+  "sourceWebBuild": "exit0",
+  "privateCliOutputs": [
+    {
+      "path": "orchid-v1.png",
+      "bytes": 68,
+      "sha256": "dfde6b2cf8bf6e01453732e7d88b414e93bd1503178b881e4e686f2cfad9d9f4",
+      "createdAfterRunInventory": true
+    },
+    {
+      "path": "orchid-v2.png",
+      "bytes": 68,
+      "sha256": "dfde6b2cf8bf6e01453732e7d88b414e93bd1503178b881e4e686f2cfad9d9f4",
+      "createdAfterRunInventory": true
+    },
+    {
+      "path": "orchid-v3.png",
+      "bytes": 68,
+      "sha256": "dfde6b2cf8bf6e01453732e7d88b414e93bd1503178b881e4e686f2cfad9d9f4",
+      "createdAfterRunInventory": true
+    },
+    {
+      "path": "handoff-cycle-1.md",
+      "bytes": 495,
+      "sha256": "1fba8a3edb5b5dd63e8f14da11351d8d355db25982f97bf5f476bcceb507838b",
+      "createdAfterRunInventory": true
+    },
+    {
+      "path": "fresh-handoff.md",
+      "bytes": 60,
+      "sha256": "c06d51e5c2dbb6bf8b74bf72560358fca1a72331f7cfe84be573acc299eaeb25",
+      "createdAfterRunInventory": true
+    },
+    {
+      "path": "handoff-a.md",
+      "bytes": 37,
+      "sha256": "63ea1ce41b02a838fe83c74ba32f4d0c54d3795676c74809c6819604f804276d",
+      "createdAfterRunInventory": true
+    },
+    {
+      "path": "handoff-b.md",
+      "bytes": 33,
+      "sha256": "37844b3c8abc5d01cae51f97dc00672cae756f969f9318188c67e240945c97db",
+      "createdAfterRunInventory": true
+    }
+  ],
+  "noNativeInvestigationOrProductionChange": true,
+  "fullSuiteOr397GateRerun": false,
+  "bookkeeping": "Initial TAP-only summary regex returned empty for Node24 spec output. Initial projection and actual log retained; parser corrected against real spec summary, no test rerun or expected-identity rewrite.",
+  "daemonStderrFiles": 6,
+  "closureLimit": "Routine namespace/commands exited0; these transcripts are not an arbitrary-descendant/abnormal-host cleanup proof."
+}

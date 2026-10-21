@@ -32,7 +32,12 @@ import { type ReviewRequestHost, reviewRequestTool } from '../tools/review.ts'
 import type { ToolHandler, ToolOutput } from '../tools/types.ts'
 import { userMdTools } from '../tools/user-md.ts'
 import { type VerificationRequestHost, verificationRequestTool } from '../tools/verification.ts'
-import { protectedWebFetchTool, protectedWebSearchTool, webTools } from '../tools/web.ts'
+import {
+  ordinaryWebSearchTool,
+  protectedWebFetchTool,
+  protectedWebSearchTool,
+  webTools,
+} from '../tools/web.ts'
 import type {
   BrowserHost,
   InjectedMcpTool,
@@ -56,8 +61,8 @@ export function ourToolToPiTool(h: ToolHandler): ToolDefinition {
     label: h.def.name,
     description: h.def.description,
     parameters: Type.Unsafe<Record<string, unknown>>(h.def.parameters as Record<string, unknown>),
-    async execute(toolCallId, params) {
-      const out = await h.invoke(params as Record<string, unknown>, { toolCallId })
+    async execute(toolCallId, params, signal) {
+      const out = await h.invoke(params as Record<string, unknown>, { toolCallId, signal })
       return {
         content: toPiContent(out),
         details:
@@ -65,8 +70,15 @@ export function ourToolToPiTool(h: ToolHandler): ToolDefinition {
             ? 'result' in out
               ? { result: out.result }
               : 'results' in out
-                ? { results: out.results }
-                : { questionReceipt: out.questionReceipt }
+                ? {
+                    results: out.results,
+                    ...(out.imageEvidence ? { imageEvidence: out.imageEvidence } : {}),
+                  }
+                : 'webSearch' in out
+                  ? { webSearch: out.webSearch }
+                  : 'webFetch' in out
+                    ? { webFetch: out.webFetch }
+                    : { questionReceipt: out.questionReceipt }
             : {},
       }
     },
@@ -107,6 +119,8 @@ export interface BazilionCustomToolsOpts {
   sessionId?: string
   fileSink?: FileSink
   imageGenerationHost?: import('../worker/ipc-protocol.ts').ImageGenerationHost
+  /** Ordinary discovery is daemon-owned; absent means no web_search, not env fallback. */
+  webSearchHost?: import('../worker/ipc-protocol.ts').WebSearchHost
   /** Merged env (process.env + secrets). */
   env?: NodeJS.ProcessEnv
   /** BAZ-044: present only in an ordinary coding turn, and only when the daemon bound it. */
@@ -147,7 +161,10 @@ export function createBazilionCustomTools(opts: BazilionCustomToolsOpts): ToolDe
     ...memoryTools(opts.memory),
     ...homeTools(opts.agent.agent.dir),
     bootstrapTool(opts.agent.agent.dir),
-    ...webTools({ env: opts.env }),
+    ...webTools({ env: opts.env, sourceReceipt: true }).filter(
+      (tool) => tool.def.name !== 'web_search',
+    ),
+    ...(opts.webSearchHost ? [ordinaryWebSearchTool(opts.webSearchHost)] : []),
   ]
   if (opts.messagingHost) {
     handlers.push(...messagingTools(opts.messagingHost, opts.agent.agent.id))

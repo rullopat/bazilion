@@ -17,6 +17,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 import { openDb } from '../../src/core/db/client.ts'
 import { runMigrations } from '../../src/core/db/migrate.ts'
 import { workspaceLifecycle } from '../../src/lib/coding-environment/lifecycle.ts'
+import { createOrdinaryWebSearchHost } from '../../src/lib/ordinary-web-search.ts'
 import { resolveRepositoryContext } from '../../src/lib/repository-context/index.ts'
 import type { MemoryBackend } from '../../src/runtime/memory/types.ts'
 import { createProtectedBazilionCustomTools } from '../../src/runtime/pi/tools.ts'
@@ -51,6 +52,233 @@ afterEach(() => {
 })
 
 describe('minimal worker runtime', () => {
+  test('real worker Pi loop executes native search IPC, reads guarded source and completes with citations offline', async () => {
+    const prepared = protectedSpec(tempRoot())
+    prepared.agent.model = 'openai:gpt-6.1-sol'
+    prepared.agent.reasoningLevel = 'medium'
+    const marker = join(prepared.agent.team.path, 'unadmitted-mcp-started')
+    const mcpConfig = JSON.stringify({
+      mcpServers: {
+        trap: {
+          command: process.execPath,
+          args: [
+            '-e',
+            `require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'UNADMITTED_MCP')`,
+          ],
+        },
+      },
+    })
+    for (const directory of [
+      join(prepared.agent.team.path, '.pi'),
+      join(prepared.agent.agent.dir, '..', '..', 'pi'),
+    ]) {
+      mkdirSync(directory, { recursive: true })
+      writeFileSync(join(directory, 'mcp.json'), mcpConfig)
+    }
+    const provider = vi.fn(async () =>
+      Response.json({
+        id: 'resp_search_loop',
+        status: 'completed',
+        model: 'gpt-6.1-sol',
+        output: [
+          {
+            type: 'web_search_call',
+            id: 'ws_fixture_loop',
+            status: 'completed',
+            action: { type: 'search' },
+          },
+          {
+            type: 'message',
+            role: 'assistant',
+            status: 'completed',
+            content: [
+              {
+                type: 'output_text',
+                text: 'NASA source discovered.',
+                annotations: [
+                  {
+                    type: 'url_citation',
+                    title: 'NASA',
+                    url: 'https://www.nasa.gov/mission/artemis-ii/',
+                    start_index: 0,
+                    end_index: 4,
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      }),
+    )
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 25000)
+    const host = createOrdinaryWebSearchHost({
+      env: () => ({ OPENAI_API_KEY: 'fixture-search-key' }),
+      model: prepared.agent.model,
+      codexConnected: () => false,
+      codexAccountId: () => null,
+      codexCredential: async () => {
+        throw new Error('unadmitted')
+      },
+      signal: controller.signal,
+      assertActive: () => {},
+      fetchImpl: provider,
+    })
+    const frames = []
+    try {
+      for await (const frame of spawnWorkerTurn(
+        {
+          kind: 'configured_operator_http',
+          agent: prepared.agent,
+          repositoryContext: prepared.repositoryContext,
+          conversation: prepared.conversation,
+          message: 'Research NASA Artemis II with official sources.',
+          turnId: 'real-loop',
+          enabledProviders: ['openai'],
+          bashApprovalMode: 'auto_deny',
+          webSearchEnabled: true,
+          browserEnabled: false,
+        },
+        {
+          signal: controller.signal,
+          env: {
+            BAZILION_HOME: join(prepared.agent.agent.dir, '..', '..'),
+            OPENAI_API_KEY: 'fixture-search-key',
+            NODE_OPTIONS: `--import=${new URL('../fixtures/worker-native-search-preload.mjs', import.meta.url).href}`,
+          },
+          webSearchHost: host,
+        },
+      ))
+        frames.push(frame)
+    } finally {
+      clearTimeout(timeout)
+    }
+    const serialized = JSON.stringify(frames)
+    expect(
+      frames.filter((f) => f.kind === 'done'),
+      serialized,
+    ).toHaveLength(1)
+    expect(frames.filter((f) => f.kind === 'fatal')).toHaveLength(0)
+    expect(serialized).toContain('ws_fixture_loop')
+    expect(serialized).toContain('https://www.nasa.gov/mission/artemis-ii/')
+    expect(serialized).toContain('Source actually read')
+    expect(existsSync(marker)).toBe(false)
+    expect(serialized).not.toContain('fixture-search-key')
+    const transcript = readFileSync(
+      join(prepared.agent.agent.dir, 'sessions', prepared.conversation.filename),
+      'utf8',
+    )
+    expect(transcript).toContain('"webSearch"')
+    expect(transcript).toContain('"webFetch"')
+    expect(transcript).toContain('ws_fixture_loop')
+    expect(transcript).toContain('"finalUrl":"https://www.nasa.gov/mission/artemis-ii/"')
+    expect(transcript).not.toContain('fixture-search-key')
+    expect(provider).toHaveBeenCalledTimes(1)
+  }, 35000)
+
+  test('ordinary worker search IPC preserves native evidence, guarded-fetch effective URL and completion; forged authority refuses', async () => {
+    const root = tempRoot()
+    const prepared = protectedSpec(root)
+    prepared.agent.model = 'openai:gpt-6-astra'
+    const provider = vi.fn(async () =>
+      Response.json({
+        id: 'resp_fixture',
+        status: 'completed',
+        model: 'gpt-6-astra',
+        output: [
+          {
+            type: 'web_search_call',
+            id: 'ws_fixture',
+            status: 'completed',
+            action: { type: 'search' },
+          },
+          {
+            type: 'message',
+            role: 'assistant',
+            status: 'completed',
+            content: [
+              {
+                type: 'output_text',
+                text: 'NASA fixture source.',
+                annotations: [
+                  {
+                    type: 'url_citation',
+                    title: 'NASA',
+                    url: 'https://www.nasa.gov/mission/artemis-ii/',
+                    start_index: 0,
+                    end_index: 4,
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      }),
+    )
+    const searchHost = createOrdinaryWebSearchHost({
+      env: () => ({ OPENAI_API_KEY: 'fixture-search-key' }),
+      model: prepared.agent.model,
+      codexConnected: () => false,
+      codexAccountId: () => null,
+      codexCredential: async () => {
+        throw new Error('unadmitted account')
+      },
+      signal: new AbortController().signal,
+      assertActive: () => {},
+      fetchImpl: provider,
+    })
+    for (const message of ['valid', 'forged']) {
+      const frames = []
+      for await (const frame of spawnWorkerTurn(
+        {
+          kind: 'configured_operator_http',
+          repositoryContext: prepared.repositoryContext,
+          agent: prepared.agent,
+          conversation: prepared.conversation,
+          message,
+          turnId: 'search-fixture',
+          enabledProviders: [],
+          bashApprovalMode: 'auto_deny',
+          webSearchEnabled: true,
+          browserEnabled: false,
+        },
+        {
+          env: {},
+          webSearchHost: searchHost,
+          workerEntryPath: fileURLToPath(
+            new URL('../fixtures/worker-web-search-entry.ts', import.meta.url),
+          ),
+        },
+      ))
+        frames.push(frame)
+      const text = JSON.stringify(frames)
+      if (message === 'valid') {
+        expect(text).toContain('ws_fixture')
+        expect(text).toContain('webFetch')
+        expect(text).toContain('finalUrl')
+        expect(text).toContain('https://www.nasa.gov/mission/artemis-ii/')
+        expect(frames.filter((frame) => frame.kind === 'done')).toHaveLength(1)
+        expect(text).not.toContain('fixture-search-key')
+      } else expect(text).toContain('Invalid web search IPC request')
+    }
+    expect(provider).toHaveBeenCalledTimes(1)
+    // An ordinary capability cannot be accidentally attached to the protected dispatcher.
+    const collect = async () => {
+      for await (const _frame of spawnWorkerTurn(
+        { ...prepared, webSearchEnabled: true },
+        {
+          ...scopedHosts(),
+          webSearchHost: searchHost,
+          apiKeyRefreshHost: { refresh: async () => 'fixture-token' },
+        },
+      )) {
+        /* must refuse before spawn */
+      }
+    }
+    await expect(collect()).rejects.toThrow('ordinary discovery host is denied')
+    expect(provider).toHaveBeenCalledTimes(1)
+  })
+
   test('lost host worker cannot release ownership of Pi detached shell work after restart', async () => {
     const root = tempRoot()
     const prepared = protectedSpec(root)
@@ -140,11 +368,17 @@ describe('minimal worker runtime', () => {
     try {
       const lifecycle = workspaceLifecycle(db)
       const lease = await lifecycle.claim(spec.agent.team.id, spec.paths.teamDir, 'agent')
+      const workerOwner = lifecycle.worker(lease)
       const collect = async () => {
         for await (const _frame of spawnWorkerTurn(spec, {
           ...scopedHosts(),
           apiKeyRefreshHost: { refresh: async () => 'rotated' },
-          resourceLifecycle: lifecycle.worker(lease),
+          resourceLifecycle: {
+            ...workerOwner,
+            // This injected fixture really spawns a detached HOST process. Classifying
+            // it as a no-host-command protected worker permitted an unsound recovery oracle.
+            beforeInput: (pid) => workerOwner.beforeInput(pid, true),
+          },
           workerEntryPath: fileURLToPath(
             new URL('../fixtures/worker-output-holder-entry.ts', import.meta.url),
           ),
@@ -164,8 +398,11 @@ describe('minimal worker runtime', () => {
       ).rejects.toThrow('workspace_recovery_required')
       process.kill(descendant, 0)
       process.kill(-descendant, 'SIGKILL')
-      const next = await restarted.claim(spec.agent.team.id, spec.paths.teamDir, 'agent')
-      await restarted.release(next)
+      // The reopened owner has no live cleanup capability. Killing the fixture cannot
+      // turn numeric PID disappearance into proof or silently clear the durable blocker.
+      await expect(
+        restarted.claim(spec.agent.team.id, spec.paths.teamDir, 'agent'),
+      ).rejects.toThrow('workspace_recovery_required')
     } finally {
       if (!descendant) {
         try {
@@ -568,6 +805,34 @@ describe('minimal worker runtime', () => {
       cleanupMinimalWorkerScratch(scratch)
     }
     expect(imageGenerationHost.generate).not.toHaveBeenCalled()
+  })
+
+  test('a restricted turn cannot be handed the browser capability (T09)', async () => {
+    const prepared = protectedSpec(tempRoot())
+    const browserHost = { invoke: vi.fn(async () => [] as never[]) }
+    await expect(
+      spawnReviewWorker(
+        {
+          kind: 'restricted_review',
+          agentId: prepared.agent.agent.id,
+          message: 'valid',
+          turnId: 'browser-denied',
+          runtime: prepared.runtime,
+          review: { reviewId: 'review', evidence: [] },
+        },
+        {
+          apiKeyRefreshHost: { refresh: async () => 'fixture-token' },
+          browserHost: browserHost,
+          workerEntryPath: fileURLToPath(
+            new URL('../fixtures/worker-repository-context-entry.ts', import.meta.url),
+          ),
+        } as never,
+      ),
+      // Refused before the worker starts: the capability cannot reach a
+      // restricted turn even through a spawn-time option. Dispatch-side denial
+      // is the daemon host's identity binding (browser-mcp-tools tests).
+    ).rejects.toThrow(/rejects browserHost/)
+    expect(browserHost.invoke).not.toHaveBeenCalled()
   })
 
   test('a restricted turn cannot be handed the requester capability', async () => {

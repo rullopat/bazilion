@@ -187,7 +187,7 @@ also needs a permitted positive control so that denying everything cannot satisf
 existing families, not another batch of independent family counts. Its 18 CT subcases cover the
 first-request brief, two independently selected topics, real multi-Agent research, cron-driven
 preparation, text/images, two feedback rounds and approved manual handoff. BAZ-064 owns the recipe/D
-cells, BAZ-065 the scheduler/recovery D/S cells and BAZ-066 all required L/H cells; BAZ-063 consolidates
+cells, BAZ-065 the scheduler/recovery D/S cells and no current story owns required L/H cells; BAZ-063 consolidates
 acceptance. The first test is Mastodon manual handoff only; other platform formats are deferred.
 Six PUB subcases remain conditional on BAZ-060 and a supported, authorized adapter; a Mastodon
 adapter needs separate refinement, while BAZ-061/062 concern Meta/LinkedIn. All remain unrun as

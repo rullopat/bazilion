@@ -18,11 +18,23 @@ import {
 // canned event streams. Wire-format correctness (SSE framing, provider-specific
 // request shapes) is pi-ai's responsibility and covered by its own test suite.
 
-test('Pi 0.87.1 catalog includes Astra for API keys and Codex subscriptions', () => {
+test('Pi catalog retains Astra for API keys and Codex subscriptions', () => {
   for (const provider of ['openai', 'openai-codex'] as const) {
     expect(getBuiltinModels(provider).find((model) => model.id === 'gpt-6-astra')).toMatchObject({
       name: 'GPT-6 Astra',
       provider,
+      reasoning: true,
+    })
+  }
+})
+
+test('Pi 1.0 catalog includes exact GPT-6.1 Sol on official API and subscription transports', () => {
+  for (const provider of ['openai', 'openai-codex'] as const) {
+    expect(getBuiltinModels(provider).find((model) => model.id === 'gpt-6.1-sol')).toMatchObject({
+      provider,
+      api: provider === 'openai' ? 'openai-responses' : 'openai-codex-responses',
+      baseUrl:
+        provider === 'openai' ? 'https://api.openai.com/v1' : 'https://chatgpt.com/backend-api',
       reasoning: true,
     })
   }
@@ -40,7 +52,7 @@ test('Pi catalog retains the refreshed model families and provider additions', (
   expect(getBuiltinModels('baseten').map((model) => model.id)).toContain('moonshotai/Kimi-K3')
 })
 
-test('Pi 0.87.1 adds the meta and radius providers with curated examples present', () => {
+test('Pi catalog retains meta and radius providers with curated examples present', () => {
   const meta = getBuiltinModels('meta').map((model) => model.id)
   expect(meta).toContain('muse-spark-1.3')
   expect(meta.some((id) => id.startsWith('muse-spark-1.'))).toBe(true)

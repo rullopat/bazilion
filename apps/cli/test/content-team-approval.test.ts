@@ -10,7 +10,7 @@ import { startTestServer, type TestServer } from './server-fixture.ts'
 // The canned model executes the recipe's sequence, so this proves the PLUMBING
 // (image_generate only runs when the turn's model calls it; every call is
 // counted; Results are retained per call) — not model judgment about approval.
-// That judgment is observed in the L lane (BAZ-066). Nothing is published.
+// That judgment is observed in the L lane. Nothing is published.
 const recipe = join(import.meta.dirname, '../../../examples/content-team')
 // Real Agent turns are Linux-only until BAZ-057 (safe_reads_unavailable).
 const linux = process.platform === 'linux'

@@ -238,7 +238,7 @@ CREATE TABLE telegram_pairing_challenge (
 CREATE TABLE mcp_servers (
   id          TEXT PRIMARY KEY,
   name        TEXT NOT NULL UNIQUE,
-  transport   TEXT NOT NULL CHECK (transport IN ('stdio','http','sse')),
+  transport   TEXT NOT NULL CHECK (transport IN ('stdio','http')),
   command     TEXT,
   args        TEXT NOT NULL DEFAULT '[]',
   url         TEXT,

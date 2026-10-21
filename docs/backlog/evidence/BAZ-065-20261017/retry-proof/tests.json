@@ -1,0 +1,68 @@
+{
+  "numTotalTestSuites": 1,
+  "numPassedTestSuites": 1,
+  "numFailedTestSuites": 0,
+  "numPendingTestSuites": 0,
+  "numTotalTests": 3,
+  "numPassedTests": 1,
+  "numFailedTests": 0,
+  "numPendingTests": 2,
+  "numTodoTests": 0,
+  "snapshot": {
+    "added": 0,
+    "failure": false,
+    "filesAdded": 0,
+    "filesRemoved": 0,
+    "filesRemovedList": [],
+    "filesUnmatched": 0,
+    "filesUpdated": 0,
+    "matched": 0,
+    "total": 0,
+    "unchecked": 0,
+    "uncheckedKeysByFile": [],
+    "unmatched": 0,
+    "updated": 0,
+    "didUpdate": false
+  },
+  "startTime": 1792317912142,
+  "success": true,
+  "testResults": [
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [],
+          "fullName": "CT-11: disable pauses cycles, re-enable resumes, delete stops them permanently",
+          "status": "skipped",
+          "title": "CT-11: disable pauses cycles, re-enable resumes, delete stops them permanently",
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "CT-13 retry half: a failing turn retries with a bounded attempt count, then fails terminally",
+          "status": "passed",
+          "title": "CT-13 retry half: a failing turn retries with a bounded attempt count, then fails terminally",
+          "duration": 53612.768056,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "CT-09 partial: a TZ=UTC daemon fires cron at the UTC minute, not the test-local minute",
+          "status": "skipped",
+          "title": "CT-09 partial: a TZ=UTC daemon fires cron at the UTC minute, not the test-local minute",
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        }
+      ],
+      "startTime": 1792317921069,
+      "endTime": 1792317974681.768,
+      "status": "passed",
+      "message": "",
+      "name": "/home/patri/coding/bazilion/apps/cli/test/content-team-scheduling-lifecycle.test.ts"
+    }
+  ]
+}

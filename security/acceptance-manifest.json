@@ -2,6 +2,708 @@
   "version": 1,
   "cases": [
     {
+      "id": "RECOVERY-SAME-TIMESTAMP-TEAM",
+      "owner": "BAZ-068",
+      "file": "apps/daemon/test/core/workspace-recovery.test.ts",
+      "test": "same-timestamp Team recreation cannot acknowledge the deleted writer selection"
+    },
+    {
+      "id": "RECOVERY-FOREIGN-DB-VERSION",
+      "owner": "BAZ-068",
+      "file": "apps/daemon/test/core/workspace-recovery.test.ts",
+      "test": "foreign connection metadata writes refuse acknowledgement without altering the schema"
+    },
+    {
+      "id": "RECOVERY-STABLE-RETRY-NO-REPLAY",
+      "owner": "BAZ-068",
+      "file": "apps/daemon/test/core/workspace-recovery.test.ts",
+      "test": "confirmed cleanup plus unrelated DB mutation stays blocked, then stable retry does not replay cleanup"
+    },
+    {
+      "id": "RECOVERY-BODY-ACTUAL-EOF",
+      "owner": "BAZ-068",
+      "file": "apps/daemon/test/lib/recovery-body.test.ts",
+      "test": "body-free recovery requires actual EOF, not a forged zero length"
+    },
+    {
+      "id": "RECOVERY-BODY-CANCEL-OWNERSHIP",
+      "owner": "BAZ-068",
+      "file": "apps/daemon/test/lib/recovery-body.test.ts",
+      "test": "nonempty recovery body owns asynchronous cancellation before returning refusal"
+    },
+    {
+      "id": "RECOVERY-BODY-STALLED-REFUSAL",
+      "owner": "BAZ-068",
+      "file": "apps/daemon/test/lib/recovery-body.test.ts",
+      "test": "recovery refuses a stalled body or exhausted empty chunks without buffering"
+    },
+    {
+      "id": "RECOVERY-ADMIN-MIDDLEWARE",
+      "owner": "BAZ-068",
+      "file": "apps/daemon/test/routes/workspace-recovery.test.ts",
+      "test": "production middleware denies unauthenticated and non-admin recovery requests before cleanup"
+    },
+    {
+      "id": "RECOVERY-CLOSED-SELECTION",
+      "owner": "BAZ-068",
+      "file": "apps/daemon/test/routes/workspace-recovery.test.ts",
+      "test": "bounded report and selection expose no ownership internals; body substitution and wrong Team refuse"
+    },
+    {
+      "id": "RECOVERY-RECORDED-HTTP-CLIENT",
+      "owner": "BAZ-068",
+      "file": "apps/daemon/test/routes/workspace-recovery.test.ts",
+      "test": "real HTTP client settles previously confirmed records and admits the same Team root"
+    },
+    {
+      "id": "RECOVERY-WORKER-NO-SIGNAL",
+      "owner": "BAZ-068",
+      "file": "apps/daemon/test/core/workspace-recovery.test.ts",
+      "test": "management explains host and unconfirmed worker blockers without invoking teardown"
+    },
+    {
+      "id": "RECOVERY-REQUIRES-RECORDED-CONFIRMATION",
+      "owner": "BAZ-068",
+      "file": "apps/daemon/test/core/workspace-recovery.test.ts",
+      "test": "a teardown boolean without recorded cleanup confirmation cannot release a writer"
+    },
+    {
+      "id": "RECOVERY-REAL-CHILD-CONFIRMATION",
+      "owner": "BAZ-068",
+      "file": "apps/daemon/test/core/workspace-recovery.test.ts",
+      "test": "recorded real child cleanup permits management recovery and a new writer on the same root"
+    },
+    {
+      "id": "RECOVERY-NO-NEW-HOST-SIGNALS",
+      "owner": "BAZ-068",
+      "file": "apps/daemon/test/core/workspace-recovery.test.ts",
+      "test": "previously confirmed host-worker records settle without new process signalling"
+    },
+    {
+      "id": "RECOVERY-REENTRANT-SERIALIZATION",
+      "owner": "BAZ-068",
+      "file": "apps/daemon/test/core/workspace-recovery.test.ts",
+      "test": "reentrant teardown cannot start a second management cleanup"
+    },
+    {
+      "id": "RECOVERY-RECORDED-IDENTITY-EFFECT",
+      "owner": "BAZ-068",
+      "file": "apps/daemon/test/core/workspace-recovery.test.ts",
+      "test": "management cleanup refuses a substituted record even when the replacement claims confirmation"
+    },
+    {
+      "id": "RECOVERY-FINAL-CONFIRMATION-GUARD",
+      "owner": "BAZ-068",
+      "file": "apps/daemon/test/core/workspace-recovery.test.ts",
+      "test": "final release refuses nested-microtask confirmation drift"
+    },
+    {
+      "id": "RECOVERY-FINAL-IDENTITY-GUARD",
+      "owner": "BAZ-068",
+      "file": "apps/daemon/test/core/workspace-recovery.test.ts",
+      "test": "final release refuses nested-microtask identity drift"
+    },
+    {
+      "id": "RECOVERY-FINAL-REGISTRATION-GUARD",
+      "owner": "BAZ-068",
+      "file": "apps/daemon/test/core/workspace-recovery.test.ts",
+      "test": "final release refuses nested-microtask registration drift"
+    },
+    {
+      "id": "RECOVERY-INVENTORY-EXACT",
+      "owner": "BAZ-068",
+      "file": "apps/daemon/test/core/workspace-recovery.test.ts",
+      "test": "missing or unlisted resource records cannot grant management cleanup"
+    },
+    {
+      "id": "RECOVERY-REGISTRATION-REVALIDATION",
+      "owner": "BAZ-068",
+      "file": "apps/daemon/test/core/workspace-recovery.test.ts",
+      "test": "current Team registration changes across teardown refuse the captured selection"
+    },
+    {
+      "id": "RECOVERY-RESOURCE-REVALIDATION",
+      "owner": "BAZ-068",
+      "file": "apps/daemon/test/core/workspace-recovery.test.ts",
+      "test": "resource identity changes during teardown cannot acknowledge the selected writer"
+    },
+    {
+      "id": "PROTECTED-SEARCH-FINITE-COUNT",
+      "owner": "BAZ-067",
+      "file": "apps/daemon/test/lib/web-search.test.ts",
+      "test": "BAZ-067 web search host > nonfinite and fractional search counts are refused before dispatch"
+    },
+    {
+      "id": "PROTECTED-SEARCH-BASE-URL-SHAPE",
+      "owner": "BAZ-067",
+      "file": "apps/daemon/test/lib/web-search.test.ts",
+      "test": "BAZ-067 web search host > credentialed query-bearing and fragmented backend URLs are refused before dispatch"
+    },
+    {
+      "id": "PROTECTED-SEARCH-NO-REDIRECT",
+      "owner": "BAZ-067",
+      "file": "apps/daemon/test/lib/web-search.test.ts",
+      "test": "BAZ-067 web search host > backend redirects are refused without contacting their destination"
+    },
+    {
+      "id": "PROTECTED-SEARCH-BODY-BOUND",
+      "owner": "BAZ-067",
+      "file": "apps/daemon/test/lib/web-search.test.ts",
+      "test": "BAZ-067 web search host > oversized streamed backend bodies are refused before JSON parsing"
+    },
+    {
+      "id": "PROTECTED-SEARCH-BODY-CANCELLATION",
+      "owner": "BAZ-067",
+      "file": "apps/daemon/test/lib/web-search.test.ts",
+      "test": "BAZ-067 web search host > cancellation during backend body reading remains a closed cancellation"
+    },
+    {
+      "id": "PROTECTED-SEARCH-INVALID-ROW",
+      "owner": "BAZ-067",
+      "file": "apps/daemon/test/lib/web-search.test.ts",
+      "test": "BAZ-067 web search host > invalid backend result entries fail with closed diagnostics"
+    },
+    {
+      "id": "MCP-PI-FAILED-CLEANUP-RETENTION",
+      "owner": "Pi-1.0-MCP",
+      "file": "apps/daemon/test/lib/mcp-retirement.test.ts",
+      "test": "initialization failure cannot release pending/rejected transport cleanup (reject=true)"
+    },
+    {
+      "id": "MCP-PI-INITIALIZATION-CLOSE-RACE",
+      "owner": "Pi-1.0-MCP",
+      "file": "apps/daemon/test/lib/mcp-pool.test.ts",
+      "test": "initialization failure keeps shared retirement pending until HTTP cleanup settles"
+    },
+    {
+      "id": "MCP-PI-MEDIA-TYPE-BOUND",
+      "owner": "Pi-1.0-MCP",
+      "file": "apps/daemon/test/lib/mcp-pool.test.ts",
+      "test": "HTTP body cap includes mixed-case JSON and error bodies (initialize Application/JSON 200)"
+    },
+    {
+      "id": "MCP-PI-ERROR-BODY-BOUND",
+      "owner": "Pi-1.0-MCP",
+      "file": "apps/daemon/test/lib/mcp-pool.test.ts",
+      "test": "HTTP body cap includes mixed-case JSON and error bodies (tools/call text/plain 500)"
+    },
+    {
+      "id": "MCP-PI-GUARDED-ESCALATION",
+      "owner": "Pi-1.0-MCP",
+      "file": "apps/daemon/test/lib/mcp-stdio-owner.test.ts",
+      "test": "identity drift between TERM and KILL refuses escalation and native close"
+    },
+    {
+      "id": "MCP-PI-UNCERTAIN-TURN-LATCH",
+      "owner": "Pi-1.0-MCP",
+      "file": "apps/daemon/test/lib/mcp-pool.test.ts",
+      "test": "an uncertain MCP effect blocks further server dispatch in that turn"
+    },
+    {
+      "id": "MCP-PI-REUSED-PID-DENIAL",
+      "owner": "Pi-1.0-MCP",
+      "file": "apps/daemon/test/lib/mcp-stdio-owner.test.ts",
+      "test": "a reused leader identity is unknown, never permission to signal its group"
+    },
+    {
+      "id": "MCP-PI-CLEAN-SCHEMA-CONTRACT",
+      "owner": "Pi-1.0-MCP",
+      "file": "apps/daemon/test/routes/mcp.test.ts",
+      "test": "old SSE-capable schema requires clean rebootstrap, even without SSE rows"
+    },
+    {
+      "id": "MCP-PI-NAMESPACE-COLLISION",
+      "owner": "Pi-1.0-MCP",
+      "file": "apps/daemon/test/routes/mcp.test.ts",
+      "test": "ambiguous cross-server tool namespaces are denied, not silently substituted"
+    },
+    {
+      "id": "MCP-PI-CATALOG-BOUNDS",
+      "owner": "Pi-1.0-MCP",
+      "file": "apps/daemon/test/lib/mcp-pool.test.ts",
+      "test": "oversized or duplicate catalogs refuse complete admission before tool dispatch"
+    },
+    {
+      "id": "MCP-PI-SSE-RETIREMENT",
+      "owner": "Pi-1.0-MCP",
+      "file": "apps/daemon/test/routes/mcp.test.ts",
+      "test": "legacy SSE POST/PATCH is refused and the canonical schema excludes it"
+    },
+    {
+      "id": "MCP-PI-TURN-TOOL-BOUNDARY",
+      "owner": "Pi-1.0-MCP",
+      "file": "apps/daemon/test/lib/mcp-pool.test.ts",
+      "test": "worker host cannot forge a tool or server beyond its admitted catalog"
+    },
+    {
+      "id": "MCP-PI-CATALOG-DRIFT",
+      "owner": "Pi-1.0-MCP",
+      "file": "apps/daemon/test/lib/mcp-pool.test.ts",
+      "test": "tool-list changes retire stale turn definitions before dispatch"
+    },
+    {
+      "id": "MCP-PI-OPENING-RETIREMENT",
+      "owner": "Pi-1.0-MCP",
+      "file": "apps/daemon/test/lib/mcp-pool.test.ts",
+      "test": "disable/delete retirement during initialization cannot publish an orphan client"
+    },
+    {
+      "id": "MCP-PI-UNCERTAIN-CANCELLATION",
+      "owner": "Pi-1.0-MCP",
+      "file": "apps/daemon/test/lib/mcp-pool.test.ts",
+      "test": "turn cancellation retires an uncertain call without replay"
+    },
+    {
+      "id": "MCP-PI-STDIO-OWNERSHIP",
+      "owner": "Pi-1.0-MCP",
+      "file": "apps/daemon/test/lib/mcp-pool.test.ts",
+      "test": "Pi stdio receives only daemon-supplied env and retires the whole process group"
+    },
+    {
+      "id": "MCP-PI-REVOKED-CONFIG",
+      "owner": "Pi-1.0-MCP",
+      "file": "apps/daemon/test/routes/mcp.test.ts",
+      "test": "disabled and deleted server capabilities cannot dispatch from an admitted turn"
+    },
+    {
+      "id": "MCP-PI-CREDENTIAL-ROTATION",
+      "owner": "Pi-1.0-MCP",
+      "file": "apps/daemon/test/routes/mcp.test.ts",
+      "test": "token rotation refuses the captured turn and reconnects only with new admission"
+    },
+    {
+      "id": "FETCH-RENDERER-PROVENANCE",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/runtime/web-fetch-evidence.test.ts",
+      "test": "ordinary source fetch evidence > Firecrawl never inherits direct provenance, even from cache (https://example.com/different-source)"
+    },
+    {
+      "id": "NATIVE-ACCUMULATOR-EXACT-PROVENANCE",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search-accumulator.test.ts",
+      "test": "Codex completed-stream search evidence > accepts actual completed search and annotated answer with empty SSE terminal and explicit provenance"
+    },
+    {
+      "id": "NATIVE-ACCUMULATOR-CONTENT-REFERENCES",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search-accumulator.test.ts",
+      "test": "Codex completed-stream search evidence > admitted content and reasoning event families bind to completed items without becoming evidence"
+    },
+    {
+      "id": "NATIVE-ACCUMULATOR-CODEC-ROUTE-SCOPE",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search-accumulator.test.ts",
+      "test": "Codex completed-stream search evidence > preserves populated terminal and JSON paths without widening API-key or missing-output acceptance"
+    },
+    {
+      "id": "NATIVE-ACCUMULATOR-COMPLETE-SLOTS",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search-accumulator.test.ts",
+      "test": "Codex completed-stream search evidence > requires complete contiguous slots and never synthesizes from progress, deltas or added items"
+    },
+    {
+      "id": "NATIVE-ACCUMULATOR-TERMINAL-AUTHORITY",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search-accumulator.test.ts",
+      "test": "Codex completed-stream search evidence > preserves terminal status model error and response identity requirements"
+    },
+    {
+      "id": "NATIVE-ACCUMULATOR-DUPLICATE-IDENTITY",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search-accumulator.test.ts",
+      "test": "Codex completed-stream search evidence > rejects duplicate completed items, reopened slots and changed or displaced identities"
+    },
+    {
+      "id": "NATIVE-ACCUMULATOR-EXECUTION-CAPABILITY",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search-accumulator.test.ts",
+      "test": "Codex completed-stream search evidence > rejects invalid execution status action and unadmitted streamed capabilities"
+    },
+    {
+      "id": "NATIVE-ACCUMULATOR-NO-CONTRADICTION-UNION",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search-accumulator.test.ts",
+      "test": "Codex completed-stream search evidence > rejects changed complete terminal messages citations actions and reasoning without union"
+    },
+    {
+      "id": "NATIVE-ACCUMULATOR-CITATION-DOMAINS",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search-accumulator.test.ts",
+      "test": "Codex completed-stream search evidence > requires completed annotated assistant content and enforces URL and domain rules"
+    },
+    {
+      "id": "NATIVE-ACCUMULATOR-FULL-STREAM",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search-accumulator.test.ts",
+      "test": "Codex completed-stream search evidence > consumes the entire stream and refuses trailing failures mixed terminals and malformed framing"
+    },
+    {
+      "id": "NATIVE-ACCUMULATOR-BOUNDS",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search-accumulator.test.ts",
+      "test": "Codex completed-stream search evidence > keeps upstream returned-output item and execution budgets"
+    },
+    {
+      "id": "NATIVE-ACCUMULATOR-LIVE-SECRETS",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search-accumulator.test.ts",
+      "test": "Codex completed-stream search evidence > filters raw and escaped live secrets without exposing completed items in diagnostics"
+    },
+    {
+      "id": "NATIVE-ACCUMULATOR-DIAGNOSTIC-TRUTH",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search-accumulator.test.ts",
+      "test": "Codex completed-stream search evidence > keeps terminal diagnostic facts unchanged when projection of accumulated items refuses"
+    },
+    {
+      "id": "NATIVE-ACCUMULATOR-CANCEL-EOF",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search-accumulator.test.ts",
+      "test": "Codex completed-stream search evidence > cancellation while awaiting EOF cannot disclose an early empty-terminal success"
+    },
+    {
+      "id": "NATIVE-ACCUMULATOR-DEADLINE",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search-accumulator.test.ts",
+      "test": "Codex completed-stream search evidence > deadline remains mandatory for completed-stream evidence"
+    },
+    {
+      "id": "NATIVE-ACCUMULATOR-TURN-REVOCATION",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search-accumulator.test.ts",
+      "test": "Codex completed-stream search evidence > expired authority after response capture refuses and no host fallback or replay occurs"
+    },
+    {
+      "id": "NATIVE-ACCUMULATOR-TOOL-PROVENANCE",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search-accumulator.test.ts",
+      "test": "Codex completed-stream search evidence > turn-bound host returns completed-stream provenance through its normal search path"
+    },
+    {
+      "id": "NATIVE-EVIDENCE-FAILURE-DISTINCTION",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search-evidence.test.ts",
+      "test": "native search evidence contract and private structural diagnostics > terminal search IDs distinguish missing, duplicate and excessive without exposing values"
+    },
+    {
+      "id": "NATIVE-EVIDENCE-CONSISTENT-STREAM",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search-evidence.test.ts",
+      "test": "native search evidence contract and private structural diagnostics > valid terminal and streamed evidence agree without adding or duplicating receipts"
+    },
+    {
+      "id": "NATIVE-EVIDENCE-NO-BACKFILL",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search-evidence.test.ts",
+      "test": "native search evidence contract and private structural diagnostics > streamed items and lifecycle markers cannot repair nonempty terminal omissions"
+    },
+    {
+      "id": "NATIVE-EVIDENCE-CONTRADICTION-REFUSAL",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search-evidence.test.ts",
+      "test": "native search evidence contract and private structural diagnostics > contradictory streamed status, action, index, identity and capabilities refuse"
+    },
+    {
+      "id": "NATIVE-EVIDENCE-REVIEW-TYPES-ADDED-IDENTITY",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search-evidence.test.ts",
+      "test": "native search evidence contract and private structural diagnostics > review regressions reject coerced types and added-item identity contradictions"
+    },
+    {
+      "id": "NATIVE-EVIDENCE-RESPONSE-IDENTITY",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search-evidence.test.ts",
+      "test": "native search evidence contract and private structural diagnostics > top-level response identity cannot contradict nested identity in one event"
+    },
+    {
+      "id": "NATIVE-EVIDENCE-PRIVATE-BOUNDED-COUNTS",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search-evidence.test.ts",
+      "test": "native search evidence contract and private structural diagnostics > diagnostic counters are bounded and never contain provider-controlled strings"
+    },
+    {
+      "id": "NATIVE-EVIDENCE-SECRET-PRECEDENCE",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search-evidence.test.ts",
+      "test": "native search evidence contract and private structural diagnostics > raw secret filtering precedes structural observation and decoded evidence still cannot disclose secrets"
+    },
+    {
+      "id": "NATIVE-EVIDENCE-TURN-NO-REPLAY",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search-evidence.test.ts",
+      "test": "native search evidence contract and private structural diagnostics > turn-bound host refuses stream contradictions without replay or fallback"
+    },
+    {
+      "id": "NATIVE-CODEX-ALIAS-DUPLICATE-TERMINALS",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search.test.ts",
+      "test": "Codex missing-MIME stream contract > Codex alias refuses duplicate or mixed terminals in either order for both MIME forms"
+    },
+    {
+      "id": "NATIVE-CODEX-ALIAS-WHOLE-STREAM",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search.test.ts",
+      "test": "Codex missing-MIME stream contract > Codex alias retains whole-stream framing, labels, identity and sentinel order"
+    },
+    {
+      "id": "NATIVE-CODEX-ALIAS-PROVIDER-SCOPE",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search.test.ts",
+      "test": "Codex missing-MIME stream contract > terminal alias is Codex SSE only, not an API-key alias or a JSON-envelope fallback"
+    },
+    {
+      "id": "NATIVE-CODEX-ALIAS-EVIDENCE-PRIVACY",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search.test.ts",
+      "test": "Codex missing-MIME stream contract > Codex alias never relaxes model, search, citation or protected-content validation"
+    },
+    {
+      "id": "NATIVE-CODEX-ALIAS-BOUNDS",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search.test.ts",
+      "test": "Codex missing-MIME stream contract > Codex alias cannot escape byte limits, cancellation or deadline by arriving early"
+    },
+    {
+      "id": "NATIVE-SSE-EXPLICIT-FRAMING-REVIEW",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search.test.ts",
+      "test": "Codex missing-MIME stream contract > explicit SSE on both routes rejects the reviewed field and label attacks"
+    },
+    {
+      "id": "NATIVE-CODEX-STALLED-BODY-CANCEL-REVIEW",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search.test.ts",
+      "test": "Codex missing-MIME stream contract > Codex cancellation after a missing-MIME body read has stalled retires that reader"
+    },
+    {
+      "id": "NATIVE-CODEX-TERMINAL-ALIAS-ASSESSMENT",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search-terminal-assessment.test.ts",
+      "test": "offline pinned Codex terminal compatibility assessment > actual pinned SDK and native accept both Codex terminal names with strict completed evidence"
+    },
+    {
+      "id": "NATIVE-CODEX-TERMINAL-WHOLE-STREAM-ASSESSMENT",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search-terminal-assessment.test.ts",
+      "test": "offline pinned Codex terminal compatibility assessment > SDK terminal normalization and early return must not replace native whole-stream checks"
+    },
+    {
+      "id": "NATIVE-CODEX-TERMINAL-STATUS-ASSESSMENT",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search-terminal-assessment.test.ts",
+      "test": "offline pinned Codex terminal compatibility assessment > SDK stop is not strict search success for missing, unknown, queued or in-progress status"
+    },
+    {
+      "id": "NATIVE-CODEX-TERMINAL-FAILURE-ASSESSMENT",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search-terminal-assessment.test.ts",
+      "test": "offline pinned Codex terminal compatibility assessment > failed and incomplete SDK terminals cannot become native search success by a name-only alias"
+    },
+    {
+      "id": "NATIVE-CODEX-MISSING-MIME-SUCCESS",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search.test.ts",
+      "test": "Codex missing-MIME stream contract > absent or blank MIME accepts only complete validated Codex SSE in one request"
+    },
+    {
+      "id": "NATIVE-CODEX-MISSING-MIME-CONTRACT",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search.test.ts",
+      "test": "Codex missing-MIME stream contract > codec comes from provider and request contract, never a prefix hint or decoder retry"
+    },
+    {
+      "id": "NATIVE-CODEX-POPULATED-MIME-REFUSAL",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search.test.ts",
+      "test": "Codex missing-MIME stream contract > populated unadmitted MIME refuses even with convincing SSE or JSON evidence"
+    },
+    {
+      "id": "NATIVE-CODEX-MISSING-MIME-FRAMING",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search.test.ts",
+      "test": "Codex missing-MIME stream contract > missing-MIME HTML, prose, malformed frames and conflicting event labels refuse"
+    },
+    {
+      "id": "NATIVE-CODEX-MISSING-MIME-TERMINAL",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search.test.ts",
+      "test": "Codex missing-MIME stream contract > missing-MIME SSE retains terminal, identity and DONE ordering checks"
+    },
+    {
+      "id": "NATIVE-CODEX-MISSING-MIME-EVIDENCE",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search.test.ts",
+      "test": "Codex missing-MIME stream contract > missing-MIME parsed responses still require model, execution, domain and capability evidence"
+    },
+    {
+      "id": "NATIVE-CODEX-MISSING-MIME-SECRETS",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search.test.ts",
+      "test": "Codex missing-MIME stream contract > missing-MIME raw and escaped secrets are refused without disclosure"
+    },
+    {
+      "id": "NATIVE-CODEX-MISSING-MIME-LIMITS",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search.test.ts",
+      "test": "Codex missing-MIME stream contract > missing-MIME stream retains byte, UTF-8, deadline and cancellation limits"
+    },
+    {
+      "id": "NATIVE-CODEX-MISSING-MIME-TURN-BINDING",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search.test.ts",
+      "test": "Codex missing-MIME stream contract > turn-bound subscription host preserves receipts and refuses admission drift without fallback"
+    },
+    {
+      "id": "NATIVE-SEARCH-FORMAT-MEDIA-PRIVACY",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search-format.test.ts",
+      "test": "native search response format hints > media categories are closed and bounded, never raw header values"
+    },
+    {
+      "id": "NATIVE-SEARCH-FORMAT-PREFIX-BOUNDS",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search-format.test.ts",
+      "test": "native search response format hints > body hints inspect only a bounded prefix, without parsing or copying content"
+    },
+    {
+      "id": "NATIVE-SEARCH-FORMAT-NO-FALLBACK",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search-format.test.ts",
+      "test": "native search response format hints > HTML and mislabeled SSE are distinguishable refusals, never successful search or fallback"
+    },
+    {
+      "id": "NATIVE-SEARCH-FORMAT-SECRET-PRECEDENCE",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search-format.test.ts",
+      "test": "native search response format hints > secret filtering precedes body-format disclosure and hostile HTML is never executed"
+    },
+    {
+      "id": "NATIVE-SEARCH-FORMAT-NON-AUTHORIZING",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search-format.test.ts",
+      "test": "native search response format hints > format hints do not replace execution, citation, framing or model evidence checks"
+    },
+    {
+      "id": "NATIVE-SEARCH-SDK-SSE-COMPARISON",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search-transport.test.ts",
+      "test": "offline native search and pinned Pi subscription request comparison > SDK SSE headers and payload differ from native without enabling transport fallback"
+    },
+    {
+      "id": "NATIVE-SEARCH-NODE-UA-FIXTURE",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search-transport.test.ts",
+      "test": "offline native search and pinned Pi subscription request comparison > Node fetch default User-Agent is observed only against an owned loopback fixture"
+    },
+    {
+      "id": "NATIVE-SEARCH-DIAGNOSTIC-CONNECT-TIMEOUT",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search.test.ts",
+      "test": "native search failure diagnostics without provider disclosure > classifies request failure UND_ERR_CONNECT_TIMEOUT without disclosing the exception"
+    },
+    {
+      "id": "NATIVE-SEARCH-DIAGNOSTIC-HEADERS-TIMEOUT",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search.test.ts",
+      "test": "native search failure diagnostics without provider disclosure > classifies request failure UND_ERR_HEADERS_TIMEOUT without disclosing the exception"
+    },
+    {
+      "id": "NATIVE-SEARCH-DIAGNOSTIC-DNS",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search.test.ts",
+      "test": "native search failure diagnostics without provider disclosure > classifies request failure ENOTFOUND without disclosing the exception"
+    },
+    {
+      "id": "NATIVE-SEARCH-DIAGNOSTIC-TLS",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search.test.ts",
+      "test": "native search failure diagnostics without provider disclosure > classifies request failure ERR_TLS_CERT_ALTNAME_INVALID without disclosing the exception"
+    },
+    {
+      "id": "NATIVE-SEARCH-DIAGNOSTIC-CONNECTION-REFUSED",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search.test.ts",
+      "test": "native search failure diagnostics without provider disclosure > classifies request failure ECONNREFUSED without disclosing the exception"
+    },
+    {
+      "id": "NATIVE-SEARCH-DIAGNOSTIC-BODY-INTERRUPTION",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search.test.ts",
+      "test": "native search failure diagnostics without provider disclosure > distinguishes response-body interruption from request failure"
+    },
+    {
+      "id": "NATIVE-SEARCH-DIAGNOSTIC-JSON-HTML",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search.test.ts",
+      "test": "native search failure diagnostics without provider disclosure > malformed JSON and 200 HTML have decode diagnostics, not entitlement assertions"
+    },
+    {
+      "id": "NATIVE-SEARCH-DIAGNOSTIC-MIXED-CASE-SSE",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search.test.ts",
+      "test": "native search failure diagnostics without provider disclosure > mixed-case SSE media type uses the same strict evidence and framing checks"
+    },
+    {
+      "id": "NATIVE-SEARCH-DIAGNOSTIC-FOREIGN-ERROR-PRIVACY",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search.test.ts",
+      "test": "native search failure diagnostics without provider disclosure > unrecognized and accessor/cyclic exception metadata stays private and bounded"
+    },
+    {
+      "id": "NATIVE-SEARCH-DIAGNOSTIC-PHASE-SEPARATION",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search.test.ts",
+      "test": "native search failure diagnostics without provider disclosure > credentials, HTTP, failed terminal evidence and invalid UTF-8 have distinct safe phases"
+    },
+    {
+      "id": "NATIVE-SEARCH-DECODED-SECRET-EGRESS",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search.test.ts",
+      "test": "review regression bounds/account/protocol > decoded escaped secret leaves never disclose from native or managed results"
+    },
+    {
+      "id": "NATIVE-SEARCH-ACCOUNT-PIN",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search.test.ts",
+      "test": "review regression bounds/account/protocol > API key replacement or subscription account replacement refuses before search"
+    },
+    {
+      "id": "NATIVE-SEARCH-REFRESH-ACCOUNT",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search.test.ts",
+      "test": "review regression bounds/account/protocol > subscription refresh can change access bytes only within admitted account"
+    },
+    {
+      "id": "NATIVE-SEARCH-SSE-EVIDENCE",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search.test.ts",
+      "test": "review regression bounds/account/protocol > SSE response identity, complete framing and DONE ordering cannot be faked"
+    },
+    {
+      "id": "NATIVE-SEARCH-UTF8-BOUNDS",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search.test.ts",
+      "test": "review regression bounds/account/protocol > Unicode managed result bytes and normalized native citation bytes enforce bounds"
+    },
+    {
+      "id": "NATIVE-SEARCH-STREAM-RETURN-CAPS",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search.test.ts",
+      "test": "native query-only transport, evidence and bounds > incremental upstream and return budgets fail, never truncation-as-success"
+    },
+    {
+      "id": "NATIVE-SEARCH-ABORT-RETIREMENT",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/native-search.test.ts",
+      "test": "native query-only transport, evidence and bounds > abort retires stalled OAuth and body without waiting on cleanup"
+    },
+    {
+      "id": "NATIVE-SEARCH-WORKER-POSTURE",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/runtime/worker-runtime.test.ts",
+      "test": "minimal worker runtime > ordinary worker search IPC preserves native evidence, guarded-fetch effective URL and completion; forged authority refuses"
+    },
+    {
       "id": "GATEWAY-AUTHORITY-CSRF",
       "owner": "BAZ-028",
       "file": "apps/web/test/security-gateway.integration.test.ts",
@@ -1028,6 +1730,192 @@
       "test": "automatic routing never retries an uncertain operation through a newly enabled text provider"
     },
     {
+      "id": "IMAGE-CAPTURE-PRIVATE-RETENTION",
+      "owner": "BAZ-059",
+      "file": "apps/daemon/test/lib/image-generation.test.ts",
+      "test": "completed image captures survive orphan cleanup without release or regeneration"
+    },
+    {
+      "id": "IMAGE-CAPTURE-TOMBSTONE",
+      "owner": "BAZ-059",
+      "file": "apps/daemon/test/lib/image-generation.test.ts",
+      "test": "deleted completed image captures cannot resurrect after reconciliation"
+    },
+    {
+      "id": "IMAGE-CAPTURE-RETENTION-UNCERTAIN",
+      "owner": "BAZ-059",
+      "file": "apps/daemon/test/lib/image-generation.test.ts",
+      "test": "image metadata without a matching completed operation cannot retain private bytes: uncertain"
+    },
+    {
+      "id": "IMAGE-CAPTURE-RETENTION-FAILED",
+      "owner": "BAZ-059",
+      "file": "apps/daemon/test/lib/image-generation.test.ts",
+      "test": "image metadata without a matching completed operation cannot retain private bytes: failed"
+    },
+    {
+      "id": "IMAGE-CAPTURE-RETENTION-MISSING",
+      "owner": "BAZ-059",
+      "file": "apps/daemon/test/lib/image-generation.test.ts",
+      "test": "image metadata without a matching completed operation cannot retain private bytes: missing"
+    },
+    {
+      "id": "IMAGE-CAPTURE-RETENTION-AGENT",
+      "owner": "BAZ-059",
+      "file": "apps/daemon/test/lib/image-generation.test.ts",
+      "test": "image metadata without a matching completed operation cannot retain private bytes: other_agent"
+    },
+    {
+      "id": "IMAGE-CAPTURE-RETENTION-SESSION",
+      "owner": "BAZ-059",
+      "file": "apps/daemon/test/lib/image-generation.test.ts",
+      "test": "image metadata without a matching completed operation cannot retain private bytes: other_session"
+    },
+    {
+      "id": "IMAGE-CAPTURE-RETENTION-CALL",
+      "owner": "BAZ-059",
+      "file": "apps/daemon/test/lib/image-generation.test.ts",
+      "test": "image metadata without a matching completed operation cannot retain private bytes: other_call"
+    },
+    {
+      "id": "IMAGE-CAPTURE-RETENTION-MODEL",
+      "owner": "BAZ-059",
+      "file": "apps/daemon/test/lib/image-generation.test.ts",
+      "test": "image metadata without a matching completed operation cannot retain private bytes: other_model"
+    },
+    {
+      "id": "IMAGE-PRIVATE-OWNER-INVENTORY",
+      "owner": "BAZ-059",
+      "file": "apps/daemon/test/routes/private-images.test.ts",
+      "test": "private image inventory requires owner auth and exposes only approved minimal metadata"
+    },
+    {
+      "id": "IMAGE-PRIVATE-SCOPE-BOUNDS",
+      "owner": "BAZ-059",
+      "file": "apps/daemon/test/routes/private-images.test.ts",
+      "test": "inventory is bounded and scoped to original Team and optional producing Agent"
+    },
+    {
+      "id": "IMAGE-PRIVATE-EXACT-INPUT",
+      "owner": "BAZ-059",
+      "file": "apps/daemon/test/routes/private-images.test.ts",
+      "test": "inventory and actions reject unknown fields, duplicate scope, invalid bounds and unconfirmed discard"
+    },
+    {
+      "id": "IMAGE-PRIVATE-RECOVER-ALLOW",
+      "owner": "BAZ-059",
+      "file": "apps/daemon/test/routes/private-images.test.ts",
+      "test": "explicit image recovery uses current egress policy, is idempotent and never regenerates"
+    },
+    {
+      "id": "IMAGE-PRIVATE-DENY-DISCARD-QUOTA",
+      "owner": "BAZ-059",
+      "file": "apps/daemon/test/routes/private-images.test.ts",
+      "test": "denied recovery keeps bytes private while confirmed discard frees quota without disclosure"
+    },
+    {
+      "id": "IMAGE-PRIVATE-APPROVAL-REUSE",
+      "owner": "BAZ-059",
+      "file": "apps/daemon/test/routes/private-images.test.ts",
+      "test": "approval-required recovery reuses one reference-only hold and existing dispatcher releases it"
+    },
+    {
+      "id": "IMAGE-PRIVATE-CLOSED-DENIED",
+      "owner": "BAZ-059",
+      "file": "apps/daemon/test/routes/private-images.test.ts",
+      "test": "recovery cannot reopen terminal approval denied, but owner may discard remaining private bytes"
+    },
+    {
+      "id": "IMAGE-PRIVATE-CLOSED-CANCELLED",
+      "owner": "BAZ-059",
+      "file": "apps/daemon/test/routes/private-images.test.ts",
+      "test": "recovery cannot reopen terminal approval cancelled, but owner may discard remaining private bytes"
+    },
+    {
+      "id": "IMAGE-PRIVATE-CLOSED-EXPIRED",
+      "owner": "BAZ-059",
+      "file": "apps/daemon/test/routes/private-images.test.ts",
+      "test": "recovery cannot reopen terminal approval expired, but owner may discard remaining private bytes"
+    },
+    {
+      "id": "IMAGE-PRIVATE-CLOSED-FAILED",
+      "owner": "BAZ-059",
+      "file": "apps/daemon/test/routes/private-images.test.ts",
+      "test": "recovery cannot reopen terminal approval delivery_failed, but owner may discard remaining private bytes"
+    },
+    {
+      "id": "IMAGE-PRIVATE-CLOSED-DELIVERED",
+      "owner": "BAZ-059",
+      "file": "apps/daemon/test/routes/private-images.test.ts",
+      "test": "recovery cannot reopen terminal approval delivered, but owner may discard remaining private bytes"
+    },
+    {
+      "id": "IMAGE-PRIVATE-LIVE-APPROVED",
+      "owner": "BAZ-059",
+      "file": "apps/daemon/test/routes/private-images.test.ts",
+      "test": "live approved dispatch blocks recovery and discard"
+    },
+    {
+      "id": "IMAGE-PRIVATE-LIVE-DELIVERING",
+      "owner": "BAZ-059",
+      "file": "apps/daemon/test/routes/private-images.test.ts",
+      "test": "live delivering dispatch blocks recovery and discard"
+    },
+    {
+      "id": "IMAGE-PRIVATE-HTTP-HOLD-NO-REROUTE",
+      "owner": "BAZ-059",
+      "file": "apps/daemon/test/routes/private-images.test.ts",
+      "test": "an existing HTTP delivery hold cannot be rerouted or duplicated by image recovery"
+    },
+    {
+      "id": "IMAGE-PRIVATE-ACTIVE-PRODUCER",
+      "owner": "BAZ-059",
+      "file": "apps/daemon/test/routes/private-images.test.ts",
+      "test": "active producers block operator recovery and discard until settlement"
+    },
+    {
+      "id": "IMAGE-PRIVATE-ARCHIVED-PRODUCER",
+      "owner": "BAZ-059",
+      "file": "apps/daemon/test/routes/private-images.test.ts",
+      "test": "ineligible archived producer is never replaced; original-Team owner may discard"
+    },
+    {
+      "id": "IMAGE-PRIVATE-MISSING-PRODUCER",
+      "owner": "BAZ-059",
+      "file": "apps/daemon/test/routes/private-images.test.ts",
+      "test": "ineligible missing producer is never replaced; original-Team owner may discard"
+    },
+    {
+      "id": "IMAGE-PRIVATE-TRANSFERRED-PRODUCER",
+      "owner": "BAZ-059",
+      "file": "apps/daemon/test/routes/private-images.test.ts",
+      "test": "ineligible transferred producer is never replaced; original-Team owner may discard"
+    },
+    {
+      "id": "IMAGE-PRIVATE-CAPTURE-WITNESS",
+      "owner": "BAZ-059",
+      "file": "apps/daemon/test/routes/private-images.test.ts",
+      "test": "ordinary, forged-metadata and uncertain captures cannot use private image controls"
+    },
+    {
+      "id": "IMAGE-PRIVATE-BROWSER-CSRF",
+      "owner": "BAZ-059",
+      "file": "apps/daemon/test/routes/private-images.test.ts",
+      "test": "browser recovery and discard retain the existing session-bound CSRF requirement"
+    },
+    {
+      "id": "IMAGE-PRIVATE-RECOVERY-INTEGRITY",
+      "owner": "BAZ-059",
+      "file": "apps/daemon/test/routes/private-images.test.ts",
+      "test": "corrupt retained bytes never become released by recovery"
+    },
+    {
+      "id": "IMAGE-PRIVATE-CLI-DISCARD",
+      "owner": "BAZ-059",
+      "file": "apps/cli/test/result.test.ts",
+      "test": "CLI private image discard requires confirmation and preserves the no-regeneration tombstone"
+    },
+    {
       "id": "IMAGE-SIGKILL-BEFORE-PROVIDER-ACK",
       "owner": "BAZ-059",
       "file": "apps/cli/test/image-crash.test.ts",
@@ -1038,6 +1926,462 @@
       "owner": "BAZ-059",
       "file": "apps/cli/test/image-crash.test.ts",
       "test": "real daemon SIGKILL at after_capture preserves image intent without replay or private disclosure"
+    },
+    {
+      "id": "BROWSER-PROXY-PRIVATE-CONNECT-DENIED",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/browser-proxy.test.ts",
+      "test": "proxy refuses a CONNECT to a private host"
+    },
+    {
+      "id": "BROWSER-PROXY-DNS-REBIND-DENIED",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/browser-proxy.test.ts",
+      "test": "rebinding still pins the validated IP: private targets stay denied"
+    },
+    {
+      "id": "BROWSER-PROFILE-TEAM-MISMATCH-DENIED",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/browser-profile.test.ts",
+      "test": "Team mismatch blocks admission even without a marker"
+    },
+    {
+      "id": "BROWSER-PROFILE-UNKNOWN-OWNER-DENIED",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/browser-profile.test.ts",
+      "test": "unknown process presence (PID reuse / EPERM) refuses"
+    },
+    {
+      "id": "BROWSER-PROTECTED-CAPABILITY-DENIED",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/runtime/worker-runtime.test.ts",
+      "test": "minimal worker runtime > a restricted turn cannot be handed the browser capability (T09)"
+    },
+    {
+      "id": "BROWSER-RESET-REQUIRES-EXPLICIT-CONFIRMATION",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/routes/agent-browser.test.ts",
+      "test": "DELETE profile reset requires an explicit confirmation (400 otherwise)"
+    },
+    {
+      "id": "BROWSER-RESET-UNCERTAIN-CLEANUP-DENIED",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/routes/agent-browser.test.ts",
+      "test": "DELETE profile reset with unresolved cleanup is a 409 that resets nothing silently"
+    },
+    {
+      "id": "BROWSER-STATUS-DIAGNOSTICS-SANITIZED",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/routes/agent-browser.test.ts",
+      "test": "GET browser status sanitizes failure diagnostics (no raw stderr, no paths)"
+    },
+    {
+      "id": "BROWSER-BACKUP-PROFILE-EXCLUDED",
+      "owner": "BAZ-069",
+      "file": "apps/cli/test/backup.test.ts",
+      "test": "backup excludes the root browser slot but retains ordinary team files (T12)"
+    },
+    {
+      "id": "BROWSER-RESTORE-PROFILE-REJECTED",
+      "owner": "BAZ-069",
+      "file": "apps/cli/test/backup.test.ts",
+      "test": "restore refuses an archive carrying browser profile state before installing anything (T12)"
+    },
+    {
+      "id": "BROWSER-INVALID-EXECUTABLE-NO-FALLBACK",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/browser-executable.test.ts",
+      "test": "an explicitly invalid path fails instead of running another binary"
+    },
+    {
+      "id": "BROWSER-CDP-ENDPOINT-BOUND",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/browser-process.test.ts",
+      "test": "CDP endpoint parsing accepts only the fresh child loopback authority and browser path"
+    },
+    {
+      "id": "BROWSER-CDP-LISTENER-OWNERSHIP",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/browser-process.test.ts",
+      "test": "listener ownership rejects a foreign PID and a wildcard listener"
+    },
+    {
+      "id": "BROWSER-CDP-FORGED-ENDPOINT-DENIED",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/browser-process.test.ts",
+      "test": "a child advertising an unowned debugging endpoint is refused and reaped"
+    },
+    {
+      "id": "BROWSER-DIRECT-START-TIMEOUT-REAPED",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/browser-process.test.ts",
+      "test": "startup timeout escalates a TERM-ignoring child to KILL and proves exit"
+    },
+    {
+      "id": "BROWSER-DIRECT-UNCERTAIN-EXIT-RETAINED",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/browser-launch.test.ts",
+      "test": "uncertain process cleanup retains marker even without a singleton lock"
+    },
+    {
+      "id": "BROWSER-DIRECT-SURVIVING-GROUP-DENIED",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/browser-profile.test.ts",
+      "test": "a dead group leader does not authorize reuse while descendants remain or are unknown"
+    },
+    {
+      "id": "BROWSER-CANCEL-STARTUP-NO-ACTION",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/browser-lifecycle.test.ts",
+      "test": "cancellation during startup retires the new handle without navigation"
+    },
+    {
+      "id": "BROWSER-CANCEL-QUEUED-NO-REUSE",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/browser-lifecycle.test.ts",
+      "test": "cancelled queued admission cannot reuse another turn session"
+    },
+    {
+      "id": "BROWSER-CANCEL-NO-LATE-SUBMIT",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/browser-lifecycle.test.ts",
+      "test": "cancellation between fill and submit never sends the later keypress"
+    },
+    {
+      "id": "BROWSER-REUSED-SESSION-BUSY",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/browser-lifecycle.test.ts",
+      "test": "reused sessions stay busy against close, reaping, config change and eviction"
+    },
+    {
+      "id": "BROWSER-ALL-PEER-CONNECTION-ALIASES-DENIED",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/browser-process.test.ts",
+      "test": "peer-connection guards remove every constructor alias"
+    },
+    {
+      "id": "BROWSER-GROUP-BIRTH-IDENTITY",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/browser-process.test.ts",
+      "test": "group signalling requires a live birth identity and never reacquires reused identifiers"
+    },
+    {
+      "id": "BROWSER-GROUP-AUTHORITY-EXPIRES",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/browser-process.test.ts",
+      "test": "failed cleanup revokes signalling authority before late exit or group reuse"
+    },
+    {
+      "id": "BROWSER-UNCERTAIN-EVICTION-HOLDS-CAPACITY",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/browser-lifecycle.test.ts",
+      "test": "unproven cross-agent eviction retains capacity and refuses replacement launches"
+    },
+    {
+      "id": "BROWSER-UNINSTALL-UNKNOWN-OWNER-REFUSED",
+      "owner": "BAZ-069",
+      "file": "apps/cli/test/uninstall.test.ts",
+      "test": "uninstall command > unknown or malformed browser process identity blocks uninstall without deleting state"
+    },
+    {
+      "id": "BROWSER-UNINSTALL-RECHECKS-UNDER-LOCK",
+      "owner": "BAZ-069",
+      "file": "apps/cli/test/uninstall.test.ts",
+      "test": "uninstall command > browser ownership is rechecked under the uninstall lock after prompts"
+    },
+    {
+      "id": "BROWSER-REF-MUTATION-FRESHNESS",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/browser-lifecycle.test.ts",
+      "test": "ref mutation refuses changed or unknown document freshness before dispatch"
+    },
+    {
+      "id": "BROWSER-OVERSIZED-SCOPE-NOT-SERIALIZED",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/browser-observation.test.ts",
+      "test": "known large shallow scopes are refused before accessibility serialization"
+    },
+    {
+      "id": "BROWSER-RETAINED-CAPTURE-BYTE-BOUND",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/browser-observation.test.ts",
+      "test": "retained capture bytes are clamped for both whole-page and partial-main captures"
+    },
+    {
+      "id": "BROWSER-UNKNOWN-FRESHNESS-REFUSED",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/browser-observation.test.ts",
+      "test": "unknown document freshness refuses actions instead of silently skipping validation"
+    },
+    {
+      "id": "BROWSER-SHADOW-ROOT-FRESHNESS",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/browser-process.test.ts",
+      "test": "freshness instrumentation observes existing and newly attached shadow roots"
+    },
+    {
+      "id": "BROWSER-SHADOW-ROOT-CAPTURE-PREFLIGHT",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/browser-process.test.ts",
+      "test": "open shadow content is included in capture preflight size estimates"
+    },
+    {
+      "id": "BROWSER-INCOMPLETE-TRAVERSAL-REFUSED",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/browser-observation.test.ts",
+      "test": "an incomplete document traversal cannot authorize ref freshness"
+    },
+    {
+      "id": "WORKER-DRAIN-DONE",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/runtime/worker-output.test.ts",
+      "test": "bounded output drain preserves large done frames with a slow reader"
+    },
+    {
+      "id": "WORKER-DRAIN-FATAL",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/runtime/worker-output.test.ts",
+      "test": "bounded output drain preserves large fatal frames with a slow reader"
+    },
+    {
+      "id": "WORKER-DRAIN-CANCELLATION",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/runtime/worker-output.test.ts",
+      "test": "bounded output drain preserves large cancel frames with a slow reader"
+    },
+    {
+      "id": "WORKER-DRAIN-BLOCKED-READER",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/runtime/worker-output.test.ts",
+      "test": "a blocked protocol reader cannot pin the worker or produce a successful exit"
+    },
+    {
+      "id": "WORKER-DRAIN-ERROR",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/runtime/worker-output.test.ts",
+      "test": "output errors fail draining without an unhandled error or payload disclosure"
+    },
+    {
+      "id": "WORKER-DRAIN-SEALED",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/runtime/worker-output.test.ts",
+      "test": "drain seals late output and repeated finish calls share one bounded result"
+    },
+    {
+      "id": "WORKER-LARGE-UNICODE-COMPLETION",
+      "owner": "BAZ-069",
+      "file": "apps/cli/test/chat.test.ts",
+      "test": "large Unicode completion survives real worker exit and releases the next turn"
+    },
+    {
+      "id": "BROWSER-BOUNDED-CAPTURE-SETTLING",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/browser-observation.test.ts",
+      "test": "capture waits boundedly for a body and reads freshness only after attachment"
+    },
+    {
+      "id": "BROWSER-POST-ACTION-CAPTURE-UNCERTAINTY",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/browser-lifecycle.test.ts",
+      "test": "a failed post-action capture reports uncertainty without replaying the click"
+    },
+    {
+      "id": "BROWSER-DELEGATED-COOKIE-REJECTION",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/runtime/prompt.test.ts",
+      "test": "browser operating guide (BAZ-069 T10) > delegated cookie rejection does not authorize CAPTCHA or broader consent"
+    },
+    {
+      "id": "BROWSER-SCOPED-STATS-EVALUATOR",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/browser-observation.test.ts",
+      "test": "scoped stats use an invoked evaluator rather than an inert arrow string"
+    },
+    {
+      "id": "BROWSER-REF-SCOPE-BUDGET",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/browser-observation.test.ts",
+      "test": "ref-scoped capture still refuses a known oversized subtree without serialization"
+    },
+    {
+      "id": "BROWSER-BODY-SCOPE-BUDGET",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/browser-observation.test.ts",
+      "test": "R12 budgets the actual body rather than an oversized document head"
+    },
+    {
+      "id": "BROWSER-SEMANTIC-DIALOG",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/browser-observation.test.ts",
+      "test": "semantic dialog capture needs no previous ref and is labelled partial"
+    },
+    {
+      "id": "BROWSER-SEMANTIC-MAIN",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/browser-observation.test.ts",
+      "test": "semantic main capture needs no previous ref and is labelled partial"
+    },
+    {
+      "id": "BROWSER-SEMANTIC-SEARCH",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/browser-observation.test.ts",
+      "test": "semantic search capture needs no previous ref and is labelled partial"
+    },
+    {
+      "id": "BROWSER-SEMANTIC-ABSENT",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/browser-observation.test.ts",
+      "test": "semantic refusal scope_absent never serializes or re-authorizes old refs"
+    },
+    {
+      "id": "BROWSER-SEMANTIC-AMBIGUOUS",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/browser-observation.test.ts",
+      "test": "semantic refusal scope_ambiguous never serializes or re-authorizes old refs"
+    },
+    {
+      "id": "BROWSER-SEMANTIC-STATS-UNAVAILABLE",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/browser-observation.test.ts",
+      "test": "semantic refusal scope_stats_unavailable never serializes or re-authorizes old refs"
+    },
+    {
+      "id": "BROWSER-SEMANTIC-OVER-BUDGET",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/browser-observation.test.ts",
+      "test": "semantic refusal scope_over_budget never serializes or re-authorizes old refs"
+    },
+    {
+      "id": "BROWSER-SEMANTIC-FRESHNESS",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/browser-observation.test.ts",
+      "test": "semantic captures keep whole-document freshness and incomplete-traversal refusal"
+    },
+    {
+      "id": "BROWSER-SEMANTIC-RETAINED-BOUND",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/browser-observation.test.ts",
+      "test": "semantic captures retain UTF-8 and response bounds even when estimates undercount"
+    },
+    {
+      "id": "BROWSER-SEMANTIC-CLOSED-DISPATCH",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/lib/browser-lifecycle.test.ts",
+      "test": "snapshot scope rejects arbitrary selectors and conflicting modes at daemon dispatch"
+    },
+    {
+      "id": "BROWSER-SEMANTIC-WIRE-CONTRACT",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/runtime/browser-mcp-tools.test.ts",
+      "test": "browser_snapshot exposes and forwards only the closed semantic scope contract"
+    },
+    {
+      "id": "BROWSER-SEMANTIC-GUIDANCE",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/runtime/prompt.test.ts",
+      "test": "browser operating guide (BAZ-069 T10) > bounded semantic recovery is read-only and keeps blocker and freshness rules"
+    },
+    {
+      "id": "ORDINARY-SEARCH-REAL-WORKER",
+      "owner": "BAZ-069",
+      "file": "apps/daemon/test/runtime/worker-runtime.test.ts",
+      "test": "minimal worker runtime > real worker Pi loop executes native search IPC, reads guarded source and completes with citations offline"
+    },
+    {
+      "id": "PI100-SOL-CATALOG",
+      "owner": "Pi 1.0 upgrade / BAZ-069",
+      "file": "apps/daemon/test/runtime/providers.test.ts",
+      "test": "Pi 1.0 catalog includes exact GPT-6.1 Sol on official API and subscription transports"
+    },
+    {
+      "id": "IMAGE-CODEC-CLOSED-DIAGNOSTICS",
+      "owner": "BAZ-059",
+      "file": "apps/daemon/test/lib/image-codec.test.ts",
+      "test": "invalid UTF-8 refuses, and decoder/projection exceptions expose only closed facts"
+    },
+    {
+      "id": "IMAGE-CODEC-API-UNCHANGED",
+      "owner": "BAZ-059",
+      "file": "apps/daemon/test/lib/image-codec.test.ts",
+      "test": "API-key codec does not gain missing-MIME SSE acceptance"
+    },
+    {
+      "id": "IMAGE-CODEC-HOST-UNCERTAINTY",
+      "owner": "BAZ-059",
+      "file": "apps/daemon/test/lib/image-generation.test.ts",
+      "test": "missing-MIME strict Codex stream commits images and closed failures stay uncertain without secret disclosure"
+    },
+    {
+      "id": "IMAGE-EVIDENCE-REFUSAL-REASON",
+      "owner": "BAZ-059",
+      "file": "apps/daemon/test/lib/image-codec.test.ts",
+      "test": "refusal reason never promotes completed metadata or substitutes empty terminal evidence"
+    },
+    {
+      "id": "IMAGE-DIAGNOSTIC-RUNTIME-CLOSURE",
+      "owner": "BAZ-059",
+      "file": "apps/daemon/test/lib/image-codec.test.ts",
+      "test": "exported image diagnostic validates all fields at runtime without coercing foreign values"
+    },
+    {
+      "id": "IMAGE-RECOVERED-ALLOW",
+      "owner": "BAZ-059",
+      "file": "apps/daemon/test/lib/image-generation.test.ts",
+      "test": "recovered Codex PNG captures, reloads and obeys allow with honest tool evidence and no replay"
+    },
+    {
+      "id": "IMAGE-RECOVERED-DENY",
+      "owner": "BAZ-059",
+      "file": "apps/daemon/test/lib/image-generation.test.ts",
+      "test": "recovered Codex PNG captures, reloads and obeys deny with honest tool evidence and no replay"
+    },
+    {
+      "id": "IMAGE-RECOVERED-APPROVAL",
+      "owner": "BAZ-059",
+      "file": "apps/daemon/test/lib/image-generation.test.ts",
+      "test": "recovered Codex PNG captures, reloads and obeys approval_required with honest tool evidence and no replay"
+    },
+    {
+      "id": "IMAGE-RECOVERED-OVERSIZE",
+      "owner": "BAZ-059",
+      "file": "apps/daemon/test/lib/image-generation.test.ts",
+      "test": "recovered oversized-image cannot capture or replay"
+    },
+    {
+      "id": "IMAGE-RECOVERED-LATE-ERROR",
+      "owner": "BAZ-059",
+      "file": "apps/daemon/test/lib/image-generation.test.ts",
+      "test": "recovered late-error cannot capture or replay"
+    },
+    {
+      "id": "IMAGE-RECOVERED-REAL-WORKER",
+      "owner": "BAZ-059",
+      "file": "apps/cli/test/image-generation.test.ts",
+      "test": "real one-shot Agent turns generate, rework and deliver saved images through IPC without a live provider"
+    },
+    {
+      "id": "IMAGE-EVIDENCE-POISON",
+      "owner": "BAZ-059",
+      "file": "apps/daemon/test/lib/image-evidence.test.ts",
+      "test": "a caught refusal poisons the collector rather than permitting later recovery"
+    },
+    {
+      "id": "POLICY-CLI-IMPORT-APPROVAL-POSTURE",
+      "owner": "BAZ-065",
+      "file": "apps/cli/test/team-interchange.test.ts",
+      "test": "live policy import preserves explicit approval_required posture rather than downgrading it"
+    },
+    {
+      "id": "POLICY-CLI-IMPORT-NULL-POSTURE",
+      "owner": "BAZ-065",
+      "file": "apps/cli/test/team-interchange.test.ts",
+      "test": "live policy import refuses invalid posture null before mutation"
+    },
+    {
+      "id": "POLICY-CLI-IMPORT-UNKNOWN-POSTURE",
+      "owner": "BAZ-065",
+      "file": "apps/cli/test/team-interchange.test.ts",
+      "test": "live policy import refuses invalid posture 'deny' before mutation"
     }
   ]
 }

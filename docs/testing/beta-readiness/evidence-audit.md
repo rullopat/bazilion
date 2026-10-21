@@ -132,7 +132,7 @@ a process kill; screenshot counts are not independent interaction scenarios. New
 do not retroactively qualify unrelated recovery domains.
 
 The required B [content-Team journey](content-team-acceptance.md) is also Not run. BAZ-063 is the
-parent checklist for BAZ-064 (recipe/deterministic handoff), BAZ-065 (actual cron/recovery) and BAZ-066
+parent checklist for BAZ-064 (recipe/deterministic handoff), BAZ-065 (actual cron/recovery) and live qualification
 (live/human qualification). It requires a confirmed generic brief, specialist research/text/images,
 human rework and approved manual handoff over two cycles, with two independently selected topics. Existing
 image/scheduler tests are component evidence, not that journey. On 2026-09-20, the first importable

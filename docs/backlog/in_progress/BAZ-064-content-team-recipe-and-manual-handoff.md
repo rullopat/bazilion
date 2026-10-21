@@ -5,7 +5,7 @@ status: in_progress
 size: M
 created: 2026-09-20
 refined: 2026-09-20
-note: Close-out folded into BAZ-066's 0.23.0 run; remaining composed-journey evidence comes from that live qualification. Initial recipe and management/policy preflight implemented; composed journey blocked on BAZ-067 discovery. No live usage or publication authorized.
+note: Initial recipe and management/policy preflight implemented; composed-journey qualification remains unrun and is not scheduled. Protected discovery needs an admitted backend. No live usage or publication authorized.
 ---
 
 # BAZ-064 — Content Team recipe and manual handoff
@@ -23,7 +23,7 @@ Deliver a reusable canonical Team/Profile/skill recipe and deterministic integra
 **brief → research → text/concept review → images → final text/image review → manual handoff**.
 This is the first child
 of [BAZ-063](../draft/BAZ-063-content-team-real-world-acceptance.md); topic and purpose are fixture inputs,
-never hardcoded product behavior. Real scheduling belongs to BAZ-065; live/human qualification to BAZ-066.
+never hardcoded product behavior. Real scheduling belongs to BAZ-065; live/human execution is unassigned.
 
 ## Why
 
@@ -146,5 +146,5 @@ passes for the composed CT cases. See [the evidence and remaining work](../BAZ-0
 - Live composer rehearsal needs a permitted operator-selected Mastodon server/account. Manual export
   requires no API token; neither account selection nor this story authorizes a post or paid calls.
 
-Next: [BAZ-065](../in_progress/BAZ-065-content-team-scheduling-and-recovery.md), then
-[BAZ-066](../draft/BAZ-066-content-team-live-and-human-acceptance.md). This story is not Done.
+Next: [BAZ-065](../done/BAZ-065-content-team-scheduling-and-recovery.md), then
+a future, separately authorized qualification. This story is not Done.

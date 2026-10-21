@@ -1,0 +1,254 @@
+{
+  "authority": "Explicit structured operator approval for bounded read-only official compatibility notes on nodejs.org and github.com nodejs/node,WiseLibs/better-sqlite3; native probes remain paused, no installs/dependency/support changes",
+  "observedAt": "2026-10-20T14:39:02.611Z",
+  "records": [
+    {
+      "pass": "initial",
+      "id": "01",
+      "url": "https://nodejs.org/dist/index.json",
+      "method": "GET",
+      "status": 200,
+      "capturedBytes": 333611,
+      "bodySha256": "b52f521b8e24898364b74f03596afef1f97c1448014df7c2b5ebdcd2b69ca4a9",
+      "tlsAuthorized": true,
+      "truncated": false,
+      "contentType": "application/json",
+      "material": "publisher release/compatibility metadata",
+      "headersPublished": false
+    },
+    {
+      "pass": "initial",
+      "id": "02",
+      "url": "https://nodejs.org/en/blog/release/v24.20.0",
+      "method": "GET",
+      "status": 200,
+      "capturedBytes": 551365,
+      "bodySha256": "f4ca8b47c62fcad783ab24f66d21f25f6d59a56824edf3c9dbcd11ef126e7366",
+      "tlsAuthorized": true,
+      "truncated": false,
+      "contentType": "text/html; charset=utf-8",
+      "material": "publisher release/compatibility metadata",
+      "headersPublished": false
+    },
+    {
+      "pass": "initial",
+      "id": "03",
+      "url": "https://nodejs.org/en/blog/release/v24.22.0",
+      "method": "GET",
+      "status": 200,
+      "capturedBytes": 525689,
+      "bodySha256": "88d2e72cf0991ba96ad6d3a562da4b32b225547830b45437e9f4ada1f949e796",
+      "tlsAuthorized": true,
+      "truncated": false,
+      "contentType": "text/html; charset=utf-8",
+      "material": "publisher release/compatibility metadata",
+      "headersPublished": false
+    },
+    {
+      "pass": "initial",
+      "id": "04",
+      "url": "https://github.com/WiseLibs/better-sqlite3/releases",
+      "method": "GET",
+      "status": 200,
+      "capturedBytes": 423022,
+      "bodySha256": "35fd94d801ca2350259907c5576cf7abf5d50cdeb9151761805a72215ae92550",
+      "tlsAuthorized": true,
+      "truncated": false,
+      "contentType": "text/html; charset=utf-8",
+      "material": "publisher release/compatibility metadata",
+      "headersPublished": false
+    },
+    {
+      "pass": "initial",
+      "id": "05",
+      "url": "https://github.com/nodejs/node/commits/v24.x/src/node_object_wrap.h",
+      "method": "GET",
+      "status": 200,
+      "capturedBytes": 591609,
+      "bodySha256": "7e2659a007f3ef56833ba602adf9ed4fe21438e11203fb32ad4eb6760095d493",
+      "tlsAuthorized": true,
+      "truncated": false,
+      "contentType": "text/html; charset=utf-8",
+      "material": "publisher release/compatibility metadata",
+      "headersPublished": false
+    },
+    {
+      "pass": "json-representation",
+      "id": "01",
+      "url": "https://github.com/nodejs/node/pull/63985",
+      "method": "GET",
+      "status": 200,
+      "capturedBytes": 1909,
+      "bodySha256": "2607bbbcbfbb89bb4e6884bc2a69ae2313db5b9e49aec8fbd9b941d3fc51a45c",
+      "tlsAuthorized": true,
+      "truncated": false,
+      "contentType": "application/json; charset=utf-8",
+      "material": "navigation JSON only, NOT PR prose",
+      "headersPublished": false
+    },
+    {
+      "pass": "html-representation",
+      "id": "01",
+      "url": "https://github.com/nodejs/node/pull/63985",
+      "method": "GET",
+      "status": 200,
+      "capturedBytes": 825095,
+      "bodySha256": "4a05a66bf29c8c4aa8372c5c6694531da102ed12ebba8ff291c1f868de64c411",
+      "tlsAuthorized": true,
+      "truncated": false,
+      "contentType": "text/html; charset=utf-8",
+      "material": "publisher release/compatibility metadata",
+      "headersPublished": false
+    },
+    {
+      "pass": "node26-note",
+      "id": "01",
+      "url": "https://nodejs.org/en/blog/release/v26.4.0",
+      "method": "GET",
+      "status": 200,
+      "capturedBytes": 409579,
+      "bodySha256": "d89ff9e603278b2d5b410c1b824c6e54fb342fe5f2dbaf7d7634b220fc5140d4",
+      "tlsAuthorized": true,
+      "truncated": false,
+      "contentType": "text/html; charset=utf-8",
+      "material": "publisher release/compatibility metadata",
+      "headersPublished": false
+    }
+  ],
+  "requests": 8,
+  "bodyBytes": 3661879,
+  "relayConnections": 8,
+  "runs": [
+    {
+      "pass": "initial",
+      "state": {
+        "hosts": [
+          "nodejs.org",
+          "github.com"
+        ],
+        "port": 443,
+        "seconds": 300,
+        "maxConnections": 20,
+        "maxConcurrent": 4,
+        "maxEncryptedBytes": 16777216,
+        "connections": 5,
+        "sent": 9741,
+        "received": 2466911,
+        "networkErrors": [],
+        "addresses": {
+          "nodejs.org": [
+            "104.16.213.131",
+            "104.16.212.131"
+          ],
+          "github.com": [
+            "140.82.121.4"
+          ]
+        },
+        "remainingStreams": 0
+      },
+      "exit": {
+        "code": 0,
+        "signal": null,
+        "forced": false,
+        "spawnError": null,
+        "overflow": false
+      }
+    },
+    {
+      "pass": "json-representation",
+      "state": {
+        "hosts": [
+          "github.com"
+        ],
+        "port": 443,
+        "seconds": 60,
+        "maxConnections": 1,
+        "maxConcurrent": 1,
+        "maxEncryptedBytes": 3145728,
+        "connections": 1,
+        "sent": 1932,
+        "received": 10979,
+        "networkErrors": [],
+        "addresses": {
+          "github.com": [
+            "140.82.121.3"
+          ]
+        },
+        "remainingStreams": 0
+      },
+      "exit": {
+        "code": 0,
+        "signal": null,
+        "forced": false,
+        "spawnError": null,
+        "overflow": false
+      }
+    },
+    {
+      "pass": "html-representation",
+      "state": {
+        "hosts": [
+          "github.com"
+        ],
+        "port": 443,
+        "seconds": 60,
+        "maxConnections": 1,
+        "maxConcurrent": 1,
+        "maxEncryptedBytes": 3145728,
+        "connections": 1,
+        "sent": 1904,
+        "received": 835739,
+        "networkErrors": [],
+        "addresses": {
+          "github.com": [
+            "140.82.121.3"
+          ]
+        },
+        "remainingStreams": 0
+      },
+      "exit": {
+        "code": 0,
+        "signal": null,
+        "forced": false,
+        "spawnError": null,
+        "overflow": false
+      }
+    },
+    {
+      "pass": "node26-note",
+      "state": {
+        "hosts": [
+          "nodejs.org"
+        ],
+        "port": 443,
+        "seconds": 60,
+        "maxConnections": 1,
+        "maxConcurrent": 1,
+        "maxEncryptedBytes": 3145728,
+        "connections": 1,
+        "sent": 1921,
+        "received": 417463,
+        "networkErrors": [],
+        "addresses": {
+          "nodejs.org": [
+            "104.16.212.131",
+            "104.16.213.131"
+          ]
+        },
+        "remainingStreams": 0
+      },
+      "exit": {
+        "code": 0,
+        "signal": null,
+        "forced": false,
+        "spawnError": null,
+        "overflow": false
+      }
+    }
+  ],
+  "bounds": "Initial pass20requests/10MiBbody/300s; each follow-up1request/2MiBbody/60s,30s request deadlines. Completed campaign8GETs below20/10MiB; no limits increased or further origins followed. All TLS/end-to-end hostname validation retained, no auth,cookies,accounts,provider calls or script execution.",
+  "representationCorrection": "Initial PR Accept included application/json and returned only anonymous route JSON. Raw representation retained privately, not accepted as prose. One explicit text/html read at same publicURL supplied prose, no authentication/access-control workaround.",
+  "sourceLimits": "Full raw HTML/index/response headers remain private, including anonymous visitor/channel data. Published safe excerpts and response hashes are parent-verified projections, not independently reviewer-computed hashes or a new original-source execution.",
+  "interpretation": "Upstream explanation directly matches the observed RemoveEnvironmentCleanupHook/env-null duringGC mechanism. Official Node24.22.0 and26.4.0 notes list that cleanup-hook change. These are supported-fix candidates, not Bazilion test results.",
+  "qualification": "Node24.22 not downloaded/installed/executed; supported-range choice not made; no native repro replay,new check or publication performed. Actual worker context caller and old image-barrier cause remain unassigned."
+}

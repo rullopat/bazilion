@@ -1,7 +1,7 @@
 import { appendFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { ImageGenerationInput, ImageGenerationOutput } from '@bazilion/api-types'
-import type { AssistantImages, ImagesModels } from '@earendil-works/pi-ai'
+import type { AssistantImages, Models } from '@earendil-works/pi-ai'
 import { afterEach, beforeEach, expect, type Mock, test, vi } from 'vitest'
 import { resolveAgent } from '../../src/core/agent/resolve.ts'
 import { spawnAgent } from '../../src/core/agent/spawn.ts'
@@ -23,6 +23,7 @@ import {
   IMAGE_RESPONSE_BYTES,
   imageCatalogue,
 } from '../../src/lib/image-generation.ts'
+import { reconcilePrivateResults } from '../../src/lib/result-retention.ts'
 import { createTurnToolSource } from '../../src/lib/turn-tool-source.ts'
 import {
   clearCredentials,
@@ -46,7 +47,7 @@ let signal: AbortController
 let config: NodeJS.ProcessEnv
 let host: ReturnType<typeof createImageGenerationHost>
 let models: ReturnType<typeof imageCatalogue>
-let generate: Mock<ImagesModels['generateImages']>
+let generate: Mock<Models['generateImages']>
 let source: ReturnType<typeof createTurnToolSource>
 function response(images = 1): AssistantImages {
   return {
@@ -112,7 +113,7 @@ beforeEach(() => {
     OPENROUTER_API_KEY: 'test-key-not-for-network',
   }
   models = imageCatalogue()
-  generate = vi.fn<ImagesModels['generateImages']>(async () => response())
+  generate = vi.fn<Models['generateImages']>(async () => response())
   models.generateImages = generate
   host = createImageGenerationHost({
     db: env.db,
@@ -149,6 +150,255 @@ function automaticHost(fetcher: typeof fetch, accessToken = async () => 'oauth-p
     codex: { connected: () => true, accessToken },
   })
 }
+
+function recoveredStream(data = png.toString('base64'), omitted = false, tail: unknown[] = []) {
+  const events = [
+    {
+      type: 'response.created',
+      response: { id: 'resp_image', status: 'in_progress', model: 'gpt-6-astra' },
+    },
+    {
+      type: 'response.output_item.done',
+      output_index: 0,
+      item: { id: 'ig_image', type: 'image_generation_call', status: 'completed', result: data },
+    },
+    {
+      type: 'response.completed',
+      response: { id: 'resp_image', status: 'completed', ...(omitted ? {} : { output: [] }) },
+    },
+    ...tail,
+  ]
+  return new Response(
+    new TextEncoder().encode(events.map((e) => `data: ${JSON.stringify(e)}\n\n`).join('')),
+  )
+}
+
+test.each([
+  'allow',
+  'deny',
+  'approval_required',
+])('recovered Codex PNG captures, reloads and obeys %s with honest tool evidence and no replay', async (posture) => {
+  setEnabled(env.db, 'openai-codex', true)
+  vi.stubEnv('BAZILION_TEAM_POLICY_ENFORCEMENT', 'on')
+  if (posture === 'deny') {
+    env.db.raw.run(
+      "DELETE FROM team_policy_edges WHERE team_id = ? AND source_kind = 'agent' AND source_id = ? AND target_kind = 'user'",
+      [env.teamId, agentId],
+    )
+  } else {
+    env.db.raw.run(
+      "UPDATE team_policy_edges SET posture = ? WHERE team_id = ? AND source_kind = 'agent' AND source_id = ? AND target_kind = 'user'",
+      [posture, env.teamId, agentId],
+    )
+  }
+  const fetcher = vi.fn<typeof fetch>(async () => recoveredStream())
+  const imageHost = automaticHost(fetcher)
+  const request = input()
+  const outputs: ImageGenerationOutput[] = []
+  const tool = ourToolToPiTool(
+    imageGenerateTool(async (args) => {
+      const output = await imageHost.generate(args)
+      outputs.push(output)
+      return output
+    }, sessionId),
+  )
+  const result = await tool.execute(
+    'call',
+    { prompt: request.prompt, name: request.name },
+    undefined,
+    undefined,
+    {} as Parameters<typeof tool.execute>[4],
+  )
+  expect(result.details).toMatchObject({
+    imageEvidence: { outputSource: 'completed_stream' },
+    results: [{ resultId: expect.any(String) }],
+  })
+  expect(JSON.stringify(result)).not.toContain(png.toString('base64'))
+  expect(JSON.stringify(result)).not.toContain('oauth-private')
+  // Canonical tool-details shape survives JSON serialization; no second transcript store.
+  expect(JSON.parse(JSON.stringify(result.details)).imageEvidence.outputSource).toBe(
+    'completed_stream',
+  )
+  const output = outputs[0]
+  if (!output?.files[0]) throw new Error('Missing capture')
+  const file = output.files[0],
+    id = file.result.resultId
+  expect(results.readCaptured(env.db, id)).toEqual(png)
+  expect(results.getReleased(env.db, id)).toBeNull()
+  expect(results.getReceipt(env.db, id)).toMatchObject({
+    sessionId,
+    toolCallId: 'call',
+    imageModel: 'openai-codex:gpt-image-2',
+  })
+  const frame = { kind: 'event' as const, event: { type: 'file' as const, ...file } }
+  if (posture === 'allow') {
+    authorizeHttpChatFrame(env.db, agentId, 'recovered-image', 0, frame)
+    expect(results.readReleased(env.db, id)).toEqual(png)
+  } else {
+    expect(() => authorizeHttpChatFrame(env.db, agentId, 'recovered-image', 0, frame)).toThrow()
+    expect(results.getReleased(env.db, id)).toBeNull()
+  }
+  const replay = await imageHost.generate(request)
+  expect(replay.files).toEqual(output.files)
+  expect(replay.outputSource).toBeUndefined() // receipt replay does not re-observe provider evidence
+  const snapshot = join(env.home, 'recovered.db')
+  await env.db.backupTo(snapshot)
+  const reopened = openDb(snapshot)
+  try {
+    expect(results.readCaptured(reopened, id)).toEqual(png)
+    expect(results.getReleased(reopened, id) !== null).toBe(posture === 'allow')
+  } finally {
+    reopened.close()
+  }
+  expect(fetcher).toHaveBeenCalledTimes(1)
+  expect(outcome()).toBe('completed')
+})
+
+test('completed image captures survive orphan cleanup without release or regeneration', async () => {
+  const request = input()
+  const output = await host.generate(request)
+  const id = firstResultId(output)
+  expect(generate).toHaveBeenCalledTimes(1)
+  expect(reconcilePrivateResults(env.db)).toBe(0)
+  expect(results.readCaptured(env.db, id)).toEqual(png)
+  expect(results.getReceipt(env.db, id)).toMatchObject({ releasedAt: null, deletedAt: null })
+  expect(results.listReleased(env.db).total).toBe(0)
+  expect(
+    env.db.raw
+      .query<{ bytes: number }, []>(
+        'SELECT sum(byte_length) AS bytes FROM agent_results WHERE deleted_at IS NULL',
+      )
+      .get()?.bytes,
+  ).toBe(png.byteLength)
+
+  const snapshot = join(env.home, 'private-image.db')
+  await env.db.backupTo(snapshot)
+  const reopened = openDb(snapshot)
+  try {
+    expect(reconcilePrivateResults(reopened)).toBe(0)
+    expect(results.readCaptured(reopened, id)).toEqual(png)
+    expect(results.getReleased(reopened, id)).toBeNull()
+    expect(results.listReleased(reopened).total).toBe(0)
+  } finally {
+    reopened.close()
+  }
+  expect((await host.generate(request)).files).toEqual(output.files)
+  expect(generate).toHaveBeenCalledTimes(1)
+})
+
+test.each([
+  'uncertain',
+  'failed',
+  'missing',
+  'other_agent',
+  'other_session',
+  'other_call',
+  'other_model',
+] as const)('image metadata without a matching completed operation cannot retain private bytes: %s', async (defect) => {
+  const output = await host.generate(input())
+  const id = firstResultId(output)
+  if (defect === 'missing') env.db.raw.run('DELETE FROM image_generations')
+  else if (defect === 'uncertain' || defect === 'failed')
+    env.db.raw.run('UPDATE image_generations SET outcome = ?', [defect])
+  else {
+    const column = {
+      other_agent: 'agent_id',
+      other_session: 'session_id',
+      other_call: 'tool_call_id',
+      other_model: 'model',
+    }[defect]
+    env.db.raw.run(`UPDATE image_generations SET ${column} = ?`, ['different-source'])
+  }
+  expect(reconcilePrivateResults(env.db)).toBe(1)
+  expect(() => results.readCaptured(env.db, id)).toThrow('unavailable')
+  expect(results.listReleased(env.db).total).toBe(0)
+  expect(generate).toHaveBeenCalledTimes(1)
+})
+
+test('deleted completed image captures cannot resurrect after reconciliation', async () => {
+  const request = input()
+  const output = await host.generate(request)
+  const id = firstResultId(output)
+  vi.stubEnv('BAZILION_TEAM_POLICY_ENFORCEMENT', 'on')
+  const file = output.files[0]
+  if (!file) throw new Error('Missing captured image')
+  authorizeHttpChatFrame(env.db, agentId, 'image-deletion', 0, {
+    kind: 'event',
+    event: { type: 'file', ...file },
+  })
+  expect(results.deleteReleased(env.db, id)).toBe(true)
+  const tombstone = results.getReceipt(env.db, id)
+  expect(tombstone?.deletedAt).not.toBeNull()
+  expect(reconcilePrivateResults(env.db)).toBe(0)
+  expect(results.getReceipt(env.db, id)).toEqual(tombstone)
+  await expect(host.generate(request)).rejects.toThrow('deleted')
+  expect(generate).toHaveBeenCalledTimes(1)
+  expect(results.listReleased(env.db).total).toBe(0)
+})
+
+test('omitted output uses the same strict recovery path through host capture', async () => {
+  setEnabled(env.db, 'openai-codex', true)
+  const fetcher = vi.fn<typeof fetch>(async () => recoveredStream(png.toString('base64'), true))
+  const output = await automaticHost(fetcher).generate(input())
+  expect(output.outputSource).toBe('completed_stream')
+  expect(results.readCaptured(env.db, firstResultId(output))).toEqual(png)
+  expect(fetcher).toHaveBeenCalledTimes(1)
+})
+
+test.each([
+  'bad-base64',
+  'not-png',
+  'oversized-image',
+  'late-error',
+])('recovered %s cannot capture or replay', async (defect) => {
+  setEnabled(env.db, 'openai-codex', true)
+  const data =
+    defect === 'bad-base64'
+      ? 'not base64'
+      : defect === 'not-png'
+        ? Buffer.from('not a png').toString('base64')
+        : defect === 'oversized-image'
+          ? Buffer.alloc(results.MAX_RESULT_BYTES + 1).toString('base64')
+          : png.toString('base64')
+  const fetcher = vi.fn<typeof fetch>(async () =>
+    recoveredStream(
+      data,
+      false,
+      defect === 'late-error' ? [{ type: 'error', message: 'oauth-private' }] : [],
+    ),
+  )
+  const imageHost = automaticHost(fetcher)
+  const request = input()
+  await expect(imageHost.generate(request)).rejects.toThrow()
+  expect(outcome()).toBe('uncertain')
+  expect(operationsResultCount()).toBe(0)
+  await expect(imageHost.generate(request)).rejects.toThrow('uncertain')
+  await expect(imageHost.generate(input('another'))).rejects.toThrow('uncertain')
+  expect(fetcher).toHaveBeenCalledTimes(1)
+})
+
+test('missing-MIME strict Codex stream commits images and closed failures stay uncertain without secret disclosure', async () => {
+  setEnabled(env.db, 'openai-codex', true)
+  const fetcher = vi.fn<typeof fetch>(
+    async () =>
+      new Response(
+        new TextEncoder().encode(
+          `data: ${JSON.stringify({ type: 'response.completed', response: { status: 'completed', output: [{ type: 'image_generation_call', result: png.toString('base64') }] } })}\n\n`,
+        ),
+      ),
+  )
+  const imageHost = automaticHost(fetcher)
+  const output = await imageHost.generate(input('mime-success'))
+  expect(results.readCaptured(env.db, firstResultId(output))).toEqual(png)
+  fetcher.mockImplementation(
+    async () => new Response(new TextEncoder().encode('data: {oauth-private}\n\n')),
+  )
+  await expect(imageHost.generate(input('mime-failure'))).rejects.toThrow(
+    'phase=decode; media=missing; terminal=unseen] [reason=decode_failed',
+  )
+  await expect(imageHost.generate(input('after-uncertain'))).rejects.toThrow('uncertain')
+  expect(fetcher).toHaveBeenCalledTimes(2)
+})
 
 test('automatic text enablement switches future image calls but never rewrites an admitted route or replays it', async () => {
   setEnabled(env.db, 'openai', true)
@@ -246,7 +496,10 @@ test.each([
   })
   const request = input()
   const output = await direct.generate(request)
-  expect(await direct.generate(request)).toEqual(output)
+  const replay = await direct.generate(request)
+  expect(replay).toEqual({ model: output.model, files: output.files })
+  expect(replay.outputSource).toBeUndefined()
+  expect(output.outputSource).toBe(provider === 'openai-codex' ? 'terminal' : undefined)
   expect(fetcher).toHaveBeenCalledTimes(1)
   expect(getToken).toHaveBeenCalledTimes(provider === 'openai-codex' ? 1 : 0)
   expect(output.model).toBe(`${provider}:gpt-image-2`)
@@ -327,12 +580,12 @@ test('cancelling a shared Codex credential refresh prevents late image dispatch'
 
 test('resolves exactly the two curated Pi image entries without network or ambient auth', () => {
   for (const id of OPENROUTER_IMAGE_MODELS) {
-    expect(models.getModel('openrouter', id)).toMatchObject({
+    expect(models.getModelOfType('image', 'openrouter', id)).toMatchObject({
       api: 'openrouter-images',
       provider: 'openrouter',
       baseUrl: 'https://openrouter.ai/api/v1',
     })
-    expect(models.getModel('openrouter', id)?.output).toContain('image')
+    expect(models.getModelOfType('image', 'openrouter', id)?.output).toContain('image')
   }
   expect(imageTurnEnv(config, 'lmstudio:chat').OPENROUTER_API_KEY).toBeUndefined()
   expect(imageTurnEnv(config, 'openrouter:chat').OPENROUTER_API_KEY).toBe(config.OPENROUTER_API_KEY)
@@ -500,6 +753,46 @@ test('deadline aborts actual Pi transport without saving a result or retrying', 
   expect(operationsResultCount()).toBe(0)
 })
 
+test('composite canonical identity survives image capture and cannot alias or replay another item', async () => {
+  const request = input('call_fixture|fc_fixture')
+  const output = await host.generate(request)
+  const id = firstResultId(output)
+  expect(results.getReceipt(env.db, id)?.toolCallId).toBe(request.toolCallId)
+  expect(results.readCaptured(env.db, id)).toEqual(png)
+  expect(firstResultId(await host.generate(request))).toBe(id)
+  expect(generate).toHaveBeenCalledTimes(1)
+  await expect(host.generate({ ...request, toolCallId: 'call_fixture' })).rejects.toThrow(
+    'canonical transcript',
+  )
+  await expect(host.generate({ ...request, toolCallId: 'call_fixture|fc_other' })).rejects.toThrow(
+    'canonical transcript',
+  )
+  await expect(host.generate({ ...request, sessionId: 'other' })).rejects.toThrow('conversation')
+  await expect(host.generate({ ...request, prompt: 'altered' })).rejects.toThrow('canonical')
+  const later = createTurnToolSource(
+    env.paths,
+    resolveAgent(env.db, env.paths, agentId),
+    { id: sessionId, filename: `${sessionId}.jsonl` },
+    'image_generate',
+  )
+  expect(() => later(sessionId, request.toolCallId)).toThrow('canonical transcript')
+  expect(generate).toHaveBeenCalledTimes(1)
+  expect(operationCount()).toBe(1)
+})
+
+test.each([
+  'call|',
+  '|item',
+  'call||item',
+  'call|item|extra',
+  'a'.repeat(257),
+  'call|item\n',
+])('refuses malformed canonical composite source %j before dispatch', async (id) => {
+  await expect(host.generate(input(id))).rejects.toThrow('conversation')
+  expect(generate).not.toHaveBeenCalled()
+  expect(operationCount()).toBe(0)
+})
+
 test('rework creates distinct durable results and retains the original', async () => {
   const first = await host.generate(input())
   const next = await host.generate(input('rework', 'A blue bird'))
@@ -536,7 +829,7 @@ test('refuses absent catalogue model, arbitrary IPC keys, altered prompt and old
     'image_generate',
   )
   expect(() => laterSource(sessionId, request.toolCallId)).toThrow('canonical transcript')
-  vi.spyOn(models, 'getModel').mockReturnValue(undefined)
+  vi.spyOn(models, 'getModelOfType').mockReturnValue(undefined)
   await expect(host.generate(request)).rejects.toThrow('no fallback')
   expect(generate).not.toHaveBeenCalled()
   expect(operationCount()).toBe(0)

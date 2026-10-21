@@ -26,6 +26,7 @@ import { isAbsolute } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import type { ChatFrame } from '@bazilion/api-types'
 import { formatNativeModuleAbiMismatch } from '../../lib/native-module-error.ts'
+import { isOrdinaryWebSearchHost } from '../../lib/ordinary-web-search.ts'
 import { type ApiKeyRefreshTurnContext, refreshApiKeyForTurn } from './api-key-refresh.ts'
 import type {
   ApiKeyRefreshHost,
@@ -64,18 +65,16 @@ const MAX_MINIMAL_WORKER_INPUT_BYTES = 64 * 1024 * 1024
 
 // In dev, this file is at apps/daemon/src/runtime/worker/spawn.ts and the
 // worker entry is its `entry.ts` sibling. In the published bundle, all of
-// spawn.ts's code is inlined into dist/daemon.js, where `./entry.ts` does
+// spawn.ts's code is inlined into dist/daemon-main.js, where `./entry.ts` does
 // not exist — the worker is bundled separately to dist/worker.js. Pick at
 // load time by probing the filesystem.
 const sourceEntryPath = fileURLToPath(new URL('./entry.ts', import.meta.url))
 const bundledEntryPath = fileURLToPath(new URL('./worker.js', import.meta.url))
 const entryPath = existsSync(sourceEntryPath) ? sourceEntryPath : bundledEntryPath
 
-// .ts dev entry: Node 24+ runs TS directly via native type-stripping (no
-// `--experimental-strip-types` flag needed in stable 24, but we still pass
-// it for older 22.x dev environments). tsx is the fallback for any runtime
-// where strip-types is missing. `--no-warnings` silences the experimental
-// banner that older Node versions emit on every child start.
+// .ts dev entry: admitted stable Node releases support native type-stripping.
+// The loader detection below does not widen the CLI/daemon runtime policy.
+// `--no-warnings` also avoids version-dependent startup banners in the protocol.
 //
 // .js bundled entry: plain `node entry.js` — no type stripping, no tsx.
 function workerSpawnArgs(workerEntryPath = entryPath): string[] {
@@ -273,6 +272,8 @@ async function* spawnWorker(
   opts: SpawnWorkerOpts,
 ): AsyncGenerator<WorkerOutputFrame, void, void> {
   assertSpawnCombination(spec, opts)
+  if (spec.kind !== 'configured_operator_http' && isOrdinaryWebSearchHost(opts.webSearchHost))
+    throw new Error('ordinary discovery host is denied for this worker posture')
   const requestedEntry = opts.workerEntryPath ?? entryPath
   if (!isAbsolute(requestedEntry)) throw new Error('worker entry path must be absolute')
 
@@ -683,6 +684,7 @@ function spawnHosts(
     resultHost: restricted ? undefined : opts.resultHost,
     imageGenerationHost: restricted ? undefined : opts.imageGenerationHost,
     webSearchHost: restricted ? undefined : opts.webSearchHost,
+    ordinarySearch: configured,
     // A verification turn reads its request and runs captured checks; it does not message peers,
     // edit USER.md, drive a browser or call MCP. Cleared here rather than trusting the caller.
     messagingHost: restricted
@@ -743,7 +745,8 @@ function parseFrame(line: string, accessTokens: readonly string[]): ChatFrame {
   }
 }
 
-interface IpcHosts {
+export interface IpcHosts {
+  ordinarySearch?: boolean
   imageGenerationHost?: import('./ipc-protocol.ts').ImageGenerationHost
   webSearchHost?: import('./ipc-protocol.ts').WebSearchHost
   containerHost?: import('./ipc-protocol.ts').ContainerLifecycleHost
@@ -776,7 +779,7 @@ function attachIpcHandler(
 ): void {
   child.on('message', (msg: unknown) => {
     if (!isIpcRequest(msg)) return
-    void dispatch(msg, hosts).then((reply) => {
+    void dispatchWorkerRpc(msg, hosts).then((reply) => {
       try {
         // A successful refresh is the one IPC payload explicitly allowed to
         // carry the new token. Every other daemon reply is sanitized before it
@@ -804,7 +807,7 @@ function require<T>(host: T | undefined, kind: string, method: string): T {
   return host
 }
 
-async function dispatch(req: IpcRequest, hosts: IpcHosts): Promise<IpcReply> {
+export async function dispatchWorkerRpc(req: IpcRequest, hosts: IpcHosts): Promise<IpcReply> {
   try {
     let result: unknown
     switch (req.method) {
@@ -888,6 +891,14 @@ async function dispatch(req: IpcRequest, hosts: IpcHosts): Promise<IpcReply> {
         if (
           !args ||
           typeof args.query !== 'string' ||
+          Object.keys(args).some((key) => !['query', 'count', 'allowedDomains'].includes(key)) ||
+          (args.allowedDomains !== undefined &&
+            (hosts.ordinarySearch !== true ||
+              !Array.isArray(args.allowedDomains) ||
+              args.allowedDomains.length > 8 ||
+              args.allowedDomains.some(
+                (domain) => typeof domain !== 'string' || domain.length > 253,
+              ))) ||
           args.query.length > 512 ||
           (args.count !== undefined &&
             (!Number.isInteger(args.count) || args.count < 1 || args.count > 8))
@@ -1084,9 +1095,11 @@ async function pumpWorkerFrames(
   onProtocolViolation: () => void,
 ): Promise<void> {
   let buf = ''
+  // Decode across pipe chunks: a Buffer boundary can split a UTF-8 code point.
+  stdout.setEncoding('utf8')
   try {
     for await (const chunk of stdout) {
-      buf += (chunk as Buffer).toString('utf8')
+      buf += chunk as string
       let idx = buf.indexOf('\n')
       while (idx !== -1) {
         const line = buf.slice(0, idx)

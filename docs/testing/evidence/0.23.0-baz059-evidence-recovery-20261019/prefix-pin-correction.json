@@ -1,0 +1,13 @@
+{
+  "kind": "Additive correction to sealed r20 prose/prompt, not a raw-evidence or identity rewrite",
+  "preliminaryFindStatBytes": 182721080,
+  "actualOpenFstatPinnedPrefixBytes": 182733952,
+  "differenceBytes": 12872,
+  "actualPinnedPrefixSha256": "2c59eacc6af80d29ce4d8674a7df8b765f722da9827cfe50226fdb9ede1ea2d3",
+  "cause": "Known live journal appended the approved tool call between preliminary find/stat and O_RDONLY/O_NOFOLLOW open/fstat. All extraction passes used the actual pin/hash recorded from that first open. Prose/prompt accidentally reused preliminary stat size.",
+  "scope": "Same authorized known journal; only old selected safe records at lines1749\u20132554 were exported, no new/unrelated tail payload exported. No original ~/.bazilion/daemon/account/provider operation.",
+  "verification": "Pinned extent/hash independently re-read by parent again; inventory, extraction-provenance and archived recovery.json match. Reviewer has no journal/hash access and must label identity parent-verified.",
+  "sealedRecoveryJsonSha256": "c188b25b5f3a72b4e2420044551e9498675489168d79fb7389307c33d66b3c2d",
+  "historicalRecordsUnchanged": true,
+  "rawRecoveredArtifactsUnchanged": true
+}

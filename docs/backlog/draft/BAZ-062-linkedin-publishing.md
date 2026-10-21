@@ -53,7 +53,7 @@ Own the LinkedIn configurations of **PUB-01–06** in the
 [content-Team protocol](../../testing/beta-readiness/content-team-acceptance.md), including platform
 contract faults and separately authorized live/human evidence. Reuse BAZ-060's shared fake-host checks;
 report each claimed author type independently to BAZ-063. This is conditional publishing qualification,
-not work inside the BAZ-064/065/066 manual core. No live execution is authorized by this assignment.
+not work inside the BAZ-064/065 manual core. No live execution is authorized by this assignment.
 
 ## Open Questions
 

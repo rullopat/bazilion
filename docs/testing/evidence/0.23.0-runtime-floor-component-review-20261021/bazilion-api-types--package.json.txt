@@ -1,0 +1,36 @@
+{
+  "name": "@bazilion/api-types",
+  "version": "0.23.0",
+  "description": "Hermetic wire-shape types for the Bazilion HTTP/IPC surface (zero deps).",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rullopat/bazilion.git",
+    "directory": "packages/api-types"
+  },
+  "homepage": "https://github.com/rullopat/bazilion#readme",
+  "bugs": {
+    "url": "https://github.com/rullopat/bazilion/issues"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsup"
+  }
+}

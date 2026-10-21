@@ -1,0 +1,113 @@
+{
+  "format": "bazilion-source-freeze-amendment-v1",
+  "revision": 4,
+  "recordedAt": "2026-10-19T13:30:46.909887+00:00",
+  "task": "Prepare minor changeset/read-only version plan and reconcile clean-install refusal expectations; no actual versioning or matrix execution",
+  "parentAmendment": "docs/testing/0.23.0-uninstall-guidance-20261019.json",
+  "parentAmendmentSha256": "5bbdbb0fefe34f87d035272c5e68dbc06fd2d9fb92845a4f702f043538514fe0",
+  "parentSourceInputAggregateSha256": "4af0b51d4375304538b83e5174cb5d3e01592ef76c6b9b25c297e32ca460fa7a",
+  "amendedSourceInputAggregateSha256": "e6d7384008e28cfc5cc03ff1f465401b28dff707f5efefdbfa90319ff3f127b9",
+  "amendedCoreEntryCount": 1135,
+  "reconstruction": "Reconstruct r3 core from preserved r1/r2/r3, apply these after entries by path (null before means a new core path), sort by path and use parent canonical aggregate algorithm.",
+  "inputDelta": [
+    {
+      "path": "docs/releases.md",
+      "before": {
+        "path": "docs/releases.md",
+        "kind": "file",
+        "sha256": "9e975fc2d1ca97987ded9b70b2baa80d343ef34a5dc378a3e9e442488e0f0ce1",
+        "bytes": 13058,
+        "executable": false
+      },
+      "after": {
+        "path": "docs/releases.md",
+        "kind": "file",
+        "sha256": "1a57c831dafa25112c78a6c34c9d50b805f4906aea1deda8cbb1c72c709de3d7",
+        "bytes": 13271,
+        "executable": false
+      }
+    },
+    {
+      "path": "docs/upgrades.md",
+      "before": {
+        "path": "docs/upgrades.md",
+        "kind": "file",
+        "sha256": "e999bfc99cc003251f790870170a699f592990a62f5ed26f37c6e9e861c5d388",
+        "bytes": 3541,
+        "executable": false
+      },
+      "after": {
+        "path": "docs/upgrades.md",
+        "kind": "file",
+        "sha256": "c44890ddefc09dc2497e0151221162c81a9d5f87d252179fc556a8132053acbe",
+        "bytes": 5600,
+        "executable": false
+      }
+    },
+    {
+      "path": "scripts/migration-upgrade-matrix.mjs",
+      "before": {
+        "path": "scripts/migration-upgrade-matrix.mjs",
+        "kind": "file",
+        "sha256": "d8e579f19c66f5465d646f70045d4601492a9199ed43667de42ca9870ae3b899",
+        "bytes": 9098,
+        "executable": false
+      },
+      "after": {
+        "path": "scripts/migration-upgrade-matrix.mjs",
+        "kind": "file",
+        "sha256": "3fa4c299532af1f6e0f7824df0038d224c448567f0199517afd5fc31997c5877",
+        "bytes": 9348,
+        "executable": false
+      }
+    },
+    {
+      "path": ".changeset/quiet-research-recovery.md",
+      "before": null,
+      "after": {
+        "path": ".changeset/quiet-research-recovery.md",
+        "kind": "file",
+        "sha256": "613fc5cb3f7bdf493d09a8ae8fd7cd8ed86bfc0442da056f95780a46ecc19fd7",
+        "bytes": 1857,
+        "executable": false
+      }
+    }
+  ],
+  "plannedPublicVersions": {
+    "bazilion": "0.23.0",
+    "@bazilion/client": "0.23.0",
+    "@bazilion/api-types": "0.23.0"
+  },
+  "actualPublicVersions": "0.22.0 unchanged",
+  "privateNoopPlanEntries": ["@bazilion/web", "@bazilion/daemon"],
+  "matrixDefaultSources": 8,
+  "matrixDefaultExpectation": "refuse for every inspected source including v0.22.0",
+  "matrixRunnerAssertionsCleanupChanged": false,
+  "matrixSyntaxCheck": 0,
+  "scopedMatrixBiomeCheck": 0,
+  "matrixExecuted": false,
+  "versionCommandExecuted": false,
+  "changelogsGenerated": false,
+  "dependenciesInstalled": false,
+  "additionalPlanningAndEvidence": [
+    {
+      "path": "docs/testing/0.23.0-version-compatibility-20261019.md",
+      "sha256": "c2f10729c1abcd4f05e4a8869154a27c6f93a7dfeb1936f11cfd2c30107f4798"
+    },
+    {
+      "path": "docs/testing/0.23.0-prior-schema-inspection-20261019.json",
+      "sha256": "fcdc6c5b163e2505b3b85718546bc960079ebbe2e2db28c58bf33e0925247fc9"
+    },
+    {
+      "path": "docs/testing/0.23.0-changeset-plan-20261019.json",
+      "sha256": "a610f4277ec92e1857fcc1e00d7a8a58871a9a7d1716e6bc65d025776549ef13"
+    }
+  ],
+  "remainingPrerequisites": [
+    "Full version/changelog/internal-dependency/lockfile rehearsal",
+    "Review genuine-home harness isolation/settled teardown and exact exit/home-preservation/diagnostic assertions before execution",
+    "Current whole-candidate, Node 24 Ubuntu/macOS, installed artifacts and independent final review",
+    "Explicit publication approval"
+  ],
+  "publicationAuthorized": false
+}

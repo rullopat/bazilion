@@ -1,0 +1,153 @@
+{
+  "format": "bazilion-source-freeze-amendment-v1",
+  "revision": 28,
+  "recordedAt": "2026-10-21T10:49:38.672413+00:00",
+  "parentAmendment": "docs/testing/0.23.0-runtime-floor-component-review-20261021.json",
+  "parentAmendmentSha256": "9db8f11627f4928d616b13357dd89e238cfee79252d6f9e3cda1ece00d89b55c",
+  "parentSourceInputAggregateSha256": "933287672ca073f97f234da3f67e6fc03daa2891f82410ac4d3e186d8e545b3b",
+  "amendedSourceInputAggregateSha256": "58c3722b66123dff5eb1a9e866266858641c48aa84b2ad23bcc6fb356af7719e",
+  "amendedCoreEntryCount": 1151,
+  "inputDelta": [
+    {
+      "path": "docs/releases.md",
+      "before": {
+        "path": "docs/releases.md",
+        "kind": "file",
+        "bytes": 20729,
+        "sha256": "cd047ff1ece3f0382ebc12f951d80e92e43236bb478911df28de7a7da6f1f11e",
+        "executable": false
+      },
+      "after": {
+        "path": "docs/releases.md",
+        "kind": "file",
+        "bytes": 21317,
+        "sha256": "99439ff9e73aa3d9f5276f57d5b9273bfef62048628aa7f94c18247394fad727",
+        "executable": false
+      }
+    }
+  ],
+  "authority": "Confirmed goal current installed artifact/dependency closure qualification; approved privateNode24.22,existing cache and project-positive offline builds only; no new origin/dependency declaration/build admission/realprovider call",
+  "results": {
+    "runtime": "actual privateNode24.22.0/existingnpm11.19.0",
+    "libraries": "offline/scripts-off imports+two authenticated loopback requests+ApiClientError404 passed",
+    "installerPassed": true,
+    "fixtureRemoval": {
+      "status": "removed"
+    },
+    "actualFixtureRootAbsent": true,
+    "artifact": {
+      "path": "/artifacts/bazilion-0.23.0.tgz",
+      "sha256": "9f7ee6ffba16532daa78744b31cfda3085d663187340f216e3fa9b4d8b0dc7ed",
+      "expectedVersion": "0.23.0"
+    },
+    "installerOwnedChildren": 29,
+    "wrapperObserverCommands": 5,
+    "expectedNegativeExit": "retired SSE CLI exit2",
+    "requestedProviderStop": "synthetic coding provider SIGTERM; other installer children exit0/no signal",
+    "closure": {
+      "passed": true,
+      "prefix": "/control/tmp/bazilion-installer-Pcb6FP/npm-prefix",
+      "entries": 697,
+      "capturedBytes": 54059547
+    },
+    "closureLimits": "manifest/native inventory and npm tree,not all-code digest or atomic whole-prefix freeze; no hidden npm lock in completed inventory",
+    "dependencyApplicability": {
+      "postSummaryFailure": "A follow-up summary loop attempted to stat actual-prefix-package-lock.json unconditionally and failed FileNotFoundError. It was not an installer/closure execution failure.",
+      "explanation": "Observer writes a hidden lock only if encountered; its completed bounded inventory contains no .package-lock.json. No lock bytes are invented or reconstructed after prefix removal.",
+      "hiddenLocksInCapture": [],
+      "comparisonScope": "Version-set comparison of r13 cache prefix versus r28 actual trial prefix; not byte-identical closure proof",
+      "versionSetDelta": [],
+      "actualClosureInventoryEntries": 697,
+      "actualClosureCapturedBytes": 54059547,
+      "sourceNpmDistinction": "Source qualification used pnpm-resolved better-sqlite3@12.10.0/qmd@2.5.3. Actual npm production trial has better-sqlite3@13.0.3/qmd@2.8.3 through existing published dependency ranges; source tests do not qualify that different complete graph."
+    },
+    "scope": "local working tarballs;not final commit/provenance/public identities or full affected-feature/backup/refusal acceptance",
+    "publicationPerformed": false
+  },
+  "preservedFailure": "Follow-up summary assumed optional hidden lock existed and failed FileNotFoundError; actual capture inventory contains none. Focused as-logged excerpt retained; corrected summary only,no trial replay or invented lock.",
+  "applicability": "Reviewed r26 application/test/build sources and exact three local tarballs unchanged; only release pointer and additive evidence. Source pnpm graph differs from observed npm graph; source suite/gate not full npm-graph execution proof.",
+  "status": "Guarded current library/CLI installed trial and actual-prefix metadata/native inventory pass; backup/refusal/affectedfeature,finalsource/commit/CI/independentfinalacceptance,risk/story/publication/website remain open.",
+  "additionalPlanningAndEvidence": [
+    {
+      "path": "docs/testing/0.23.0-current-installed-artifacts-20261021.md",
+      "sha256": "8bfdf10c20f849539e2768ad3e136247fd8aef73f4314c3841522b61670f166d"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-current-installed-artifacts-20261021/actual-prefix-closure.json.gz",
+      "sha256": "77e38f69bffc54728478ec216b1c2e86d5d5276ff18cc14e3b094a7dc90d0042"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-current-installed-artifacts-20261021/actual-prefix-npm-ls-outcome.json.gz",
+      "sha256": "ce86113896eefac29f4934b7691311bf88c3e77282d3e4885ad71c28d935e58f"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-current-installed-artifacts-20261021/check.mjs.txt",
+      "sha256": "ffb3d6dd7c0e3c2ea187726dfd7f1e501341c898dcf7e6bc2a0d01c54f3cede1"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-current-installed-artifacts-20261021/closure-observer.json.gz",
+      "sha256": "71ea60b68c461c6399387ca2fd460cc04596dda44f067844778acde6d051c50b"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-current-installed-artifacts-20261021/inputs.json.gz",
+      "sha256": "2fb43f4a674fefe837885324eda08c1c7c2644f7a5c7de9ba7402ab941dab084"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-current-installed-artifacts-20261021/installer-command.json.gz",
+      "sha256": "dbac7d3f35a96fd57adbb00e3df448b1238e6c464b771aa497062e9ef6756aa6"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-current-installed-artifacts-20261021/installer-evidence.json.gz",
+      "sha256": "ed6acafb255c5a5e6a39f18b964e041ea013d13a64c1dd0371eb13423eba4501"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-current-installed-artifacts-20261021/isolate.sh.txt",
+      "sha256": "c4b709b7401e3a1e8abb1b4bc286fb2585177276be025f6fe6113d9676661c94"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-current-installed-artifacts-20261021/libraries-install.json.gz",
+      "sha256": "479949be0ca841ad55ed20de74af029a5ff00d67ce76bb0d14fde5344b6549a4"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-current-installed-artifacts-20261021/libraries-smoke.json.gz",
+      "sha256": "e94458c33dd56c1f673c7270f98b82caa165a2cb0078e731a7908e22673bb67f"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-current-installed-artifacts-20261021/npm-version.json.gz",
+      "sha256": "33e53008e5ba534c6fd780067acab2f009fa21046b7aecf95502a4a69febbe6c"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-current-installed-artifacts-20261021/outcomes.json.gz",
+      "sha256": "0536839643031febf332819ec7e5b9dcefb66b57f8545f64ff00431a66966295"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-current-installed-artifacts-20261021/outer-control.json.gz",
+      "sha256": "aeb8faddf9d6952a59578c06c9869ac96599e72db93f30bfca710dc1787e1539"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-current-installed-artifacts-20261021/outer.stderr.log.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-current-installed-artifacts-20261021/outer.stdout.log.txt",
+      "sha256": "616969a78076358092169e11b3433a93112a3bc0eeac603ca46350a680470f97"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-current-installed-artifacts-20261021/post-summary-correction.json.gz",
+      "sha256": "4505b0f6b04aae9f508ce13448a3f7896e9d8962d66c8d7304704a044d1410d5"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-current-installed-artifacts-20261021/post-summary-failure-as-logged.txt",
+      "sha256": "681b5a27b589d1dbf90f0e069d052d2957801cc1b680d444e9a627520bc33348"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-current-installed-artifacts-20261021/qualification.json",
+      "sha256": "a8d6e105d4da767db89a5d22cc0e2f50ec18760e29977a168810b493ebcc286c"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-current-installed-artifacts-20261021/uncompressed-identities.json",
+      "sha256": "aa894016a6f1156761e84fd4c5f2b7cf4c198a0166ac692cc618a8bdc99d85f4"
+    }
+  ],
+  "publicationPerformed": false
+}

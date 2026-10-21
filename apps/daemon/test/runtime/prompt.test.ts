@@ -1,6 +1,6 @@
 import { mkdirSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { afterEach, beforeEach, expect, test } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import { resolveAgent } from '../../src/core/agent/resolve.ts'
 import { spawnAgent } from '../../src/core/agent/spawn.ts'
 import { agentLessonProposalRepo, agentRepo, agentReviewRepo } from '../../src/core/index.ts'
@@ -128,4 +128,94 @@ test('attached skill prompt loading refuses a symlinked SKILL.md', () => {
   symlinkSync(secretPath, join(skillDir, 'SKILL.md'))
 
   expect(loadPromptSkills(env.paths.skillsDir, ['unsafe'])).toEqual([])
+})
+
+test('native research guidance is conditional and not a browser-search fallback', () => {
+  createProfile(env.db, env.paths, { id: 'search-profile', defaultModel: 'openai:gpt-6-astra' })
+  const spawned = spawnAgent(env.db, env.paths, { profileId: 'search-profile', teamId: env.teamId })
+  const agent = resolveAgent(env.db, env.paths, spawned.id)
+  const prompt = buildSystemPrompt(agent, { searchGuide: true })
+  expect(prompt).toContain('# Public web research')
+  expect(prompt).toContain('effective URL')
+  expect(prompt).toContain('not proof that you read a source')
+  expect(prompt).toContain('site: query text alone is not enforcement')
+  expect(prompt).not.toContain('# Browser research')
+  expect(buildSystemPrompt(agent)).not.toContain('# Public web research')
+})
+
+describe('browser operating guide (BAZ-069 T10)', () => {
+  function spawnTestAgent(): string {
+    createProfile(env.db, env.paths, { id: 'profile', defaultModel: 'm' })
+    const agent = spawnAgent(env.db, env.paths, { profileId: 'profile', teamId: env.teamId })
+    return agent.id
+  }
+
+  test('the guide is included only when the browser tools are admitted', () => {
+    const agent = resolveAgent(env.db, env.paths, spawnTestAgent())
+    const withGuide = buildSystemPrompt(agent, { browserGuide: true })
+    const withoutGuide = buildSystemPrompt(agent, {})
+    expect(withGuide).toContain('# Browser research (guide v6)')
+    expect(withoutGuide).not.toContain('# Browser research')
+  })
+
+  test('the guide covers the story teaching: status first, observe-act-observe, tabs, cursors, non-replay, citation, blockers, untrusted content', () => {
+    const agent = resolveAgent(env.db, env.paths, spawnTestAgent())
+    const guide = buildSystemPrompt(agent, { browserGuide: true })
+    // 1. availability first; no API key does not mean no browser
+    expect(guide).toContain('browser_status')
+    expect(guide).toMatch(/No search API key does not mean no browser/i)
+    expect(guide).toContain('web_search')
+    expect(guide).toContain('Prefer admitted `web_search` for default discovery')
+    expect(guide).toContain('disclose it rather than silently running browser search')
+    // 2. observe-act-observe; current refs; observationId; stale refusal
+    expect(guide).toMatch(/Observe, act, observe again/i)
+    expect(guide).toContain('observationId')
+    // 3. tabs + cursors + uncertain-action non-replay
+    expect(guide).toMatch(/browser_tabs/)
+    expect(guide).toMatch(/cursor/i)
+    expect(guide).toMatch(/never replay a submission blindly/i)
+    expect(guide).toContain('no action was dispatched')
+    expect(guide).toContain('Other action failures may have taken effect')
+    // 4. citations and observed-vs-inferred distinction
+    expect(guide).toMatch(/Cite the URL/i)
+    // 5. blockers: CAPTCHA/consent; report, don't poll; unattended turns
+    expect(guide).toMatch(/CAPTCHA/i)
+    expect(guide).toMatch(/do not promise success|report the blocker/i)
+    // 6. untrusted data, research is not permission
+    expect(guide).toMatch(/untrusted data/i)
+    expect(guide).toMatch(/never post, purchase/i)
+  })
+
+  test('delegated cookie rejection does not authorize CAPTCHA or broader consent', () => {
+    const agent = resolveAgent(env.db, env.paths, spawnTestAgent())
+    const guide = buildSystemPrompt(agent, { browserGuide: true })
+    expect(guide).toContain('operator has already authorized rejecting optional cookies')
+    expect(guide).toContain('carry out that exact choice autonomously')
+    expect(guide).toContain('Judge the visible consent text and effect, not an exact button label')
+    expect(guide).toContain('“Reject” that declines the optional advertising/analytics uses')
+    expect(guide).toContain('If the operator explicitly required a specific label, site or purpose')
+    expect(guide).toContain('If the scope of rejection is unclear or the choice is absent, stop')
+    expect(guide).toContain('After a stale ref, re-observe before acting')
+    expect(guide).toContain('Never substitute “Accept”, “Accept all”')
+    expect(guide).toContain('not permission to solve CAPTCHA, log in, pay')
+    expect(guide).toContain('Verify the effective destination URL')
+  })
+
+  test('bounded semantic recovery is read-only and keeps blocker and freshness rules', () => {
+    const agent = resolveAgent(env.db, env.paths, spawnTestAgent())
+    const guide = buildSystemPrompt(agent, { browserGuide: true })
+    expect(guide).toContain('browser_snapshot {"scope":"dialog"}')
+    expect(guide).toContain('exactly one accessible region')
+    expect(guide).toContain('never old refs or screenshot coordinates')
+    expect(guide).toContain('Scoping grants no consent, CAPTCHA or permission bypass')
+  })
+
+  test('the guide is bounded prompt content', () => {
+    const agent = resolveAgent(env.db, env.paths, spawnTestAgent())
+    const withGuide = buildSystemPrompt(agent, { browserGuide: true })
+    const withoutGuide = buildSystemPrompt(agent, {})
+    const guideLength = withGuide.length - withoutGuide.length
+    expect(guideLength).toBeGreaterThan(0)
+    expect(guideLength).toBeLessThan(6_000)
+  })
 })

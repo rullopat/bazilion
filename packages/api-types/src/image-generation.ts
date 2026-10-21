@@ -19,6 +19,8 @@ export interface ImageGenerationInput {
 
 /** Bytes travel only to the existing authorized file-delivery path, never tool-result image blocks. */
 export interface ImageGenerationOutput {
+  /** Present only for a freshly validated Codex response; omitted on receipt replay. */
+  outputSource?: 'terminal' | 'completed_stream'
   model: string
   files: Array<{ name: string; mimeType: string; data: string; result: ResultReference }>
 }

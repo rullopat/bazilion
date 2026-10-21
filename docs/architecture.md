@@ -53,6 +53,7 @@ The HTTP API lives in a standalone Hono daemon (`apps/daemon`, port 4321); the w
                               │  teams/<slug>/{memory,…}                     │
                               │  agents/<id>/{sessions/*.jsonl, *.md}         │
                               │  profiles/<id>/  skills/<name>/  logs/        │
+                              │  browsers/<agent-id>/{home,user-data}        │
                               └───────────────────────────────────────────────┘
                                                  ▲
                                                  │ fork (subprocess per turn,
@@ -111,7 +112,7 @@ One file: `src/index.ts`. Pure `fetch` + `TextDecoder` + an NDJSON stream async 
 
 ### 2.1 Paths — `paths.ts`
 
-`resolvePaths(home?)` returns the `Paths` struct: `home`, `db`, `authFile`, `profilesDir`, `agentsDir`, `skillsDir`, `teamsDir`, `logsDir`, plus `profileDir(id)` / `agentDir(id)` / `teamDir(slug)` / `skillDir(name)` computed helpers. Override `home` via `$BAZILION_HOME`, default `~/.bazilion`. Every other core + runtime module takes `Paths` as input — no one recomputes paths independently. **There is no `configFile` field anymore** — the previous `config.json` + `secrets.enc` pair was collapsed into DB tables.
+`resolvePaths(home?)` returns the `Paths` struct: `home`, `db`, `authFile`, `profilesDir`, `agentsDir`, `skillsDir`, `teamsDir`, `logsDir`, `browsersDir`, plus `profileDir(id)` / `agentDir(id)` / `teamDir(slug)` / `skillDir(name)` / `browserDir(agentId)` computed helpers. Override `home` via `$BAZILION_HOME`, default `~/.bazilion`. Every other core + runtime module takes `Paths` as input — no one recomputes paths independently. **There is no `configFile` field anymore** — the previous `config.json` + `secrets.enc` pair was collapsed into DB tables.
 
 ### 2.2 DB client — `db/client.ts` + `db/migrate.ts`
 
@@ -244,6 +245,7 @@ See `agent-engine.md` for the full turn-loop walkthrough. Structural summary her
   - `home.ts` — `home_read / home_write / home_list`. Scope: `agents/<id>/` with a hard whitelist of identity files (`SOUL.md`, `IDENTITY.md`, `BOOTSTRAP.md`, `AGENTS.md`, `TOOLS.md`). No path arg, no traversal. `BOOTSTRAP.md` is read-only — its lifecycle belongs to `bootstrap_done`.
   - `messaging.ts` — `send_message / read_inbox / wait_for_reply`. Takes a `MessagingHost` (not a DB handle) — the worker's host proxies via Node IPC, the daemon's host calls repos directly.
   - `web.ts` + `web-ssrf.ts` + `web-extract.ts` — `web_search` (Brave → SearXNG fallback) + `web_fetch` (Readability + markdown, SSRF guard, 15-min LRU cache, UA spoof, 20s timeout, 3 max redirects).
+  - `browser.ts` — ordinary-turn `browser_*` tool definitions. Each call proxies through identity-bound worker IPC to the daemon-owned persistent Playwright session; refs require the matching current `observationId`.
   - `bootstrap.ts` — `bootstrap_done` (deletes `BOOTSTRAP.md` after onboarding).
   - Coding tools are policy-selected: with sandboxing off, `read`/`bash`/`edit`/`write`/`grep`/`find`/`ls` come from pi-coding-agent's `createCodingTools(cwd, …)` with the Team directory as `cwd`; with Docker sandboxing on, all host-backed coding tools are hidden and only Bazilion's containerized `bash` is registered.
 - **`memory/`** — `qmd.ts` (BM25 via `@tobilu/qmd`, one `.qmd-index.sqlite` per team memory dir, `storeCache` module-scope Map dedupes per-process), `files.ts` (zero-deps substring fallback, currently dormant), `types.ts`.
@@ -491,10 +493,10 @@ The result is wrapped with `createClient({serverUrl, token})` from `@bazilion/cl
 |---|---|---|
 | `serve.ts` | `serve [--port N] [--host H]` | (direct) — spawns `apps/daemon/src/index.ts` under `node --import tsx/esm`. On first run the daemon auto-bootstraps `~/.bazilion` (mkdir, migrate, mint bootstrap token to `auth.json`) before binding the port. |
 | `dashboard.ts` | `dashboard [--port N] [--no-open]` | (direct) — reuses or starts the daemon, starts the bundled TanStack Start web server from `dist/web`, prints the dashboard URL + auth token path, and opens the browser by default. |
-| `uninstall.ts` | `uninstall` | (direct) — two-tier teardown (reset vs full). Both tiers remove `bazilion.db*`, its paired `auth.json`, profiles, Agents, Teams, and the legacy `groups/`, `config.json`, and `secrets.enc` paths; managed symlink slots are unlinked without traversing their external targets. `--all` additionally removes logs and skills, then removes a real home when no unmanaged entries remain; a symlinked home root stays as an empty stable slot for interruption recovery. |
+| `uninstall.ts` | `uninstall` | (direct) — two-tier teardown (reset vs full). Both tiers remove `bazilion.db*`, its paired `auth.json`, profiles, Agents, Teams, managed browser profiles (only after fail-closed live-owner checks), and the legacy `groups/`, `config.json`, and `secrets.enc` paths; managed symlink slots are unlinked without traversing their external targets. `--all` additionally removes logs and skills, then removes a real home when no unmanaged entries remain; a symlinked home root stays as an empty stable slot for interruption recovery. |
 | `login.ts` | `login` | (direct) — writes `auth.json:remote` (or `--clear` to remove it). |
 | `token.ts` | `create / list / revoke / show-local` | `/api/tokens/*`. `show-local` reads the bootstrap token from local `auth.json`. |
-| `agent.ts` | `spawn / edit / list / show / chat / archive / unarchive / delete / move / cancel / skill / chat-{reset,trim,context,compact} / session-head` | `/api/agents*` — `chat` drains NDJSON from `/api/agents/:id/chat`; `cancel` POSTs to `/api/agents/:id/cancel`. |
+| `agent.ts` | `spawn / edit / list / show / chat / archive / unarchive / delete / move / cancel / skill / browser {status,stop,reset} / chat-{reset,trim,context,compact} / session-head` | `/api/agents*` — `chat` drains NDJSON from `/api/agents/:id/chat`; `cancel` POSTs to `/api/agents/:id/cancel`; browser status/stop/reset use the daemon-owned lifecycle endpoints. |
 | `profile.ts` | `create / list / show / edit / update / delete` | `/api/profiles*`. |
 | `team.ts` | `add [--link] / list / rm / user-md {show,set,clear}` | `/api/teams*`. |
 | `skill.ts` | `list / import / rm` | `/api/skills*` (import uses multipart). |
@@ -524,7 +526,7 @@ The daemon's `apps/daemon/src/index.ts` eagerly calls `getCtx()` before `serve()
 getCtx()
   └─ bootstrap()
        └─ require bazilion.db + auth.json to be both present or both absent
-       └─ on a fresh pair, mkdir ~/.bazilion + {profiles,agents,skills,teams,logs}
+       └─ on a fresh pair, mkdir ~/.bazilion + {profiles,agents,skills,teams,logs} (browser slots are lazy under browsers/)
        └─ openDb + runMigrations (reject an unknown or newer schema)
        └─ if both identity artifacts were absent:
             webTokenRepo.create(db, 'bootstrap') → randomBytes(24).toString('hex')

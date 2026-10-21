@@ -1,0 +1,115 @@
+{
+  "startedAt": "2026-10-04T16:07:32.482Z",
+  "endedAt": "2026-10-04T16:08:21.674Z",
+  "tools": [
+    {
+      "id": "call_6dDUl12HDczoAXF0nLmp5xAl|fc_0beb77b4d2c90c8b016ac279c9ef3c87d2b81c37d8fd152bba",
+      "name": "image_generate",
+      "at": "2026-10-04T16:07:40.973Z",
+      "approvedPrompt": true
+    }
+  ],
+  "toolErrors": [],
+  "fileReceipts": [
+    {
+      "resultId": "d42c7f34-879c-44ed-a153-15d951384d42",
+      "mimeType": "image/png",
+      "byteLength": 1840520,
+      "sha256": "4209bc5ef2b5064194036cc8a0c9e6445c82be6b95af18c926d0044b73868d58"
+    }
+  ],
+  "errors": [],
+  "doneCount": 1,
+  "fatalCount": 0,
+  "streamBytes": 2463546,
+  "cleanEof": true,
+  "cancelReason": null,
+  "finalAnswer": "Saved new Result: **robot-balcony-brighter.png** (`d42c7f34-879c-44ed-a153-15d951384d42`) for human inspection. The original remains unchanged.",
+  "results": [
+    {
+      "id": "d42c7f34-879c-44ed-a153-15d951384d42",
+      "teamId": "baz059-recovery-trial-20261004",
+      "agentId": "f7c51944-8867-44ac-8ed0-002abef6ab27",
+      "sourceKind": "session_tool",
+      "sessionId": "dfe8e1d6-0f7d-41f0-846f-5eeb3322f830",
+      "toolCallId": "call_6dDUl12HDczoAXF0nLmp5xAl|fc_0beb77b4d2c90c8b016ac279c9ef3c87d2b81c37d8fd152bba",
+      "reviewPacketId": null,
+      "reviewRevision": null,
+      "name": "robot-balcony-brighter.png",
+      "mimeType": "image/png",
+      "byteLength": 1840520,
+      "sha256": "4209bc5ef2b5064194036cc8a0c9e6445c82be6b95af18c926d0044b73868d58",
+      "createdAt": 1791130097677,
+      "releasedAt": 1791130097761,
+      "deletedAt": null,
+      "sourceIndex": 0,
+      "imageModel": "openai-codex:gpt-image-2",
+      "downloadPath": "/tmp/baz059-rework-trial-sKOrkG/d42c7f34-879c-44ed-a153-15d951384d42.png"
+    }
+  ],
+  "chatHttpStatus": 200,
+  "parentUsage": {
+    "responses": 2,
+    "input": 1122,
+    "output": 123,
+    "cacheRead": 12288,
+    "cacheWrite": 0,
+    "totalTokens": 13533,
+    "catalogEstimate": 0.0047028
+  },
+  "parentModels": [
+    "openai-codex:gpt-6.1-sol"
+  ],
+  "canonicalTools": [
+    {
+      "toolName": "image_generate",
+      "isError": false,
+      "results": [
+        {
+          "resultId": "d42c7f34-879c-44ed-a153-15d951384d42"
+        }
+      ],
+      "outputSource": "completed_stream"
+    }
+  ],
+  "operations": [
+    {
+      "model": "openai-codex:gpt-image-2",
+      "outcome": "completed",
+      "usage": {
+        "input": 2414,
+        "output": 182,
+        "cacheRead": null,
+        "cacheWrite": null,
+        "totalTokens": 2596,
+        "estimatedCost": null
+      }
+    }
+  ],
+  "success": true,
+  "guardEvents": [
+    {
+      "at": "2026-10-04T16:07:30.816Z",
+      "kind": "guard_installed",
+      "pid": 1478028
+    },
+    {
+      "at": "2026-10-04T16:07:32.691Z",
+      "kind": "worker_admission",
+      "surface": "configured_operator_http",
+      "imageEnabled": true,
+      "selectedCredentialEnv": true,
+      "trialPreloadInChild": true
+    },
+    {
+      "at": "2026-10-04T16:07:41.080Z",
+      "kind": "image_dispatch"
+    },
+    {
+      "at": "2026-10-04T16:07:43.355Z",
+      "kind": "image_response",
+      "httpStatus": 200,
+      "media": "missing"
+    }
+  ]
+}

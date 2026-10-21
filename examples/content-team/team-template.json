@@ -4,7 +4,7 @@
   "template": {
     "id": "content-preparation",
     "name": "Content preparation — manual Mastodon handoff",
-    "userMd": "# Content preparation\n\nThis Team prepares Mastodon content for human review and manual handoff only. The coordinator is the user's contact. Topic, purpose, audience and timing must be confirmed before work; no brief or usage grant is prefilled. Store project briefs in Team memory, not as invented user preferences. No social credentials, posting, recurring triggers or automatic approval are authorized by creating this Team. The operator must supply the current same-Team role UUIDs from the canonical roster before delegation. Native web_search is currently absent in protected peer/scheduled turns: report the discovery blocker, never silently switch posture or call supplied-URL retrieval a search.\n"
+    "userMd": "# Content preparation\n\nThis Team prepares Mastodon content for human review and manual handoff only. The coordinator is the user's contact. Topic, purpose, audience and timing must be confirmed before work; no brief or usage grant is prefilled. Store project briefs in Team memory, not as invented user preferences. No social credentials, posting, recurring triggers or automatic approval are authorized by creating this Team. The operator must supply the current same-Team role UUIDs from the canonical roster before delegation. Protected peer/scheduled discovery requires daemon-owned web_search through an admitted SearXNG backend; ordinary native/browser research is not an unattended substitute. If required discovery is disabled or unavailable, report the blocker, never silently switch posture or call supplied-URL retrieval a search.\n"
   },
   "slots": [
     {

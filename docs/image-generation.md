@@ -1,7 +1,13 @@
 # Image generation
 
 BAZ-059 adds an opt-in `image_generate` tool to normal Agent turns, including protected turns.
-It has OpenAI API-key, ChatGPT/Codex login and optional OpenRouter routes. Image models are separate
+It has OpenAI API-key, ChatGPT/Codex login and optional OpenRouter routes.
+**ChatGPT login alone supports image generation; an OpenAI API key is not required for that route.**
+The operator-approved required live qualification is now ChatGPT-only: generation, rework and
+protected HTTP samples visually accepted. Direct OpenAI and both OpenRouter selections remain
+implemented/offline-tested but **live-unqualified**, with optional live qualification deferred.
+[Scope decision and limits](backlog/BAZ-059-chatgpt-only-live-scope-20261004.md).
+Image models are separate
 from text models; Automatic authentication selection follows enabled OpenAI text providers. Restricted reviewers and verification specialists cannot receive or call it.
 Agent turns remain Linux-only.
 
@@ -106,11 +112,26 @@ file authorizer. A communication approval is not final-social-post editorial app
 - Missing credentials, disabled configuration and unsupported models refuse before dispatch. Provider
   failure/refusal reports access/quota guidance without echoing provider-controlled errors or secrets.
   Empty/text-only, malformed and oversized responses never become successful saved images.
+  Codex protocol refusals expose only closed phase/media/terminal/reason codes, never upstream
+  error text. Empty or omitted final output can use actual completed image snapshots only after
+  strict lifecycle, identity, completeness and full-stream validation. Partial images/progress are
+  never recovered as final images. Insufficient or contradictory evidence refuses; do not blindly retry.
 - File bytes and operation completion commit atomically. Storage failure can lose an already-generated
   image; it does not silently regenerate it. Free Result storage before making another request.
-- A daemon crash after capture but before delivery authorization can also lose the image: restart
-  cleanup reclaims abandoned private bytes and keeps a tombstone, without generating again. Billing
-  may already have occurred. Already-authorized Results remain available after restart.
+- Atomically committed image captures are retained across daemon restart even before delivery
+  authorization. Retention requires the matching completed image-operation identity; image metadata
+  alone does not preserve an ordinary abandoned file. Retained bytes stay private, count against the
+  existing 1 GiB Results quota, and do not trigger automatic delivery or regeneration. Deleted
+  captures stay deleted. Provider/storage failures **before commit** can still lose an image despite
+  billing or account usage.
+- For committed private captures, use **Retained private images** on the Team Results page or
+  `bazilion result private-images --team <team>`. Its owner-only inventory exposes IDs, producer,
+  capture time and size, not image contents. Explicit recovery follows the existing Team Policy and
+  approval path without generating again; confirmed discard frees eligible private bytes without
+  disclosing them and preserves the no-regeneration tombstone. Active producers/live delivery holds
+  must settle first; closed approvals stay closed and ineligible original producers cannot recover.
+  See [Saved Agent results](results.md#retained-private-images) for CLI commands and limits. This is
+  stored-byte recovery, not recovery of a provider response that was never committed.
 
 These are operational request/storage limits, **not a precise dollar budget**. Pi's recorded costs
 are estimates; each service's invoice/account limits are authoritative. Unknown costs stay unknown,
@@ -146,8 +167,41 @@ platform credentials and native social connectors are separate future scope.
 Deterministic tests use synthetic images with Pi's real OpenRouter adapter and the direct OpenAI/
 Codex transports. Real one-shot Agent turns exercise all three routes through mocked HTTP, not live
 accounts. They do not establish image quality, entitlement or upstream compatibility in production.
-Live acceptance for **every advertised selection** requires separately authorized credentials and
-usage/spending limits before 0.22 release qualification. No paid calls are made by the test suite.
+Live acceptance for **every advertised selection** remains part of the 0.23.0 plan and requires
+separately authorized credentials and usage/spending limits. The [2026-10-03 preflight and live
+proposal](backlog/BAZ-059-live-qualification-plan-20261003.md) rechecked 71 focused tests but made
+no live image call. No paid calls are made by the test suite.
+
+The [2026-10-04 guarded subscription attempt](backlog/BAZ-059-evidence-refusal-and-trial-20261004.md)
+sent one image request and pinpointed `terminal_output_empty` after HTTP 200/missing MIME. No image
+was saved; usage is uncertain. Earlier event bytes were not retained, so recoverability is unknown.
+Reviewed closed diagnostics do not relax image acceptance or establish live entitlement/quality.
+The operator's images-off posture and account were restored; no automatic retry is performed.
+
+The subsequent [strict recovery integration](backlog/BAZ-059-image-recovery-integration-20261004.md)
+passed offline real-worker/host tests and independent review. Fresh Codex tool results retain
+`imageEvidence.outputSource` (`terminal` or `completed_stream`) in canonical Pi details; receipt
+replays omit this fact instead of guessing. This is evidence origin, not model/quality attestation.
+The subsequent [authorized subscription trial](backlog/BAZ-059-recovery-trial-20261004.md) saved one
+PNG using completed-stream evidence, with matching downloaded bytes after restart and no retry.
+It returned **1374×1145 instead of requested 1024×1024**. The operator accepted its visual quality
+(“the image looks great”); exact-size compliance remains unproven. This is one observed route/account, not blanket entitlement or all-route qualification.
+Past unretained images remain unavailable; no failed operation was replayed. A subsequent
+[independent bounded evidence review](backlog/BAZ-059-qualification-status-20261004.md) accepted this
+one source journey with limits. Exact dimension controls remain outside current scope; the recorded
+mismatch does not imply automatic resizing or regeneration.
+
+A [fresh Linux installed-artifact check](backlog/BAZ-059-packed-closeout-20261004.md) also covers
+all four selections with synthetic providers, browser generation/rework, persistent cards,
+preview/download at desktop/mobile widths and restart. Those offline mechanics checks do not
+qualify the three remaining paid live routes.
+
+[Subsequent authorized subscription rework and protected HTTP trials](backlog/BAZ-059-rework-and-protected-trials-20261004.md)
+saved two more images, one request each, matching hashes after restart and the accepted original
+unchanged. The protected worker's actual kind and bounded credential-environment check were
+recorded. This is protected HTTP, not unattended scheduled/inbox qualification. The operator visually
+accepted both new images (“both images looks great”); actual dimensions still differ from requested size. No further
+regeneration is authorized or queued.
 
 The Codex route follows the separate image-tool Responses protocol observed in
 [OpenClaw](https://github.com/openclaw/openclaw/blob/e1b8056605a912d45ef3329b3a70a3de81c973ed/extensions/openai/image-generation-provider.ts).

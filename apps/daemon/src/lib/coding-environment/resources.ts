@@ -16,11 +16,17 @@ type Resource =
   | { kind: 'container'; identity: DockerContainerIdentity }
 interface Row {
   id: string
+  writer_id: string
   kind: Resource['kind']
   identity_json: string
   cleanup_confirmed: number
   creation_acknowledged: number
   recovery_mode?: 'owned' | 'restored'
+}
+
+interface ManagementCleanup {
+  confirmedWorkersOnly: true
+  record?: Pick<Row, 'id' | 'writer_id' | 'kind' | 'identity_json' | 'creation_acknowledged'>
 }
 
 export class WorkspaceResources {
@@ -57,14 +63,31 @@ export class WorkspaceResources {
     })
   }
 
-  async cleanupResource(id: string, observedNormalExit = false): Promise<boolean> {
+  async cleanupResource(
+    id: string,
+    observedNormalExit = false,
+    management?: ManagementCleanup,
+  ): Promise<boolean> {
     const row = this.db.raw
       .query<Row, [string]>(`SELECT r.*, w.recovery_mode FROM workspace_resources r
         JOIN workspace_writers w ON w.id = r.writer_id WHERE r.id = ?`)
       .get(id)
     if (!row) return false
+    const selected = management?.record
+    if (
+      selected &&
+      (row.id !== selected.id ||
+        row.writer_id !== selected.writer_id ||
+        row.kind !== selected.kind ||
+        row.identity_json !== selected.identity_json ||
+        row.creation_acknowledged !== selected.creation_acknowledged)
+    )
+      return false
     if (row.recovery_mode === 'restored') return false
     if (row.cleanup_confirmed) return true
+    // Enforce the management restriction at the effect boundary too, after re-reading the
+    // record. A concurrent change must not turn container cleanup into worker signalling.
+    if (management?.confirmedWorkersOnly && row.kind === 'worker') return false
     const identity = JSON.parse(row.identity_json)
     const confirmed =
       row.kind === 'worker'
@@ -76,7 +99,7 @@ export class WorkspaceResources {
   }
 
   /** Workers first: stop new container requests before removing recorded containers. */
-  async teardown(writer: WorkspaceWriter): Promise<boolean> {
+  async teardown(writer: WorkspaceWriter, management?: ManagementCleanup): Promise<boolean> {
     const rows = this.db.raw
       .query<Row, [string]>(
         "SELECT * FROM workspace_resources WHERE writer_id = ? ORDER BY CASE kind WHEN 'worker' THEN 0 ELSE 1 END",
@@ -89,7 +112,8 @@ export class WorkspaceResources {
     )
       return false
     for (const row of rows) {
-      if (!(await this.cleanupResource(row.id))) return false
+      const selected = management ? { ...management, record: row } : undefined
+      if (!(await this.cleanupResource(row.id, false, selected))) return false
     }
     return true
   }

@@ -1,0 +1,600 @@
+{
+  "scope": "Partial pre-version source qualification; dedicated security gate FAILED, not release approval",
+  "runtime": "Node24.20.0 with pnpm12.14.0; isolated private native dependency/web build copies; source public versions remain0.22.0",
+  "archives": [
+    {
+      "path": "docs/testing/evidence/0.23.0-candidate-20261019/initial-tests.json.gz",
+      "sha256": "4dcb2e0bb23478745c53c0425a87bcead6cebc26e89361db21228ef9953c83c4",
+      "uncompressedSha256": "3f7e0b0b2a436ec7d48cbe8f7bee60663b1443db5e94e3ca3c4588781eee0030"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-candidate-20261019/node24-tests.json.gz",
+      "sha256": "7da6531a464c45e80a3184e2cfc2e06968fcb9ecc5e36dc3f964290713ed78d2",
+      "uncompressedSha256": "c03f29df13eb959340da190ac7b47def226b204451a6067101a0f97ee019ec1e"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-candidate-20261019/initial-lint.json.gz",
+      "sha256": "6d29a79a75eac6fbe098a1cb395206de4ce24cebce5e5fdb26b27657466335d0",
+      "uncompressedSha256": "313f77c6ce38ba82ef3d54c1ec557dd0ad1acafb1abcad04a744857f9854cb17"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-candidate-20261019/final-lint.json.gz",
+      "sha256": "caf3e8aaf7d2f7d220f2ee1dfe3d32d7c1f8fd4acc7f15c112a15e5b494a4651",
+      "uncompressedSha256": "a82018eb3f526cb8af94944d8bc14856cd446c7c4befa74511a0917972c200c4"
+    }
+  ],
+  "firstFullSuite": {
+    "passed": 2528,
+    "failed": 70,
+    "pending": 55,
+    "limits": "Includes six unexecuted web gateway cases behind a failed build hook, not all intentional skips"
+  },
+  "correctedFullSuite": {
+    "passed": 2604,
+    "failed": 0,
+    "pending": 49,
+    "limits": "Predates the final fixture-only image-crash diagnostic instrumentation; not a final versioned artifact pass"
+  },
+  "skips": [
+    {
+      "file": "apps/cli/test/agent-coding-handoff.test.ts",
+      "test": "existing inbox handoff releases ownership, runs protected peer and resumes with authorized evidence",
+      "status": "skipped"
+    },
+    {
+      "file": "apps/cli/test/agent-coding.test.ts",
+      "test": "missing downloadable artifacts produce a concrete blocker with no host fallback",
+      "status": "skipped"
+    },
+    {
+      "file": "apps/cli/test/browser-research.test.ts",
+      "test": "offline managed-browser research journey (T16) uses the real proxy, then researches through refs/tabs and stops at blockers or uncertainty",
+      "status": "skipped"
+    },
+    {
+      "file": "apps/cli/test/browser-research.test.ts",
+      "test": "offline managed-browser research journey (T16) cancellation settles a worker while its provider request is pending",
+      "status": "skipped"
+    },
+    {
+      "file": "apps/cli/test/content-team-research.test.ts",
+      "test": "researcher wake runs protected: private fetch refused, cross-specialist send denied",
+      "status": "skipped"
+    },
+    {
+      "file": "apps/cli/test/content-team-research.test.ts",
+      "test": "researcher wake container holds no provider or search credentials",
+      "status": "skipped"
+    },
+    {
+      "file": "apps/cli/test/content-team-research.test.ts",
+      "test": "researcher wake discovers sources through the daemon-owned search backend",
+      "status": "skipped"
+    },
+    {
+      "file": "apps/cli/test/content-team-scheduling-lifecycle.test.ts",
+      "test": "CT-11: disable pauses cycles, re-enable resumes, delete stops them permanently",
+      "status": "skipped"
+    },
+    {
+      "file": "apps/cli/test/content-team-scheduling-lifecycle.test.ts",
+      "test": "CT-13 retry half: a failing turn retries with a bounded attempt count, then fails terminally",
+      "status": "skipped"
+    },
+    {
+      "file": "apps/cli/test/content-team-scheduling-lifecycle.test.ts",
+      "test": "CT-09 partial: a TZ=UTC daemon fires cron at the UTC minute, not the test-local minute",
+      "status": "skipped"
+    },
+    {
+      "file": "apps/cli/test/content-team-scheduling-recovery.test.ts",
+      "test": "CT-10: a due minute while the Agent is busy defers the dispatch; it runs exactly once after release",
+      "status": "skipped"
+    },
+    {
+      "file": "apps/cli/test/content-team-scheduling-recovery.test.ts",
+      "test": "CT-12a: a trigger created before a due minute survives a daemon restart and fires once",
+      "status": "skipped"
+    },
+    {
+      "file": "apps/cli/test/content-team-scheduling.test.ts",
+      "test": "two actual cron minutes drive coordinator cycles with distinct dispatches",
+      "status": "skipped"
+    },
+    {
+      "file": "apps/cli/test/content-team-scheduling.test.ts",
+      "test": "CT-16 partial: the scheduled turn itself runs in the protected container posture",
+      "status": "skipped"
+    },
+    {
+      "file": "apps/cli/test/content-team-scheduling.test.ts",
+      "test": "CT-16 negative: a real scheduled worker refuses an unadmitted host read tool",
+      "status": "skipped"
+    },
+    {
+      "file": "apps/cli/test/content-team-scheduling.test.ts",
+      "test": "scheduled approval grants are occurrence-specific: hold, approve, then hold and deny next cycle",
+      "status": "skipped"
+    },
+    {
+      "file": "apps/daemon/test/runtime/coding-recovery.integration.test.ts",
+      "test": "coding Docker lifecycle recovery acknowledges create before start and preserves the real command exit code",
+      "status": "skipped"
+    },
+    {
+      "file": "apps/daemon/test/runtime/coding-recovery.integration.test.ts",
+      "test": "coding Docker lifecycle recovery restart keeps a missing unacknowledged create blocked until late materialization is actually removed",
+      "status": "skipped"
+    },
+    {
+      "file": "apps/daemon/test/runtime/shell-docker.integration.test.ts",
+      "test": "Docker bash integration isolates filesystem, env, and network while keeping the team mount writable",
+      "status": "skipped"
+    },
+    {
+      "file": "apps/daemon/test/runtime/shell-docker.integration.test.ts",
+      "test": "Docker bash integration reports an unavailable local image without pulling or falling back",
+      "status": "skipped"
+    },
+    {
+      "file": "apps/daemon/test/runtime/shell-docker.integration.test.ts",
+      "test": "Docker bash integration abort stops and removes the live exact-name container",
+      "status": "skipped"
+    },
+    {
+      "file": "apps/daemon/test/lib/browser-managed.integration.test.ts",
+      "test": "managed browser adapter lane (BAZILION_TEST_BROWSER=1) argv pins direct local spawn: sandbox on, owned loopback CDP, proxy, denials, explicit binary",
+      "status": "skipped"
+    },
+    {
+      "file": "apps/daemon/test/lib/browser-managed.integration.test.ts",
+      "test": "managed browser adapter lane (BAZILION_TEST_BROWSER=1) the child env is a scrubbed allowlist; ambient secrets never reach the browser",
+      "status": "skipped"
+    },
+    {
+      "file": "apps/daemon/test/lib/browser-managed.integration.test.ts",
+      "test": "managed browser adapter lane (BAZILION_TEST_BROWSER=1) loopback HTTP/iframe/WebSocket/popup egress hits zero instrumented targets",
+      "status": "skipped"
+    },
+    {
+      "file": "apps/daemon/test/lib/browser-managed.integration.test.ts",
+      "test": "managed browser adapter lane (BAZILION_TEST_BROWSER=1) WebRTC cannot send UDP to a loopback listener under the pinned policy",
+      "status": "skipped"
+    },
+    {
+      "file": "apps/daemon/test/lib/browser-managed.integration.test.ts",
+      "test": "managed browser adapter lane (BAZILION_TEST_BROWSER=1) control arm (denials removed) demonstrates the WebRTC/UDP exposure",
+      "status": "skipped"
+    },
+    {
+      "file": "apps/daemon/test/lib/browser-managed.integration.test.ts",
+      "test": "managed browser adapter lane (BAZILION_TEST_BROWSER=1) CDP default context retains service workers; no unsupported block setting is claimed",
+      "status": "skipped"
+    },
+    {
+      "file": "apps/daemon/test/lib/browser-managed.integration.test.ts",
+      "test": "managed browser adapter lane (BAZILION_TEST_BROWSER=1) downloads are denied by explicit CDP policy; managed download locations stay empty",
+      "status": "skipped"
+    },
+    {
+      "file": "apps/daemon/test/lib/browser-managed.integration.test.ts",
+      "test": "managed browser adapter lane (BAZILION_TEST_BROWSER=1) bounded capture is available and measurable (input for T08 paging)",
+      "status": "skipped"
+    },
+    {
+      "file": "apps/daemon/test/lib/browser-managed.integration.test.ts",
+      "test": "managed browser adapter lane (BAZILION_TEST_BROWSER=1) graceful restart: cookies persist and persisted service-worker egress stays behind proxy",
+      "status": "skipped"
+    },
+    {
+      "file": "apps/daemon/test/lib/browser-managed.integration.test.ts",
+      "test": "managed browser adapter lane (BAZILION_TEST_BROWSER=1) real ref mutations refuse changed accessible meaning and accept a fresh observation (light)",
+      "status": "skipped"
+    },
+    {
+      "file": "apps/daemon/test/lib/browser-managed.integration.test.ts",
+      "test": "managed browser adapter lane (BAZILION_TEST_BROWSER=1) real ref mutations refuse changed accessible meaning and accept a fresh observation (shadow)",
+      "status": "skipped"
+    },
+    {
+      "file": "apps/daemon/test/lib/browser-managed.integration.test.ts",
+      "test": "managed browser adapter lane (BAZILION_TEST_BROWSER=1) real ref mutations refuse changed accessible meaning and accept a fresh observation (dynamic-shadow)",
+      "status": "skipped"
+    },
+    {
+      "file": "apps/daemon/test/lib/browser-managed.integration.test.ts",
+      "test": "managed browser adapter lane (BAZILION_TEST_BROWSER=1) post-click body settling is bounded and never replays the action (restores=true)",
+      "status": "skipped"
+    },
+    {
+      "file": "apps/daemon/test/lib/browser-managed.integration.test.ts",
+      "test": "managed browser adapter lane (BAZILION_TEST_BROWSER=1) post-click body settling is bounded and never replays the action (restores=false)",
+      "status": "skipped"
+    },
+    {
+      "file": "apps/daemon/test/lib/browser-managed.integration.test.ts",
+      "test": "managed browser adapter lane (BAZILION_TEST_BROWSER=1) R12 captures a small body below an oversized head without a native main",
+      "status": "skipped"
+    },
+    {
+      "file": "apps/daemon/test/lib/browser-managed.integration.test.ts",
+      "test": "managed browser adapter lane (BAZILION_TEST_BROWSER=1) R12 recovers hydrated ARIA main and consent dialog without stale clicks",
+      "status": "skipped"
+    },
+    {
+      "file": "apps/daemon/test/lib/browser-managed.integration.test.ts",
+      "test": "managed browser adapter lane (BAZILION_TEST_BROWSER=1) a dynamic banner refuses stale search submission; a settled page accepts fresh refs",
+      "status": "skipped"
+    },
+    {
+      "file": "apps/daemon/test/lib/browser-managed.integration.test.ts",
+      "test": "managed browser adapter lane (BAZILION_TEST_BROWSER=1) native whole-document evidence distinguishes no-op writes without excluding outside context",
+      "status": "skipped"
+    },
+    {
+      "file": "apps/daemon/test/lib/browser-managed.integration.test.ts",
+      "test": "managed browser adapter lane (BAZILION_TEST_BROWSER=1) offline dialog-target prototype distinguishes a ticker from changed control evidence",
+      "status": "skipped"
+    },
+    {
+      "file": "apps/daemon/test/lib/browser-managed.integration.test.ts",
+      "test": "managed browser adapter lane (BAZILION_TEST_BROWSER=1) R12 semantic scopes exclude hidden roots and refuse missing or multiple matches",
+      "status": "skipped"
+    },
+    {
+      "file": "apps/daemon/test/lib/browser-managed.integration.test.ts",
+      "test": "managed browser adapter lane (BAZILION_TEST_BROWSER=1) cancelling active browser navigation retires the real owned process and marker",
+      "status": "skipped"
+    },
+    {
+      "file": "apps/daemon/test/lib/browser-managed.integration.test.ts",
+      "test": "managed browser adapter lane (BAZILION_TEST_BROWSER=1) the production launcher: real marker/lock bookkeeping, guards, close, crash recovery",
+      "status": "skipped"
+    },
+    {
+      "file": "apps/daemon/test/lib/browser-managed.integration.test.ts",
+      "test": "managed browser adapter lane (BAZILION_TEST_BROWSER=1) headed direct launch opens a local window without headless or pipe flags",
+      "status": "skipped"
+    },
+    {
+      "file": "apps/daemon/test/lib/browser-managed.integration.test.ts",
+      "test": "managed browser adapter lane (BAZILION_TEST_BROWSER=1) teardown settles within bounds: browser close, process exit, proxy close",
+      "status": "skipped"
+    },
+    {
+      "file": "apps/daemon/test/lib/verification-container.integration.test.ts",
+      "test": "verification container posture a captured check observes the container, not the host",
+      "status": "skipped"
+    },
+    {
+      "file": "apps/daemon/test/lib/verification-container.integration.test.ts",
+      "test": "verification container posture a captured check cannot write the Team shared memory",
+      "status": "skipped"
+    },
+    {
+      "file": "apps/daemon/test/lib/verification-container.integration.test.ts",
+      "test": "verification container posture a captured check has no network",
+      "status": "skipped"
+    },
+    {
+      "file": "apps/daemon/test/lib/verification-container.integration.test.ts",
+      "test": "verification container posture the container a check created is registered against the workspace lease",
+      "status": "skipped"
+    }
+  ],
+  "wholeLint": {
+    "initial": {
+      "changed": 0,
+      "unchanged": 768,
+      "matches": 0,
+      "duration": 258526758,
+      "errors": 14,
+      "warnings": 112,
+      "infos": 14,
+      "skipped": 0,
+      "suggestedFixesSkipped": 0,
+      "diagnosticsNotPrinted": 0,
+      "scannerDuration": 1234262
+    },
+    "corrected": {
+      "changed": 0,
+      "unchanged": 766,
+      "matches": 0,
+      "duration": 286803885,
+      "errors": 0,
+      "warnings": 112,
+      "infos": 14,
+      "skipped": 0,
+      "suggestedFixesSkipped": 0,
+      "diagnosticsNotPrinted": 0,
+      "scannerDuration": 1371981
+    },
+    "configuration": "Exclude local .pi development state; disable formatter only for retained raw evidence paths, keep JSON parsing/linting",
+    "duplicateJsonNegativeProbe": {
+      "summary": {
+        "changed": 0,
+        "unchanged": 1,
+        "matches": 0,
+        "duration": 1019929,
+        "errors": 1,
+        "warnings": 0,
+        "infos": 0,
+        "skipped": 0,
+        "suggestedFixesSkipped": 0,
+        "diagnosticsNotPrinted": 0,
+        "scannerDuration": 647528
+      },
+      "diagnostics": [
+        {
+          "severity": "error",
+          "message": "The key duplicate was already declared.",
+          "category": "lint/suspicious/noDuplicateObjectKeys",
+          "location": {
+            "path": "docs/testing/evidence/lint-policy-probe-9h9wfbtl.json",
+            "start": {
+              "line": 1,
+              "column": 2
+            },
+            "end": {
+              "line": 1,
+              "column": 13
+            }
+          },
+          "advices": [
+            {
+              "start": {
+                "line": 1,
+                "column": 16
+              },
+              "end": {
+                "line": 1,
+                "column": 27
+              },
+              "text": "If a key is defined multiple times, only the last definition takes effect. Previous definitions are ignored."
+            }
+          ]
+        }
+      ],
+      "command": "check"
+    },
+    "initialStdinProbe": "Unusable for detailed assertion: CLI echoed input and reported contents not fixed. Retried as a temporary actual evidence-path file; duplicate rejected, owned temporary file removed."
+  },
+  "styleEquivalence": {
+    "method": "TypeScript forEachChild structural AST/token text, plus import binding/module sets; excludes trivia, list trailing separators and import ordering. Initial literal-token comparison rejected formatter-added trailing commas, not a code change.",
+    "files": [
+      {
+        "path": "apps/cli/src/paths.ts",
+        "beforeSha256": "04604b49b65aa688d75385bd41d35c98ebba991fd3499111c3b6f20e8ed9edd5",
+        "afterSha256": "f9157e1cf6b4dcd7d25b9f5893dcd475207ae2c7893ac7adf263fa2a82c5921c",
+        "astIgnoringTriviaTrailingSeparatorsAndImportOrderEqual": true
+      },
+      {
+        "path": "apps/daemon/src/lib/repository-context/index.ts",
+        "beforeSha256": "db43cafea17266ac57ada462db6f74f6e8c47905074976afdad6f79104a4e985",
+        "afterSha256": "0b8861b77481ff2d29ae106c5076bf1079b1b7182e01b7c8bd4abfd652fec877",
+        "astIgnoringTriviaTrailingSeparatorsAndImportOrderEqual": true
+      },
+      {
+        "path": "apps/daemon/src/lib/result-source.ts",
+        "beforeSha256": "4c06dd5c7176449e7dd33f7f76c2bd430f4975e94add1d4f38c4749ce434745d",
+        "afterSha256": "0ea63b935f7cd65034c82ec79c61770ccc80bdf59881dc47d48d3b65bd815459",
+        "astIgnoringTriviaTrailingSeparatorsAndImportOrderEqual": true
+      },
+      {
+        "path": "apps/daemon/src/runtime/worker/process-identity.ts",
+        "beforeSha256": "fb1f2aeb036b3d3ce3d82018a4c685e29dd3a05ac0cebaf08ae5a9974177666a",
+        "afterSha256": "efe26652bf4b1bb346ca9bba0caa7565152e98cd66328852ac53f66b9eab9e08",
+        "astIgnoringTriviaTrailingSeparatorsAndImportOrderEqual": true
+      },
+      {
+        "path": "apps/daemon/test/lib/agent-loop-guard.test.ts",
+        "beforeSha256": "b04294a982c6d9a483c76f9981358394d71bc22c41dbaa4bf270089d1daa9a43",
+        "afterSha256": "93283b662154a4e05de257453e4bd295bd05d09787745dc0ed159e82ade006f6",
+        "astIgnoringTriviaTrailingSeparatorsAndImportOrderEqual": true
+      },
+      {
+        "path": "apps/daemon/test/runtime/failure-visibility.integration.test.ts",
+        "beforeSha256": "407d892677bb2e7fc8894ed45fd8d132a2969208e9cf5092a74a362aa2570faf",
+        "afterSha256": "c47e5330bd877805df908138a7d7fec8edcbcf22fd3ecad106a20a392ecd5ee1",
+        "astIgnoringTriviaTrailingSeparatorsAndImportOrderEqual": true
+      },
+      {
+        "path": "scripts/check-coding-surfaces-ui.mjs",
+        "beforeSha256": "7a65e6b81177a7b6ba688680774736dd6f371ebcb7bfed86d0c159d36d14f399",
+        "afterSha256": "e518934b81a38cd9346321f82138355b5756e62d71ec8e613b810e3b0c6b9ce0",
+        "astIgnoringTriviaTrailingSeparatorsAndImportOrderEqual": true
+      }
+    ]
+  },
+  "privateNativeOriginal": {
+    "path": "node_modules/.pnpm/better-sqlite3@12.10.0/node_modules/better-sqlite3/build/Release/better_sqlite3.node",
+    "sha256": "251f1ecfd41a70cafe6f8d9645118b4dd7328a68318e02f1414e9bff9a94a23c"
+  },
+  "fullSuiteRequiredSecurityMatch": {
+    "manifestRequiredCases": 366,
+    "allRequiredAssertionsPassedInFullSuite": true,
+    "notASubstituteForDedicatedGate": true
+  },
+  "dedicatedSecurity": {
+    "exitCode": 1,
+    "temporaryReportDeletedByCurrentRunner": true,
+    "failureFileObservation": "Private Vitest cache observed immediately after gate, preserved in parent tool result; later diagnostics update that cache",
+    "failedCacheEntries": [
+      [
+        ":apps/cli/test/image-generation.test.ts",
+        {
+          "duration": 9582.36064,
+          "failed": true
+        }
+      ],
+      [
+        ":apps/cli/test/image-crash.test.ts",
+        {
+          "duration": 21901.431446,
+          "failed": true
+        }
+      ]
+    ],
+    "narrowTwoFileDiagnostic": {
+      "numTotalTestSuites": 2,
+      "numPassedTestSuites": 1,
+      "numFailedTestSuites": 1,
+      "numPendingTestSuites": 0,
+      "numTotalTests": 3,
+      "numPassedTests": 2,
+      "numFailedTests": 1,
+      "numPendingTests": 0,
+      "numTodoTests": 0,
+      "snapshot": {
+        "added": 0,
+        "failure": false,
+        "filesAdded": 0,
+        "filesRemoved": 0,
+        "filesRemovedList": [],
+        "filesUnmatched": 0,
+        "filesUpdated": 0,
+        "matched": 0,
+        "total": 0,
+        "unchecked": 0,
+        "uncheckedKeysByFile": [],
+        "unmatched": 0,
+        "updated": 0,
+        "didUpdate": false
+      },
+      "startTime": 1792421860851,
+      "success": false,
+      "testResults": [
+        {
+          "assertionResults": [
+            {
+              "ancestorTitles": [],
+              "fullName": "real daemon SIGKILL at before_provider_ack preserves image intent without replay or private disclosure",
+              "status": "failed",
+              "title": "real daemon SIGKILL at before_provider_ack preserves image intent without replay or private disclosure",
+              "duration": 16883.248373,
+              "failureMessages": [
+                "Error: Image crash barrier was not reached\n    at until (/home/patri/coding/bazilion/apps/cli/test/image-crash.test.ts:22:38)\n    at /home/patri/coding/bazilion/apps/cli/test/image-crash.test.ts:136:5\n    at file:///home/patri/coding/bazilion/node_modules/.pnpm/@vitest+runner@4.1.9/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+              ],
+              "meta": {},
+              "tags": []
+            },
+            {
+              "ancestorTitles": [],
+              "fullName": "real daemon SIGKILL at after_capture preserves image intent without replay or private disclosure",
+              "status": "passed",
+              "title": "real daemon SIGKILL at after_capture preserves image intent without replay or private disclosure",
+              "duration": 4498.437324999999,
+              "failureMessages": [],
+              "meta": {},
+              "tags": []
+            }
+          ],
+          "startTime": 1792421861186,
+          "endTime": 1792421882568.4373,
+          "status": "failed",
+          "message": "",
+          "name": "/home/patri/coding/bazilion/apps/cli/test/image-crash.test.ts"
+        },
+        {
+          "assertionResults": [
+            {
+              "ancestorTitles": [],
+              "fullName": "real one-shot Agent turns generate, rework and deliver saved images through IPC without a live provider",
+              "status": "passed",
+              "title": "real one-shot Agent turns generate, rework and deliver saved images through IPC without a live provider",
+              "duration": 12420.918163999999,
+              "failureMessages": [],
+              "meta": {},
+              "tags": []
+            }
+          ],
+          "startTime": 1792421884152,
+          "endTime": 1792421896572.9182,
+          "status": "passed",
+          "message": "",
+          "name": "/home/patri/coding/bazilion/apps/cli/test/image-generation.test.ts"
+        }
+      ]
+    },
+    "singleCaseInstrumentedDiagnostic": {
+      "numTotalTestSuites": 1,
+      "numPassedTestSuites": 1,
+      "numFailedTestSuites": 0,
+      "numPendingTestSuites": 0,
+      "numTotalTests": 2,
+      "numPassedTests": 1,
+      "numFailedTests": 0,
+      "numPendingTests": 1,
+      "numTodoTests": 0,
+      "snapshot": {
+        "added": 0,
+        "failure": false,
+        "filesAdded": 0,
+        "filesRemoved": 0,
+        "filesRemovedList": [],
+        "filesUnmatched": 0,
+        "filesUpdated": 0,
+        "matched": 0,
+        "total": 0,
+        "unchecked": 0,
+        "uncheckedKeysByFile": [],
+        "unmatched": 0,
+        "updated": 0,
+        "didUpdate": false
+      },
+      "startTime": 1792422012042,
+      "success": true,
+      "testResults": [
+        {
+          "assertionResults": [
+            {
+              "ancestorTitles": [],
+              "fullName": "real daemon SIGKILL at before_provider_ack preserves image intent without replay or private disclosure",
+              "status": "passed",
+              "title": "real daemon SIGKILL at before_provider_ack preserves image intent without replay or private disclosure",
+              "duration": 4614.373391,
+              "failureMessages": [],
+              "meta": {},
+              "tags": []
+            },
+            {
+              "ancestorTitles": [],
+              "fullName": "real daemon SIGKILL at after_capture preserves image intent without replay or private disclosure",
+              "status": "skipped",
+              "title": "real daemon SIGKILL at after_capture preserves image intent without replay or private disclosure",
+              "failureMessages": [],
+              "meta": {},
+              "tags": []
+            }
+          ],
+          "startTime": 1792422012393,
+          "endTime": 1792422017007.3733,
+          "status": "passed",
+          "message": "",
+          "name": "/home/patri/coding/bazilion/apps/cli/test/image-crash.test.ts"
+        }
+      ]
+    },
+    "underlyingCause": "UNRESOLVED; no timing/flake waiver, test timeout increase or gate pass inferred"
+  },
+  "logs": {
+    "status.log": "candidate-types=0\ncandidate-lint=1\ncandidate-lint-final=0\ncandidate-harness-final=0\ncandidate-types-final=0\nlint-probe-expected-rejection=1\ncandidate-tests=1\nnative-build=0\nnative-check=0\nenvironment-focused=1\nfixture-check=0\nnode24-tests=0\nsecurity-acceptance=1\nsecurity-images-diagnostic=1\nsecurity-image-diagnostic=0\n",
+    "types-final.log": "12.14.0\n$ tsc --noEmit && pnpm --filter @bazilion/web typecheck\n$ tsc --noEmit\n",
+    "harness-final.log": "TAP version 13\n# Subtest: import is inert and defaults declare eight prior-schema refusals\nok 1 - import is inert and defaults declare eight prior-schema refusals\n  ---\n  duration_ms: 0.619024\n  type: 'test'\n  ...\n# Subtest: fixture environment never spreads operator credentials/configuration\nok 2 - fixture environment never spreads operator credentials/configuration\n  ---\n  duration_ms: 0.938055\n  type: 'test'\n  ...\n# Subtest: already closed real child stops without waiting for a lost close event\nok 3 - already closed real child stops without waiting for a lost close event\n  ---\n  duration_ms: 20.478127\n  type: 'test'\n  ...\n# Subtest: spawn failure is observed and never classified as schema refusal\nok 4 - spawn failure is observed and never classified as schema refusal\n  ---\n  duration_ms: 2.672978\n  type: 'test'\n  ...\n# Subtest: actual startup exit 1 with schema diagnostic is a clean refusal\nok 5 - actual startup exit 1 with schema diagnostic is a clean refusal\n  ---\n  duration_ms: 22.14316\n  type: 'test'\n  ...\n# Subtest: wrong exit or diagnostic cannot be relabelled clean refusal\nok 6 - wrong exit or diagnostic cannot be relabelled clean refusal\n  ---\n  duration_ms: 63.15559\n  type: 'test'\n  ...\n# Subtest: hanging child that printed a refusal is killed/closed, not accepted as refusal\nok 7 - hanging child that printed a refusal is killed/closed, not accepted as refusal\n  ---\n  duration_ms: 174.800776\n  type: 'test'\n  ...\n# Subtest: health requires HTTP 200 and ok:true; error pages/oversized bodies refuse\nok 8 - health requires HTTP 200 and ok:true; error pages/oversized bodies refuse\n  ---\n  duration_ms: 80.556039\n  type: 'test'\n  ...\n# Subtest: healthy child is admitted only while its actual close remains unobserved\nok 9 - healthy child is admitted only while its actual close remains unobserved\n  ---\n  duration_ms: 8.085879\n  type: 'test'\n  ...\n# Subtest: state evidence covers DB/auth, nested files and ownership siblings without following links\nok 10 - state evidence covers DB/auth, nested files and ownership siblings without following links\n  ---\n  duration_ms: 8.635133\n  type: 'test'\n  ...\n# Subtest: fixture ledger inspection preserves actual SQLite and paired auth bytes\nok 11 - fixture ledger inspection preserves actual SQLite and paired auth bytes\n  ---\n  duration_ms: 68.077378\n  type: 'test'\n  ...\n# Subtest: unknown cleanup retains state and still attempts other owned cleanup\nok 12 - unknown cleanup retains state and still attempts other owned cleanup\n  ---\n  duration_ms: 0.274346\n  type: 'test'\n  ...\n# Subtest: fixture deletion waits until every selected owned close settles\nok 13 - fixture deletion waits until every selected owned close settles\n  ---\n  duration_ms: 0.10651\n  type: 'test'\n  ...\n1..13\n# tests 13\n# suites 0\n# pass 13\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 523.210296\n",
+    "native-build.log": "gyp info it worked if it ends with ok\ngyp info using node-gyp@12.4.0\ngyp info using node@24.20.0 | linux | x64\ngyp info find Python using Python version 3.14.8 found at \"/usr/bin/python3\"\ngyp info spawn /usr/bin/python3\ngyp info spawn args [\ngyp info spawn args '/home/patri/.local/share/mise/installs/node/24.20.0/lib/node_modules/npm/node_modules/node-gyp/gyp/gyp_main.py',\ngyp info spawn args 'binding.gyp',\ngyp info spawn args '-f',\ngyp info spawn args 'make',\ngyp info spawn args '-I',\ngyp info spawn args '/home/patri/coding/bazilion/node_modules/.pnpm/better-sqlite3@12.10.0/node_modules/better-sqlite3/build/config.gypi',\ngyp info spawn args '-I',\ngyp info spawn args '/home/patri/.local/share/mise/installs/node/24.20.0/lib/node_modules/npm/node_modules/node-gyp/addon.gypi',\ngyp info spawn args '-I',\ngyp info spawn args '/home/patri/.local/share/mise/installs/node/24.20.0/include/node/common.gypi',\ngyp info spawn args '-Dlibrary=shared_library',\ngyp info spawn args '-Dvisibility=default',\ngyp info spawn args '-Dnode_root_dir=/home/patri/.local/share/mise/installs/node/24.20.0',\ngyp info spawn args '-Dnode_gyp_dir=/home/patri/.local/share/mise/installs/node/24.20.0/lib/node_modules/npm/node_modules/node-gyp',\ngyp info spawn args '-Dnode_lib_file=/home/patri/.local/share/mise/installs/node/24.20.0/$(Configuration)/node.lib',\ngyp info spawn args '-Dmodule_root_dir=/home/patri/coding/bazilion/node_modules/.pnpm/better-sqlite3@12.10.0/node_modules/better-sqlite3',\ngyp info spawn args '-Dnode_engine=v8',\ngyp info spawn args '--depth=.',\ngyp info spawn args '--no-parallel',\ngyp info spawn args '--generator-output',\ngyp info spawn args 'build',\ngyp info spawn args '-Goutput_dir=.'\ngyp info spawn args ]\ngyp info spawn make\ngyp info spawn args [ 'BUILDTYPE=Release', '-C', 'build', '--jobs', 2 ]\nmake: Entering directory '/home/patri/coding/bazilion/node_modules/.pnpm/better-sqlite3@12.10.0/node_modules/better-sqlite3/build'\n  TOUCH 4292fa9a667d77b27488aa109b010a85bce8e4e7a1c7aa0370cea902395c3866.intermediate\n  ACTION deps_sqlite3_gyp_locate_sqlite3_target_copy_builtin_sqlite3 4292fa9a667d77b27488aa109b010a85bce8e4e7a1c7aa0370cea902395c3866.intermediate\n  TOUCH Release/obj.target/deps/locate_sqlite3.stamp\n  CC(target) Release/obj.target/sqlite3/gen/sqlite3/sqlite3.o\nrm -f Release/obj.target/deps/sqlite3.a Release/obj.target/deps/sqlite3.a.ar-file-list; mkdir -p `dirname Release/obj.target/deps/sqlite3.a`\nar crs Release/obj.target/deps/sqlite3.a @Release/obj.target/deps/sqlite3.a.ar-file-list\n  COPY Release/sqlite3.a\n  CXX(target) Release/obj.target/better_sqlite3/src/better_sqlite3.o\n  CC(target) Release/obj.target/test_extension/deps/test_extension.o\n  SOLINK_MODULE(target) Release/obj.target/test_extension.node\n  COPY Release/test_extension.node\nIn file included from ../src/better_sqlite3.cpp:11:\n/home/patri/.local/share/mise/installs/node/24.20.0/include/node/node.h:1384:7: warning: cast between incompatible function types from \u2018void (*)(v8::Local<v8::Object>, v8::Local<v8::Value>, v8::Local<v8::Context>)\u2019 to \u2018node::addon_context_register_func\u2019 {aka \u2018void (*)(v8::Local<v8::Object>, v8::Local<v8::Value>, v8::Local<v8::Context>, void*)\u2019} [-Wcast-function-type]\n 1384 |       (node::addon_context_register_func) (regfunc),                  \\\n      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n/home/patri/.local/share/mise/installs/node/24.20.0/include/node/node.h:1402:3: note: in expansion of macro \u2018NODE_MODULE_CONTEXT_AWARE_X\u2019\n 1402 |   NODE_MODULE_CONTEXT_AWARE_X(modname, regfunc, NULL, 0)\n      |   ^~~~~~~~~~~~~~~~~~~~~~~~~~~\n/home/patri/.local/share/mise/installs/node/24.20.0/include/node/node.h:1433:3: note: in expansion of macro \u2018NODE_MODULE_CONTEXT_AWARE\u2019\n 1433 |   NODE_MODULE_CONTEXT_AWARE(NODE_GYP_MODULE_NAME,                     \\\n      |   ^~~~~~~~~~~~~~~~~~~~~~~~~\n../src/better_sqlite3.cpp:48:1: note: in expansion of macro \u2018NODE_MODULE_INIT\u2019\n   48 | NODE_MODULE_INIT(/* exports, context */) {\n      | ^~~~~~~~~~~~~~~~\nIn file included from ../src/better_sqlite3.cpp:26:\n../src/util/data.cpp: In function \u2018v8::Local<v8::Value> Data::GetValueJS(v8::Isolate*, sqlite3_stmt*, int, bool)\u2019:\n../src/util/data.cpp:36:17: warning: this statement may fall through [-Wimplicit-fallthrough=]\n   36 |                 if (safe_ints) {                                                       \\\n      |                 ^~\n../src/util/data.cpp:73:17: note: in expansion of macro \u2018SQLITE_VALUE_TO_JS\u2019\n   73 |                 SQLITE_VALUE_TO_JS(column, isolate, safe_ints, handle, column);\n      |                 ^~~~~~~~~~~~~~~~~~\n../src/util/data.cpp:42:9: note: here\n   42 |         case SQLITE_FLOAT:                                                         \\\n      |         ^~~~\n../src/util/data.cpp:73:17: note: in expansion of macro \u2018SQLITE_VALUE_TO_JS\u2019\n   73 |                 SQLITE_VALUE_TO_JS(column, isolate, safe_ints, handle, column);\n      |                 ^~~~~~~~~~~~~~~~~~\n../src/util/data.cpp: In function \u2018v8::Local<v8::Value> Data::GetValueJS(v8::Isolate*, sqlite3_value*, bool)\u2019:\n../src/util/data.cpp:36:17: warning: this statement may fall through [-Wimplicit-fallthrough=]\n   36 |                 if (safe_ints) {                                                       \\\n      |                 ^~\n../src/util/data.cpp:77:17: note: in expansion of macro \u2018SQLITE_VALUE_TO_JS\u2019\n   77 |                 SQLITE_VALUE_TO_JS(value, isolate, safe_ints, value);\n      |                 ^~~~~~~~~~~~~~~~~~\n../src/util/data.cpp:42:9: note: here\n   42 |         case SQLITE_FLOAT:                                                         \\\n      |         ^~~~\n../src/util/data.cpp:77:17: note: in expansion of macro \u2018SQLITE_VALUE_TO_JS\u2019\n   77 |                 SQLITE_VALUE_TO_JS(value, isolate, safe_ints, value);\n      |                 ^~~~~~~~~~~~~~~~~~\n  SOLINK_MODULE(target) Release/obj.target/better_sqlite3.node\n  COPY Release/better_sqlite3.node\nrm 4292fa9a667d77b27488aa109b010a85bce8e4e7a1c7aa0370cea902395c3866.intermediate\nmake: Leaving directory '/home/patri/coding/bazilion/node_modules/.pnpm/better-sqlite3@12.10.0/node_modules/better-sqlite3/build'\ngyp info ok \n",
+    "native-check.log": "{ node: 'v24.20.0', abi: '137', result: { ok: 1 } }\n",
+    "security.log": "security acceptance: validating 366 required cases\n$ vite build\n\u001b[36mvite v8.0.16 \u001b[32mbuilding client environment for production...\u001b[36m\u001b[39m\n\u001b[2K\ntransforming...\u2713 2311 modules transformed.\nrendering chunks...\ncomputing gzip size...\ndist/client/assets/dm-sans-latin-600-normal-Aqo67rzb.woff2            14.14 kB\ndist/client/assets/dm-sans-latin-400-normal-CW0RaeGs.woff2            14.20 kB\ndist/client/assets/dm-sans-latin-500-normal-B9HHJjqV.woff2            14.30 kB\ndist/client/assets/dm-sans-latin-700-normal-DvUfVpUG.woff2            14.34 kB\ndist/client/assets/dm-sans-latin-600-normal-BmdmIIQ2.woff             18.32 kB\ndist/client/assets/dm-sans-latin-400-normal-BwCSEQnW.woff             18.35 kB\ndist/client/assets/dm-sans-latin-700-normal-CUSSCpQX.woff             18.50 kB\ndist/client/assets/dm-sans-latin-500-normal-Dr3UlScf.woff             18.52 kB\ndist/client/assets/jetbrains-mono-latin-400-normal-V6pRDFza.woff2     21.16 kB\ndist/client/assets/dm-serif-display-latin-400-normal-_kVFYEpx.woff    21.80 kB\ndist/client/assets/jetbrains-mono-latin-500-normal-BWZEU5yA.woff2     21.83 kB\ndist/client/assets/dm-serif-display-latin-400-normal-C5_t9oOD.woff2   24.74 kB\ndist/client/assets/jetbrains-mono-latin-400-normal-6-qcROiO.woff      27.49 kB\ndist/client/assets/jetbrains-mono-latin-500-normal-CJOVTJB7.woff      28.20 kB\ndist/client/assets/index-Cofc7zhl.css                                  1.61 kB \u2502 gzip:   0.36 kB\ndist/client/assets/ProductionTeamPolicyEditor-DLioOiRN.css            15.41 kB \u2502 gzip:   2.56 kB\ndist/client/assets/styles-CjCML-UX.css                                94.83 kB \u2502 gzip:  17.30 kB\ndist/client/assets/wire-constants-CBD-lTaa.js                          0.10 kB \u2502 gzip:   0.10 kB\ndist/client/assets/chevron-right-B1KfTENY.js                           0.12 kB \u2502 gzip:   0.13 kB\ndist/client/assets/teams-Csfx5SQY.js                                   0.22 kB \u2502 gzip:   0.19 kB\ndist/client/assets/skills-BmVH2J2D.js                                  0.22 kB \u2502 gzip:   0.19 kB\ndist/client/assets/templates-BelRVdDd.js                               0.22 kB \u2502 gzip:   0.19 kB\ndist/client/assets/approvals-F2Yi6VF4.js                               0.23 kB \u2502 gzip:   0.20 kB\ndist/client/assets/services-CXhMKNyy.js                                0.23 kB \u2502 gzip:   0.19 kB\ndist/client/assets/attention-DRLiItIt.js                               0.23 kB \u2502 gzip:   0.20 kB\ndist/client/assets/memory-BBXEgem8.js                                  0.23 kB \u2502 gzip:   0.20 kB\ndist/client/assets/policy-CW6XwUX9.js                                  0.23 kB \u2502 gzip:   0.20 kB\ndist/client/assets/context-DhClXgpo.js                                 0.23 kB \u2502 gzip:   0.20 kB\ndist/client/assets/inbox-BUQLxmRN.js                                   0.23 kB \u2502 gzip:   0.20 kB\ndist/client/assets/mcp-BWtPGtLM.js                                     0.23 kB \u2502 gzip:   0.20 kB\ndist/client/assets/members-CJQQvb0R.js                                 0.23 kB \u2502 gzip:   0.20 kB\ndist/client/assets/_id-jKz4YKhV.js                                     0.23 kB \u2502 gzip:   0.20 kB\ndist/client/assets/results-DIKxtntp.js                                 0.23 kB \u2502 gzip:   0.20 kB\ndist/client/assets/review-D5Do5gGl.js                                  0.23 kB \u2502 gzip:   0.20 kB\ndist/client/assets/tokens-DbBn0jZg.js                                  0.23 kB \u2502 gzip:   0.20 kB\ndist/client/assets/activity-CzngGnv5.js                                0.23 kB \u2502 gzip:   0.20 kB\ndist/client/assets/learning-fZJ3XFA5.js                                0.23 kB \u2502 gzip:   0.20 kB\ndist/client/assets/triggers-T5PDiBDw.js                                0.23 kB \u2502 gzip:   0.20 kB\ndist/client/assets/teams-COL9uqBA.js                                   0.24 kB \u2502 gzip:   0.20 kB\ndist/client/assets/agents-BFueg_dW.js                                  0.24 kB \u2502 gzip:   0.20 kB\ndist/client/assets/x-dP_JMb5u.js                                       0.24 kB \u2502 gzip:   0.18 kB\ndist/client/assets/_id-C3G4sTub.js                                     0.24 kB \u2502 gzip:   0.20 kB\ndist/client/assets/verifications-CycA2CEE.js                           0.24 kB \u2502 gzip:   0.20 kB\ndist/client/assets/_id-Bj4sN2Ey.js                                     0.24 kB \u2502 gzip:   0.20 kB\ndist/client/assets/_id-DY4PBbad.js                                     0.33 kB \u2502 gzip:   0.25 kB\ndist/client/assets/SectionTabs-WPCFHTCP.js                             0.45 kB \u2502 gzip:   0.29 kB\ndist/client/assets/AgentAvatar-JYijLvZ2.js                             0.60 kB \u2502 gzip:   0.44 kB\ndist/client/assets/TemplatesTabs-DC8-Q73a.js                           0.63 kB \u2502 gzip:   0.36 kB\ndist/client/assets/AgentTabs-BFOYhkEH.js                               0.83 kB \u2502 gzip:   0.45 kB\ndist/client/assets/RecoveryState-42YErTe1.js                           0.85 kB \u2502 gzip:   0.48 kB\ndist/client/assets/TeamTabs-DGzMEE3w.js                                0.88 kB \u2502 gzip:   0.49 kB\ndist/client/assets/jsx-runtime-DGeXAQPT.js                             0.93 kB \u2502 gzip:   0.55 kB\ndist/client/assets/ConfigPage-Dy_Ms-c1.js                              1.00 kB \u2502 gzip:   0.49 kB\ndist/client/assets/_id-BlU7HYjX.js                                     1.09 kB \u2502 gzip:   0.65 kB\ndist/client/assets/ResultSourceConversation-V5Kse8q7.js                1.72 kB \u2502 gzip:   0.81 kB\ndist/client/assets/services-C-DvH8pl.js                                2.22 kB \u2502 gzip:   1.04 kB\ndist/client/assets/git-review-presentation-CzHQulDk.js                 2.26 kB \u2502 gzip:   0.97 kB\ndist/client/assets/UnsavedChangesGuard-GoS-OTH5.js                     2.29 kB \u2502 gzip:   1.03 kB\ndist/client/assets/welcome-v78cRmnr.js                                 2.46 kB \u2502 gzip:   1.10 kB\ndist/client/assets/teams-Cgkwr2T8.js                                   2.54 kB \u2502 gzip:   1.11 kB\ndist/client/assets/team-policy-D0jpnn2b.js                             2.60 kB \u2502 gzip:   1.03 kB\ndist/client/assets/members-BKlQtXjx.js                                 2.86 kB \u2502 gzip:   1.01 kB\ndist/client/assets/ProfileCommunicationEditor-C7M78WAV.js              3.00 kB \u2502 gzip:   1.31 kB\ndist/client/assets/results-CHWLyfr4.js                                 3.57 kB \u2502 gzip:   1.62 kB\ndist/client/assets/ResultCard-BylZniwR.js                              3.81 kB \u2502 gzip:   1.65 kB\ndist/client/assets/activity-EH6s1DzD.js                                3.91 kB \u2502 gzip:   1.54 kB\ndist/client/assets/FieldRow-BOUEtajh.js                                4.43 kB \u2502 gzip:   1.75 kB\ndist/client/assets/inbox-CRydA3aK.js                                   4.50 kB \u2502 gzip:   1.58 kB\ndist/client/assets/login-BCdJ19LU.js                                   4.94 kB \u2502 gzip:   2.00 kB\ndist/client/assets/attention-BEUg4HLU.js                               6.00 kB \u2502 gzip:   2.17 kB\ndist/client/assets/ConfirmDialog-CBxDG7Pf.js                           6.47 kB \u2502 gzip:   2.45 kB\ndist/client/assets/verifications-C77w6u-D.js                           6.61 kB \u2502 gzip:   2.59 kB\ndist/client/assets/teams-CJIoysmO.js                                   6.81 kB \u2502 gzip:   2.51 kB\ndist/client/assets/memory-DWjHP08o.js                                  7.38 kB \u2502 gzip:   2.63 kB\ndist/client/assets/approvals-N9LqWxH7.js                               7.49 kB \u2502 gzip:   2.66 kB\ndist/client/assets/react-3W8R1pOO.js                                   7.52 kB \u2502 gzip:   2.88 kB\ndist/client/assets/mcp-Cqp0B8w3.js                                     7.74 kB \u2502 gzip:   2.64 kB\ndist/client/assets/triggers-9p17AEJ3.js                                8.68 kB \u2502 gzip:   2.62 kB\ndist/client/assets/skills-C5yDvCb6.js                                  9.11 kB \u2502 gzip:   3.26 kB\ndist/client/assets/learning-Ch1TO8IS.js                                9.14 kB \u2502 gzip:   3.01 kB\ndist/client/assets/agents-C5xYyZB1.js                                  9.56 kB \u2502 gzip:   3.04 kB\ndist/client/assets/tokens-DSQpzgSK.js                                 10.18 kB \u2502 gzip:   3.10 kB\ndist/client/assets/agents-CwC1mpYL.js                                 11.47 kB \u2502 gzip:   3.92 kB\ndist/client/assets/policy-BNVSG19J.js                                 11.76 kB \u2502 gzip:   3.82 kB\ndist/client/assets/_id-Cva4RPHB.js                                    12.97 kB \u2502 gzip:   3.87 kB\ndist/client/assets/_id-B0o_-Njv.js                                    20.72 kB \u2502 gzip:   6.04 kB\ndist/client/assets/review-DGDiPCGT.js                                 21.83 kB \u2502 gzip:   6.06 kB\ndist/client/assets/config-Bb5_KN_2.js                                 25.63 kB \u2502 gzip:   7.71 kB\ndist/client/assets/telegram-CqtuxvCo.js                               27.72 kB \u2502 gzip:   7.87 kB\ndist/client/assets/_id-BW8x3x7W.js                                    27.93 kB \u2502 gzip:   8.08 kB\ndist/client/assets/preload-helper-bztXdkDj.js                         33.02 kB \u2502 gzip:  11.81 kB\ndist/client/assets/routes-p4iYTVD3.js                                 33.77 kB \u2502 gzip:   9.15 kB\ndist/client/assets/ChatPane-DJU9QGgw.js                              131.96 kB \u2502 gzip:  40.73 kB\ndist/client/assets/ProductionTeamPolicyEditor-B9hx4AMs.js            199.94 kB \u2502 gzip:  64.15 kB\ndist/client/assets/index-C0NxnT8N.js                                 426.60 kB \u2502 gzip: 137.37 kB\n\n\u001b[32m\u2713 built in 2.31s\u001b[39m\n\u001b[36mvite v8.0.16 \u001b[32mbuilding ssr environment for production...\u001b[36m\u001b[39m\n\u001b[2K\ntransforming...\u2713 316 modules transformed.\nrendering chunks...\ncomputing gzip size...\ndist/server/assets/empty-plugin-adapters-Cq4--YW-.js         0.28 kB \u2502 gzip:  0.18 kB\ndist/server/assets/_id-CAxK6pln.js                           0.33 kB \u2502 gzip:  0.22 kB\ndist/server/assets/teams-Bi3CeEM5.js                         0.38 kB \u2502 gzip:  0.26 kB\ndist/server/assets/skills-CGvPejPD.js                        0.38 kB \u2502 gzip:  0.26 kB\ndist/server/assets/templates-CuqFhsiO.js                     0.39 kB \u2502 gzip:  0.26 kB\ndist/server/assets/mcp-BQ4KvXp1.js                           0.39 kB \u2502 gzip:  0.27 kB\ndist/server/assets/approvals-CcU_pIWW.js                     0.39 kB \u2502 gzip:  0.27 kB\ndist/server/assets/attention-jtJ9PIMp.js                     0.40 kB \u2502 gzip:  0.27 kB\ndist/server/assets/memory-BH7L-l65.js                        0.40 kB \u2502 gzip:  0.27 kB\ndist/server/assets/policy-CK3VuVuv.js                        0.40 kB \u2502 gzip:  0.27 kB\ndist/server/assets/tokens-qVijmBxr.js                        0.40 kB \u2502 gzip:  0.27 kB\ndist/server/assets/_id-CI33J2xv.js                           0.40 kB \u2502 gzip:  0.27 kB\ndist/server/assets/inbox-Be3CUU4o.js                         0.40 kB \u2502 gzip:  0.27 kB\ndist/server/assets/context-DuxjdpaW.js                       0.40 kB \u2502 gzip:  0.27 kB\ndist/server/assets/members-DWedYCMh.js                       0.40 kB \u2502 gzip:  0.27 kB\ndist/server/assets/review-CPmUi4PR.js                        0.40 kB \u2502 gzip:  0.27 kB\ndist/server/assets/results-DlOsdBE7.js                       0.40 kB \u2502 gzip:  0.27 kB\ndist/server/assets/activity-CDNYyLBC.js                      0.40 kB \u2502 gzip:  0.27 kB\ndist/server/assets/learning-C3pqLE5b.js                      0.40 kB \u2502 gzip:  0.27 kB\ndist/server/assets/triggers-x_OA9u5f.js                      0.40 kB \u2502 gzip:  0.27 kB\ndist/server/assets/teams-6c5B9wnI.js                         0.41 kB \u2502 gzip:  0.27 kB\ndist/server/assets/agents-BzJDqrC8.js                        0.41 kB \u2502 gzip:  0.27 kB\ndist/server/assets/_id-C_FnWQ61.js                           0.42 kB \u2502 gzip:  0.27 kB\ndist/server/assets/_id-BJeSZ4DF.js                           0.42 kB \u2502 gzip:  0.28 kB\ndist/server/assets/createServerRpc-B7Yr1K8i.js               0.44 kB \u2502 gzip:  0.28 kB\ndist/server/assets/wire-constants-C8nBJcU3.js                0.46 kB \u2502 gzip:  0.27 kB\ndist/server/assets/verifications-DjZsx65b.js                 0.52 kB \u2502 gzip:  0.34 kB\ndist/server/assets/createSsrRpc-6LHNEsSK.js                  0.58 kB \u2502 gzip:  0.35 kB\ndist/server/assets/services-Ba6tFlZz.js                      0.58 kB \u2502 gzip:  0.38 kB\ndist/server/assets/_id-CmS2d0me.js                           0.59 kB \u2502 gzip:  0.36 kB\ndist/server/assets/SectionTabs-DQWPEk1x.js                   0.61 kB \u2502 gzip:  0.39 kB\ndist/server/assets/utils-ySbqTi3g.js                         0.63 kB \u2502 gzip:  0.37 kB\ndist/server/assets/config-DM2DIzMT.js                        0.64 kB \u2502 gzip:  0.38 kB\ndist/server/assets/telegram-U9UAdUEx.js                      0.68 kB \u2502 gzip:  0.39 kB\ndist/server/assets/skills-kfqhxYmf.js                        0.68 kB \u2502 gzip:  0.36 kB\ndist/server/assets/mcp-B8ErRiR_.js                           0.69 kB \u2502 gzip:  0.37 kB\ndist/server/assets/teams-C9tfV3IC.js                         0.70 kB \u2502 gzip:  0.37 kB\ndist/server/assets/services-ZeEIgTn0.js                      0.71 kB \u2502 gzip:  0.36 kB\ndist/server/assets/approvals-szknIxB6.js                     0.71 kB \u2502 gzip:  0.37 kB\ndist/server/assets/results-vtkmZPro.js                       0.75 kB \u2502 gzip:  0.41 kB\ndist/server/assets/members-DFLi2nQg.js                       0.77 kB \u2502 gzip:  0.41 kB\ndist/server/assets/telegram-ByHqeAGC.js                      0.77 kB \u2502 gzip:  0.38 kB\ndist/server/assets/mcp-C4OaU8NC.js                           0.78 kB \u2502 gzip:  0.40 kB\ndist/server/assets/public-origin-xV0lm0Ty.js                 0.78 kB \u2502 gzip:  0.41 kB\ndist/server/assets/skills-D1oy3JAH.js                        0.78 kB \u2502 gzip:  0.40 kB\ndist/server/assets/teams-DuhXk1M5.js                         0.78 kB \u2502 gzip:  0.41 kB\ndist/server/assets/activity-DhzxlXUk.js                      0.79 kB \u2502 gzip:  0.43 kB\ndist/server/assets/teams-BW2ARIvk.js                         0.80 kB \u2502 gzip:  0.40 kB\ndist/server/assets/approvals-CpDs6ASO.js                     0.80 kB \u2502 gzip:  0.41 kB\ndist/server/assets/attention-Cy3Xu-Su.js                     0.80 kB \u2502 gzip:  0.40 kB\ndist/server/assets/agents-DmmuOHw8.js                        0.80 kB \u2502 gzip:  0.45 kB\ndist/server/assets/agents-BitDk_C5.js                        0.81 kB \u2502 gzip:  0.41 kB\ndist/server/assets/routes-kSjMHwrg.js                        0.82 kB \u2502 gzip:  0.46 kB\ndist/server/assets/web-search-dgw10fLn.js                    0.83 kB \u2502 gzip:  0.43 kB\ndist/server/assets/_id-BfT3umhN.js                           0.85 kB \u2502 gzip:  0.44 kB\ndist/server/assets/members-Cjpysp35.js                       0.85 kB \u2502 gzip:  0.43 kB\ndist/server/assets/results-DGLQG-_3.js                       0.86 kB \u2502 gzip:  0.44 kB\ndist/server/assets/activity-lf7L7wiL.js                      0.86 kB \u2502 gzip:  0.44 kB\ndist/server/assets/attention-CsYqmV0L.js                     0.87 kB \u2502 gzip:  0.46 kB\ndist/server/assets/tokens-CiThDMwM.js                        0.92 kB \u2502 gzip:  0.49 kB\ndist/server/assets/TemplatesTabs-BiJt7Fjx.js                 0.94 kB \u2502 gzip:  0.48 kB\ndist/server/assets/_id-BS4MnPa3.js                           0.94 kB \u2502 gzip:  0.51 kB\ndist/server/assets/tokens-DDJYBy6R.js                        0.96 kB \u2502 gzip:  0.48 kB\ndist/server/assets/memory-Bq0s1fr7.js                        0.96 kB \u2502 gzip:  0.50 kB\ndist/server/assets/triggers-DIruOyMb.js                      0.97 kB \u2502 gzip:  0.51 kB\ndist/server/assets/learning-BYCwIOzZ.js                      0.98 kB \u2502 gzip:  0.50 kB\ndist/server/assets/_id-BhJCnRR1.js                           0.98 kB \u2502 gzip:  0.51 kB\ndist/server/assets/config-DTI4EPbU.js                        0.98 kB \u2502 gzip:  0.49 kB\ndist/server/assets/services-UL_2b8PP.js                      0.99 kB \u2502 gzip:  0.52 kB\ndist/server/assets/agents-Cmw-sUUD.js                        0.99 kB \u2502 gzip:  0.50 kB\ndist/server/assets/agents-DOrzqCXg.js                        1.00 kB \u2502 gzip:  0.53 kB\ndist/server/assets/auth-DChuQIh4.js                          1.03 kB \u2502 gzip:  0.51 kB\ndist/server/assets/AgentAvatar-8gTAy_tP.js                   1.08 kB \u2502 gzip:  0.61 kB\ndist/server/assets/triggers-B9CIl4Co.js                      1.12 kB \u2502 gzip:  0.56 kB\ndist/server/assets/_id-4fEeAcp0.js                           1.14 kB \u2502 gzip:  0.61 kB\ndist/server/assets/_id-D9VWEfdp.js                           1.16 kB \u2502 gzip:  0.63 kB\ndist/server/assets/RecoveryState-DFPWxMIo.js                 1.19 kB \u2502 gzip:  0.58 kB\ndist/server/assets/memory-CS-9Bb6q.js                        1.20 kB \u2502 gzip:  0.63 kB\ndist/server/assets/inbox-qKMkeprB.js                         1.20 kB \u2502 gzip:  0.61 kB\ndist/server/assets/policy-DDi8AjcD.js                        1.21 kB \u2502 gzip:  0.57 kB\ndist/server/assets/AgentTabs-DVVkxBks.js                     1.25 kB \u2502 gzip:  0.59 kB\ndist/server/assets/policy-JF7ZI2-i.js                        1.27 kB \u2502 gzip:  0.64 kB\ndist/server/assets/UnsavedChangesGuard-BfSyMhiD.js           1.28 kB \u2502 gzip:  0.65 kB\ndist/server/assets/WorkspaceRecoveryCard-B-6gfg0D.js         1.29 kB \u2502 gzip:  0.49 kB\ndist/server/assets/learning-BuL0c1vH.js                      1.34 kB \u2502 gzip:  0.63 kB\ndist/server/assets/TeamTabs-XybMRm3w.js                      1.34 kB \u2502 gzip:  0.64 kB\ndist/server/assets/_id-C0C6wOt8.js                           1.36 kB \u2502 gzip:  0.65 kB\ndist/server/assets/teams-DKROLgw-.js                         1.43 kB \u2502 gzip:  0.69 kB\ndist/server/assets/_id-6aGxCNlp.js                           1.44 kB \u2502 gzip:  0.71 kB\ndist/server/assets/_id-C1TCGcHL.js                           1.47 kB \u2502 gzip:  0.67 kB\ndist/server/assets/ConfigPage-J3s_PX4o.js                    1.59 kB \u2502 gzip:  0.67 kB\ndist/server/assets/_id-BSkg6FJC.js                           1.67 kB \u2502 gzip:  0.80 kB\ndist/server/assets/inbox-D1ROE7jB.js                         1.83 kB \u2502 gzip:  0.81 kB\ndist/server/assets/verifications-EIw3Xh61.js                 1.97 kB \u2502 gzip:  0.89 kB\ndist/server/assets/routes-B6TnJyQ8.js                        2.11 kB \u2502 gzip:  0.98 kB\ndist/server/assets/routes-BGMHt0b0.js                        2.29 kB \u2502 gzip:  0.95 kB\ndist/server/assets/publications-DV2uRrvJ.js                  2.34 kB \u2502 gzip:  0.86 kB\ndist/server/assets/git-review-BB3M9nYg.js                    2.36 kB \u2502 gzip:  1.07 kB\ndist/server/assets/ResultSourceConversation-NKiRGO6_.js      2.63 kB \u2502 gzip:  1.00 kB\ndist/server/assets/browser-BiDvr0fy.js                       2.64 kB \u2502 gzip:  0.86 kB\ndist/server/assets/start-D4Wq9iTa.js                         3.01 kB \u2502 gzip:  1.19 kB\ndist/server/assets/review-Bs6AbrSn.js                        3.23 kB \u2502 gzip:  1.33 kB\ndist/server/assets/ProfileCommunicationEditor-C2RU-2QB.js    3.43 kB \u2502 gzip:  1.27 kB\ndist/server/assets/welcome-BFWKx138.js                       3.43 kB \u2502 gzip:  1.23 kB\ndist/server/assets/login-rDox7PRD.js                         3.64 kB \u2502 gzip:  1.50 kB\ndist/server/assets/services-T8adll3y.js                      3.76 kB \u2502 gzip:  1.46 kB\ndist/server/assets/ConfirmDialog-C-2cbcmQ.js                 3.88 kB \u2502 gzip:  1.43 kB\ndist/server/assets/teams-BEIUG9fI.js                         4.06 kB \u2502 gzip:  1.42 kB\ndist/server/assets/Page-DJNoI4Gn.js                          4.07 kB \u2502 gzip:  1.17 kB\ndist/server/assets/git-review-presentation-TJiHJhen.js       4.10 kB \u2502 gzip:  1.61 kB\ndist/server/assets/verification-DBsJYadO.js                  4.11 kB \u2502 gzip:  1.23 kB\ndist/server/assets/members-8aWhtn4G.js                       4.45 kB \u2502 gzip:  1.27 kB\ndist/server/assets/results-Dn8kltOJ.js                       5.83 kB \u2502 gzip:  2.06 kB\ndist/server/assets/activity-BKb_BIx7.js                      6.09 kB \u2502 gzip:  1.95 kB\ndist/server/assets/login-B_-9L8TU.js                         6.25 kB \u2502 gzip:  2.02 kB\ndist/server/assets/team-policy-vPG01onj.js                   6.26 kB \u2502 gzip:  1.70 kB\ndist/server/assets/ResultCard-BtVFqdRU.js                    6.28 kB \u2502 gzip:  2.09 kB\ndist/server/assets/FieldRow-DPO8x_le.js                      6.58 kB \u2502 gzip:  2.11 kB\ndist/server/assets/inbox-DsH5oRK0.js                         6.89 kB \u2502 gzip:  2.03 kB\ndist/server/assets/git-review-CqZTrIWS.js                    7.40 kB \u2502 gzip:  1.94 kB\ndist/server/assets/review-packets-CO69K-FK.js                8.44 kB \u2502 gzip:  1.80 kB\ndist/server/assets/attention-BeA3zGve.js                     9.71 kB \u2502 gzip:  2.67 kB\ndist/server/assets/teams-DLt48Vxw.js                        10.93 kB \u2502 gzip:  3.17 kB\ndist/server/assets/_tanstack-start-manifest_v-BIaQ8GCv.js   11.23 kB \u2502 gzip:  1.92 kB\ndist/server/assets/verifications-BVR0OK7x.js                11.95 kB \u2502 gzip:  3.59 kB\ndist/server/assets/memory-DN5iMDQL.js                       11.96 kB \u2502 gzip:  3.33 kB\ndist/server/assets/mcp-DL5u7R-0.js                          12.05 kB \u2502 gzip:  3.26 kB\ndist/server/assets/approvals-FyuTjfdY.js                    12.30 kB \u2502 gzip:  3.35 kB\ndist/server/assets/triggers-Cr9af7Xw.js                     13.57 kB \u2502 gzip:  3.38 kB\ndist/server/assets/learning-D7jWRhqD.js                     13.87 kB \u2502 gzip:  3.73 kB\ndist/server/assets/daemon-client-C-RlJHYO.js                13.96 kB \u2502 gzip:  4.04 kB\ndist/server/assets/skills-cVlLDnvf.js                       14.20 kB \u2502 gzip:  4.15 kB\ndist/server/assets/agents-uXBu1F5L.js                       15.42 kB \u2502 gzip:  3.92 kB\ndist/server/assets/tokens-zSK57Trr.js                       16.76 kB \u2502 gzip:  4.03 kB\ndist/server/assets/policy-DcYIJaHW.js                       17.61 kB \u2502 gzip:  4.42 kB\ndist/server/assets/agents-C65TunMF.js                       18.42 kB \u2502 gzip:  4.92 kB\ndist/server/assets/_id-Bk4SHXs4.js                          20.56 kB \u2502 gzip:  4.95 kB\ndist/server/assets/_id-BXOT74Jd.js                          30.43 kB \u2502 gzip:  7.18 kB\ndist/server/assets/router-DcuCzrds.js                       33.04 kB \u2502 gzip:  9.78 kB\ndist/server/assets/config-DX3c4Co0.js                       37.70 kB \u2502 gzip:  9.17 kB\ndist/server/assets/review-BG71IaCa.js                       38.16 kB \u2502 gzip:  8.10 kB\ndist/server/assets/ProductionTeamPolicyEditor-DNtdMn2a.js   38.51 kB \u2502 gzip:  9.52 kB\ndist/server/assets/telegram-IMfV34-w.js                     42.70 kB \u2502 gzip:  9.68 kB\ndist/server/assets/_id-CrOJD02W.js                          43.32 kB \u2502 gzip: 10.04 kB\ndist/server/assets/Sidebar-Dk9bErQV.js                      47.52 kB \u2502 gzip:  9.91 kB\ndist/server/assets/ChatPane-DsDa1E0a.js                    104.99 kB \u2502 gzip: 24.69 kB\ndist/server/server.js                                      192.28 kB \u2502 gzip: 49.57 kB\n\n\u001b[32m\u2713 built in 2.41s\u001b[39m\nJSON report written to /evidence/tmp/bazilion-security-acceptance-2.json\nfile:///home/patri/coding/bazilion/scripts/security-acceptance.mjs:11\n  throw new Error(`security acceptance: ${message}`)\n        ^\n\nError: security acceptance: vitest run apps/cli/test/backup-coding-recovery.test.ts apps/cli/test/backup.test.ts apps/cli/test/chat.test.ts apps/cli/test/command-approval.test.ts apps/cli/test/image-crash.test.ts apps/cli/test/image-generation.test.ts apps/cli/test/team-interchange.test.ts apps/cli/test/uninstall.test.ts apps/daemon/test/core/coding-command-logs.test.ts apps/daemon/test/core/communication-approvals.test.ts apps/daemon/test/core/git-capture.test.ts apps/daemon/test/core/git-review-snapshot.test.ts apps/daemon/test/core/review-packets.test.ts apps/daemon/test/core/team-authorization.test.ts apps/daemon/test/core/telegram-pairing.test.ts apps/daemon/test/core/verification-requests.test.ts apps/daemon/test/core/web-sessions.test.ts apps/daemon/test/core/workspace-recovery.test.ts apps/daemon/test/lib/agent-coding.test.ts apps/daemon/test/lib/approval-delivery-plan.test.ts apps/daemon/test/lib/browser-executable.test.ts apps/daemon/test/lib/browser-launch.test.ts apps/daemon/test/lib/browser-lifecycle.test.ts apps/daemon/test/lib/browser-observation.test.ts apps/daemon/test/lib/browser-process.test.ts apps/daemon/test/lib/browser-profile.test.ts apps/daemon/test/lib/browser-proxy.test.ts apps/daemon/test/lib/coding-log-disclosure.test.ts apps/daemon/test/lib/coding-log-reference.test.ts apps/daemon/test/lib/execution-security-status.test.ts apps/daemon/test/lib/image-codec.test.ts apps/daemon/test/lib/image-evidence.test.ts apps/daemon/test/lib/image-generation.test.ts apps/daemon/test/lib/image-transports.test.ts apps/daemon/test/lib/mcp-pool.test.ts apps/daemon/test/lib/mcp-retirement.test.ts apps/daemon/test/lib/mcp-stdio-owner.test.ts apps/daemon/test/lib/native-search-accumulator.test.ts apps/daemon/test/lib/native-search-evidence.test.ts apps/daemon/test/lib/native-search-format.test.ts apps/daemon/test/lib/native-search-terminal-assessment.test.ts apps/daemon/test/lib/native-search-transport.test.ts apps/daemon/test/lib/native-search.test.ts apps/daemon/test/lib/protected-provider.test.ts apps/daemon/test/lib/publication-e2e.test.ts apps/daemon/test/lib/publication-github.test.ts apps/daemon/test/lib/recovery-body.test.ts apps/daemon/test/lib/repository-context-egress.test.ts apps/daemon/test/lib/review-capability.test.ts apps/daemon/test/lib/review-capture.test.ts apps/daemon/test/lib/review-e2e.test.ts apps/daemon/test/lib/review-export-delivery.test.ts apps/daemon/test/lib/review-export.test.ts apps/daemon/test/lib/review-file-link.test.ts apps/daemon/test/lib/telegram-queue-binding.test.ts apps/daemon/test/lib/telegram-routing.test.ts apps/daemon/test/lib/turn-invocation.test.ts apps/daemon/test/lib/user-queue-approved.test.ts apps/daemon/test/lib/verification-admission.test.ts apps/daemon/test/lib/verification-capture.test.ts apps/daemon/test/lib/verification-dispatch.test.ts apps/daemon/test/lib/verification-e2e.test.ts apps/daemon/test/lib/verification-executor.test.ts apps/daemon/test/lib/verification-preparation.test.ts apps/daemon/test/lib/verification-request-capability.test.ts apps/daemon/test/lib/verification-runner.test.ts apps/daemon/test/lib/verification-writes.test.ts apps/daemon/test/lib/web-search.test.ts apps/daemon/test/routes/agent-browser.test.ts apps/daemon/test/routes/git-review.test.ts apps/daemon/test/routes/mcp.test.ts apps/daemon/test/routes/publications.test.ts apps/daemon/test/routes/reviews.test.ts apps/daemon/test/routes/verifications.test.ts apps/daemon/test/routes/workspace-recovery.test.ts apps/daemon/test/runtime/browser-mcp-tools.test.ts apps/daemon/test/runtime/pi-model-routing.test.ts apps/daemon/test/runtime/prompt.test.ts apps/daemon/test/runtime/protected-session-prompt.test.ts apps/daemon/test/runtime/protected-session-redaction.test.ts apps/daemon/test/runtime/providers.test.ts apps/daemon/test/runtime/shell-docker.test.ts apps/daemon/test/runtime/tools-web.test.ts apps/daemon/test/runtime/verification-tools.test.ts apps/daemon/test/runtime/web-fetch-evidence.test.ts apps/daemon/test/runtime/web-ssrf-adversarial.test.ts apps/daemon/test/runtime/worker-api-key-refresh.test.ts apps/daemon/test/runtime/worker-output.test.ts apps/daemon/test/runtime/worker-runtime.test.ts apps/web/test/coding-log.test.ts apps/web/test/coding-presentation.test.ts apps/web/test/security-gateway.integration.test.ts apps/web/test/verification-limits.test.ts --reporter=json --outputFile=/evidence/tmp/bazilion-security-acceptance-2.json --no-file-parallelism --maxWorkers=1 exited 1\n    at fail (file:///home/patri/coding/bazilion/scripts/security-acceptance.mjs:11:9)\n    at run (file:///home/patri/coding/bazilion/scripts/security-acceptance.mjs:42:5)\n    at file:///home/patri/coding/bazilion/scripts/security-acceptance.mjs:60:3\n    at ModuleJob.run (node:internal/modules/esm/module_job:561:25)\n    at async node:internal/modules/esm/loader:647:26\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)\n\nNode.js v24.20.0\n",
+    "isolate-node24.sh": "#!/bin/bash\nset -eu\nr=/var/tmp/baz023-candidate-check-esnjK6\nexec env -i PATH=/home/patri/.local/share/mise/installs/node/24.20.0/bin:/home/patri/.local/share/mise/installs/pnpm/12.14.0:/usr/bin HOME=/nonexistent LANG=C.UTF-8 bwrap --unshare-user --unshare-net --unshare-ipc --unshare-uts --unshare-pid --uid 1000 --gid 1000 --die-with-parent --new-session --tmpfs / --tmpfs /tmp --ro-bind /usr /usr --symlink usr/bin /bin --symlink usr/lib /lib --symlink usr/lib /lib64 --dir /etc --ro-bind /etc/ld.so.cache /etc/ld.so.cache --ro-bind /etc/passwd /etc/passwd --ro-bind /etc/group /etc/group --ro-bind /home/patri/.local/share/mise/installs/node/24.20.0 /home/patri/.local/share/mise/installs/node/24.20.0 --ro-bind /home/patri/.local/share/mise/installs/pnpm/12.14.0 /home/patri/.local/share/mise/installs/pnpm/12.14.0 --ro-bind /home/patri/coding/bazilion /home/patri/coding/bazilion --bind \"$r\" /evidence --bind \"$r/home\" /home/sandbox --bind \"$r/vite\" /home/patri/coding/bazilion/node_modules/.vite --bind \"$r/vite-temp\" /home/patri/coding/bazilion/node_modules/.vite-temp --ro-bind /var/tmp/baz023-candidate-check-esnjK6/hosts /etc/hosts --ro-bind /var/tmp/baz023-candidate-check-esnjK6/nsswitch.conf /etc/nsswitch.conf --bind /var/tmp/baz023-candidate-check-esnjK6/native-node24 /home/patri/coding/bazilion/node_modules/.pnpm/better-sqlite3@12.10.0/node_modules/better-sqlite3 --bind /var/tmp/baz023-candidate-check-esnjK6/web-app /home/patri/coding/bazilion/apps/web --proc /proc --dev /dev --chdir /home/patri/coding/bazilion --setenv HOME /home/sandbox --setenv TMPDIR /evidence/tmp --setenv XDG_CACHE_HOME /evidence/cache --setenv TZ UTC --setenv CI 1 --setenv BAZILION_HOME /evidence/base-home --setenv BAZILION_SCHEDULER off --setenv BROWSER_ENABLED false --setenv BAZILION_IMAGE_GENERATION off --setenv PI_OFFLINE 1 --setenv ESBUILD_WORKER_THREADS 0 --setenv DO_NOT_TRACK 1 -- /bin/bash /evidence/check-node24.sh \"$@\"\n",
+    "check-node24.sh": "#!/bin/bash\nset -eu\ncase \"$1\" in\n native-build)\n  cd /home/patri/coding/bazilion/node_modules/.pnpm/better-sqlite3@12.10.0/node_modules/better-sqlite3\n  exec node /home/patri/.local/share/mise/installs/node/24.20.0/lib/node_modules/npm/node_modules/node-gyp/bin/node-gyp.js rebuild --nodedir=/home/patri/.local/share/mise/installs/node/24.20.0 --jobs=2\n  ;;\n native-check)\n  exec node --input-type=module -e \"import{createRequire}from'node:module';const require=createRequire('/home/patri/coding/bazilion/node_modules/.pnpm/better-sqlite3@12.10.0/node_modules/better-sqlite3/package.json');const Database=require('./');const db=new Database(':memory:');console.log({node:process.version,abi:process.versions.modules,result:db.prepare('SELECT 1 AS ok').get()});db.close()\"\n  ;;\n focused)\n  unset BROWSER_ENABLED BAZILION_SCHEDULER\n  exec node node_modules/vitest/vitest.mjs run apps/daemon/test/runtime/memory-qmd.test.ts apps/daemon/test/runtime/tools-web.test.ts apps/cli/test/agent-browser.test.ts apps/daemon/test/routes/agent-browser.test.ts apps/cli/test/trigger.test.ts --pool=forks --maxWorkers=3 --reporter=json --outputFile=/evidence/environment-focused.json\n  ;;\n fixture-check)\n  unset BROWSER_ENABLED BAZILION_SCHEDULER\n  exec node node_modules/vitest/vitest.mjs run apps/cli/test/trigger.test.ts apps/web/test/security-gateway.integration.test.ts --pool=forks --maxWorkers=2 --reporter=json --outputFile=/evidence/fixture-check.json\n  ;;\n security-image-diagnostic)\n  unset BROWSER_ENABLED BAZILION_SCHEDULER\n  export BAZILION_SECURITY_ACCEPTANCE=1\n  exec pnpm vitest run apps/cli/test/image-crash.test.ts -t before_provider_ack --reporter=json --outputFile=/evidence/security-image-diagnostic.json --no-file-parallelism --maxWorkers=1\n  ;;\n security-images)\n  unset BROWSER_ENABLED BAZILION_SCHEDULER\n  export BAZILION_SECURITY_ACCEPTANCE=1\n  exec pnpm vitest run apps/cli/test/image-generation.test.ts apps/cli/test/image-crash.test.ts --reporter=json --outputFile=/evidence/security-images.json --no-file-parallelism --maxWorkers=1\n  ;;\n security)\n  unset BROWSER_ENABLED BAZILION_SCHEDULER\n  exec node scripts/security-acceptance.mjs\n  ;;\n tests)\n  unset BROWSER_ENABLED BAZILION_SCHEDULER\n  exec node node_modules/vitest/vitest.mjs run --pool=forks --maxWorkers=4 --reporter=json --outputFile=/evidence/node24-tests.json\n  ;;\n *) exit 2 ;;\nesac\n"
+  },
+  "noOriginalHomeAccountOrSharedBinaryMutation": true,
+  "independentFinalCandidateReview": "pending",
+  "publicationAuthorized": false,
+  "privateNativeBuild": {
+    "package": "better-sqlite3@12.10.0",
+    "targetABI": "137",
+    "sha256": "69a7ece7770ceb9c6520d141aa58d17ea6849c31af13c2880f4698147d18f74f",
+    "sourcePackageUnmodified": "Existing public dependency sources; no new product C/native boundary",
+    "notFreshInstallQualification": true
+  }
+}

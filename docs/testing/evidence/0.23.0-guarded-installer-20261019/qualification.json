@@ -1,0 +1,614 @@
+{
+  "scope": "Approved registry-only npm cache, bounded installer cleanup hardening and guarded offline exact0.23 CLI trial; not unrestricted npm lifecycle or whole-release acceptance",
+  "date": "2026-10-19",
+  "cache": {
+    "exitCode": 0,
+    "packagesAdded": 554,
+    "scriptsDisabled": true,
+    "engineStrict": true,
+    "metadataSource": "registry.npmjs.org only, fixed canonical CONNECT/TLS transport",
+    "transport": {
+      "host": "registry.npmjs.org",
+      "port": 443,
+      "seconds": 600,
+      "maxTCP": 4096,
+      "maxConcurrent": 128,
+      "maxBytes": 2147483648,
+      "connections": 15,
+      "sent": 499341,
+      "received": 632209483,
+      "networkErrors": [],
+      "addresses": [
+        "104.16.10.34",
+        "104.16.7.34",
+        "104.16.6.34",
+        "104.16.1.34",
+        "104.16.0.34",
+        "104.16.11.34",
+        "104.16.5.34",
+        "104.16.2.34",
+        "104.16.3.34",
+        "104.16.4.34",
+        "104.16.8.34",
+        "104.16.9.34"
+      ],
+      "remainingStreams": 0
+    },
+    "misePostHook": "Installed npm wrapper ran mise reshim after successful global install and attempted unrelated tool-version discovery; HTTP client failed before other proxy targets, no additional route admitted. Preserved; subsequent commands use same installed npm CLI JS directly to avoid hook, not a different manager/provider.",
+    "productionClosure": {
+      "path": "docs/testing/evidence/0.23.0-guarded-installer-20261019/cache-production-tree.json.gz",
+      "sha256": "1c007f6ecfc1d51b81aeaed0497234f1259489caeb521119f70ef08fc2f347f8",
+      "uncompressedSha256": "6713b8a13ea109e04cf0aa02a509469d9ea88a631b56e66c6da14132f01f422e",
+      "limit": "Actual cache-population global prefix resolved tree; guarded trial uses same cache offline, but its removed final prefix was not separately inventoried. Do not claim byte-identical trial closure solely from this snapshot."
+    }
+  },
+  "sourceChanges": {
+    "harness": "Owned-child close listeners from creation via existing ownedChild; bounded command/output/strict owner health; no guessed PID/group; settled critical service shutdown before uninstall; failures/unknown or forced cleanup retain full fixture; SQLite receipt handle closed; same actual npm CLI directly; scripts-off install then exact project-positive offline rebuilds; exact source version oracle; no benign CLI version replay; functional auth/setup/SSR/search/browser/MCP/chat/coding/reset oracles preserved",
+    "helperTests": "Initial9pass/1fail because test assumed -1 rather than preserved native ENOENT close code-2; assertion corrected to actual recorded negative status, not runtime relaxed. Final10pass/0fail/0skip; controlled forced-close removal case explicitly modelled. ScopedBiome/syntax pass.",
+    "CI": "Adds helper tests and labels guarded-profile contract; no remote CI result claimed"
+  },
+  "trial": {
+    "profile": "npm scripts disabled, explicit project-positive rebuilds only; not unrestricted npm install",
+    "artifact": {
+      "path": "/evidence/version-control/tarballs/bazilion-0.23.0.tgz",
+      "sha256": "b0a5b28043be50bc3d857d5a869cc3040911e49f5444e20ebe9cc205dda733e9",
+      "expectedVersion": "0.23.0"
+    },
+    "platform": "linux",
+    "node": "v24.20.0",
+    "fixtureRoot": "/evidence/tmp/bazilion-installer-Q4ELUJ",
+    "passed": true,
+    "failures": [],
+    "cleanupErrors": [],
+    "ownershipLimit": "owned child/pipe closes; not arbitrary-descendant or abnormal-host proof; outer containment required",
+    "processes": [
+      {
+        "command": "/home/patri/.local/share/mise/installs/node/24.20.0/bin/node",
+        "args": [
+          "/home/patri/.local/share/mise/installs/node/24.20.0/lib/node_modules/npm/bin/npm-cli.js",
+          "--userconfig=/evidence/tmp/bazilion-installer-Q4ELUJ/npm-user.rc",
+          "--globalconfig=/evidence/tmp/bazilion-installer-Q4ELUJ/npm-global.rc",
+          "install",
+          "-g",
+          "--ignore-scripts",
+          "--no-audit",
+          "--no-fund",
+          "--engine-strict",
+          "--offline",
+          "--prefix",
+          "/evidence/tmp/bazilion-installer-Q4ELUJ/npm-prefix",
+          "/evidence/version-control/tarballs/bazilion-0.23.0.tgz"
+        ],
+        "outcome": {
+          "code": 0,
+          "signal": null,
+          "forced": false,
+          "overflow": false,
+          "stdout": "\nadded 554 packages in 9s\n",
+          "stderr": "npm warn Unknown env config \"jobs\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.\nnpm warn Unknown env config \"child-concurrency\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.\nnpm warn Unknown env config \"nodedir\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.\nnpm warn deprecated node-domexception@1.0.0: Use your platform's native DOMException instead\nnpm warn deprecated node-domexception@1.0.0: Use your platform's native DOMException instead\n"
+        }
+      },
+      {
+        "command": "/home/patri/.local/share/mise/installs/node/24.20.0/bin/node",
+        "args": [
+          "/home/patri/.local/share/mise/installs/node/24.20.0/lib/node_modules/npm/bin/npm-cli.js",
+          "--userconfig=/evidence/tmp/bazilion-installer-Q4ELUJ/npm-user.rc",
+          "--globalconfig=/evidence/tmp/bazilion-installer-Q4ELUJ/npm-global.rc",
+          "rebuild",
+          "@playwright/browser-chromium",
+          "better-sqlite3",
+          "esbuild",
+          "playwright",
+          "sharp",
+          "tree-sitter-go",
+          "tree-sitter-javascript",
+          "tree-sitter-python",
+          "tree-sitter-rust",
+          "tree-sitter-typescript",
+          "--offline",
+          "--no-audit",
+          "--no-fund",
+          "--prefix",
+          "/evidence/tmp/bazilion-installer-Q4ELUJ/npm-prefix/lib/node_modules/bazilion"
+        ],
+        "outcome": {
+          "code": 0,
+          "signal": null,
+          "forced": false,
+          "overflow": false,
+          "stdout": "rebuilt dependencies successfully\n",
+          "stderr": "npm warn Unknown env config \"jobs\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.\nnpm warn Unknown env config \"child-concurrency\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.\nnpm warn Unknown env config \"nodedir\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.\nnpm warn rebuild 12 packages have install scripts not yet covered by allowScripts. Run `npm install-scripts ls` to review.\n"
+        }
+      },
+      {
+        "command": "/home/patri/.local/share/mise/installs/node/24.20.0/bin/node",
+        "args": [
+          "/evidence/tmp/bazilion-installer-Q4ELUJ/npm-prefix/lib/node_modules/bazilion/dist/cli.js",
+          "--version"
+        ],
+        "outcome": {
+          "code": 0,
+          "signal": null,
+          "forced": false,
+          "overflow": false,
+          "stdout": "0.23.0\n",
+          "stderr": ""
+        }
+      },
+      {
+        "command": "/home/patri/.local/share/mise/installs/node/24.20.0/bin/node",
+        "args": [
+          "/evidence/tmp/bazilion-installer-Q4ELUJ/npm-prefix/lib/node_modules/bazilion/dist/cli.js",
+          "serve",
+          "--port",
+          "35101"
+        ],
+        "outcome": {
+          "code": 0,
+          "signal": null,
+          "forced": false,
+          "overflow": false,
+          "stdout": "starting bazilion daemon at http://127.0.0.1:35101\n(web UI runs separately: cd apps/web && pnpm dev)\nbazilion auto-bootstrapped at /evidence/tmp/bazilion-installer-Q4ELUJ/home\nbootstrap token written to /evidence/tmp/bazilion-installer-Q4ELUJ/home/auth.json\nbazilion daemon listening at http://127.0.0.1:35101\n\nbazilion daemon caught SIGTERM, shutting down\u2026\n",
+          "stderr": ""
+        }
+      },
+      {
+        "command": "/home/patri/.local/share/mise/installs/node/24.20.0/bin/node",
+        "args": [
+          "/evidence/tmp/bazilion-installer-Q4ELUJ/npm-prefix/lib/node_modules/bazilion/dist/cli.js",
+          "provider",
+          "enable",
+          "lmstudio"
+        ],
+        "outcome": {
+          "code": 0,
+          "signal": null,
+          "forced": false,
+          "overflow": false,
+          "stdout": "lmstudio: enabled\n",
+          "stderr": ""
+        }
+      },
+      {
+        "command": "/home/patri/.local/share/mise/installs/node/24.20.0/bin/node",
+        "args": [
+          "/evidence/tmp/bazilion-installer-Q4ELUJ/npm-prefix/lib/node_modules/bazilion/dist/cli.js",
+          "provider",
+          "models-set",
+          "lmstudio",
+          "e2e-stub"
+        ],
+        "outcome": {
+          "code": 0,
+          "signal": null,
+          "forced": false,
+          "overflow": false,
+          "stdout": "saved 1 curated model(s) for lmstudio\n  e2e-stub\n",
+          "stderr": ""
+        }
+      },
+      {
+        "command": "/home/patri/.local/share/mise/installs/node/24.20.0/bin/node",
+        "args": [
+          "/evidence/tmp/bazilion-installer-Q4ELUJ/npm-prefix/lib/node_modules/bazilion/dist/web-server.js"
+        ],
+        "outcome": {
+          "code": 0,
+          "signal": null,
+          "forced": false,
+          "overflow": false,
+          "stdout": "bazilion web UI listening at http://127.0.0.1:36925\n\nbazilion web UI caught SIGTERM, shutting down...\n",
+          "stderr": ""
+        }
+      },
+      {
+        "command": "/home/patri/.local/share/mise/installs/node/24.20.0/bin/node",
+        "args": [
+          "/evidence/tmp/bazilion-installer-Q4ELUJ/npm-prefix/lib/node_modules/bazilion/dist/cli.js",
+          "agent",
+          "spawn",
+          "--profile",
+          "default",
+          "--name",
+          "e2e-probe"
+        ],
+        "outcome": {
+          "code": 0,
+          "signal": null,
+          "forced": false,
+          "overflow": false,
+          "stdout": "spawned agent b5de36c8-8bbd-417d-a060-3bbc9b0b1231 (e2e-probe)\ndir: /evidence/tmp/bazilion-installer-Q4ELUJ/home/agents/b5de36c8-8bbd-417d-a060-3bbc9b0b1231\n",
+          "stderr": ""
+        }
+      },
+      {
+        "command": "/home/patri/.local/share/mise/installs/node/24.20.0/bin/node",
+        "args": [
+          "/evidence/tmp/bazilion-installer-Q4ELUJ/npm-prefix/lib/node_modules/bazilion/dist/cli.js",
+          "agent",
+          "search",
+          "status",
+          "b5de36c8-8bbd-417d-a060-3bbc9b0b1231"
+        ],
+        "outcome": {
+          "code": 0,
+          "signal": null,
+          "forced": false,
+          "overflow": false,
+          "stdout": "{\n  \"state\": \"unavailable\",\n  \"route\": null,\n  \"model\": \"lmstudio:e2e-stub\",\n  \"account\": null,\n  \"mode\": \"cached\",\n  \"qualification\": \"not_applicable\",\n  \"message\": \"No managed backend configured. Native search follows an eligible OpenAI/ChatGPT Agent\u2019s own model/account; no cross-provider fallback.\"\n}\n",
+          "stderr": ""
+        }
+      },
+      {
+        "command": "/home/patri/.local/share/mise/installs/node/24.20.0/bin/node",
+        "args": [
+          "/evidence/tmp/bazilion-installer-Q4ELUJ/npm-prefix/lib/node_modules/bazilion/dist/cli.js",
+          "config",
+          "set",
+          "BAZILION_WEB_SEARCH",
+          "off"
+        ],
+        "outcome": {
+          "code": 0,
+          "signal": null,
+          "forced": false,
+          "overflow": false,
+          "stdout": "BAZILION_WEB_SEARCH (config): off\n",
+          "stderr": ""
+        }
+      },
+      {
+        "command": "/home/patri/.local/share/mise/installs/node/24.20.0/bin/node",
+        "args": [
+          "/evidence/tmp/bazilion-installer-Q4ELUJ/npm-prefix/lib/node_modules/bazilion/dist/cli.js",
+          "agent",
+          "search",
+          "status",
+          "b5de36c8-8bbd-417d-a060-3bbc9b0b1231"
+        ],
+        "outcome": {
+          "code": 0,
+          "signal": null,
+          "forced": false,
+          "overflow": false,
+          "stdout": "{\n  \"state\": \"disabled\",\n  \"route\": null,\n  \"model\": \"lmstudio:e2e-stub\",\n  \"account\": null,\n  \"mode\": \"cached\",\n  \"qualification\": \"not_applicable\",\n  \"message\": \"Ordinary web search is disabled for this turn.\"\n}\n",
+          "stderr": ""
+        }
+      },
+      {
+        "command": "/home/patri/.local/share/mise/installs/node/24.20.0/bin/node",
+        "args": [
+          "/evidence/tmp/bazilion-installer-Q4ELUJ/npm-prefix/lib/node_modules/bazilion/dist/cli.js",
+          "config",
+          "set",
+          "BROWSER_EXECUTABLE_PATH",
+          "/evidence/tmp/bazilion-installer-Q4ELUJ/home/definitely-missing-browser-executable"
+        ],
+        "outcome": {
+          "code": 0,
+          "signal": null,
+          "forced": false,
+          "overflow": false,
+          "stdout": "BROWSER_EXECUTABLE_PATH (config): /evidence/tmp/bazilion-installer-Q4ELUJ/home/definitely-missing-browser-executable\n",
+          "stderr": ""
+        }
+      },
+      {
+        "command": "/home/patri/.local/share/mise/installs/node/24.20.0/bin/node",
+        "args": [
+          "/evidence/tmp/bazilion-installer-Q4ELUJ/npm-prefix/lib/node_modules/bazilion/dist/cli.js",
+          "agent",
+          "browser",
+          "status",
+          "b5de36c8-8bbd-417d-a060-3bbc9b0b1231"
+        ],
+        "outcome": {
+          "code": 0,
+          "signal": null,
+          "forced": false,
+          "overflow": false,
+          "stdout": "{\n  \"agentId\": \"b5de36c8-8bbd-417d-a060-3bbc9b0b1231\",\n  \"enabled\": true,\n  \"availability\": \"unavailable\",\n  \"state\": \"stopped\",\n  \"profilePresent\": false,\n  \"reasonCode\": \"browser_invalid_executable\",\n  \"remedy\": \"The configured browser path is not an executable file. Fix or clear BROWSER_EXECUTABLE_PATH to use automatic discovery.\"\n}\n",
+          "stderr": ""
+        }
+      },
+      {
+        "command": "/home/patri/.local/share/mise/installs/node/24.20.0/bin/node",
+        "args": [
+          "/evidence/tmp/bazilion-installer-Q4ELUJ/npm-prefix/lib/node_modules/bazilion/dist/cli.js",
+          "config",
+          "rm",
+          "BROWSER_EXECUTABLE_PATH"
+        ],
+        "outcome": {
+          "code": 0,
+          "signal": null,
+          "forced": false,
+          "overflow": false,
+          "stdout": "removed BROWSER_EXECUTABLE_PATH\n",
+          "stderr": ""
+        }
+      },
+      {
+        "command": "/home/patri/.local/share/mise/installs/node/24.20.0/bin/node",
+        "args": [
+          "/evidence/tmp/bazilion-installer-Q4ELUJ/npm-prefix/lib/node_modules/bazilion/dist/cli.js",
+          "agent",
+          "browser",
+          "status",
+          "b5de36c8-8bbd-417d-a060-3bbc9b0b1231"
+        ],
+        "outcome": {
+          "code": 0,
+          "signal": null,
+          "forced": false,
+          "overflow": false,
+          "stdout": "{\n  \"agentId\": \"b5de36c8-8bbd-417d-a060-3bbc9b0b1231\",\n  \"enabled\": true,\n  \"availability\": \"configured\",\n  \"state\": \"stopped\",\n  \"profilePresent\": false,\n  \"selectedBrowser\": {\n    \"name\": \"Chromium\",\n    \"source\": \"installed\",\n    \"mode\": \"headless\"\n  }\n}\n",
+          "stderr": ""
+        }
+      },
+      {
+        "command": "/home/patri/.local/share/mise/installs/node/24.20.0/bin/node",
+        "args": [
+          "/evidence/tmp/bazilion-installer-Q4ELUJ/npm-prefix/lib/node_modules/bazilion/dist/cli.js",
+          "mcp",
+          "add",
+          "legacy",
+          "--transport",
+          "sse",
+          "--url",
+          "http://127.0.0.1:41081/mcp"
+        ],
+        "outcome": {
+          "code": 2,
+          "signal": null,
+          "forced": false,
+          "overflow": false,
+          "stdout": "",
+          "stderr": "error: transport must be stdio or http (Streamable HTTP); legacy SSE is unsupported\n"
+        }
+      },
+      {
+        "command": "/home/patri/.local/share/mise/installs/node/24.20.0/bin/node",
+        "args": [
+          "/evidence/tmp/bazilion-installer-Q4ELUJ/npm-prefix/lib/node_modules/bazilion/dist/cli.js",
+          "mcp",
+          "add",
+          "packed",
+          "--transport",
+          "http",
+          "--url",
+          "http://127.0.0.1:41081/mcp",
+          "--token",
+          "PACKED_SYNTHETIC_BEARER"
+        ],
+        "outcome": {
+          "code": 0,
+          "signal": null,
+          "forced": false,
+          "overflow": false,
+          "stdout": "c2d34a58-399d-4958-af5c-9834f7d63706\tpacked\thttp\n",
+          "stderr": ""
+        }
+      },
+      {
+        "command": "/home/patri/.local/share/mise/installs/node/24.20.0/bin/node",
+        "args": [
+          "/evidence/tmp/bazilion-installer-Q4ELUJ/npm-prefix/lib/node_modules/bazilion/dist/cli.js",
+          "mcp",
+          "test",
+          "c2d34a58-399d-4958-af5c-9834f7d63706"
+        ],
+        "outcome": {
+          "code": 0,
+          "signal": null,
+          "forced": false,
+          "overflow": false,
+          "stdout": "connected \u2014 1 tool(s):\n  foo\tMCP tool foo from packed\n",
+          "stderr": ""
+        }
+      },
+      {
+        "command": "/home/patri/.local/share/mise/installs/node/24.20.0/bin/node",
+        "args": [
+          "/evidence/tmp/bazilion-installer-Q4ELUJ/npm-prefix/lib/node_modules/bazilion/dist/cli.js",
+          "mcp",
+          "show",
+          "c2d34a58-399d-4958-af5c-9834f7d63706"
+        ],
+        "outcome": {
+          "code": 0,
+          "signal": null,
+          "forced": false,
+          "overflow": false,
+          "stdout": "{\n  \"id\": \"c2d34a58-399d-4958-af5c-9834f7d63706\",\n  \"name\": \"packed\",\n  \"transport\": \"http\",\n  \"command\": null,\n  \"args\": [],\n  \"url\": \"http://127.0.0.1:41081/mcp\",\n  \"hasAuthToken\": true,\n  \"enabled\": true,\n  \"createdAt\": 1792438377800,\n  \"updatedAt\": 1792438377800\n}\n",
+          "stderr": ""
+        }
+      },
+      {
+        "command": "/home/patri/.local/share/mise/installs/node/24.20.0/bin/node",
+        "args": [
+          "/evidence/tmp/bazilion-installer-Q4ELUJ/npm-prefix/lib/node_modules/bazilion/dist/cli.js",
+          "agent",
+          "chat",
+          "b5de36c8-8bbd-417d-a060-3bbc9b0b1231",
+          "--message",
+          "packed MCP probe: use mcp__packed__foo once"
+        ],
+        "outcome": {
+          "code": 0,
+          "signal": null,
+          "forced": false,
+          "overflow": false,
+          "stdout": "  [tool: mcp__packed__foo {}]\n  [result: packed MCP fixture read]\ne2e final answer reached the transcript\n",
+          "stderr": ""
+        }
+      },
+      {
+        "command": "/home/patri/.local/share/mise/installs/node/24.20.0/bin/node",
+        "args": [
+          "/evidence/tmp/bazilion-installer-Q4ELUJ/npm-prefix/lib/node_modules/bazilion/dist/cli.js",
+          "mcp",
+          "rm",
+          "c2d34a58-399d-4958-af5c-9834f7d63706"
+        ],
+        "outcome": {
+          "code": 0,
+          "signal": null,
+          "forced": false,
+          "overflow": false,
+          "stdout": "removed MCP server c2d34a58-399d-4958-af5c-9834f7d63706\n",
+          "stderr": ""
+        }
+      },
+      {
+        "command": "/home/patri/.local/share/mise/installs/node/24.20.0/bin/node",
+        "args": [
+          "/evidence/tmp/bazilion-installer-Q4ELUJ/npm-prefix/lib/node_modules/bazilion/dist/cli.js",
+          "agent",
+          "chat",
+          "b5de36c8-8bbd-417d-a060-3bbc9b0b1231",
+          "--message",
+          "please answer with the fixed reply"
+        ],
+        "outcome": {
+          "code": 0,
+          "signal": null,
+          "forced": false,
+          "overflow": false,
+          "stdout": "e2e final answer reached the transcript\n",
+          "stderr": ""
+        }
+      },
+      {
+        "command": "node",
+        "args": [
+          "/work/scripts/fake-coding-provider.mjs",
+          "34313",
+          "echo e2e-coding-tick"
+        ],
+        "outcome": {
+          "code": null,
+          "signal": "SIGTERM",
+          "forced": false,
+          "overflow": false,
+          "stdout": "fake coding provider on http://127.0.0.1:34313/v1 (model baz041-stub)\ncoding_command: echo e2e-coding-tick\n",
+          "stderr": ""
+        }
+      },
+      {
+        "command": "/home/patri/.local/share/mise/installs/node/24.20.0/bin/node",
+        "args": [
+          "/evidence/tmp/bazilion-installer-Q4ELUJ/npm-prefix/lib/node_modules/bazilion/dist/cli.js",
+          "serve",
+          "--port",
+          "42901"
+        ],
+        "outcome": {
+          "code": 0,
+          "signal": null,
+          "forced": false,
+          "overflow": false,
+          "stdout": "starting bazilion daemon at http://127.0.0.1:42901\n(web UI runs separately: cd apps/web && pnpm dev)\nbazilion auto-bootstrapped at /evidence/tmp/bazilion-installer-Q4ELUJ/coding-home\nbootstrap token written to /evidence/tmp/bazilion-installer-Q4ELUJ/coding-home/auth.json\nbazilion daemon listening at http://127.0.0.1:42901\n\nbazilion daemon caught SIGTERM, shutting down\u2026\n",
+          "stderr": ""
+        }
+      },
+      {
+        "command": "/home/patri/.local/share/mise/installs/node/24.20.0/bin/node",
+        "args": [
+          "/evidence/tmp/bazilion-installer-Q4ELUJ/npm-prefix/lib/node_modules/bazilion/dist/cli.js",
+          "provider",
+          "enable",
+          "lmstudio"
+        ],
+        "outcome": {
+          "code": 0,
+          "signal": null,
+          "forced": false,
+          "overflow": false,
+          "stdout": "lmstudio: enabled\n",
+          "stderr": ""
+        }
+      },
+      {
+        "command": "/home/patri/.local/share/mise/installs/node/24.20.0/bin/node",
+        "args": [
+          "/evidence/tmp/bazilion-installer-Q4ELUJ/npm-prefix/lib/node_modules/bazilion/dist/cli.js",
+          "provider",
+          "models-set",
+          "lmstudio",
+          "baz041-stub"
+        ],
+        "outcome": {
+          "code": 0,
+          "signal": null,
+          "forced": false,
+          "overflow": false,
+          "stdout": "saved 1 curated model(s) for lmstudio\n  baz041-stub\n",
+          "stderr": ""
+        }
+      },
+      {
+        "command": "/home/patri/.local/share/mise/installs/node/24.20.0/bin/node",
+        "args": [
+          "/evidence/tmp/bazilion-installer-Q4ELUJ/npm-prefix/lib/node_modules/bazilion/dist/cli.js",
+          "agent",
+          "spawn",
+          "--profile",
+          "default"
+        ],
+        "outcome": {
+          "code": 0,
+          "signal": null,
+          "forced": false,
+          "overflow": false,
+          "stdout": "spawned agent 0d17a99d-b835-466c-8723-fb799926b28f (Default)\ndir: /evidence/tmp/bazilion-installer-Q4ELUJ/coding-home/agents/0d17a99d-b835-466c-8723-fb799926b28f\n",
+          "stderr": ""
+        }
+      },
+      {
+        "command": "/home/patri/.local/share/mise/installs/node/24.20.0/bin/node",
+        "args": [
+          "/evidence/tmp/bazilion-installer-Q4ELUJ/npm-prefix/lib/node_modules/bazilion/dist/cli.js",
+          "agent",
+          "chat",
+          "0d17a99d-b835-466c-8723-fb799926b28f",
+          "--message",
+          "run the check"
+        ],
+        "outcome": {
+          "code": 0,
+          "signal": null,
+          "forced": false,
+          "overflow": false,
+          "stdout": "Running the test.\n  [tool: coding_command {\"command\":\"echo e2e-coding-tick\",\"cwd\":\".\",\"purpose\":\"test\",\"timeoutSeconds\":60}]\n  [result: {\"id\":\"4d855455-49bd-4bbb-b879-c984c4af50cc\",\"agentId\":\"0d17a99d-b835-466c-8723-fb799926b28f\",\"teamI]\nThe command finished; I inspected the output.\n",
+          "stderr": ""
+        }
+      },
+      {
+        "command": "/home/patri/.local/share/mise/installs/node/24.20.0/bin/node",
+        "args": [
+          "/evidence/tmp/bazilion-installer-Q4ELUJ/npm-prefix/lib/node_modules/bazilion/dist/cli.js",
+          "uninstall",
+          "--yes"
+        ],
+        "outcome": {
+          "code": 0,
+          "signal": null,
+          "forced": false,
+          "overflow": false,
+          "stdout": "about to uninstall bazilion at /evidence/tmp/bazilion-installer-Q4ELUJ/home\n\nremoved /evidence/tmp/bazilion-installer-Q4ELUJ/home/bazilion.db\nremoved /evidence/tmp/bazilion-installer-Q4ELUJ/home/auth.json\nremoved /evidence/tmp/bazilion-installer-Q4ELUJ/home/profiles\nremoved /evidence/tmp/bazilion-installer-Q4ELUJ/home/agents\nremoved /evidence/tmp/bazilion-installer-Q4ELUJ/home/teams\n\nkept: logs/, skills/\nre-run 'bazilion serve' to create a fresh DB and matching auth.json when you're ready.\n",
+          "stderr": ""
+        }
+      }
+    ],
+    "daemonTail": "starting bazilion daemon at http://127.0.0.1:35101\n(web UI runs separately: cd apps/web && pnpm dev)\nbazilion auto-bootstrapped at /evidence/tmp/bazilion-installer-Q4ELUJ/home\nbootstrap token written to /evidence/tmp/bazilion-installer-Q4ELUJ/home/auth.json\nbazilion daemon listening at http://127.0.0.1:35101\nbazilion web UI listening at http://127.0.0.1:36925\n\nbazilion web UI caught SIGTERM, shutting down...\n\nbazilion daemon caught SIGTERM, shutting down\u2026\n"
+  },
+  "trialLimits": "LinuxNode24.20.0, exactCLI SHA above; actual fresh npm prefix outside workspace graph, guarded profile only. No real providers, browser launch or default npm lifecycle qualification; owned child/pipe closure not arbitrary-descendant/abnormal-host proof.",
+  "transcripts": {
+    "path": "docs/testing/evidence/0.23.0-guarded-installer-20261019/transcripts.json.gz",
+    "sha256": "1e683563f633d1529e5a6384752fa25ed6dfa9bd1ed519d24046d51a8cc2f874",
+    "uncompressedSha256": "0f2540e37025abb1daec757d4783c1e8cdd6ab9cba199601b70c84dc34042b0a"
+  },
+  "next": "Fresh native read-only independent review of installer/helper/tests/CI and this evidence; no final release acceptance or publication yet. Remaining formalRisk/backup/platformCI/sourceCommit/final checks remain open.",
+  "publicationAuthorized": false
+}

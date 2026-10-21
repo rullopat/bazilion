@@ -26,7 +26,7 @@ B additionally requires the [composed content-Team walkthrough](content-team-acc
 the brief and schedule, inspect actual cron-prepared work, request text/image changes, approve exact
 versions and retrieve a manual handoff. It composes these existing cards rather than increasing their
 count of 16. Topics, purposes and audiences are selected through the brief, not prescribed by the
-protocol. BAZ-066 owns this live/human observation after BAZ-064/065; BAZ-063 reviews the combined
+protocol. No story currently owns this live/human observation after BAZ-064/065; BAZ-063 reviews the combined
 evidence. Include late approval, next-cycle comprehension, timezone limitations and the distinction
 between preparation and posting.
 

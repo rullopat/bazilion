@@ -1,0 +1,38 @@
+{
+  "passed": false,
+  "completedChecks": [
+    "fresh installed prefix production version sets equal actual r28 prefix",
+    "source: actual installed qmd lexical read/list/search",
+    "packed owner-only minimal inventory, private404, canonical policy release/exact PNG, confirmed discard; no provider request"
+  ],
+  "error": "TypeError: tar.list is not a function\n    at file:///control/check.mjs:114:29\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)",
+  "ownedChildren": 18,
+  "ownedChildOutcomes": "all code0/no signal/force/overflow/spawn or cleanup error",
+  "outer": {
+    "returncode": 1,
+    "forced": false,
+    "deadlineExceeded": false,
+    "seconds": 15.593352794647217,
+    "stdoutBytes": 477,
+    "stderrBytes": 0,
+    "stdin": "DEVNULL",
+    "closure": "owned bwrap leader settled; private PID/proc namespace; not arbitrary-host cleanup proof"
+  },
+  "providerRequests": 0,
+  "priorCasesExecuted": 0,
+  "plainBackupCreated": {
+    "bytes": 32349,
+    "sha256": "194fa5d21727ab7f7d1cf2206a3d3d1e9d91c0238fa8526fc5a4bc289dd57a8c"
+  },
+  "notReached": [
+    "independent archive-member oracle",
+    "encrypted backup/restore",
+    "browser/qmd exclusions",
+    "restored Results/provenance/private/tombstone checks",
+    "three restore-refusal cases",
+    "eight packed genuine-prior-home refusals"
+  ],
+  "hypothesis": "Helper resolved the installed tar CommonJS entry then imported it as if named ESM exports; no correcting probe/trial executed",
+  "nextAuthority": "Ask operator to correct only helper interop and continue original declared oracles in a new isolated fixture; original failure/fixture unchanged; no product/source/artifact/dependency/timeout changes",
+  "limits": "synthetic offline seeded image/Result data, not provider/tool-journey acceptance; local tarball,not final committed/public identity; owned closes narrower than arbitrary-host cleanup proof"
+}

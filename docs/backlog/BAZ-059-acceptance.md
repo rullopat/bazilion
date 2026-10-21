@@ -1,5 +1,128 @@
 # BAZ-059 local implementation evidence
 
+**Current consolidated status:** [qualification matrix and independent live-evidence review](BAZ-059-qualification-status-20261004.md).
+The operator approved **ChatGPT-only required live qualification** (“I'm fine reducing the scope”):
+[scope decision](BAZ-059-chatgpt-only-live-scope-20261004.md). Required generation/rework/protected
+HTTP samples and operator inspections are satisfied; original sample has bounded independent
+source-evidence review, later samples keep their stated limits. Exact geometry remains excluded.
+Direct OpenAI/both OpenRouter selections stay implemented/offline-tested but live-unqualified;
+optional live qualification deferred, not a blocker. Packed/offline evidence is recorded below.
+Content Team/final release gates remain separate; no further generation or release authorized.
+
+## Latest checkpoint — live rework/protected HTTP, 2026-10-04, 16:10 UTC
+
+[Both authorized subscription attempts succeeded](BAZ-059-rework-and-protected-trials-20261004.md):
+same-conversation brighter regeneration plus actual protected HTTP worker, one dispatch/Result each,
+canonical completed-stream evidence, matching bytes after restart. Original unchanged; Agent(s)
+archived, images off/account preserved. Actual 1374×1145 and 1312×1199, geometry limitation retained.
+Operator visually accepted both new outputs (“both images looks great”); authorizations exhausted. Three paid-route live
+selections remain blocked on credentials/budgets/authorization. Protected HTTP is not scheduled/
+inbox qualification; no complete story/release claim or new independent live review.
+
+## Earlier checkpoint — autonomous offline/package closeout, 2026-10-04
+
+[Current Linux artifact/UI/container checks](BAZ-059-packed-closeout-20261004.md) completed:
+installer E2E plus nine installed image checks, synthetic all-route/rework/card/preview/download/
+mobile/restart, deterministic Docker image journey, independent bounded package review. Final
+2,538 full passes/47 skips, 336 security cases and types. No product repair/new live call.
+Implementation/offline acceptance ready; **live qualification blocked**, not done. Remaining:
+three paid selections' named credentials/budgets/authorization, live rework/protected posture and
+new-output inspection. Exact-size control is excluded; other-story/release gates remain separate.
+
+## Earlier checkpoint — live recovery, 2026-10-04, 14:59 UTC
+
+[Authorized subscription recovery trial](BAZ-059-recovery-trial-20261004.md) succeeded: one request,
+one saved/released PNG, canonical `completed_stream` evidence, clean completion/no retry and
+identical download after daemon restart. **Actual 1374×1145 versus requested 1024×1024**; textured
+rather than strictly flat appearance. The operator viewed it and said **“the image looks great”**:
+visual acceptance of this deliverable recorded; exact-size compliance remains unproven. Result `b6e6771e-6ad9-4cd2-a550-3674bc48c26f`. Agent archived, images off,
+account preserved. Authorization exhausted. No claim earlier failures were recoverable or that
+all routes/story/release are qualified. Next: address the dimension mismatch and remaining qualification.
+
+## Earlier checkpoint — integrated recovery, 2026-10-04
+
+[Strict completed-image recovery integrated](BAZ-059-image-recovery-integration-20261004.md):
+empty/omitted terminal output share one validator; no weak omitted fallback. Fresh source fact
+persists in canonical tool details, deliberately absent on receipt replay. Synthetic host/real
+worker evidence covers PNG capture, policy privacy, reopen and no replay. 244 focused / 2,532 full
+passes / 47 skips, 336 security cases/root+web types; independent integration review accepted with
+limits. No live call. Images off/account preserved. Next: separately authorized bounded live trial;
+prior recoverability, all live image routes and human acceptance remain unqualified.
+
+## Earlier checkpoint — staged validator, 2026-10-04
+
+[Standalone image evidence validator](BAZ-059-image-evidence-validator-20261004.md) implemented:
+65 new adversarial fixtures, 236 focused passes/root+web types. Independent review accepted after
+annotation-evidence gap repair, **with integration limits**. No production import, transport behavior
+change or live call. Next: strict-parser integration, honest canonical source facts and shared-host
+PNG/capture/reload/privacy proof, then full/security and integrated review. No live authorization.
+
+## Earlier checkpoint — offline evaluation, 2026-10-04
+
+[Completed-image evaluation](BAZ-059-completed-image-evaluation-20261004.md): 24 synthetic
+comparisons passed against current transport and pinned upstream collector (explicit helper doubles,
+not full upstream integration). Upstream empty-output recovery is over-broad; existing Bazilion
+omitted-output fallback also lacks identity/completeness reconciliation. Independent design review
+accepts a strict image-specific recovery direction **with remaining executable-contract gates**.
+No production acceptance change or live call. Next: exact predicate/fixture design for empty and
+omitted output together, then implementation/review; historical recoverability stays unknown.
+
+## Earlier checkpoint — 2026-10-04, 07:33 UTC
+
+[Closed evidence reasons and authorized attempt](BAZ-059-evidence-refusal-and-trial-20261004.md):
+independently reviewed diagnostics-only change, no acceptance relaxation. Runtime-closed reasons;
+171 focused / 2,459 full passes / 47 skips, 329 security cases and types. One live image dispatch,
+HTTP 200/missing MIME: **`terminal_output_empty`**, explicitly empty final `response.completed.output`.
+Canonical tool result confirms the code. No evidence that earlier events held usable image bytes;
+no image/Result, operation uncertain, clean blocker completion/no retry. Earlier attempt's precise
+cause remains unknown. Agent archived, images off/account preserved; authorization exhausted.
+Next: offline image-specific completed-evidence contract assessment, not blind fallback. Retained
+publication fixture failure passed targeted/serial rechecks; its cause beyond `source_changed`
+remains unestablished. All live routes and human image inspection still unqualified.
+
+## Earlier checkpoint — 2026-10-03, 15:06 UTC
+
+[Reviewed missing-MIME codec repair and authorized attempt](BAZ-059-image-codec-and-trial-20261003.md):
+explicit Codex stream contract handles absent/blank MIME, strict UTF-8/SSE/full-stream checks and
+closed protocol facts; no done alias/empty-output reconstruction/API widening. Review's CR-ending
+finding repaired, final review accepted. 145 focused / 2,433 full passes / 47 skips, 327 security
+cases and root/web types. One subscription image dispatch, upstream 200/missing MIME; recognized
+`response.completed` then **evidence refused**. Exact predicate/output unknown, operation uncertain,
+no image/Result. Clean blocker `done`, no retry; Agent archived, images off/account preserved.
+Authorization exhausted. Next: offline evidence-contract/closed structural diagnostics, not a
+blind replay or search-accumulator transplant. Earlier security-run failure retained with unknown
+cause; final gate passed. All live image selections and human inspection remain unqualified.
+
+## Earlier checkpoint — 2026-10-03, 14:21 UTC
+
+[Identity repair, independent acceptance and fresh authorized retry](BAZ-059-identity-repair-and-retry-20261003.md):
+bounded complete composite tool IDs now pass canonical lookup/Results provenance without widening
+other identities. 112 focused / 2,396 full passes / 47 skips, 324 security cases, root/web types.
+Exactly one subscription image request reached upstream **HTTP 200 / missing Content-Type**, but
+the unchanged adapter refused; operation uncertain, no Result/image. Exact body/failure phase is
+unknown, not an inferred SSE success. Clean blocker `done`, no retry/fallback; archived Agent and
+images off/account preserved. Authorization exhausted. Next: offline image codec-contract work;
+fresh authorization required for another live call. All live image selections remain unqualified.
+
+## Earlier continuation — 2026-10-03
+
+The operator chose to continue the 0.23.0 plan after BAZ-069 acceptance.
+[Current preflight and bounded live proposal](BAZ-059-live-qualification-plan-20261003.md):
+**71 focused tests / five files and four offline image-contract probes passed**. Connected ChatGPT,
+images off (daemon environment), scheduler/browser off, no active Agent/worker. No live image
+sample or configuration change; all four advertised selections still need separate live evidence
+and human inspection. The subsequently [authorized subscription attempt](BAZ-059-subscription-attempt-20261003.md)
+ran once, but local canonical composite tool-ID validation refused before image dispatch: zero
+image requests/Results, clean blocker `done`, no retry, archived Agent and disabled posture restored.
+Offline source/Results reproductions confirm the identity-grammar defect; no production repair
+made. Authorization exhausted; next is reviewed offline repair, then fresh bounded authorization.
+Paid-route credentials/budgets remain pending. BAZ-069 search does not establish image compatibility.
+
+## Historical pre-publication record
+
+The following records the 0.22.0 candidate before publication. Old migration/version-transition
+steps and then-current test counts are historical, not current alpha-schema/release instructions.
+
 **2026-09-19 — working-tree candidate, not a published release.** Target: **0.22.0**.
 [Story](in_progress/BAZ-059-pi-image-generation.md) · [Operator guide](../image-generation.md) ·
 [Scope freeze and validation](../testing/0.22.0-freeze.md)
@@ -96,7 +219,10 @@ present every development run as green.
   fixture containing released bytes and deletion tombstones, verifying their preservation and the
   pre-migration snapshot. Backup tests verify immutable bytes and uncertain receipts after reopening.
 
-## Remaining qualification / release work
+## Historical remaining qualification / release work (pre-0.22 publication)
+
+Superseded for current status by the [2026-10-04 matrix](BAZ-059-qualification-status-20261004.md).
+The old version-transition instructions below are historical, not an action plan.
 
 1. **Not run:** authorized, spending/usage-bounded live generation for each of the four advertised
    selections (both OpenRouter models, direct OpenAI API key and ChatGPT/Codex login).

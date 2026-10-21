@@ -21,6 +21,8 @@ describe('requiredScope — admin carve-outs', () => {
     '/api/auth/openai/start',
     '/api/providers/test',
     '/api/communication',
+    '/api/teams/team-one/workspace/recovery',
+    '/api/teams/team-one/workspace/recovery/opaque-writer',
   ]
   for (const path of adminPaths) {
     it(`admin: ${path}`, () => {

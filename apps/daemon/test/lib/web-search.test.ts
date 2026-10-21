@@ -64,6 +64,26 @@ describe('BAZ-067 web search host', () => {
     expect(isWebSearchConfigured(env({ [WEB_SEARCH_URL_ENV]: 'http://localhost:8888' }))).toBe(true)
   })
 
+  test('credentialed query-bearing and fragmented backend URLs are refused before dispatch', async () => {
+    const fetcher = vi.spyOn(globalThis, 'fetch')
+    try {
+      for (const url of [
+        'https://user:password@search.example/',
+        'https://search.example/?tenant=x',
+        'https://search.example/#fixture',
+      ]) {
+        const config = env({ [WEB_SEARCH_URL_ENV]: url })
+        expect(isWebSearchConfigured(config)).toBe(false)
+        await expect(
+          createWebSearchHost({ env: () => config }).search({ query: 'synthetic' }),
+        ).rejects.toThrow(/No web search backend/)
+      }
+      expect(fetcher).not.toHaveBeenCalled()
+    } finally {
+      fetcher.mockRestore()
+    }
+  })
+
   test('returns bounded results from the configured backend', async () => {
     const fixture = await startSearxng()
     const host = createWebSearchHost({ env: () => env({ [WEB_SEARCH_URL_ENV]: fixture.url }) })
@@ -141,6 +161,102 @@ describe('BAZ-067 web search host', () => {
     const deadHost = createWebSearchHost({ env: () => env({ [WEB_SEARCH_URL_ENV]: dead.url }) })
     await expect(deadHost.search({ query: 'x' })).rejects.toThrow(/unreachable/)
     expect(dead.queries).toHaveLength(0)
+  })
+
+  test('backend redirects are refused without contacting their destination', async () => {
+    const destination = await startSearxng()
+    const fixture = await startSearxng((res) =>
+      res.writeHead(302, { location: `${destination.url}/search` }).end(),
+    )
+    try {
+      const host = createWebSearchHost({ env: () => env({ [WEB_SEARCH_URL_ENV]: fixture.url }) })
+      await expect(host.search({ query: 'synthetic redirect' })).rejects.toThrow(/status 302/)
+      expect(fixture.queries).toHaveLength(1)
+      expect(destination.queries).toHaveLength(0)
+    } finally {
+      await fixture.close()
+      await destination.close()
+    }
+  })
+
+  test('oversized streamed backend bodies are refused before JSON parsing', async () => {
+    const fixture = await startSearxng((res) => {
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(`{"results":[]}${' '.repeat(2 * 1024 * 1024)}`)
+    })
+    try {
+      const host = createWebSearchHost({ env: () => env({ [WEB_SEARCH_URL_ENV]: fixture.url }) })
+      await expect(host.search({ query: 'synthetic bound' })).rejects.toThrow(
+        /^Web search backend response exceeded limit$/,
+      )
+      expect(fixture.queries).toHaveLength(1)
+    } finally {
+      await fixture.close()
+    }
+  })
+
+  test('cancellation during backend body reading remains a closed cancellation', async () => {
+    const fixture = await startSearxng((res) => {
+      res.writeHead(200)
+      res.write('{"results":[')
+    })
+    const controller = new AbortController()
+    const originalFetch = globalThis.fetch
+    let headersReady: () => void = () => {}
+    const ready = new Promise<void>((resolve) => {
+      headersReady = resolve
+    })
+    const spy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (...args) => {
+      const response = await originalFetch(...args)
+      headersReady()
+      return response
+    })
+    try {
+      const host = createWebSearchHost({
+        env: () => env({ [WEB_SEARCH_URL_ENV]: fixture.url }),
+        signal: controller.signal,
+      })
+      const result = expect(host.search({ query: 'synthetic cancellation' })).rejects.toThrow(
+        /^Web search was cancelled$/,
+      )
+      await ready
+      await new Promise((resolve) => setTimeout(resolve, 10))
+      controller.abort()
+      await result
+      expect(fixture.queries).toHaveLength(1)
+    } finally {
+      controller.abort()
+      spy.mockRestore()
+      await fixture.close()
+    }
+  })
+
+  test('invalid backend result entries fail with closed diagnostics', async () => {
+    const fixture = await startSearxng((res) => res.end(JSON.stringify({ results: [null] })))
+    try {
+      const host = createWebSearchHost({ env: () => env({ [WEB_SEARCH_URL_ENV]: fixture.url }) })
+      await expect(host.search({ query: 'synthetic null row' })).rejects.toThrow(
+        /^Web search backend returned an invalid response$/,
+      )
+    } finally {
+      await fixture.close()
+    }
+  })
+
+  test('nonfinite and fractional search counts are refused before dispatch', async () => {
+    const fetcher = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async () => Response.json({ results: [] }))
+    try {
+      const host = createWebSearchHost({
+        env: () => env({ [WEB_SEARCH_URL_ENV]: 'https://search.example/' }),
+      })
+      for (const count of [NaN, Infinity, 1.5])
+        await expect(host.search({ query: 'synthetic', count })).rejects.toThrow(/count/)
+      expect(fetcher).not.toHaveBeenCalled()
+    } finally {
+      fetcher.mockRestore()
+    }
   })
 
   test('an empty query is refused before any backend contact', async () => {

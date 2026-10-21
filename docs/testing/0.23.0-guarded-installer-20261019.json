@@ -1,0 +1,120 @@
+{
+  "format": "bazilion-source-freeze-amendment-v1",
+  "revision": 13,
+  "recordedAt": "2026-10-19T19:39:30.102938+00:00",
+  "authorization": "Operator approved registry-only npm dependency/cache population with scripts off, bounded installer ownership/cleanup hardening and guarded CLI trial; offline positive builds only, no publication/providers/unknown-build or skill approvals",
+  "parentAmendment": "docs/testing/0.23.0-versioned-candidate-20261019.json",
+  "parentAmendmentSha256": "d146afbc94ac54b11a5a031397f5afe559e97686a006a7979ffdbf9d8655c636",
+  "parentSourceInputAggregateSha256": "5632a6310a588802d940713fa3a70837dd6c6a3ee11b6642d646173dc0084877",
+  "amendedSourceInputAggregateSha256": "a7c2d0ee428c7cb237fc23bbf0e5d715b70d1ca2a464b150361ada376b361910",
+  "amendedCoreEntryCount": 1141,
+  "reconstruction": "Apply preserved r12 core then this inputDelta; two new helper/test files add membership; inherited sorted aggregate algorithm",
+  "inputDelta": [
+    {
+      "path": ".github/workflows/ci.yml",
+      "before": {
+        "path": ".github/workflows/ci.yml",
+        "kind": "file",
+        "sha256": "7813fb41f99163c958de1496fc0a2f228811a5df2d97c3ce71f423b3a7e18e2c",
+        "bytes": 5573,
+        "executable": false
+      },
+      "after": {
+        "path": ".github/workflows/ci.yml",
+        "kind": "file",
+        "sha256": "ca7b4989adb7149dc7467c4f985ea52273e763e70653bddea63ff1e25cd24d4b",
+        "bytes": 5869,
+        "executable": false
+      }
+    },
+    {
+      "path": "docs/releases.md",
+      "before": {
+        "path": "docs/releases.md",
+        "kind": "file",
+        "sha256": "634f443b16a182be72177f8e479df6ef560e08dcd01cdb09b65ed0d27732a1e6",
+        "bytes": 14357,
+        "executable": false
+      },
+      "after": {
+        "path": "docs/releases.md",
+        "kind": "file",
+        "sha256": "ecb9d6afc10e96d1d342cc482bcbce3a0503a1ddfebcb704f4b50307a615665f",
+        "bytes": 14551,
+        "executable": false
+      }
+    },
+    {
+      "path": "scripts/installer-e2e.mjs",
+      "before": {
+        "path": "scripts/installer-e2e.mjs",
+        "kind": "file",
+        "sha256": "7920a47111c06c5aedc796d4b46914bedb3e5b65cf2a7bdb841702becb5d127f",
+        "bytes": 28455,
+        "executable": false
+      },
+      "after": {
+        "path": "scripts/installer-e2e.mjs",
+        "kind": "file",
+        "sha256": "b11f40003dd164227c63dcba9df096b62ab4019fce697a9cd97473ff927b7b2f",
+        "bytes": 31887,
+        "executable": false
+      }
+    },
+    {
+      "path": "scripts/testing/installer-process.mjs",
+      "before": null,
+      "after": {
+        "path": "scripts/testing/installer-process.mjs",
+        "kind": "file",
+        "sha256": "be589c1c7a252a6dda18ef14f3fd0ae2384cf9d5aae81cfe1dac65fa718164ee",
+        "bytes": 3669,
+        "executable": false
+      }
+    },
+    {
+      "path": "scripts/testing/installer-process.test.mjs",
+      "before": null,
+      "after": {
+        "path": "scripts/testing/installer-process.test.mjs",
+        "kind": "file",
+        "sha256": "f9bc0763e4470fb9d30d9cff91c7c712bd2b0cb4e141525d48cc212c3dd2761a",
+        "bytes": 4918,
+        "executable": false
+      }
+    }
+  ],
+  "qualification": {
+    "npmCache": "Actual guarded npm global cache population exit0,554 packages,engineStrict,scripts off, canonical-only TLS route; no other target admitted",
+    "miseHook": "Wrapper attempted unrelated version discovery after install; HTTP-client setup failed, not routed; preserved and future commands use SAME npm CLI JS directly, no shim",
+    "productionClosure": "Actual cache-prefix npm ls --all --json --long, no problems; final removed trial prefix not separately inventoried, identity not inferred",
+    "unitTests": "Initial9pass/1fail (wrong assumed native ENOENT code); corrected assertion checks preserved negative actualcode; final10pass/0fail/0skip; scopedBiome/syntax pass",
+    "guardedTrial": "LinuxNode24.20.0, actual fresh npm prefix outside workspace graph, scripts off then exact source-positive offline rebuilds, CLI0.23/SSR/setup/auth/search/browserStatus/MCP/chat/codingReceipt/uninstall pass",
+    "artifactSha256": "b0a5b28043be50bc3d857d5a869cc3040911e49f5444e20ebe9cc205dda733e9",
+    "outcome": "exit0,29 settled child outcomes,no forced/overflow/spawnError/unconfirmed cleanup; final fixture removed after success",
+    "notUnrestrictedNpmQualification": true,
+    "noRealProviderOrBrowserLaunch": true
+  },
+  "status": "Guarded artifact seam ready for required fresh native read-only independent component review; not final release acceptance",
+  "additionalPlanningAndEvidence": [
+    {
+      "path": "docs/testing/0.23.0-guarded-installer-20261019.md",
+      "sha256": "6bc53bc6a0300df736c20ccf668a8997f6fdce0cfe8071e9d82ea934a5645b4f"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-guarded-installer-20261019/qualification.json",
+      "sha256": "4de65486ad9e238ae0e86ae8eee17a43ade2366baecab1368deb1522c57bdb75"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-guarded-installer-20261019/transcripts.json.gz",
+      "sha256": "1e683563f633d1529e5a6384752fa25ed6dfa9bd1ed519d24046d51a8cc2f874"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-guarded-installer-20261019/cache-production-tree.json.gz",
+      "sha256": "1c007f6ecfc1d51b81aeaed0497234f1259489caeb521119f70ef08fc2f347f8"
+    }
+  ],
+  "remaining": "Final source checks/platform CI,actual trial dependency-closure capture,artifact backup/refusal/affected features,BAZ059/risk closeout,exact source commit and independent final source/artifact/release acceptance",
+  "sourcePublicVersions": "0.23.0,not published",
+  "publicationAuthorized": false
+}

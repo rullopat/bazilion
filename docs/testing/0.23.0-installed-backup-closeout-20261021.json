@@ -1,0 +1,431 @@
+{
+  "format": "bazilion-source-freeze-amendment-v1",
+  "revision": 30,
+  "recordedAt": "2026-10-21T11:21:43.396305+00:00",
+  "parentAmendment": "docs/testing/0.23.0-installed-backup-checkpoint-20261021.json",
+  "parentAmendmentSha256": "065efc81ce66f294c80cce186869e973192c0eb977708c2128aaab456b36e492",
+  "parentSourceInputAggregateSha256": "b1690e1223ea8f7a34480572a6691a45dfdde1eec30807c50e82212f33b34afc",
+  "amendedSourceInputAggregateSha256": "6e2940b10c1ca8da6d5a97019aab50cce80e3f6c93f58441bb17c38c933483d7",
+  "amendedCoreEntryCount": 1151,
+  "inputDelta": [
+    {
+      "path": "docs/releases.md",
+      "before": {
+        "path": "docs/releases.md",
+        "kind": "file",
+        "bytes": 21821,
+        "sha256": "337c7e330451046d1f39b56b1d912ceb7b5296c0c1616eeab7fe142f5c13db96",
+        "executable": false
+      },
+      "after": {
+        "path": "docs/releases.md",
+        "kind": "file",
+        "bytes": 22477,
+        "sha256": "7e10ea60e025ce9105d5ea04f3e38eb52c6a3b9570f770ec77d92c952a0bac51",
+        "executable": false
+      }
+    }
+  ],
+  "authority": "Explicit operator approved fixture-only tar import correction and resumed goal; existing installed backup/refusal/affected-feature qualification,privateNode24.22/existing offline cache/positive builds only; no new origin/dependency declaration/admission/realprovider call",
+  "results": {
+    "passed": true,
+    "runtime": "private officialNode24.22.0/existingnpm11.19.0;actual source and restored qmd2.8.3/better-sqlite3 13.0.3 lexical operations",
+    "artifactSha256": "9f7ee6ffba16532daa78744b31cfda3085d663187340f216e3fa9b4d8b0dc7ed",
+    "correction": {
+      "authority": "Operator approved fixture-only tar interop correction, then explicitly resumed goal; no product/dependency changes",
+      "originalHelperSha256": "bdb6f58ee680a242d022a9c4402a01b87daf3e71ae66745b11ce5bfbc037f970",
+      "correctedHelperSha256": "7e96b5f0dbf694006352d5d677ae44780e13723599447dd3885e5abbf8ce6c69",
+      "before": " const tar=await import(pathToFileURL(require.resolve('tar')).href)",
+      "after": " const tar=require('tar')",
+      "onlyHelperSourceChange": true,
+      "originalFailurePreserved": "/var/tmp/baz023-install-prereq-7AUthA/installed-feature-backup-control",
+      "oraclesDeadlinesArtifactsDependenciesUnchanged": true,
+      "scope": "Fresh distinct fixture; unchanged original declared checks; no original-home/provider/network/publication operation"
+    },
+    "completedChecks": [
+      "fresh installed prefix production version sets equal actual r28 prefix",
+      "source: actual installed qmd lexical read/list/search",
+      "packed owner-only minimal inventory, private404, canonical policy release/exact PNG, confirmed discard; no provider request",
+      "installed plaintext and recipient-encrypted backup; paired identity/results/private bytes/tombstone restored; root browsers and qmd cache excluded, ordinary Team browser files retained",
+      "three distinct installed restore refusals preserve populated synthetic target: canonical trigger, Result hash, browser profile",
+      "restored: actual installed qmd lexical read/list/search",
+      "restored packed daemon boots; actual qmd index rebuilt; recovered bytes exact and unreleased capture still private; zero provider requests",
+      "all eight genuine prior releases seeded/closed0; actual packed daemon refuses each exit1 with unchanged ledger/state"
+    ],
+    "ownedCommandServiceChildren": 29,
+    "priorOwnedDaemons": 16,
+    "outer": {
+      "returncode": 0,
+      "forced": false,
+      "deadlineExceeded": false,
+      "seconds": 50.00898623466492,
+      "stdoutBytes": 952,
+      "stderrBytes": 0,
+      "stdin": "DEVNULL",
+      "closure": "owned bwrap leader settled; private PID/proc namespace; not arbitrary-host cleanup proof"
+    },
+    "providerRequests": 0,
+    "backupArchiveSha256": "77eb6e3fdda006b727aedb847e1c8cb148e92e170e2966441857cb886695a1d0",
+    "encryptedBackupSha256": "c530fb03408c2e071c621597294e0758ba086eda974e006d084020a7303deffd",
+    "resultRows": 4,
+    "resultScope": "synthetic rows planted offline; exact provenance/hash/private/tombstone preservation,not a generation/tool-journey trial",
+    "restoreRefusals": [
+      {
+        "kind": "canonical-schema",
+        "code": 2,
+        "archiveSha256": "610a6caa390adfbdb38bebf6e0f1dd407791f18415ea285de7f913dd860c9c40",
+        "targetUnchanged": true
+      },
+      {
+        "kind": "corrupt-result",
+        "code": 2,
+        "archiveSha256": "9b93fc1a49594172a7396f5df36591d6f1ea8f9febd3d48977a8cca25034110b",
+        "targetUnchanged": true
+      },
+      {
+        "kind": "browser-profile",
+        "code": 1,
+        "archiveSha256": "806cff4762437095f8c86af4edc9f8de43ee3bd1b691d830187caecded7bdafc",
+        "targetUnchanged": true
+      }
+    ],
+    "priorReleaseRefusals": [
+      {
+        "tag": "v0.19.0",
+        "oldCode": 0,
+        "packedCurrentCode": 1,
+        "ledger": [
+          {
+            "version": "0001_init"
+          }
+        ],
+        "stateEntries": 11,
+        "unchanged": true
+      },
+      {
+        "tag": "v0.20.0",
+        "oldCode": 0,
+        "packedCurrentCode": 1,
+        "ledger": [
+          {
+            "version": "0001_init"
+          }
+        ],
+        "stateEntries": 11,
+        "unchanged": true
+      },
+      {
+        "tag": "v0.21.0-beta.1",
+        "oldCode": 0,
+        "packedCurrentCode": 1,
+        "ledger": [
+          {
+            "version": "0001_init"
+          },
+          {
+            "version": "0002_device_token_scopes"
+          },
+          {
+            "version": "0003_web_pairing_tokens"
+          }
+        ],
+        "stateEntries": 11,
+        "unchanged": true
+      },
+      {
+        "tag": "v0.21.0-beta.2",
+        "oldCode": 0,
+        "packedCurrentCode": 1,
+        "ledger": [
+          {
+            "version": "0001_init"
+          },
+          {
+            "version": "0002_device_token_scopes"
+          },
+          {
+            "version": "0003_web_pairing_tokens"
+          }
+        ],
+        "stateEntries": 11,
+        "unchanged": true
+      },
+      {
+        "tag": "v0.21.0-beta.3",
+        "oldCode": 0,
+        "packedCurrentCode": 1,
+        "ledger": [
+          {
+            "version": "0001_init"
+          },
+          {
+            "version": "0002_device_token_scopes"
+          },
+          {
+            "version": "0003_web_pairing_tokens"
+          }
+        ],
+        "stateEntries": 11,
+        "unchanged": true
+      },
+      {
+        "tag": "v0.21.0-beta.4",
+        "oldCode": 0,
+        "packedCurrentCode": 1,
+        "ledger": [
+          {
+            "version": "0001_init"
+          },
+          {
+            "version": "0002_device_token_scopes"
+          },
+          {
+            "version": "0003_web_pairing_tokens"
+          }
+        ],
+        "stateEntries": 11,
+        "unchanged": true
+      },
+      {
+        "tag": "v0.21.0-beta.5",
+        "oldCode": 0,
+        "packedCurrentCode": 1,
+        "ledger": [
+          {
+            "version": "0001_init"
+          },
+          {
+            "version": "0002_device_token_scopes"
+          },
+          {
+            "version": "0003_web_pairing_tokens"
+          }
+        ],
+        "stateEntries": 11,
+        "unchanged": true
+      },
+      {
+        "tag": "v0.22.0",
+        "oldCode": 0,
+        "packedCurrentCode": 1,
+        "ledger": [
+          {
+            "version": "0001_init"
+          },
+          {
+            "version": "0002_device_token_scopes"
+          },
+          {
+            "version": "0003_web_pairing_tokens"
+          },
+          {
+            "version": "0004_image_generation"
+          }
+        ],
+        "stateEntries": 11,
+        "unchanged": true
+      }
+    ],
+    "limits": "actual local tarball,not final committed/provenanced/public identity; version-set equality not identical bytes/source-pnpm graph equivalence; synthetic genuine-source homes not populated personal backups; normal owned closes not arbitrary-host cleanup proof",
+    "syntheticSecrets": "own fixture auth/age identities and full backups not exported; selected JSON reports checked not to contain fixture bootstrap plaintexts",
+    "publicationPerformed": false
+  },
+  "preservedFailure": "r29 failed helper and fixture unchanged; exact one-line correction in a new private fixture; no oracle/deadline relaxation or historical rewrite.",
+  "applicability": "Product/runtime/test/build sources and three r26 local tarballs unchanged; only release pointer/additive evidence. New corrected declared fixture execution only,not replay of full/security/r28 installer. Historical intermittency/original VM caller not diagnosed or waived.",
+  "status": "Declared local installed backup/refusal/affected-feature checks pass; risk/story disposition,finalsource/commit/CI/exactfinalartifacts/freshfinalreview/publication/website remain open; no taskcomplete.",
+  "additionalPlanningAndEvidence": [
+    {
+      "path": "docs/testing/0.23.0-installed-backup-closeout-20261021.md",
+      "sha256": "c011d318586983505882f054a722bcaf33980072985d86d69897bbe39e4e28bf"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-closeout-20261021/001-npm-version.json.gz",
+      "sha256": "8b0bd1c624c0ab499d346ba4610a318565bd25510520d47573c17ec9733bd219"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-closeout-20261021/002-install.json.gz",
+      "sha256": "ca8fd38d0d8e885b30d6de40358f511f58ec0a0d791e9ba107dbd98c706703ab"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-closeout-20261021/003-positive-rebuild.json.gz",
+      "sha256": "022a225d298add4dc03bf5e942e88837c1a214e4f184bb3e0f7793ae6e59367a"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-closeout-20261021/004-production-tree.json.gz",
+      "sha256": "746ec86fc1030d879f36bcf92b094758fb5c611e511f499dde658476de1b2cd1"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-closeout-20261021/005-provider-enable.json.gz",
+      "sha256": "af2aaf60ce61c2dc5a82053c227aaab24e1d7ac334a88bacaec09423a4d1e545"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-closeout-20261021/006-models-set.json.gz",
+      "sha256": "7798d721e605a9a7b05e58b144ccf58b0a2c36e63ab293811ebc154b869e6b1e"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-closeout-20261021/007-spawn-agent.json.gz",
+      "sha256": "cefa94592e639c6185ea47d7fd2a0cb875475e0a3b0fd8471a5f4cb92270f161"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-closeout-20261021/008-memory-write.json.gz",
+      "sha256": "7ec75bdb934ade5fc2b76d8812d97899e27dafc38ea9299861598a36e2efc0f6"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-closeout-20261021/009-source-memory-read.json.gz",
+      "sha256": "d28f906f5ebb0f8d2a9126aef559f0c42d87f0f49218af5f18dbfc302d85ae41"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-closeout-20261021/010-source-memory-list.json.gz",
+      "sha256": "a83d877fcfa7a61a49da46346190f715d47b8e769a2e5d7549cf8b5be226404d"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-closeout-20261021/011-source-memory-search.json.gz",
+      "sha256": "5906e1b39a00f1805b820201b5fe64b68351e4803926a732aaabcdb6681ae85d"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-closeout-20261021/012-private-inventory.json.gz",
+      "sha256": "a02f70dba4f1e5bf09cc9507587a6b7f4b20c2c403c7d001784e0f28e19aeeaa"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-closeout-20261021/013-recover-image.json.gz",
+      "sha256": "e6f080e7d15640546678646ce36fbab733ae178515a069ca1cb8d0d2ea582c41"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-closeout-20261021/014-recovered-download.json.gz",
+      "sha256": "15144c8169bf703e9a967e8346ed39858701e30f0d53bf874fb46d1613a5c2d5"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-closeout-20261021/015-discard-image.json.gz",
+      "sha256": "dac50a546f0bc360afd6f2180fcc2abf6e15bd05e97f7ea748cf122cbcf143bc"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-closeout-20261021/016-backup-plain.json.gz",
+      "sha256": "062b2882c83cc4c79274f90d7d3546badaaeea70b415d2b5e2c5e90b271bae62"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-closeout-20261021/017-backup-encrypted.json.gz",
+      "sha256": "25d0113384f28d65ef1c705ae3fdf852404c2249f51fc2093fed04ea74a161cf"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-closeout-20261021/018-restore-encrypted.json.gz",
+      "sha256": "ef70c4bb7157c37bd87d536bbee8ea2e7b30ef5d857dbac0f8f25dcd4f6323db"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-closeout-20261021/019-restored-memory-read.json.gz",
+      "sha256": "d28f906f5ebb0f8d2a9126aef559f0c42d87f0f49218af5f18dbfc302d85ae41"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-closeout-20261021/020-restored-memory-list.json.gz",
+      "sha256": "a83d877fcfa7a61a49da46346190f715d47b8e769a2e5d7549cf8b5be226404d"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-closeout-20261021/021-restored-memory-search.json.gz",
+      "sha256": "5906e1b39a00f1805b820201b5fe64b68351e4803926a732aaabcdb6681ae85d"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-closeout-20261021/022-restored-download.json.gz",
+      "sha256": "b995a802cb5c80059b71c3fbd2a2526d761a7dc291d2f3c4e7eaa71db4ab42a4"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-closeout-20261021/023-restored-private.json.gz",
+      "sha256": "aed025884448d896194f119dc87ca977b3ceab628c24515d37efeb9e51208c84"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-closeout-20261021/backup-manifest.json.gz",
+      "sha256": "b87fefa2fb9e42e220eabfdbf8be6ca89386d1c8aec6eff2f121811fe825caef"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-closeout-20261021/check.mjs.txt",
+      "sha256": "7e96b5f0dbf694006352d5d677ae44780e13723599447dd3885e5abbf8ce6c69"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-closeout-20261021/correction.json.gz",
+      "sha256": "a81584ac5e59db427e29748c10375f8b011a3dd229727154a77f455679483f8e"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-closeout-20261021/isolate.sh.txt",
+      "sha256": "e1fb71cbc3352700452b7f8234109c548bac33fa1a7e5b412794b78e6d8fa285"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-closeout-20261021/outcomes.json.gz",
+      "sha256": "fdd8db7afecc4c5700a3d0f4bffcf0d09e16911a623b32ed6c7f7329d109db60"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-closeout-20261021/outer-control.json.gz",
+      "sha256": "ab7b12b43ffcca4cf40917c1538c0a1a6f93c4d24b5f4a1645a09155633cd388"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-closeout-20261021/outer.stderr.log.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-closeout-20261021/outer.stdout.log.txt",
+      "sha256": "b9a4591adf218d48e8c3d73a4d9065e9878f03b288d1f2fdcd3f17e7ecc6ecf8"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-closeout-20261021/plan.json.gz",
+      "sha256": "e79ed7036b56010a1c003c8146ee4863b69b86d2f0628590de9c8a1a8296891c"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-closeout-20261021/prior-sources-verified.json.gz",
+      "sha256": "4e44686aecc83598b7f9c6b83696c5c63e87691e2808dff7692627eb1de23611"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-closeout-20261021/prior-v0.19.0.json.gz",
+      "sha256": "072e55e39c1c0722095674bb940cea18140795f24d6600adeb57c4ba49e7d8c5"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-closeout-20261021/prior-v0.20.0.json.gz",
+      "sha256": "71ee1be7fd82f9d777f2b2bb2b646f7f6e8502787831f9a024e2cd02938ad16b"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-closeout-20261021/prior-v0.21.0-beta.1.json.gz",
+      "sha256": "1c3e3a3a8a9c2a76fd0809ef3bdff749ac17ee3a66fdbfe041b1208d2b2a9549"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-closeout-20261021/prior-v0.21.0-beta.2.json.gz",
+      "sha256": "f23484a822f476ce2854af0fb41078e3666ec94a23140f859b5397782495a34d"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-closeout-20261021/prior-v0.21.0-beta.3.json.gz",
+      "sha256": "3d1e591b50d4bbae4f6095b6de1fc8a40d841716992f958a1bc07e06deda37b5"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-closeout-20261021/prior-v0.21.0-beta.4.json.gz",
+      "sha256": "8e38715d800513e002a5e11b7948574ad21ead4aa87d889a9d334eac7e596c9d"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-closeout-20261021/prior-v0.21.0-beta.5.json.gz",
+      "sha256": "2665a5c225fbfc74c67a04fafa19340975d4245e5592881b6da25b475fb75381"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-closeout-20261021/prior-v0.22.0.json.gz",
+      "sha256": "f6740b3a10141a9f5c3adf748d7292713b1c940a03411e59b921746eb759b564"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-closeout-20261021/qualification.json",
+      "sha256": "77185e35c26a24bf267a64a3485772b8db55ad2cf90c5b7d887aa9700f08a547"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-closeout-20261021/refused-browser-profile.json.gz",
+      "sha256": "7ad624f17879f678b0376a6f9aa6665c201a5f997c644c1339869051487611bd"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-closeout-20261021/refused-canonical-schema.json.gz",
+      "sha256": "ced1c1f7900f43462997fbcf9b44085bc40bfbdc3e243977ebee6d2671108263"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-closeout-20261021/refused-corrupt-result.json.gz",
+      "sha256": "86f19d95fc713b03f91d915a2a448415ee170c181b0ba66998b500945d4f9296"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-closeout-20261021/restore-refusals.json.gz",
+      "sha256": "defb70f472a255714b662cbc0651f66a03e3c30a0a30ddc930017960699e7e43"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-installed-backup-closeout-20261021/uncompressed-identities.json",
+      "sha256": "7181b03c019d65928d5e649970c14da06e408e2e1538d8fa7d21321f9fb60f92"
+    }
+  ],
+  "publicationPerformed": false
+}

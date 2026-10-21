@@ -10,19 +10,17 @@ import {
 import { join } from 'node:path'
 import { defineConfig } from 'tsup'
 
-// Three separate ESM bundles, all written to dist/:
-//   - cli.js     → the `bazilion` bin (shebang via banner)
-//   - daemon.js  → spawned by `bazilion serve`
-//   - worker.js  → spawned per chat turn by the daemon
-//   - web-server.js → spawned by `bazilion dashboard`
-// tsup auto-externalizes everything in package.json `dependencies`
-// (so native modules like better-sqlite3 stay external); workspace
-// packages are in devDependencies and therefore bundled inline, which
-// we double-declare via noExternal for clarity.
+// Five ESM bundles, plus guarded cli.js/daemon.js launchers written below.
+// The public launchers check the runtime before dynamically linking application
+// dependencies; a banner alone cannot run before static external ESM imports.
+// Payloads and resources remain siblings in dist/, preserving relative paths.
+// tsup auto-externalizes package.json dependencies (including native modules);
+// workspace client/wire packages stay bundled inline.
 export default defineConfig({
   entry: {
-    cli: 'src/index.ts',
-    daemon: '../daemon/src/index.ts',
+    'cli-main': 'src/main.ts',
+    'daemon-main': '../daemon/src/main.ts',
+    'runtime-version': 'src/runtime-version.ts',
     worker: '../daemon/src/runtime/worker/entry.ts',
     'web-server': 'src/web-server.ts',
   },
@@ -51,10 +49,17 @@ export default defineConfig({
       if (fixed !== src) writeFileSync(path, fixed)
     }
 
-    // Copy SQL migrations next to the bundled daemon. `migrate.ts`
+    for (const name of ['cli', 'daemon']) {
+      writeFileSync(
+        join(distDir, `${name}.js`),
+        `#!/usr/bin/env node\nimport './runtime-version.js'\n\nawait import('./${name}-main.js')\n`,
+        { mode: 0o755 },
+      )
+    }
+
+    // Copy SQL migrations next to the bundled daemon payload. `migrate.ts`
     // resolves them relative to `import.meta.url`, which lands at
-    // `dist/daemon.js` in the published package; tsup itself only
-    // emits JS, so the .sql files need to be staged here manually.
+    // `dist/daemon-main.js`; tsup only emits JS, so stage SQL here manually.
     const migrationsSrc = join(process.cwd(), '../daemon/src/core/db/migrations')
     const migrationsDst = join(distDir, 'migrations')
     mkdirSync(migrationsDst, { recursive: true })

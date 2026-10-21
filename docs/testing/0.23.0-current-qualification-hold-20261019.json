@@ -1,0 +1,81 @@
+{
+  "format": "bazilion-source-freeze-amendment-v1",
+  "revision": 22,
+  "recordedAt": "2026-10-19T22:20:58.902002+00:00",
+  "parentAmendment": "docs/testing/0.23.0-baz059-evidence-closeout-20261019.json",
+  "parentAmendmentSha256": "ad3733da5743dbd5cb129589e4e17b8a415888e1eff64c57419d0e087b189d68",
+  "parentSourceInputAggregateSha256": "49f14bb18d6c4087ce8ccc153051fc33fbe5672865655846ae8aa266ca1d2940",
+  "amendedSourceInputAggregateSha256": "b815a37567ffff025030e6107eb2b862fd74c38dc88e2bf9e573100c17aa9c32",
+  "amendedCoreEntryCount": 1146,
+  "inputDelta": [
+    {
+      "path": "docs/releases.md",
+      "before": {
+        "path": "docs/releases.md",
+        "kind": "file",
+        "sha256": "d6259d1d0a051ccff5f43adf707e646887f2a1ff1c78a5b5c0f8c1ed8faa4958",
+        "bytes": 17399,
+        "executable": false
+      },
+      "after": {
+        "path": "docs/releases.md",
+        "kind": "file",
+        "sha256": "b6a136ad3395744a709825e3733b14a6c8cf6291b3888244a1633b4e569fe0cc",
+        "bytes": 18016,
+        "executable": false
+      }
+    }
+  ],
+  "qualifiedRunBasis": {
+    "revision": 21,
+    "aggregate": "49f14bb18d6c4087ce8ccc153051fc33fbe5672865655846ae8aa266ca1d2940",
+    "applicationAndExecutedSourceUnchangedAfterRun": true,
+    "runtime": "Node24.20.0 ABI137,pnpm12.14.0,private existing offline deps and isolated fixtures",
+    "whole": "exit1,2618passed17failed49pending;393passed6failed suites",
+    "lint": "exit0,0errors112warnings14infos,813files",
+    "sourceWebBuild": "actual hook build succeeded; not installed artifact qualification"
+  },
+  "failureDisposition": {
+    "directCliOutputEROFS": 6,
+    "followOnResultCount": 1,
+    "shallowCwdUninstallReason": 1,
+    "chatFailuresIncludingNativeAssertionAndCascade": 9,
+    "nativeFact": "RemoveEnvironmentCleanupHook asserted env!=nullptr from better-sqlite3 Statement destruction; local executable symbols identify subsequent V8GC callbacks; full cause unresolved",
+    "controlledDiagnostic": "Three predeclared native-only sync-dropped/async-dropped/async-retained1000query cases all normal exit,none reproduced nativeassert; NOT candidate/security passes or a waiver",
+    "preciseOriginalWorkerSignalRecorded": false,
+    "earlierImageBarrierCause": "Still unexplained; no retroactive diagnosis"
+  },
+  "scope": "Only additive evidence/status changes. No production code/dependency/header/Node version/assertion/timeout/manifest change, arbitrary cleanup claim or provider/network operation. No corrected rerun,397-case gate,publication,commit/push or website action followed.",
+  "status": "Current qualification and release HOLD; affected execution stopped, request bounded offline diagnostic/fix authority; every task remains incomplete",
+  "additionalPlanningAndEvidence": [
+    {
+      "path": "docs/testing/0.23.0-current-qualification-hold-20261019.md",
+      "sha256": "eea9e5fc47f2aef748089c8a9794d284f5a66a0bf4479749132aaa859e7558af"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-current-qualification-hold-20261019/daemon-stderr.json.gz",
+      "sha256": "45b140fe63e1fd8ec0393bd48ea002e4b9044b580b4aa8b09209b2c2fdba2013"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-current-qualification-hold-20261019/full-report.json.gz",
+      "sha256": "f964086dfd1d6eb23524fd937ec818f8634d1be717f768304c4b347bdfdfddfb"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-current-qualification-hold-20261019/inputs.json.gz",
+      "sha256": "d78b57c52f91576842e2c4edf1513cabec7ab5da4019c83fbf3e5b197b5e469e"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-current-qualification-hold-20261019/native-symbolization.txt",
+      "sha256": "1d8b391e8055c33cda43804ce791c387b4403c5943e09d63023397a5f719665e"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-current-qualification-hold-20261019/qualification-controls.json.gz",
+      "sha256": "8bc9af8a2c6537f15ea3285d8087cbd9a6dc09259e081b9bb4ff007be2db1b6b"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-current-qualification-hold-20261019/qualification.json",
+      "sha256": "8bfb9d8544b691a25550a4354f1924b2d83b1cc08dd26d5f0c7959ecd4896e3b"
+    }
+  ],
+  "publicationPerformed": false
+}

@@ -1,0 +1,62 @@
+{
+  "inputs.json": {
+    "bytes": 2924,
+    "sha256": "112c91a14d321b39adeb4a27cdf880cf34491cd23638348b93fb401fa1182c91",
+    "archive": "docs/testing/evidence/0.23.0-current-installed-artifacts-20261021/inputs.json.gz"
+  },
+  "outcomes.json": {
+    "bytes": 205506,
+    "sha256": "0ee26be54d16dd0595301258eacb86a9700147de89ee9b92ceede0b0c1a90c9c",
+    "archive": "docs/testing/evidence/0.23.0-current-installed-artifacts-20261021/outcomes.json.gz"
+  },
+  "installer-evidence.json": {
+    "bytes": 22606,
+    "sha256": "6e161d61181defdb6fe1fc8f4c41c60579ce527a7c9e66d98806d24bfba641c7",
+    "archive": "docs/testing/evidence/0.23.0-current-installed-artifacts-20261021/installer-evidence.json.gz"
+  },
+  "actual-prefix-closure.json": {
+    "bytes": 347846,
+    "sha256": "1af1a3eed9f0c90ff6634c8da86f2aa64c092ebfaf2b0e01d3e7fff0bcb61a60",
+    "archive": "docs/testing/evidence/0.23.0-current-installed-artifacts-20261021/actual-prefix-closure.json.gz"
+  },
+  "actual-prefix-npm-ls-outcome.json": {
+    "bytes": 199903,
+    "sha256": "5ea3f388dec84c66f5132b2a8d3cf5d475d3e9e73e9a532409af7d416603e19a",
+    "archive": "docs/testing/evidence/0.23.0-current-installed-artifacts-20261021/actual-prefix-npm-ls-outcome.json.gz"
+  },
+  "closure-observer.json": {
+    "bytes": 158,
+    "sha256": "16aee0592818d0e3d75c3388571aa5db41fea16cad63f710b68c0791dce5f492",
+    "archive": "docs/testing/evidence/0.23.0-current-installed-artifacts-20261021/closure-observer.json.gz"
+  },
+  "libraries-install.json": {
+    "bytes": 592,
+    "sha256": "19ac0883c7bf47e72f97f4097b71f67e82736ba7227be4acc64de658ddb529dc",
+    "archive": "docs/testing/evidence/0.23.0-current-installed-artifacts-20261021/libraries-install.json.gz"
+  },
+  "libraries-smoke.json": {
+    "bytes": 298,
+    "sha256": "872070c5ea4a593b72a5323751675032634c4dfac2343bbb6458d25aaf732c69",
+    "archive": "docs/testing/evidence/0.23.0-current-installed-artifacts-20261021/libraries-smoke.json.gz"
+  },
+  "npm-version.json": {
+    "bytes": 115,
+    "sha256": "18a29ddcca4ca961eed6107699b48b7dad521089f4172138d82b94a7730a241c",
+    "archive": "docs/testing/evidence/0.23.0-current-installed-artifacts-20261021/npm-version.json.gz"
+  },
+  "installer-command.json": {
+    "bytes": 1151,
+    "sha256": "98b1669e5647ca2dbf617ecc6936b6442c08c09ef01464f4c802cf9a478cf983",
+    "archive": "docs/testing/evidence/0.23.0-current-installed-artifacts-20261021/installer-command.json.gz"
+  },
+  "outer-control.json": {
+    "bytes": 271,
+    "sha256": "b70cfff83e13377d086f5f5fe38a3e6fffc8d8f8a9e0d442028942256c3730e9",
+    "archive": "docs/testing/evidence/0.23.0-current-installed-artifacts-20261021/outer-control.json.gz"
+  },
+  "post-summary-correction.json": {
+    "bytes": 944,
+    "sha256": "ea5dc9d3cedf57f9888a58f6237ddf85821062a3a3366bfd54ad13875a829171",
+    "archive": "docs/testing/evidence/0.23.0-current-installed-artifacts-20261021/post-summary-correction.json.gz"
+  }
+}

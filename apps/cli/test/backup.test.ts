@@ -167,6 +167,52 @@ test('backup create downloads a tar.gz with the home contents', async () => {
   rmSync(out, { force: true })
 })
 
+test('backup excludes the root browser slot but retains ordinary team files (T12)', async () => {
+  mkdirSync(join(server.home, 'browsers', 'agent-x'), { recursive: true })
+  writeFileSync(join(server.home, 'browsers', 'agent-x', 'cookies.db'), 'site-credentials')
+  writeFileSync(
+    join(server.home, 'browsers', 'agent-x', 'owner.json'),
+    '{"formatVersion":1,"agentId":"agent-x","teamId":"default","launchNonce":"n","daemonInstanceId":"d","phase":"running","startedAt":0}',
+  )
+  mkdirSync(join(server.home, 'teams', 'default', 'browsers'), { recursive: true })
+  writeFileSync(
+    join(server.home, 'teams', 'default', 'browsers', 'notes.txt'),
+    'ordinary work product',
+  )
+  const out = join(tmpdir(), `bz-backup-${Date.now()}.tar.gz`)
+
+  const res = await server.cli(['backup', 'create', out, '--plaintext'])
+  expect(res.exitCode).toBe(0)
+
+  const members: string[] = []
+  await list({ file: out, onentry: (entry) => members.push(entry.path.replace(/^\.\//, '')) })
+  // The sensitive root slot (marker + cookies) is entirely absent...
+  expect(members.some((path) => path === 'browsers' || path.startsWith('browsers/'))).toBe(false)
+  // ...while ordinary operator files under a team are retained.
+  expect(members).toContain('teams/default/browsers/notes.txt')
+
+  rmSync(out, { force: true })
+})
+
+test('restore refuses an archive carrying browser profile state before installing anything (T12)', async () => {
+  const out = join(tmpdir(), `bz-backup-${Date.now()}.tar.gz`)
+  expect((await server.cli(['backup', 'create', out, '--plaintext'])).exitCode).toBe(0)
+
+  // Hostile/stale archive: a crafted entry planting browser session state.
+  const hostile = join(tmpdir(), `bz-backup-hostile-${Date.now()}.tar.gz`)
+  appendTarEntries(out, hostile, [{ path: 'browsers/agent-x/cookies', body: 'planted-session' }])
+
+  const target = join(tmpdir(), `bz-restore-hostile-${Date.now()}`)
+  const restored = await runCli(['backup', 'restore', hostile, '--home', target], target)
+  expect(restored.exitCode).not.toBe(0)
+  expect(restored.stderr + restored.stdout).toMatch(/browser profile state|browsers\//i)
+  // Refused BEFORE install: the target home was never created/touched.
+  expect(existsSync(target)).toBe(false)
+
+  rmSync(out, { force: true })
+  rmSync(hostile, { force: true })
+})
+
 test('encrypted backup round-trips through an owner-only age identity', async () => {
   const marker = `encrypted-marker-${randomUUID()}`
   writeFileSync(join(server.home, 'encrypted-proof.txt'), marker)
@@ -627,27 +673,28 @@ test.skipIf(process.platform === 'win32')(
   // path is separately pinned by the failed-download test above.
   'BAZ-051: a failed backup is a clean failure — home intact, daemon healthy, no partial file',
   async () => {
-  // Inject the failure at the target: an unwritable directory makes every
-  // temp-file + rename attempt fail without touching the served home.
-  const scratch = join(tmpdir(), `bz-diskfull-${randomUUID()}`)
-  mkdirSync(scratch)
-  const readonly = join(scratch, 'read-only')
-  mkdirSync(readonly, 0o555)
-  const output = join(readonly, 'backup.tar.gz')
-  try {
-    const result = await server.cli(['backup', 'create', output, '--plaintext'])
-    expect(result.exitCode).not.toBe(0)
-    expect(result.stderr + result.stdout).not.toMatch(/Traceback|ENOENT.*bazilion\.db/)
-    expect(existsSync(output)).toBe(false)
-    // The served home is untouched and the daemon is still healthy.
-    const health = await fetch(`${server.url}/api/health`)
-    expect(health.ok).toBe(true)
-    expect(existsSync(join(server.home, 'bazilion.db'))).toBe(true)
-  } finally {
-    chmodSync(readonly, 0o755)
-    rmSync(scratch, { recursive: true, force: true })
-  }
-})
+    // Inject the failure at the target: an unwritable directory makes every
+    // temp-file + rename attempt fail without touching the served home.
+    const scratch = join(tmpdir(), `bz-diskfull-${randomUUID()}`)
+    mkdirSync(scratch)
+    const readonly = join(scratch, 'read-only')
+    mkdirSync(readonly, 0o555)
+    const output = join(readonly, 'backup.tar.gz')
+    try {
+      const result = await server.cli(['backup', 'create', output, '--plaintext'])
+      expect(result.exitCode).not.toBe(0)
+      expect(result.stderr + result.stdout).not.toMatch(/Traceback|ENOENT.*bazilion\.db/)
+      expect(existsSync(output)).toBe(false)
+      // The served home is untouched and the daemon is still healthy.
+      const health = await fetch(`${server.url}/api/health`)
+      expect(health.ok).toBe(true)
+      expect(existsSync(join(server.home, 'bazilion.db'))).toBe(true)
+    } finally {
+      chmodSync(readonly, 0o755)
+      rmSync(scratch, { recursive: true, force: true })
+    }
+  },
+)
 
 test('failed download preserves an existing output and removes temporary files', async () => {
   const scratch = join(tmpdir(), `bz-failed-download-${randomUUID()}`)
@@ -873,26 +920,25 @@ test('a crashed daemon record is reclaimed only after its PID is dead', async ()
   }
 })
 
-test(
-  'graceful daemon shutdown closes SQLite and removes its ownership record',
-  { skip: process.platform === 'win32' }, // Windows kill() is TerminateProcess: no graceful handler runs; the stale record is reclaimed by dead PID on next start.
-  async () => {
-    const isolated = await startTestServer()
-    const runtimePath = daemonLivenessPath(isolated.home)
-    expect(existsSync(runtimePath)).toBe(true)
+test('graceful daemon shutdown closes SQLite and removes its ownership record', {
+  skip: process.platform === 'win32',
+}, async () => {
+  // Windows kill() is TerminateProcess: no graceful handler runs; the stale record is reclaimed by dead PID on next start.
+  const isolated = await startTestServer()
+  const runtimePath = daemonLivenessPath(isolated.home)
+  expect(existsSync(runtimePath)).toBe(true)
 
-    await isolated.stop({ keepHome: true })
-    try {
-      expect(existsSync(runtimePath)).toBe(false)
-      const db = new DatabaseSync(join(isolated.home, 'bazilion.db'), { readOnly: true })
-      expect(db.prepare('PRAGMA integrity_check').get()).toEqual({ integrity_check: 'ok' })
-      db.close()
-    } finally {
-      cleanupLivenessArtifacts(isolated.home)
-      rmSync(isolated.home, { recursive: true, force: true })
-    }
-  },
-)
+  await isolated.stop({ keepHome: true })
+  try {
+    expect(existsSync(runtimePath)).toBe(false)
+    const db = new DatabaseSync(join(isolated.home, 'bazilion.db'), { readOnly: true })
+    expect(db.prepare('PRAGMA integrity_check').get()).toEqual({ integrity_check: 'ok' })
+    db.close()
+  } finally {
+    cleanupLivenessArtifacts(isolated.home)
+    rmSync(isolated.home, { recursive: true, force: true })
+  }
+})
 
 test('concurrent contenders cannot replace the winner after reclaiming one dead owner', async () => {
   const target = makeHome()

@@ -1,0 +1,64 @@
+{
+  "basis": "r21,1146 core entries,49f14bb18d6c4087ce8ccc153051fc33fbe5672865655846ae8aa266ca1d2940",
+  "whole": {
+    "success": false,
+    "numPassedTests": 2618,
+    "numFailedTests": 17,
+    "numPendingTests": 49,
+    "numPassedTestSuites": 393,
+    "numFailedTestSuites": 6
+  },
+  "lint": {
+    "exit": 0,
+    "errors": 0,
+    "warnings": 112,
+    "infos": 14,
+    "checkedFiles": 813
+  },
+  "daemonStderrFiles": 45,
+  "executedSourceUnchanged": true,
+  "nativeAddonSha256": "69a7ece7770ceb9c6520d141aa58d17ea6849c31af13c2880f4698147d18f74f",
+  "controlledComparisons": {
+    "kind": "Three predeclared controlled diagnostic comparisons, not candidate pass counts",
+    "cases": [
+      {
+        "mode": "sync-dropped",
+        "exitCode": 0,
+        "forced": false,
+        "elapsedSeconds": 0.06382393700187095,
+        "closed": true,
+        "stdoutSha256": "cadb10d5a6bae21be77db9dad9e62fe545974b1ac301acc3e76c64dd8fc5279e",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "mode": "async-dropped",
+        "exitCode": 0,
+        "forced": false,
+        "elapsedSeconds": 0.03170929700718261,
+        "closed": true,
+        "stdoutSha256": "f9fb64ae54a07da9c341fd99754fd233005c8fb487c16abf6089f4c130143d83",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "mode": "async-retained",
+        "exitCode": 0,
+        "forced": false,
+        "elapsedSeconds": 0.06399977800901979,
+        "closed": true,
+        "stdoutSha256": "3dff91a1bf81faeb9488db063d552469e122035415e7a4fe49c1dee9d42f1476",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    ]
+  },
+  "classification": {
+    "directCliOutputEROFS": 6,
+    "followOnResultCount": 1,
+    "shallowCwdUninstallReason": 1,
+    "chatFailuresIncludingNativeAssertionAndCascade": 9
+  },
+  "noAutomaticRetry": true,
+  "security397GateRun": false,
+  "nativeCrashRootCauseResolved": false,
+  "nativeGcComparisonReproduced": false,
+  "publicationPerformed": false
+}

@@ -3,8 +3,8 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { defineCommand } from 'citty'
 
-// In published builds, serve.ts is inlined into dist/cli.js — the daemon
-// sits next to it as dist/daemon.js. In dev (running .ts source via tsx),
+// In published builds, serve.ts is inlined into dist/cli-main.js — the guarded
+// daemon launcher sits next to it as dist/daemon.js. In dev (running .ts source via tsx),
 // fall back to walking up to apps/daemon/src/index.ts.
 const bundledDaemonEntry = join(import.meta.dirname, 'daemon.js')
 const sourceDaemonEntry = join(import.meta.dirname, '..', '..', '..', 'daemon', 'src', 'index.ts')

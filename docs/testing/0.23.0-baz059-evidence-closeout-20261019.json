@@ -1,0 +1,93 @@
+{
+  "format": "bazilion-source-freeze-amendment-v1",
+  "revision": 21,
+  "recordedAt": "2026-10-19T22:02:32.686134+00:00",
+  "parentAmendment": "docs/testing/0.23.0-baz059-evidence-recovery-20261019.json",
+  "parentAmendmentSha256": "c65db29749fc6a56881533e1579f3860bfb2099957c6981d642718d62ce9a383",
+  "parentSourceInputAggregateSha256": "bc1a8695b2c763cd9e9d959a54091ba2fd4f23ec1d5de3408e62a01fec68a497",
+  "amendedSourceInputAggregateSha256": "49f14bb18d6c4087ce8ccc153051fc33fbe5672865655846ae8aa266ca1d2940",
+  "amendedCoreEntryCount": 1146,
+  "inputDelta": [
+    {
+      "path": "docs/backlog/BAZ-059-qualification-status-20261004.md",
+      "before": {
+        "path": "docs/backlog/BAZ-059-qualification-status-20261004.md",
+        "kind": "file",
+        "sha256": "f95e2357fb399d8f3c96ff60c28e6626ff9ad3c52123dac3aecb15140cfd2f7b",
+        "bytes": 8512,
+        "executable": false
+      },
+      "after": {
+        "path": "docs/backlog/BAZ-059-qualification-status-20261004.md",
+        "kind": "file",
+        "sha256": "655fa97bdeb8e33a4e86c22814112a2d4e065491955ee341849b4797c4655dce",
+        "bytes": 9084,
+        "executable": false
+      }
+    },
+    {
+      "path": "docs/backlog/in_progress/BAZ-059-pi-image-generation.md",
+      "before": {
+        "path": "docs/backlog/in_progress/BAZ-059-pi-image-generation.md",
+        "kind": "file",
+        "sha256": "6e47213244cee9ab5f1b3eb487dc28b08bd999552988df61f31af7f0de61eb71",
+        "bytes": 26601,
+        "executable": false
+      },
+      "after": {
+        "path": "docs/backlog/in_progress/BAZ-059-pi-image-generation.md",
+        "kind": "file",
+        "sha256": "f38a147ae47595b16f8565ca11e0121d594d38f8da516ec61ace2a25abd426cc",
+        "bytes": 27097,
+        "executable": false
+      }
+    },
+    {
+      "path": "docs/releases.md",
+      "before": {
+        "path": "docs/releases.md",
+        "kind": "file",
+        "sha256": "e94b2fa4022eaf25a60f78d37e782ae5f834012a0606511e668b08dc5419503f",
+        "bytes": 17110,
+        "executable": false
+      },
+      "after": {
+        "path": "docs/releases.md",
+        "kind": "file",
+        "sha256": "d6259d1d0a051ccff5f43adf707e646887f2a1ff1c78a5b5c0f8c1ed8faa4958",
+        "bytes": 17399,
+        "executable": false
+      }
+    }
+  ],
+  "review": {
+    "agent": "reviewer",
+    "runId": "c4c48843-aac8-46ac-8042-721e3b40ad8e",
+    "missionId": "d1dad0a5-6d93-41e8-a769-5b9812222348",
+    "context": "fresh read-only; no commands/execution/provider/account/original-home access; identities parent-verified not independently reviewer-computed",
+    "verdict": "ACCEPT WITH NOTES at bounded historical-summary/harness-evidence level; missing separate rework/protected evidence review supplied",
+    "scope": "ChatGPT-only original generation,separate rework,protectedHTTP,reported persistence/operator image inspections; not current code/artifact/live requalification/release",
+    "notesCorrectedAdditively": [
+      "Actual182733952-byte journal pin/hash vs preliminary182721080 prose typo; same authorized journal and exact actual pin rechecked; sealed r20/raw records unchanged",
+      "Observer selectedCredentialEnv=true means at least one checked truthy value; false means none truthy, not all keys present/absent or full environment/input audit"
+    ],
+    "remainingLimits": "RawPNGs/full canonical inputs/upstream bodies/guardmarkers/full oldsource pins not restored; recorded hashes/dispatch counts are historical harness assertions. Geometry mismatch and earlieruncertainty retained. Paid live routes deferred, canceledBAZ066 not revived."
+  },
+  "qualification": "No application code or tests changed/run in this receipt. Image-loss repair retains accepted r19 applicability. Current whole suite/397case gate/artifacts/CI/source closure still required; BAZ059 stays in progress until release closeout.",
+  "status": "Bounded BAZ059 live evidence accepted with additive corrections; continuing remaining local candidate checks, not release approval",
+  "additionalPlanningAndEvidence": [
+    {
+      "path": "docs/testing/0.23.0-baz059-live-evidence-review-20261019.md",
+      "sha256": "f8c4d89a21e5ab5dc736dc7ae654d46513cfed67c10ff09a4938fde4b208d3f1"
+    },
+    {
+      "path": "docs/testing/0.23.0-baz059-evidence-closeout-20261019.md",
+      "sha256": "ec102ff1458057c599a937f56f165023f1f49e1b3c3a32c7b06331c6f7c25749"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-baz059-evidence-recovery-20261019/prefix-pin-correction.json",
+      "sha256": "e7aa554b6f31b627ec66635949be1a1c96a80f1b9c9291c57615d01a1a7245dc"
+    }
+  ],
+  "publicationPerformed": false
+}

@@ -7,6 +7,7 @@ import {
   sseFromCanned,
   startLmStudioMock,
 } from './fixtures/mock-lmstudio.ts'
+import { schedulingEvidence } from './fixtures/scheduling-evidence.ts'
 import { restartTestServer, startTestServer, type TestServer } from './server-fixture.ts'
 
 // BAZ-065 second slice: CT-10 busy/deferred dispatch and CT-12 crash/restart
@@ -148,6 +149,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await server.stop()
   await mock.stop()
+  schedulingEvidence('recovery-fixture-stopped', { daemonClosed: true, mockClosed: true })
 })
 
 test.skipIf(!docker)(
@@ -215,6 +217,17 @@ test.skipIf(!docker)(
     expect(cronDispatches.length).toBe(1)
     expect(cronDispatches[0]?.status).toBe('succeeded')
     expect(cronDispatches[0]?.attemptCount).toBeGreaterThanOrEqual(1)
+    schedulingEvidence('busy-deferred-occurrence', {
+      due: due.getTime(),
+      cronProviderRounds: cronRounds,
+      busyDone,
+      dispatches: cronDispatches.map(({ id, scheduledAt, status, attemptCount }) => ({
+        id,
+        scheduledAt,
+        status,
+        attemptCount,
+      })),
+    })
     const disabled = await server.cli(['trigger', 'disable', triggerId])
     expect(disabled.exitCode).toBe(0)
   },
@@ -248,6 +261,16 @@ test.skipIf(!docker)(
     expect(cronRounds).toBe(1)
     const history = await dispatches(triggerId)
     expect(history.dispatches.length).toBeGreaterThanOrEqual(1)
+    schedulingEvidence('restart-before-due', {
+      due: due.getTime(),
+      providerRounds: cronRounds,
+      dispatches: history.dispatches.map(({ id, scheduledAt, status, attemptCount }) => ({
+        id,
+        scheduledAt,
+        status,
+        attemptCount,
+      })),
+    })
     const disabled = await server.cli(['trigger', 'disable', triggerId])
     expect(disabled.exitCode).toBe(0)
   },
@@ -284,4 +307,11 @@ test('CT-12b: a cron minute missed while the daemon is down does not fire after 
   expect(history.dispatches).toHaveLength(0)
   const removed = await server.cli(['trigger', 'rm', triggerId])
   expect(removed.exitCode).toBe(0)
+  schedulingEvidence('missed-minute-no-catch-up', {
+    due: due.getTime(),
+    observedAfter: Date.now(),
+    providerRounds: cronRounds,
+    dispatchCount: history.dispatches.length,
+    triggerRemoved: removed.exitCode === 0,
+  })
 }, 300_000)

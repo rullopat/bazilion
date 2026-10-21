@@ -1,0 +1,334 @@
+{
+  "scope": "Approved registry.npmjs.org-only dependency availability; lifecycle scripts disabled, not normal installs/genuine-home execution/release acceptance",
+  "date": "2026-10-19",
+  "authorization": "Operator approved bounded public-registry metadata/pinned-package downloads only, all pnpm verification on and scripts off",
+  "candidate": {
+    "pm": "12.14.0",
+    "node": "24.20.0",
+    "exitCode": 0,
+    "lockPolicyEntries": 1068,
+    "packagesAdded": 919,
+    "reportedReused": 919,
+    "reportedTarballsDownloaded": 0,
+    "coreAndLockBytesUnchanged": true,
+    "disconnectedCacheRecheckExit": 0,
+    "recheckLimit": "Existing node_modules/private cache reuse, not a second fresh install or fresh policy re-verification; CLI says verified1m ago",
+    "agentSkills": "Tool reports pending approval for three dependency skills; no pnpm approve called or runtime discovery enabled"
+  },
+  "priorAvailability": [
+    {
+      "tag": "v0.22.0",
+      "code": 0,
+      "signal": null,
+      "changed": [],
+      "started": 1792431812786,
+      "ended": 1792431816577
+    },
+    {
+      "tag": "v0.21.0-beta.5",
+      "code": 0,
+      "signal": null,
+      "changed": [],
+      "started": 1792431816578,
+      "ended": 1792431819380
+    },
+    {
+      "tag": "v0.21.0-beta.4",
+      "code": 0,
+      "signal": null,
+      "changed": [],
+      "started": 1792431819380,
+      "ended": 1792431821435
+    },
+    {
+      "tag": "v0.21.0-beta.3",
+      "code": 0,
+      "signal": null,
+      "changed": [],
+      "started": 1792431821435,
+      "ended": 1792431823505
+    },
+    {
+      "tag": "v0.21.0-beta.2",
+      "code": 0,
+      "signal": null,
+      "changed": [],
+      "started": 1792431823505,
+      "ended": 1792431825572
+    },
+    {
+      "tag": "v0.21.0-beta.1",
+      "code": 0,
+      "signal": null,
+      "changed": [],
+      "started": 1792431825572,
+      "ended": 1792431827613
+    },
+    {
+      "tag": "v0.20.0",
+      "code": 0,
+      "signal": null,
+      "changed": [],
+      "started": 1792431827613,
+      "ended": 1792431831780
+    },
+    {
+      "tag": "v0.19.0",
+      "code": 0,
+      "signal": null,
+      "changed": [],
+      "started": 1792431831780,
+      "ended": 1792431834306
+    }
+  ],
+  "priorPlansArchive": {
+    "path": "docs/testing/evidence/0.23.0-registry-availability-20261019/prior-plan.json.gz",
+    "sha256": "c428e71abf99c4e7eb388bc66688a51300c8224da6b9f8b874367bdd611c925c",
+    "uncompressedSha256": "1a2e2a5502ad8faf2c13954310a15d2a0e3569cf5feea1352b63f5253f177bcf",
+    "scope": "Genuine archive tag/commit/tar SHA256 and PRE-install full tracked-file inventories, not regenerated expected hashes"
+  },
+  "priorManagers": "11.14.0 actual CLI for all8; versions/data retained in logs",
+  "network": {
+    "transport": "Namespace high-port HTTP CONNECT proxy admits exactly registry.npmjs.org:443, bridges Unix socket to host fixed public DNS-pinned registry IP:443; TLS passthrough/canonical names and validation retained; no new trust root or registry rewrite",
+    "methodLimit": "TLS opaque; scope relies on fixed trusted frozen-install command with scripts disabled, not HTTP-method interception",
+    "candidate": {
+      "host": "registry.npmjs.org",
+      "port": 443,
+      "seconds": 600,
+      "maxTCP": 4096,
+      "maxConcurrent": 128,
+      "maxBytes": 2147483648,
+      "connections": 88,
+      "sent": 286624,
+      "received": 60447724,
+      "networkErrors": [],
+      "addresses": [
+        "104.16.5.34",
+        "104.16.3.34",
+        "104.16.4.34",
+        "104.16.6.34",
+        "104.16.10.34",
+        "104.16.0.34",
+        "104.16.7.34",
+        "104.16.1.34",
+        "104.16.2.34",
+        "104.16.8.34",
+        "104.16.9.34",
+        "104.16.11.34"
+      ],
+      "remainingStreams": 0
+    },
+    "priorBatch": {
+      "host": "registry.npmjs.org",
+      "port": 443,
+      "seconds": 600,
+      "maxTCP": 4096,
+      "maxConcurrent": 128,
+      "maxBytes": 2147483648,
+      "connections": 150,
+      "sent": 1561594,
+      "received": 91128402,
+      "networkErrors": [],
+      "addresses": [
+        "104.16.8.34",
+        "104.16.2.34",
+        "104.16.10.34",
+        "104.16.1.34",
+        "104.16.6.34",
+        "104.16.5.34",
+        "104.16.4.34",
+        "104.16.0.34",
+        "104.16.11.34",
+        "104.16.9.34",
+        "104.16.7.34",
+        "104.16.3.34"
+      ],
+      "remainingStreams": 0
+    },
+    "otherOriginsRequested": false,
+    "tlsBytesBothDirections": 153424344,
+    "noProviderSearchImageOrPublicationCalls": true
+  },
+  "initialSetupFailure": {
+    "reason": "Namespace unprivileged TCP443 EACCES before pnpm spawn",
+    "registryConnections": 0,
+    "scriptsOrPackageCommandExecuted": false,
+    "correction": "High-port CONNECT, no extra capabilities/system settings; original setup records retained"
+  },
+  "cleanup": "Actual owned namespace children settled exit0, no signal/spawn/overflow; parent destroyed/drained its own streams and closed relay, remaining0; not general descendant/abnormal-host proof",
+  "sourcePreservation": "Candidate1139 core entries and all8 archive tracked source inventories byte-identical; source application/guard files not edited",
+  "notDone": "No lifecycle build, old daemon/home matrix, package version application/final artifacts, CI platform evidence, independent release acceptance or publication",
+  "nextScope": "Offline project-allowlisted lifecycle/build checks using installed headers/tools and no browser downloads, then genuine prior-home refusal qualification; no agent-skill/unknown-build approval or new network origin",
+  "rawRecords": [
+    {
+      "path": "registry-control/actual-transport.json",
+      "sha256": "3d064b37b4f811a70b9311f0a6346afd66985da82aae87e20fe8a4ca25ea0310",
+      "text": "{\"setupCorrection\":\"Low-port EACCES before pnpm spawn; zero registry connections. Replace namespace low-port TCP listener with high-port CONNECT proxy admitting only registry.npmjs.org:443. No extra capability/system change, registry/TLS validation unchanged.\",\"proxy\":\"http://127.0.0.1:18443\",\"pendingActualInstall\":true}\n"
+    },
+    {
+      "path": "registry-control/candidate-actual-check.mjs",
+      "sha256": "c1379040ced6dde0c31c5f3836289e6f1a545d2cfd8a2aefa8139b0b64ae816b",
+      "text": "import { spawn } from 'node:child_process'\nimport { writeFileSync } from 'node:fs'\nimport { createServer } from 'node:http'\nimport { createConnection } from 'node:net'\n\n// High-port standard CONNECT proxy: fixed canonical authority only. TLS remains\n// end-to-end between the real PNPM client and registry.npmjs.org; no TLS interception.\nconst sockets = new Set()\nconst denied = []\nlet child\nfunction deny(target) {\n  denied.push(target)\n  writeFileSync('/evidence/registry-control/denied-origins.json', JSON.stringify(denied))\n  child?.kill('SIGTERM')\n}\nconst server = createServer((request, response) => {\n  deny(`non-CONNECT ${request.method} ${request.url}`)\n  response.writeHead(403).end()\n})\nserver.on('connection', (socket) => { sockets.add(socket); socket.on('close', () => sockets.delete(socket)) })\nserver.on('connect', (request, client, head) => {\n  if (request.url !== 'registry.npmjs.org:443') {\n    deny(request.url)\n    client.end('HTTP/1.1 403 Forbidden\\r\\n\\r\\n')\n    return\n  }\n  const upstream = createConnection('/relay/registry.sock')\n  sockets.add(upstream)\n  upstream.on('close', () => sockets.delete(upstream))\n  for (const stream of [client, upstream]) {\n    stream.on('error', () => { client.destroy(); upstream.destroy() })\n  }\n  upstream.once('connect', () => {\n    client.write('HTTP/1.1 200 Connection Established\\r\\n\\r\\n')\n    if (head.length) upstream.write(head)\n    client.pipe(upstream)\n    upstream.pipe(client)\n  })\n})\nawait new Promise((resolve, reject) => { server.once('error', reject); server.listen(18443, '127.0.0.1', resolve) })\nconsole.log(`runtime=${process.version}; canonical-registry-only CONNECT proxy ready`)\nchild = spawn('pnpm', ['install', '--ignore-scripts', '--frozen-lockfile', '--store-dir=/evidence/store'], { stdio: 'inherit' })\nlet failure\nchild.once('error', (error) => { failure = error.message })\nchild.once('close', (code, signal) => {\n  for (const socket of sockets) socket.destroy()\n  server.close(() => { process.exitCode = failure || signal || denied.length || code === null ? 1 : code })\n})\n"
+    },
+    {
+      "path": "registry-control/candidate-actual-isolate.sh",
+      "sha256": "6771f4920930dd84e07bae457aaa38a8186752645790bd770f241e0d252eb99e",
+      "text": "#!/bin/bash\nset -eu\nr=/var/tmp/baz023-install-prereq-7AUthA\nexec env -i PATH=/home/patri/.local/share/mise/installs/node/24.20.0/bin:/home/patri/.local/share/mise/installs/pnpm/12.14.0:/usr/bin HOME=/nonexistent LANG=C.UTF-8 bwrap --unshare-user --unshare-net --unshare-ipc --unshare-uts --unshare-pid --uid 1000 --gid 1000 --die-with-parent --new-session --tmpfs / --tmpfs /tmp --ro-bind /usr /usr --symlink usr/bin /bin --symlink usr/lib /lib --symlink usr/lib /lib64 --dir /etc --ro-bind /etc/ld.so.cache /etc/ld.so.cache --ro-bind /etc/passwd /etc/passwd --ro-bind /etc/group /etc/group --ro-bind /etc/ssl/certs /etc/ssl/certs --ro-bind \"$r/registry-control/hosts\" /etc/hosts --ro-bind \"$r/registry-control/nsswitch.conf\" /etc/nsswitch.conf --ro-bind /home/patri/.local/share/mise/installs/node/24.20.0 /home/patri/.local/share/mise/installs/node/24.20.0 --ro-bind /home/patri/.local/share/mise/installs/pnpm/12.14.0 /home/patri/.local/share/mise/installs/pnpm/12.14.0 --ro-bind \"$r/registry.sock\" /relay/registry.sock --bind \"$r\" /evidence --bind \"$r/home\" /home/sandbox --bind \"$r/candidate\" /work --proc /proc --dev /dev --chdir /work --setenv HOME /home/sandbox --setenv TMPDIR /evidence/tmp --setenv XDG_CACHE_HOME /evidence/cache --setenv CI 1 --setenv TZ UTC --setenv npm_config_userconfig /dev/null --setenv npm_config_globalconfig /dev/null --setenv HTTPS_PROXY http://127.0.0.1:18443 --setenv https_proxy http://127.0.0.1:18443 --setenv HTTP_PROXY http://127.0.0.1:18443 --setenv http_proxy http://127.0.0.1:18443 --setenv npm_config_https_proxy http://127.0.0.1:18443 --setenv DO_NOT_TRACK 1 -- node /evidence/registry-control/check.mjs\n"
+    },
+    {
+      "path": "registry-control/candidate-actual-supervise.mjs",
+      "sha256": "70055e07f81275995af264e8f29463e559bc76b19fcb1f5d4498d3dc2834cbc5",
+      "text": "import { chmodSync, writeFileSync } from 'node:fs'\nimport { lookup } from 'node:dns/promises'\nimport { createConnection, createServer } from 'node:net'\nimport { ownedChild } from '/home/patri/coding/bazilion/scripts/migration-upgrade-matrix.mjs'\n\nconst base = '/var/tmp/baz023-install-prereq-7AUthA'\nconst socketPath = `${base}/registry.sock`\nconst state = { host: 'registry.npmjs.org', port: 443, seconds: 600, maxTCP: 4096, maxConcurrent: 128, maxBytes: 2 ** 31, connections: 0, sent: 0, received: 0, networkErrors: [] }\nconst active = new Set()\nlet owned\nlet result\nlet server\nlet failure\nlet timer\nconst publicIPv4 = (address) => {\n  const [a,b] = address.split('.').map(Number)\n  return ![0,10,127,169,192,198,203].includes(a) && a < 224 && !(a === 172 && b >= 16 && b <= 31) && !(a === 100 && b >= 64 && b <= 127)\n}\nfunction limit(reason) {\n  state.limit ??= reason\n  for (const stream of active) stream.destroy()\n  if (owned) void owned.stop().catch((error) => { state.stopError = String(error) })\n}\nfunction track(stream) {\n  active.add(stream)\n  stream.on('close', () => active.delete(stream))\n  stream.on('error', (error) => state.networkErrors.push(error.code ?? error.message))\n  stream.setTimeout(120000, () => stream.destroy())\n  return stream\n}\ntry {\n  state.addresses = (await lookup(state.host, { family: 4, all: true })).map((item) => item.address)\n  if (!state.addresses.length || !state.addresses.every(publicIPv4)) throw new Error('Registry did not resolve to admitted public IPv4 addresses')\n  server = createServer((client) => {\n    if (++state.connections > state.maxTCP || active.size / 2 >= state.maxConcurrent) {\n      client.destroy(); limit('connection bound'); return\n    }\n    track(client)\n    const upstream = track(createConnection({ host: state.addresses[(state.connections - 1) % state.addresses.length], port: 443 }))\n    for (const stream of [client, upstream]) {\n      stream.on('error', () => { client.destroy(); upstream.destroy() })\n    }\n    client.on('data', (data) => { state.sent += data.length; if (state.sent + state.received > state.maxBytes) limit('byte bound') })\n    upstream.on('data', (data) => { state.received += data.length; if (state.sent + state.received > state.maxBytes) limit('byte bound') })\n    client.pipe(upstream)\n    upstream.pipe(client)\n  })\n  await new Promise((resolve, reject) => { server.once('error', reject); server.listen(socketPath, resolve) })\n  chmodSync(socketPath, 0o600)\n  owned = ownedChild('/bin/bash', [`${base}/registry-control/isolate.sh`], { env: process.env })\n  timer = setTimeout(() => limit('600-second bound'), 600000)\n  result = await owned.closed\n  if (result.overflow) failure = 'output bound exceeded'\n  if (result.code !== 0 || result.signal || result.spawnError || state.limit) failure ??= 'install did not complete successfully'\n} catch (error) {\n  failure = String(error)\n} finally {\n  clearTimeout(timer)\n  if (owned) {\n    try { await owned.stop() } catch (error) { state.cleanupUnconfirmed = String(error); failure ??= 'owned child cleanup unconfirmed' }\n  }\n  const closing = [...active].map((stream) => new Promise((resolve) => stream.once('close', resolve)))\n  for (const stream of active) stream.destroy()\n  let streamsClosed = closing.length === 0\n  let closeTimer\n  await Promise.race([\n    Promise.all(closing).then(() => { streamsClosed = true }),\n    new Promise((resolve) => { closeTimer = setTimeout(resolve, 3000) }),\n  ])\n  clearTimeout(closeTimer)\n  if (!streamsClosed) { state.streamCleanupUnconfirmed = true; failure ??= 'stream cleanup unconfirmed' }\n  if (server?.listening) {\n    let closed = false\n    let serverTimer\n    await Promise.race([\n      new Promise((resolve) => server.close(() => { closed = true; resolve() })),\n      new Promise((resolve) => { serverTimer = setTimeout(resolve, 3000) }),\n    ])\n    clearTimeout(serverTimer)\n    if (!closed) { state.relayCleanupUnconfirmed = true; failure ??= 'relay cleanup unconfirmed' }\n  }\n  state.remainingStreams = active.size\n  if (active.size) failure ??= 'stream cleanup unconfirmed'\n  writeFileSync(`${base}/registry-control/install-result.json`, JSON.stringify({ state, failure, result }, null, 2), { flag: 'wx', mode: 0o600 })\n  console.log(JSON.stringify({ state, failure, exit: result?.code }, null, 2))\n  if (failure) process.exitCode = 1\n}\n"
+    },
+    {
+      "path": "registry-control/candidate-connect-status.log",
+      "sha256": "b7d6be9cf66a5b21bbfb3a2e34b5bf73edddb962ee6212f1fb0745a58e575916",
+      "text": "candidate-registry-connect-availability=0\n"
+    },
+    {
+      "path": "registry-control/candidate-install-result.json",
+      "sha256": "0a87a6b35b112d095f2af95da5e1c107995889a37ab7e77cbcb5277ef4f9230d",
+      "text": "{\n  \"state\": {\n    \"host\": \"registry.npmjs.org\",\n    \"port\": 443,\n    \"seconds\": 600,\n    \"maxTCP\": 4096,\n    \"maxConcurrent\": 128,\n    \"maxBytes\": 2147483648,\n    \"connections\": 88,\n    \"sent\": 286624,\n    \"received\": 60447724,\n    \"networkErrors\": [],\n    \"addresses\": [\n      \"104.16.5.34\",\n      \"104.16.3.34\",\n      \"104.16.4.34\",\n      \"104.16.6.34\",\n      \"104.16.10.34\",\n      \"104.16.0.34\",\n      \"104.16.7.34\",\n      \"104.16.1.34\",\n      \"104.16.2.34\",\n      \"104.16.8.34\",\n      \"104.16.9.34\",\n      \"104.16.11.34\"\n    ],\n    \"remainingStreams\": 0\n  },\n  \"result\": {\n    \"code\": 0,\n    \"signal\": null,\n    \"forced\": false,\n    \"overflow\": false,\n    \"stdout\": \"runtime=v24.20.0; canonical-registry-only CONNECT proxy ready\\nScope: all 6 workspace projects\\n? Verifying lockfile against supply-chain policies (1068 entries)...\\nPackages are cloned from the content-addressable store to the virtual store.\\n  Content-addressable store is at: /evidence/store/v11\\n  Virtual store is at:             node_modules/.pnpm\\n\u2713 Lockfile passes supply-chain policies (1068 entries in 2.7s)\\nLockfile is up to date, resolution step is skipped\\nPackages: +919\\n++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\\nProgress: resolved 919, reused 919, downloaded 0, added 919, done\\nAgent skills awaiting approval: @tanstack/react-start, @tanstack/router-plugin, @tobilu/qmd.\\nRun \\\"pnpm approve\\\" to review them.\\n\\ndependencies:\\n+ typebox 1.3.0\\n\\ndevDependencies:\\n+ @biomejs/biome 2.5.0\\n+ @changesets/changelog-github 0.7.0\\n+ @changesets/cli 2.31.0\\n+ @types/node 26.0.0\\n+ tsup 8.5.1\\n+ tsx 4.22.4\\n+ typescript 6.0.3\\n+ vitest 4.1.9\\n\\nDone in 2.9s using pnpm v12.14.0\\n\",\n    \"stderr\": \"\"\n  }\n}"
+    },
+    {
+      "path": "registry-control/candidate-offline-recheck.log",
+      "sha256": "44626d3c7236ed645d64fb406d7009fac792b16e6229225f4aaddafb924cefd5",
+      "text": "v24.20.0\n12.14.0\nScope: all 6 workspace projects\nAgent skills awaiting approval: @tanstack/react-start, @tanstack/router-plugin, @tobilu/qmd.\nRun \"pnpm approve\" to review them.\n\u2713 Lockfile passes supply-chain policies (verified 1m ago)\nLockfile is up to date, resolution step is skipped\nDone in 36ms using pnpm v12.14.0\n"
+    },
+    {
+      "path": "registry-control/candidate-offline-status.log",
+      "sha256": "41c9c24ac966e6e67fb57931991955f00959c6caac238b197f18596eaad3bb97",
+      "text": "candidate-offline-cache-recheck=0\n"
+    },
+    {
+      "path": "registry-control/candidate-supervisor-connect.log",
+      "sha256": "390960328f9410ac142cd62edd976697c56da01c6cb78691727fe0581d13b60d",
+      "text": "{\n  \"state\": {\n    \"host\": \"registry.npmjs.org\",\n    \"port\": 443,\n    \"seconds\": 600,\n    \"maxTCP\": 4096,\n    \"maxConcurrent\": 128,\n    \"maxBytes\": 2147483648,\n    \"connections\": 88,\n    \"sent\": 286624,\n    \"received\": 60447724,\n    \"networkErrors\": [],\n    \"addresses\": [\n      \"104.16.5.34\",\n      \"104.16.3.34\",\n      \"104.16.4.34\",\n      \"104.16.6.34\",\n      \"104.16.10.34\",\n      \"104.16.0.34\",\n      \"104.16.7.34\",\n      \"104.16.1.34\",\n      \"104.16.2.34\",\n      \"104.16.8.34\",\n      \"104.16.9.34\",\n      \"104.16.11.34\"\n    ],\n    \"remainingStreams\": 0\n  },\n  \"exit\": 0\n}\n"
+    },
+    {
+      "path": "registry-control/check-prior.mjs",
+      "sha256": "e0b98c47ae4945e4c59a7b4a898cc84f4872401ebb5cedb006bb9bf6f831db75",
+      "text": "import { spawn } from 'node:child_process'\nimport { readFileSync, writeFileSync } from 'node:fs'\nimport { createHash } from 'node:crypto'\nimport { createServer } from 'node:http'\nimport { createConnection } from 'node:net'\n\n// High-port standard CONNECT proxy: fixed canonical authority only. TLS remains\n// end-to-end between the real PNPM client and registry.npmjs.org; no TLS interception.\nconst sockets = new Set()\nconst denied = []\nlet child\nfunction deny(target) {\n  denied.push(target)\n  writeFileSync('/evidence/registry-control/denied-origins-prior.json', JSON.stringify(denied))\n  child?.kill('SIGTERM')\n}\nconst server = createServer((request, response) => {\n  deny(`non-CONNECT ${request.method} ${request.url}`)\n  response.writeHead(403).end()\n})\nserver.on('connection', (socket) => { sockets.add(socket); socket.on('close', () => sockets.delete(socket)) })\nserver.on('connect', (request, client, head) => {\n  if (request.url !== 'registry.npmjs.org:443') {\n    deny(request.url)\n    client.end('HTTP/1.1 403 Forbidden\\r\\n\\r\\n')\n    return\n  }\n  const upstream = createConnection('/relay/registry.sock')\n  sockets.add(upstream)\n  upstream.on('close', () => sockets.delete(upstream))\n  for (const stream of [client, upstream]) {\n    stream.on('error', () => { client.destroy(); upstream.destroy() })\n  }\n  upstream.once('connect', () => {\n    client.write('HTTP/1.1 200 Connection Established\\r\\n\\r\\n')\n    if (head.length) upstream.write(head)\n    client.pipe(upstream)\n    upstream.pipe(client)\n  })\n})\nawait new Promise((resolve, reject) => { server.once('error', reject); server.listen(18443, '127.0.0.1', resolve) })\nconsole.log(`runtime=${process.version}; canonical-registry-only CONNECT proxy ready`)\nconst plan = JSON.parse(readFileSync('/evidence/registry-control/prior-plan.json', 'utf8'))\nconst outcomes = []\nlet exit = 0\ntry {\n  for (const item of plan) {\n    console.log(`PRIOR AVAILABILITY START ${item.tag}; scripts remain disabled`)\n    const started = Date.now()\n    child = spawn('pnpm', ['install', '--ignore-scripts', '--frozen-lockfile', '--store-dir=/evidence/store'], { cwd: item.source, stdio: 'inherit' })\n    let spawnError\n    child.once('error', (error) => { spawnError = error.message })\n    const {code, signal} = await new Promise((resolve) => child.once('close', (code, signal) => resolve({code, signal})))\n    const changed = []\n    for (const [name, expected] of Object.entries(item.filesBefore)) {\n      const bytes = readFileSync(`${item.source}/${name}`)\n      if (createHash('sha256').update(bytes).digest('hex') !== expected) changed.push(name)\n    }\n    outcomes.push({tag:item.tag, code, signal, spawnError, changed, started, ended:Date.now()})\n    writeFileSync('/evidence/registry-control/prior-outcomes.json', JSON.stringify(outcomes, null, 2))\n    console.log(`PRIOR AVAILABILITY END ${item.tag}; exit=${code}, changedInputs=${changed.length}`)\n    if (code !== 0 || signal || spawnError || changed.length || denied.length) {exit = 1; break}\n  }\n} catch(error) {\n  console.error(error)\n  exit = 1\n} finally {\n  for (const socket of sockets) socket.destroy()\n  server.close(() => {process.exitCode = exit})\n}\n"
+    },
+    {
+      "path": "registry-control/check.mjs",
+      "sha256": "c1379040ced6dde0c31c5f3836289e6f1a545d2cfd8a2aefa8139b0b64ae816b",
+      "text": "import { spawn } from 'node:child_process'\nimport { writeFileSync } from 'node:fs'\nimport { createServer } from 'node:http'\nimport { createConnection } from 'node:net'\n\n// High-port standard CONNECT proxy: fixed canonical authority only. TLS remains\n// end-to-end between the real PNPM client and registry.npmjs.org; no TLS interception.\nconst sockets = new Set()\nconst denied = []\nlet child\nfunction deny(target) {\n  denied.push(target)\n  writeFileSync('/evidence/registry-control/denied-origins.json', JSON.stringify(denied))\n  child?.kill('SIGTERM')\n}\nconst server = createServer((request, response) => {\n  deny(`non-CONNECT ${request.method} ${request.url}`)\n  response.writeHead(403).end()\n})\nserver.on('connection', (socket) => { sockets.add(socket); socket.on('close', () => sockets.delete(socket)) })\nserver.on('connect', (request, client, head) => {\n  if (request.url !== 'registry.npmjs.org:443') {\n    deny(request.url)\n    client.end('HTTP/1.1 403 Forbidden\\r\\n\\r\\n')\n    return\n  }\n  const upstream = createConnection('/relay/registry.sock')\n  sockets.add(upstream)\n  upstream.on('close', () => sockets.delete(upstream))\n  for (const stream of [client, upstream]) {\n    stream.on('error', () => { client.destroy(); upstream.destroy() })\n  }\n  upstream.once('connect', () => {\n    client.write('HTTP/1.1 200 Connection Established\\r\\n\\r\\n')\n    if (head.length) upstream.write(head)\n    client.pipe(upstream)\n    upstream.pipe(client)\n  })\n})\nawait new Promise((resolve, reject) => { server.once('error', reject); server.listen(18443, '127.0.0.1', resolve) })\nconsole.log(`runtime=${process.version}; canonical-registry-only CONNECT proxy ready`)\nchild = spawn('pnpm', ['install', '--ignore-scripts', '--frozen-lockfile', '--store-dir=/evidence/store'], { stdio: 'inherit' })\nlet failure\nchild.once('error', (error) => { failure = error.message })\nchild.once('close', (code, signal) => {\n  for (const socket of sockets) socket.destroy()\n  server.close(() => { process.exitCode = failure || signal || denied.length || code === null ? 1 : code })\n})\n"
+    },
+    {
+      "path": "registry-control/connect-status.log",
+      "sha256": "b7d6be9cf66a5b21bbfb3a2e34b5bf73edddb962ee6212f1fb0745a58e575916",
+      "text": "candidate-registry-connect-availability=0\n"
+    },
+    {
+      "path": "registry-control/hosts",
+      "sha256": "6f69de619e2c2ce83c04f6ee45fe582b4123344f33cdd8f3c0085e8d37cd5f3a",
+      "text": "127.0.0.1 localhost registry.npmjs.org\n"
+    },
+    {
+      "path": "registry-control/install-result.json",
+      "sha256": "0a87a6b35b112d095f2af95da5e1c107995889a37ab7e77cbcb5277ef4f9230d",
+      "text": "{\n  \"state\": {\n    \"host\": \"registry.npmjs.org\",\n    \"port\": 443,\n    \"seconds\": 600,\n    \"maxTCP\": 4096,\n    \"maxConcurrent\": 128,\n    \"maxBytes\": 2147483648,\n    \"connections\": 88,\n    \"sent\": 286624,\n    \"received\": 60447724,\n    \"networkErrors\": [],\n    \"addresses\": [\n      \"104.16.5.34\",\n      \"104.16.3.34\",\n      \"104.16.4.34\",\n      \"104.16.6.34\",\n      \"104.16.10.34\",\n      \"104.16.0.34\",\n      \"104.16.7.34\",\n      \"104.16.1.34\",\n      \"104.16.2.34\",\n      \"104.16.8.34\",\n      \"104.16.9.34\",\n      \"104.16.11.34\"\n    ],\n    \"remainingStreams\": 0\n  },\n  \"result\": {\n    \"code\": 0,\n    \"signal\": null,\n    \"forced\": false,\n    \"overflow\": false,\n    \"stdout\": \"runtime=v24.20.0; canonical-registry-only CONNECT proxy ready\\nScope: all 6 workspace projects\\n? Verifying lockfile against supply-chain policies (1068 entries)...\\nPackages are cloned from the content-addressable store to the virtual store.\\n  Content-addressable store is at: /evidence/store/v11\\n  Virtual store is at:             node_modules/.pnpm\\n\u2713 Lockfile passes supply-chain policies (1068 entries in 2.7s)\\nLockfile is up to date, resolution step is skipped\\nPackages: +919\\n++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\\nProgress: resolved 919, reused 919, downloaded 0, added 919, done\\nAgent skills awaiting approval: @tanstack/react-start, @tanstack/router-plugin, @tobilu/qmd.\\nRun \\\"pnpm approve\\\" to review them.\\n\\ndependencies:\\n+ typebox 1.3.0\\n\\ndevDependencies:\\n+ @biomejs/biome 2.5.0\\n+ @changesets/changelog-github 0.7.0\\n+ @changesets/cli 2.31.0\\n+ @types/node 26.0.0\\n+ tsup 8.5.1\\n+ tsx 4.22.4\\n+ typescript 6.0.3\\n+ vitest 4.1.9\\n\\nDone in 2.9s using pnpm v12.14.0\\n\",\n    \"stderr\": \"\"\n  }\n}"
+    },
+    {
+      "path": "registry-control/isolate-prior.sh",
+      "sha256": "325cd10542286315edbfe864330956e2f2bd0c2515ae51cbf1ebae6170285425",
+      "text": "#!/bin/bash\nset -eu\nr=/var/tmp/baz023-install-prereq-7AUthA\nexec env -i PATH=/home/patri/.local/share/mise/installs/node/24.20.0/bin:/home/patri/.local/share/mise/installs/pnpm/11.14.0:/usr/bin HOME=/nonexistent LANG=C.UTF-8 bwrap --unshare-user --unshare-net --unshare-ipc --unshare-uts --unshare-pid --uid 1000 --gid 1000 --die-with-parent --new-session --tmpfs / --tmpfs /tmp --ro-bind /usr /usr --symlink usr/bin /bin --symlink usr/lib /lib --symlink usr/lib /lib64 --dir /etc --ro-bind /etc/ld.so.cache /etc/ld.so.cache --ro-bind /etc/passwd /etc/passwd --ro-bind /etc/group /etc/group --ro-bind /etc/ssl/certs /etc/ssl/certs --ro-bind \"$r/registry-control/hosts\" /etc/hosts --ro-bind \"$r/registry-control/nsswitch.conf\" /etc/nsswitch.conf --ro-bind /home/patri/.local/share/mise/installs/node/24.20.0 /home/patri/.local/share/mise/installs/node/24.20.0 --ro-bind /home/patri/.local/share/mise/installs/pnpm/11.14.0 /home/patri/.local/share/mise/installs/pnpm/11.14.0 --ro-bind \"$r/registry.sock\" /relay/registry.sock --bind \"$r\" /evidence --bind \"$r/home\" /home/sandbox --bind \"$r/candidate\" /work --proc /proc --dev /dev --chdir /work --setenv HOME /home/sandbox --setenv TMPDIR /evidence/tmp --setenv XDG_CACHE_HOME /evidence/cache --setenv CI 1 --setenv TZ UTC --setenv npm_config_userconfig /dev/null --setenv npm_config_globalconfig /dev/null --setenv HTTPS_PROXY http://127.0.0.1:18443 --setenv https_proxy http://127.0.0.1:18443 --setenv HTTP_PROXY http://127.0.0.1:18443 --setenv http_proxy http://127.0.0.1:18443 --setenv npm_config_https_proxy http://127.0.0.1:18443 --setenv DO_NOT_TRACK 1 -- node /evidence/registry-control/check-prior.mjs\n"
+    },
+    {
+      "path": "registry-control/isolate.sh",
+      "sha256": "6771f4920930dd84e07bae457aaa38a8186752645790bd770f241e0d252eb99e",
+      "text": "#!/bin/bash\nset -eu\nr=/var/tmp/baz023-install-prereq-7AUthA\nexec env -i PATH=/home/patri/.local/share/mise/installs/node/24.20.0/bin:/home/patri/.local/share/mise/installs/pnpm/12.14.0:/usr/bin HOME=/nonexistent LANG=C.UTF-8 bwrap --unshare-user --unshare-net --unshare-ipc --unshare-uts --unshare-pid --uid 1000 --gid 1000 --die-with-parent --new-session --tmpfs / --tmpfs /tmp --ro-bind /usr /usr --symlink usr/bin /bin --symlink usr/lib /lib --symlink usr/lib /lib64 --dir /etc --ro-bind /etc/ld.so.cache /etc/ld.so.cache --ro-bind /etc/passwd /etc/passwd --ro-bind /etc/group /etc/group --ro-bind /etc/ssl/certs /etc/ssl/certs --ro-bind \"$r/registry-control/hosts\" /etc/hosts --ro-bind \"$r/registry-control/nsswitch.conf\" /etc/nsswitch.conf --ro-bind /home/patri/.local/share/mise/installs/node/24.20.0 /home/patri/.local/share/mise/installs/node/24.20.0 --ro-bind /home/patri/.local/share/mise/installs/pnpm/12.14.0 /home/patri/.local/share/mise/installs/pnpm/12.14.0 --ro-bind \"$r/registry.sock\" /relay/registry.sock --bind \"$r\" /evidence --bind \"$r/home\" /home/sandbox --bind \"$r/candidate\" /work --proc /proc --dev /dev --chdir /work --setenv HOME /home/sandbox --setenv TMPDIR /evidence/tmp --setenv XDG_CACHE_HOME /evidence/cache --setenv CI 1 --setenv TZ UTC --setenv npm_config_userconfig /dev/null --setenv npm_config_globalconfig /dev/null --setenv HTTPS_PROXY http://127.0.0.1:18443 --setenv https_proxy http://127.0.0.1:18443 --setenv HTTP_PROXY http://127.0.0.1:18443 --setenv http_proxy http://127.0.0.1:18443 --setenv npm_config_https_proxy http://127.0.0.1:18443 --setenv DO_NOT_TRACK 1 -- node /evidence/registry-control/check.mjs\n"
+    },
+    {
+      "path": "registry-control/nsswitch.conf",
+      "sha256": "bfc6be87fadc435bad993523e78249bc43ed4c84f1ca6cb05b832d43087dc25b",
+      "text": "hosts: files\n"
+    },
+    {
+      "path": "registry-control/pre-state.json",
+      "sha256": "4fd1aeef7473419c9cf2b285499b761ffcafe08ca877b2fca92fb2a50684a15f",
+      "text": "{\n  \"authority\": \"Registry.npmjs.org-only uncredentialed metadata/pinned-package fetching; scripts disabled, all pnpm validation retained\",\n  \"reuse\": \"Known-closed r9 availability fixture/store, not a replacement to hide uncertain cleanup\",\n  \"priorOfflineFailurePreserved\": true,\n  \"candidateCoreBytesMatchOriginalCopiedInventory\": true,\n  \"transport\": \"Private network namespace; canonical registry hostname maps only to namespace loopback TLS passthrough over a private Unix socket to fixed public registry IP:443. No TLS trust/registry URL rewrite or other egress.\",\n  \"bounds\": {\n    \"seconds\": 600,\n    \"concurrentTCP\": 128,\n    \"totalTCP\": 4096,\n    \"encryptedBytesBothDirections\": 2147483648,\n    \"idleSeconds\": 120\n  }\n}\n"
+    },
+    {
+      "path": "registry-control/prior-install-result.json",
+      "sha256": "cd937d7da99eef87373ad7fd78785c3c91de27036608dfe242d87d86f15fb479",
+      "text": "{\n  \"state\": {\n    \"host\": \"registry.npmjs.org\",\n    \"port\": 443,\n    \"seconds\": 600,\n    \"maxTCP\": 4096,\n    \"maxConcurrent\": 128,\n    \"maxBytes\": 2147483648,\n    \"connections\": 150,\n    \"sent\": 1561594,\n    \"received\": 91128402,\n    \"networkErrors\": [],\n    \"addresses\": [\n      \"104.16.8.34\",\n      \"104.16.2.34\",\n      \"104.16.10.34\",\n      \"104.16.1.34\",\n      \"104.16.6.34\",\n      \"104.16.5.34\",\n      \"104.16.4.34\",\n      \"104.16.0.34\",\n      \"104.16.11.34\",\n      \"104.16.9.34\",\n      \"104.16.7.34\",\n      \"104.16.3.34\"\n    ],\n    \"remainingStreams\": 0\n  },\n  \"result\": {\n    \"code\": 0,\n    \"signal\": null,\n    \"forced\": false,\n    \"overflow\": false,\n    \"stdout\": \"runtime=v24.20.0; canonical-registry-only CONNECT proxy ready\\nPRIOR AVAILABILITY START v0.22.0; scripts remain disabled\\nScope: all 6 workspace projects\\n? Verifying lockfile against supply-chain policies (1069 entries)...\\nLockfile is up to date, resolution step is skipped\\nProgress: resolved 1, reused 0, downloaded 0, added 0\\nPackages: +914\\n++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\\nProgress: resolved 914, reused 903, downloaded 0, added 349\\nProgress: resolved 914, reused 903, downloaded 0, added 903\\nProgress: resolved 914, reused 903, downloaded 0, added 914, done\\n\\ndependencies:\\n+ typebox 1.3.0\\n\\ndevDependencies:\\n+ @biomejs/biome 2.5.0\\n+ @changesets/changelog-github 0.7.0\\n+ @changesets/cli 2.31.0\\n+ @types/node 26.0.0\\n+ tsup 8.5.1\\n+ tsx 4.22.4\\n+ typescript 6.0.3\\n+ vitest 4.1.9\\n\\n\u2713 Lockfile passes supply-chain policies (1069 entries in 3.1s)\\nDone in 3.2s using pnpm v11.14.0\\nPRIOR AVAILABILITY END v0.22.0; exit=0, changedInputs=0\\nPRIOR AVAILABILITY START v0.21.0-beta.5; scripts remain disabled\\nScope: all 6 workspace projects\\n? Verifying lockfile against supply-chain policies (1055 entries)...\\nLockfile is up to date, resolution step is skipped\\nProgress: resolved 1, reused 0, downloaded 0, added 0\\nPackages: +916\\n++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\\nProgress: resolved 916, reused 905, downloaded 0, added 292\\n\u2713 Lockfile passes supply-chain policies (1055 entries in 1.6s)\\nProgress: resolved 916, reused 905, downloaded 0, added 916, done\\n\\ndependencies:\\n+ typebox 1.3.0\\n\\ndevDependencies:\\n+ @biomejs/biome 2.5.0\\n+ @changesets/changelog-github 0.7.0\\n+ @changesets/cli 2.31.0\\n+ @types/node 26.0.0\\n+ tsup 8.5.1\\n+ tsx 4.22.4\\n+ typescript 6.0.3\\n+ vitest 4.1.9\\n\\nDone in 2.3s using pnpm v11.14.0\\nPRIOR AVAILABILITY END v0.21.0-beta.5; exit=0, changedInputs=0\\nPRIOR AVAILABILITY START v0.21.0-beta.4; scripts remain disabled\\nScope: all 6 workspace projects\\n\u2713 Lockfile passes supply-chain policies (verified 1s ago)\\nLockfile is up to date, resolution step is skipped\\nProgress: resolved 1, reused 0, downloaded 0, added 0\\nPackages: +916\\n++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\\nProgress: resolved 916, reused 905, downloaded 0, added 725\\nProgress: resolved 916, reused 905, downloaded 0, added 916, done\\n\\ndependencies:\\n+ typebox 1.3.0\\n\\ndevDependencies:\\n+ @biomejs/biome 2.5.0\\n+ @changesets/changelog-github 0.7.0\\n+ @changesets/cli 2.31.0\\n+ @types/node 26.0.0\\n+ tsup 8.5.1\\n+ tsx 4.22.4\\n+ typescript 6.0.3\\n+ vitest 4.1.9\\n\\nDone in 1.6s using pnpm v11.14.0\\nPRIOR AVAILABILITY END v0.21.0-beta.4; exit=0, changedInputs=0\\nPRIOR AVAILABILITY START v0.21.0-beta.3; scripts remain disabled\\nScope: all 6 workspace projects\\n\u2713 Lockfile passes supply-chain policies (verified 3s ago)\\nLockfile is up to date, resolution step is skipped\\nProgress: resolved 1, reused 0, downloaded 0, added 0\\nPackages: +916\\n++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\\nProgress: resolved 916, reused 905, downloaded 0, added 707\\nProgress: resolved 916, reused 905, downloaded 0, added 916, done\\n\\ndependencies:\\n+ typebox 1.3.0\\n\\ndevDependencies:\\n+ @biomejs/biome 2.5.0\\n+ @changesets/changelog-github 0.7.0\\n+ @changesets/cli 2.31.0\\n+ @types/node 26.0.0\\n+ tsup 8.5.1\\n+ tsx 4.22.4\\n+ typescript 6.0.3\\n+ vitest 4.1.9\\n\\nDone in 1.6s using pnpm v11.14.0\\nPRIOR AVAILABILITY END v0.21.0-beta.3; exit=0, changedInputs=0\\nPRIOR AVAILABILITY START v0.21.0-beta.2; scripts remain disabled\\nScope: all 6 workspace projects\\n\u2713 Lockfile passes supply-chain policies (verified 5s ago)\\nLockfile is up to date, resolution step is skipped\\nProgress: resolved 1, reused 0, downloaded 0, added 0\\nPackages: +916\\n++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\\nProgress: resolved 916, reused 905, downloaded 0, added 716\\nProgress: resolved 916, reused 905, downloaded 0, added 916, done\\n\\ndependencies:\\n+ typebox 1.3.0\\n\\ndevDependencies:\\n+ @biomejs/biome 2.5.0\\n+ @changesets/changelog-github 0.7.0\\n+ @changesets/cli 2.31.0\\n+ @types/node 26.0.0\\n+ tsup 8.5.1\\n+ tsx 4.22.4\\n+ typescript 6.0.3\\n+ vitest 4.1.9\\n\\nDone in 1.6s using pnpm v11.14.0\\nPRIOR AVAILABILITY END v0.21.0-beta.2; exit=0, changedInputs=0\\nPRIOR AVAILABILITY START v0.21.0-beta.1; scripts remain disabled\\nScope: all 6 workspace projects\\n\u2713 Lockfile passes supply-chain policies (verified 7s ago)\\nLockfile is up to date, resolution step is skipped\\nProgress: resolved 1, reused 0, downloaded 0, added 0\\nPackages: +916\\n++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\\nProgress: resolved 916, reused 905, downloaded 0, added 748\\nProgress: resolved 916, reused 905, downloaded 0, added 916, done\\n\\ndependencies:\\n+ typebox 1.3.0\\n\\ndevDependencies:\\n+ @biomejs/biome 2.5.0\\n+ @changesets/changelog-github 0.7.0\\n+ @changesets/cli 2.31.0\\n+ @types/node 26.0.0\\n+ tsup 8.5.1\\n+ tsx 4.22.4\\n+ typescript 6.0.3\\n+ vitest 4.1.9\\n\\nDone in 1.6s using pnpm v11.14.0\\nPRIOR AVAILABILITY END v0.21.0-beta.1; exit=0, changedInputs=0\\nPRIOR AVAILABILITY START v0.20.0; scripts remain disabled\\nScope: all 7 workspace projects\\n? Verifying lockfile against supply-chain policies (1448 entries)...\\nLockfile is up to date, resolution step is skipped\\nProgress: resolved 1, reused 0, downloaded 0, added 0\\nPackages: +1303\\n++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\\nProgress: resolved 1303, reused 1298, downloaded 0, added 273\\nProgress: resolved 1303, reused 1298, downloaded 0, added 856\\nProgress: resolved 1303, reused 1298, downloaded 0, added 1303, done\\n\\ndependencies:\\n+ typebox 1.3.0\\n\\ndevDependencies:\\n+ @biomejs/biome 2.5.0\\n+ @changesets/changelog-github 0.7.0\\n+ @changesets/cli 2.31.0\\n+ @types/node 26.0.0\\n+ tsup 8.5.1\\n+ tsx 4.22.4\\n+ typescript 6.0.3\\n+ vitest 4.1.9\\n\\n\u2713 Lockfile passes supply-chain policies (1448 entries in 3.5s)\\nDone in 3.7s using pnpm v11.14.0\\nPRIOR AVAILABILITY END v0.20.0; exit=0, changedInputs=0\\nPRIOR AVAILABILITY START v0.19.0; scripts remain disabled\\nScope: all 7 workspace projects\\n\u2713 Lockfile passes supply-chain policies (verified 641ms ago)\\nLockfile is up to date, resolution step is skipped\\nProgress: resolved 1, reused 0, downloaded 0, added 0\\nPackages: +1303\\n++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\\nProgress: resolved 1303, reused 1298, downloaded 0, added 825\\nProgress: resolved 1303, reused 1298, downloaded 0, added 1303, done\\n\\ndependencies:\\n+ typebox 1.3.0\\n\\ndevDependencies:\\n+ @biomejs/biome 2.5.0\\n+ @changesets/changelog-github 0.7.0\\n+ @changesets/cli 2.31.0\\n+ @types/node 26.0.0\\n+ tsup 8.5.1\\n+ tsx 4.22.4\\n+ typescript 6.0.3\\n+ vitest 4.1.9\\n\\nDone in 2s using pnpm v11.14.0\\nPRIOR AVAILABILITY END v0.19.0; exit=0, changedInputs=0\\n\",\n    \"stderr\": \"\"\n  }\n}"
+    },
+    {
+      "path": "registry-control/prior-outcomes.json",
+      "sha256": "71cb5223150090470f7e564bcad4839b0d06a0f4d35b4b8b332fd4214c28d217",
+      "text": "[\n  {\n    \"tag\": \"v0.22.0\",\n    \"code\": 0,\n    \"signal\": null,\n    \"changed\": [],\n    \"started\": 1792431812786,\n    \"ended\": 1792431816577\n  },\n  {\n    \"tag\": \"v0.21.0-beta.5\",\n    \"code\": 0,\n    \"signal\": null,\n    \"changed\": [],\n    \"started\": 1792431816578,\n    \"ended\": 1792431819380\n  },\n  {\n    \"tag\": \"v0.21.0-beta.4\",\n    \"code\": 0,\n    \"signal\": null,\n    \"changed\": [],\n    \"started\": 1792431819380,\n    \"ended\": 1792431821435\n  },\n  {\n    \"tag\": \"v0.21.0-beta.3\",\n    \"code\": 0,\n    \"signal\": null,\n    \"changed\": [],\n    \"started\": 1792431821435,\n    \"ended\": 1792431823505\n  },\n  {\n    \"tag\": \"v0.21.0-beta.2\",\n    \"code\": 0,\n    \"signal\": null,\n    \"changed\": [],\n    \"started\": 1792431823505,\n    \"ended\": 1792431825572\n  },\n  {\n    \"tag\": \"v0.21.0-beta.1\",\n    \"code\": 0,\n    \"signal\": null,\n    \"changed\": [],\n    \"started\": 1792431825572,\n    \"ended\": 1792431827613\n  },\n  {\n    \"tag\": \"v0.20.0\",\n    \"code\": 0,\n    \"signal\": null,\n    \"changed\": [],\n    \"started\": 1792431827613,\n    \"ended\": 1792431831780\n  },\n  {\n    \"tag\": \"v0.19.0\",\n    \"code\": 0,\n    \"signal\": null,\n    \"changed\": [],\n    \"started\": 1792431831780,\n    \"ended\": 1792431834306\n  }\n]"
+    },
+    {
+      "path": "registry-control/prior-status.log",
+      "sha256": "fd5255010b97d79ba48cbebb9cf5b622ecc3a6a6d9a1f7c6c626aa05ef8d60f2",
+      "text": "prior-registry-availability=0\n"
+    },
+    {
+      "path": "registry-control/setup-bind443-check.mjs",
+      "sha256": "6ec4efa13a86af85ad78b4a9879693e6c3968755fb45d7441918ba815943d995",
+      "text": "import { spawn } from 'node:child_process'\nimport { createConnection, createServer } from 'node:net'\n\n// Namespace-local TLS passthrough only. PNPM still validates registry.npmjs.org's\n// real certificate. No local HTTP registry, additional trust root or script enablement.\nconst sockets = new Set()\nconst server = createServer((client) => {\n  const upstream = createConnection('/relay/registry.sock')\n  sockets.add(client)\n  sockets.add(upstream)\n  for (const stream of [client, upstream]) {\n    stream.on('error', () => { client.destroy(); upstream.destroy() })\n    stream.on('close', () => sockets.delete(stream))\n  }\n  client.pipe(upstream)\n  upstream.pipe(client)\n})\nawait new Promise((resolve, reject) => {\n  server.once('error', reject)\n  server.listen(443, '127.0.0.1', resolve)\n})\nconsole.log(`runtime=${process.version}; registry-only namespace listener ready`)\nconst child = spawn('pnpm', ['install', '--ignore-scripts', '--frozen-lockfile', '--store-dir=/evidence/store'], { stdio: 'inherit' })\nlet failure\nchild.once('error', (error) => { failure = error.message })\nchild.once('close', (code, signal) => {\n  for (const socket of sockets) socket.destroy()\n  server.close(() => { process.exitCode = failure || signal || code === null ? 1 : code })\n})\n"
+    },
+    {
+      "path": "registry-control/setup-bind443-install-result.json",
+      "sha256": "686513ee5a317178aa6fc17a4d62d21833f34a21d348fbff7e572feb7b59fcd4",
+      "text": "{\n  \"state\": {\n    \"host\": \"registry.npmjs.org\",\n    \"port\": 443,\n    \"seconds\": 600,\n    \"maxTCP\": 4096,\n    \"maxConcurrent\": 128,\n    \"maxBytes\": 2147483648,\n    \"connections\": 0,\n    \"sent\": 0,\n    \"received\": 0,\n    \"networkErrors\": [],\n    \"addresses\": [\n      \"104.16.11.34\",\n      \"104.16.10.34\",\n      \"104.16.9.34\",\n      \"104.16.2.34\",\n      \"104.16.8.34\",\n      \"104.16.7.34\",\n      \"104.16.3.34\",\n      \"104.16.6.34\",\n      \"104.16.5.34\",\n      \"104.16.0.34\",\n      \"104.16.1.34\",\n      \"104.16.4.34\"\n    ],\n    \"remainingStreams\": 0\n  },\n  \"failure\": \"install did not complete successfully\",\n  \"result\": {\n    \"code\": 1,\n    \"signal\": null,\n    \"forced\": false,\n    \"overflow\": false,\n    \"stdout\": \"\",\n    \"stderr\": \"node:net:2302\\n      const error = new UVExceptionWithHostPort(rval, 'listen', address, port);\\n                    ^\\n\\nError: listen EACCES: permission denied 127.0.0.1:443\\n    at Server.setupListenHandle [as _listen2] (node:net:2302:21)\\n    at listenInCluster (node:net:2433:12)\\n    at node:net:2662:7\\n    at process.processTicksAndRejections (node:internal/process/task_queues:90:21) {\\n  code: 'EACCES',\\n  errno: -13,\\n  syscall: 'listen',\\n  address: '127.0.0.1',\\n  port: 443\\n}\\n\\nNode.js v24.20.0\\n\"\n  }\n}"
+    },
+    {
+      "path": "registry-control/setup-bind443-isolate.sh",
+      "sha256": "e0fd5291864479c850e65145a7f9dc98cf24de3252893a5f8c33ddd26a0f1d12",
+      "text": "#!/bin/bash\nset -eu\nr=/var/tmp/baz023-install-prereq-7AUthA\nexec env -i PATH=/home/patri/.local/share/mise/installs/node/24.20.0/bin:/home/patri/.local/share/mise/installs/pnpm/12.14.0:/usr/bin HOME=/nonexistent LANG=C.UTF-8 bwrap --unshare-user --unshare-net --unshare-ipc --unshare-uts --unshare-pid --uid 1000 --gid 1000 --die-with-parent --new-session --tmpfs / --tmpfs /tmp --ro-bind /usr /usr --symlink usr/bin /bin --symlink usr/lib /lib --symlink usr/lib /lib64 --dir /etc --ro-bind /etc/ld.so.cache /etc/ld.so.cache --ro-bind /etc/passwd /etc/passwd --ro-bind /etc/group /etc/group --ro-bind /etc/ssl/certs /etc/ssl/certs --ro-bind \"$r/registry-control/hosts\" /etc/hosts --ro-bind \"$r/registry-control/nsswitch.conf\" /etc/nsswitch.conf --ro-bind /home/patri/.local/share/mise/installs/node/24.20.0 /home/patri/.local/share/mise/installs/node/24.20.0 --ro-bind /home/patri/.local/share/mise/installs/pnpm/12.14.0 /home/patri/.local/share/mise/installs/pnpm/12.14.0 --ro-bind \"$r/registry.sock\" /relay/registry.sock --bind \"$r\" /evidence --bind \"$r/home\" /home/sandbox --bind \"$r/candidate\" /work --proc /proc --dev /dev --chdir /work --setenv HOME /home/sandbox --setenv TMPDIR /evidence/tmp --setenv XDG_CACHE_HOME /evidence/cache --setenv CI 1 --setenv TZ UTC --setenv npm_config_userconfig /dev/null --setenv npm_config_globalconfig /dev/null --setenv DO_NOT_TRACK 1 -- node /evidence/registry-control/check.mjs\n"
+    },
+    {
+      "path": "registry-control/setup-bind443-original-result.json",
+      "sha256": "686513ee5a317178aa6fc17a4d62d21833f34a21d348fbff7e572feb7b59fcd4",
+      "text": "{\n  \"state\": {\n    \"host\": \"registry.npmjs.org\",\n    \"port\": 443,\n    \"seconds\": 600,\n    \"maxTCP\": 4096,\n    \"maxConcurrent\": 128,\n    \"maxBytes\": 2147483648,\n    \"connections\": 0,\n    \"sent\": 0,\n    \"received\": 0,\n    \"networkErrors\": [],\n    \"addresses\": [\n      \"104.16.11.34\",\n      \"104.16.10.34\",\n      \"104.16.9.34\",\n      \"104.16.2.34\",\n      \"104.16.8.34\",\n      \"104.16.7.34\",\n      \"104.16.3.34\",\n      \"104.16.6.34\",\n      \"104.16.5.34\",\n      \"104.16.0.34\",\n      \"104.16.1.34\",\n      \"104.16.4.34\"\n    ],\n    \"remainingStreams\": 0\n  },\n  \"failure\": \"install did not complete successfully\",\n  \"result\": {\n    \"code\": 1,\n    \"signal\": null,\n    \"forced\": false,\n    \"overflow\": false,\n    \"stdout\": \"\",\n    \"stderr\": \"node:net:2302\\n      const error = new UVExceptionWithHostPort(rval, 'listen', address, port);\\n                    ^\\n\\nError: listen EACCES: permission denied 127.0.0.1:443\\n    at Server.setupListenHandle [as _listen2] (node:net:2302:21)\\n    at listenInCluster (node:net:2433:12)\\n    at node:net:2662:7\\n    at process.processTicksAndRejections (node:internal/process/task_queues:90:21) {\\n  code: 'EACCES',\\n  errno: -13,\\n  syscall: 'listen',\\n  address: '127.0.0.1',\\n  port: 443\\n}\\n\\nNode.js v24.20.0\\n\"\n  }\n}"
+    },
+    {
+      "path": "registry-control/setup-bind443-status.log",
+      "sha256": "82b4f166c1315fc5a30d172562f2e371477489c2cf6cd9354734548193c86d1e",
+      "text": "candidate-registry-availability=1\n"
+    },
+    {
+      "path": "registry-control/setup-bind443-supervise.mjs",
+      "sha256": "70055e07f81275995af264e8f29463e559bc76b19fcb1f5d4498d3dc2834cbc5",
+      "text": "import { chmodSync, writeFileSync } from 'node:fs'\nimport { lookup } from 'node:dns/promises'\nimport { createConnection, createServer } from 'node:net'\nimport { ownedChild } from '/home/patri/coding/bazilion/scripts/migration-upgrade-matrix.mjs'\n\nconst base = '/var/tmp/baz023-install-prereq-7AUthA'\nconst socketPath = `${base}/registry.sock`\nconst state = { host: 'registry.npmjs.org', port: 443, seconds: 600, maxTCP: 4096, maxConcurrent: 128, maxBytes: 2 ** 31, connections: 0, sent: 0, received: 0, networkErrors: [] }\nconst active = new Set()\nlet owned\nlet result\nlet server\nlet failure\nlet timer\nconst publicIPv4 = (address) => {\n  const [a,b] = address.split('.').map(Number)\n  return ![0,10,127,169,192,198,203].includes(a) && a < 224 && !(a === 172 && b >= 16 && b <= 31) && !(a === 100 && b >= 64 && b <= 127)\n}\nfunction limit(reason) {\n  state.limit ??= reason\n  for (const stream of active) stream.destroy()\n  if (owned) void owned.stop().catch((error) => { state.stopError = String(error) })\n}\nfunction track(stream) {\n  active.add(stream)\n  stream.on('close', () => active.delete(stream))\n  stream.on('error', (error) => state.networkErrors.push(error.code ?? error.message))\n  stream.setTimeout(120000, () => stream.destroy())\n  return stream\n}\ntry {\n  state.addresses = (await lookup(state.host, { family: 4, all: true })).map((item) => item.address)\n  if (!state.addresses.length || !state.addresses.every(publicIPv4)) throw new Error('Registry did not resolve to admitted public IPv4 addresses')\n  server = createServer((client) => {\n    if (++state.connections > state.maxTCP || active.size / 2 >= state.maxConcurrent) {\n      client.destroy(); limit('connection bound'); return\n    }\n    track(client)\n    const upstream = track(createConnection({ host: state.addresses[(state.connections - 1) % state.addresses.length], port: 443 }))\n    for (const stream of [client, upstream]) {\n      stream.on('error', () => { client.destroy(); upstream.destroy() })\n    }\n    client.on('data', (data) => { state.sent += data.length; if (state.sent + state.received > state.maxBytes) limit('byte bound') })\n    upstream.on('data', (data) => { state.received += data.length; if (state.sent + state.received > state.maxBytes) limit('byte bound') })\n    client.pipe(upstream)\n    upstream.pipe(client)\n  })\n  await new Promise((resolve, reject) => { server.once('error', reject); server.listen(socketPath, resolve) })\n  chmodSync(socketPath, 0o600)\n  owned = ownedChild('/bin/bash', [`${base}/registry-control/isolate.sh`], { env: process.env })\n  timer = setTimeout(() => limit('600-second bound'), 600000)\n  result = await owned.closed\n  if (result.overflow) failure = 'output bound exceeded'\n  if (result.code !== 0 || result.signal || result.spawnError || state.limit) failure ??= 'install did not complete successfully'\n} catch (error) {\n  failure = String(error)\n} finally {\n  clearTimeout(timer)\n  if (owned) {\n    try { await owned.stop() } catch (error) { state.cleanupUnconfirmed = String(error); failure ??= 'owned child cleanup unconfirmed' }\n  }\n  const closing = [...active].map((stream) => new Promise((resolve) => stream.once('close', resolve)))\n  for (const stream of active) stream.destroy()\n  let streamsClosed = closing.length === 0\n  let closeTimer\n  await Promise.race([\n    Promise.all(closing).then(() => { streamsClosed = true }),\n    new Promise((resolve) => { closeTimer = setTimeout(resolve, 3000) }),\n  ])\n  clearTimeout(closeTimer)\n  if (!streamsClosed) { state.streamCleanupUnconfirmed = true; failure ??= 'stream cleanup unconfirmed' }\n  if (server?.listening) {\n    let closed = false\n    let serverTimer\n    await Promise.race([\n      new Promise((resolve) => server.close(() => { closed = true; resolve() })),\n      new Promise((resolve) => { serverTimer = setTimeout(resolve, 3000) }),\n    ])\n    clearTimeout(serverTimer)\n    if (!closed) { state.relayCleanupUnconfirmed = true; failure ??= 'relay cleanup unconfirmed' }\n  }\n  state.remainingStreams = active.size\n  if (active.size) failure ??= 'stream cleanup unconfirmed'\n  writeFileSync(`${base}/registry-control/install-result.json`, JSON.stringify({ state, failure, result }, null, 2), { flag: 'wx', mode: 0o600 })\n  console.log(JSON.stringify({ state, failure, exit: result?.code }, null, 2))\n  if (failure) process.exitCode = 1\n}\n"
+    },
+    {
+      "path": "registry-control/setup-bind443-supervisor.log",
+      "sha256": "68f861ee0ea426db5a8d5e8e904773eb95868bdfcd351b69a2a87d22b997b733",
+      "text": "{\n  \"state\": {\n    \"host\": \"registry.npmjs.org\",\n    \"port\": 443,\n    \"seconds\": 600,\n    \"maxTCP\": 4096,\n    \"maxConcurrent\": 128,\n    \"maxBytes\": 2147483648,\n    \"connections\": 0,\n    \"sent\": 0,\n    \"received\": 0,\n    \"networkErrors\": [],\n    \"addresses\": [\n      \"104.16.11.34\",\n      \"104.16.10.34\",\n      \"104.16.9.34\",\n      \"104.16.2.34\",\n      \"104.16.8.34\",\n      \"104.16.7.34\",\n      \"104.16.3.34\",\n      \"104.16.6.34\",\n      \"104.16.5.34\",\n      \"104.16.0.34\",\n      \"104.16.1.34\",\n      \"104.16.4.34\"\n    ],\n    \"remainingStreams\": 0\n  },\n  \"failure\": \"install did not complete successfully\",\n  \"exit\": 1\n}\n"
+    },
+    {
+      "path": "registry-control/status.log",
+      "sha256": "82b4f166c1315fc5a30d172562f2e371477489c2cf6cd9354734548193c86d1e",
+      "text": "candidate-registry-availability=1\n"
+    },
+    {
+      "path": "registry-control/supervise-prior.mjs",
+      "sha256": "50462f8f47e6b87d89b1e2e60f315f6412d8f07d11bc66f23de8a37252d4bf7e",
+      "text": "import { chmodSync, writeFileSync } from 'node:fs'\nimport { lookup } from 'node:dns/promises'\nimport { createConnection, createServer } from 'node:net'\nimport { ownedChild } from '/home/patri/coding/bazilion/scripts/migration-upgrade-matrix.mjs'\n\nconst base = '/var/tmp/baz023-install-prereq-7AUthA'\nconst socketPath = `${base}/registry.sock`\nconst state = { host: 'registry.npmjs.org', port: 443, seconds: 600, maxTCP: 4096, maxConcurrent: 128, maxBytes: 2 ** 31, connections: 0, sent: 0, received: 0, networkErrors: [] }\nconst active = new Set()\nlet owned\nlet result\nlet server\nlet failure\nlet timer\nconst publicIPv4 = (address) => {\n  const [a,b] = address.split('.').map(Number)\n  return ![0,10,127,169,192,198,203].includes(a) && a < 224 && !(a === 172 && b >= 16 && b <= 31) && !(a === 100 && b >= 64 && b <= 127)\n}\nfunction limit(reason) {\n  state.limit ??= reason\n  for (const stream of active) stream.destroy()\n  if (owned) void owned.stop().catch((error) => { state.stopError = String(error) })\n}\nfunction track(stream) {\n  active.add(stream)\n  stream.on('close', () => active.delete(stream))\n  stream.on('error', (error) => state.networkErrors.push(error.code ?? error.message))\n  stream.setTimeout(120000, () => stream.destroy())\n  return stream\n}\ntry {\n  state.addresses = (await lookup(state.host, { family: 4, all: true })).map((item) => item.address)\n  if (!state.addresses.length || !state.addresses.every(publicIPv4)) throw new Error('Registry did not resolve to admitted public IPv4 addresses')\n  server = createServer((client) => {\n    if (++state.connections > state.maxTCP || active.size / 2 >= state.maxConcurrent) {\n      client.destroy(); limit('connection bound'); return\n    }\n    track(client)\n    const upstream = track(createConnection({ host: state.addresses[(state.connections - 1) % state.addresses.length], port: 443 }))\n    for (const stream of [client, upstream]) {\n      stream.on('error', () => { client.destroy(); upstream.destroy() })\n    }\n    client.on('data', (data) => { state.sent += data.length; if (state.sent + state.received > state.maxBytes) limit('byte bound') })\n    upstream.on('data', (data) => { state.received += data.length; if (state.sent + state.received > state.maxBytes) limit('byte bound') })\n    client.pipe(upstream)\n    upstream.pipe(client)\n  })\n  await new Promise((resolve, reject) => { server.once('error', reject); server.listen(socketPath, resolve) })\n  chmodSync(socketPath, 0o600)\n  owned = ownedChild('/bin/bash', [`${base}/registry-control/isolate-prior.sh`], { env: process.env })\n  timer = setTimeout(() => limit('600-second bound'), 600000)\n  result = await owned.closed\n  if (result.overflow) failure = 'output bound exceeded'\n  if (result.code !== 0 || result.signal || result.spawnError || state.limit) failure ??= 'install did not complete successfully'\n} catch (error) {\n  failure = String(error)\n} finally {\n  clearTimeout(timer)\n  if (owned) {\n    try { await owned.stop() } catch (error) { state.cleanupUnconfirmed = String(error); failure ??= 'owned child cleanup unconfirmed' }\n  }\n  const closing = [...active].map((stream) => new Promise((resolve) => stream.once('close', resolve)))\n  for (const stream of active) stream.destroy()\n  let streamsClosed = closing.length === 0\n  let closeTimer\n  await Promise.race([\n    Promise.all(closing).then(() => { streamsClosed = true }),\n    new Promise((resolve) => { closeTimer = setTimeout(resolve, 3000) }),\n  ])\n  clearTimeout(closeTimer)\n  if (!streamsClosed) { state.streamCleanupUnconfirmed = true; failure ??= 'stream cleanup unconfirmed' }\n  if (server?.listening) {\n    let closed = false\n    let serverTimer\n    await Promise.race([\n      new Promise((resolve) => server.close(() => { closed = true; resolve() })),\n      new Promise((resolve) => { serverTimer = setTimeout(resolve, 3000) }),\n    ])\n    clearTimeout(serverTimer)\n    if (!closed) { state.relayCleanupUnconfirmed = true; failure ??= 'relay cleanup unconfirmed' }\n  }\n  state.remainingStreams = active.size\n  if (active.size) failure ??= 'stream cleanup unconfirmed'\n  writeFileSync(`${base}/registry-control/prior-install-result.json`, JSON.stringify({ state, failure, result }, null, 2), { flag: 'wx', mode: 0o600 })\n  console.log(JSON.stringify({ state, failure, exit: result?.code }, null, 2))\n  if (failure) process.exitCode = 1\n}\n"
+    },
+    {
+      "path": "registry-control/supervise.mjs",
+      "sha256": "70055e07f81275995af264e8f29463e559bc76b19fcb1f5d4498d3dc2834cbc5",
+      "text": "import { chmodSync, writeFileSync } from 'node:fs'\nimport { lookup } from 'node:dns/promises'\nimport { createConnection, createServer } from 'node:net'\nimport { ownedChild } from '/home/patri/coding/bazilion/scripts/migration-upgrade-matrix.mjs'\n\nconst base = '/var/tmp/baz023-install-prereq-7AUthA'\nconst socketPath = `${base}/registry.sock`\nconst state = { host: 'registry.npmjs.org', port: 443, seconds: 600, maxTCP: 4096, maxConcurrent: 128, maxBytes: 2 ** 31, connections: 0, sent: 0, received: 0, networkErrors: [] }\nconst active = new Set()\nlet owned\nlet result\nlet server\nlet failure\nlet timer\nconst publicIPv4 = (address) => {\n  const [a,b] = address.split('.').map(Number)\n  return ![0,10,127,169,192,198,203].includes(a) && a < 224 && !(a === 172 && b >= 16 && b <= 31) && !(a === 100 && b >= 64 && b <= 127)\n}\nfunction limit(reason) {\n  state.limit ??= reason\n  for (const stream of active) stream.destroy()\n  if (owned) void owned.stop().catch((error) => { state.stopError = String(error) })\n}\nfunction track(stream) {\n  active.add(stream)\n  stream.on('close', () => active.delete(stream))\n  stream.on('error', (error) => state.networkErrors.push(error.code ?? error.message))\n  stream.setTimeout(120000, () => stream.destroy())\n  return stream\n}\ntry {\n  state.addresses = (await lookup(state.host, { family: 4, all: true })).map((item) => item.address)\n  if (!state.addresses.length || !state.addresses.every(publicIPv4)) throw new Error('Registry did not resolve to admitted public IPv4 addresses')\n  server = createServer((client) => {\n    if (++state.connections > state.maxTCP || active.size / 2 >= state.maxConcurrent) {\n      client.destroy(); limit('connection bound'); return\n    }\n    track(client)\n    const upstream = track(createConnection({ host: state.addresses[(state.connections - 1) % state.addresses.length], port: 443 }))\n    for (const stream of [client, upstream]) {\n      stream.on('error', () => { client.destroy(); upstream.destroy() })\n    }\n    client.on('data', (data) => { state.sent += data.length; if (state.sent + state.received > state.maxBytes) limit('byte bound') })\n    upstream.on('data', (data) => { state.received += data.length; if (state.sent + state.received > state.maxBytes) limit('byte bound') })\n    client.pipe(upstream)\n    upstream.pipe(client)\n  })\n  await new Promise((resolve, reject) => { server.once('error', reject); server.listen(socketPath, resolve) })\n  chmodSync(socketPath, 0o600)\n  owned = ownedChild('/bin/bash', [`${base}/registry-control/isolate.sh`], { env: process.env })\n  timer = setTimeout(() => limit('600-second bound'), 600000)\n  result = await owned.closed\n  if (result.overflow) failure = 'output bound exceeded'\n  if (result.code !== 0 || result.signal || result.spawnError || state.limit) failure ??= 'install did not complete successfully'\n} catch (error) {\n  failure = String(error)\n} finally {\n  clearTimeout(timer)\n  if (owned) {\n    try { await owned.stop() } catch (error) { state.cleanupUnconfirmed = String(error); failure ??= 'owned child cleanup unconfirmed' }\n  }\n  const closing = [...active].map((stream) => new Promise((resolve) => stream.once('close', resolve)))\n  for (const stream of active) stream.destroy()\n  let streamsClosed = closing.length === 0\n  let closeTimer\n  await Promise.race([\n    Promise.all(closing).then(() => { streamsClosed = true }),\n    new Promise((resolve) => { closeTimer = setTimeout(resolve, 3000) }),\n  ])\n  clearTimeout(closeTimer)\n  if (!streamsClosed) { state.streamCleanupUnconfirmed = true; failure ??= 'stream cleanup unconfirmed' }\n  if (server?.listening) {\n    let closed = false\n    let serverTimer\n    await Promise.race([\n      new Promise((resolve) => server.close(() => { closed = true; resolve() })),\n      new Promise((resolve) => { serverTimer = setTimeout(resolve, 3000) }),\n    ])\n    clearTimeout(serverTimer)\n    if (!closed) { state.relayCleanupUnconfirmed = true; failure ??= 'relay cleanup unconfirmed' }\n  }\n  state.remainingStreams = active.size\n  if (active.size) failure ??= 'stream cleanup unconfirmed'\n  writeFileSync(`${base}/registry-control/install-result.json`, JSON.stringify({ state, failure, result }, null, 2), { flag: 'wx', mode: 0o600 })\n  console.log(JSON.stringify({ state, failure, exit: result?.code }, null, 2))\n  if (failure) process.exitCode = 1\n}\n"
+    },
+    {
+      "path": "registry-control/supervisor-connect.log",
+      "sha256": "390960328f9410ac142cd62edd976697c56da01c6cb78691727fe0581d13b60d",
+      "text": "{\n  \"state\": {\n    \"host\": \"registry.npmjs.org\",\n    \"port\": 443,\n    \"seconds\": 600,\n    \"maxTCP\": 4096,\n    \"maxConcurrent\": 128,\n    \"maxBytes\": 2147483648,\n    \"connections\": 88,\n    \"sent\": 286624,\n    \"received\": 60447724,\n    \"networkErrors\": [],\n    \"addresses\": [\n      \"104.16.5.34\",\n      \"104.16.3.34\",\n      \"104.16.4.34\",\n      \"104.16.6.34\",\n      \"104.16.10.34\",\n      \"104.16.0.34\",\n      \"104.16.7.34\",\n      \"104.16.1.34\",\n      \"104.16.2.34\",\n      \"104.16.8.34\",\n      \"104.16.9.34\",\n      \"104.16.11.34\"\n    ],\n    \"remainingStreams\": 0\n  },\n  \"exit\": 0\n}\n"
+    },
+    {
+      "path": "registry-control/supervisor-prior.log",
+      "sha256": "9afb0182735f508462c447825413858f6d90ee4aca9a9f40701615d84d467bff",
+      "text": "{\n  \"state\": {\n    \"host\": \"registry.npmjs.org\",\n    \"port\": 443,\n    \"seconds\": 600,\n    \"maxTCP\": 4096,\n    \"maxConcurrent\": 128,\n    \"maxBytes\": 2147483648,\n    \"connections\": 150,\n    \"sent\": 1561594,\n    \"received\": 91128402,\n    \"networkErrors\": [],\n    \"addresses\": [\n      \"104.16.8.34\",\n      \"104.16.2.34\",\n      \"104.16.10.34\",\n      \"104.16.1.34\",\n      \"104.16.6.34\",\n      \"104.16.5.34\",\n      \"104.16.4.34\",\n      \"104.16.0.34\",\n      \"104.16.11.34\",\n      \"104.16.9.34\",\n      \"104.16.7.34\",\n      \"104.16.3.34\"\n    ],\n    \"remainingStreams\": 0\n  },\n  \"exit\": 0\n}\n"
+    },
+    {
+      "path": "registry-control/supervisor.log",
+      "sha256": "68f861ee0ea426db5a8d5e8e904773eb95868bdfcd351b69a2a87d22b997b733",
+      "text": "{\n  \"state\": {\n    \"host\": \"registry.npmjs.org\",\n    \"port\": 443,\n    \"seconds\": 600,\n    \"maxTCP\": 4096,\n    \"maxConcurrent\": 128,\n    \"maxBytes\": 2147483648,\n    \"connections\": 0,\n    \"sent\": 0,\n    \"received\": 0,\n    \"networkErrors\": [],\n    \"addresses\": [\n      \"104.16.11.34\",\n      \"104.16.10.34\",\n      \"104.16.9.34\",\n      \"104.16.2.34\",\n      \"104.16.8.34\",\n      \"104.16.7.34\",\n      \"104.16.3.34\",\n      \"104.16.6.34\",\n      \"104.16.5.34\",\n      \"104.16.0.34\",\n      \"104.16.1.34\",\n      \"104.16.4.34\"\n    ],\n    \"remainingStreams\": 0\n  },\n  \"failure\": \"install did not complete successfully\",\n  \"exit\": 1\n}\n"
+    }
+  ]
+}

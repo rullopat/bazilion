@@ -67,7 +67,7 @@ image models or direct Google image access. The [BAZ-063 composed journey](conte
 is required for B: first-request brief, actual cron-driven research/text/images, human rework and
 approval, then manual handoff over two cycles. Topic and purpose are supplied in the brief; two
 independently selected topics check reuse, with no prescribed industry. BAZ-064 owns the recipe and
-deterministic handoff, BAZ-065 scheduling/recovery, and BAZ-066 live/human qualification; BAZ-063
+deterministic handoff, BAZ-065 scheduling/recovery, and unrun live/human qualification; BAZ-063
 consolidates their evidence using the protocol's case/lane ownership. The first test uses
 [Mastodon manual handoff only](../../backlog/design/content-platform-first-test.md), not three
 platforms; other formats and a future Mastodon publisher are separate scope. Automatic social publication
@@ -195,7 +195,7 @@ Execute in reviewable slices, not as a new product feature program:
 2. **Management and coding:** catalogue coverage across stateful panels and CLI/web parity, including
    snapshots, review, specialist attempts, publication and communication policy.
 3. **Content Team:** execute [the shared protocol](content-team-acceptance.md) through BAZ-064's
-   recipe/deterministic handoff, BAZ-065's real cron/recovery path and BAZ-066's live/human checks.
+   recipe/deterministic handoff, BAZ-065's real cron/recovery path and unrun live/human checks.
    Require two actual preparation-cron occurrences, retained generic brief, specialist handoffs, two
    rework rounds, exact final approval and manual instructions/downloads. Test a second selected topic,
    late approval, schedule changes, restart and the actual protected origin. BAZ-063 reviews the combined

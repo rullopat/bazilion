@@ -343,6 +343,19 @@ function validateArchiveEntries(entries: ArchiveEntry[]): ArchiveEntry[] {
     }
   }
 
+  // BAZ-069 T12 (D6): browser profiles are excluded from backups at creation.
+  // An archive that nevertheless carries root browser-slot state is hostile or
+  // stale — installing it could plant cookies/site credentials into an
+  // Agent's managed slot. Refuse BEFORE anything is extracted or installed.
+  for (const entry of entries) {
+    if (entry.path === 'browsers' || entry.path.startsWith('browsers/')) {
+      throw new Error(
+        'backup contains browser profile state (browsers/): browser sessions hold site ' +
+          'credentials and are excluded from backups; refusing to install this archive',
+      )
+    }
+  }
+
   for (const required of ['bazilion.db', 'auth.json']) {
     const entry = byPath.get(required)
     if (!entry || (entry.type !== 'File' && entry.type !== 'OldFile')) {

@@ -1,0 +1,88 @@
+{
+  "format": "bazilion-source-freeze-amendment-v1",
+  "revision": 27,
+  "recordedAt": "2026-10-21T10:40:37.491712+00:00",
+  "parentAmendment": "docs/testing/0.23.0-node-runtime-floor-20261021.json",
+  "parentAmendmentSha256": "94f533779eb153d82767dffcddcb38491c08595b44960847e57e3825393fd654",
+  "parentSourceInputAggregateSha256": "e3e681db84b92e810e4bd9383746cd4e047bbc21b3759fb64574f61456e304c7",
+  "amendedSourceInputAggregateSha256": "933287672ca073f97f234da3f67e6fc03daa2891f82410ac4d3e186d8e545b3b",
+  "amendedCoreEntryCount": 1151,
+  "inputDelta": [
+    {
+      "path": "docs/releases.md",
+      "before": {
+        "path": "docs/releases.md",
+        "kind": "file",
+        "sha256": "530bed3d83584f1ea8a886e9cff12ffa93ea883cd1f510c59807e9c7af7b108c",
+        "bytes": 20425,
+        "executable": false
+      },
+      "after": {
+        "path": "docs/releases.md",
+        "kind": "file",
+        "bytes": 20729,
+        "sha256": "cd047ff1ece3f0382ebc12f951d80e92e43236bb478911df28de7a7da6f1f11e",
+        "executable": false
+      }
+    }
+  ],
+  "review": {
+    "runId": "0ec39110-24b3-4b6b-b8ad-6a7ee974774e",
+    "missionId": "28383d6a-10f2-4b82-a48f-269f8014a015",
+    "context": "fresh",
+    "verdict": "ACCEPT WITH NOTES",
+    "issues": [],
+    "reportSha256": "de62c9f5dc4190ed348e8f6713cadade9096b9de9dc4868a80c13e998e4e2da0",
+    "hashes": "parent-verified,not reviewer-computed",
+    "scope": "runtime-floor component and small exact artifact projections;not final release acceptance"
+  },
+  "applicability": "No runtime/application/test/build source or provisional artifact changed during review; r26 executed aggregate f5183f7d54eb017f160d180b072c5b64885dfe2c7eafffc7814029786a240d7a remains unchanged. Only release pointer and additive review evidence in r27. No new execution claimed.",
+  "status": "Component accepted; installed closure/backup/refusal/affected-feature,finalsource/commit/CI/finalacceptance/publication/website remain open. Historical intermittency not diagnosed or waived.",
+  "additionalPlanningAndEvidence": [
+    {
+      "path": "docs/testing/0.23.0-runtime-floor-component-review-20261021.md",
+      "sha256": "02878a70251b302524f1a126b7c3dc4629a327c9c426598ba5b35b324985b8d9"
+    },
+    {
+      "path": "docs/testing/0.23.0-runtime-floor-independent-review-20261021.md",
+      "sha256": "de62c9f5dc4190ed348e8f6713cadade9096b9de9dc4868a80c13e998e4e2da0"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-runtime-floor-component-review-20261021/artifact-projections.json",
+      "sha256": "dbc713bf7258d191d33acd88cb90f02e3a7e749becf1e40b25fb27d004c2ee3a"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-runtime-floor-component-review-20261021/available-r26-diff.txt",
+      "sha256": "dc7cbe7cca46cb28bf4ceebce52f916b80e83a6552f404ab54c4e13796a212c0"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-runtime-floor-component-review-20261021/bazilion--cli.js.txt",
+      "sha256": "10c6c46ded49d2fa49be8ee1492ba94b11d021e9cc64f44e68b6d9b3d1d3fc10"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-runtime-floor-component-review-20261021/bazilion--daemon.js.txt",
+      "sha256": "4bfcb220e1c8402d0622c937894bff21d6cff3e1d83da32c184a868450724a26"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-runtime-floor-component-review-20261021/bazilion--package.json.txt",
+      "sha256": "f894564be76d32d1c681c918d492336c90bb9095fdae480221457b9d53051d36"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-runtime-floor-component-review-20261021/bazilion--runtime-version.js.txt",
+      "sha256": "51408accbbea93dd2d672d40e34c1d019d79cbe8ac9146868584c92c5850db6d"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-runtime-floor-component-review-20261021/bazilion-api-types--package.json.txt",
+      "sha256": "410b4610f04b6d597799f6912e75baac947c91193230e7607f078085711f4256"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-runtime-floor-component-review-20261021/bazilion-client--package.json.txt",
+      "sha256": "e63902869857ce511debbfc63b4f83b36e38115c46dd32dbeb0f50f4c217be25"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-runtime-floor-component-review-20261021/reviewed-inputs.json",
+      "sha256": "6b8ac36dd61ec71e4bc08254eb1e8da933e699a5375997a2a116a59d003c6ea0"
+    }
+  ],
+  "publicationPerformed": false
+}

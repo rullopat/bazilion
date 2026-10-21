@@ -1,12 +1,18 @@
 import { join } from 'node:path'
-import type { Agent, ListTriggerDispatchesResponse } from '@bazilion/api-types'
+import type {
+  Agent,
+  CommunicationApproval,
+  ListTriggerDispatchesResponse,
+} from '@bazilion/api-types'
 import { afterAll, beforeAll, expect, test } from 'vitest'
+import type { TeamPolicyDocument } from '../src/team-interchange.ts'
 import {
   type CannedResponse,
   type MockLlm,
   sseFromCanned,
   startLmStudioMock,
 } from './fixtures/mock-lmstudio.ts'
+import { schedulingEvidence } from './fixtures/scheduling-evidence.ts'
 import { startTestServer, type TestServer } from './server-fixture.ts'
 
 // BAZ-065 first slice (CT-08 core): a real cron trigger drives the coordinator
@@ -14,7 +20,7 @@ import { startTestServer, type TestServer } from './server-fixture.ts'
 // prompt or fake tick stands in for it. The canned model again proves plumbing
 // (trigger → dispatch → turn → delegation), not model judgment. The two listed
 // minutes are the explicitly recorded acceleration; the recipe's requested
-// cadence remains an operator decision. Live/human lanes stay in BAZ-066.
+// cadence remains an operator decision. Live/human lanes are unrun and not scheduled.
 const recipe = join(import.meta.dirname, '../../../examples/content-team')
 const roles = ['coordinator', 'researcher', 'writer', 'designer'] as const
 const docker = process.env.BAZILION_TEST_DOCKER === '1'
@@ -113,6 +119,7 @@ beforeAll(async () => {
   mock.setFallback(router([], []))
   server = await startTestServer({
     LMSTUDIO_URL: mock.url,
+    TZ: 'UTC',
     BAZILION_TEAM_POLICY_ENFORCEMENT: 'on',
     BAZILION_IMAGE_GENERATION: 'off',
     BAZILION_SCHEDULER_TICK_MS: '200',
@@ -164,6 +171,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await server.stop()
   await mock.stop()
+  schedulingEvidence('cron-fixture-stopped', { daemonClosed: true, mockClosed: true })
 })
 
 test.skipIf(!docker)(
@@ -175,7 +183,7 @@ test.skipIf(!docker)(
     const nextMinute = Math.ceil((Date.now() + 5_000) / 60_000) * 60_000
     const first = new Date(nextMinute)
     const second = new Date(nextMinute + 60_000)
-    const expr = `${first.getMinutes()},${second.getMinutes()} * * * *`
+    const expr = `${first.getUTCMinutes()},${second.getUTCMinutes()} * * * *`
 
     // Two cron cycles: each delegates once, then finishes.
     const coordinator: CannedResponse[] = []
@@ -241,6 +249,16 @@ test.skipIf(!docker)(
     expect(history.dispatches.length).toBeGreaterThanOrEqual(2)
     const scheduled = new Set(history.dispatches.map((d) => String(d.scheduledAt)))
     expect(scheduled.size).toBeGreaterThanOrEqual(2)
+    schedulingEvidence('two-cron-occurrences', {
+      rounds,
+      dispatches: history.dispatches.map(({ id, scheduledAt, status, attemptCount }) => ({
+        id,
+        scheduledAt,
+        status,
+        attemptCount,
+      })),
+      triggerDisabled: disabled.exitCode === 0,
+    })
   },
   300_000,
 )
@@ -253,7 +271,7 @@ test.runIf(docker)(
     // credential-minimal where it is claimed — no daemon secrets, no provider
     // or search credentials, no host fallback.
     const due = new Date(Math.ceil((Date.now() + 80_000) / 60_000) * 60_000)
-    const expr = `${due.getMinutes()} ${due.getHours()} * * *`
+    const expr = `${due.getUTCMinutes()} ${due.getUTCHours()} * * *`
     const coordinator: CannedResponse[] = []
     const researcher: CannedResponse[] = []
     const containerRounds: number[] = []
@@ -342,6 +360,302 @@ test.runIf(docker)(
     expect(history.dispatches[0]?.status).toBe('succeeded')
     const disabled = await server.cli(['trigger', 'disable', triggerId])
     expect(disabled.exitCode).toBe(0)
+    schedulingEvidence('scheduled-container-positive', {
+      providerRounds: cronRound,
+      roundTimes: containerRounds,
+      credentialAssertionsPassed: true,
+      dispatches: history.dispatches.map(({ id, scheduledAt, status, attemptCount }) => ({
+        id,
+        scheduledAt,
+        status,
+        attemptCount,
+      })),
+      triggerDisabled: disabled.exitCode === 0,
+    })
   },
   300_000,
+)
+
+test.runIf(docker)(
+  'CT-16 negative: a real scheduled worker refuses an unadmitted host read tool',
+  async () => {
+    const { writeFileSync, readFileSync } = await import('node:fs')
+    // Outside the mounted Team/Agent inputs; only non-secret fixture bytes, never auth.json.
+    const marker = join(server.home, 'host-only-sentinel.txt')
+    const sentinel = 'HOST_ONLY_NON_SECRET_FIXTURE'
+    writeFileSync(marker, sentinel)
+    const observedTools: string[][] = []
+    const toolReplies: string[] = []
+    const queue = [toolCall('read', { path: marker }), reply('UNADMITTED_TOOL_REFUSED')]
+    mock.setFallback(
+      async (req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse) => {
+        let raw = ''
+        for await (const bytes of req) raw += String(bytes)
+        const body = JSON.parse(raw) as {
+          tools?: Array<{ function?: { name?: string } }>
+          messages?: Array<{ role?: string; content?: unknown }>
+        }
+        observedTools.push(
+          body.tools?.flatMap((t) => (t.function?.name ? [t.function.name] : [])) ?? [],
+        )
+        for (const message of body.messages ?? []) {
+          if (message.role === 'tool') toolReplies.push(JSON.stringify(message.content))
+        }
+        const item = queue.shift()
+        if (item) sseFromCanned(res, item)
+        else res.writeHead(500).end('unexpected canned round')
+      },
+    )
+
+    const due = new Date(Math.ceil((Date.now() + 5_000) / 60_000) * 60_000)
+    const added = await server.cli([
+      'trigger',
+      'add',
+      agentId('coordinator'),
+      '--cron',
+      `${due.getUTCMinutes()} ${due.getUTCHours()} * * *`,
+      '--message',
+      'Scheduled admission negative: do not execute host tools.',
+    ])
+    expect(added.exitCode, added.stderr).toBe(0)
+    const id = added.stdout.split('\t')[0] ?? ''
+    expect(id).toMatch(/^[0-9a-f-]{36}$/)
+    try {
+      await until(() => observedTools.length >= 2, 150_000, 'scheduled refused-tool continuation')
+      await new Promise((r) => setTimeout(r, 2_000))
+      expect(observedTools).toHaveLength(2)
+      for (const names of observedTools) {
+        expect(names).toContain('coding_command')
+        // Same-name container bash is deliberately admitted, not a host shell.
+        expect(names).toContain('bash')
+        for (const name of ['read', 'edit', 'write', 'browser_navigate']) {
+          expect(names).not.toContain(name)
+        }
+        expect(names.some((name) => name.startsWith('mcp__'))).toBe(false)
+      }
+      expect(
+        toolReplies.some((text) => /read/i.test(text) && /not found|unknown tool/i.test(text)),
+      ).toBe(true)
+      expect(toolReplies.some((text) => text.includes(sentinel))).toBe(false)
+      expect(readFileSync(marker, 'utf8')).toBe(sentinel)
+      const response = await fetch(`${server.url}/api/triggers/${id}/dispatches?limit=5`, {
+        headers: { authorization: `Bearer ${server.token}` },
+      })
+      expect(response.status).toBe(200)
+      const history = (await response.json()) as ListTriggerDispatchesResponse
+      expect(history.dispatches).toHaveLength(1)
+      expect(history.dispatches[0]?.scheduledAt).toBe(due.getTime())
+      expect(history.dispatches[0]?.status).toBe('succeeded')
+      expect(history.dispatches[0]?.attemptCount).toBe(1)
+      schedulingEvidence('scheduled-unadmitted-read', {
+        providerRounds: observedTools.length,
+        observedTools,
+        refusedReplyObserved: toolReplies.some(
+          (text) => /read/i.test(text) && /not found|unknown tool/i.test(text),
+        ),
+        sentinelDisclosed: toolReplies.some((text) => text.includes(sentinel)),
+        dispatches: history.dispatches.map(({ id, scheduledAt, status, attemptCount }) => ({
+          id,
+          scheduledAt,
+          status,
+          attemptCount,
+        })),
+      })
+    } catch (error) {
+      // Retain the existing failure; collect only this disposable fixture's dispatch facts.
+      if (process.env.BAZILION_TEST_SCHEDULING_EVIDENCE === '1') {
+        const response = await fetch(`${server.url}/api/triggers/${id}/dispatches?limit=5`, {
+          headers: { authorization: `Bearer ${server.token}` },
+        })
+        if (response.ok) {
+          const history = (await response.json()) as ListTriggerDispatchesResponse
+          schedulingEvidence('scheduled-unadmitted-read-failure', {
+            providerRounds: observedTools.length,
+            dispatches: history.dispatches.map(
+              ({ id, scheduledAt, status, attemptCount, lastError }) => ({
+                id,
+                scheduledAt,
+                status,
+                attemptCount,
+                lastError,
+              }),
+            ),
+          })
+        }
+      }
+      throw error
+    } finally {
+      const disabled = await server.cli(['trigger', 'disable', id])
+      expect(disabled.exitCode, disabled.stderr).toBe(0)
+    }
+    const count = observedTools.length
+    await new Promise((r) => setTimeout(r, 1_000))
+    expect(observedTools).toHaveLength(count)
+  },
+  180_000,
+)
+
+test.runIf(docker)(
+  'scheduled approval grants are occurrence-specific: hold, approve, then hold and deny next cycle',
+  async () => {
+    const { writeFileSync } = await import('node:fs')
+    const exported = await server.cli(['team', 'policy', 'export', 'content-cron'])
+    expect(exported.exitCode, exported.stderr).toBe(0)
+    const original = JSON.parse(exported.stdout) as TeamPolicyDocument
+    const document = structuredClone(original)
+    const edge = document.edges.find(
+      (item) => item.sourceKind === 'user' && item.targetId === agentId('coordinator'),
+    )
+    expect(edge).toBeDefined()
+    if (!edge) throw new Error('missing fixture ingress edge')
+    edge.posture = 'approval_required'
+    const policyFile = join(server.home, 'held-schedule-policy.json')
+    writeFileSync(policyFile, JSON.stringify(document))
+    const applied = await server.cli([
+      'team',
+      'policy',
+      'import',
+      'content-cron',
+      policyFile,
+      '--apply',
+    ])
+    expect(applied.exitCode, applied.stderr).toBe(0)
+    const baseline = rounds.length
+    mock.setFallback(router([reply('ONLY_APPROVED_OCCURRENCE_EXECUTED')], []))
+
+    const first = Math.ceil((Date.now() + 5_000) / 60_000) * 60_000
+    const second = first + 60_000
+    let id = ''
+    const headers = { authorization: `Bearer ${server.token}` }
+    async function history() {
+      const response = await fetch(`${server.url}/api/triggers/${id}/dispatches?limit=10`, {
+        headers,
+      })
+      expect(response.status).toBe(200)
+      return ((await response.json()) as ListTriggerDispatchesResponse).dispatches
+    }
+    async function pending(occurrence: number): Promise<CommunicationApproval> {
+      const deadline = Date.now() + 100_000
+      while (Date.now() < deadline) {
+        const response = await fetch(
+          `${server.url}/api/approvals?status=pending&teamId=content-cron`,
+          { headers },
+        )
+        expect(response.status).toBe(200)
+        const body = (await response.json()) as { approvals: CommunicationApproval[] }
+        const item = body.approvals.find(
+          (approval) =>
+            approval.operation === 'scheduler_trigger' &&
+            approval.attemptId === `${id}:${occurrence}`,
+        )
+        if (item) return item
+        await new Promise((r) => setTimeout(r, 250))
+      }
+      const response = await fetch(`${server.url}/api/approvals?teamId=content-cron`, { headers })
+      const body = (await response.json()) as { approvals: CommunicationApproval[] }
+      throw new Error(
+        JSON.stringify({
+          reason: 'timed out waiting for durable scheduled approval',
+          occurrence,
+          approvals: body.approvals.map((a) => ({
+            operation: a.operation,
+            attemptId: a.attemptId,
+            status: a.status,
+          })),
+          dispatches: (await history()).map((d) => ({
+            scheduledAt: d.scheduledAt,
+            status: d.status,
+            attemptCount: d.attemptCount,
+          })),
+          providerRounds: rounds.length - baseline,
+        }),
+      )
+    }
+    async function settled(occurrence: number, status: 'succeeded' | 'failed') {
+      const deadline = Date.now() + 20_000
+      while (Date.now() < deadline) {
+        const item = (await history()).find((dispatch) => dispatch.scheduledAt === occurrence)
+        if (item?.status === status) return item
+        await new Promise((r) => setTimeout(r, 250))
+      }
+      throw new Error('timed out waiting for scheduled approval outcome')
+    }
+    try {
+      const added = await server.cli([
+        'trigger',
+        'add',
+        agentId('coordinator'),
+        '--cron',
+        `${new Date(first).getUTCMinutes()},${new Date(second).getUTCMinutes()} * * * *`,
+        '--message',
+        'Approval-gated preparation; each occurrence needs its own grant.',
+      ])
+      expect(added.exitCode, added.stderr).toBe(0)
+      id = added.stdout.split('\t')[0] ?? ''
+      expect(id).toMatch(/^[0-9a-f-]{36}$/)
+      const firstApproval = await pending(first)
+      await new Promise((r) => setTimeout(r, 1_000))
+      expect(rounds).toHaveLength(baseline)
+      expect((await history()).find((d) => d.scheduledAt === first)).toMatchObject({
+        status: 'pending',
+        attemptCount: 0,
+      })
+      const allowed = await server.cli(['approval', 'approve', firstApproval.id, '--yes', '--json'])
+      expect(allowed.exitCode, allowed.stderr).toBe(0)
+      expect(JSON.parse(allowed.stdout)).toMatchObject({ status: 'delivered' })
+      expect(await settled(first, 'succeeded')).toMatchObject({ attemptCount: 1 })
+      expect(rounds).toHaveLength(baseline + 1)
+
+      const secondApproval = await pending(second)
+      expect(secondApproval.id).not.toBe(firstApproval.id)
+      expect(secondApproval.attemptId).not.toBe(firstApproval.attemptId)
+      await new Promise((r) => setTimeout(r, 1_000))
+      expect(rounds).toHaveLength(baseline + 1)
+      expect((await history()).find((d) => d.scheduledAt === second)).toMatchObject({
+        status: 'pending',
+        attemptCount: 0,
+      })
+      const denied = await server.cli(['approval', 'deny', secondApproval.id, '--yes', '--json'])
+      expect(denied.exitCode, denied.stderr).toBe(0)
+      expect(JSON.parse(denied.stdout)).toMatchObject({ status: 'denied' })
+      expect(await settled(second, 'failed')).toMatchObject({ attemptCount: 1 })
+      expect(await history()).toHaveLength(2)
+      expect(rounds).toHaveLength(baseline + 1)
+      schedulingEvidence('occurrence-specific-communication-approval', {
+        providerRounds: rounds.length - baseline,
+        approvals: [firstApproval, secondApproval].map(({ id, attemptId }) => ({ id, attemptId })),
+        grantStatus: JSON.parse(allowed.stdout).status,
+        denialStatus: JSON.parse(denied.stdout).status,
+        dispatches: (await history()).map(({ id, scheduledAt, status, attemptCount }) => ({
+          id,
+          scheduledAt,
+          status,
+          attemptCount,
+        })),
+      })
+    } finally {
+      if (id) {
+        const disabled = await server.cli(['trigger', 'disable', id])
+        expect(disabled.exitCode, disabled.stderr).toBe(0)
+      }
+      const current = await server.cli(['team', 'policy', 'export', 'content-cron'])
+      expect(current.exitCode, current.stderr).toBe(0)
+      original.expectedRevision = (
+        JSON.parse(current.stdout) as TeamPolicyDocument
+      ).expectedRevision
+      writeFileSync(policyFile, JSON.stringify(original))
+      const restored = await server.cli([
+        'team',
+        'policy',
+        'import',
+        'content-cron',
+        policyFile,
+        '--apply',
+      ])
+      expect(restored.exitCode, restored.stderr).toBe(0)
+    }
+    await new Promise((r) => setTimeout(r, 1_000))
+    expect(rounds).toHaveLength(baseline + 1)
+  },
+  240_000,
 )

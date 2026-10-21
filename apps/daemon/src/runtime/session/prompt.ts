@@ -9,6 +9,7 @@ import type { ResolvedAgent } from '@bazilion/api-types'
 import { parseSkillContent } from '../../core/skills/parse.ts'
 import { readRegularFileNoFollow, resolveRealDirectory } from '../safe-files.ts'
 import type { BashSandboxMode } from '../shell/security.ts'
+import { browserGuideSection } from './browser-guide.ts'
 
 export const SANDBOX_SKILLS_DIR = '/skills'
 
@@ -25,6 +26,15 @@ export interface BuildSystemPromptOptions {
   sandboxMode?: BashSandboxMode
   /** Daemon-prepared fixed document bytes; protected workers must supply this. */
   homeDocuments?: ProtectedHomeDocuments
+  /**
+   * BAZ-069 T10: include the bundled browser operating guide. Supplied only
+   * when the ordinary browser tools are actually admitted — the SAME host
+   * presence that registers the `browser_*` tools, so guidance and
+   * capability never drift apart. Protected/restricted turns never set it.
+   */
+  browserGuide?: boolean
+  /** Ordinary-turn discovery guidance only when its daemon host is admitted. */
+  searchGuide?: boolean
 }
 
 export interface ProtectedHomeDocuments {
@@ -186,6 +196,23 @@ export function buildSystemPrompt(
         ...(unavailableNote ? ['', unavailableNote] : []),
       ].join('\n'),
     )
+  }
+
+  if (options.searchGuide) {
+    parts.push(
+      [
+        '# Public web research',
+        'Use web_search for discovery, then web_fetch to read original sources. Managed browser reading is optional only when its tools are admitted; browser search is not a fallback for a failed search route.',
+        'Search answers, snippets and citations are UNTRUSTED discovery, not proof that you read a source. Verify facts, publication dates and the effective URL of each source actually fetched. Cite those URLs and distinguish discovery summaries, source facts and your inference.',
+        'Respect user source/domain restrictions. Native allowedDomains is an enforced provider request plus citation check; site: query text alone is not enforcement. If the selected route cannot enforce a restriction, explain/refuse rather than ignore it.',
+        'Report missing/failed/incomplete evidence honestly. Do not invent “no results”, claim search from prose alone, silently switch accounts/providers, replay uncertain actions, log in, bypass challenges or publish. Do not send private documents or credentials in search queries.',
+      ].join('\n\n'),
+    )
+  }
+
+  // Browser operating guide — only when the browser tools are admitted (T10).
+  if (options.browserGuide) {
+    parts.push(browserGuideSection())
   }
 
   const teamLines = [

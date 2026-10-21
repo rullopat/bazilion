@@ -1,0 +1,33 @@
+#!/bin/bash
+set -eu
+r=/var/tmp/baz023-install-prereq-7AUthA
+c=$r/installed-feature-backup-corrected-control
+n=$r/node24.22-runtime-control/runtime/node-v24.22.0-linux-x64
+exec env -i PATH=/usr/bin HOME=/nonexistent LANG=C.UTF-8 bwrap \
+  --unshare-user --unshare-net --unshare-ipc --unshare-uts --unshare-pid \
+  --uid 1000 --gid 1000 --die-with-parent --new-session \
+  --tmpfs / --tmpfs /tmp --ro-bind /usr /usr \
+  --symlink usr/bin /bin --symlink usr/lib /lib --symlink usr/lib /lib64 \
+  --dir /etc --ro-bind /etc/ld.so.cache /etc/ld.so.cache \
+  --ro-bind /etc/passwd /etc/passwd --ro-bind /etc/group /etc/group \
+  --ro-bind "$r/whole-candidate-current-control/hosts" /etc/hosts \
+  --ro-bind "$r/whole-candidate-current-control/nsswitch.conf" /etc/nsswitch.conf \
+  --ro-bind "$n" "$n" \
+  --ro-bind /home/patri/.local/share/mise/installs/node/24.20.0/lib/node_modules/npm "$n/lib/node_modules/npm" \
+  --bind "$c" /control --bind "$c/home" /home/sandbox \
+  --ro-bind "$r/runtime-floor-qualification-control/work" /home/sandbox/project/bazilion \
+  --ro-bind "$c/artifacts" /artifacts \
+  --ro-bind "$r/prior-sources" /prior-sources \
+  --ro-bind "$r/current-installed-qualification-control" /r28 \
+  --bind "$r/version-control/npm-cache" /npm-cache \
+  --proc /proc --dev /dev --chdir /home/sandbox/project/bazilion \
+  --setenv PATH "$n/bin:/usr/bin" --setenv HOME /home/sandbox \
+  --setenv TMPDIR /control/tmp --setenv XDG_CACHE_HOME /control/cache \
+  --setenv CI 1 --setenv TZ UTC --setenv LANG C.UTF-8 \
+  --setenv PI_OFFLINE 1 --setenv DO_NOT_TRACK 1 \
+  --setenv npm_config_userconfig /control/npm-user.rc \
+  --setenv npm_config_globalconfig /control/npm-global.rc \
+  --setenv npm_config_cache /npm-cache --setenv npm_config_offline true \
+  --setenv npm_config_nodedir "$n" --setenv npm_config_jobs 2 \
+  --setenv npm_config_child_concurrency 2 --setenv PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD 1 \
+  -- "$n/bin/node" /control/check.mjs

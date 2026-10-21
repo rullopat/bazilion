@@ -2,17 +2,17 @@ import { randomUUID } from 'node:crypto'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import { attentionSummary, projectAttention } from '../../src/core/attention.ts'
-import { openDb, type BazilionDb } from '../../src/core/db/client.ts'
-import { runMigrations } from '../../src/core/db/migrate.ts'
 import type { CodingCommandReceipt } from '@bazilion/api-types'
-import { interruptCodingCommands, saveCodingCommand } from '../../src/core/repos/coding-commands.ts'
-import { createProfile } from '../../src/core/profile/create.ts'
-import * as receipts from '../../src/core/repos/notifications.ts'
-import * as conversations from '../../src/core/repos/conversations.ts'
-import * as queue from '../../src/core/repos/user-queue.ts'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { spawnAgent } from '../../src/core/agent/spawn.ts'
+import { attentionSummary, projectAttention } from '../../src/core/attention.ts'
+import { type BazilionDb, openDb } from '../../src/core/db/client.ts'
+import { runMigrations } from '../../src/core/db/migrate.ts'
+import { createProfile } from '../../src/core/profile/create.ts'
+import { interruptCodingCommands, saveCodingCommand } from '../../src/core/repos/coding-commands.ts'
+import * as conversations from '../../src/core/repos/conversations.ts'
+import * as receipts from '../../src/core/repos/notifications.ts'
+import * as queue from '../../src/core/repos/user-queue.ts'
 import { NotificationDispatcher } from '../../src/lib/notification-dispatch.ts'
 import { _resetOutboundQueueForTest } from '../../src/lib/telegram/outbound-queue.ts'
 import { makeTestEnv, type TestEnv } from '../core/helpers.ts'
@@ -157,7 +157,12 @@ test('a daemon kill mid-coding-run leaves a visible interrupted receipt, not a s
     const stored = JSON.parse(
       db.raw.query<{ receipt_json: string }, []>('SELECT receipt_json FROM coding_commands').get()
         ?.receipt_json ?? '{}',
-    ) as { state: string; reason: string; finishedAt: number; environment: { inputFingerprint: string | null } }
+    ) as {
+      state: string
+      reason: string
+      finishedAt: number
+      environment: { inputFingerprint: string | null }
+    }
     expect(stored.state).toBe('interrupted')
     expect(stored.reason).toBe('turn_ended_without_terminal_result')
     expect(stored.finishedAt).toBeGreaterThan(0)
@@ -205,10 +210,8 @@ describe('a Telegram send failure stays visible', () => {
     )
     send = vi.fn()
     verify = vi.fn()
-    dispatcher = new NotificationDispatcher(
-      env.db,
-      { capture: () => binding, verify, send },
-      () => Date.now(),
+    dispatcher = new NotificationDispatcher(env.db, { capture: () => binding, verify, send }, () =>
+      Date.now(),
     )
   })
   afterEach(() => {

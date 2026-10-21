@@ -8,7 +8,9 @@ Multi-agent runtime CLI — spawn LLM agents, manage profiles/teams/skills, and 
 
 ## Install
 
-Requires **Node 24 or newer**.
+Requires **Node 24.22.0+ within 24.x, or 26.4.0+ within 26.x**. Earlier releases and other
+major lines are refused before application imports or state bootstrap. This floor includes the
+upstream native cleanup-hook fix; upgrading Node does not authorize resetting any Bazilion data.
 
 ```sh
 npx bazilion dashboard     # one-shot
@@ -93,7 +95,7 @@ The web UI is bundled into the published `bazilion` package and starts with:
 bazilion dashboard
 ```
 
-For source development, clone the repo and run the daemon plus Vite dev server. Node 24+ and pnpm 10+ are required; if `corepack` is unavailable, install pnpm directly with `npm install -g pnpm`.
+For source development, clone the repo and run the daemon plus Vite dev server. Node 24.22.0+ within 24.x or 26.4.0+ within 26.x, and pnpm 10+, are required; if `corepack` is unavailable, install pnpm directly with `npm install -g pnpm`.
 
 ```sh
 git clone https://github.com/rullopat/bazilion

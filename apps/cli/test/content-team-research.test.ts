@@ -11,6 +11,7 @@ import {
   sseFromCanned,
   startLmStudioMock,
 } from './fixtures/mock-lmstudio.ts'
+import { schedulingEvidence } from './fixtures/scheduling-evidence.ts'
 import { startTestServer, type TestServer } from './server-fixture.ts'
 
 // Second composed BAZ-064 slice: the researcher side. Canned model again —
@@ -283,6 +284,7 @@ afterAll(async () => {
   await mock.stop()
   webFixture.close()
   searx.close()
+  schedulingEvidence('research-fixtures-stopped', { daemonsClosed: true, mockClosed: true })
 })
 
 test.skipIf(!linux)(
@@ -316,6 +318,12 @@ test.skipIf(!linux)(
       (m: Message) => m.fromAgentId === agentId(lockedAgents, 'coordinator'),
     )
     expect(delegated?.readAt).toBeNull()
+    schedulingEvidence('inbox-dead-runtime-refusal', {
+      coordinatorProviderRounds: callsAfterChat,
+      providerRoundsAfterTicks: mock.callCount(),
+      messageUnread: delegated?.readAt === null,
+      fixturePageHits: pageHits.length,
+    })
   },
 )
 
@@ -358,6 +366,12 @@ test.runIf(docker)(
       `/api/agents/${agentId(fullAgents, 'researcher')}/messages?unread=1`,
     )
     expect(inbox.messages).toHaveLength(0)
+    schedulingEvidence('inbox-private-fetch-and-peer-refusal', {
+      providerRounds: mock.callCount() - base2,
+      fixturePageHits: pageHits.length,
+      writerInboxCount: writerInbox.messages.length,
+      unreadResearcherMessages: inbox.messages.length,
+    })
   },
   120_000,
 )
@@ -421,6 +435,10 @@ test.runIf(docker)(
         forbidden,
       )
     }
+    schedulingEvidence('inbox-container-environment', {
+      providerRounds: mock.callCount() - base3,
+      credentialAssertionsPassed: true,
+    })
   },
   120_000,
 )
@@ -458,6 +476,11 @@ test.runIf(docker)(
     // The daemon-side backend received exactly one bounded query.
     expect(searxQueries.length).toBe(before + 1)
     expect(searxQueries.at(-1)?.q).toBe('orchid care')
+    schedulingEvidence('inbox-admitted-fixture-discovery', {
+      providerRounds: mock.callCount() - callBase,
+      backendQueries: searxQueries.length - before,
+      fixturePageHits: pageHits.length,
+    })
     // The injected page was never fetched: discovery returned it as data only.
     expect(pageHits).toHaveLength(0)
   },

@@ -79,6 +79,43 @@ test('a detached holder of worker output prevents cleanup confirmation after the
   }
 })
 
+test('an escaped host command with redirected outputs stays blocked after its worker exits', async () => {
+  const child = spawn(
+    process.execPath,
+    [
+      '-e',
+      `
+    const {spawn}=require('node:child_process');
+    const escaped=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{detached:true,stdio:'ignore'});
+    escaped.unref();
+    console.log(escaped.pid);
+    process.stdin.once('data',()=>process.exit(0));
+  `,
+    ],
+    { detached: true, stdio: ['pipe', 'pipe', 'pipe'] },
+  )
+  children.push(child)
+  if (!child.stdout || !child.pid) throw new Error('No fixture worker stdout/PID')
+  const [chunk] = await once(child.stdout, 'data')
+  const escapedPid = Number(String(chunk).trim())
+  // Test-owned identity solely for safe fixture teardown, not manufactured recovery evidence.
+  const escapedIdentity = captureWorkerProcess(escapedPid)
+  const host = { ...captureWorkerProcess(child.pid), hostCommands: true }
+  try {
+    const exited = once(child, 'exit')
+    child.stdin?.end('exit')
+    await exited
+    expect(escapedIdentity.outputHandles).toEqual([])
+    expect(await terminateWorkerProcess(host)).toBe(false)
+    process.kill(escapedPid, 0) // Existing worker evidence cannot find/signal this detached command.
+    expect(child.exitCode).toBe(0)
+  } finally {
+    expect(await terminateWorkerProcess(escapedIdentity)).toBe(true)
+    child.stdout?.destroy()
+    child.stderr?.destroy()
+  }
+})
+
 test('rejects the daemon itself and treats an earlier boot as already terminated', async () => {
   expect(() => captureWorkerProcess(process.pid)).toThrow()
   const { child, identity } = await worker()

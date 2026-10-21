@@ -1,0 +1,174 @@
+{
+  "format": "bazilion-source-freeze-amendment-v1",
+  "revision": 16,
+  "recordedAt": "2026-10-19T20:24:43.456661+00:00",
+  "authority": {
+    "goalId": "mvfoypi7-eid54c",
+    "instruction": "try to fix the image loss problem",
+    "scope": "Bounded offline retention fix, not new live generation. Confirmed goal permits non-publishing candidate commits after local checks, and stable0.23/latest publication/website deployment only after all applicable gates pass.",
+    "homepageRule": "Do not state Pi version on homepage, including future updates"
+  },
+  "parentAmendment": "docs/testing/0.23.0-installer-component-closeout-20261019.json",
+  "parentAmendmentSha256": "cbc28d76ea031771df8a6b2b734034ed550d8553dc9ba1d4c7136c3b425a74fa",
+  "parentSourceInputAggregateSha256": "6ff281f5a7801f8dcaef8b595f44a2778a9a9fcf6de7a7c57b882c2d611da5e6",
+  "amendedSourceInputAggregateSha256": "3d829bf2813bfd77c8f58c1085d3afb23df3367eea08318db01d99ce87aaacba",
+  "amendedCoreEntryCount": 1141,
+  "inputDelta": [
+    {
+      "path": "apps/cli/test/image-crash.test.ts",
+      "before": {
+        "path": "apps/cli/test/image-crash.test.ts",
+        "kind": "file",
+        "sha256": "5a513068d555152e1d3776067ed290c687a17403eba30ed8a40a3574b2e10eeb",
+        "bytes": 8480,
+        "executable": false
+      },
+      "after": {
+        "path": "apps/cli/test/image-crash.test.ts",
+        "kind": "file",
+        "sha256": "4454b66c9e72cb6aaff3bbe4e8ba6c5c313a9b07cfe99e0d009c39ff8f76701e",
+        "bytes": 8733,
+        "executable": false
+      }
+    },
+    {
+      "path": "apps/daemon/src/lib/result-retention.ts",
+      "before": {
+        "path": "apps/daemon/src/lib/result-retention.ts",
+        "kind": "file",
+        "sha256": "8ef9ef307b0c27c7d7d2f28db8f9e8e16e6f78ffefff5471c3d0c241266acc65",
+        "bytes": 2020,
+        "executable": false
+      },
+      "after": {
+        "path": "apps/daemon/src/lib/result-retention.ts",
+        "kind": "file",
+        "sha256": "06f41f4d24c44c44903821cf38729a9e09a9f01ddc0320d0f6e3c1e3edcfeac6",
+        "bytes": 2579,
+        "executable": false
+      }
+    },
+    {
+      "path": "apps/daemon/test/lib/image-generation.test.ts",
+      "before": {
+        "path": "apps/daemon/test/lib/image-generation.test.ts",
+        "kind": "file",
+        "sha256": "e39146d3d0248f8e527eac53370122093836f462b8636a68062c5c22aebdfa3c",
+        "bytes": 36890,
+        "executable": false
+      },
+      "after": {
+        "path": "apps/daemon/test/lib/image-generation.test.ts",
+        "kind": "file",
+        "sha256": "596aef71962eed4d50c4b43f45df224931495970c75ac7ab23cdaab1019b6c2c",
+        "bytes": 40107,
+        "executable": false
+      }
+    },
+    {
+      "path": "docs/image-generation.md",
+      "before": {
+        "path": "docs/image-generation.md",
+        "kind": "file",
+        "sha256": "b2ba631ec9cf7f6de77f5f01e73e76c5c0c76405cd3cbe3dde4d063ce51f61fa",
+        "bytes": 14855,
+        "executable": false
+      },
+      "after": {
+        "path": "docs/image-generation.md",
+        "kind": "file",
+        "sha256": "d054424aee130855ab9ca0731cdd109a512813fdcf57ab9556b39d72eb357868",
+        "bytes": 15472,
+        "executable": false
+      }
+    },
+    {
+      "path": "docs/releases.md",
+      "before": {
+        "path": "docs/releases.md",
+        "kind": "file",
+        "sha256": "704eee470f5897f2092676863ea540e15c7963f47c31f26c41575dd645ab8e62",
+        "bytes": 15110,
+        "executable": false
+      },
+      "after": {
+        "path": "docs/releases.md",
+        "kind": "file",
+        "sha256": "bd10bc3d897821211f0ebf1e69bc2e5f16b678fd94dbde1ab4c8694cf37c5ec2",
+        "bytes": 15811,
+        "executable": false
+      }
+    },
+    {
+      "path": "docs/results.md",
+      "before": {
+        "path": "docs/results.md",
+        "kind": "file",
+        "sha256": "ba5080e3f0e537ca52ee509af1af6cf685980093c0035323d4550889a6f60cb7",
+        "bytes": 6554,
+        "executable": false
+      },
+      "after": {
+        "path": "docs/results.md",
+        "kind": "file",
+        "sha256": "2fff528d9937d5017d5408b6a6ad1223536dfed447d5214989123cc7935aa087",
+        "bytes": 7200,
+        "executable": false
+      }
+    },
+    {
+      "path": "security/acceptance-manifest.json",
+      "before": {
+        "path": "security/acceptance-manifest.json",
+        "kind": "file",
+        "sha256": "37e22eb4dcb03c6df76122e5d60ca0b11169d3f17e1cc54d918c51527d45e299",
+        "bytes": 92434,
+        "executable": false
+      },
+      "after": {
+        "path": "security/acceptance-manifest.json",
+        "kind": "file",
+        "sha256": "c99bac13b7df34173275a1ee836c2e653516ac7670334030f48010d51dbff916",
+        "bytes": 94711,
+        "executable": false
+      }
+    }
+  ],
+  "qualification": {
+    "plannedCounterexample": "Initial Vite config-cache startup failure retained,0tests/no report; private cache mounts corrected without changing source/test/deadline/policy. Original retention then failed1selected/67unselected at actual unwanted deletion.",
+    "partialRepair": "Only complete source/model-matched completed image operations retain private captures; ordinary reclamation, no release/replay,quota,tombstones unchanged",
+    "focused": "Node24.20,94focused+2realDaemonSIGKILL/restart=96pass,0fail/pending; rootTSC/scopedBiomePASS, fake provider only",
+    "manifest": "Additive9cases,375total; all old366bytes unchanged after exact added-block removal; new9and old2crash assertions observed. Full375-case gate not run.",
+    "artifact": "Source application changed; old CLI tarball does not include repair. Must rebuild/repack and requalify, not substitute historical installed/artifact results.",
+    "independentReview": "PENDING",
+    "userFacingRecovery": "INCOMPLETE: private orphaned images retained but no operator recovery/discard control. Need bounded follow-up; not full delivery recovery or release acceptance."
+  },
+  "status": "Partial retention repair tested; complete recovery and release remain HOLD",
+  "additionalPlanningAndEvidence": [
+    {
+      "path": "docs/testing/0.23.0-image-retention-fix-20261019.md",
+      "sha256": "9ec8df89d467415651c37ee427397693537e357f6df430924a72a403a1e97c76"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-image-retention-fix-20261019/crash-report.json.gz",
+      "sha256": "a9f804fe92d18e85540812d341284991619bae4301563176a8c871a55a0d7d67"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-image-retention-fix-20261019/focused-report.json.gz",
+      "sha256": "a04f73c245caca5470b1e068299f140531bff6819aacbfae1846b62483c46afb"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-image-retention-fix-20261019/qualification.json",
+      "sha256": "fdc783881756e7bdd844837bfbe3d0d89b94dfabac8d5018d6b7c810432e4026"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-image-retention-fix-20261019/red-corrected-report.json.gz",
+      "sha256": "715d92ce0156c44ffb0674a6e03438165f1c7fe33935ba4eab50f52644ab267b"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-image-retention-fix-20261019/transcripts.json.gz",
+      "sha256": "7804fefc09bb692c470e8b1e8868da8f806050baa7d142923ab1994eb8fadd7f"
+    }
+  ],
+  "publicationPerformed": false
+}

@@ -1,0 +1,301 @@
+{
+  "format": "bazilion-source-freeze-amendment-v1",
+  "revision": 6,
+  "recordedAt": "2026-10-19T15:08:03.246127+00:00",
+  "task": "Harden/independently review harness, validate candidate locally, preserve unresolved dedicated-security blocker",
+  "parentAmendment": "docs/testing/0.23.0-rehearsal-harness-review-20261019.json",
+  "parentAmendmentSha256": "988020659d02a2756470984306d94c0e25e4f20feb0f60c521a598a5c6565365",
+  "parentSourceInputAggregateSha256": "75e41f5b26b4367f26c68d18a25eb9cb45687dfbdc893c10da939031c2fb0724",
+  "amendedSourceInputAggregateSha256": "6a3f4031ff4e295c02c6eeea3c7151ee2e615d77b38665ee7e535685c8129ec5",
+  "amendedCoreEntryCount": 1136,
+  "reconstruction": "Apply after entries to preserved r5 core; null before is the new Node harness test. Sort by path and use parent aggregate algorithm. Additive evidence separately hash-bound.",
+  "inputDelta": [
+    {
+      "path": ".github/workflows/ci.yml",
+      "before": {
+        "path": ".github/workflows/ci.yml",
+        "kind": "file",
+        "sha256": "0b80d43c40fda881768208f08a7d306353f1f591df3fbcc2d7a3fb2d22b4c6c9",
+        "bytes": 5301,
+        "executable": false
+      },
+      "after": {
+        "path": ".github/workflows/ci.yml",
+        "kind": "file",
+        "sha256": "0d2e06c5b75ef14a1b240d8eaa122787e6ef1276ab695ff4e291ab10ba00b201",
+        "bytes": 5423,
+        "executable": false
+      }
+    },
+    {
+      "path": "apps/cli/src/paths.ts",
+      "before": {
+        "path": "apps/cli/src/paths.ts",
+        "kind": "file",
+        "sha256": "04604b49b65aa688d75385bd41d35c98ebba991fd3499111c3b6f20e8ed9edd5",
+        "bytes": 1313,
+        "executable": false
+      },
+      "after": {
+        "path": "apps/cli/src/paths.ts",
+        "kind": "file",
+        "sha256": "f9157e1cf6b4dcd7d25b9f5893dcd475207ae2c7893ac7adf263fa2a82c5921c",
+        "bytes": 1322,
+        "executable": false
+      }
+    },
+    {
+      "path": "apps/cli/test/image-crash.test.ts",
+      "before": {
+        "path": "apps/cli/test/image-crash.test.ts",
+        "kind": "file",
+        "sha256": "996e2192b9032ce4f99310538af3554daac6fe06d585e2de936cf7c51cad4654",
+        "bytes": 7977,
+        "executable": false
+      },
+      "after": {
+        "path": "apps/cli/test/image-crash.test.ts",
+        "kind": "file",
+        "sha256": "5a513068d555152e1d3776067ed290c687a17403eba30ed8a40a3574b2e10eeb",
+        "bytes": 8480,
+        "executable": false
+      }
+    },
+    {
+      "path": "apps/daemon/src/lib/repository-context/index.ts",
+      "before": {
+        "path": "apps/daemon/src/lib/repository-context/index.ts",
+        "kind": "file",
+        "sha256": "db43cafea17266ac57ada462db6f74f6e8c47905074976afdad6f79104a4e985",
+        "bytes": 9103,
+        "executable": false
+      },
+      "after": {
+        "path": "apps/daemon/src/lib/repository-context/index.ts",
+        "kind": "file",
+        "sha256": "0b8861b77481ff2d29ae106c5076bf1079b1b7182e01b7c8bd4abfd652fec877",
+        "bytes": 9103,
+        "executable": false
+      }
+    },
+    {
+      "path": "apps/daemon/src/lib/result-source.ts",
+      "before": {
+        "path": "apps/daemon/src/lib/result-source.ts",
+        "kind": "file",
+        "sha256": "4c06dd5c7176449e7dd33f7f76c2bd430f4975e94add1d4f38c4749ce434745d",
+        "bytes": 2801,
+        "executable": false
+      },
+      "after": {
+        "path": "apps/daemon/src/lib/result-source.ts",
+        "kind": "file",
+        "sha256": "0ea63b935f7cd65034c82ec79c61770ccc80bdf59881dc47d48d3b65bd815459",
+        "bytes": 2803,
+        "executable": false
+      }
+    },
+    {
+      "path": "apps/daemon/src/runtime/worker/process-identity.ts",
+      "before": {
+        "path": "apps/daemon/src/runtime/worker/process-identity.ts",
+        "kind": "file",
+        "sha256": "fb1f2aeb036b3d3ce3d82018a4c685e29dd3a05ac0cebaf08ae5a9974177666a",
+        "bytes": 5962,
+        "executable": false
+      },
+      "after": {
+        "path": "apps/daemon/src/runtime/worker/process-identity.ts",
+        "kind": "file",
+        "sha256": "efe26652bf4b1bb346ca9bba0caa7565152e98cd66328852ac53f66b9eab9e08",
+        "bytes": 5970,
+        "executable": false
+      }
+    },
+    {
+      "path": "apps/daemon/test/lib/agent-loop-guard.test.ts",
+      "before": {
+        "path": "apps/daemon/test/lib/agent-loop-guard.test.ts",
+        "kind": "file",
+        "sha256": "b04294a982c6d9a483c76f9981358394d71bc22c41dbaa4bf270089d1daa9a43",
+        "bytes": 4310,
+        "executable": false
+      },
+      "after": {
+        "path": "apps/daemon/test/lib/agent-loop-guard.test.ts",
+        "kind": "file",
+        "sha256": "93283b662154a4e05de257453e4bd295bd05d09787745dc0ed159e82ade006f6",
+        "bytes": 4310,
+        "executable": false
+      }
+    },
+    {
+      "path": "apps/daemon/test/runtime/failure-visibility.integration.test.ts",
+      "before": {
+        "path": "apps/daemon/test/runtime/failure-visibility.integration.test.ts",
+        "kind": "file",
+        "sha256": "407d892677bb2e7fc8894ed45fd8d132a2969208e9cf5092a74a362aa2570faf",
+        "bytes": 9861,
+        "executable": false
+      },
+      "after": {
+        "path": "apps/daemon/test/runtime/failure-visibility.integration.test.ts",
+        "kind": "file",
+        "sha256": "c47e5330bd877805df908138a7d7fec8edcbcf22fd3ecad106a20a392ecd5ee1",
+        "bytes": 9873,
+        "executable": false
+      }
+    },
+    {
+      "path": "biome.json",
+      "before": {
+        "path": "biome.json",
+        "kind": "file",
+        "sha256": "7ab26a99d647e978556c5f27c13896ef0962ca1ff95f5b08a83e059ca9b74df7",
+        "bytes": 502,
+        "executable": false
+      },
+      "after": {
+        "path": "biome.json",
+        "kind": "file",
+        "sha256": "7d985ac8bf345834ec5a12c8d56ef22350f0dbe2ec77f7e3887dfbae043c8660",
+        "bytes": 674,
+        "executable": false
+      }
+    },
+    {
+      "path": "docs/releases.md",
+      "before": {
+        "path": "docs/releases.md",
+        "kind": "file",
+        "sha256": "359cdc0c803b06c7b43f7a347713fef8b884dc99daa56b682739edfb92576c37",
+        "bytes": 13510,
+        "executable": false
+      },
+      "after": {
+        "path": "docs/releases.md",
+        "kind": "file",
+        "sha256": "861ee22907c5eca3303ba4d4dcf4ff61cbd9bbc0cac4271b370cb4e6750dbbf1",
+        "bytes": 13669,
+        "executable": false
+      }
+    },
+    {
+      "path": "package.json",
+      "before": {
+        "path": "package.json",
+        "kind": "file",
+        "sha256": "158b3dd43b0947cd3787f93aa59e5b250253b4a295b5700cae917f6ca5845e0b",
+        "bytes": 1078,
+        "executable": false
+      },
+      "after": {
+        "path": "package.json",
+        "kind": "file",
+        "sha256": "3925bf16933680aa41c754c9c4207217ec2dc4e0fd18e85e070a4e57fb290aac",
+        "bytes": 1162,
+        "executable": false
+      }
+    },
+    {
+      "path": "scripts/check-coding-surfaces-ui.mjs",
+      "before": {
+        "path": "scripts/check-coding-surfaces-ui.mjs",
+        "kind": "file",
+        "sha256": "7a65e6b81177a7b6ba688680774736dd6f371ebcb7bfed86d0c159d36d14f399",
+        "bytes": 7837,
+        "executable": false
+      },
+      "after": {
+        "path": "scripts/check-coding-surfaces-ui.mjs",
+        "kind": "file",
+        "sha256": "e518934b81a38cd9346321f82138355b5756e62d71ec8e613b810e3b0c6b9ce0",
+        "bytes": 7910,
+        "executable": false
+      }
+    },
+    {
+      "path": "scripts/migration-upgrade-matrix.mjs",
+      "before": {
+        "path": "scripts/migration-upgrade-matrix.mjs",
+        "kind": "file",
+        "sha256": "3fa4c299532af1f6e0f7824df0038d224c448567f0199517afd5fc31997c5877",
+        "bytes": 9348,
+        "executable": false
+      },
+      "after": {
+        "path": "scripts/migration-upgrade-matrix.mjs",
+        "kind": "file",
+        "sha256": "d6b40d8be0bc74d233691aa5bbd2a3f0946273fff11759ba2d41dac17fe0db0f",
+        "bytes": 14236,
+        "executable": false
+      }
+    },
+    {
+      "path": "scripts/testing/upgrade-harness.test.mjs",
+      "before": null,
+      "after": {
+        "path": "scripts/testing/upgrade-harness.test.mjs",
+        "kind": "file",
+        "sha256": "964d5b03fb3408652eb490aece5fd25c0f06be253532b180dc81f7e00a212740",
+        "bytes": 8620,
+        "executable": false
+      }
+    }
+  ],
+  "harnessIndependentReview": {
+    "run": "1d197665-80f6-4c50-8e40-213fdf6ae6d3",
+    "verdict": "ACCEPT WITH NOTES",
+    "limits": "Harness only, no real matrix/descendant guarantee/release approval"
+  },
+  "qualification": {
+    "node": "24.20.0",
+    "pnpm": "12.14.0",
+    "harnessCases": 13,
+    "rootWebTypes": "pass before final fixture-only diagnostic edit",
+    "wholeLint": "0 errors /112 warnings /14 infos before final diagnostic edit; diagnostic file scoped check passes",
+    "sourceSuite": "2604 passed /0 failed /49 pending, before final fixture-only diagnostic edit",
+    "fullSuiteAll366RequiredAssertionsMatched": true,
+    "dedicatedSecurityGate": "FAILED; required, not waived by full-suite match",
+    "boundedDiagnostic": "2-file security mode 2pass/1fail before_provider_ack; instrumented single case1pass/1unselected",
+    "underlyingSecurityFailureCause": "UNRESOLVED",
+    "freshInstallGenuineHomesPlatformsFinalArtifacts": "pending"
+  },
+  "stopReason": "Required dedicated security gate has unexplained/intermittent image fixture failure; no broad retry, timeout increase or flake waiver",
+  "additionalPlanningAndEvidence": [
+    {
+      "path": "docs/testing/0.23.0-harness-focused-evidence-20261019.json",
+      "sha256": "4bddc91a946408123b6333b1bc33520745db2b974500e9df53b889cbba6b78f7"
+    },
+    {
+      "path": "docs/testing/0.23.0-harness-independent-review-20261019.md",
+      "sha256": "aa2edfa29a2c29e9ac9dbce3a6b431246e674b2a74f211f568957492424b5654"
+    },
+    {
+      "path": "docs/testing/0.23.0-candidate-progress-20261019.md",
+      "sha256": "7dd3dff1f1af6870f4133a921ee0a4ab9557ceb95d6707d32d4fe65fe3c894b5"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-candidate-20261019/final-lint.json.gz",
+      "sha256": "caf3e8aaf7d2f7d220f2ee1dfe3d32d7c1f8fd4acc7f15c112a15e5b494a4651"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-candidate-20261019/initial-lint.json.gz",
+      "sha256": "6d29a79a75eac6fbe098a1cb395206de4ce24cebce5e5fdb26b27657466335d0"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-candidate-20261019/initial-tests.json.gz",
+      "sha256": "4dcb2e0bb23478745c53c0425a87bcead6cebc26e89361db21228ef9953c83c4"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-candidate-20261019/node24-tests.json.gz",
+      "sha256": "7da6531a464c45e80a3184e2cfc2e06968fcb9ecc5e36dc3f964290713ed78d2"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-candidate-20261019/partial-qualification.json",
+      "sha256": "05708a9f7ed6dae44d35ead38e2b3895e1a4706858eea0dba66bfa6d34bf7024"
+    }
+  ],
+  "realPublicVersions": "0.22.0 unchanged; pending minor changeset retained",
+  "publicationAuthorized": false
+}

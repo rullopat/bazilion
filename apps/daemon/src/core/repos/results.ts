@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 import type { AgentResult, ResultListResponse } from '@bazilion/api-types'
 import type { BazilionDb } from '../db/client.ts'
+import { isToolCallId } from '../tool-call-id.ts'
 
 export const MAX_RESULT_BYTES = 25 * 1024 * 1024
 export const MAX_RETAINED_RESULT_BYTES = 1024 * 1024 * 1024
@@ -56,7 +57,7 @@ export function publish(db: BazilionDb, input: PublishResultInput): AgentResult 
   // provenance is ambiguous would be one whose access rules nobody can reason about.
   const source = input.reviewPacketId !== undefined ? 'review_packet' : 'session_tool'
   if (source === 'session_tool') {
-    if (!validIdentity(input.sessionId) || !validIdentity(input.toolCallId)) {
+    if (!validIdentity(input.sessionId) || !isToolCallId(input.toolCallId)) {
       throw new Error('Invalid result provenance')
     }
     if (input.reviewRevision !== undefined) throw new Error('Invalid result provenance')

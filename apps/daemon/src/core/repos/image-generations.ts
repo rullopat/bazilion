@@ -10,6 +10,14 @@ export interface ImageOperation {
   model: string
 }
 
+/** Shared SQL witness for a Results row aliased r; metadata alone is insufficient. */
+export const COMPLETED_IMAGE_CAPTURE_SQL = `r.source_kind = 'session_tool' AND EXISTS (
+  SELECT 1 FROM image_generations g WHERE g.outcome = 'completed'
+    AND g.agent_id = r.agent_id AND g.team_id = r.team_id
+    AND g.session_id = r.session_id AND g.tool_call_id = r.tool_call_id
+    AND g.model = r.image_model
+)`
+
 /** Intent survives crashes/restores. There is deliberately no resumable/pending queue state. */
 export function admit(db: BazilionDb, op: ImageOperation): 'new' | 'completed' {
   return db.raw.transaction(() => {

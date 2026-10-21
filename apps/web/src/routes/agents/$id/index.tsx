@@ -17,6 +17,8 @@ import { createServerFn } from '@tanstack/react-start'
 import { useState } from 'react'
 import { ArrowLeft } from 'lucide-react'
 import { AgentAvatar } from '../../../components/AgentAvatar'
+import { AgentBrowserCard } from '../../../components/AgentBrowserCard'
+import { AgentSearchCard } from '../../../components/AgentSearchCard'
 import { AgentTabs } from '../../../components/AgentTabs'
 import { Button } from '../../../components/Button'
 import { ChatPane } from '../../../components/ChatPane'
@@ -271,6 +273,8 @@ function AgentDetailPage() {
         </>
       ) : (
         <div className="space-y-6">
+          <AgentSearchCard agentId={resolved.agent.id} model={resolved.model} />
+        <AgentBrowserCard agentId={resolved.agent.id} />
           <SettingsDetails
             agentId={resolved.agent.id}
             currentModelOverride={resolved.agent.modelOverride ?? null}

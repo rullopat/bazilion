@@ -1,0 +1,6 @@
+0xe61e2d v8::internal::GlobalHandles::InvokeFirstPassWeakCallbacks()
+0xf14754 v8::internal::Heap::PerformGarbageCollection(v8::internal::GarbageCollector,v8::internal::GarbageCollectionReason,char const*)
+0xf15749 v8::internal::Heap::CollectGarbage(...)::{lambda()#2}::operator()() const
+0xf19bc0 heap::base::Stack::SetMarkerAndCallbackImpl<...>(...)
+0x19b78a1 PushAllRegistersAndIterateStack
+Mapped locally by addr2line -Cf against the exact installed Node24.20.0 executable. No debug-symbol download or full-core read/export. Unknown file/line locations remain unknown.

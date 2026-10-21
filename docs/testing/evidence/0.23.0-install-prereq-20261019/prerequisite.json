@@ -1,0 +1,93 @@
+{
+  "scope": "First frozen offline dependency-availability prerequisite; not a normal install/build or genuine-home matrix pass",
+  "date": "2026-10-19",
+  "runtime": "Node24.20.0,pnpm12.14.0",
+  "command": "pnpm install --offline --ignore-scripts --frozen-lockfile --store-dir=/evidence/store",
+  "result": {
+    "exitCode": 1,
+    "error": "ERR_PNPM_META_FETCH_FAIL /ERR_PNPM_NO_OFFLINE_META",
+    "package": "@aws-sdk/credential-provider-process",
+    "requiredMetadata": "/evidence/cache/pnpm/v12/metadata-full/https%3A+registry.npmjs.org/@aws-sdk/credential-provider-process.jsonl",
+    "supplyChainPolicyBypassed": false
+  },
+  "prerequisites": {
+    "priorTagsPinnedPnpm": "11.14.0, installed; candidate12.14.0 installed",
+    "existingStore": "v10 4.2GiB /v11 4.1GiB (du human-readable observations)",
+    "privateStore": "Btrfs cp -a --reflink=always v11 clone; distinct index inode; shared store/config not mounted into install namespace",
+    "metadataAbsentInExistingCache": "/home/patri/.cache/pnpm/v12/metadata-full/https%3A+registry.npmjs.org/@aws-sdk/credential-provider-process.jsonl",
+    "notClaimed": "Absence of this metadata does not establish which package tarballs are missing or that every other policy passes"
+  },
+  "sourcePreservation": {
+    "frozenCoreEntries": 1139,
+    "candidateCoreBytesUnchangedAfterFailure": true,
+    "originalLockUnchanged": true,
+    "originalHomeAccountsDaemonTeamsResultsTouched": false
+  },
+  "containment": "env-i; private user/network/PID/proc; original sources not mounted; installed Node24/pnpm12 and system read-only; only private candidate/store/home/cache writable; DEVNULL stdin",
+  "lifecycleScripts": "disabled, no scripts executed/qualified",
+  "networkRequests": "No egress path; offline install; no provider/search/image calls",
+  "genuineMatrix": "NOT RUN; dependency/install prerequisites unresolved",
+  "publicVersions": "0.22.0 unchanged; pending minor changeset retained",
+  "nextDecision": "Approve registry.npmjs.org-only uncredentialed metadata/pinned-tarball fetching for isolated frozen candidate and prior-tag installs; keep supply-chain policy active and lifecycle scripts disabled for availability checks; stop for any additional origin/prerequisite. No application-provider access or publication.",
+  "rawRecords": [
+    {
+      "path": "isolate.sh",
+      "sha256": "f0faa7f8ea246f1509208b3b6c5e314ce156c68938bd570f433fd755684543e4",
+      "text": "#!/bin/bash\nset -eu\nr=/var/tmp/baz023-install-prereq-7AUthA\nexec env -i PATH=/home/patri/.local/share/mise/installs/node/24.20.0/bin:/home/patri/.local/share/mise/installs/pnpm/12.14.0:/usr/bin HOME=/nonexistent LANG=C.UTF-8 bwrap --unshare-user --unshare-net --unshare-ipc --unshare-uts --unshare-pid --uid 1000 --gid 1000 --die-with-parent --new-session --tmpfs / --tmpfs /tmp --ro-bind /usr /usr --symlink usr/bin /bin --symlink usr/lib /lib --symlink usr/lib /lib64 --dir /etc --ro-bind /etc/ld.so.cache /etc/ld.so.cache --ro-bind /etc/passwd /etc/passwd --ro-bind /etc/group /etc/group --ro-bind /home/patri/.local/share/mise/installs/node/24.20.0 /home/patri/.local/share/mise/installs/node/24.20.0 --ro-bind /home/patri/.local/share/mise/installs/pnpm/12.14.0 /home/patri/.local/share/mise/installs/pnpm/12.14.0 --bind \"$r\" /evidence --bind \"$r/home\" /home/sandbox --bind \"$r/candidate\" /work --proc /proc --dev /dev --chdir /work --setenv HOME /home/sandbox --setenv TMPDIR /evidence/tmp --setenv XDG_CACHE_HOME /evidence/cache --setenv CI 1 --setenv TZ UTC --setenv npm_config_userconfig /dev/null --setenv npm_config_globalconfig /dev/null --setenv DO_NOT_TRACK 1 -- /bin/bash /evidence/control/check.sh\n"
+    },
+    {
+      "path": "control/check.sh",
+      "sha256": "dab2abcdf44faabab2a04277bc4c7fc8aa013b71351a88393a40f27ff14c90a1",
+      "text": "#!/bin/bash\nset -eu\nnode --version\npnpm --version\nexec pnpm install --offline --ignore-scripts --frozen-lockfile --store-dir=/evidence/store\n"
+    },
+    {
+      "path": "control/pre-state.json",
+      "sha256": "a1848d30c4168e4e0e9730e5ec76c30d19da316ac34bae0ab0d5ec260ca6ff75",
+      "text": "{\n  \"scope\": \"Offline frozen dependency closure prerequisite, lifecycle scripts disabled, not full install/matrix qualification\",\n  \"runtime\": \"Node24.20.0,pnpm12.14.0\",\n  \"expectedCoreEntries\": 1139,\n  \"sourceLockSha256\": \"1df2acc146febd43f7c082c8bebd67bf208659d8d22611565fde964a2359798a\",\n  \"privateStore\": \"CoW clone of existing v11 store; no original configuration or credentials copied\",\n  \"originalStoreIndexStat\": {\n    \"inode\": 8889317,\n    \"size\": 26914816\n  },\n  \"privateStoreIndexStat\": {\n    \"inode\": 16436590,\n    \"size\": 26914816\n  }\n}\n"
+    },
+    {
+      "path": "install.log",
+      "sha256": "5622da8ac0a72c9be33d71fba406d13c9f73cad062899ef4da9f57adcbe6094f",
+      "text": "v24.20.0\n12.14.0\nScope: all 6 workspace projects\n? Verifying lockfile against supply-chain policies (1068 entries)...\n\u2717 Lockfile failed supply-chain policy check (1068 entries in 20ms)\nLockfile is up to date, resolution step is skipped\nError: ERR_PNPM_META_FETCH_FAIL\n\n  \u00d7 installing dependencies\n  \u2570\u2500\u25b6 ERR_PNPM_NO_OFFLINE_META: Failed to resolve @aws-sdk/credential-\n      provider-process in package mirror /evidence/cache/pnpm/v12/metadata-\n      full/https%3A+registry.npmjs.org/@aws-sdk/credential-provider-\n      process.jsonl\n\n"
+    },
+    {
+      "path": "status.log",
+      "sha256": "42a4d4dc2595d33497df6b65a7d89ff50bb77c08b1e5aacbbf3613c394bc9268",
+      "text": "candidate-offline-ignore-scripts=1\n"
+    }
+  ],
+  "priorManagerPins": {
+    "v0.22.0": {
+      "packageManager": "pnpm@11.14.0",
+      "packageJsonSha256": "ea19a7f6832e52c3b1a1d14933a61373a2e512f675d4a88ee51bcd7e8f480a15"
+    },
+    "v0.21.0-beta.5": {
+      "packageManager": "pnpm@11.14.0",
+      "packageJsonSha256": "ea19a7f6832e52c3b1a1d14933a61373a2e512f675d4a88ee51bcd7e8f480a15"
+    },
+    "v0.21.0-beta.4": {
+      "packageManager": "pnpm@11.14.0",
+      "packageJsonSha256": "0d4dbaa98209635b897cd1bae032af1006c92ac09b7aea470943da6328b96be7"
+    },
+    "v0.21.0-beta.3": {
+      "packageManager": "pnpm@11.14.0",
+      "packageJsonSha256": "0d4dbaa98209635b897cd1bae032af1006c92ac09b7aea470943da6328b96be7"
+    },
+    "v0.21.0-beta.2": {
+      "packageManager": "pnpm@11.14.0",
+      "packageJsonSha256": "731fe5d29cd6034fcf5e2ecdfff74ac6e23ed7ebc274d906e74de581762b12a2"
+    },
+    "v0.21.0-beta.1": {
+      "packageManager": "pnpm@11.14.0",
+      "packageJsonSha256": "46efc1a821aeaa398d1573ffcce7cf6b31bbbeb871254e0377713c3e48573dc1"
+    },
+    "v0.20.0": {
+      "packageManager": "pnpm@11.14.0",
+      "packageJsonSha256": "46efc1a821aeaa398d1573ffcce7cf6b31bbbeb871254e0377713c3e48573dc1"
+    },
+    "v0.19.0": {
+      "packageManager": "pnpm@11.14.0",
+      "packageJsonSha256": "46efc1a821aeaa398d1573ffcce7cf6b31bbbeb871254e0377713c3e48573dc1"
+    }
+  }
+}

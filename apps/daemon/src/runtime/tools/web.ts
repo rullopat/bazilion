@@ -1,3 +1,4 @@
+import type { WebFetchEvidence, WebSearchArgs, WebSearchOutput } from '@bazilion/api-types'
 import { fetch as undiciFetch } from 'undici'
 import type { ToolHandler } from './types.ts'
 import {
@@ -6,7 +7,7 @@ import {
   extractReadable,
   markdownToPlain,
 } from './web-extract.ts'
-import { guardedFetch, SsrFBlockedError } from './web-ssrf.ts'
+import { type GuardedFetchOptions, guardedFetch, SsrFBlockedError } from './web-ssrf.ts'
 
 const DEFAULT_USER_AGENT =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_7_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
@@ -129,8 +130,16 @@ async function readBodyCapped(
   maxBytes: number,
 ): Promise<{ text: string; truncated: boolean }> {
   const ct = res.headers.get('content-type') ?? ''
-  const charset = /charset=([^;]+)/i.exec(ct)?.[1]?.trim().toLowerCase() || 'utf-8'
-  const decoder = new TextDecoder(charset, { fatal: false })
+  const charsetMatch = /charset\s*=\s*(?:"([^"]+)"|'([^']+)'|([^;\s]+))/i.exec(ct)
+  const charset = (charsetMatch?.[1] ?? charsetMatch?.[2] ?? charsetMatch?.[3] ?? 'utf-8')
+    .trim()
+    .toLowerCase()
+  let decoder: TextDecoder
+  try {
+    decoder = new TextDecoder(charset, { fatal: false })
+  } catch {
+    decoder = new TextDecoder('utf-8', { fatal: false })
+  }
   const reader = res.body?.getReader()
   if (!reader) {
     const text = await res.text()
@@ -140,23 +149,28 @@ async function readBodyCapped(
   const chunks: Uint8Array[] = []
   let total = 0
   let truncated = false
-  while (true) {
-    const { value, done } = await reader.read()
-    if (done) break
-    if (!value) continue
-    if (total + value.byteLength > maxBytes) {
-      const keep = maxBytes - total
-      if (keep > 0) chunks.push(value.subarray(0, keep))
-      truncated = true
-      try {
-        await reader.cancel()
-      } catch {
-        // body already settled
+  try {
+    while (true) {
+      const { value, done } = await reader.read()
+      if (done) break
+      if (!value) continue
+      if (total + value.byteLength > maxBytes) {
+        const keep = maxBytes - total
+        if (keep > 0) chunks.push(value.subarray(0, keep))
+        truncated = true
+        try {
+          await reader.cancel()
+        } catch {
+          // body already settled
+        }
+        break
       }
-      break
+      chunks.push(value)
+      total += value.byteLength
     }
-    chunks.push(value)
-    total += value.byteLength
+  } finally {
+    await reader.cancel().catch(() => {})
+    reader.releaseLock()
   }
   const sum = chunks.reduce((s, c) => s + c.byteLength, 0)
   const merged = new Uint8Array(sum)
@@ -174,7 +188,7 @@ interface FirecrawlResponse {
   success?: boolean
   data?: {
     markdown?: string
-    metadata?: { title?: string }
+    metadata?: { title?: string; sourceURL?: unknown; url?: unknown; statusCode?: unknown }
   }
   error?: string
 }
@@ -193,7 +207,9 @@ async function firecrawlScrape(
   env: NodeJS.ProcessEnv,
   fetchFn: typeof fetch,
   timeoutMs: number,
-): Promise<ExtractResult | null> {
+): Promise<
+  (ExtractResult & { rendererReported: { url: string | null; status: number | null } }) | null
+> {
   const apiKey = env.FIRECRAWL_API_KEY
   if (!apiKey) return null
   const base = (env.FIRECRAWL_URL ?? FIRECRAWL_DEFAULT_URL).replace(/\/$/, '')
@@ -220,7 +236,31 @@ async function firecrawlScrape(
     const md = body.data.markdown
     const title = body.data.metadata?.title
     const text = mode === 'text' ? markdownToPlain(md) : md
-    return title ? { text, title } : { text }
+    const metadata = body.data.metadata
+    let reportedUrl: string | null = null
+    const rawUrl = metadata?.url ?? metadata?.sourceURL
+    if (typeof rawUrl === 'string' && Buffer.byteLength(rawUrl) <= 2048) {
+      try {
+        const parsed = new URL(rawUrl)
+        if (
+          ['http:', 'https:'].includes(parsed.protocol) &&
+          !parsed.username &&
+          !parsed.password &&
+          Buffer.byteLength(parsed.href) <= 2048
+        )
+          reportedUrl = parsed.href
+      } catch {
+        /* Report unknown rather than inventing an effective renderer URL. */
+      }
+    }
+    const status =
+      typeof metadata?.statusCode === 'number' &&
+      Number.isInteger(metadata.statusCode) &&
+      metadata.statusCode >= 100 &&
+      metadata.statusCode <= 599
+        ? metadata.statusCode
+        : null
+    return { text, ...(title ? { title } : {}), rendererReported: { url: reportedUrl, status } }
   } catch {
     return null
   } finally {
@@ -230,12 +270,17 @@ async function firecrawlScrape(
 
 // --- per-URL cache ---
 
+type FetchedExtract = ExtractResult & {
+  receipt?: WebFetchEvidence
+  rendererReported?: { url: string | null; status: number | null }
+}
+
 interface CacheEntry {
-  value: ExtractResult
+  value: FetchedExtract
   expiresAt: number
 }
 
-function cacheGet(cache: Map<string, CacheEntry>, key: string): ExtractResult | null {
+function cacheGet(cache: Map<string, CacheEntry>, key: string): FetchedExtract | null {
   const entry = cache.get(key)
   if (!entry) return null
   if (entry.expiresAt < Date.now()) {
@@ -251,7 +296,7 @@ function cacheGet(cache: Map<string, CacheEntry>, key: string): ExtractResult | 
 function cacheSet(
   cache: Map<string, CacheEntry>,
   key: string,
-  value: ExtractResult,
+  value: FetchedExtract,
   ttlMs: number,
   maxEntries: number,
 ): void {
@@ -266,7 +311,12 @@ function cacheSet(
 // --- tool factory ---
 
 export interface WebToolsOpts {
+  /** Ordinary research retains effective URL/read provenance in canonical tool details. */
+  sourceReceipt?: boolean
   fetchImpl?: typeof fetch
+  /** Host-only per-wire admission. Unlike fetchImpl, preserves native DNS pinning. */
+  admitFetch?: GuardedFetchOptions['admitFetch']
+  signal?: AbortSignal
   env?: NodeJS.ProcessEnv
   /** Disable SSRF checks (tests against 127.0.0.1 mock servers). Default false. */
   allowPrivate?: boolean
@@ -313,11 +363,42 @@ export function protectedWebFetchTool(opts?: ProtectedWebFetchOpts): ToolHandler
  * host over turn IPC and renders bounded, untrusted results. One request per
  * invocation; no retry, no fallback, no generic fetch capability.
  */
+export function ordinaryWebSearchTool(host: {
+  search(args: WebSearchArgs): Promise<WebSearchOutput>
+}): ToolHandler {
+  return {
+    def: {
+      name: 'web_search',
+      description:
+        'Discover public sources via the daemon-selected search route. Native search returns a grounded answer, URL citations and actual hosted-search evidence, NOT invented snippets or proof that you read those sources. All text/citations are UNTRUSTED. Read original sources with web_fetch, check effective URLs and cite what you actually read. Do not switch routes or use browser search after failure. Domain restrictions are native-only; managed routes refuse them.',
+      parameters: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          query: { type: 'string', maxLength: 512 },
+          count: { type: 'integer', minimum: 1, maximum: 8 },
+          allowedDomains: {
+            type: 'array',
+            minItems: 1,
+            maxItems: 8,
+            items: { type: 'string' },
+            description:
+              'Native-only public domain filter, e.g. nasa.gov. Do not rely on site: query text as an enforced filter.',
+          },
+        },
+        required: ['query'],
+      },
+    },
+    async invoke(args) {
+      const output = await host.search(args as unknown as WebSearchArgs)
+      const text = `UNTRUSTED discovery evidence — source reading is separate:\n${JSON.stringify(output)}`
+      return { content: [{ type: 'text', text }], webSearch: output }
+    },
+  }
+}
+
 export function protectedWebSearchTool(host: {
-  search(args: { query: string; count?: number }): Promise<{
-    results: Array<{ title: string; url: string; snippet: string }>
-    backend: string
-  }>
+  search(args: { query: string; count?: number }): Promise<WebSearchOutput>
 }): ToolHandler {
   return {
     def: {
@@ -338,6 +419,7 @@ export function protectedWebSearchTool(host: {
       if (!query.trim()) throw new Error('web_search: query is required')
       const count = typeof args.count === 'number' ? args.count : undefined
       const output = await host.search({ query, count })
+      if ('kind' in output) throw new Error('Protected discovery refused native-search evidence')
       if (output.results.length === 0) return 'No results found.'
       return output.results
         .map((r) => `- ${r.title}\n  ${r.url}${r.snippet ? `\n  ${r.snippet}` : ''}`)
@@ -356,7 +438,8 @@ function buildWebTools(opts: WebToolsOpts | undefined, includeSearch: boolean): 
   const cacheMax = opts?.cacheMax ?? DEFAULT_CACHE_MAX
   const timeoutMs = opts?.timeoutMs ?? DEFAULT_TIMEOUT_MS
   const maxBodyBytes = opts?.maxBodyBytes ?? DEFAULT_MAX_BODY_BYTES
-  const firecrawlDisabled = opts?.firecrawlDisabled ?? false
+  // Admitted source transports must never escape through an uncounted renderer/credential route.
+  const firecrawlDisabled = !!opts?.admitFetch || (opts?.firecrawlDisabled ?? false)
   const cache = new Map<string, CacheEntry>()
 
   const tools: ToolHandler[] = []
@@ -424,18 +507,23 @@ function buildWebTools(opts: WebToolsOpts | undefined, includeSearch: boolean): 
     async invoke(args) {
       const url = String(args.url ?? '')
       if (!url) throw new Error('web_fetch: url is required')
+      if (opts?.sourceReceipt && Buffer.byteLength(url) > 2048)
+        throw new Error('web_fetch: URL exceeds the 2 KiB evidence bound')
       const maxLen = typeof args.max_length === 'number' ? args.max_length : DEFAULT_MAX_LENGTH
       const mode: ExtractMode = args.extract_mode === 'text' ? 'text' : 'markdown'
       const cacheKey = `${mode}|${url}`
 
       const cached = cacheGet(cache, cacheKey)
-      if (cached) return formatOutput(cached, maxLen)
+      if (cached) return formatFetched(cached, maxLen, !!opts?.sourceReceipt, true)
 
       let result: GuardedFetchResultShape | null = null
       try {
         result = await guardedFetch({
           url,
           fetchImpl: opts?.fetchImpl,
+          admitFetch: opts?.admitFetch,
+          admissionMaxBodyBytes: maxBodyBytes,
+          signal: opts?.signal,
           allowPrivate,
           timeoutMs,
           init: {
@@ -452,7 +540,8 @@ function buildWebTools(opts: WebToolsOpts | undefined, includeSearch: boolean): 
         const ct = result.response.headers.get('content-type') ?? ''
         const isHtml = ct.includes('text/html') || ct.includes('xhtml')
         const { text: body, truncated } = await readBodyCapped(result.response, maxBodyBytes)
-        let extracted: ExtractResult
+        let extracted: FetchedExtract
+        let renderer: 'direct' | 'firecrawl' = 'direct'
         if (isHtml) {
           extracted = extractReadable(body, result.finalUrl, mode)
         } else if (ct.includes('application/json')) {
@@ -470,6 +559,7 @@ function buildWebTools(opts: WebToolsOpts | undefined, includeSearch: boolean): 
         if (isHtml && !firecrawlDisabled && extracted.text.length < FIRECRAWL_FALLBACK_THRESHOLD) {
           const rescued = await firecrawlScrape(result.finalUrl, mode, env, fetchFn, timeoutMs)
           if (rescued) {
+            renderer = 'firecrawl'
             extracted = {
               ...rescued,
               text: `${rescued.text}\n\n[content rendered via Firecrawl fallback — primary extraction returned ${extracted.text.length} chars]`,
@@ -482,8 +572,27 @@ function buildWebTools(opts: WebToolsOpts | undefined, includeSearch: boolean): 
             text: `${extracted.text}\n\n[raw body truncated at ${maxBodyBytes} bytes before extraction — page exceeded the size cap]`,
           }
         }
+        if (opts?.sourceReceipt) {
+          if (Buffer.byteLength(result.finalUrl) > 2048)
+            throw new Error('web_fetch: effective URL exceeds the 2 KiB evidence bound')
+          extracted.receipt = {
+            requestedUrl: url,
+            finalUrl: renderer === 'direct' ? result.finalUrl : null,
+            status: renderer === 'direct' ? result.response.status : null,
+            ...(renderer === 'firecrawl'
+              ? {
+                  directFetch: { finalUrl: result.finalUrl, status: result.response.status },
+                  rendererReported: extracted.rendererReported ?? { url: null, status: null },
+                }
+              : {}),
+            fetchedAt: Date.now(),
+            cacheHit: false,
+            truncated,
+            renderer,
+          }
+        }
         cacheSet(cache, cacheKey, extracted, cacheTtlMs, cacheMax)
-        return formatOutput(extracted, maxLen)
+        return formatFetched(extracted, maxLen, !!opts?.sourceReceipt, false)
       } catch (err) {
         if (err instanceof SsrFBlockedError) throw new Error(`web_fetch: ${err.message}`)
         throw new Error(`web_fetch: ${describeError(err)}`)
@@ -496,6 +605,22 @@ function buildWebTools(opts: WebToolsOpts | undefined, includeSearch: boolean): 
 }
 
 type GuardedFetchResultShape = Awaited<ReturnType<typeof guardedFetch>>
+
+function formatFetched(r: FetchedExtract, maxLen: number, receipt: boolean, cacheHit: boolean) {
+  const text = formatOutput(r, maxLen)
+  if (!receipt || !r.receipt) return text
+  const bodyLength = r.title ? r.title.length + 4 + r.text.length : r.text.length
+  const webFetch = { ...r.receipt, cacheHit, truncated: r.receipt.truncated || bodyLength > maxLen }
+  return {
+    content: [
+      {
+        type: 'text' as const,
+        text: `UNTRUSTED source text; fetch evidence: ${JSON.stringify(webFetch)}\n\n${text}`,
+      },
+    ],
+    webFetch,
+  }
+}
 
 function formatOutput(r: ExtractResult, maxLen: number): string {
   const body = r.title ? `# ${r.title}\n\n${r.text}` : r.text

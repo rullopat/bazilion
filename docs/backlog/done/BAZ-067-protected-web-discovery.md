@@ -13,8 +13,9 @@ note: Implemented and locally verified (2026-09-21); re-verified inside the 0.22
 > **Repositioned 2026-09-21 (operator decision, BAZ-069):** SearXNG was never meant to be
 > Bazilion's *default* search story. This capability is the **opt-in, protected-turn discovery
 > backend** (protected workers keep their no-browser posture). Ordinary turns get a
-> browser-backed default search via the existing pool — see
-> [BAZ-069](draft/BAZ-069-browser-backed-default-web-search.md).
+> planned Agent-led browser research via the existing browser tools — see
+> [BAZ-069](BAZ-069-browser-backed-default-web-search.md), rewritten 2026-09-25.
+> This does not add browser access to protected or scheduled turns.
 
 ## User stories
 
@@ -110,4 +111,4 @@ No blocked CT cell becomes Passed merely because this story is ready.
   BAZ-059's affected evidence re-runs before the version PR. Security acceptance: 173 required cases
   pass with the renamed projection test.
   Remaining before Done: release review in the BAZ-059 sequence; live search-quality judgment stays
-  with BAZ-066's authorized live lanes.
+  with live qualification's authorized live lanes.

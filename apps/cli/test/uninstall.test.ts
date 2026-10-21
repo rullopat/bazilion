@@ -1,4 +1,4 @@
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import {
   existsSync,
   lstatSync,
@@ -75,6 +75,20 @@ function writeRetainedState(home: string): void {
   }
 }
 
+function fixtureTree(path: string): Record<string, unknown> {
+  return Object.fromEntries(
+    readdirSync(path)
+      .sort()
+      .map((name) => {
+        const entry = join(path, name)
+        return [
+          name,
+          lstatSync(entry).isDirectory() ? fixtureTree(entry) : readFileSync(entry, 'base64'),
+        ]
+      }),
+  )
+}
+
 describe('uninstall command', () => {
   it('resets the DB and auth identity together while preserving logs and skills', () => {
     const h = makeHome()
@@ -113,6 +127,232 @@ describe('uninstall command', () => {
     } finally {
       h.cleanup()
       rmSync(externalGroups, { recursive: true, force: true })
+    }
+  })
+
+  it('reset tier removes the browser slot tree but never follows its symlink (T12)', () => {
+    const h = makeHome()
+    const externalBrowsers = mkdtempSync(join(tmpdir(), 'bazilion-external-browsers-'))
+    try {
+      writeManagedResetState(h.home)
+      writeFileSync(join(externalBrowsers, 'external.txt'), 'keep me too')
+      symlinkSync(externalBrowsers, join(h.home, 'browsers'), 'dir')
+
+      const result = runUninstall(['uninstall', '--yes'], h.home)
+
+      expect(result.exitCode).toBe(0)
+      expect(existsSync(join(h.home, 'browsers'))).toBe(false)
+      // The external symlink target is untouched.
+      expect(readFileSync(join(externalBrowsers, 'external.txt'), 'utf8')).toBe('keep me too')
+    } finally {
+      h.cleanup()
+      rmSync(externalBrowsers, { recursive: true, force: true })
+    }
+  })
+
+  it('reset tier removes a real browser slot whose owner is provably gone (T12)', () => {
+    const h = makeHome()
+    try {
+      writeManagedResetState(h.home)
+      const slot = join(h.home, 'browsers', 'agent-1')
+      mkdirSync(slot, { recursive: true })
+      writeFileSync(
+        join(slot, 'profile.json'),
+        '{"formatVersion":1,"agentId":"agent-1","teamId":"g"}',
+      )
+      // A marker naming a positively-dead process (freshly exited child).
+      const deadPid = exitedProcessId()
+      writeFileSync(
+        join(slot, 'owner.json'),
+        JSON.stringify({
+          formatVersion: 1,
+          agentId: 'agent-1',
+          teamId: 'g',
+          launchNonce: 'n',
+          daemonInstanceId: 'd',
+          phase: 'stopping',
+          startedAt: 0,
+          pid: deadPid,
+        }),
+      )
+
+      const result = runUninstall(['uninstall', '--yes'], h.home)
+
+      expect(result.exitCode).toBe(0)
+      expect(existsSync(join(h.home, 'browsers'))).toBe(false)
+    } finally {
+      h.cleanup()
+    }
+  })
+
+  it('a live owner marker blocks the destructive uninstall before anything is removed (T12)', () => {
+    const h = makeHome()
+    try {
+      writeManagedResetState(h.home)
+      const slot = join(h.home, 'browsers', 'agent-1')
+      mkdirSync(slot, { recursive: true })
+      // This test process is alive: the marker names a live owned process.
+      writeFileSync(
+        join(slot, 'owner.json'),
+        JSON.stringify({
+          formatVersion: 1,
+          agentId: 'agent-1',
+          teamId: 'g',
+          launchNonce: 'n',
+          daemonInstanceId: 'd',
+          phase: 'running',
+          startedAt: 0,
+          pid: process.pid,
+        }),
+      )
+
+      const result = runUninstall(['uninstall', '--yes'], h.home)
+
+      expect(result.exitCode).not.toBe(0)
+      expect(result.stdout + result.stderr).toMatch(/orphaned browser|still alive/i)
+      // Fail closed: NOTHING was removed.
+      expect(existsSync(join(h.home, 'bazilion.db'))).toBe(true)
+      expect(existsSync(join(h.home, 'auth.json'))).toBe(true)
+      expect(existsSync(join(h.home, 'browsers'))).toBe(true)
+    } finally {
+      h.cleanup()
+    }
+  })
+
+  it('unknown or malformed browser process identity blocks uninstall without deleting state', () => {
+    for (const marker of [
+      { phase: 'starting' },
+      { phase: 'stopping' },
+      {},
+      null,
+      [],
+      { phase: 'running', pid: -1 },
+      { phase: 'running', pid: 1.5 },
+    ]) {
+      const h = makeHome()
+      try {
+        writeManagedResetState(h.home)
+        const slot = join(h.home, 'browsers', 'agent-1')
+        mkdirSync(slot, { recursive: true })
+        writeFileSync(join(slot, 'owner.json'), JSON.stringify(marker))
+        const result = runUninstall(['uninstall', '--yes'], h.home)
+        expect(result.exitCode).not.toBe(0)
+        expect(result.stdout + result.stderr).toMatch(/cannot prove|reconcile/i)
+        expect(existsSync(join(h.home, 'bazilion.db'))).toBe(true)
+        expect(existsSync(join(h.home, 'auth.json'))).toBe(true)
+        expect(existsSync(join(slot, 'owner.json'))).toBe(true)
+      } finally {
+        h.cleanup()
+      }
+    }
+  })
+
+  it('browser ownership is rechecked under the uninstall lock after prompts', async () => {
+    const h = makeHome()
+    writeManagedResetState(h.home)
+    const child = spawn(process.execPath, [...STRIP_TYPES_ARGS, cliEntry, 'uninstall'], {
+      env: { ...process.env, BAZILION_HOME: h.home },
+      stdio: ['pipe', 'pipe', 'pipe'],
+    })
+    let output = ''
+    let planted = false
+    child.stdout.on('data', (chunk: Buffer) => {
+      output += chunk.toString()
+      if (!planted && output.includes('remove DB + auth/config')) {
+        planted = true
+        const slot = join(h.home, 'browsers', 'agent-1')
+        mkdirSync(slot, { recursive: true })
+        writeFileSync(join(slot, 'owner.json'), JSON.stringify({ phase: 'starting' }))
+        child.stdin.end('yes\nno\n')
+      }
+    })
+    child.stderr.on('data', (chunk: Buffer) => {
+      output += chunk.toString()
+    })
+    const done = new Promise<number | null>((resolve, reject) => {
+      child.once('error', reject)
+      child.once('close', resolve)
+    })
+    try {
+      expect(await done).not.toBe(0)
+      expect(planted).toBe(true)
+      expect(output).toMatch(/cannot prove/i)
+      expect(existsSync(join(h.home, 'bazilion.db'))).toBe(true)
+      expect(existsSync(join(h.home, 'auth.json'))).toBe(true)
+      expect(existsSync(join(h.home, 'browsers', 'agent-1', 'owner.json'))).toBe(true)
+    } finally {
+      if (child.exitCode === null && child.signalCode === null) child.kill()
+      await done.catch(() => {})
+      h.cleanup()
+    }
+  })
+
+  it('a corrupt owner marker fails closed (T12)', () => {
+    const h = makeHome()
+    try {
+      writeManagedResetState(h.home)
+      const slot = join(h.home, 'browsers', 'agent-1')
+      mkdirSync(slot, { recursive: true })
+      writeFileSync(join(slot, 'owner.json'), '{not json')
+
+      const result = runUninstall(['uninstall', '--yes'], h.home)
+
+      expect(result.exitCode).not.toBe(0)
+      expect(result.stdout + result.stderr).toMatch(/corrupt owner marker|reconcile/i)
+      expect(existsSync(join(h.home, 'bazilion.db'))).toBe(true)
+      expect(existsSync(join(h.home, 'browsers'))).toBe(true)
+    } finally {
+      h.cleanup()
+    }
+  })
+
+  it.each([
+    'unreadable',
+    'corrupt',
+    'unknown',
+    'live',
+  ] as const)('%s browser ownership gives safe guidance and preserves all fixture state', (ownership) => {
+    for (const flags of [['--yes'], ['--yes', '--all']]) {
+      const h = makeHome()
+      try {
+        writeManagedResetState(h.home)
+        writeRetainedState(h.home)
+        const slot = join(h.home, 'browsers', 'agent-1')
+        mkdirSync(slot, { recursive: true })
+        writeFileSync(join(slot, 'profile-sentinel.txt'), 'private fixture profile')
+        writeFileSync(join(slot, 'SingletonLock'), 'fixture lock: leave untouched')
+        const marker = join(slot, 'owner.json')
+        if (ownership === 'unreadable') {
+          // A directory cannot be read as a marker file, regardless of user privileges.
+          mkdirSync(marker)
+        } else {
+          writeFileSync(
+            marker,
+            ownership === 'corrupt'
+              ? '{not json'
+              : JSON.stringify(
+                  ownership === 'live'
+                    ? { phase: 'running', pid: process.pid }
+                    : { phase: 'starting' },
+                ),
+          )
+        }
+        const before = fixtureTree(h.home)
+        const result = runUninstall(['uninstall', ...flags], h.home)
+        const message = result.stdout + result.stderr
+        expect(result.exitCode).not.toBe(0)
+        expect(message).toContain(
+          'Leave the browser profile, owner marker and lock files untouched',
+        )
+        expect(message).toContain('supported browser status/stop controls')
+        expect(message).toContain('keep uninstall blocked')
+        expect(message).not.toMatch(
+          /remove the slot manually|start the daemon once|terminate that browser/i,
+        )
+        expect(fixtureTree(h.home)).toEqual(before)
+      } finally {
+        h.cleanup()
+      }
     }
   })
 
@@ -169,7 +409,9 @@ describe('uninstall command', () => {
       expect(result.exitCode).toBe(0)
       expect(result.stderr).toBe('')
       expect(readFileSync(join(h.home, 'operator-note.txt'), 'utf8')).toBe('keep me')
-      expect(result.stdout).toContain(`${expectedSpelling} still has unmanaged files; left in place`)
+      expect(result.stdout).toContain(
+        `${expectedSpelling} still has unmanaged files; left in place`,
+      )
     } finally {
       h.cleanup()
     }

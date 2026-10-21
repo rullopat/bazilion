@@ -450,6 +450,39 @@ export const SERVICES: ServiceDef[] = [
 
   // --- Ancillary services (web search, etc) ---
   {
+    id: 'web-search',
+    displayName: 'Ordinary web search',
+    category: 'service',
+    team: 'Web Search',
+    hint: 'Discovery for ordinary interactive Agents. Auto preserves configured Brave then SearXNG; otherwise follows the Agent’s own eligible OpenAI API/ChatGPT model and account. Native direct routes are experimental pending live qualification. API search may incur additional charges; subscription limits apply. No fallback or browser dependency. Protected discovery remains separate.',
+    fields: [
+      {
+        envVar: 'BAZILION_WEB_SEARCH',
+        kind: 'config',
+        label: 'Ordinary search',
+        options: ['on', 'off'],
+        description:
+          'On by default for admitted ordinary turns. Off removes the search tool; does not change protected BAZ-067 discovery.',
+      },
+      {
+        envVar: 'BAZILION_WEB_SEARCH_ROUTE',
+        kind: 'config',
+        label: 'Search route',
+        options: ['auto', 'brave', 'searxng', 'openai', 'openai-codex'],
+        description:
+          'Explicit selection never switches after failure. Native selection must match the Agent’s provider/model; no cross-account substitution.',
+      },
+      {
+        envVar: 'BAZILION_WEB_SEARCH_MODE',
+        kind: 'config',
+        label: 'Native search mode',
+        options: ['cached', 'live'],
+        description:
+          'Cached by default. This requests provider cache/network posture; evidence does not attest actual execution mode. Provider egress is not browser-proxy-contained.',
+      },
+    ],
+  },
+  {
     id: 'image-generation',
     displayName: 'Image generation',
     category: 'service',
@@ -581,21 +614,31 @@ export const SERVICES: ServiceDef[] = [
     displayName: 'Browser Automation',
     category: 'service',
     team: 'Browser',
-    hint: 'Playwright-driven browser tools (navigate, snapshot, click, screenshot). Chromium is installed with Bazilion.',
+    hint: 'Managed installed-browser tools with an isolated per-Agent profile. Availability does not guarantee a site will load; profiles contain cookies/logins, are excluded from backups, and are cleared on Agent Team transfer or an explicit reset. Stop/archive preserve the profile.',
     fields: [
       {
         envVar: 'BROWSER_ENABLED',
         kind: 'config',
         label: 'Enable browser tools',
         placeholder: 'true',
-        description: 'Expose the browser_* tools to agents (true/false). Default true.',
+        description:
+          'Expose browser_* tools to ordinary Agent turns (true/false). Default true. This does not guarantee access to any particular site.',
+      },
+      {
+        envVar: 'BROWSER_EXECUTABLE_PATH',
+        kind: 'config',
+        label: 'Browser executable (optional)',
+        placeholder: '/usr/bin/brave-browser',
+        description:
+          'Absolute path to a supported Chromium-family browser. When unset, Bazilion discovers Chrome, Brave, Edge, Chromium, then an already-installed bundled Chromium. An invalid explicit path fails instead of running a different binary.',
       },
       {
         envVar: 'BROWSER_HEADLESS',
         kind: 'config',
-        label: 'Headless',
-        placeholder: 'true',
-        description: 'Run Chromium headless (true/false). Default true.',
+        label: 'Mode',
+        placeholder: 'auto',
+        description:
+          'true = headless, false = headed. Unset (auto) prefers headed when a desktop display is available and headless otherwise. A configured headed mode without a display fails; it never silently retries headless.',
       },
       {
         envVar: 'BROWSER_ALLOW_PRIVATE_NETWORK',
@@ -603,7 +646,7 @@ export const SERVICES: ServiceDef[] = [
         label: 'Allow private network',
         placeholder: 'false',
         description:
-          'Permit the browser to reach loopback/private IPs (SSRF guard off). Default false — only enable for local dev.',
+          'Permit the browser to reach loopback/private IPs (SSRF guard off). Default false — only enable for local dev. Never enable for untrusted browsing.',
       },
       {
         envVar: 'BROWSER_IDLE_MS',

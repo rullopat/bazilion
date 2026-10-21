@@ -189,6 +189,11 @@ type FetchLike = (input: string | URL, init?: RequestInit) => Promise<Response>
 export interface GuardedFetchOptions {
   url: string
   fetchImpl?: FetchLike
+  /** Trusted host admission after URL/DNS validation, before each wire (including redirects).
+   * Keeps the native pinned dispatcher intact; perform is one-shot, never a retry hook. */
+  admitFetch?: (url: string, perform: () => Promise<Response>) => Promise<Response>
+  /** Strict full-wire buffer bound when admission is enabled; over-cap refuses, never truncates. */
+  admissionMaxBodyBytes?: number
   init?: RequestInit
   maxRedirects?: number
   timeoutMs?: number
@@ -235,6 +240,15 @@ export async function guardedFetch(opts: GuardedFetchOptions): Promise<GuardedFe
   // `UND_ERR_INVALID_ARG: invalid onRequestStart method` because the
   // diagnostics-channel handler signatures changed between majors.
   const fetcher: FetchLike = opts.fetchImpl ?? (undiciFetch as unknown as FetchLike)
+  const admissionLimit = opts.admissionMaxBodyBytes ?? 3 * 1024 * 1024
+  if (
+    opts.admitFetch &&
+    (!opts.signal ||
+      !Number.isSafeInteger(admissionLimit) ||
+      admissionLimit < 1 ||
+      admissionLimit > 64 * 1024 * 1024)
+  )
+    throw new Error('Source admission requires cancellation signal and bounded body')
   const maxRedirects = opts.maxRedirects ?? 3
   const abortController = new AbortController()
   const timeoutId = opts.timeoutMs
@@ -253,8 +267,10 @@ export async function guardedFetch(opts: GuardedFetchOptions): Promise<GuardedFe
   const visited = new Set<string>()
   let redirects = 0
   let dispatcher: Dispatcher | null = null
+  let activeResponse: Response | null = null
 
   const release = async (): Promise<void> => {
+    if (!activeResponse?.body?.locked) await activeResponse?.body?.cancel().catch(() => {})
     if (timeoutId) clearTimeout(timeoutId)
     await closeDispatcher(dispatcher)
     dispatcher = null
@@ -276,7 +292,13 @@ export async function guardedFetch(opts: GuardedFetchOptions): Promise<GuardedFe
     // Pin DNS only when we control the dispatcher (native fetch path).
     const canPin = !opts.fetchImpl
     if (!opts.allowPrivate) {
-      const addrs = await resolveAndCheck(parsed.hostname)
+      let addrs: string[]
+      try {
+        addrs = await resolveAndCheck(parsed.hostname)
+      } catch (error) {
+        await release()
+        throw error
+      }
       await closeDispatcher(dispatcher)
       dispatcher = canPin
         ? new Agent({ connect: { lookup: createPinnedLookup(parsed.hostname, addrs) } })
@@ -295,13 +317,45 @@ export async function guardedFetch(opts: GuardedFetchOptions): Promise<GuardedFe
 
     let res: Response
     try {
-      res = await fetcher(parsed.toString(), init)
+      let performed = false
+      const perform = async () => {
+        if (performed) throw new Error('Source transport replay refused')
+        performed = true
+        const response = await fetcher(parsed.toString(), init)
+        if (!opts.admitFetch || !response.body) return response
+        // Admission cannot finish at headers: perform owns the bounded complete body.
+        const reader = response.body.getReader()
+        const bytes = new Uint8Array(admissionLimit)
+        let size = 0
+        try {
+          for (;;) {
+            const chunk = await reader.read()
+            if (chunk.done) break
+            if (size + chunk.value.byteLength > admissionLimit)
+              throw new Error('Source admission body limit exceeded')
+            bytes.set(chunk.value, size)
+            size += chunk.value.byteLength
+          }
+        } finally {
+          await reader.cancel().catch(() => {})
+          reader.releaseLock()
+        }
+        return new Response(bytes.subarray(0, size), {
+          status: response.status,
+          statusText: response.statusText,
+          headers: response.headers,
+        })
+      }
+      res = opts.admitFetch ? await opts.admitFetch(parsed.toString(), perform) : await perform()
+      activeResponse = res
     } catch (err) {
       await release()
       throw err
     }
 
     if (isRedirectStatus(res.status)) {
+      // Closing a pinned Agent before cancelling an unfinished redirect body may hang.
+      await res.body?.cancel().catch(() => {})
       const loc = res.headers.get('location')
       if (!loc) {
         await release()
@@ -312,13 +366,18 @@ export async function guardedFetch(opts: GuardedFetchOptions): Promise<GuardedFe
         await release()
         throw new Error(`Too many redirects (> ${maxRedirects})`)
       }
-      const next = new URL(loc, parsed).toString()
+      let next: string
+      try {
+        next = new URL(loc, parsed).toString()
+      } catch {
+        await release()
+        throw new Error('Invalid redirect Location')
+      }
       if (visited.has(next)) {
         await release()
         throw new Error('Redirect loop')
       }
       visited.add(next)
-      void res.body?.cancel()
       if (new URL(next).origin !== parsed.origin) {
         requestInit = {
           ...requestInit,

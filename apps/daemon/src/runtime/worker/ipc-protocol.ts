@@ -175,15 +175,9 @@ export interface ImageGenerationHost {
   ): Promise<import('@bazilion/api-types').ImageGenerationOutput>
 }
 
-export interface WebSearchArgs {
-  query: string
-  count?: number
-}
+export type { WebSearchArgs, WebSearchOutput } from '@bazilion/api-types'
 
-export interface WebSearchOutput {
-  results: Array<{ title: string; url: string; snippet: string }>
-  backend: string
-}
+import type { WebSearchArgs, WebSearchOutput } from '@bazilion/api-types'
 
 /** BAZ-067: the worker sees only bounded results; the backend URL stays daemon-side. */
 export interface WebSearchHost {

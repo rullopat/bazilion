@@ -5,6 +5,7 @@ import type {
   DockerResourceLifecycle,
 } from '../../runtime/shell/docker.ts'
 import type { WorkerResourceLifecycle } from '../../runtime/worker/spawn.ts'
+import { WorkspaceRecovery } from './recovery.ts'
 import { WorkspaceResources } from './resources.ts'
 import { WorkspaceCoordinator, type WorkspaceLease } from './workspace.ts'
 
@@ -27,10 +28,14 @@ export function workspaceLifecycle(db: BazilionDb): WorkspaceLifecycle {
 class WorkspaceLifecycle {
   readonly coordinator: WorkspaceCoordinator
   readonly resources: WorkspaceResources
+  readonly managementRecovery: WorkspaceRecovery
   private readonly recoveries = new Map<string, Promise<boolean>>()
   constructor(db: BazilionDb) {
     this.coordinator = new WorkspaceCoordinator(db)
     this.resources = new WorkspaceResources(db)
+    this.managementRecovery = new WorkspaceRecovery(db, this.coordinator, (writer) =>
+      this.resources.teardown(writer, { confirmedWorkersOnly: true }),
+    )
   }
 
   async claim(teamId: string, root: string, kind: 'agent' | 'mutation'): Promise<WorkspaceLease> {

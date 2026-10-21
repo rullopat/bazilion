@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -16,10 +16,11 @@ const png = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jhK0AAAAASUVORK5CYII=',
   'base64',
 )
-async function until(check: () => boolean) {
+async function until(check: () => boolean, diagnostics: () => string) {
   const deadline = Date.now() + 15000
   while (!check()) {
-    if (Date.now() > deadline) throw new Error('Image crash barrier was not reached')
+    if (Date.now() > deadline)
+      throw new Error(`Image crash barrier was not reached: ${diagnostics()}`)
     await new Promise((resolve) => setTimeout(resolve, 25))
   }
 }
@@ -108,6 +109,7 @@ test.each([
     const agent = extractAgentId(
       (await server.cli(['agent', 'spawn', '--profile', 'crash'])).stdout,
     )
+    let chatOutcome: { stdout?: string; stderr?: string } | undefined
     const chat = promisify(execFile)(
       process.execPath,
       [
@@ -129,11 +131,26 @@ test.each([
           BAZILION_TOKEN: server.token,
         },
       },
-    ).catch((error: { stdout?: string; stderr?: string }) => ({
-      stdout: error.stdout ?? '',
-      stderr: error.stderr ?? '',
-    }))
-    await until(() => (window === 'before_provider_ack' ? imageRequests === 1 : existsSync(marker)))
+    )
+      .catch((error: { stdout?: string; stderr?: string }) => ({
+        stdout: error.stdout ?? '',
+        stderr: error.stderr ?? '',
+      }))
+      .then((outcome) => {
+        chatOutcome = outcome
+        return outcome
+      })
+    await until(
+      () => (window === 'before_provider_ack' ? imageRequests === 1 : existsSync(marker)),
+      () =>
+        JSON.stringify({
+          imageRequests,
+          fixtureErrors: errors,
+          chatSettled: chatOutcome !== undefined,
+          stdout: chatOutcome?.stdout?.slice(0, 2000),
+          stderr: chatOutcome?.stderr?.slice(0, 2000),
+        }),
+    )
     await server.stop({ signal: 'SIGKILL', keepHome: true })
     const interrupted = await chat
     expect(interrupted.stdout).not.toContain('Saved 1 image')
@@ -176,20 +193,59 @@ test.each([
       } else {
         expect(operations.admit(db, operation)).toBe('completed')
         if (!resultId) throw new Error('Missing capture id')
-        // Existing Results retention reclaims abandoned, never-authorized bytes; tombstones prevent regeneration.
-        expect(results.getReceipt(db, resultId)).toMatchObject({ id: resultId, releasedAt: null })
-        expect(typeof results.getReceipt(db, resultId)?.deletedAt).toBe('number')
-        expect(() => results.readCaptured(db, resultId)).toThrow('unavailable')
-        const preview = await fetch(`${server.url}/api/results/${resultId}/preview`, {
-          headers: { authorization: `Bearer ${server.token}` },
+        // Atomic image capture survives restart, but retention is not delivery authorization.
+        expect(results.getReceipt(db, resultId)).toMatchObject({
+          id: resultId,
+          releasedAt: null,
+          deletedAt: null,
         })
-        expect(preview.status).toBe(404)
+        expect(results.readCaptured(db, resultId)).toEqual(png)
+        for (const suffix of ['', '/download', '/preview']) {
+          const response = await fetch(`${server.url}/api/results/${resultId}${suffix}`, {
+            headers: { authorization: `Bearer ${server.token}` },
+          })
+          expect(response.status).toBe(404)
+        }
+        // Operator reads themselves reconcile retention; none may erase or release this image.
+        expect(results.readCaptured(db, resultId)).toEqual(png)
+        expect(results.getReceipt(db, resultId)?.releasedAt).toBeNull()
       }
       expect(results.listReleased(db).total).toBe(0)
     } finally {
       db.close()
     }
     expect(imageRequests).toBe(1)
+    if (window === 'after_capture') {
+      if (!resultId) throw new Error('Missing retained capture')
+      const inventory = await server.cli([
+        'result',
+        'private-images',
+        '--team',
+        'default',
+        '--json',
+      ])
+      expect(inventory.exitCode).toBe(0)
+      expect(JSON.parse(inventory.stdout).captures.map((row: { id: string }) => row.id)).toContain(
+        resultId,
+      )
+      expect(inventory.stdout).not.toContain('crash-image.png')
+      const recovered = await server.cli([
+        'result',
+        'recover-image',
+        resultId,
+        '--team',
+        'default',
+        '--json',
+      ])
+      expect(recovered.exitCode).toBe(0)
+      expect(JSON.parse(recovered.stdout)).toMatchObject({ resultId, status: 'released' })
+      const target = join(directory, 'recovered.png')
+      expect(
+        (await server.cli(['result', 'download', resultId, '--output', target])).exitCode,
+      ).toBe(0)
+      expect(readFileSync(target)).toEqual(png)
+      expect(imageRequests).toBe(1) // Recovery is stored-byte delivery, never another generation.
+    }
   } finally {
     await server?.stop()
     fake.closeAllConnections()

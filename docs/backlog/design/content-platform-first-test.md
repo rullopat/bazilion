@@ -1,6 +1,6 @@
 # First content-Team platform: Mastodon
 
-**Decision: 2026-09-20.** Use **Mastodon only** for BAZ-064/065/066's first acceptance campaign.
+**Decision: 2026-09-20.** Use **Mastodon only** for BAZ-064/065's first acceptance campaign.
 The operator asked to reduce access friction and delegated the platform choice. This replaces the
 previous three-platform manual-handoff scope; Facebook, Instagram and LinkedIn are deferred, not
 additional gates. Topic and purpose remain generic inputs. No account, grant, post or integration
@@ -54,7 +54,7 @@ a live post was tested, so this is documentation-based selection, not account-ac
 Bazilion does **not** gain a Mastodon publishing capability by choosing it for manual handoff.
 The shared approval/delivery contract remains BAZ-060. A Mastodon adapter needs separately scoped
 implementation/refinement before PUB-01–06 can qualify it; BAZ-061/062 concern other platforms and
-cannot provide that evidence. Do not add publisher work to BAZ-064/065/066 or claim a connector pass.
+cannot provide that evidence. Do not add publisher work to BAZ-064/065 or claim a connector pass.
 
 Future refinement must preserve daemon-owned credentials, exact final approval before media upload,
 validated server/account identity, minimum scopes, rate/format/processing limits, independent receipts

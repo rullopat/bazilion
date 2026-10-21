@@ -1,0 +1,72 @@
+{
+  "scope": "Installed Changesets status only; private offline namespace/read-only source; no version command or changelog generation",
+  "command": "node node_modules/@changesets/cli/bin.js status --output=/evidence/changeset-plan.json",
+  "plan": {
+    "changesets": [
+      {
+        "releases": [
+          {
+            "name": "bazilion",
+            "type": "minor"
+          },
+          {
+            "name": "@bazilion/client",
+            "type": "minor"
+          },
+          {
+            "name": "@bazilion/api-types",
+            "type": "minor"
+          }
+        ],
+        "summary": "Add source-grounded native OpenAI/ChatGPT research with guarded page reading and explicit provenance,\nwhile retaining managed browsing as an optional separate capability. API-key native search remains\nexperimental/live-unqualified; configuration readiness is not entitlement or successful execution.\n\nAdd operator CLI/API/web workspace blocker reporting and limited recorded-cleanup attempts. Unknown\nownership remains blocked; this does not guarantee recovery of abnormal host commands. Preserve\noccurrence-specific communication approvals, restricted scheduled/inbox posture and policy-import\npostures. The accepted scheduler/process slice does not qualify composed content-Team journeys.\n\nHarden image provenance and completed-stream capture/rework handling, browser profile/backup lifecycle,\nworker output draining and packaged web runtime dependencies. Required ChatGPT-only image samples\nare qualified under the recorded limited scope; other paid image routes remain live-unqualified.\n\nUpgrade embedded Pi and daemon-owned standalone MCP to 1.0.0, retire legacy MCP SSE, and align the\nrepository package manager with mise-selected pnpm 12.14.0. Streamable HTTP and stdio remain supported;\nno automatic MCP OAuth, ambient discovery or uncertain tool-call replay is added.\n\n**Compatibility:** this alpha candidate uses the canonical clean-install schema. Prior SSE-capable\nhomes, including 0.22.0, require fail-closed refusal and operator-controlled reset/rebootstrap, not an\nin-place migration or compatibility importer. Preserve the entire old home with paired DB/auth and\nany external Team work before an explicitly authorized reset; use the matching old binary/schema\nfor old backups. No prior-home upgrade/refusal matrix result or final release approval is implied.",
+        "id": "quiet-research-recovery"
+      }
+    ],
+    "releases": [
+      {
+        "name": "bazilion",
+        "type": "minor",
+        "oldVersion": "0.22.0",
+        "changesets": ["quiet-research-recovery"],
+        "newVersion": "0.23.0"
+      },
+      {
+        "name": "@bazilion/client",
+        "type": "minor",
+        "oldVersion": "0.22.0",
+        "changesets": ["quiet-research-recovery"],
+        "newVersion": "0.23.0"
+      },
+      {
+        "name": "@bazilion/api-types",
+        "type": "minor",
+        "oldVersion": "0.22.0",
+        "changesets": ["quiet-research-recovery"],
+        "newVersion": "0.23.0"
+      },
+      {
+        "name": "@bazilion/web",
+        "type": "none",
+        "oldVersion": "0.0.0",
+        "changesets": [],
+        "newVersion": "0.0.0"
+      },
+      {
+        "name": "@bazilion/daemon",
+        "type": "none",
+        "oldVersion": "0.0.0",
+        "changesets": [],
+        "newVersion": "0.0.0"
+      }
+    ]
+  },
+  "interpretation": "Exactly three public minor bumps to 0.23.0; two private ignored packages appear as unchanged type:none/0.0.0 entries. Initial parent assertion incorrectly expected those no-op entries to be absent; raw CLI result succeeded and is retained unchanged.",
+  "commandsAndOutput": {
+    "runner": "#!/bin/bash\nset -eu\nr=/var/tmp/baz023-release-plan-ADUmAI\nexec env -i PATH=/home/patri/.local/share/mise/installs/node/26.12.0/bin:/usr/bin HOME=/nonexistent LANG=C.UTF-8 bwrap --unshare-user --unshare-net --unshare-ipc --unshare-uts --unshare-pid --uid 1000 --gid 1000 --die-with-parent --new-session --tmpfs / --tmpfs /tmp --ro-bind /usr /usr --symlink usr/bin /bin --symlink usr/lib /lib --symlink usr/lib /lib64 --dir /etc --ro-bind /etc/ld.so.cache /etc/ld.so.cache --ro-bind /etc/passwd /etc/passwd --ro-bind /etc/group /etc/group --ro-bind /home/patri/.local/share/mise/installs/node/26.12.0 /home/patri/.local/share/mise/installs/node/26.12.0 --ro-bind /home/patri/coding/bazilion /home/patri/coding/bazilion --bind \"$r\" /evidence --bind \"$r/home\" /home/sandbox --bind \"$r/vite\" /home/patri/coding/bazilion/node_modules/.vite --bind \"$r/vite-temp\" /home/patri/coding/bazilion/node_modules/.vite-temp --proc /proc --dev /dev --chdir /home/patri/coding/bazilion --setenv HOME /home/sandbox --setenv TMPDIR /evidence/tmp --setenv XDG_CACHE_HOME /evidence/cache --setenv TZ UTC --setenv CI 1 --setenv BAZILION_HOME /evidence/base-home --setenv BAZILION_SCHEDULER off --setenv BROWSER_ENABLED false --setenv BAZILION_IMAGE_GENERATION off --setenv PI_OFFLINE 1 --setenv ESBUILD_WORKER_THREADS 0 --setenv DO_NOT_TRACK 1 -- /bin/bash /evidence/check.sh \"$@\"\n",
+    "checks": "#!/bin/bash\nset -eu\nexport GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_OPTIONAL_LOCKS=0\nnode --check scripts/migration-upgrade-matrix.mjs\nnode node_modules/@changesets/cli/bin.js status --output=/evidence/changeset-plan.json\n",
+    "output": "",
+    "status": "plan=0\n"
+  },
+  "publicPackageVersionsMutated": false,
+  "matrixExecuted": false
+}

@@ -1,5 +1,6 @@
 import type { ConversationTarget, ResolvedAgent } from '@bazilion/api-types'
 import type { Paths } from '../core/paths.ts'
+import { isToolCallId } from '../core/tool-call-id.ts'
 import { loadSessionHead } from '../runtime/pi/session.ts'
 import { readResultSession } from './result-source.ts'
 
@@ -12,7 +13,7 @@ export function createTurnToolSource(
 ) {
   const initialHead = loadSessionHead(agent, paths, conversation)
   return (sessionId: string, toolCallId: string): Record<string, unknown> => {
-    if (sessionId !== conversation.id || !/^[A-Za-z0-9._:-]{1,256}$/.test(toolCallId)) {
+    if (sessionId !== conversation.id || !isToolCallId(toolCallId)) {
       throw new Error('Tool source does not match admitted conversation')
     }
     const head = loadSessionHead(agent, paths, conversation)

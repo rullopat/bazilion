@@ -1,0 +1,1069 @@
+{
+  "numTotalTestSuites": 18,
+  "numPassedTestSuites": 18,
+  "numFailedTestSuites": 0,
+  "numPendingTestSuites": 0,
+  "numTotalTests": 87,
+  "numPassedTests": 87,
+  "numFailedTests": 0,
+  "numPendingTests": 0,
+  "numTodoTests": 0,
+  "snapshot": {
+    "added": 0,
+    "failure": false,
+    "filesAdded": 0,
+    "filesRemoved": 0,
+    "filesRemovedList": [],
+    "filesUnmatched": 0,
+    "filesUpdated": 0,
+    "matched": 0,
+    "total": 0,
+    "unchecked": 0,
+    "uncheckedKeysByFile": [],
+    "unmatched": 0,
+    "updated": 0,
+    "didUpdate": false
+  },
+  "startTime": 1792317297974,
+  "success": true,
+  "testResults": [
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [],
+          "fullName": "production scheduler calendar in America/New_York: DST materialization and same-minute deduplication",
+          "status": "passed",
+          "title": "production scheduler calendar in America/New_York: DST materialization and same-minute deduplication",
+          "duration": 1439.542775,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "production scheduler calendar in Europe/Berlin: DST materialization and same-minute deduplication",
+          "status": "passed",
+          "title": "production scheduler calendar in Europe/Berlin: DST materialization and same-minute deduplication",
+          "duration": 1519.542046,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        }
+      ],
+      "startTime": 1792317317439,
+      "endTime": 1792317320398.542,
+      "status": "passed",
+      "message": "",
+      "name": "/home/patri/coding/bazilion/apps/daemon/test/cron-scheduler-timezone.test.ts"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [],
+          "fullName": "cron skips nonexistent 02:30 during spring gap in 'America/New_York' without inventing a catch-up",
+          "status": "passed",
+          "title": "cron skips nonexistent 02:30 during spring gap in 'America/New_York' without inventing a catch-up",
+          "duration": 129.51739099999998,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "cron skips nonexistent 02:30 during spring gap in 'Europe/Berlin' without inventing a catch-up",
+          "status": "passed",
+          "title": "cron skips nonexistent 02:30 during spring gap in 'Europe/Berlin' without inventing a catch-up",
+          "duration": 90.02764399999998,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "cron matches both real instants in repeated hour in 'America/New_York'",
+          "status": "passed",
+          "title": "cron matches both real instants in repeated hour in 'America/New_York'",
+          "duration": 44.968857000000014,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "cron matches both real instants in repeated hour in 'Europe/Berlin'",
+          "status": "passed",
+          "title": "cron matches both real instants in repeated hour in 'Europe/Berlin'",
+          "duration": 47.640333999999996,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "daemon-local cron does not translate requested zone or assume one fixed UTC offset",
+          "status": "passed",
+          "title": "daemon-local cron does not translate requested zone or assume one fixed UTC offset",
+          "duration": 89.907017,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "timezone fixture leaves parent process TZ and clock controls untouched",
+          "status": "passed",
+          "title": "timezone fixture leaves parent process TZ and clock controls untouched",
+          "duration": 44.57421700000003,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        }
+      ],
+      "startTime": 1792317315353,
+      "endTime": 1792317315800.5742,
+      "status": "passed",
+      "message": "",
+      "name": "/home/patri/coding/bazilion/apps/daemon/test/cron-timezone.test.ts"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [
+            "parseCron syntax"
+          ],
+          "fullName": "parseCron syntax star-only",
+          "status": "passed",
+          "title": "star-only",
+          "duration": 1.3771360000000072,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "parseCron syntax"
+          ],
+          "fullName": "parseCron syntax step",
+          "status": "passed",
+          "title": "step",
+          "duration": 0.2488170000000025,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "parseCron syntax"
+          ],
+          "fullName": "parseCron syntax list",
+          "status": "passed",
+          "title": "list",
+          "duration": 0.1673449999999974,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "parseCron syntax"
+          ],
+          "fullName": "parseCron syntax range",
+          "status": "passed",
+          "title": "range",
+          "duration": 0.1313470000000052,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "parseCron syntax"
+          ],
+          "fullName": "parseCron syntax range with step",
+          "status": "passed",
+          "title": "range with step",
+          "duration": 0.12921300000000713,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "parseCron syntax"
+          ],
+          "fullName": "parseCron syntax Sunday normalization (7 \u2192 0)",
+          "status": "passed",
+          "title": "Sunday normalization (7 \u2192 0)",
+          "duration": 0.10763199999999529,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "parseCron syntax"
+          ],
+          "fullName": "parseCron syntax rejects 4 fields",
+          "status": "passed",
+          "title": "rejects 4 fields",
+          "duration": 0.1950170000000071,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "parseCron syntax"
+          ],
+          "fullName": "parseCron syntax rejects out-of-range minute",
+          "status": "passed",
+          "title": "rejects out-of-range minute",
+          "duration": 0.21750900000000684,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "parseCron syntax"
+          ],
+          "fullName": "parseCron syntax rejects garbage",
+          "status": "passed",
+          "title": "rejects garbage",
+          "duration": 0.18431599999999548,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "parseCron syntax"
+          ],
+          "fullName": "parseCron syntax validateCron throws on bad input",
+          "status": "passed",
+          "title": "validateCron throws on bad input",
+          "duration": 0.19877300000000275,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "matchesCron semantics"
+          ],
+          "fullName": "matchesCron semantics every minute matches any minute",
+          "status": "passed",
+          "title": "every minute matches any minute",
+          "duration": 0.21617599999999015,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "matchesCron semantics"
+          ],
+          "fullName": "matchesCron semantics every 5 minutes matches minute 25",
+          "status": "passed",
+          "title": "every 5 minutes matches minute 25",
+          "duration": 0.08856699999999762,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "matchesCron semantics"
+          ],
+          "fullName": "matchesCron semantics hour-restricted fires only in that hour",
+          "status": "passed",
+          "title": "hour-restricted fires only in that hour",
+          "duration": 0.08678299999999695,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "matchesCron semantics"
+          ],
+          "fullName": "matchesCron semantics dow-only fires on that weekday",
+          "status": "passed",
+          "title": "dow-only fires on that weekday",
+          "duration": 0.07831699999999842,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "matchesCron semantics"
+          ],
+          "fullName": "matchesCron semantics dom+dow restricted => OR semantics (standard cron)",
+          "status": "passed",
+          "title": "dom+dow restricted => OR semantics (standard cron)",
+          "duration": 0.0824050000000085,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        }
+      ],
+      "startTime": 1792317315882,
+      "endTime": 1792317315886.0825,
+      "status": "passed",
+      "message": "",
+      "name": "/home/patri/coding/bazilion/apps/daemon/test/cron.test.ts"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [],
+          "fullName": "Team export is portable and dry-run import is semantically lossless with repeated profiles",
+          "status": "passed",
+          "title": "Team export is portable and dry-run import is semantically lossless with repeated profiles",
+          "duration": 1.5614120000000042,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "delimiter-shaped slot keys preserve distinct directed edges",
+          "status": "passed",
+          "title": "delimiter-shaped slot keys preserve distinct directed edges",
+          "duration": 0.48826699999999335,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "delimiter-shaped identifiers cannot hide an edge diff",
+          "status": "passed",
+          "title": "delimiter-shaped identifiers cannot hide an edge diff",
+          "duration": 0.26764300000000674,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "portable slot mapping uses recorded position rather than incidental array order",
+          "status": "passed",
+          "title": "portable slot mapping uses recorded position rather than incidental array order",
+          "duration": 0.18018800000000113,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "open_team preset-shaped interchange"
+          ],
+          "fullName": "open_team preset-shaped interchange round trips its resolved edge set without storing preset implementation state",
+          "status": "passed",
+          "title": "round trips its resolved edge set without storing preset implementation state",
+          "duration": 0.16214499999999532,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "coordinator preset-shaped interchange"
+          ],
+          "fullName": "coordinator preset-shaped interchange round trips its resolved edge set without storing preset implementation state",
+          "status": "passed",
+          "title": "round trips its resolved edge set without storing preset implementation state",
+          "duration": 0.1380100000000084,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "review_pipeline preset-shaped interchange"
+          ],
+          "fullName": "review_pipeline preset-shaped interchange round trips its resolved edge set without storing preset implementation state",
+          "status": "passed",
+          "title": "round trips its resolved edge set without storing preset implementation state",
+          "duration": 0.10679100000000119,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "blank preset-shaped interchange"
+          ],
+          "fullName": "blank preset-shaped interchange round trips its resolved edge set without storing preset implementation state",
+          "status": "passed",
+          "title": "round trips its resolved edge set without storing preset implementation state",
+          "duration": 0.10156100000000379,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "rejects unknown version before mutation",
+          "status": "passed",
+          "title": "rejects unknown version before mutation",
+          "duration": 0.42166199999999776,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "rejects invalid kind before mutation",
+          "status": "passed",
+          "title": "rejects invalid kind before mutation",
+          "duration": 0.1415360000000021,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "rejects missing slot before mutation",
+          "status": "passed",
+          "title": "rejects missing slot before mutation",
+          "duration": 0.09620999999999924,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "rejects self edge before mutation",
+          "status": "passed",
+          "title": "rejects self edge before mutation",
+          "duration": 0.0769949999999966,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "rejects duplicate edge before mutation",
+          "status": "passed",
+          "title": "rejects duplicate edge before mutation",
+          "duration": 0.08774499999999819,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "live policy import preserves explicit allow posture rather than downgrading it",
+          "status": "passed",
+          "title": "live policy import preserves explicit allow posture rather than downgrading it",
+          "duration": 0.224150999999992,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "live policy import preserves explicit approval_required posture rather than downgrading it",
+          "status": "passed",
+          "title": "live policy import preserves explicit approval_required posture rather than downgrading it",
+          "duration": 0.05529400000000351,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "only omitted live posture defaults to allow",
+          "status": "passed",
+          "title": "only omitted live posture defaults to allow",
+          "duration": 0.051597000000001,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "live policy import refuses invalid posture null before mutation",
+          "status": "passed",
+          "title": "live policy import refuses invalid posture null before mutation",
+          "duration": 0.11093799999999021,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "live policy import refuses invalid posture false before mutation",
+          "status": "passed",
+          "title": "live policy import refuses invalid posture false before mutation",
+          "duration": 0.08545999999999765,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "live policy import refuses invalid posture true before mutation",
+          "status": "passed",
+          "title": "live policy import refuses invalid posture true before mutation",
+          "duration": 0.06777699999999243,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "live policy import refuses invalid posture +0 before mutation",
+          "status": "passed",
+          "title": "live policy import refuses invalid posture +0 before mutation",
+          "duration": 0.07771599999999523,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "live policy import refuses invalid posture [] before mutation",
+          "status": "passed",
+          "title": "live policy import refuses invalid posture [] before mutation",
+          "duration": 0.0747209999999967,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "live policy import refuses invalid posture {} before mutation",
+          "status": "passed",
+          "title": "live policy import refuses invalid posture {} before mutation",
+          "duration": 0.07092300000000762,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "live policy import refuses invalid posture 'deny' before mutation",
+          "status": "passed",
+          "title": "live policy import refuses invalid posture 'deny' before mutation",
+          "duration": 0.056035000000008495,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "live policy import refuses invalid posture 'ALLOW' before mutation",
+          "status": "passed",
+          "title": "live policy import refuses invalid posture 'ALLOW' before mutation",
+          "duration": 0.051827000000002954,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "live policy import refuses invalid posture 'approvalRequired' before mutation",
+          "status": "passed",
+          "title": "live policy import refuses invalid posture 'approvalRequired' before mutation",
+          "duration": 0.049763999999996145,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "empty non-resource endpoint ids cannot bypass self-edge validation",
+          "status": "passed",
+          "title": "empty non-resource endpoint ids cannot bypass self-edge validation",
+          "duration": 0.14664499999999236,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "Team policy validation rejects portable Agent self edges",
+          "status": "passed",
+          "title": "Team policy validation rejects portable Agent self edges",
+          "duration": 0.09373599999999271,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        }
+      ],
+      "startTime": 1792317314788,
+      "endTime": 1792317314793.1467,
+      "status": "passed",
+      "message": "",
+      "name": "/home/patri/coding/bazilion/apps/cli/test/team-interchange.test.ts"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [],
+          "fullName": "Team import requires review/apply, allocates server ids, and exports portable JSON",
+          "status": "passed",
+          "title": "Team import requires review/apply, allocates server ids, and exports portable JSON",
+          "duration": 1022.178514,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "existing Team replacement requires an expected revision and stale writes fail",
+          "status": "passed",
+          "title": "existing Team replacement requires an expected revision and stale writes fail",
+          "duration": 1044.5809130000002,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "Team policy dry-run/apply is revision-safe and diagnostic evaluation creates no block",
+          "status": "passed",
+          "title": "Team policy dry-run/apply is revision-safe and diagnostic evaluation creates no block",
+          "duration": 1029.472773,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "invalid interchange fails with a non-zero exit and no mutation",
+          "status": "passed",
+          "title": "invalid interchange fails with a non-zero exit and no mutation",
+          "duration": 307.91628799999944,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "authentication failures have a stable automation exit code",
+          "status": "passed",
+          "title": "authentication failures have a stable automation exit code",
+          "duration": 165.01653499999975,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        }
+      ],
+      "startTime": 1792317311111,
+      "endTime": 1792317314681.0166,
+      "status": "passed",
+      "message": "",
+      "name": "/home/patri/coding/bazilion/apps/cli/test/team-policy.test.ts"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [],
+          "fullName": "trigger add/list round-trip",
+          "status": "passed",
+          "title": "trigger add/list round-trip",
+          "duration": 688.2107239999996,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "trigger enable/disable toggles state",
+          "status": "passed",
+          "title": "trigger enable/disable toggles state",
+          "duration": 1184.1341419999999,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "trigger rm deletes the trigger",
+          "status": "passed",
+          "title": "trigger rm deletes the trigger",
+          "duration": 849.6233619999994,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "configured-provider interval trigger materializes but fails closed without protected Docker",
+          "status": "passed",
+          "title": "configured-provider interval trigger materializes but fails closed without protected Docker",
+          "duration": 1935.1606759999995,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "cron trigger with invalid expression is rejected",
+          "status": "passed",
+          "title": "cron trigger with invalid expression is rejected",
+          "duration": 542.3784849999993,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "trigger add rejects both --every and --cron",
+          "status": "passed",
+          "title": "trigger add rejects both --every and --cron",
+          "duration": 509.1642919999995,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        }
+      ],
+      "startTime": 1792317303980,
+      "endTime": 1792317309689.1643,
+      "status": "passed",
+      "message": "",
+      "name": "/home/patri/coding/bazilion/apps/cli/test/trigger.test.ts"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [],
+          "fullName": "an expired running lease survives a database close and is claimable after reopen",
+          "status": "passed",
+          "title": "an expired running lease survives a database close and is claimable after reopen",
+          "duration": 21.199340000000007,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        }
+      ],
+      "startTime": 1792317317335,
+      "endTime": 1792317317356.1992,
+      "status": "passed",
+      "message": "",
+      "name": "/home/patri/coding/bazilion/apps/daemon/test/core/trigger-dispatch-restart.test.ts"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [],
+          "fullName": "materialization is idempotent per trigger occurrence",
+          "status": "passed",
+          "title": "materialization is idempotent per trigger occurrence",
+          "duration": 17.96280200000001,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "claim is atomic and an expired running lease is recoverable",
+          "status": "passed",
+          "title": "claim is atomic and an expired running lease is recoverable",
+          "duration": 8.841323999999986,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "fail retries with backoff and becomes terminal at the attempt bound",
+          "status": "passed",
+          "title": "fail retries with backoff and becomes terminal at the attempt bound",
+          "duration": 8.356042000000002,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "disabling a trigger cancels pending and retrying dispatches",
+          "status": "passed",
+          "title": "disabling a trigger cancels pending and retrying dispatches",
+          "duration": 7.945952000000034,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "deleting a trigger cascades its dispatch diagnostics",
+          "status": "passed",
+          "title": "deleting a trigger cascades its dispatch diagnostics",
+          "duration": 11.832119999999975,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        }
+      ],
+      "startTime": 1792317315215,
+      "endTime": 1792317315269.832,
+      "status": "passed",
+      "message": "",
+      "name": "/home/patri/coding/bazilion/apps/daemon/test/core/trigger-dispatches.test.ts"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [
+            "GET /:id/dispatches limit"
+          ],
+          "fullName": "GET /:id/dispatches limit rejects invalid limit not-a-number",
+          "status": "passed",
+          "title": "rejects invalid limit not-a-number",
+          "duration": 498.74226,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "GET /:id/dispatches limit"
+          ],
+          "fullName": "GET /:id/dispatches limit rejects invalid limit 0",
+          "status": "passed",
+          "title": "rejects invalid limit 0",
+          "duration": 31.945891999999958,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "GET /:id/dispatches limit"
+          ],
+          "fullName": "GET /:id/dispatches limit rejects invalid limit -1",
+          "status": "passed",
+          "title": "rejects invalid limit -1",
+          "duration": 23.870025000000055,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "GET /:id/dispatches limit"
+          ],
+          "fullName": "GET /:id/dispatches limit rejects invalid limit 1.5",
+          "status": "passed",
+          "title": "rejects invalid limit 1.5",
+          "duration": 27.15340200000003,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "GET /:id/dispatches limit"
+          ],
+          "fullName": "GET /:id/dispatches limit caps a large valid limit at 100 dispatches",
+          "status": "passed",
+          "title": "caps a large valid limit at 100 dispatches",
+          "duration": 28.785946999999965,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        }
+      ],
+      "startTime": 1792317316301,
+      "endTime": 1792317316911.786,
+      "status": "passed",
+      "message": "",
+      "name": "/home/patri/coding/bazilion/apps/daemon/test/routes/triggers.test.ts"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [
+            "durable scheduler dispatches"
+          ],
+          "fullName": "durable scheduler dispatches delayed scheduled work keeps its materialized target after New conversation",
+          "status": "passed",
+          "title": "delayed scheduled work keeps its materialized target after New conversation",
+          "duration": 670.5711490000001,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "durable scheduler dispatches"
+          ],
+          "fullName": "durable scheduler dispatches records a successful turn as a succeeded dispatch",
+          "status": "passed",
+          "title": "records a successful turn as a succeeded dispatch",
+          "duration": 19.078016999999818,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "durable scheduler dispatches"
+          ],
+          "fullName": "durable scheduler dispatches releases scheduler ownership when a repository claim throws before preclaim handoff",
+          "status": "passed",
+          "title": "releases scheduler ownership when a repository claim throws before preclaim handoff",
+          "duration": 20.37865899999997,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "durable scheduler dispatches"
+          ],
+          "fullName": "durable scheduler dispatches clears the firing guard when terminal dispatch persistence throws",
+          "status": "passed",
+          "title": "clears the firing guard when terminal dispatch persistence throws",
+          "duration": 16.927819,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "durable scheduler dispatches"
+          ],
+          "fullName": "durable scheduler dispatches inbox claim records its exact conversation with enforcement off",
+          "status": "passed",
+          "title": "inbox claim records its exact conversation with enforcement off",
+          "duration": 19.0637099999999,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "durable scheduler dispatches"
+          ],
+          "fullName": "durable scheduler dispatches inbox claim records its exact conversation with enforcement on",
+          "status": "passed",
+          "title": "inbox claim records its exact conversation with enforcement on",
+          "duration": 17.044116999999915,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "durable scheduler dispatches"
+          ],
+          "fullName": "durable scheduler dispatches leaves inbox messages unread when protected readiness fails before claim",
+          "status": "passed",
+          "title": "leaves inbox messages unread when protected readiness fails before claim",
+          "duration": 17.101225000000113,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "durable scheduler dispatches"
+          ],
+          "fullName": "durable scheduler dispatches provider error frames retry the materialized occurrence despite a newer watermark",
+          "status": "passed",
+          "title": "provider error frames retry the materialized occurrence despite a newer watermark",
+          "duration": 16.54945900000007,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "durable scheduler dispatches"
+          ],
+          "fullName": "durable scheduler dispatches provider failures become terminal after the bounded third attempt",
+          "status": "passed",
+          "title": "provider failures become terminal after the bounded third attempt",
+          "duration": 17.83982100000003,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "durable scheduler dispatches"
+          ],
+          "fullName": "durable scheduler dispatches defers without consuming an attempt while the target agent is busy",
+          "status": "passed",
+          "title": "defers without consuming an attempt while the target agent is busy",
+          "duration": 15.61600599999997,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "durable scheduler dispatches"
+          ],
+          "fullName": "durable scheduler dispatches coalesces later interval occurrences while one busy dispatch remains open",
+          "status": "passed",
+          "title": "coalesces later interval occurrences while one busy dispatch remains open",
+          "duration": 16.77983100000006,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "durable scheduler dispatches"
+          ],
+          "fullName": "durable scheduler dispatches reclaims an abandoned running lease after restart",
+          "status": "passed",
+          "title": "reclaims an abandoned running lease after restart",
+          "duration": 15.764675000000125,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "durable scheduler dispatches"
+          ],
+          "fullName": "durable scheduler dispatches keeps approval-gated work pending until a durable grant is executed by a later tick",
+          "status": "passed",
+          "title": "keeps approval-gated work pending until a durable grant is executed by a later tick",
+          "duration": 17.86813499999994,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "durable scheduler dispatches"
+          ],
+          "fullName": "durable scheduler dispatches terminal approval denial fails the dispatch without starting a turn",
+          "status": "passed",
+          "title": "terminal approval denial fails the dispatch without starting a turn",
+          "duration": 15.971221999999898,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "durable scheduler dispatches"
+          ],
+          "fullName": "durable scheduler dispatches an aborted turn is recorded as cancelled instead of succeeded",
+          "status": "passed",
+          "title": "an aborted turn is recorded as cancelled instead of succeeded",
+          "duration": 15.694743000000017,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        }
+      ],
+      "startTime": 1792317298500,
+      "endTime": 1792317299412.6948,
+      "status": "passed",
+      "message": "",
+      "name": "/home/patri/coding/bazilion/apps/daemon/test/lib/scheduler.test.ts"
+    }
+  ]
+}

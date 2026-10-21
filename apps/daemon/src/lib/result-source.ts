@@ -1,4 +1,12 @@
-import { closeSync, constants, fstatSync, lstatSync, openSync, readSync, realpathSync } from 'node:fs'
+import {
+  closeSync,
+  constants,
+  fstatSync,
+  lstatSync,
+  openSync,
+  readSync,
+  realpathSync,
+} from 'node:fs'
 import { basename, join } from 'node:path'
 import type { FileEntry } from '@earendil-works/pi-coding-agent'
 import type { Paths } from '../core/paths.ts'
@@ -31,10 +39,7 @@ export function readCanonicalSessionFile(
   // O_NOFOLLOW keeps guarding the open itself against a post-lstat swap.
   if (lstatSync(target).isSymbolicLink())
     throw new Error('Result session file must not be a symlink')
-  const fd = openSync(
-    target,
-    constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
-  )
+  const fd = openSync(target, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK)
   try {
     const stat = fstatSync(fd)
     if (!stat.isFile() || stat.size > 64 * 1024 * 1024)

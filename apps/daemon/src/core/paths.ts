@@ -24,10 +24,19 @@ export interface Paths {
   skillsDir: string
   teamsDir: string
   logsDir: string
+  /**
+   * Managed browser profiles, one owner-only slot per Agent. This sits
+   * OUTSIDE both Agent inputs and Team workspaces (BAZ-069 D1) so a browser
+   * profile can never be mounted into a protected/restricted turn or exposed
+   * through Team file browsing. It may contain live site cookies/session
+   * state and is excluded from backup/export.
+   */
+  browsersDir: string
   profileDir(id: string): string
   agentDir(id: string): string
   skillDir(name: string): string
   teamDir(slug: string): string
+  browserDir(agentId: string): string
 }
 
 export function resolvePaths(home?: string): Paths {
@@ -43,6 +52,7 @@ export function resolvePaths(home?: string): Paths {
     skillsDir: join(root, 'skills'),
     teamsDir: join(root, 'teams'),
     logsDir: join(root, 'logs'),
+    browsersDir: join(root, 'browsers'),
     profileDir(id) {
       return join(root, 'profiles', id)
     },
@@ -54,6 +64,9 @@ export function resolvePaths(home?: string): Paths {
     },
     teamDir(slug) {
       return join(root, 'teams', slug)
+    },
+    browserDir(agentId) {
+      return join(root, 'browsers', agentId)
     },
   }
 }

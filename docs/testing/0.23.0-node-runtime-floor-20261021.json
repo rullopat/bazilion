@@ -1,0 +1,468 @@
+{
+  "format": "bazilion-source-freeze-amendment-v1",
+  "revision": 26,
+  "recordedAt": "2026-10-21T10:28:38.289758+00:00",
+  "parentAmendment": "docs/testing/0.23.0-upstream-compatibility-metadata-20261020.json",
+  "parentAmendmentSha256": "52f4df61cdfe4d38c127ba3fb0ca902db693ea7094c5b4f8db56bb90216e543a",
+  "parentSourceInputAggregateSha256": "ae4c440b672e29b0879e48e10a538fd922abc09e1d9bd21f9e52acb2e508b0b5",
+  "amendedSourceInputAggregateSha256": "e3e681db84b92e810e4bd9383746cd4e047bbc21b3759fb64574f61456e304c7",
+  "amendedCoreEntryCount": 1151,
+  "inputDelta": [
+    {
+      "path": ".github/workflows/ci.yml",
+      "before": {
+        "path": ".github/workflows/ci.yml",
+        "kind": "file",
+        "sha256": "ca7b4989adb7149dc7467c4f985ea52273e763e70653bddea63ff1e25cd24d4b",
+        "bytes": 5869,
+        "executable": false
+      },
+      "after": {
+        "path": ".github/workflows/ci.yml",
+        "kind": "file",
+        "sha256": "8fde5ea4362732635302147383c79844b8148e37e843a7386c4922fcfcad3061",
+        "bytes": 5943,
+        "executable": false
+      }
+    },
+    {
+      "path": ".github/workflows/npm-ops.yml",
+      "before": {
+        "path": ".github/workflows/npm-ops.yml",
+        "kind": "file",
+        "sha256": "a99136386dec7a5906c47f03e18058e5f7fde7a53441842ab6f2f0d22485f7ba",
+        "bytes": 3234,
+        "executable": false
+      },
+      "after": {
+        "path": ".github/workflows/npm-ops.yml",
+        "kind": "file",
+        "sha256": "93eae803ec607ce0ae9985292f6b8a3555604ffd29b092de895297a8c567d837",
+        "bytes": 3301,
+        "executable": false
+      }
+    },
+    {
+      "path": ".github/workflows/release.yml",
+      "before": {
+        "path": ".github/workflows/release.yml",
+        "kind": "file",
+        "sha256": "cb58e6709c1319a8c0a38cf2a271e3df8c6d7a4a1f881691e216214102d91860",
+        "bytes": 3172,
+        "executable": false
+      },
+      "after": {
+        "path": ".github/workflows/release.yml",
+        "kind": "file",
+        "sha256": "0a8e54cde2e230412ef57256a84cd246c25b438c972ba1c9012028b6a86977d8",
+        "bytes": 3225,
+        "executable": false
+      }
+    },
+    {
+      "path": "AGENTS.md",
+      "before": {
+        "path": "AGENTS.md",
+        "kind": "file",
+        "sha256": "18369d9b2f56d1e9fa499ac546481b5da6ee7ede9b5b7aeb2064d67a73863e90",
+        "bytes": 49748,
+        "executable": false
+      },
+      "after": {
+        "path": "AGENTS.md",
+        "kind": "file",
+        "sha256": "46f890f651e84955b8073b01b0d431beddf9de28a4f523db5e45789f3ca7cba6",
+        "bytes": 49961,
+        "executable": false
+      }
+    },
+    {
+      "path": "README.md",
+      "before": {
+        "path": "README.md",
+        "kind": "file",
+        "sha256": "7c0608cde452784a306091ffe72e96ccb3bd91d4e728bb0524c4b07266bf2913",
+        "bytes": 34207,
+        "executable": false
+      },
+      "after": {
+        "path": "README.md",
+        "kind": "file",
+        "sha256": "5d9978b863eb4254a33b097ded2c035413cb8b7b0a66f1235875117a208e9019",
+        "bytes": 34439,
+        "executable": false
+      }
+    },
+    {
+      "path": "apps/cli/CHANGELOG.md",
+      "before": {
+        "path": "apps/cli/CHANGELOG.md",
+        "kind": "file",
+        "sha256": "79091814a96947c3554e9498aacb3a076ad2a252f5c1f512b71dfa95bb678aec",
+        "bytes": 52520,
+        "executable": false
+      },
+      "after": {
+        "path": "apps/cli/CHANGELOG.md",
+        "kind": "file",
+        "sha256": "f0121964f84ffdf9ae141c2ac1a7a7ff418d3c019f92b650efb0784e60b6d27f",
+        "bytes": 52811,
+        "executable": false
+      }
+    },
+    {
+      "path": "apps/cli/README.md",
+      "before": {
+        "path": "apps/cli/README.md",
+        "kind": "file",
+        "sha256": "612ab85312daefe32b405bf402861f22d769f2fefcaf2cae8c61978a9d3cd474",
+        "bytes": 7091,
+        "executable": false
+      },
+      "after": {
+        "path": "apps/cli/README.md",
+        "kind": "file",
+        "sha256": "f727d2323f8d363f677e28aeeecf5619c6e216d26f6dda2ab23359bc1710c986",
+        "bytes": 7385,
+        "executable": false
+      }
+    },
+    {
+      "path": "apps/cli/package.json",
+      "before": {
+        "path": "apps/cli/package.json",
+        "kind": "file",
+        "sha256": "369d49d04fa17fa57aa3060a315dae789f3928158455920bceaf9f37ce9217e5",
+        "bytes": 2061,
+        "executable": false
+      },
+      "after": {
+        "path": "apps/cli/package.json",
+        "kind": "file",
+        "sha256": "f69b74dfc10b7c69f653689b4bc6cef419f42841b64ba813386f6eaec0c8aa0e",
+        "bytes": 2072,
+        "executable": false
+      }
+    },
+    {
+      "path": "apps/cli/src/commands/serve.ts",
+      "before": {
+        "path": "apps/cli/src/commands/serve.ts",
+        "kind": "file",
+        "sha256": "56c9f53373c9d31adde71cfe05378f9399cc2969284646cd30caa9a3ed954f4d",
+        "bytes": 3487,
+        "executable": false
+      },
+      "after": {
+        "path": "apps/cli/src/commands/serve.ts",
+        "kind": "file",
+        "sha256": "dfcdd2de0ed504bee9c030d37cc16ff0b81a0088c82732878e4d89fe2f221142",
+        "bytes": 3509,
+        "executable": false
+      }
+    },
+    {
+      "path": "apps/cli/src/index.ts",
+      "before": {
+        "path": "apps/cli/src/index.ts",
+        "kind": "file",
+        "sha256": "8c69ba5a3d7ed2f3214dba6d2d9a2c1da0725e4d4cc3cd92f8728c3b929a70a8",
+        "bytes": 9443,
+        "executable": false
+      },
+      "after": {
+        "path": "apps/cli/src/index.ts",
+        "kind": "file",
+        "sha256": "3f78ab74025b3d231b8dbf3952d6af613023a76d5178f826ad5106a9a60b9157",
+        "bytes": 134,
+        "executable": false
+      }
+    },
+    {
+      "path": "apps/cli/test/published-dependencies.test.ts",
+      "before": {
+        "path": "apps/cli/test/published-dependencies.test.ts",
+        "kind": "file",
+        "sha256": "b723bc24ccd0420116d70a8d7ee1c9a2dc287a998fb13c5febffdc59b98a7736",
+        "bytes": 1593,
+        "executable": false
+      },
+      "after": {
+        "path": "apps/cli/test/published-dependencies.test.ts",
+        "kind": "file",
+        "sha256": "eb3a5d79114954d64806881f50c7b1ec4b66fb441b75f6eab23151e83ac1bf5f",
+        "bytes": 1968,
+        "executable": false
+      }
+    },
+    {
+      "path": "apps/cli/tsup.config.ts",
+      "before": {
+        "path": "apps/cli/tsup.config.ts",
+        "kind": "file",
+        "sha256": "bb5c2f63937b602363bea1b58c9016a85623e2a030c2d2edfb818e5e4a248bf0",
+        "bytes": 3067,
+        "executable": false
+      },
+      "after": {
+        "path": "apps/cli/tsup.config.ts",
+        "kind": "file",
+        "sha256": "afeab2d995a17c4588a4f154215331efb5b35fb88c3eea24280e7b1a5d0cdf42",
+        "bytes": 3236,
+        "executable": false
+      }
+    },
+    {
+      "path": "apps/daemon/package.json",
+      "before": {
+        "path": "apps/daemon/package.json",
+        "kind": "file",
+        "sha256": "ba11329bd07662c6f3aecb2a650176cf83d54047a722a4d3788647b10db4c8cc",
+        "bytes": 999,
+        "executable": false
+      },
+      "after": {
+        "path": "apps/daemon/package.json",
+        "kind": "file",
+        "sha256": "b89342eb7662d123d68c693e4b15ab5e0155f5dbc4ea625d62f47612324655c5",
+        "bytes": 1010,
+        "executable": false
+      }
+    },
+    {
+      "path": "apps/daemon/src/index.ts",
+      "before": {
+        "path": "apps/daemon/src/index.ts",
+        "kind": "file",
+        "sha256": "90cc6067e83ca08d042ff21c5c51cf61edc7ef599e204d39a6b91bff95c71dfc",
+        "bytes": 6493,
+        "executable": false
+      },
+      "after": {
+        "path": "apps/daemon/src/index.ts",
+        "kind": "file",
+        "sha256": "d5f4537e99c2f8f790eba47e61d6f0061a7e3dad8eac0d00e5317d3373425368",
+        "bytes": 137,
+        "executable": false
+      }
+    },
+    {
+      "path": "apps/daemon/src/runtime/worker/spawn.ts",
+      "before": {
+        "path": "apps/daemon/src/runtime/worker/spawn.ts",
+        "kind": "file",
+        "sha256": "a7053e018feedc68c60a148c18b4d02d34a5b60f9999f8ba396f9df4ad91e20f",
+        "bytes": 45348,
+        "executable": false
+      },
+      "after": {
+        "path": "apps/daemon/src/runtime/worker/spawn.ts",
+        "kind": "file",
+        "sha256": "0cae3d030c886ebe83598cf3925f2485de1d2c1b721a1eaa7aa49982f4340a1d",
+        "bytes": 45227,
+        "executable": false
+      }
+    },
+    {
+      "path": "docs/releases.md",
+      "before": {
+        "path": "docs/releases.md",
+        "kind": "file",
+        "sha256": "ede8cef852178ab70cda195e04e52d3cc2cc3c6fd9ec7f81d7256d16b78b7148",
+        "bytes": 19356,
+        "executable": false
+      },
+      "after": {
+        "path": "docs/releases.md",
+        "kind": "file",
+        "sha256": "530bed3d83584f1ea8a886e9cff12ffa93ea883cd1f510c59807e9c7af7b108c",
+        "bytes": 20425,
+        "executable": false
+      }
+    },
+    {
+      "path": "docs/upgrades.md",
+      "before": {
+        "path": "docs/upgrades.md",
+        "kind": "file",
+        "sha256": "c44890ddefc09dc2497e0151221162c81a9d5f87d252179fc556a8132053acbe",
+        "bytes": 5600,
+        "executable": false
+      },
+      "after": {
+        "path": "docs/upgrades.md",
+        "kind": "file",
+        "sha256": "1b138b33ed37350510ff8d66d7438572f7ca986901e96ff77e3bf02dc7e192b5",
+        "bytes": 6269,
+        "executable": false
+      }
+    },
+    {
+      "path": "package.json",
+      "before": {
+        "path": "package.json",
+        "kind": "file",
+        "sha256": "3925bf16933680aa41c754c9c4207217ec2dc4e0fd18e85e070a4e57fb290aac",
+        "bytes": 1162,
+        "executable": false
+      },
+      "after": {
+        "path": "package.json",
+        "kind": "file",
+        "sha256": "8bf808e7c2c34f52cf447c13965fecfdf7a5067b20f8b4302b570b665077a2aa",
+        "bytes": 1173,
+        "executable": false
+      }
+    },
+    {
+      "path": "apps/cli/src/main.ts",
+      "before": null,
+      "after": {
+        "path": "apps/cli/src/main.ts",
+        "kind": "file",
+        "bytes": 9473,
+        "sha256": "71c23ecce05318e3eb8a27d013df2ffe705bbb858d2fe6f03dd3cf2878764eea",
+        "executable": false
+      }
+    },
+    {
+      "path": "apps/daemon/src/main.ts",
+      "before": null,
+      "after": {
+        "path": "apps/daemon/src/main.ts",
+        "kind": "file",
+        "bytes": 6524,
+        "sha256": "78f75b1d1a1d4052486fa30777ffe61bc9a07bf5a061e14642c3e2d15b257ff2",
+        "executable": false
+      }
+    },
+    {
+      "path": "apps/cli/src/runtime-version.ts",
+      "before": null,
+      "after": {
+        "path": "apps/cli/src/runtime-version.ts",
+        "kind": "file",
+        "bytes": 1071,
+        "sha256": "a398508328a67582111db0e799aec1a601731b3230293a8bda24a94c74850d37",
+        "executable": false
+      }
+    },
+    {
+      "path": "apps/daemon/src/runtime-version.ts",
+      "before": null,
+      "after": {
+        "path": "apps/daemon/src/runtime-version.ts",
+        "kind": "file",
+        "bytes": 1071,
+        "sha256": "a398508328a67582111db0e799aec1a601731b3230293a8bda24a94c74850d37",
+        "executable": false
+      }
+    },
+    {
+      "path": "apps/cli/test/runtime-version.test.ts",
+      "before": null,
+      "after": {
+        "path": "apps/cli/test/runtime-version.test.ts",
+        "kind": "file",
+        "bytes": 4303,
+        "sha256": "498df9d7755d0545f6eac2aa2e1048dfdbd02446fff81a66ca4f448839882827",
+        "executable": false
+      }
+    }
+  ],
+  "authority": "Explicit structured operator approval:privateofficialNode24.22 acquisition<=100MiB TLS+publishedSHA256,no globalinstall; support^24.22.0||^26.4.0 with early refusal and matchingmanifests/docs; unchanged ordinary qualification; no dependency/package-managerchanges,standaloneGCprobes or realprovidercalls",
+  "runtime": "Actualv24.22.0 ABI137; official32,015,600bytearchive SHA256cc2f601cee82d9a5a233302fe307abc600727035fd7d2c3a3571755989e95008 matched. Safefreshreadonlyextraction; no independentPGPclaim; existingpnpm12.14.0/npm11.19.0 CLI retained. NativeaddonABI137bytesunchanged.",
+  "code": "Guardedsourceindex/dynamicmain and packedpublicCLI/daemon wrappers; separate dependency-freeCLI/daemonpolicycopies,matchedrange/manifests/docs; CI Nodepins24.22.0 andinstall-onlybrowserdownloadskip. Worker/payload/assetsrelativepaths remain siblings. No state/schema/provider/SDKchange.",
+  "executedSourceInputAggregateSha256": "f5183f7d54eb017f160d180b072c5b64885dfe2c7eafffc7814029786a240d7a",
+  "qualifiedCoreCount": 1151,
+  "results": {
+    "types": "root+web exit0",
+    "focused": "28pass0fail0pending incl unchangedoriginalUnicode/wholechatfile",
+    "lint": "0errors112warnings14infos,828files",
+    "helpers": "41pass0fail0skipped",
+    "whole": {
+      "success": true,
+      "numPassedTests": 2642,
+      "numFailedTests": 0,
+      "numPendingTests": 49,
+      "numPassedTestSuites": 400,
+      "numFailedTestSuites": 0
+    },
+    "security": {
+      "report": "/var/tmp/baz023-install-prereq-7AUthA/runtime-floor-qualification-control/security-observed-report-0.json",
+      "reportSha256": "732578ab276a33acc25c19be1e7e3e750d762f7ede8e4976b93ae11e453e738b",
+      "reportBytes": 416653,
+      "passed": 1326,
+      "failed": 0,
+      "pending": 0,
+      "requiredCases": 397,
+      "eachRequiredPassedExactlyOnce": true,
+      "originalGateExit": 0,
+      "observerErrors": []
+    },
+    "currentBuildAndThreePacks": "pass,dirtyworkingtreecandidatesnotfinalcommit/publicidentities",
+    "actualGuardChecks": "4actualoldNode24.20 source/packedrefusals beforestate, includingnodepspackage;1supportedbuiltCLIversion,5acceptedaftercleanup"
+  },
+  "preservedFailures": "Plannedmanifestred>=24 mismatch; firstguardhelper functionalrefusalpassedthenempty-directoryrmSync EISDIR. Originalfailure/emptyfixture retained; correctedrmdir helperrecordsacceptanceafterremoval,all5pass. No expectation/hash/predicate/deadlineweakening or historyrewrite.",
+  "applicability": "Only releasepointer/additiveevidence differafterexecutedSourcef518. Sourceunchangedafterchecks/build. Full/gate facts notoriginalworkercallerproof or oldimagebarriercausality. No arbitrarydescendant/abnormalhostcleanupclaim. API/clientlibraries remainportable; runtimefloorappliestoCLI/daemon/dev.",
+  "status": "Localruntime/sourcequalificationpassed; independentfinalsource/artifactacceptance,finalcommit/CI,currentinstalledclosure/backup/refusal/affectedfeature/publicverification/website remain open. No taskcomplete or publication.",
+  "additionalPlanningAndEvidence": [
+    {
+      "path": "docs/testing/0.23.0-node-runtime-floor-20261021.md",
+      "sha256": "1478e99c943c2d5838f2a1265b464a67f30e8d34024cc59842a967646ad81c16"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-node-runtime-floor-20261021/artifact-metadata.json",
+      "sha256": "b27f884aa84d9643ed67056c3ae733184bad094704d36ff78efadbe7ecab2b9c"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-node-runtime-floor-20261021/artifacts/bazilion-0.23.0.tgz",
+      "sha256": "9f7ee6ffba16532daa78744b31cfda3085d663187340f216e3fa9b4d8b0dc7ed"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-node-runtime-floor-20261021/artifacts/bazilion-api-types-0.23.0.tgz",
+      "sha256": "d55a67ea47b29a9891722338c43465b7976c9a84afa16d020a744596a3ad5baa"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-node-runtime-floor-20261021/artifacts/bazilion-client-0.23.0.tgz",
+      "sha256": "bb7c433f0d4fb9400556760e9c6762a533bc6b15bdf290455cb7b78f6fd68a43"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-node-runtime-floor-20261021/controls.json.gz",
+      "sha256": "e7136c34f385052d47663d3434b193a55eb3ce6d723669a9b93cb561d275daee"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-node-runtime-floor-20261021/daemon-stderr.json.gz",
+      "sha256": "5314a0c0b5bb5eef90cd9629918432d37991fb7b4533abcbfd3660f0b93cade1"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-node-runtime-floor-20261021/focused-report.json.gz",
+      "sha256": "e6bec65171538bb52c2be4889243a5291d7b21fccc1d9cbf2466e5f283903154"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-node-runtime-floor-20261021/full-inputs.json.gz",
+      "sha256": "defdbc2c06dd9d9bcd746168f072d414707a8b7096708e4b841db29af23765d2"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-node-runtime-floor-20261021/full-report.json.gz",
+      "sha256": "04688bd09d3ae44bd3d55cf50ac757472db04c08732c0a4daeb0475b2db30469"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-node-runtime-floor-20261021/official-node-shasums.txt",
+      "sha256": "8912ada1431af8390bb3e30328d30bca701b59c7a6d5396b491293515c092c46"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-node-runtime-floor-20261021/qualification.json",
+      "sha256": "192284f0b41ec82b547f4af68fc3e9d7929370c936cbb3ea9f14a4d5eba19e1f"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-node-runtime-floor-20261021/runtime-acquisition.json",
+      "sha256": "9df65ce92515f6a68333d52459bb962d31c5fe5e8ca66f8e6decd453e91f5dd6"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-node-runtime-floor-20261021/security-observed-report-0.json.gz",
+      "sha256": "95f1a1e5ea7b98907dd4382ef5af469711945cf6a87636853c36078c98f9fcfa"
+    }
+  ],
+  "publicationPerformed": false
+}

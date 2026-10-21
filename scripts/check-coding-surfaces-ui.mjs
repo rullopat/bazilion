@@ -124,7 +124,17 @@ try {
 
   // The fixture home bootstraps the 'default' Team; its scoped surfaces now
   // have real tabs and rosters to render.
-  for (const tab of ['', '/activity', '/context', '/members', '/memory', '/policy', '/review', '/results', '/verifications']) {
+  for (const tab of [
+    '',
+    '/activity',
+    '/context',
+    '/members',
+    '/memory',
+    '/policy',
+    '/review',
+    '/results',
+    '/verifications',
+  ]) {
     await walk(`/teams/default${tab}`, 'h1, h2', `team${tab.replaceAll('/', '-') || '-overview'}`)
   }
 
@@ -155,7 +165,10 @@ try {
     const alert = page.getByRole('alert')
     await alert.waitFor({ timeout: 15_000 })
     const text = await alert.innerText()
-    assert(text.includes(title), `${pathname}: alert does not name the surface (wanted "${title}", got "${text.slice(0, 120)}")`)
+    assert(
+      text.includes(title),
+      `${pathname}: alert does not name the surface (wanted "${title}", got "${text.slice(0, 120)}")`,
+    )
     assert(text.includes('retry'), `${pathname}: no retry affordance`)
     await page.screenshot({ path: join(evidence, `error${pathname.replaceAll('/', '-')}.png`) })
   }
@@ -164,7 +177,10 @@ try {
   // touched by the sweep) falls to the router default.
   await page.goto(`${url}/agents/sweeper`, { waitUntil: 'domcontentloaded' })
   const fallback = await page.getByRole('alert').innerText()
-  assert(fallback.includes('This page could not be loaded'), `router default missing: ${fallback.slice(0, 120)}`)
+  assert(
+    fallback.includes('This page could not be loaded'),
+    `router default missing: ${fallback.slice(0, 120)}`,
+  )
   await page.screenshot({ path: join(evidence, 'error-router-default.png') })
 
   writeFileSync(join(evidence, 'pageerrors.txt'), errors.join('\n') || 'none')

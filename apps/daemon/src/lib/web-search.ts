@@ -1,4 +1,4 @@
-import type { WebSearchOutput } from '../runtime/worker/ipc-protocol.ts'
+import type { SearchResults } from '@bazilion/api-types'
 
 /**
  * BAZ-067: bounded public-web discovery for protected Agent turns.
@@ -6,9 +6,9 @@ import type { WebSearchOutput } from '../runtime/worker/ipc-protocol.ts'
  * The only first backend is a self-hosted SearXNG instance speaking its
  * `format=json` API. The operator configures its base URL; it never reaches
  * the worker — the worker sees only bounded titles/URLs/snippets returned
- * through this host over turn IPC. No credential exists to leak, and the
- * configured URL is validated per request so configuration drift between
- * claim and dispatch is refused instead of silently redirected.
+ * through this host over turn IPC. Provider credentials are never forwarded;
+ * URL credentials/query/fragment are refused. Current configuration validity
+ * is checked per request; this is NOT a pin against an earlier admission snapshot.
  *
  * Bounds: one upstream request per invocation, no worker-side retry, a hard
  * deadline, capped query/result/field sizes. Returned snippets are untrusted
@@ -22,6 +22,7 @@ const MAX_RESULTS = 8
 const MAX_TITLE_CHARS = 200
 const MAX_URL_CHARS = 2048
 const MAX_SNIPPET_CHARS = 300
+const MAX_BACKEND_BYTES = 1024 * 1024
 
 export const WEB_SEARCH_URL_ENV = 'BAZILION_WEB_SEARCH_URL'
 
@@ -35,6 +36,7 @@ export function webSearchBaseUrl(env: NodeJS.ProcessEnv = process.env): string |
   } catch {
     return null
   }
+  if (parsed.username || parsed.password || parsed.search || parsed.hash) return null
   const loopback =
     parsed.hostname === '127.0.0.1' ||
     parsed.hostname === 'localhost' ||
@@ -51,7 +53,7 @@ export function isWebSearchConfigured(env: NodeJS.ProcessEnv = process.env): boo
 }
 
 export interface WebSearchHostOptions {
-  /** Read at call time so configuration drift between claim and dispatch is caught. */
+  /** Read current configuration at call time; no earlier configuration fingerprint is compared. */
   env: () => NodeJS.ProcessEnv
   signal?: AbortSignal
 }
@@ -64,14 +66,16 @@ function bounded(value: unknown, max: number): string {
 }
 
 export function createWebSearchHost(opts: WebSearchHostOptions): {
-  search(args: { query: string; count?: number }): Promise<WebSearchOutput>
+  search(args: { query: string; count?: number }): Promise<SearchResults>
 } {
   return {
     async search(args) {
       const query =
         typeof args?.query === 'string' ? args.query.trim().slice(0, MAX_QUERY_CHARS) : ''
       if (!query) throw new WebSearchConfigError('web search: a non-empty query is required')
-      const count = Math.min(Math.max(Number(args?.count ?? 5), 1), MAX_RESULTS)
+      if (args.count !== undefined && !Number.isInteger(args.count))
+        throw new WebSearchConfigError('Web search count must be a finite integer')
+      const count = Math.min(Math.max(args.count ?? 5, 1), MAX_RESULTS)
 
       const baseUrl = webSearchBaseUrl(opts.env())
       if (!baseUrl) {
@@ -84,14 +88,16 @@ export function createWebSearchHost(opts: WebSearchHostOptions): {
         q: query,
         format: 'json',
       })}`
+      const signal = AbortSignal.any([
+        AbortSignal.timeout(SEARCH_TIMEOUT_MS),
+        ...(opts.signal ? [opts.signal] : []),
+      ])
       let response: Response
       try {
         response = await fetch(url, {
+          redirect: 'manual',
           headers: { accept: 'application/json' },
-          signal: AbortSignal.any([
-            AbortSignal.timeout(SEARCH_TIMEOUT_MS),
-            ...(opts.signal ? [opts.signal] : []),
-          ]),
+          signal,
         })
       } catch (error) {
         if (opts.signal?.aborted || (error instanceof Error && error.name === 'AbortError'))
@@ -99,13 +105,37 @@ export function createWebSearchHost(opts: WebSearchHostOptions): {
         throw new WebSearchBackendError('Web search backend is unreachable')
       }
       if (!response.ok) {
+        await response.body?.cancel().catch(() => {})
         throw new WebSearchBackendError(`Web search backend returned status ${response.status}`)
       }
 
       let data: unknown
       try {
-        data = await response.json()
-      } catch {
+        if (!response.body) throw new Error('missing body')
+        if (Number(response.headers.get('content-length')) > MAX_BACKEND_BYTES) {
+          await response.body.cancel().catch(() => {})
+          throw new WebSearchBackendError('Web search backend response exceeded limit')
+        }
+        const reader = response.body.getReader()
+        const bytes = new Uint8Array(MAX_BACKEND_BYTES)
+        let size = 0
+        try {
+          for (;;) {
+            const chunk = await reader.read()
+            if (chunk.done) break
+            if (size + chunk.value.byteLength > MAX_BACKEND_BYTES)
+              throw new WebSearchBackendError('Web search backend response exceeded limit')
+            bytes.set(chunk.value, size)
+            size += chunk.value.byteLength
+          }
+        } finally {
+          await reader.cancel().catch(() => {})
+          reader.releaseLock()
+        }
+        data = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes.subarray(0, size)))
+      } catch (error) {
+        if (signal.aborted) throw new WebSearchBackendError('Web search was cancelled')
+        if (error instanceof WebSearchBackendError) throw error
         throw new WebSearchBackendError('Web search backend returned an invalid response')
       }
       const rawResults =
@@ -114,6 +144,8 @@ export function createWebSearchHost(opts: WebSearchHostOptions): {
         throw new WebSearchBackendError('Web search backend returned an invalid response')
       }
       const results = rawResults.slice(0, count).map((item) => {
+        if (!item || typeof item !== 'object' || Array.isArray(item))
+          throw new WebSearchBackendError('Web search backend returned an invalid response')
         const row = item as { title?: unknown; url?: unknown; content?: unknown }
         return {
           title: bounded(row.title, MAX_TITLE_CHARS),

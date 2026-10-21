@@ -22,7 +22,7 @@ broader-beta core: generic first-request brief and schedule, actual cron prepara
 images, human rework and approved manual handoff. Direct publication is a conditional extension.
 Topic, purpose and audience come from the brief; two independently selected topics test reuse.
 BAZ-063 is now the parent checklist: BAZ-064 owns recipe/deterministic handoff, BAZ-065 real cron/
-recovery and BAZ-066 live/human qualification. The [first platform is now Mastodon](content-platform-first-test.md)
+recovery and unrun live/human qualification. The [first platform is now Mastodon](content-platform-first-test.md)
 for manual handoff only; Meta/LinkedIn and multi-platform qualification are deferred. A Mastodon
 publisher would need separate scoped implementation. This does not reopen BAZ-059.
 
@@ -218,10 +218,9 @@ live generator is configured.
 | [BAZ-060](../draft/BAZ-060-approved-social-delivery.md) | Credential isolation, account contract, approved delivery/scheduling/reconciliation, fake adapter | BAZ-058; enforced content-Team posture; no live publishing by itself. |
 | [BAZ-061](../draft/BAZ-061-meta-page-and-instagram-publishing.md) | Official Facebook Page and Instagram photo connectors, scoped media staging | BAZ-060; app/account access and staging choice. Split if refinement exceeds L. |
 | [BAZ-062](../draft/BAZ-062-linkedin-publishing.md) | Official granted LinkedIn author connector, images and receipts | BAZ-060; selected member/org scope and access. |
-| [BAZ-063](../draft/BAZ-063-content-team-real-world-acceptance.md) | Parent acceptance checklist/evidence review | BAZ-064/065/066; direct publication requires BAZ-060 plus a separately refined platform adapter. Mastodon starts manual-only; Meta/LinkedIn deferred. |
+| [BAZ-063](../draft/BAZ-063-content-team-real-world-acceptance.md) | Parent acceptance checklist/evidence review | BAZ-064/065; direct publication requires BAZ-060 plus a separately refined platform adapter. Mastodon starts manual-only; Meta/LinkedIn deferred. |
 | [BAZ-064](../in_progress/BAZ-064-content-team-recipe-and-manual-handoff.md) | Topic-neutral Team recipe and deterministic manual-handoff checks | Existing Team/Results plus BAZ-059 and actually permitted research; no native editorial packet required. |
-| [BAZ-065](../in_progress/BAZ-065-content-team-scheduling-and-recovery.md) | Actual preparation cron, protected posture and recovery evidence | BAZ-064 and the existing scheduler; missing capabilities refined separately. |
-| [BAZ-066](../draft/BAZ-066-content-team-live-and-human-acceptance.md) | Authorized live core and independent human qualification | Reviewed BAZ-064/065 outputs, selected topics, account/usage consent and participants. |
+| [BAZ-065](../done/BAZ-065-content-team-scheduling-and-recovery.md) | Actual preparation cron, protected posture and recovery evidence | BAZ-064 and the existing scheduler; missing capabilities refined separately. |
 
 BAZ-059 is scoped for 0.22.0; the other stories remain drafts. Start with the image tool and
 an existing-Team recipe for **research → draft → human feedback → regenerate → export**. A durable

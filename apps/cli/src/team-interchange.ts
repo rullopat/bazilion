@@ -65,11 +65,11 @@ function nullableText(value: unknown, label: string): string | null {
 }
 
 function endpointKey(kind: string, key: string | null): string {
-  return `${kind}:${key ?? '-'}`
+  return JSON.stringify([kind, key])
 }
 
 export function exportTeamDocument(detail: TeamTemplateDetail): TeamTemplateDocument {
-  const keyById = new Map(detail.slots.map((slot, index) => [slot.slotId, `slot-${index + 1}`]))
+  const keyById = new Map(detail.slots.map((slot) => [slot.slotId, `slot-${slot.position + 1}`]))
   return {
     version: TEAM_POLICY_INTERCHANGE_VERSION,
     kind: TEAM_DOCUMENT_KIND,
@@ -160,6 +160,10 @@ export function parseTeamDocument(value: unknown): TeamTemplateDocument {
           ? 'approval_required'
           : null
     if (!posture) throw new Error(`edge ${index} has invalid posture`)
+    if (sourceKind !== 'slot' && sourceKey !== null)
+      throw new Error(`edge ${index} source endpoint key must be null`)
+    if (targetKind !== 'slot' && targetKey !== null)
+      throw new Error(`edge ${index} target endpoint key must be null`)
     if ((sourceKind === 'slot') !== Boolean(sourceKey))
       throw new Error(`edge ${index} source slot key is missing or invalid`)
     if ((targetKind === 'slot') !== Boolean(targetKey))
@@ -190,7 +194,7 @@ export function parseTeamDocument(value: unknown): TeamTemplateDocument {
 
 export function teamImportBody(document: TeamTemplateDocument, existing?: TeamTemplateDetail) {
   const currentByKey = existing
-    ? new Map(existing.slots.map((slot, index) => [`slot-${index + 1}`, slot.slotId]))
+    ? new Map(existing.slots.map((slot) => [`slot-${slot.position + 1}`, slot.slotId]))
     : new Map<string, string>()
   const slots: TeamTemplateSlotInput[] = document.slots.map((slot) => ({
     ...(currentByKey.has(slot.key)
@@ -237,6 +241,10 @@ export function parseTeamPolicyDocument(value: unknown): TeamPolicyDocument {
     const targetKind = edge.targetKind as TeamPolicyEdgeInput['targetKind']
     const sourceId = nullableText(edge.sourceId, `edge ${index} sourceId`)
     const targetId = nullableText(edge.targetId, `edge ${index} targetId`)
+    if (sourceKind !== 'agent' && sourceId !== null)
+      throw new Error(`edge ${index} source endpoint id must be null`)
+    if (targetKind !== 'agent' && targetId !== null)
+      throw new Error(`edge ${index} target endpoint id must be null`)
     if (
       (sourceKind === 'agent') !== Boolean(sourceId) ||
       (targetKind === 'agent') !== Boolean(targetId)
@@ -247,7 +255,14 @@ export function parseTeamPolicyDocument(value: unknown): TeamPolicyDocument {
       throw new Error(`edge ${index} is a self edge`)
     if (seen.has(signature)) throw new Error(`duplicate edge: ${signature}`)
     seen.add(signature)
-    return { sourceKind, sourceId, targetKind, targetId }
+    const posture: CommunicationEdgePosture | null =
+      edge.posture === undefined || edge.posture === 'allow'
+        ? 'allow'
+        : edge.posture === 'approval_required'
+          ? 'approval_required'
+          : null
+    if (!posture) throw new Error(`edge ${index} has invalid posture`)
+    return { sourceKind, sourceId, targetKind, targetId, posture }
   })
   return {
     version: 1,

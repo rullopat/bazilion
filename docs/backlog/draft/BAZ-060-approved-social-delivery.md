@@ -64,7 +64,7 @@ Own the shared deterministic/fake-host contract for **PUB-01–06** in the
 [content-Team protocol](../../testing/beta-readiness/content-team-acceptance.md). Each separately
 refined adapter owns its platform contract and authorized live/human observations. BAZ-061/062
 cover Meta/LinkedIn only; they do not establish Mastodon support. BAZ-063 records the separate
-publication result; its core children BAZ-064/065/066 stop at approved manual handoff. None of these
+publication result; its core children BAZ-064/065 stop at approved manual handoff. None of these
 publication cases is a prerequisite for that manual core, and no execution is claimed yet.
 
 ## Open Questions

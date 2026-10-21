@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process'
-import { readFileSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { readFileSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
+import { withSecurityReport } from './testing/security-report.mjs'
 
 const root = resolve(import.meta.dirname, '..')
 const manifestPath = join(root, 'security', 'acceptance-manifest.json')
@@ -55,8 +55,7 @@ for (const item of manifest.cases) {
   }
 }
 
-const resultPath = join(tmpdir(), `bazilion-security-acceptance-${process.pid}.json`)
-try {
+withSecurityReport((resultPath) => {
   run([
     'vitest',
     'run',
@@ -80,9 +79,7 @@ try {
     if (status !== 'passed') fail(`required case ${item.id} finished with ${status ?? 'no result'}`)
   }
   if (!report.success) fail('Vitest report was not successful')
-} finally {
-  rmSync(resultPath, { force: true })
-}
+})
 
 console.log(`security acceptance passed: ${manifest.cases.length} required adversarial cases`)
 console.log('live deployment evidence remains separate: bazilion gateway preflight')

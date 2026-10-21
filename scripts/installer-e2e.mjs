@@ -1,13 +1,16 @@
 #!/usr/bin/env node
 // BAZ-049 fresh-machine installer E2E.
 //
-// Proves the packed CLI artifact installs, bootstraps a genuine home, serves a
-// first chat turn, and uninstalls cleanly — the operator path the website
-// onboards people into. Runs on the CI OS matrix (ubuntu, macos, windows).
+// Guarded packed-artifact trial: npm install with scripts disabled, then only
+// project-admitted dependency rebuilds, fresh-home/SSR/chat/MCP/coding/reset checks.
+// This is NOT qualification of unrestricted default npm lifecycle execution.
+// Local release evidence uses disposable outer containment; CI targets Ubuntu/macOS.
 //
 //   node scripts/installer-e2e.mjs <path-to-packed-tarball.tgz>
 //
-// Hermetic by design: no API key, no network egress, no docker. The provider
+// Application trial: no real API key/provider or Docker. Dependency cache population
+// is a separate declared step; BAZILION_INSTALLER_OFFLINE=1 forbids install fetching.
+// The provider
 // is deterministic:
 //   - Linux: scripts/fake-coding-provider.mjs (BAZ-041) with
 //     BAZILION_BASH_SANDBOX=off — the turn emits a coding_command executed
@@ -16,20 +19,42 @@
 //     pipeline is Linux-only by product boundary (BAZ-057).
 //
 // The website's install.sh/install.ps1 mostly ensure Node 24 (CI brings its
-// own), so the product surface proven here is: `npm install -g <tarball>` →
+// own). The guarded profile checked here is: npm global install with scripts off →
+// explicit admitted offline rebuilds →
 // `bazilion serve` bootstraps a fresh BAZILION_HOME → CLI configures the
 // provider → agent spawn → one-shot turn → `uninstall --yes` leaves the home
 // reset.
 
-import { spawn } from 'node:child_process'
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import {
+  closeSync,
+  existsSync,
+  fsyncSync,
+  ftruncateSync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+  writeSync,
+} from 'node:fs'
 import { createServer as createHttpServer } from 'node:http'
 import { createServer as createNetServer } from 'node:net'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
+import {
+  finalizeInstallerFixture,
+  INSTALLER_BUILD_ALLOWLIST,
+  InstallerProcesses,
+  readBoundedText,
+  runGuardedUninstall,
+} from './testing/installer-process.mjs'
 
-const IS_WIN = process.platform === 'win32'
+const processes = new InstallerProcesses()
+const spawn = (...args) => processes.spawn(...args)
 const IS_LINUX = process.platform === 'linux'
 const tarball = process.argv[2]
 const failures = []
@@ -48,28 +73,16 @@ function fail(name, detail) {
   console.error(`✗ ${name}${detail ? `: ${detail}` : ''}`)
 }
 
-function run(cmd, args, { env, shell = false } = {}) {
-  return new Promise((resolve) => {
-    // Default: no shell. cmd.exe mangles quoted args and backslash paths (even
-    // `node -e` breaks through it), so everything runs as a real executable or
-    // a JS entry through process.execPath — except the npm install, which
-    // needs npm's own platform shim and opts back in.
-    const child = spawn(cmd, args, {
-      env: {
-        ...process.env,
-        ...daemonEnv(),
-        ...env,
-      },
-      shell,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    })
-    let stdout = ''
-    let stderr = ''
-    child.stdout.on('data', (chunk) => (stdout += chunk))
-    child.stderr.on('data', (chunk) => (stderr += chunk))
-    child.on('error', (error) => resolve({ code: -1, stdout, stderr: `${stderr}${error}` }))
-    child.on('close', (code) => resolve({ code, stdout, stderr }))
-  })
+async function run(cmd, args, { env, cwd, timeoutMs = 120_000 } = {}) {
+  return processes.run(
+    cmd,
+    args,
+    {
+      env: { ...process.env, ...daemonEnv(), ...env },
+      cwd,
+    },
+    timeoutMs,
+  )
 }
 
 function freePort() {
@@ -83,35 +96,33 @@ function freePort() {
   })
 }
 
-// The daemon spawns workers; on Windows terminate the whole tree. taskkill is
-// a real executable, so no shell is involved.
-function killTree(child) {
-  if (IS_WIN) {
-    spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' })
-  } else {
-    child.kill('SIGTERM')
-  }
-}
-
-async function waitForHealthy(url, timeoutMs = 60_000) {
-  const deadline = Date.now() + timeoutMs
-  while (Date.now() < deadline) {
-    try {
-      const response = await fetch(url)
-      if (response.ok) return await response.json()
-    } catch {
-      // not up yet
-    }
-    await new Promise((resolve) => setTimeout(resolve, 500))
-  }
-  throw new Error(`daemon did not become healthy at ${url}`)
+async function waitForHealthy(child, url) {
+  return processes.healthy(child, url)
 }
 
 /** Deterministic OpenAI-compatible provider: one streamed assistant reply, no tools. */
 function startFinalAnswerProvider() {
-  const server = createHttpServer((request, response) => {
+  let mcpRoundTrips = 0
+  const server = createHttpServer(async (request, response) => {
     if (!request.url?.includes('/chat/completions')) {
       response.writeHead(404).end()
+      return
+    }
+    const body = []
+    for await (const part of request) body.push(part)
+    const payload = JSON.parse(Buffer.concat(body).toString())
+    const mcpTrial = JSON.stringify(
+      payload.messages.findLast((m) => m.role === 'user')?.content,
+    )?.includes('packed MCP probe')
+    const toolReply = payload.messages.some(
+      (m) => m.role === 'tool' && JSON.stringify(m.content)?.includes('packed MCP fixture read'),
+    )
+    if (
+      mcpTrial &&
+      (!payload.tools.some((t) => t.function.name === 'mcp__packed__foo') ||
+        JSON.stringify(payload).includes('PACKED_SYNTHETIC_BEARER'))
+    ) {
+      response.writeHead(400).end('packed MCP declaration/credential boundary failed')
       return
     }
     // pi consumes the response as an SSE stream: emit the assistant delta,
@@ -126,10 +137,18 @@ function startFinalAnswerProvider() {
       object: 'chat.completion.chunk',
       choices: [{ index: 0, delta, finish_reason: finishReason }],
     })
-    response.write(
-      `data: ${JSON.stringify(chunk({ role: 'assistant', content: 'e2e final answer reached the transcript' }))}\n\n`,
-    )
-    response.write(`data: ${JSON.stringify(chunk({}, 'stop'))}\n\n`)
+    if (mcpTrial && !toolReply) {
+      response.write(
+        `data: ${JSON.stringify(chunk({ role: 'assistant', tool_calls: [{ index: 0, id: 'packed_mcp', type: 'function', function: { name: 'mcp__packed__foo', arguments: '{}' } }] }))}\n\n`,
+      )
+      response.write(`data: ${JSON.stringify(chunk({}, 'tool_calls'))}\n\n`)
+    } else {
+      if (mcpTrial && toolReply) mcpRoundTrips++
+      response.write(
+        `data: ${JSON.stringify(chunk({ role: 'assistant', content: 'e2e final answer reached the transcript' }))}\n\n`,
+      )
+      response.write(`data: ${JSON.stringify(chunk({}, 'stop'))}\n\n`)
+    }
     response.write('data: [DONE]\n\n')
     response.end()
   })
@@ -139,10 +158,65 @@ function startFinalAnswerProvider() {
         model: 'e2e-stub',
         finalText: 'e2e final answer reached the transcript',
         url: `http://127.0.0.1:${server.address().port}/v1`,
-        close: () => server.close(),
+        close: () =>
+          new Promise((resolve, reject) => {
+            server.closeAllConnections()
+            server.close((error) => (error ? reject(error) : resolve()))
+          }),
+        get mcpRoundTrips() {
+          return mcpRoundTrips
+        },
       })
     })
   })
+}
+
+async function startPackedMcpFixture() {
+  const methods = []
+  const server = createHttpServer(async (req, res) => {
+    if (req.method === 'GET') {
+      res.writeHead(405).end()
+      return
+    }
+    if (req.method === 'DELETE') {
+      res.writeHead(204).end()
+      return
+    }
+    const body = []
+    for await (const part of req) body.push(part)
+    const message = JSON.parse(Buffer.concat(body).toString())
+    methods.push(message.method)
+    if (req.headers.authorization !== 'Bearer PACKED_SYNTHETIC_BEARER') {
+      res.writeHead(401).end()
+      return
+    }
+    if (message.id === undefined) {
+      res.writeHead(202).end()
+      return
+    }
+    const result =
+      message.method === 'initialize'
+        ? {
+            protocolVersion: message.params.protocolVersion,
+            capabilities: { tools: {} },
+            serverInfo: { name: 'packed-fixture', version: '1' },
+          }
+        : message.method === 'tools/list'
+          ? { tools: [{ name: 'foo', inputSchema: { type: 'object', properties: {} } }] }
+          : { content: [{ type: 'text', text: 'packed MCP fixture read' }] }
+    res.writeHead(200, { 'content-type': 'application/json', 'mcp-session-id': 'packed-fixture' })
+    res.end(JSON.stringify({ jsonrpc: '2.0', id: message.id, result }))
+  })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  return {
+    url: `http://127.0.0.1:${server.address().port}/mcp`,
+    methods,
+    close: () =>
+      new Promise((resolve, reject) => {
+        server.closeAllConnections()
+        server.close((error) => (error ? reject(error) : resolve()))
+      }),
+  }
 }
 
 /**
@@ -152,7 +226,8 @@ function startFinalAnswerProvider() {
  * lands in `coding_commands`.
  */
 async function runCodingPhase(bazilionBin) {
-  const codingHome = mkdtempSync(join(tmpdir(), 'bazilion-e2e-coding-'))
+  const codingHome = join(fixtureRoot, 'coding-home')
+  mkdirSync(codingHome)
   const codingProviderPort = await freePort()
   const codingDaemonPort = await freePort()
   const codingProvider = spawn(
@@ -180,7 +255,7 @@ async function runCodingPhase(bazilionBin) {
         stdio: 'ignore',
       },
     )
-    await waitForHealthy(`http://127.0.0.1:${codingDaemonPort}/api/health`)
+    await waitForHealthy(codingDaemon, `http://127.0.0.1:${codingDaemonPort}/api/health`)
     // Phase-2 CLI calls must reach THIS phase's daemon — the shared run()
     // helper defaults to the phase-1 daemon via daemonEnv().
     const codingEnv = {
@@ -215,14 +290,17 @@ async function runCodingPhase(bazilionBin) {
       fail('coding phase: coding-command turn', (turn.stderr + turn.stdout).slice(0, 400))
       return
     }
-    const receipts = new DatabaseSync(join(codingHome, 'bazilion.db'), { readOnly: true })
-      .prepare('SELECT COUNT(*) AS count FROM coding_commands')
-      .get()
-    if (!receipts || receipts.count < 1) fail('coding receipt recorded', JSON.stringify(receipts))
+    const db = new DatabaseSync(join(codingHome, 'bazilion.db'), { readOnly: true })
+    try {
+      const receipts = db.prepare('SELECT COUNT(*) AS count FROM coding_commands').get()
+      if (!receipts || receipts.count < 1) fail('coding receipt recorded', JSON.stringify(receipts))
+    } finally {
+      db.close()
+    }
   } finally {
-    if (codingDaemon && codingDaemon.exitCode === null) killTree(codingDaemon)
-    codingProvider.kill()
-    rmSync(codingHome, { recursive: true, force: true })
+    await processes.stop(codingDaemon, { graceful: true })
+    await processes.stop(codingProvider)
+    // The shared fixture root is removed only after all owned closes and all assertions pass.
   }
 }
 
@@ -245,9 +323,19 @@ function bootstrapToken() {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-const home = mkdtempSync(join(tmpdir(), 'bazilion-e2e-'))
-const daemonLogs = []
+const fixtureRoot = mkdtempSync(join(tmpdir(), 'bazilion-installer-'))
+const home = join(fixtureRoot, 'home')
+mkdirSync(home)
+let npmPrefix = null
+let daemonLogs = ''
+const captureDaemonLog = (bytes) => {
+  daemonLogs = (daemonLogs + bytes.toString()).slice(-64 * 1024)
+}
+const expectedVersion = JSON.parse(
+  readFileSync(join(import.meta.dirname, '../apps/cli/package.json'), 'utf8'),
+).version
 let daemon = null
+let web = null
 let provider = null
 
 try {
@@ -258,16 +346,49 @@ try {
   // Install through npm (its own platform shim works on every runner; the
   // child shell only mangles OUR later node spawns, which go shell-less
   // through process.execPath + the installed dist/cli.js). This is the
-  // operator's actual `npm install -g` step, and it also installs the
+  // guarded variant of `npm install -g` (not unrestricted lifecycle scripts), and it installs the
   // package's production dependencies — without which the bundled cli.js
   // cannot load.
-  const npmPrefix = mkdtempSync(join(tmpdir(), 'bazilion-e2e-npm-'))
-  step(`npm install -g --prefix ${npmPrefix} ${tarball}`)
-  const install = await run('npm', ['install', '-g', '--prefix', npmPrefix, tarball], {
-    env: { PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1' },
-    shell: IS_WIN,
-  })
-  if (install.code !== 0) fail('npm install -g', install.stderr + install.stdout)
+  npmPrefix = join(fixtureRoot, 'npm-prefix')
+  mkdirSync(npmPrefix)
+  const npmCli = [
+    join(dirname(process.execPath), '../lib/node_modules/npm/bin/npm-cli.js'),
+    join(dirname(process.execPath), 'node_modules/npm/bin/npm-cli.js'),
+  ].find((path) => existsSync(path))
+  if (!npmCli)
+    throw new Error('Installed npm CLI entry unavailable; do not fall back to tool-manager shims')
+  const userConfig = join(fixtureRoot, 'npm-user.rc')
+  const globalConfig = join(fixtureRoot, 'npm-global.rc')
+  writeFileSync(userConfig, '', { mode: 0o600 })
+  writeFileSync(globalConfig, '', { mode: 0o600 })
+  const npmConfig = [`--userconfig=${userConfig}`, `--globalconfig=${globalConfig}`]
+  const offline = process.env.BAZILION_INSTALLER_OFFLINE === '1' ? ['--offline'] : []
+  step(`guarded npm install -g --ignore-scripts --prefix ${npmPrefix} ${tarball}`)
+  const install = await run(
+    process.execPath,
+    [
+      npmCli,
+      ...npmConfig,
+      'install',
+      '-g',
+      '--ignore-scripts',
+      '--no-audit',
+      '--no-fund',
+      '--engine-strict',
+      ...offline,
+      '--prefix',
+      npmPrefix,
+      tarball,
+    ],
+    {
+      env: { PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1' },
+      timeoutMs: 600_000,
+    },
+  )
+  if (install.code !== 0) {
+    fail('guarded npm install -g', install.stderr + install.stdout)
+    throw new Error('guarded install failed; retain fixture, do not execute partial install')
+  }
   // npm nests modules under node_modules on Windows and lib/node_modules on
   // unix — probe both and show the layout if absent.
   const cliCandidates = [
@@ -296,23 +417,67 @@ try {
     )
   }
   const bazilionBin = bazilionBinFound
-  if (!bazilionBin) process.exit(1)
+  if (!bazilionBin) throw new Error('installed bin entry not found after diagnostics')
   const moduleRoot = dirname(bazilionBin)
+  const packageRoot = dirname(moduleRoot)
+  const nodeHeaders = resolve(dirname(process.execPath), '..')
+  if (!existsSync(join(nodeHeaders, 'include/node/node.h')))
+    throw new Error('Offline Node headers prerequisite missing; no header download fallback')
+  const policy = readFileSync(join(import.meta.dirname, '../pnpm-workspace.yaml'), 'utf8')
+    .split('allowBuilds:\n')[1]
+    ?.split('minimumReleaseAgeExclude:')[0]
+  const admitted = policy
+    ?.split('\n')
+    .filter((line) => line.trim().endsWith(': true'))
+    .map((line) => line.trim().split(': ')[0].replaceAll("'", ''))
+    .sort()
+  if (JSON.stringify(admitted) !== JSON.stringify([...INSTALLER_BUILD_ALLOWLIST].sort()))
+    throw new Error('Installer build admission differs from project positive allowlist')
+  step('offline rebuild of project-admitted production dependency scripts only')
+  const rebuild = await run(
+    process.execPath,
+    [
+      npmCli,
+      ...npmConfig,
+      'rebuild',
+      ...INSTALLER_BUILD_ALLOWLIST,
+      '--offline',
+      '--no-audit',
+      '--no-fund',
+      '--prefix',
+      packageRoot,
+    ],
+    {
+      env: {
+        PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1',
+        npm_config_nodedir: nodeHeaders,
+        npm_config_jobs: '2',
+      },
+      cwd: packageRoot,
+      timeoutMs: 600_000,
+    },
+  )
+  if (rebuild.code !== 0) {
+    fail('admitted dependency rebuild', rebuild.stderr + rebuild.stdout)
+    throw new Error('admitted rebuild failed')
+  }
 
   const version = await run(process.execPath, [bazilionBin, '--version'])
-  if (version.code !== 0 || !/\d+\.\d+\.\d+/.test(version.stdout)) {
+  if (
+    version.code !== 0 ||
+    version.stdout.match(/\b\d+\.\d+\.\d+(?:-[^\s]+)?\b/)?.[0] !== expectedVersion
+  ) {
     const distListing = existsSync(join(moduleRoot, 'dist'))
       ? readdirSync(join(moduleRoot, 'dist')).slice(0, 12).join(', ')
       : '(no dist)'
     const nodeProbe = await run(process.execPath, ['-e', 'console.log("node-probe-ok")'])
-    const retry = await run(process.execPath, [bazilionBin, '--version'])
     fail(
       'bazilion --version after global install',
       `exit ${version.code}, stdout ${version.stdout.length}B, stderr ${version.stderr.length}B: ${version.stderr + version.stdout}` +
         `\n    dist: ${distListing}` +
-        `\n    node probe: exit ${nodeProbe.code}, out ${nodeProbe.stdout.trim()}` +
-        `\n    retry: exit ${retry.code}, out ${retry.stdout.length}B: ${retry.stdout.trim()}`,
+        `\n    node probe: exit ${nodeProbe.code}, out ${nodeProbe.stdout.trim()}`,
     )
+    throw new Error('Installed version check failed; no CLI replay or daemon launch')
   } else {
     console.log(`    installed bazilion ${version.stdout.trim()}`)
   }
@@ -329,12 +494,16 @@ try {
       BAZILION_HOME: home,
       LMSTUDIO_URL: provider.url,
       BAZILION_BASH_SANDBOX: 'off',
+      BROWSER_ENABLED: 'true',
+      BROWSER_HEADLESS: 'true',
+      BROWSER_ALLOW_PRIVATE_NETWORK: 'false',
+      BROWSER_EXECUTABLE_PATH: undefined,
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
-  daemon.stdout.on('data', (chunk) => daemonLogs.push(chunk))
-  daemon.stderr.on('data', (chunk) => daemonLogs.push(chunk))
-  const posture = await waitForHealthy(`http://127.0.0.1:${daemonPort}/api/health`)
+  daemon.stdout.on('data', captureDaemonLog)
+  daemon.stderr.on('data', captureDaemonLog)
+  const posture = await waitForHealthy(daemon, `http://127.0.0.1:${daemonPort}/api/health`)
 
   if (posture?.auth?.required !== true) {
     fail('auth posture on fresh home', JSON.stringify(posture?.auth))
@@ -355,6 +524,38 @@ try {
     fail('setup completion after provider + curated model', JSON.stringify(afterSetup?.auth))
   }
 
+  step('packed web login renders outside the workspace dependency tree')
+  const webPort = await freePort()
+  web = spawn(process.execPath, [join(moduleRoot, 'web-server.js')], {
+    env: {
+      ...process.env,
+      BAZILION_HOME: home,
+      BAZILION_DAEMON: `http://127.0.0.1:${daemonPort}`,
+      BAZILION_WEB_DIST: join(moduleRoot, 'web'),
+      WEB_HOST: '127.0.0.1',
+      WEB_PORT: String(webPort),
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+  web.stdout.on('data', captureDaemonLog)
+  web.stderr.on('data', captureDaemonLog)
+  let login
+  for (let attempt = 0; attempt < 60; attempt++) {
+    try {
+      login = await fetch(`http://127.0.0.1:${webPort}/login`, {
+        signal: AbortSignal.timeout(2_000),
+      })
+      break // An HTTP failure is a packaging failure, not a startup retry.
+    } catch {
+      if (web.exitCode !== null) break
+      await new Promise((resolve) => setTimeout(resolve, 250))
+    }
+  }
+  const loginHtml = login ? await readBoundedText(login, 256 * 1024) : undefined
+  if (login?.status !== 200 || !loginHtml?.includes('Open Bazilion'))
+    fail('packed web login SSR', `HTTP ${login?.status ?? 'unavailable'}`)
+  await processes.stop(web, { graceful: true })
+
   step('spawn an agent into the auto-created default team')
   const spawned = await run(process.execPath, [
     bazilionBin,
@@ -367,6 +568,208 @@ try {
   ])
   const agentId = spawned.stdout.match(/spawned agent (\S+)/)?.[1]
   if (spawned.code !== 0 || !agentId) fail('agent spawn', spawned.stderr + spawned.stdout)
+
+  if (agentId) {
+    step('packed ordinary search readiness and disablement (no provider probe)')
+    const search = await run(process.execPath, [bazilionBin, 'agent', 'search', 'status', agentId])
+    let searchStatus
+    try {
+      searchStatus = JSON.parse(search.stdout)
+    } catch {
+      fail('packed search status is JSON', search.stderr + search.stdout)
+    }
+    if (
+      search.code !== 0 ||
+      !['configured', 'unavailable', 'disabled'].includes(searchStatus?.state)
+    )
+      fail('packed search readiness', search.stderr + search.stdout)
+    const disableSearch = await run(process.execPath, [
+      bazilionBin,
+      'config',
+      'set',
+      'BAZILION_WEB_SEARCH',
+      'off',
+    ])
+    const disabledSearch = await run(process.execPath, [
+      bazilionBin,
+      'agent',
+      'search',
+      'status',
+      agentId,
+    ])
+    if (
+      disableSearch.code !== 0 ||
+      disabledSearch.code !== 0 ||
+      !disabledSearch.stdout.includes('"disabled"')
+    )
+      fail(
+        'packed search disablement',
+        disableSearch.stderr + disabledSearch.stderr + disabledSearch.stdout,
+      )
+
+    step('packed browser status diagnoses missing and installed executable selections')
+    const missingPath = join(home, 'definitely-missing-browser-executable')
+    const missingSet = await run(process.execPath, [
+      bazilionBin,
+      'config',
+      'set',
+      'BROWSER_EXECUTABLE_PATH',
+      missingPath,
+    ])
+    if (missingSet.code !== 0)
+      fail('set missing browser path', missingSet.stderr + missingSet.stdout)
+    const missing = await run(process.execPath, [
+      bazilionBin,
+      'agent',
+      'browser',
+      'status',
+      agentId,
+    ])
+    let missingStatus
+    try {
+      missingStatus = JSON.parse(missing.stdout)
+    } catch {
+      fail('packed missing-browser status is JSON', missing.stderr + missing.stdout)
+    }
+    if (
+      missing.code !== 0 ||
+      missingStatus?.availability !== 'unavailable' ||
+      missingStatus?.reasonCode !== 'browser_invalid_executable' ||
+      !/fix or clear|correct or clear/i.test(missingStatus?.remedy ?? '')
+    ) {
+      fail('packed invalid-browser diagnostic', missing.stderr + missing.stdout)
+    }
+    const cleared = await run(process.execPath, [
+      bazilionBin,
+      'config',
+      'rm',
+      'BROWSER_EXECUTABLE_PATH',
+    ])
+    if (cleared.code !== 0) fail('clear missing browser path', cleared.stderr + cleared.stdout)
+
+    const requestedBrowser = process.env.BAZILION_TEST_BROWSER_EXECUTABLE
+    if (requestedBrowser) {
+      if (!existsSync(requestedBrowser)) {
+        fail('requested installed browser exists', requestedBrowser)
+      } else {
+        const selected = await run(process.execPath, [
+          bazilionBin,
+          'config',
+          'set',
+          'BROWSER_EXECUTABLE_PATH',
+          requestedBrowser,
+        ])
+        if (selected.code !== 0)
+          fail('set installed browser path', selected.stderr + selected.stdout)
+      }
+    }
+    const available = await run(process.execPath, [
+      bazilionBin,
+      'agent',
+      'browser',
+      'status',
+      agentId,
+    ])
+    let availableStatus
+    try {
+      availableStatus = JSON.parse(available.stdout)
+    } catch {
+      fail('packed browser availability status is JSON', available.stderr + available.stdout)
+    }
+    if (available.code !== 0) {
+      fail('packed browser availability status', available.stderr + available.stdout)
+    } else if (availableStatus?.availability === 'configured') {
+      if (
+        !availableStatus.selectedBrowser?.name ||
+        !['headed', 'headless'].includes(availableStatus.selectedBrowser?.mode) ||
+        !['configured', 'installed', 'bundled'].includes(availableStatus.selectedBrowser?.source)
+      ) {
+        fail('packed installed-browser diagnostic has selection facts', available.stdout)
+      }
+      if (requestedBrowser && availableStatus.selectedBrowser?.source !== 'configured') {
+        fail('packed explicit installed-browser selection', available.stdout)
+      }
+      if (available.stdout.includes(requestedBrowser ?? '\0')) {
+        fail('packed browser status does not disclose executable path', available.stdout)
+      }
+    } else if (
+      availableStatus?.availability !== 'unavailable' ||
+      availableStatus?.reasonCode !== 'browser_not_found' ||
+      !/install a supported browser/i.test(availableStatus?.remedy ?? '')
+    ) {
+      fail('packed missing-browser discovery diagnostic', available.stdout)
+    }
+    if (!requestedBrowser) {
+      console.log(
+        availableStatus?.availability === 'configured'
+          ? `    detected ${availableStatus.selectedBrowser.name} (${availableStatus.selectedBrowser.source}); no launch was attempted`
+          : '    no supported browser installed; actionable browser_not_found diagnostic confirmed',
+      )
+    }
+  }
+
+  step('packed Pi MCP: retired SSE, encrypted HTTP credential, discovery and worker round-trip')
+  const packedMcp = await startPackedMcpFixture()
+  try {
+    const retired = await run(process.execPath, [
+      bazilionBin,
+      'mcp',
+      'add',
+      'legacy',
+      '--transport',
+      'sse',
+      '--url',
+      packedMcp.url,
+    ])
+    if (retired.code === 0 || !retired.stderr.includes('legacy SSE is unsupported'))
+      fail('packed SSE refusal', retired.stderr + retired.stdout)
+    const added = await run(process.execPath, [
+      bazilionBin,
+      'mcp',
+      'add',
+      'packed',
+      '--transport',
+      'http',
+      '--url',
+      packedMcp.url,
+      '--token',
+      'PACKED_SYNTHETIC_BEARER',
+    ])
+    const serverId = added.stdout.trim().split(/\s+/)[0]
+    if (added.code !== 0 || !serverId) fail('packed MCP add', added.stderr + added.stdout)
+    else {
+      const tested = await run(process.execPath, [bazilionBin, 'mcp', 'test', serverId])
+      if (tested.code !== 0 || !tested.stdout.includes('foo'))
+        fail('packed MCP discovery', tested.stderr + tested.stdout)
+      const shown = await run(process.execPath, [bazilionBin, 'mcp', 'show', serverId])
+      if (shown.stdout.includes('PACKED_SYNTHETIC_BEARER'))
+        fail('packed MCP token disclosure', shown.stdout)
+      if (IS_LINUX && agentId) {
+        const mcpTurn = await run(process.execPath, [
+          bazilionBin,
+          'agent',
+          'chat',
+          agentId,
+          '--message',
+          'packed MCP probe: use mcp__packed__foo once',
+        ])
+        if (
+          mcpTurn.code !== 0 ||
+          !mcpTurn.stdout.includes(provider.finalText) ||
+          provider.mcpRoundTrips !== 1 ||
+          packedMcp.methods.filter((m) => m === 'tools/call').length !== 1
+        )
+          fail(
+            'packed MCP worker round-trip',
+            `model receipts=${provider.mcpRoundTrips}, tool POSTs=${packedMcp.methods.filter((m) => m === 'tools/call').length}, exit=${mcpTurn.code}: ${(mcpTurn.stderr + mcpTurn.stdout).slice(-1000)}`,
+          )
+      }
+      const removed = await run(process.execPath, [bazilionBin, 'mcp', 'rm', serverId])
+      if (removed.code !== 0) fail('packed MCP delete', removed.stderr + removed.stdout)
+    }
+  } finally {
+    await packedMcp.close()
+  }
 
   step('one-shot chat turn through the deterministic provider')
   const turn = await run(
@@ -403,29 +806,82 @@ try {
   }
 
   step('stop the daemon and uninstall the home')
-  killTree(daemon)
-  await new Promise((resolve) => setTimeout(resolve, 1_000))
-  const uninstall = await run(process.execPath, [bazilionBin, 'uninstall', '--yes'], {
-    env: { BAZILION_HOME: home },
+  await processes.stop(daemon, { graceful: true })
+  await runGuardedUninstall(processes, failures, async () => {
+    const uninstall = await run(process.execPath, [bazilionBin, 'uninstall', '--yes'], {
+      env: { BAZILION_HOME: home },
+    })
+    if (uninstall.code !== 0) fail('uninstall --yes', uninstall.stderr + uninstall.stdout)
+    if (existsSync(join(home, 'bazilion.db')) || existsSync(join(home, 'auth.json'))) {
+      fail('home reset removes db + auth.json', `left: ${readdirSync(home).join(', ')}`)
+    }
   })
-  if (uninstall.code !== 0) fail('uninstall --yes', uninstall.stderr + uninstall.stdout)
-  if (existsSync(join(home, 'bazilion.db')) || existsSync(join(home, 'auth.json'))) {
-    fail('home reset removes db + auth.json', `left: ${readdirSync(home).join(', ')}`)
-  }
 
-  if (failures.length === 0) {
-    console.log(`\ninstaller E2E passed on ${process.platform}`)
-  } else {
-    console.error(`\ninstaller E2E FAILED on ${process.platform}: ${failures.join(', ')}`)
-    console.error(`--- daemon output tail ---\n${daemonLogs.join('').slice(-2_000)}`)
-    process.exit(1)
-  }
+  if (failures.length) process.exitCode = 1
 } catch (error) {
   console.error(`installer E2E FAILED on ${process.platform}: ${error?.stack ?? error}`)
-  console.error(`--- daemon output tail ---\n${daemonLogs.join('').slice(-2_000)}`)
-  process.exit(1)
+  console.error(`--- daemon output tail ---\n${daemonLogs.slice(-2_000)}`)
+  process.exitCode = 1
 } finally {
-  if (daemon && daemon.exitCode === null) killTree(daemon)
-  provider?.close()
-  rmSync(home, { recursive: true, force: true })
+  const closes = await Promise.allSettled([processes.closeAll(), provider?.close()])
+  const cleanupErrors = closes
+    .filter((item) => item.status === 'rejected')
+    .map((item) => String(item.reason))
+  if (cleanupErrors.length) {
+    process.exitCode = 1
+    console.error('installer cleanup unconfirmed/abnormal; fixture retained', cleanupErrors)
+  }
+  const passed = !process.exitCode && failures.length === 0 && cleanupErrors.length === 0
+  const report = {
+    profile:
+      'npm scripts disabled, explicit project-positive rebuilds only; not unrestricted npm install',
+    artifact: {
+      path: tarball,
+      sha256: createHash('sha256').update(readFileSync(tarball)).digest('hex'),
+      expectedVersion,
+    },
+    platform: process.platform,
+    node: process.version,
+    fixtureRoot,
+    passed,
+    failures,
+    cleanupErrors,
+    ownershipLimit:
+      'owned child/pipe closes; not arbitrary-descendant or abnormal-host proof; outer containment required',
+    processes: processes.facts(),
+    daemonTail: daemonLogs,
+  }
+  let evidenceFd
+  try {
+    await finalizeInstallerFixture(report, {
+      writeEvidence: (value) => {
+        evidenceFd ??= openSync(
+          process.env.BAZILION_INSTALLER_EVIDENCE ?? join(fixtureRoot, 'evidence.json'),
+          'wx',
+          0o600,
+        )
+        const bytes = Buffer.from(`${JSON.stringify(value, null, 2)}\n`)
+        let offset = 0
+        while (offset < bytes.length) {
+          const written = writeSync(evidenceFd, bytes, offset, bytes.length - offset, offset)
+          if (written <= 0) throw new Error('installer evidence write made no progress')
+          offset += written
+        }
+        ftruncateSync(evidenceFd, bytes.length)
+        fsyncSync(evidenceFd)
+      },
+      removeFixture: () => rmSync(fixtureRoot, { recursive: true }),
+    })
+  } finally {
+    if (evidenceFd !== undefined) closeSync(evidenceFd)
+  }
+  if (report.passed) {
+    console.log(`\nguarded installer E2E passed on ${process.platform}; owned closes settled`)
+  } else {
+    process.exitCode = 1
+    console.error(
+      `installer fixture removal=${report.fixtureRemoval.status}: ${fixtureRoot}; failures=${failures.join(', ')}`,
+      report.cleanupErrors,
+    )
+  }
 }

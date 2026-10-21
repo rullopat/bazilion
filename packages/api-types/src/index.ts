@@ -7,6 +7,18 @@ export type {
   RepositoryInstruction,
 } from './repository-context.ts'
 
+export type {
+  NativeSearchAnswer,
+  NativeSearchProvider,
+  OrdinarySearchStatus,
+  SearchMode,
+  SearchResults,
+  SearchRoute,
+  WebFetchEvidence,
+  WebSearchArgs,
+  WebSearchOutput,
+} from './web-search.ts'
+
 import type { ConversationSelection } from './conversations.ts'
 import type { Timestamp } from './entities.ts'
 
@@ -54,6 +66,17 @@ export type {
   AttentionState,
   AttentionSummary,
 } from './attention.ts'
+export type {
+  BrowserAvailability,
+  BrowserExecutableSource,
+  BrowserLifecycleState,
+  BrowserMode,
+  BrowserReasonCode,
+  BrowserSelection,
+  BrowserSnapshotScope,
+  BrowserStatus,
+} from './browser.ts'
+export { BROWSER_SNAPSHOT_SCOPES } from './browser.ts'
 export type {
   Agent,
   AgentIdentityFile,
@@ -147,6 +170,10 @@ export type { MemoryEntry, MemoryHit } from './memory.ts'
 
 export type {
   AgentResult,
+  PrivateImageCapture,
+  PrivateImageCaptureListResponse,
+  PrivateImageDiscardResponse,
+  PrivateImageRecoveryResponse,
   ResultListResponse,
   ResultPublicationInput,
   ResultReference,
@@ -1289,3 +1316,9 @@ export type {
   VerificationSummary,
 } from './verification.ts'
 export { VERIFICATION_OUTCOME_LIMITS } from './verification.ts'
+export type {
+  WorkspaceRecoveryBlocker,
+  WorkspaceRecoveryOutcome,
+  WorkspaceRecoveryReport,
+  WorkspaceRecoveryResponse,
+} from './workspace-recovery.ts'

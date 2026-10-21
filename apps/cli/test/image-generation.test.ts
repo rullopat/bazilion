@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -187,6 +187,29 @@ test('real one-shot Agent turns generate, rework and deliver saved images throug
     }
   }
   expect(errors).toEqual([])
+  const sessions = join(server.home, 'agents', agentId, 'sessions')
+  const imageResults = readdirSync(sessions)
+    .filter((name) => name.endsWith('.jsonl'))
+    .flatMap((name) =>
+      readFileSync(join(sessions, name), 'utf8')
+        .trim()
+        .split('\n')
+        .map((line) => JSON.parse(line)),
+    )
+    .filter(
+      (entry) =>
+        entry.type === 'message' &&
+        entry.message?.role === 'toolResult' &&
+        entry.message.toolName === 'image_generate',
+    )
+  expect(imageResults).toHaveLength(6)
+  for (const entry of imageResults) {
+    const codex = ['image-call-4', 'image-call-6'].includes(entry.message.toolCallId)
+    expect(entry.message.details.imageEvidence).toEqual(
+      codex ? { outputSource: 'completed_stream' } : undefined,
+    )
+    expect(JSON.stringify(entry.message)).not.toContain('iVBORw0KGgo')
+  }
   const capturedCalls = readFileSync(calls, 'utf8')
     .trim()
     .split('\n')

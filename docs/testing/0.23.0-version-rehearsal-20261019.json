@@ -1,0 +1,222 @@
+{
+  "scope": "Scratch-only version-generation/idempotence rehearsal with unchanged production Changesets config and offline isolation; not actual repository versioning or install/pack qualification",
+  "toolVersion": "2.31.0",
+  "runtime": "Node 26.12.0; existing installed tooling; project pnpm pin12.14.0",
+  "copiedMetadataInputs": {
+    ".changeset/README.md": "495bd4805f8362853bce99689c1cd75db8c475dfa38930619d2e197d7554db27",
+    ".changeset/config.json": "31a9739341b02ea8c9831940ed892c06ed2378f55c2c86e04624c7dbc6c543fd",
+    ".changeset/quiet-research-recovery.md": "613fc5cb3f7bdf493d09a8ae8fd7cd8ed86bfc0442da056f95780a46ecc19fd7",
+    "apps/cli/CHANGELOG.md": "d6a42acf27a6b56dd90088b56736a1da9c87aebf2cd035aa34432cfa61388d66",
+    "apps/cli/package.json": "2472e2277d3cc86d7835e5d644e772680767ca9caf4d4c44be44725e87f0c865",
+    "apps/daemon/package.json": "ba11329bd07662c6f3aecb2a650176cf83d54047a722a4d3788647b10db4c8cc",
+    "apps/web/package.json": "351ee4d6b4d060c286317096ab98e5f4bfad2d5488c39ffe95fc038918f7ec7d",
+    "package.json": "158b3dd43b0947cd3787f93aa59e5b250253b4a295b5700cae917f6ca5845e0b",
+    "packages/api-types/CHANGELOG.md": "3b3e856e86587a83b505a3c024657705489eb4393a27db8a84e7801eb98992a9",
+    "packages/api-types/package.json": "3ffeae103d835184c57900c000ae6443661eab941a5700dc563f343904320ed8",
+    "packages/client/CHANGELOG.md": "d692bc86a797eccfb1b26de41d678579d50f6e1aac709c04c735c22833974297",
+    "packages/client/package.json": "a17529f7b80c55c7889ee045951039eacacaf103916a2bddb82604a40e21a217",
+    "pnpm-lock.yaml": "1df2acc146febd43f7c082c8bebd67bf208659d8d22611565fde964a2359798a",
+    "pnpm-workspace.yaml": "6bb9e90e8bbd3c9890c1868c0aba6c949828fd2b870098cb83f076c91c6b4fca"
+  },
+  "scratchAfterFirst": {
+    ".changeset/README.md": "495bd4805f8362853bce99689c1cd75db8c475dfa38930619d2e197d7554db27",
+    ".changeset/config.json": "31a9739341b02ea8c9831940ed892c06ed2378f55c2c86e04624c7dbc6c543fd",
+    "apps/cli/CHANGELOG.md": "79091814a96947c3554e9498aacb3a076ad2a252f5c1f512b71dfa95bb678aec",
+    "apps/cli/package.json": "369d49d04fa17fa57aa3060a315dae789f3928158455920bceaf9f37ce9217e5",
+    "apps/daemon/package.json": "ba11329bd07662c6f3aecb2a650176cf83d54047a722a4d3788647b10db4c8cc",
+    "apps/web/package.json": "351ee4d6b4d060c286317096ab98e5f4bfad2d5488c39ffe95fc038918f7ec7d",
+    "package.json": "158b3dd43b0947cd3787f93aa59e5b250253b4a295b5700cae917f6ca5845e0b",
+    "packages/api-types/CHANGELOG.md": "272f1f8d998974b76bbd4c0fbfd6afdd6c08c58e04a7913c56409471c099fd69",
+    "packages/api-types/package.json": "84e3d36b74a0156e27f94220dc0b53e08c571c55f8c0461b0ce86b367d7580c6",
+    "packages/client/CHANGELOG.md": "999589165d645711e2acdd7298af1cc7ea5f95cfbb3ee041ecbb0fb6ba73ac5e",
+    "packages/client/package.json": "abc025291fb18b97cc1201568039d7a533f2c0bf79df803b1aaa4d5aba8266b0",
+    "pnpm-lock.yaml": "1df2acc146febd43f7c082c8bebd67bf208659d8d22611565fde964a2359798a",
+    "pnpm-workspace.yaml": "6bb9e90e8bbd3c9890c1868c0aba6c949828fd2b870098cb83f076c91c6b4fca"
+  },
+  "scratchAfterSecondIdentical": true,
+  "realInputsUnchanged": true,
+  "generatedPublicManifests": {
+    "apps/cli/package.json": {
+      "name": "bazilion",
+      "version": "0.23.0",
+      "description": "Multi-agent runtime CLI \u2014 spawn LLM agents, manage profiles/teams/skills, and run the local daemon.",
+      "license": "MIT",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/rullopat/bazilion.git",
+        "directory": "apps/cli"
+      },
+      "homepage": "https://bazilion.com",
+      "bugs": {
+        "url": "https://github.com/rullopat/bazilion/issues"
+      },
+      "keywords": [
+        "agent",
+        "agents",
+        "ai",
+        "cli",
+        "daemon",
+        "llm",
+        "local-first",
+        "multi-agent",
+        "openclaw",
+        "skills"
+      ],
+      "type": "module",
+      "bin": {
+        "bazilion": "./dist/cli.js"
+      },
+      "files": ["dist", "README.md", "LICENSE"],
+      "scripts": {
+        "build": "pnpm --filter @bazilion/web build && tsup"
+      },
+      "engines": {
+        "node": ">=24.0.0"
+      },
+      "publishConfig": {
+        "access": "public"
+      },
+      "dependencies": {
+        "@earendil-works/pi-agent-core": "1.0.0",
+        "@earendil-works/pi-ai": "1.0.0",
+        "@earendil-works/pi-coding-agent": "1.0.0",
+        "@earendil-works/pi-mcp": "1.0.0",
+        "@hono/node-server": "^2.0.6",
+        "@mozilla/readability": "^0.6.0",
+        "@playwright/browser-chromium": "^1.61.0",
+        "@tanstack/react-router": "1.170.18",
+        "@tobilu/qmd": "^2.5.3",
+        "@xyflow/react": "^12.11.2",
+        "adm-zip": "^0.5.17",
+        "age-encryption": "0.3.0",
+        "citty": "^0.2.2",
+        "class-variance-authority": "^0.7.1",
+        "clsx": "^2.1.1",
+        "dompurify": "^3.4.11",
+        "grammy": "^1.44.0",
+        "hono": "^4.12.26",
+        "linkedom": "^0.18.12",
+        "lucide-react": "^1.21.0",
+        "marked": "^18.0.5",
+        "playwright": "^1.61.0",
+        "qrcode-terminal": "^0.12.0",
+        "radix-ui": "^1.6.0",
+        "react": "^19.2.7",
+        "react-dom": "^19.2.7",
+        "tailwind-merge": "^3.6.0",
+        "tar": "^7.5.16",
+        "typebox": "^1.3.0",
+        "undici": "^8.5.0",
+        "yaml": "^2.9.0"
+      },
+      "devDependencies": {
+        "@bazilion/api-types": "workspace:*",
+        "@bazilion/client": "workspace:*",
+        "@types/adm-zip": "^0.5.8",
+        "@types/qrcode-terminal": "^0.12.2"
+      }
+    },
+    "packages/client/package.json": {
+      "name": "@bazilion/client",
+      "version": "0.23.0",
+      "description": "HTTP client for the Bazilion daemon. Zero node-only deps \u2014 works in browsers, React Native, and Node.",
+      "license": "MIT",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/rullopat/bazilion.git",
+        "directory": "packages/client"
+      },
+      "homepage": "https://github.com/rullopat/bazilion#readme",
+      "bugs": {
+        "url": "https://github.com/rullopat/bazilion/issues"
+      },
+      "type": "module",
+      "main": "./src/index.ts",
+      "types": "./src/index.ts",
+      "exports": {
+        ".": "./src/index.ts"
+      },
+      "files": ["dist"],
+      "scripts": {
+        "build": "tsup"
+      },
+      "engines": {
+        "node": ">=24.0.0"
+      },
+      "dependencies": {
+        "@bazilion/api-types": "workspace:^"
+      },
+      "publishConfig": {
+        "access": "public",
+        "main": "./dist/index.js",
+        "types": "./dist/index.d.ts",
+        "exports": {
+          ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.js"
+          }
+        }
+      }
+    },
+    "packages/api-types/package.json": {
+      "name": "@bazilion/api-types",
+      "version": "0.23.0",
+      "description": "Hermetic wire-shape types for the Bazilion HTTP/IPC surface (zero deps).",
+      "license": "MIT",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/rullopat/bazilion.git",
+        "directory": "packages/api-types"
+      },
+      "homepage": "https://github.com/rullopat/bazilion#readme",
+      "bugs": {
+        "url": "https://github.com/rullopat/bazilion/issues"
+      },
+      "type": "module",
+      "main": "./src/index.ts",
+      "types": "./src/index.ts",
+      "exports": {
+        ".": "./src/index.ts"
+      },
+      "files": ["dist"],
+      "scripts": {
+        "build": "tsup"
+      },
+      "engines": {
+        "node": ">=24.0.0"
+      },
+      "publishConfig": {
+        "access": "public",
+        "main": "./dist/index.js",
+        "types": "./dist/index.d.ts",
+        "exports": {
+          ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.js"
+          }
+        }
+      }
+    }
+  },
+  "generatedChangelogSections": {
+    "apps/cli/CHANGELOG.md": "## 0.23.0\n\n### Minor Changes\n\n- Add source-grounded native OpenAI/ChatGPT research with guarded page reading and explicit provenance,\n  while retaining managed browsing as an optional separate capability. API-key native search remains\n  experimental/live-unqualified; configuration readiness is not entitlement or successful execution.\n\n  Add operator CLI/API/web workspace blocker reporting and limited recorded-cleanup attempts. Unknown\n  ownership remains blocked; this does not guarantee recovery of abnormal host commands. Preserve\n  occurrence-specific communication approvals, restricted scheduled/inbox posture and policy-import\n  postures. The accepted scheduler/process slice does not qualify composed content-Team journeys.\n\n  Harden image provenance and completed-stream capture/rework handling, browser profile/backup lifecycle,\n  worker output draining and packaged web runtime dependencies. Required ChatGPT-only image samples\n  are qualified under the recorded limited scope; other paid image routes remain live-unqualified.\n\n  Upgrade embedded Pi and daemon-owned standalone MCP to 1.0.0, retire legacy MCP SSE, and align the\n  repository package manager with mise-selected pnpm 12.14.0. Streamable HTTP and stdio remain supported;\n  no automatic MCP OAuth, ambient discovery or uncertain tool-call replay is added.\n\n  **Compatibility:** this alpha candidate uses the canonical clean-install schema. Prior SSE-capable\n  homes, including 0.22.0, require fail-closed refusal and operator-controlled reset/rebootstrap, not an\n  in-place migration or compatibility importer. Preserve the entire old home with paired DB/auth and\n  any external Team work before an explicitly authorized reset; use the matching old binary/schema\n  for old backups. No prior-home upgrade/refusal matrix result or final release approval is implied.\n",
+    "packages/client/CHANGELOG.md": "## 0.23.0\n\n### Minor Changes\n\n- Add source-grounded native OpenAI/ChatGPT research with guarded page reading and explicit provenance,\n  while retaining managed browsing as an optional separate capability. API-key native search remains\n  experimental/live-unqualified; configuration readiness is not entitlement or successful execution.\n\n  Add operator CLI/API/web workspace blocker reporting and limited recorded-cleanup attempts. Unknown\n  ownership remains blocked; this does not guarantee recovery of abnormal host commands. Preserve\n  occurrence-specific communication approvals, restricted scheduled/inbox posture and policy-import\n  postures. The accepted scheduler/process slice does not qualify composed content-Team journeys.\n\n  Harden image provenance and completed-stream capture/rework handling, browser profile/backup lifecycle,\n  worker output draining and packaged web runtime dependencies. Required ChatGPT-only image samples\n  are qualified under the recorded limited scope; other paid image routes remain live-unqualified.\n\n  Upgrade embedded Pi and daemon-owned standalone MCP to 1.0.0, retire legacy MCP SSE, and align the\n  repository package manager with mise-selected pnpm 12.14.0. Streamable HTTP and stdio remain supported;\n  no automatic MCP OAuth, ambient discovery or uncertain tool-call replay is added.\n\n  **Compatibility:** this alpha candidate uses the canonical clean-install schema. Prior SSE-capable\n  homes, including 0.22.0, require fail-closed refusal and operator-controlled reset/rebootstrap, not an\n  in-place migration or compatibility importer. Preserve the entire old home with paired DB/auth and\n  any external Team work before an explicitly authorized reset; use the matching old binary/schema\n  for old backups. No prior-home upgrade/refusal matrix result or final release approval is implied.\n\n### Patch Changes\n\n- Updated dependencies []:\n  - @bazilion/api-types@0.23.0\n",
+    "packages/api-types/CHANGELOG.md": "## 0.23.0\n\n### Minor Changes\n\n- Add source-grounded native OpenAI/ChatGPT research with guarded page reading and explicit provenance,\n  while retaining managed browsing as an optional separate capability. API-key native search remains\n  experimental/live-unqualified; configuration readiness is not entitlement or successful execution.\n\n  Add operator CLI/API/web workspace blocker reporting and limited recorded-cleanup attempts. Unknown\n  ownership remains blocked; this does not guarantee recovery of abnormal host commands. Preserve\n  occurrence-specific communication approvals, restricted scheduled/inbox posture and policy-import\n  postures. The accepted scheduler/process slice does not qualify composed content-Team journeys.\n\n  Harden image provenance and completed-stream capture/rework handling, browser profile/backup lifecycle,\n  worker output draining and packaged web runtime dependencies. Required ChatGPT-only image samples\n  are qualified under the recorded limited scope; other paid image routes remain live-unqualified.\n\n  Upgrade embedded Pi and daemon-owned standalone MCP to 1.0.0, retire legacy MCP SSE, and align the\n  repository package manager with mise-selected pnpm 12.14.0. Streamable HTTP and stdio remain supported;\n  no automatic MCP OAuth, ambient discovery or uncertain tool-call replay is added.\n\n  **Compatibility:** this alpha candidate uses the canonical clean-install schema. Prior SSE-capable\n  homes, including 0.22.0, require fail-closed refusal and operator-controlled reset/rebootstrap, not an\n  in-place migration or compatibility importer. Preserve the entire old home with paired DB/auth and\n  any external Team work before an explicitly authorized reset; use the matching old binary/schema\n  for old backups. No prior-home upgrade/refusal matrix result or final release approval is implied.\n"
+  },
+  "scratchConsumedChangeset": ".changeset/quiet-research-recovery.md",
+  "realChangesetStillPending": true,
+  "workspaceLockUnchanged": true,
+  "changelogPluginConfigUnmodified": true,
+  "githubCommitLinksQualified": false,
+  "limit": "The changeset remains uncommitted; generated notes have no commit/PR links and client dependency note has empty link brackets. Committed-source GitHub metadata generation and frozen-install/package conversion remain unqualified.",
+  "commandsAndOutput": {
+    "isolation": "#!/bin/bash\nset -eu\nr=/var/tmp/baz023-version-rehearsal-d9s35I\nexec env -i PATH=/home/patri/.local/share/mise/installs/node/26.12.0/bin:/usr/bin HOME=/nonexistent LANG=C.UTF-8 bwrap --unshare-user --unshare-net --unshare-ipc --unshare-uts --unshare-pid --uid 1000 --gid 1000 --die-with-parent --new-session --tmpfs / --tmpfs /tmp --ro-bind /usr /usr --symlink usr/bin /bin --symlink usr/lib /lib --symlink usr/lib /lib64 --dir /etc --ro-bind /etc/ld.so.cache /etc/ld.so.cache --ro-bind /etc/passwd /etc/passwd --ro-bind /etc/group /etc/group --ro-bind /home/patri/.local/share/mise/installs/node/26.12.0 /home/patri/.local/share/mise/installs/node/26.12.0 --ro-bind /home/patri/coding/bazilion /home/patri/coding/bazilion --bind \"$r\" /evidence --bind \"$r/home\" /home/sandbox --bind \"$r/vite\" /home/patri/coding/bazilion/node_modules/.vite --bind \"$r/vite-temp\" /home/patri/coding/bazilion/node_modules/.vite-temp --proc /proc --dev /dev --chdir /evidence/work --setenv HOME /home/sandbox --setenv TMPDIR /evidence/tmp --setenv XDG_CACHE_HOME /evidence/cache --setenv TZ UTC --setenv CI 1 --setenv BAZILION_HOME /evidence/base-home --setenv BAZILION_SCHEDULER off --setenv BROWSER_ENABLED false --setenv BAZILION_IMAGE_GENERATION off --setenv PI_OFFLINE 1 --setenv ESBUILD_WORKER_THREADS 0 --setenv DO_NOT_TRACK 1 -- /bin/bash /evidence/check.sh \"$@\"\n",
+    "check": "#!/bin/bash\nset -eu\nexport GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_OPTIONAL_LOCKS=0\nnode /home/patri/coding/bazilion/node_modules/@changesets/cli/bin.js version\n",
+    "first": "\ud83e\udd8b  All files have been updated. Review them and commit at your leisure\n",
+    "second": "\ud83e\udd8b  \u001b[33mwarn\u001b[39m No unreleased changesets found, exiting.\n",
+    "status": "first-version=0\nsecond-version=0\n"
+  },
+  "realPublicVersionsChanged": false,
+  "matrixExecuted": false,
+  "publicationAuthorized": false
+}

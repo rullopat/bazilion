@@ -294,7 +294,11 @@ export async function createBazilionPiRuntime(
     )
   }
 
-  const runtime = await ModelRuntime.create({ credentials, modelsPath: null })
+  const runtime = await ModelRuntime.create({
+    credentials,
+    modelsPath: null,
+    allowModelNetwork: false,
+  })
   const local = LOCAL_PROVIDERS[providerName]
   const baseUrl = options.baseUrl ?? providerBaseUrl(providerName, options.env)
 
@@ -338,7 +342,7 @@ export async function createOpenAICodexPiRuntime(
     refresh: '',
     expires: Number.MAX_SAFE_INTEGER,
   }))
-  return ModelRuntime.create({ credentials, modelsPath: null })
+  return ModelRuntime.create({ credentials, modelsPath: null, allowModelNetwork: false })
 }
 
 /** Build a protected runtime only from the daemon's explicit wire projection. */

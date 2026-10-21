@@ -1,8 +1,8 @@
 // /api/mcp-servers — CRUD + connection test for MCP servers.
 //
 // Servers are configured globally (v0.4.0): every enabled server's tools are
-// injected into every agent turn, namespaced `mcp__<name>__<tool>`. The bearer
-// token for http/sse transports is write-only — it's stored in the encrypted
+// admitted only to ordinary interactive turns, namespaced `mcp__<name>__<tool>`. The bearer
+// token for HTTP transports is write-only — it's stored in the encrypted
 // secrets table under `MCP_TOKEN_<id>` and never returned. Any mutation closes
 // the live pooled connection so the next turn reconnects with fresh config.
 
@@ -15,7 +15,7 @@ import { mcpTokenSecretKey } from '../lib/mcp/resolve.ts'
 
 export const mcpRouter = new Hono()
 
-const TRANSPORTS = new Set<McpTransport>(['stdio', 'http', 'sse'])
+const TRANSPORTS = new Set<McpTransport>(['stdio', 'http'])
 
 function validate(input: McpServerInput): string | null {
   // Restrict to [a-zA-Z0-9_] so the name IS its tool namespace. Allowing `-`
@@ -24,11 +24,19 @@ function validate(input: McpServerInput): string | null {
   if (!input.name || !/^[a-zA-Z0-9_]+$/.test(input.name)) {
     return 'name is required and must match [a-zA-Z0-9_]+ (letters, digits, underscore)'
   }
-  if (!TRANSPORTS.has(input.transport)) return 'transport must be stdio, http, or sse'
+  if (!TRANSPORTS.has(input.transport))
+    return 'transport must be stdio or http (Streamable HTTP); legacy SSE is unsupported'
   if (input.transport === 'stdio') {
     if (!input.command) return 'stdio transport requires a command'
-  } else if (!input.url) {
-    return `${input.transport} transport requires a url`
+  } else {
+    if (!input.url) return 'http transport requires a url'
+    try {
+      const url = new URL(input.url)
+      if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.hash)
+        return 'http requires an HTTP(S) endpoint without embedded credentials or fragment'
+    } catch {
+      return 'http requires a valid endpoint URL'
+    }
   }
   return null
 }

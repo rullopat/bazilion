@@ -3,6 +3,12 @@ import { Hono } from 'hono'
 import { resolveAgent } from '../core/agent/resolve.ts'
 import * as results from '../core/repos/results.ts'
 import { getCtx } from '../lib/ctx.ts'
+import {
+  discardPrivateImage,
+  listPrivateImageCaptures,
+  PrivateImageCaptureError,
+  recoverPrivateImage,
+} from '../lib/private-image-captures.ts'
 import { questionHistoryVisibility } from '../lib/question-history.ts'
 import { reconcilePrivateResults } from '../lib/result-retention.ts'
 import { readResultSession } from '../lib/result-source.ts'
@@ -39,6 +45,77 @@ resultsRouter.get('/', (c) => {
     }),
   )
 })
+
+// Owner management only: deliberately not a Result payload projection or an Agent tool.
+resultsRouter.get('/private-images', (c) => {
+  try {
+    const queries = c.req.queries()
+    if (
+      Object.entries(queries).some(
+        ([key, values]) =>
+          !['teamId', 'agentId', 'limit', 'offset'].includes(key) || values.length !== 1,
+      )
+    )
+      throw new PrivateImageCaptureError('Invalid private image inventory parameters', 400)
+    const teamId = c.req.query('teamId') ?? ''
+    const agentId = c.req.query('agentId')
+    const rawLimit = c.req.query('limit') ?? '20'
+    const rawOffset = c.req.query('offset') ?? '0'
+    const limit = Number(rawLimit),
+      offset = Number(rawOffset)
+    if (
+      !/^\d+$/.test(rawLimit) ||
+      !/^\d+$/.test(rawOffset) ||
+      !Number.isSafeInteger(limit) ||
+      limit < 1 ||
+      limit > 100 ||
+      !Number.isSafeInteger(offset) ||
+      offset < 0 ||
+      (agentId !== undefined && !/^[A-Za-z0-9._:-]{1,256}$/.test(agentId))
+    )
+      throw new PrivateImageCaptureError('Invalid private image inventory bounds', 400)
+    return c.json(listPrivateImageCaptures(getCtx().db, { teamId, agentId, limit, offset }))
+  } catch (error) {
+    if (error instanceof PrivateImageCaptureError)
+      return c.json({ error: error.message }, error.status)
+    throw error
+  }
+})
+
+for (const action of ['recover', 'discard'] as const) {
+  resultsRouter.post(`/private-images/:id/${action}`, async (c) => {
+    try {
+      const body: unknown = await c.req.json().catch(() => null)
+      if (Object.keys(c.req.queries()).length)
+        throw new PrivateImageCaptureError('Action parameters belong in the JSON body', 400)
+      if (
+        !body ||
+        typeof body !== 'object' ||
+        Array.isArray(body) ||
+        Object.keys(body).some(
+          (key) => !['teamId', ...(action === 'discard' ? ['confirm'] : [])].includes(key),
+        ) ||
+        !('teamId' in body) ||
+        typeof body.teamId !== 'string' ||
+        (action === 'discard' && (!('confirm' in body) || body.confirm !== true))
+      )
+        throw new PrivateImageCaptureError(
+          'Original teamId and explicit discard confirmation are required',
+          400,
+        )
+      const id = c.req.param('id')
+      if (!/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/.test(id))
+        throw new PrivateImageCaptureError('Invalid private image capture id', 400)
+      return action === 'recover'
+        ? c.json(recoverPrivateImage(getCtx().db, body.teamId, id))
+        : c.json(discardPrivateImage(getCtx().db, body.teamId, id))
+    } catch (error) {
+      if (error instanceof PrivateImageCaptureError)
+        return c.json({ error: error.message }, error.status)
+      throw error
+    }
+  })
+}
 
 resultsRouter.get('/:id', (c) => {
   const result = results.getReleased(getCtx().db, c.req.param('id'))

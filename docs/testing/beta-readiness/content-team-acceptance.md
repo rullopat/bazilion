@@ -7,7 +7,10 @@ exist with deterministic (canned-model) evidence; no model-judgment composed har
 human pass is claimed. [The evidence record](../../backlog/BAZ-064-acceptance.md) lists every slice
 and boundary.
 Parent decision: [BAZ-063](../../backlog/draft/BAZ-063-content-team-real-world-acceptance.md).
-Execution is split into BAZ-064/065/066; topic and purpose are supplied inputs, not fixed scenarios.
+Recipe/process implementation was split into BAZ-064/065; topic and purpose are supplied inputs,
+not fixed scenarios. The operator approved BAZ-065's limited 0.23.0 scheduler/process closure on
+2026-10-17; remaining composed D/S execution is unassigned and not scheduled, just as L/H is.
+This changes the release-story claim, not the broader-beta case oracles below.
 This is a required broader-beta **B** journey, not extra feature scope for frozen `0.22.0` **R**.
 It composes the [110 existing families](scenario-catalog.md); the 18 core and six conditional cases
 below are journey subcases, not another count of independent catalogue families or passing tests.
@@ -17,15 +20,16 @@ below are journey subcases, not another count of independent catalogue families 
 | Owner | Required case/lane cells | Output |
 | --- | --- | --- |
 | [BAZ-064](../../backlog/in_progress/BAZ-064-content-team-recipe-and-manual-handoff.md) — M | D: CT-01–07, CT-14, CT-15, CT-17 | Reusable recipe, parameterized briefs and deterministic manual-handoff checks |
-| [BAZ-065](../../backlog/in_progress/BAZ-065-content-team-scheduling-and-recovery.md) — M | D/S: CT-08–13, CT-16; S: CT-02, CT-14, CT-15 | Real preparation cron, protected execution, lifecycle and recovery checks |
-| [BAZ-066](../../backlog/draft/BAZ-066-content-team-live-and-human-acceptance.md) — S | Every L/H cell listed in the core matrix, including CT-18 H | Authorized live and independent-user evidence on the reviewed recipe/path |
+| [BAZ-065](../../backlog/done/BAZ-065-content-team-scheduling-and-recovery.md) — M, limited 0.23.0 scope approved 2026-10-17 | Existing scheduler/process, communication-policy, restricted-posture and calendar contracts only | 101 unique checks and independent limited-scope ACCEPT (2026-10-17); no blanket composed CT pass |
+| Remaining composed D/S qualification — execution unassigned/not scheduled | D/S: CT-08–13, CT-16; S: CT-02, CT-14, CT-15 beyond the bounded process observations | Original CT oracles remain open; [explicit decision/evidence map](../../backlog/BAZ-065-evidence-reconciliation-20261017.md). BAZ-063 consolidates, not executes, these missing cells. |
 | BAZ-063 — S, consolidation only | Final evidence review across all CT cells; separate PUB status | Parent core acceptance decision, not duplicate execution work |
 | [BAZ-060](../../backlog/draft/BAZ-060-approved-social-delivery.md) and a separately refined platform adapter | Conditional PUB-01–06: shared fake-host contract in 060; platform-specific evidence belongs to its adapter | Mastodon adapter not implemented/assigned; BAZ-061/062 cover deferred Meta/LinkedIn, not Mastodon |
 
-Build the recipe/deterministic base, qualify the actual scheduled path, then run live/human acceptance.
-Preparation can overlap, but BAZ-066 uses reviewed outputs from both earlier children. Case IDs stay
+Live/human execution is unassigned and not scheduled. Future qualification would require reviewed
+outputs from both earlier children and separate authorization. Case IDs stay
 stable; a D pass does not close an unrun S/L/H cell. The parent reconciles candidate/recipe versions
-and retests after changes. The split changes ownership, not the acceptance bar or frozen R scope.
+and retests after changes. BAZ-065's explicit limited release-scope decision does not lower the broader
+beta acceptance bar or declare its still-missing composed D/S configurations Passed.
 
 ## 1. Two separately reported outcomes
 
@@ -188,8 +192,9 @@ machinery are separate capabilities, not made real by scheduling an Agent prompt
 
 ## 5. Core case matrix
 
-**No composed case has passed.** CT-03 and CT-16's required protected discovery is Blocked on BAZ-067;
-remaining composed observations are Not run. Partial template/policy preflight is not CT-02/15/17
+**No composed case has passed.** BAZ-067 implements protected discovery; a synthetic inbox
+backend observation now exists, but it does not pass CT-03/16's full composed research/image
+configurations. Remaining composed observations are Not run or lack their required configuration. Partial template/policy preflight is not CT-02/15/17
 completion. Each row expands into per-lane/configuration records using the evidence format below;
 there is no blanket green family.
 
@@ -274,7 +279,7 @@ quality alone. Stop immediately on unintended exposure/spend/publication.
 | User recovery and truthfulness | UX-01/02/06/07/09/10 and the human task cards; screenshots are only supporting evidence |
 
 Existing passes establish their recorded boundaries only. BAZ-064's recipe/D checks, BAZ-065's real
-scheduler/recovery checks and BAZ-066's live/human observations remain to be produced at their
+scheduler/recovery checks and unrun live/human observations remain to be produced at their
 composed lanes: the scheduling slice's two real cron minutes use a canned model and do not close
 CT-08's composed observation. Keep any test
 controls test-owned; do not introduce a product-wide run/event layer for this acceptance campaign.
@@ -302,7 +307,7 @@ from implementation tests. The index references canonical conversations/receipts
 transcripts. Preserve first failures. Disable triggers, settle or explicitly block open work, check
 remaining resources and verify no unapproved send/call after teardown.
 
-**Core acceptance:** BAZ-063 reviews BAZ-064/065/066 evidence for all CT configurations at their
+**Core acceptance:** BAZ-063 reviews BAZ-064/065 evidence for all CT configurations at their
 required lanes: two cron cycles, two independently selected topics, reusable recipe, approved exact
 manual assets/instructions, independent human evidence and no unresolved critical/high safety/core-task
 defect. Reconcile candidate/recipe versions and affected retests; review limitations explicitly.

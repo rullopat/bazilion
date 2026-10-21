@@ -35,6 +35,7 @@ import type {
   UserMdHost,
   UserMdWriteResult,
 } from './ipc-protocol.ts'
+import { WorkerOutput } from './output.ts'
 import {
   parseWorkerInput,
   protectedRuntimeSecrets,
@@ -52,9 +53,16 @@ interface ReviewWorkerProposal {
 type WorkerFrame = ChatFrame | { kind: 'review_result'; proposals: ReviewWorkerProposal[] }
 
 const activeAccessTokens: string[] = []
+const output = new WorkerOutput(process.stdout)
+let exiting: Promise<never> | undefined
 
 function emit(frame: WorkerFrame): void {
-  process.stdout.write(`${JSON.stringify(redactJsonValue(frame, activeAccessTokens))}\n`)
+  output.write(`${JSON.stringify(redactJsonValue(frame, activeAccessTokens))}\n`)
+}
+
+function exitWorker(code: number): Promise<never> {
+  exiting ??= output.finish().then((flushed) => process.exit(flushed ? code : 1))
+  return exiting
 }
 
 async function readInput(): Promise<WorkerInput> {
@@ -365,6 +373,7 @@ async function createSessionForInput(
       verificationRequestHost: createIpcVerificationRequestHost(ipcCall),
       reviewRequestHost: createIpcReviewRequestHost(ipcCall),
       imageGenerationHost,
+      webSearchHost,
       apiKey: input.apiKey,
       refreshApiKey,
       browserHost,
@@ -487,13 +496,14 @@ async function main(): Promise<void> {
       try {
         emit({ kind: 'event', event: { type: 'error', error: 'cancelled' } })
       } catch {}
-      process.exit(0)
+      void exitWorker(0)
     }
   }
   process.on('SIGTERM', onSignal)
   process.on('SIGINT', onSignal)
 
   const input = await readInput()
+  if (aborted) return exitWorker(0)
   if (input.kind !== 'configured_operator_http') {
     validateMinimalWorkerProcessEnv(process.env, input.scratch)
   }
@@ -506,6 +516,10 @@ async function main(): Promise<void> {
   activeAccessTokens.push(...initialAccessTokens.filter(Boolean))
   const ipcCall = createWorkerIpcCall()
   const { handle, reviewState } = await createSessionForInput(input, ipcCall)
+  if (aborted) {
+    handle.dispose()
+    return exitWorker(0)
+  }
   session = handle.session
 
   const consumptionAcks = new Set<Promise<void>>()
@@ -609,15 +623,16 @@ async function main(): Promise<void> {
   // The turn is complete: session disposed, IPC disconnected. Some underlying
   // handle (native store/provider socket) can otherwise keep this process alive
   // for tens of seconds after its work is done, holding the Team workspace
-  // lease and blocking every interleaved turn on it. Exit explicitly instead.
-  process.exit(process.exitCode ?? 0)
+  // lease and blocking every interleaved turn on it. Explicit exit remains,
+  // but only after bounded protocol draining (including a large done frame).
+  await exitWorker(Number(process.exitCode ?? 0))
 }
 
-main().catch((error) => {
+main().catch(async (error) => {
   try {
     emit({ kind: 'fatal', error: error instanceof Error ? error.message : String(error) })
   } catch {}
-  process.exit(1)
+  await exitWorker(1)
 })
 
 const STATIC_REVIEW_SYSTEM_PROMPT = `You are a restricted code reviewer. You review one captured

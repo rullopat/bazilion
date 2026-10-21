@@ -123,11 +123,12 @@ export function startLmStudioMock(): Promise<MockLlm> {
     sseFromCanned(res, item as CannedResponse)
   })
   return new Promise((resolve) => {
-    server.listen(0, () => {
+    // Literal loopback keeps synthetic-provider tests independent of host DNS/NSS files.
+    server.listen(0, '127.0.0.1', () => {
       const addr = server.address()
       if (!addr || typeof addr === 'string') throw new Error('unexpected server address')
       resolve({
-        url: `http://localhost:${addr.port}/v1`,
+        url: `http://127.0.0.1:${addr.port}/v1`,
         push(items) {
           queue.push(...items)
         },

@@ -4,11 +4,15 @@
 manual handoff using existing Profiles, Team Templates, prompt-only skills, policy and Results.
 It is not auto-installed, not a publisher and not evidence that the end-to-end campaign passed.
 
-**Known blocker:** normal protected peer/inbox and scheduled turns currently expose `web_fetch`, not
-`web_search`. A delegated researcher cannot use the configured search backend through that surface.
-Do not unblock it with host execution, browser/MCP, injected keys or fabricated search responses.
-See [the preflight/evidence record](../../docs/backlog/BAZ-064-acceptance.md). Until a qualified discovery
-path exists, the complete research journey is blocked; supplied-URL retrieval is a narrower exercise.
+**Discovery prerequisite:** BAZ-067 implements daemon-owned `web_search` for normal protected
+peer/inbox and scheduled turns when `BAZILION_WEB_SEARCH_URL` explicitly configures a SearXNG
+backend. Capability/deterministic coverage is not live backend qualification. Without an admitted,
+working backend the delegated discovery journey is blocked; supplied-URL retrieval is narrower.
+Ordinary ChatGPT-native search does not grant native search to scheduled/inbox workers. Do not
+substitute host execution, browser/MCP, worker-injected keys or fabricated search responses.
+See [BAZ-067](../../docs/backlog/done/BAZ-067-protected-web-discovery.md). Ordinary interactive turns may have managed
+`browser_*` tools, but that does not grant browser capability to protected/scheduled turns or qualify
+live search reliability. A site may block the browser; stop at challenges and do not promise success.
 
 ## What is supplied
 
@@ -98,7 +102,7 @@ workspace ownership; don't create acknowledgment loops or wait while holding a p
 
 A failed/held tool is not a reason to weaken the graph or rerun uncertain images. Keep known private-
 image loss and no-refund limits visible. No trigger is included; BAZ-065 owns actual cron qualification
-and BAZ-066 the live/human observations. Mastodon API publication needs separate implementation/consent.
+while live/human observations remain unassigned and unrun. Mastodon API publication needs separate implementation/consent.
 
 ## Local validation (no provider calls)
 

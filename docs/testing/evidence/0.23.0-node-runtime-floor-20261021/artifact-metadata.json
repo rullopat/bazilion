@@ -1,0 +1,61 @@
+[
+  {
+    "file": "bazilion-0.23.0.tgz",
+    "bytes": 3653183,
+    "sha256": "9f7ee6ffba16532daa78744b31cfda3085d663187340f216e3fa9b4d8b0dc7ed",
+    "package": "bazilion",
+    "version": "0.23.0",
+    "engines": {
+      "node": "^24.22.0 || ^26.4.0"
+    },
+    "bin": {
+      "bazilion": "./dist/cli.js"
+    },
+    "exports": null,
+    "members": 262,
+    "gitHead": null,
+    "scope": "Current dirty-tree working candidate, not final commit/publication identity",
+    "guardedLaunchers": true
+  },
+  {
+    "file": "bazilion-api-types-0.23.0.tgz",
+    "bytes": 53522,
+    "sha256": "d55a67ea47b29a9891722338c43465b7976c9a84afa16d020a744596a3ad5baa",
+    "package": "@bazilion/api-types",
+    "version": "0.23.0",
+    "engines": {
+      "node": ">=24.0.0"
+    },
+    "bin": null,
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      }
+    },
+    "members": 6,
+    "gitHead": null,
+    "scope": "Current dirty-tree working candidate, not final commit/publication identity",
+    "newPrivateImageWireTypes": true
+  },
+  {
+    "file": "bazilion-client-0.23.0.tgz",
+    "bytes": 13328,
+    "sha256": "bb7c433f0d4fb9400556760e9c6762a533bc6b15bdf290455cb7b78f6fd68a43",
+    "package": "@bazilion/client",
+    "version": "0.23.0",
+    "engines": {
+      "node": ">=24.0.0"
+    },
+    "bin": null,
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      }
+    },
+    "members": 6,
+    "gitHead": null,
+    "scope": "Current dirty-tree working candidate, not final commit/publication identity"
+  }
+]

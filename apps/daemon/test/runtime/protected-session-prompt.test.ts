@@ -118,6 +118,15 @@ describe('protected provider prompt boundary', () => {
       refreshApiKey: async () => runtime.apiKey,
       fileSink: async () => ({ resultId: 'fixture-result' }),
     })
+    expect(handle.session.settingsManager.getCacheWarmingMode()).toBe('off')
+    expect(
+      handle.session
+        .getAllTools()
+        .some(
+          (tool) =>
+            ['codemode', 'tool_search'].includes(tool.name) || tool.name.startsWith('mcp__'),
+        ),
+    ).toBe(false)
     const repositoryRefreshes: string[] = []
     let providerSystemPrompt = ''
     let calls = 0
@@ -175,6 +184,9 @@ describe('protected provider prompt boundary', () => {
     expect(providerSystemPrompt).not.toContain(agentDir)
     expect(providerSystemPrompt).not.toContain(skillDir)
     expect(providerSystemPrompt).not.toContain('node_modules')
+    // T10: the browser operating guide follows the browser tools — a protected
+    // turn is denied the host at spawn, so it gets neither.
+    expect(providerSystemPrompt).not.toContain('# Browser research')
     // The nested refresh ran through the daemon host and reached the transcript;
     // composing it into the next provider request is the ModelRuntime's own
     // responsibility (pi's test suite) in 0.87.1.
@@ -227,10 +239,15 @@ describe('protected provider prompt boundary', () => {
     }
 
     // 0.87.1 composes the cwd as a <cwd> block; assert the semantic content.
-    expect(providerSystemPrompt).toContain('Restricted reviewer instructions. Use propose_lesson only.')
+    expect(providerSystemPrompt).toContain(
+      'Restricted reviewer instructions. Use propose_lesson only.',
+    )
     expect(providerSystemPrompt).toContain('<cwd>\n/review\n</cwd>')
     expect(providerSystemPrompt).not.toContain(root)
     expect(providerSystemPrompt).not.toContain('node_modules')
+    // T10: restricted turns run a daemon-authored system prompt; the browser
+    // guide is never composed into them.
+    expect(providerSystemPrompt).not.toContain('# Browser research')
   })
 
   test('materializes explicit Vertex credentials only inside turn scratch', async () => {

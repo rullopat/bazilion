@@ -11,6 +11,9 @@ concurrency:
 
 permissions: {}
 
+env:
+  PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+
 jobs:
   ci:
     name: Typecheck, test, build (${{ matrix.os }})
@@ -34,7 +37,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v6
         with:
-          node-version: 24
+          node-version: '24.22.0'
           cache: pnpm
 
       - name: Install
@@ -87,11 +90,14 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v6
         with:
-          node-version: 24
+          node-version: '24.22.0'
           cache: pnpm
 
       - name: Install
         run: pnpm install --frozen-lockfile
+
+      - name: Test installer ownership and build admission offline
+        run: node --test scripts/testing/installer-process.test.mjs
 
       # The published CLI bundles the web build, so pack the real artifact.
       - name: Build
@@ -101,12 +107,14 @@ jobs:
         shell: bash
         run: (cd apps/cli && pnpm pack --pack-destination "$RUNNER_TEMP")
 
-      # Installs the packed tarball globally, bootstraps a fresh home against
-      # a deterministic fake provider, serves one chat turn (plus a
-      # coding-command turn on Linux), then uninstalls. No network, no
-      # docker, no API key. See the script header for the full contract.
-      - name: Run installer E2E
+      # Guarded npm install (scripts off) then explicit project-admitted offline
+      # rebuilds. Application trial uses fake providers only: SSR/chat/MCP/coding/reset.
+      # Initial dependency-cache fetch may use registry network in CI; local release
+      # trials set BAZILION_INSTALLER_OFFLINE=1 in disposable network containment.
+      - name: Run guarded installer E2E
         shell: bash
+        env:
+          BAZILION_INSTALLER_EVIDENCE: ${{ runner.temp }}/bazilion-installer-evidence.json
         run: node scripts/installer-e2e.mjs "$(ls "$RUNNER_TEMP"/bazilion-*.tgz | head -1)"
 
   upgrade-matrix:
@@ -117,8 +125,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
         with:
-          # Tags + history so release worktrees can be checked out.
+          # Tags + history for genuine release-source archives.
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v6
@@ -126,11 +135,14 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v6
         with:
-          node-version: 24
+          node-version: '24.22.0'
           cache: pnpm
 
       - name: Install
         run: pnpm install --frozen-lockfile
+
+      - name: Test compatibility harness offline
+        run: pnpm test:upgrade-harness
 
       # Seed genuine homes with real prior-release daemons, then bring each
       # home up under this branch. 'upgrade' entries must upgrade in place
@@ -154,13 +166,16 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v6
         with:
-          node-version: 24
+          node-version: '24.22.0'
           cache: pnpm
 
       - name: Install
         run: pnpm install --frozen-lockfile
 
-      # The BAZ-032 adversarial acceptance suite (153 required cases,
+      - name: Test security failure-report retention offline
+        run: node --test scripts/testing/security-report*.test.mjs
+
+      # The BAZ-032 adversarial acceptance suite (required cases declared in the manifest,
       # docker-free, ~2 min). The script itself fails closed: a missing,
       # duplicate or renamed required case is a hard error, so a security
       # regression or a quietly deleted case cannot merge. The manifest is the

@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import type { ImageGenerationInput, ImageGenerationOutput } from '@bazilion/api-types'
-import { createImagesModels, type ImagesModels } from '@earendil-works/pi-ai'
-import { openrouterImagesProvider } from '@earendil-works/pi-ai/providers/openrouter-images'
+import { createModels, type Models } from '@earendil-works/pi-ai'
+import { openrouterProvider } from '@earendil-works/pi-ai/providers/openrouter'
 import type { BazilionDb } from '../core/db/client.ts'
 import { imageGenerationConfig } from '../core/image-generation-config.ts'
 import * as operations from '../core/repos/image-generations.ts'
@@ -13,6 +13,7 @@ import {
   boundedImageFetch,
   type GeneratedImages,
   generateOpenAIImages,
+  ImageProtocolFailure,
   imageAbortable,
 } from './image-transport.ts'
 
@@ -21,11 +22,11 @@ export const IMAGE_DEADLINE_MS = 180_000
 const busyHomes = new WeakSet<BazilionDb>()
 class ImageGenerationError extends Error {}
 
-export function imageCatalogue(): ImagesModels {
-  const models = createImagesModels({
+export function imageCatalogue(): Models {
+  const models = createModels({
     authContext: { env: async () => undefined, fileExists: async () => false },
   })
-  models.setProvider(openrouterImagesProvider())
+  models.setProvider(openrouterProvider())
   return models
 }
 
@@ -133,7 +134,7 @@ export interface ImageHostOptions {
   assertActive: () => void
   source: (sessionId: string, toolCallId: string) => Record<string, unknown>
   /** Internal test injection; never accepted over IPC/config. */
-  models?: ImagesModels
+  models?: Models
   fetch?: typeof fetch
   deadlineMs?: number
 }
@@ -194,7 +195,9 @@ export function createImageGenerationHost(opts: ImageHostOptions): ImageGenerati
       const config = resolveConfig()
       if (!config.ready) throw new Error(config.status)
       const model =
-        config.provider === 'openrouter' ? models.getModel('openrouter', config.model) : undefined
+        config.provider === 'openrouter'
+          ? models.getModelOfType('image', 'openrouter', config.model)
+          : undefined
       if (
         config.provider === 'openrouter' &&
         (model?.provider !== 'openrouter' ||
@@ -296,7 +299,13 @@ export function createImageGenerationHost(opts: ImageHostOptions): ImageGenerati
           })
           operations.settle(db, op, 'completed', responseId, safeUsage(response.usage))
         })()
-        return capturedOutput(op)
+        return {
+          ...capturedOutput(op),
+          ...(config.provider === 'openai-codex' &&
+          (response.outputSource === 'terminal' || response.outputSource === 'completed_stream')
+            ? { outputSource: response.outputSource }
+            : {}),
+        }
       } catch (error) {
         // Admission stays uncertain on transport, cancellation or storage failure. Never replay it.
         if (signal.aborted)
@@ -304,7 +313,7 @@ export function createImageGenerationHost(opts: ImageHostOptions): ImageGenerati
             'Image generation cancelled or timed out; billing or account usage may have occurred. No automatic retry.',
           )
         // Only our own bounded messages escape; unexpected SDK exceptions may carry secrets.
-        if (error instanceof ImageGenerationError) {
+        if (error instanceof ImageGenerationError || error instanceof ImageProtocolFailure) {
           throw error
         }
         throw new Error(

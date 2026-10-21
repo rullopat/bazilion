@@ -2,7 +2,11 @@ import type { ChatFrame } from '@bazilion/api-types'
 import { imageGenerationConfig, imageTurnEnv } from '../core/image-generation-config.ts'
 import { agentReviewRepo, mergeSecretsIntoEnv, providerStateRepo } from '../core/index.ts'
 import { interruptCodingCommands } from '../core/repos/coding-commands.ts'
-import { hasCredentials, loadAccessToken } from '../runtime/auth/openai-codex.ts'
+import {
+  getStatus as codexStatus,
+  hasCredentials,
+  loadAccessToken,
+} from '../runtime/auth/openai-codex.ts'
 import { spawnWorkerTurn } from '../runtime/index.ts'
 import {
   type DockerContainerIdentity,
@@ -21,6 +25,7 @@ import { getCtx } from './ctx.ts'
 import { createImageGenerationHost } from './image-generation.ts'
 import { resolveMcpForTurn } from './mcp/resolve.ts'
 import { createDbMessagingHost } from './messaging-host.ts'
+import { createOrdinaryWebSearchHost } from './ordinary-web-search.ts'
 import { type LiveQuestionHost, questionServiceFor } from './question-service.ts'
 import {
   requireCompleteRepositoryContext,
@@ -197,9 +202,35 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
       const { apiKey, refreshApiKey } = await resolveAgentApiKey(db, authToken, agent, {
         withRefresher: true,
       })
+      const ordinarySearch = createOrdinaryWebSearchHost({
+        env: mergedEnvSupplier,
+        model: agent.model,
+        codexConnected: () => hasCredentials(db, authToken),
+        codexAccountId: () => codexStatus(db, authToken).accountId,
+        codexCredential: () => loadAccessToken(db, authToken),
+        protectedSecrets: () => [authToken],
+        signal: turn.controller.signal,
+        assertActive: () => {
+          if (!ownsActiveAgent(agent.agent.id, turn.controller))
+            throw new Error('Search turn ended')
+        },
+      })
+      const ordinarySearchHost =
+        ordinarySearch.status.state === 'configured' ? ordinarySearch : undefined
       const browserEnabled = isBrowserEnabled(env)
-      const browserHost = browserEnabled ? createBrowserHost(resolveBrowserConfig(env)) : undefined
-      const mcp = await resolveMcpForTurn(db, env, authToken)
+      // Daemon-owned admission: canonical Agent id + admitted Team id + daemon
+      // paths + the turn's cancellation signal, captured from the turn's own
+      // binding — never from worker input. The host validates every worker
+      // `browserInvoke` against this binding before pool access (T09).
+      const browserHost = browserEnabled
+        ? createBrowserHost(resolveBrowserConfig(env), {
+            paths,
+            agentId: agent.agent.id,
+            teamId: agent.team.id,
+            signal: turn.controller.signal,
+          })
+        : undefined
+      const mcp = await resolveMcpForTurn(db, env, authToken, turn.controller.signal)
       frames = spawnWorkerTurn(
         {
           kind: 'configured_operator_http',
@@ -213,6 +244,7 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
           enabledProviders,
           apiKey,
           browserEnabled,
+          webSearchEnabled: !!ordinarySearchHost,
           mcpTools: mcp?.tools,
           images: [...turn.images],
           turnId,
@@ -233,6 +265,7 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
           imageGenerationHost,
           userMdHost,
           browserHost,
+          webSearchHost: ordinarySearchHost,
           mcpHost: mcp?.host,
           bashApprovalHost: commandApprovalRegistry,
           ...(questionHost ? { questionHost } : {}),

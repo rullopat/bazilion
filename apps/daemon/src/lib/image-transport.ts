@@ -1,7 +1,92 @@
 import type { AssistantImages } from '@earendil-works/pi-ai'
 import type { ImageProvider } from '../core/image-generation-config.ts'
+import { CompletedImageEvidence, ImageEvidenceError } from './image-evidence.ts'
 
 export const IMAGE_RESPONSE_BYTES = 40 * 1024 * 1024
+
+// Every refusal code is authored locally. Never classify or expose upstream error text.
+const IMAGE_REFUSAL_CODES = [
+  'unsupported_media',
+  'decode_failed',
+  'unterminated_event',
+  'too_many_events',
+  'invalid_framing',
+  'duplicate_label',
+  'label_without_data',
+  'done_out_of_order',
+  'malformed_event',
+  'invalid_event_type_or_label',
+  'event_after_done',
+  'duplicate_completion',
+  'done_alias_after_completion',
+  'item_after_completion',
+  'failure_after_completion',
+  'other_event_after_completion',
+  'provider_failure',
+  'malformed_terminal',
+  'terminal_error',
+  'terminal_incomplete',
+  'terminal_status',
+  'malformed_done_item',
+  'invalid_image_identity',
+  'duplicate_image_identity',
+  'too_many_done_images',
+  'missing_completion',
+  'malformed_output',
+  'terminal_output_empty',
+  'no_image_items',
+  'too_many_image_items',
+  'malformed_output_item',
+  'image_status',
+  'missing_image_bytes',
+  'internal_failure',
+  'evidence_event',
+  'evidence_sequence',
+  'evidence_response',
+  'evidence_model',
+  'evidence_failure',
+  'evidence_identity',
+  'evidence_snapshot',
+  'evidence_refusal',
+  'evidence_limit',
+  'evidence_terminal',
+  'evidence_conflict',
+  'evidence_incomplete',
+  'evidence_no_images',
+] as const
+type ImageRefusalCode = (typeof IMAGE_REFUSAL_CODES)[number]
+class ImageEvidenceRefusal extends Error {
+  constructor(readonly code: ImageRefusalCode) {
+    super('Image evidence refused')
+  }
+}
+function refuse(code: ImageRefusalCode): never {
+  throw new ImageEvidenceRefusal(code)
+}
+function codexObject(value: unknown, code: ImageRefusalCode): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) refuse(code)
+  return value as Record<string, unknown>
+}
+
+/** Closed image-protocol facts only; never upstream text, headers, ids or exceptions. */
+export class ImageProtocolFailure extends Error {
+  constructor(
+    phase: 'media' | 'decode' | 'evidence',
+    media: 'missing' | 'sse' | 'other',
+    terminal: 'unseen' | 'completed' = 'unseen',
+    reason: ImageRefusalCode = 'unsupported_media',
+  ) {
+    // This exported boundary is also callable from JavaScript. Do not rely on TS unions
+    // to prevent arbitrary strings or coercion hooks from reaching the operator.
+    const safePhase = phase === 'media' || phase === 'decode' ? phase : 'evidence'
+    const safeMedia = media === 'missing' || media === 'sse' ? media : 'other'
+    const safeTerminal = terminal === 'completed' ? terminal : 'unseen'
+    const safeReason = IMAGE_REFUSAL_CODES.includes(reason) ? reason : 'internal_failure'
+    super(
+      `Image protocol refused [phase=${safePhase}; media=${safeMedia}; terminal=${safeTerminal}] [reason=${safeReason}]. Billing or account usage may have occurred. No automatic retry or credential fallback.`,
+    )
+  }
+}
 const endpoints = {
   openrouter: 'https://openrouter.ai/api/v1/chat/completions',
   openai: 'https://api.openai.com/v1/images/generations',
@@ -12,6 +97,7 @@ export interface GeneratedImages {
   output: AssistantImages['output']
   stopReason: AssistantImages['stopReason']
   responseId?: string
+  outputSource?: 'terminal' | 'completed_stream'
   usage?: {
     input?: number
     output?: number
@@ -150,9 +236,18 @@ export async function generateOpenAIImages(opts: {
   // No credential refresh-and-replay on 401, no SDK retries, no fallback route or URL downloads.
   if (!response.ok) throw new Error('Image provider rejected the request')
   if (codex) {
-    if (!response.headers.get('content-type')?.toLowerCase().startsWith('text/event-stream'))
-      throw new Error('Expected image event stream')
-    return readCodexImages(await response.text())
+    const header = response.headers.get('content-type')
+    const mime = header?.trim().toLowerCase()
+    const media = !mime
+      ? 'missing'
+      : mime.split(';', 1)[0]?.trim() === 'text/event-stream'
+        ? 'sse'
+        : 'other'
+    // The admitted Codex request explicitly sets stream:true / Accept:SSE. Missing or
+    // blank MIME follows that contract, never prefix sniffing or decoder-failure fallback.
+    if ((header?.length ?? 0) > 256 || media === 'other')
+      throw new ImageProtocolFailure('media', 'other')
+    return readCodexImages(await response.arrayBuffer(), media)
   }
   const body = object(await response.json())
   if (!Array.isArray(body.data) || body.data.length < 1 || body.data.length > 4)
@@ -167,59 +262,143 @@ export async function generateOpenAIImages(opts: {
 
 function checkImageId(id: unknown, seen: Set<string>): void {
   if (id == null) return
-  if (typeof id !== 'string' || !id || id.length > 256 || seen.has(id))
-    throw new Error('Invalid or duplicate image identity')
+  if (typeof id !== 'string' || !id || id.length > 256) refuse('invalid_image_identity')
+  if (seen.has(id)) refuse('duplicate_image_identity')
   seen.add(id)
 }
 
-function readCodexImages(body: string): GeneratedImages {
+function readCodexImages(bytes: ArrayBuffer, media: 'missing' | 'sse'): GeneratedImages {
+  let phase: 'decode' | 'evidence' = 'decode'
+  let terminal: 'unseen' | 'completed' = 'unseen'
+  try {
+    const body = new TextDecoder('utf-8', { fatal: true }).decode(bytes)
+    return parseCodexImages(
+      body,
+      () => {
+        phase = 'decode'
+      },
+      () => {
+        phase = 'evidence'
+      },
+      () => {
+        terminal = 'completed'
+      },
+    )
+  } catch (error) {
+    const reason =
+      error instanceof ImageEvidenceRefusal
+        ? error.code
+        : error instanceof ImageEvidenceError
+          ? (`evidence_${error.code}` as const)
+          : phase === 'decode'
+            ? 'decode_failed'
+            : 'internal_failure'
+    throw new ImageProtocolFailure(phase, media, terminal, reason)
+  }
+}
+
+function parseCodexImages(
+  body: string,
+  decoding: () => void,
+  evidence: () => void,
+  completedEvent: () => void,
+): GeneratedImages {
   let completed: Record<string, unknown> | undefined
-  const done: Record<string, unknown>[] = []
+  const collector = new CompletedImageEvidence()
+  let doneCount = 0
   const doneIds = new Set<string>()
   let count = 0
-  for (const frame of body.replace(/\r\n?/g, '\n').split('\n\n')) {
-    const data = frame
-      .split('\n')
+  let providerDone = false
+  const frames = body.replace(/\r\n?/g, '\n').split('\n\n')
+  if (frames.pop()?.trim()) refuse('unterminated_event')
+  for (const frame of frames) {
+    decoding()
+    if (++count > 512) refuse('too_many_events')
+    const lines = frame.split('\n')
+    if (
+      lines.some((line) => line && !line.startsWith(':') && !/^(data|event|id|retry):/.test(line))
+    )
+      refuse('invalid_framing')
+    const labels = lines.filter((line) => line.startsWith('event:'))
+    if (labels.length > 1) refuse('duplicate_label')
+    const label = labels[0]?.slice(6).trim()
+    const data = lines
       .filter((line) => line.startsWith('data:'))
       .map((line) => line.slice(5).replace(/^ /, ''))
       .join('\n')
-      .trim()
-    if (!data || data === '[DONE]') continue
-    if (++count > 512) throw new Error('Too many image stream events')
-    const event = object(JSON.parse(data))
-    if (['error', 'response.failed', 'response.incomplete'].includes(String(event.type)))
-      throw new Error('Image stream failed or was incomplete')
+    if (!data) {
+      if (label) refuse('label_without_data')
+      continue
+    }
+    if (data === '[DONE]') {
+      evidence()
+      if (label || !completed || providerDone) refuse('done_out_of_order')
+      providerDone = true
+      continue
+    }
+    const event = codexObject(JSON.parse(data), 'malformed_event')
+    evidence()
+    if (typeof event.type !== 'string' || (label && label !== event.type))
+      refuse('invalid_event_type_or_label')
+    if (providerDone) refuse('event_after_done')
+    if (completed) {
+      if (event.type === 'response.completed') refuse('duplicate_completion')
+      if (event.type === 'response.done') refuse('done_alias_after_completion')
+      if (event.type === 'response.output_item.done') refuse('item_after_completion')
+      if (
+        ['error', 'response.failed', 'response.incomplete', 'response.cancelled'].includes(
+          event.type,
+        )
+      )
+        refuse('failure_after_completion')
+      refuse('other_event_after_completion')
+    }
+    if (
+      ['error', 'response.failed', 'response.incomplete', 'response.cancelled'].includes(event.type)
+    )
+      refuse('provider_failure')
     if (event.type === 'response.completed') {
-      if (completed) throw new Error('Duplicate image completion')
-      completed = object(event.response)
-      if (completed.error != null || (completed.status != null && completed.status !== 'completed'))
-        throw new Error('Image response was not completed')
+      completed = codexObject(event.response, 'malformed_terminal')
+      completedEvent()
+      if (completed.error != null) refuse('terminal_error')
+      if (completed.incomplete_details != null) refuse('terminal_incomplete')
+      if (completed.status != null && completed.status !== 'completed') refuse('terminal_status')
     }
     if (event.type === 'response.output_item.done') {
-      const item = object(event.item)
-      if (item.type !== 'image_generation_call') continue
-      checkImageId(item.id, doneIds)
-      done.push(item)
-      if (done.length > 4) throw new Error('Too many images')
+      const item = codexObject(event.item, 'malformed_done_item')
+      if (item.type === 'image_generation_call') {
+        checkImageId(item.id, doneIds)
+        if (++doneCount > 4) refuse('too_many_done_images')
+      }
     }
+    // Framing, terminal and full-stream checks remain transport-owned. No early return.
+    collector.observe(event)
   }
-  if (!completed) throw new Error('Image stream closed before completion')
-  // An explicit final output (even empty/refused) wins; only omitted output may use done events.
-  const output = completed.output === undefined ? done : completed.output
-  if (!Array.isArray(output)) throw new Error('Malformed image output')
-  const items = output.map(object).filter((item) => item.type === 'image_generation_call')
-  if (items.length < 1 || items.length > 4) throw new Error('Missing or excessive image output')
-  const ids = new Set<string>()
-  const images = items.map((item) => {
-    checkImageId(item.id, ids)
-    // Some completed streams omit per-item status/id; the mandatory terminal event owns completion.
-    if (item.status != null && item.status !== 'completed')
-      throw new Error('Image call did not complete')
-    return image(item.result)
-  })
+  evidence()
+  if (!completed) refuse('missing_completion')
+  if (completed.output !== undefined && !Array.isArray(completed.output)) refuse('malformed_output')
+  const project = (output: unknown[]) => {
+    const items = output
+      .map((value) => codexObject(value, 'malformed_output_item'))
+      .filter((item) => item.type === 'image_generation_call')
+    if (items.length < 1) refuse('no_image_items')
+    if (items.length > 4) refuse('too_many_image_items')
+    const ids = new Set<string>()
+    return items.map((item) => {
+      checkImageId(item.id, ids)
+      // Some completed streams omit per-item status/id; the mandatory terminal event owns completion.
+      if (item.status != null && item.status !== 'completed') refuse('image_status')
+      if (typeof item.result !== 'string' || !item.result) refuse('missing_image_bytes')
+      return image(item.result)
+    })
+  }
+  // Preserve precise terminal projection refusals before cross-stream reconciliation.
+  if (Array.isArray(completed.output) && completed.output.length) project(completed.output)
+  const resolved = collector.resolve()
   return {
     stopReason: 'stop',
-    output: images,
+    output: project(resolved.output),
+    outputSource: resolved.outputSource,
     responseId: responseId(completed.id),
     usage: usage(completed.usage),
   }

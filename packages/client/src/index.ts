@@ -6,6 +6,7 @@ import type {
   ApiError,
   Attachment,
   AttentionKind,
+  BrowserStatus,
   EditQueuedInput,
   EnqueueUserInput,
   NotificationPreview,
@@ -20,7 +21,14 @@ import type {
   UserQueueControl,
   UserQueueItem,
   UserQueueListResponse,
+  WorkspaceRecoveryReport,
+  WorkspaceRecoveryResponse,
 } from '@bazilion/api-types'
+
+export {
+  WORKSPACE_RECOVERY_OUTCOME_TEXT,
+  workspaceRecoveryExplanation,
+} from './workspace-recovery.ts'
 
 export type TokenSource = string | (() => string | Promise<string>)
 
@@ -417,7 +425,34 @@ export function createClient(cfg: ClientConfig) {
           }),
       }
     },
+    /**
+     * Managed browser session controls (BAZ-069). Status never launches;
+     * stop preserves the persistent profile; reset is the operator's
+     * explicitly confirmed destructive action (cookies/logins are gone).
+     */
+    getAgentSearchStatus: (agentId: string) =>
+      request<import('@bazilion/api-types').OrdinarySearchStatus>(
+        'GET',
+        `/api/agents/${encodeURIComponent(agentId)}/search-status`,
+      ),
+    getAgentBrowser: (agentId: string) =>
+      request<BrowserStatus>('GET', `/api/agents/${encodeURIComponent(agentId)}/browser`),
+    stopAgentBrowser: (agentId: string) =>
+      request<void>('POST', `/api/agents/${encodeURIComponent(agentId)}/browser/stop`),
+    resetAgentBrowser: (agentId: string) =>
+      request<void>(
+        'DELETE',
+        `/api/agents/${encodeURIComponent(agentId)}/browser/profile?confirm=reset-browser-profile`,
+      ),
     binary,
+    workspaceRecovery: (teamId: string) => {
+      const base = `/api/teams/${encodeURIComponent(teamId)}/workspace/recovery`
+      return {
+        list: () => request<WorkspaceRecoveryReport>('GET', base),
+        attempt: (writerId: string) =>
+          request<WorkspaceRecoveryResponse>('POST', `${base}/${encodeURIComponent(writerId)}`),
+      }
+    },
     get: <T>(p: string) => request<T>('GET', p),
     post: <T>(p: string, b?: unknown) => request<T>('POST', p, b),
     postMultipart,

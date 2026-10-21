@@ -846,6 +846,125 @@ const skillCmd = defineCommand({
 
 // --- team membership ---
 
+const searchCmd = defineCommand({
+  meta: {
+    name: 'search',
+    description: 'Read ordinary search route readiness (never probes a provider)',
+  },
+  subCommands: {
+    status: defineCommand({
+      meta: {
+        name: 'status',
+        description: 'Show route/model/account, bounds and experimental qualification',
+      },
+      args: { id: { type: 'positional', required: true } },
+      async run({ args }) {
+        console.log(JSON.stringify(await createClient().getAgentSearchStatus(args.id), null, 2))
+      },
+    }),
+  },
+})
+
+const browserStatusCmd = defineCommand({
+  meta: { name: 'status', description: 'Show the agent browser session status (never launches)' },
+  args: { id: { type: 'positional', required: true } },
+  async run({ args }) {
+    const client = createClient()
+    try {
+      const status = await client.getAgentBrowser(args.id)
+      // Structured JSON: facts only — no cookies, endpoints or profile paths.
+      console.log(JSON.stringify(status, null, 2))
+    } catch (error) {
+      if (error instanceof ApiClientError) {
+        console.error(`browser status failed: ${error.body.error}`)
+        if (error.body.code) console.error(`code: ${error.body.code}`)
+        process.exitCode = 1
+        return
+      }
+      throw error
+    }
+  },
+})
+
+const browserStopCmd = defineCommand({
+  meta: {
+    name: 'stop',
+    description: "Stop the agent's browser session (persistent profile is preserved)",
+  },
+  args: { id: { type: 'positional', required: true } },
+  async run({ args }) {
+    const client = createClient()
+    try {
+      await client.stopAgentBrowser(args.id)
+      console.log(`stopped browser session for agent ${args.id} (profile preserved)`)
+    } catch (error) {
+      if (error instanceof ApiClientError) {
+        console.error(`browser stop failed: ${error.body.error}`)
+        if (error.body.code) console.error(`code: ${error.body.code}`)
+        process.exitCode = 1
+        return
+      }
+      throw error
+    }
+  },
+})
+
+const browserResetCmd = defineCommand({
+  meta: {
+    name: 'reset',
+    description:
+      "Reset the agent's browser: stop it and DELETE the profile (cookies, logins — site state is gone)",
+  },
+  args: {
+    id: { type: 'positional', required: true },
+    yes: { type: 'boolean', description: 'Skip the confirmation prompt' },
+  },
+  async run({ args }) {
+    // Noninteractive without --yes refuses: a destructive reset never guesses.
+    if (!args.yes) {
+      if (!stdin.isTTY || !stdout.isTTY) {
+        console.error('refusing to reset a browser profile noninteractively without --yes')
+        process.exitCode = 1
+        return
+      }
+      const rl = createInterface({ input: stdin, output: stdout })
+      const answer = (
+        await rl.question(
+          `reset the browser for ${args.id}? This stops the session and DELETES the persistent profile (cookies, logins). Type the agent id to confirm: `,
+        )
+      ).trim()
+      rl.close()
+      if (answer !== args.id) {
+        console.error('confirmation did not match; nothing was changed')
+        process.exitCode = 1
+        return
+      }
+    }
+    const client = createClient()
+    try {
+      await client.resetAgentBrowser(args.id)
+      console.log(`reset browser for agent ${args.id}: session stopped, profile removed`)
+    } catch (error) {
+      if (error instanceof ApiClientError) {
+        console.error(`browser reset failed: ${error.body.error}`)
+        if (error.body.code) console.error(`code: ${error.body.code}`)
+        process.exitCode = 1
+        return
+      }
+      throw error
+    }
+  },
+})
+
+const browserCmd = defineCommand({
+  meta: { name: 'browser', description: 'Agent browser session controls' },
+  subCommands: {
+    status: browserStatusCmd,
+    stop: browserStopCmd,
+    reset: browserResetCmd,
+  },
+})
+
 const moveCmd = defineCommand({
   meta: { name: 'move', description: 'Move an agent to a different team' },
   args: {
@@ -1093,6 +1212,8 @@ export const agentCommand = defineCommand({
     lesson: lessonCmd,
     skill: skillCmd,
     move: moveCmd,
+    browser: browserCmd,
+    search: searchCmd,
     'session-head': sessionHeadCmd,
   },
 })

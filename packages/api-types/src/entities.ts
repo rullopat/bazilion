@@ -546,9 +546,9 @@ export interface ResolvedAgent {
   privateLessons: string[]
 }
 
-export type McpTransport = 'stdio' | 'http' | 'sse'
+export type McpTransport = 'stdio' | 'http'
 
-/** A configured MCP server. The bearer token (http/sse) is never returned. */
+/** A configured MCP server. The HTTP bearer token is never returned. */
 export interface McpServer {
   id: string
   name: string
@@ -557,9 +557,9 @@ export interface McpServer {
   command: string | null
   /** stdio only — arguments. */
   args: string[]
-  /** http/sse only — endpoint URL. */
+  /** Streamable HTTP only — endpoint URL. */
   url: string | null
-  /** Whether a bearer token is stored for this server (http/sse). */
+  /** Whether an HTTP bearer token is stored for this server. */
   hasAuthToken: boolean
   enabled: boolean
   createdAt: number
@@ -573,7 +573,7 @@ export interface McpServerInput {
   command?: string | null
   args?: string[]
   url?: string | null
-  /** Bearer token for http/sse; stored encrypted. Pass null to clear. */
+  /** HTTP bearer token; stored encrypted. Pass null to clear. */
   authToken?: string | null
   enabled?: boolean
 }

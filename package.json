@@ -2,15 +2,16 @@
   "name": "bazilion-monorepo",
   "private": true,
   "type": "module",
-  "packageManager": "pnpm@11.14.0",
+  "packageManager": "pnpm@12.14.0",
   "engines": {
-    "node": ">=24.0.0"
+    "node": "^24.22.0 || ^26.4.0"
   },
   "scripts": {
     "lint": "biome check .",
     "format": "biome check --write .",
     "typecheck": "tsc --noEmit && pnpm --filter @bazilion/web typecheck",
     "test": "vitest run",
+    "test:upgrade-harness": "node --test scripts/testing/upgrade-harness.test.mjs",
     "security:acceptance": "node scripts/security-acceptance.mjs",
     "build": "pnpm --filter @bazilion/web build && pnpm -r --filter @bazilion/api-types --filter @bazilion/client --filter bazilion run build",
     "build:packages": "pnpm -r --filter='./packages/*' --filter='./apps/cli' run build",

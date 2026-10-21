@@ -1,0 +1,19 @@
+{
+  "reviewRun": "e288ac48-bd75-4bd1-b4ab-5fcb0259f0dc",
+  "verdict": "ACCEPT",
+  "storyStatus": "done",
+  "operatorApprovedScope": "limited scheduler/process; composed D/S open/unassigned",
+  "uniquePassingCases": 101,
+  "requiredStorySecurityCases": 3,
+  "strengthenedExistingRetryCasePassed": true,
+  "reviewedCodeTestManifestFilesUnchanged": 29,
+  "reviewedInventoryRecoveredFromRecordedRead": true,
+  "reviewRetainedVerbatim": true,
+  "backlogCounts": {
+    "in_progress": 2,
+    "done": 53
+  },
+  "temporaryCheckpointCapRemoved": true,
+  "temporaryFatalObserverRemoved": true,
+  "releaseApproved": false
+}

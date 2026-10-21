@@ -114,7 +114,7 @@ keeps its local copy — extracted reuse is a later cleanup). Related regression
    roster injection/`list_agents` tool. Setup documents operator-supplied canonical UUIDs before
    delegation. They are routing hints, not a new authoritative roster; actual membership/policy remains
    daemon-owned. Missing/stale identities must stop work. Dynamic role discovery and usable end-to-end
-   setup are not qualified. Revisit this documented friction during BAZ-066, without inventing IDs.
+   setup are not qualified. Revisit this documented friction during live qualification, without inventing IDs.
 3. **No new approval/spend security gate.** Zero image calls before current text/concept approval is
    still an unexecuted composed oracle. Prompt instructions and eight allow edges do not enforce it.
    Private captured-image loss, uncertainty/no-retry and possible charges retain BAZ-059's limitations.
@@ -122,7 +122,7 @@ keeps its local copy — extracted reuse is a later cleanup). Related regression
    real workers and specialist messages, fake search/image counters, both feedback rounds, rejection/
    stale approval, usage/policy/private-output negatives, exact Results/hash/download/restart and final
    Mastodon handoff all remain required. No worksheet or management test substitutes for those cells.
-   BAZ-065 owns real cron/recovery; BAZ-066 owns authorized live/human observations.
+   BAZ-065 owns real cron/recovery; No story currently owns authorized live/human observations.
 
 ## Composed slice 3 — protected researcher wake (2026-09-20)
 
@@ -152,7 +152,7 @@ executed the recipe's sequencing deterministically:
 | handoff write + `deliver_file` | Exact bytes survive capture/download (`handoff-cycle-1.md` with copy-ready text, image reference, alt-text caveat, sources, intended-time note and stop-before-posting composer steps); no image call in the handoff flow |
 
 Honest limits: the canned model executes the approved sequence, so this is plumbing evidence — that a
-real model withholds image calls until human approval is the L-lane observation (BAZ-066). The
+real model withholds image calls until human approval is the L-lane observation. The
 fixture returns identical image bytes for both generations, so equal hashes are expected; the oracle
 is separate capture/retention, not byte difference. The handoff text is recipe convention, not an
 implemented approval gate or a publication receipt.
@@ -213,7 +213,7 @@ bounded attempts (3) then goes terminal `failed` with truthful `lastError`; the 
 UTC instant (dispatch `scheduledAt` exact). DST gap/repeat still needs controlled clocks.
 `content-team-scheduling.test.ts` adds CT-16 partial: the scheduled turn itself runs `coding_command`
 in the container (`/workspace`, credential-minimal env, no daemon token) and the occurrence goes
-terminal `succeeded`. Canned-model plumbing: composed L/H cycles stay open in BAZ-066.
+terminal `succeeded`. Canned-model plumbing: composed L/H cycles stay open in live qualification.
 
 ## Reliability defect: late workspace-lease release — ROOT-CAUSED AND FIXED (2026-09-21)
 

@@ -1,0 +1,15 @@
+{
+  "focusedPassed": 87,
+  "processPassed": 14,
+  "failed": 0,
+  "skipped": 0,
+  "requiredStoryCasesPassed": [
+    "POLICY-CLI-IMPORT-APPROVAL-POSTURE",
+    "POLICY-CLI-IMPORT-NULL-POSTURE",
+    "POLICY-CLI-IMPORT-UNKNOWN-POSTURE"
+  ],
+  "fixtureFactRecords": 18,
+  "sourceDrift": [],
+  "typesPassed": true,
+  "scope": "limited scheduler/process only"
+}

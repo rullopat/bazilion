@@ -1,0 +1,191 @@
+{
+  "format": "bazilion-source-freeze-amendment-v1",
+  "revision": 12,
+  "recordedAt": "2026-10-19T19:02:07.560365+00:00",
+  "authorization": "Remaining non-publication source/version/artifact qualification; no commit/push/publication or unrestricted npm scripts",
+  "parentAmendment": "docs/testing/0.23.0-offline-build-matrix-20261019.json",
+  "parentAmendmentSha256": "b35615b82d88cc22d9fc2e7ca3019a6d0c2d8f6b6985e3415aaf14f3339e7961",
+  "parentSourceInputAggregateSha256": "e8dc9da214ca29645329585a8198d812f580b8f447ab1c565aca616d7ac45f89",
+  "amendedSourceInputAggregateSha256": "5632a6310a588802d940713fa3a70837dd6c6a3ee11b6642d646173dc0084877",
+  "amendedCoreEntryCount": 1139,
+  "reconstruction": "Apply preserved r11 core then this inputDelta; owned changeset transitions file\u2192explicit absent, membership unchanged; inherited aggregate algorithm",
+  "inputDelta": [
+    {
+      "path": "apps/cli/CHANGELOG.md",
+      "before": {
+        "path": "apps/cli/CHANGELOG.md",
+        "kind": "file",
+        "sha256": "d6a42acf27a6b56dd90088b56736a1da9c87aebf2cd035aa34432cfa61388d66",
+        "bytes": 50678,
+        "executable": false
+      },
+      "after": {
+        "path": "apps/cli/CHANGELOG.md",
+        "kind": "file",
+        "sha256": "79091814a96947c3554e9498aacb3a076ad2a252f5c1f512b71dfa95bb678aec",
+        "bytes": 52520,
+        "executable": false
+      }
+    },
+    {
+      "path": "apps/cli/package.json",
+      "before": {
+        "path": "apps/cli/package.json",
+        "kind": "file",
+        "sha256": "2472e2277d3cc86d7835e5d644e772680767ca9caf4d4c44be44725e87f0c865",
+        "bytes": 2061,
+        "executable": false
+      },
+      "after": {
+        "path": "apps/cli/package.json",
+        "kind": "file",
+        "sha256": "369d49d04fa17fa57aa3060a315dae789f3928158455920bceaf9f37ce9217e5",
+        "bytes": 2061,
+        "executable": false
+      }
+    },
+    {
+      "path": "docs/releases.md",
+      "before": {
+        "path": "docs/releases.md",
+        "kind": "file",
+        "sha256": "a53ff4c2502494875beae7c764beaf9b16d4176b8cde00751fbf01afcb8e07aa",
+        "bytes": 14594,
+        "executable": false
+      },
+      "after": {
+        "path": "docs/releases.md",
+        "kind": "file",
+        "sha256": "634f443b16a182be72177f8e479df6ef560e08dcd01cdb09b65ed0d27732a1e6",
+        "bytes": 14357,
+        "executable": false
+      }
+    },
+    {
+      "path": "packages/api-types/CHANGELOG.md",
+      "before": {
+        "path": "packages/api-types/CHANGELOG.md",
+        "kind": "file",
+        "sha256": "3b3e856e86587a83b505a3c024657705489eb4393a27db8a84e7801eb98992a9",
+        "bytes": 29818,
+        "executable": false
+      },
+      "after": {
+        "path": "packages/api-types/CHANGELOG.md",
+        "kind": "file",
+        "sha256": "272f1f8d998974b76bbd4c0fbfd6afdd6c08c58e04a7913c56409471c099fd69",
+        "bytes": 31660,
+        "executable": false
+      }
+    },
+    {
+      "path": "packages/api-types/package.json",
+      "before": {
+        "path": "packages/api-types/package.json",
+        "kind": "file",
+        "sha256": "3ffeae103d835184c57900c000ae6443661eab941a5700dc563f343904320ed8",
+        "bytes": 914,
+        "executable": false
+      },
+      "after": {
+        "path": "packages/api-types/package.json",
+        "kind": "file",
+        "sha256": "84e3d36b74a0156e27f94220dc0b53e08c571c55f8c0461b0ce86b367d7580c6",
+        "bytes": 914,
+        "executable": false
+      }
+    },
+    {
+      "path": "packages/client/CHANGELOG.md",
+      "before": {
+        "path": "packages/client/CHANGELOG.md",
+        "kind": "file",
+        "sha256": "d692bc86a797eccfb1b26de41d678579d50f6e1aac709c04c735c22833974297",
+        "bytes": 33848,
+        "executable": false
+      },
+      "after": {
+        "path": "packages/client/CHANGELOG.md",
+        "kind": "file",
+        "sha256": "64ed1eede182234c4c3caea807409051c8e8e020b6028f2dc7676461f314ccd8",
+        "bytes": 35765,
+        "executable": false
+      }
+    },
+    {
+      "path": "packages/client/package.json",
+      "before": {
+        "path": "packages/client/package.json",
+        "kind": "file",
+        "sha256": "a17529f7b80c55c7889ee045951039eacacaf103916a2bddb82604a40e21a217",
+        "bytes": 1005,
+        "executable": false
+      },
+      "after": {
+        "path": "packages/client/package.json",
+        "kind": "file",
+        "sha256": "abc025291fb18b97cc1201568039d7a533f2c0bf79df803b1aaa4d5aba8266b0",
+        "bytes": 1005,
+        "executable": false
+      }
+    },
+    {
+      "path": ".changeset/quiet-research-recovery.md",
+      "before": {
+        "path": ".changeset/quiet-research-recovery.md",
+        "kind": "file",
+        "sha256": "613fc5cb3f7bdf493d09a8ae8fd7cd8ed86bfc0442da056f95780a46ecc19fd7",
+        "bytes": 1857,
+        "executable": false
+      },
+      "after": {
+        "path": ".changeset/quiet-research-recovery.md",
+        "kind": "absent"
+      }
+    }
+  ],
+  "qualification": {
+    "actualSourcePublicVersions": [
+      "bazilion0.23.0",
+      "@bazilion/client0.23.0",
+      "@bazilion/api-types0.23.0"
+    ],
+    "generation": "Unchanged Changesets/GitHub plugin, scratch actual3 planned versions, consumed changeset, second pass byte-idempotent",
+    "sourceApplication": "Exact generated6 metadata files after before-hash checks, client empty-link polish only, owned changeset consumed; declarations/lock unchanged",
+    "initialVersionedBuild": "exit127 after pnpm automatic dependency sync used unprepared defaultstore, no route/missingtsc; retained",
+    "boundedCorrection": "Official private-HOME storeDir config only, no verifyDepsBeforeRun bypass; offline frozen restore then single type/build/3pack recheck exit0",
+    "tarballs": 3,
+    "artifactContents": "Versions,exports,client^0.23api dependency,CLI executable and packagedweb outputs/path shape checked",
+    "actualInstalledLibraries": "2 exact local artifacts through offline npm--ignore-scripts,imports/2 authenticated loopback requests/404 error propagation passed; first duplicate-/dev/null config error retained",
+    "cliInstallAvailability": "BLOCKED ENOTCACHED @earendil-works/pi-agent-core in private npm cache; scripts/network off; no installed CLI runtime test"
+  },
+  "status": "Source metadata applied and artifacts built, not published or fully qualified; CLI cache/harness readiness and final risk/platform/source/artifact acceptance remain open",
+  "additionalPlanningAndEvidence": [
+    {
+      "path": "docs/testing/0.23.0-versioned-candidate-20261019.md",
+      "sha256": "05046387334622773908f043ec3b3d4048d76f6a983a4f06886dbff6ddc1089b"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-versioned-candidate-20261019/candidate.json",
+      "sha256": "2ddcea1edf68a17f9a84e28e5f902b28cfedf42706f263c3bdacfb5385816f41"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-versioned-candidate-20261019/transcripts.json.gz",
+      "sha256": "8ab05b76a0b3f0e61b1e527bd45c72e0b07e4c4c2602203cd72f95029c644cfd"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-versioned-candidate-20261019/artifacts/bazilion-0.23.0.tgz",
+      "sha256": "b0a5b28043be50bc3d857d5a869cc3040911e49f5444e20ebe9cc205dda733e9"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-versioned-candidate-20261019/artifacts/bazilion-api-types-0.23.0.tgz",
+      "sha256": "c783c1c917d9ee6c84c60196f0a323574cf6bbc001746acdb2b92640e65466ad"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-versioned-candidate-20261019/artifacts/bazilion-client-0.23.0.tgz",
+      "sha256": "bb7c433f0d4fb9400556760e9c6762a533bc6b15bdf290455cb7b78f6fd68a43"
+    }
+  ],
+  "nextDecision": "Registry-only npm resolved production closure/cache population with scripts off plus bounded installer settled-close/failure retention hardening and guarded CLI install trial; no default-unrestricted-npm-install pass",
+  "publicationAuthorized": false
+}

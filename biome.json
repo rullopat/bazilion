@@ -1,7 +1,7 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.5.0/schema.json",
   "files": {
-    "includes": ["**", "!**/node_modules", "!**/dist", "!apps/web", "!apps/mobile"]
+    "includes": ["**", "!**/node_modules", "!**/dist", "!.pi", "!apps/web", "!apps/mobile"]
   },
   "formatter": {
     "enabled": true,
@@ -19,5 +19,11 @@
       "semicolons": "asNeeded",
       "trailingCommas": "all"
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["docs/backlog/evidence/**/*.json", "docs/testing/evidence/**/*.json"],
+      "formatter": { "enabled": false }
+    }
+  ]
 }

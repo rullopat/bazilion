@@ -89,6 +89,30 @@ test('read-only device token: reads pass, mutations and admin surfaces 403 with 
   })
 })
 
+test('browser control routes follow the read/write scope defaults (T13)', async () => {
+  const { token: readOnly } = mintDirect('browser-read-only', ['read'])
+  const { token: writeOnly } = mintDirect('browser-write-only', ['write'])
+
+  // Status is a read: a read-scoped device may call it.
+  const status = await req('GET', '/api/agents/no-such-agent/browser', readOnly)
+  expect(status.status).toBe(404) // scope passes; the agent lookup decides
+
+  // Stop/reset are writes: a read-scoped device is refused with the scope named.
+  const deniedStop = await req('POST', '/api/agents/no-such-agent/browser/stop', readOnly)
+  expect(deniedStop.status).toBe(403)
+  expect(deniedStop.json).toMatchObject({ code: 'insufficient_scope', requiredScope: 'write' })
+
+  const deniedReset = await req('DELETE', '/api/agents/no-such-agent/browser/profile', readOnly)
+  expect(deniedReset.status).toBe(403)
+  expect(deniedReset.json).toMatchObject({ code: 'insufficient_scope', requiredScope: 'write' })
+
+  // A write-scoped device passes scope for the mutations (agent 404 decides).
+  const stop = await req('POST', '/api/agents/no-such-agent/browser/stop', writeOnly)
+  expect(stop.status).toBe(404)
+  const reset = await req('DELETE', '/api/agents/no-such-agent/browser/profile', writeOnly)
+  expect(reset.status).toBe(404)
+})
+
 test('approvals-only device token: resolves gates, cannot read or write', async () => {
   const { token } = mintDirect('approvals-only', ['approvals'])
   const ack = await req('POST', '/api/attention/acknowledge-all', token)

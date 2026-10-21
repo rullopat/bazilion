@@ -130,6 +130,13 @@ export function createBackupArchive(paths: Paths, snapshot: BackupSnapshot) {
           return false
         }
         if (/^teams\/[^/]+\/memory\/\.qmd-index\.sqlite/.test(normalized)) return false
+        // BAZ-069 T12 (D6): the exact ROOT browser slot is sensitive state —
+        // profiles hold site credentials (cookies, logins) and are excluded
+        // from ordinary backup/export so cloning Agent documents can never
+        // clone an authenticated browser session. The exclusion is the exact
+        // home-root slot only: ordinary operator files elsewhere (e.g. under
+        // `teams/<id>/browsers/`) are retained.
+        if (normalized === 'browsers' || normalized.startsWith('browsers/')) return false
         return true
       },
       onWriteEntry(entry) {

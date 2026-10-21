@@ -20,12 +20,21 @@ export type ToolOutput =
   | string
   | ToolResultPart[]
   | { content: ToolResultPart[]; result: ResultReference }
-  | { content: ToolResultPart[]; results: ResultReference[] }
+  | {
+      content: ToolResultPart[]
+      results: ResultReference[]
+      imageEvidence?: { outputSource: 'terminal' | 'completed_stream' }
+    }
   | { content: ToolResultPart[]; questionReceipt: string }
+  | { content: ToolResultPart[]; webSearch: import('@bazilion/api-types').WebSearchOutput }
+  | { content: ToolResultPart[]; webFetch: import('@bazilion/api-types').WebFetchEvidence }
 
 export interface ToolHandler {
   def: ToolDef
-  invoke(args: Record<string, unknown>, context?: { toolCallId: string }): Promise<ToolOutput>
+  invoke(
+    args: Record<string, unknown>,
+    context?: { toolCallId: string; signal?: AbortSignal },
+  ): Promise<ToolOutput>
 }
 
 export interface ToolRegistry {

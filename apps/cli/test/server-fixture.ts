@@ -1,5 +1,6 @@
 import { type ChildProcess, spawn } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { randomUUID } from 'node:crypto'
+import { closeSync, mkdirSync, mkdtempSync, openSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -203,6 +204,12 @@ async function bootTestServer(
   const port = await findFreePort()
   const url = `http://127.0.0.1:${port}`
 
+  // Opt-in diagnostics for disposable test daemons only, never the operator daemon.
+  // Ephemeral ports can be reused during a serial gate; never overwrite/collide with prior logs.
+  const stderrDir = process.env.BAZILION_TEST_DAEMON_STDERR_DIR
+  const stderrFd = stderrDir
+    ? openSync(join(stderrDir, `fixture-${port}-${randomUUID()}.stderr.log`), 'wx', 0o600)
+    : undefined
   const proc: ChildProcess = spawn('node', ['--import', 'tsx/esm', daemonEntry], {
     env: {
       ...process.env,
@@ -211,8 +218,9 @@ async function bootTestServer(
       PORT: String(port),
       ...extraServerEnv,
     },
-    stdio: 'ignore',
+    stdio: stderrFd === undefined ? 'ignore' : ['ignore', 'ignore', stderrFd],
   })
+  if (stderrFd !== undefined) closeSync(stderrFd)
 
   const closed = new Promise<void>((resolve) => proc.once('close', () => resolve()))
   try {

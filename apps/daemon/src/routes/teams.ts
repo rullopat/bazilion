@@ -57,11 +57,13 @@ import {
   type VerificationRequestRecord,
 } from '../core/repos/verification-requests.ts'
 import type { AuthVariables } from '../lib/auth.ts'
+import { workspaceLifecycle } from '../lib/coding-environment/lifecycle.ts'
 import {
   codingEnvironmentStatus,
   configureTeamCodingEnvironment,
   mutateTeamWorkspace,
 } from '../lib/coding-environment/management.ts'
+import { emptyRecoveryBody } from '../lib/coding-environment/recovery-body.ts'
 import { WorkspaceBusyError } from '../lib/coding-environment/workspace.ts'
 import { getCtx } from '../lib/ctx.ts'
 import {
@@ -723,6 +725,30 @@ teamsRouter.post('/:id/review/snapshots', async (c) => {
   } catch (error) {
     return reviewFailure(c, error)
   }
+})
+
+teamsRouter.get('/:id/workspace/recovery', (c) => {
+  c.header('Cache-Control', 'no-store')
+  const { db, paths } = getCtx()
+  const team = teamRepo.get(db, c.req.param('id'), paths)
+  if (!team) return c.json({ error: 'Team not found' }, 404)
+  return c.json(workspaceLifecycle(db).managementRecovery.report(team.id, team.path))
+})
+
+teamsRouter.post('/:id/workspace/recovery/:writerId', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  // The only selection is a Team-bound opaque id. No body, cleanup proof, PID or path override.
+  if (!(await emptyRecoveryBody(c.req.raw)))
+    return c.json({ error: 'Recovery request body is not allowed' }, 400)
+  const { db, paths } = getCtx()
+  const team = teamRepo.get(db, c.req.param('id'), paths)
+  if (!team) return c.json({ error: 'Team not found' }, 404)
+  const recovery = workspaceLifecycle(db).managementRecovery
+  const outcome = await recovery.attempt(team.id, team.path, c.req.param('writerId'), () => {
+    const current = teamRepo.get(db, team.id, paths)
+    return current?.createdAt === team.createdAt ? current.path : undefined
+  })
+  return c.json({ outcome, report: recovery.report(team.id, team.path) })
 })
 
 teamsRouter.get('/:id/coding-environment', async (c) => {

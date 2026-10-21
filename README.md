@@ -12,7 +12,9 @@ Whole-run subprocess isolation with worker↔daemon Node-IPC for messaging, Chat
 
 ## Quickstart
 
-Requires **Node 24 or newer**. **Linux is the validated platform.** macOS can
+Requires **Node 24.22.0+ within 24.x, or 26.4.0+ within 26.x**. Earlier releases and other
+major lines are refused before opening Bazilion state; this excludes an upstream native cleanup-hook
+bug. See `docs/upgrades.md`. **Linux is the validated platform.** macOS can
 install and run the daemon, web UI and first-run setup, but **agent turns (chat)
 require Linux**: every turn resolves repository context through safe reads that
 pin ancestry with Linux-only primitives, by design — they fail closed with a
@@ -69,7 +71,7 @@ Other provider env vars: `OPENAI_API_KEY`, `GEMINI_API_KEY`, `LMSTUDIO_URL`/`LMS
 
 ## Develop from source
 
-Contributors: clone the repo. Node 24+ and pnpm 10+ are required. If `corepack` is unavailable, install pnpm directly with `npm install -g pnpm`.
+Contributors: clone the repo. Node 24.22.0+ within 24.x or 26.4.0+ within 26.x, and pnpm 10+, are required. If `corepack` is unavailable, install pnpm directly with `npm install -g pnpm`.
 The exact development versions are pinned in `mise.toml`; with mise, run `mise install` and prefix
 commands with `mise exec --`. After changing Node versions, rebuild native dependencies before
 starting Bazilion so the worker and qmd use the same Node module ABI.
@@ -118,7 +120,7 @@ bazilion send <from> <to> <message>        # mailbox send
 bazilion inbox list|show|read              # inspect agent inboxes
 bazilion inbox loop-breaks <agent>         # inspect stopped agent-message chains
 bazilion trigger add|list|rm|enable|disable|history  # scheduled triggers + delivery diagnostics
-bazilion mcp add|list|show|rm|enable|disable|test    # MCP servers (stdio / http / sse)
+bazilion mcp add|list|show|rm|enable|disable|test    # MCP servers (stdio / Streamable HTTP)
 bazilion provider list|enable|disable|models|test    # provider config + smoke test
 bazilion config list|set|rm                # service config (URLs, IDs, secrets)
 bazilion login --server URL --token T      # save a remote daemon's coordinates
@@ -176,8 +178,9 @@ create a fresh encrypted backup.
 - **Mailbox** — `messages` table. Agents talk to each other via `send_message` / `read_inbox` / `wait_for_reply` tools, via `bazilion send` from the CLI, or from outside the loop: `bazilion inbox list <agent> [--unread]`, `bazilion inbox show <id>`, `bazilion inbox read <id>`, or the web UI at `/agents/<id>/inbox`. The worker delegates these tool calls to the daemon over Node IPC — workers don't hold their own SQLite handle.
 - **Agent-loop circuit breaker** — every Agent message carries a durable causal chain id and hop count. Explicit replies inherit from `reply_to`; messages sent from an inbox wake inherit the highest-hop claimed message even if the Agent omits `reply_to`. The daemon rejects sends beyond `BAZILION_AGENT_LOOP_MAX_HOPS` (default 8) before another LLM turn can wake and records payload-free diagnostics visible in the Agent inbox, HTTP API, and `bazilion inbox loop-breaks`.
 - **Trigger** — an interval in seconds or cron expression that periodically wakes an agent with a stored instruction. An in-process scheduler ticks every 5 s (overridable via `BAZILION_SCHEDULER_TICK_MS`; disable with `BAZILION_SCHEDULER=off`) and fires due triggers through the same code path as user chat. Example: `bazilion trigger add <agent> --every 300 --message "check your inbox"`.
+- **Web discovery** — ordinary interactive Agents use configured Brave/SearXNG or experimental native OpenAI/ChatGPT search on their own eligible model/account. Search and source-reading evidence are separate; no engine/account/browser fallback. Route settings are on `/config` → Web Search; inspect with `bazilion agent search status <id>`. Native entitlement/live qualification remains pending. See [web research](docs/web-research.md).
 - **Browser automation** — agents get a `browser_*` tool suite backed by a persistent per-agent Playwright (Chromium) session that survives across turns. Perception is accessibility-tree-first (`browser_snapshot` → aria tree with `[ref=eN]` refs; no vision model needed); screenshots are a secondary tool rendered inline in chat. A network-layer SSRF guard blocks loopback/private targets by default. The matching Chromium build is installed with Bazilion. Toggle/tune on `/config` → Browser Automation.
-- **MCP** — connect the daemon to [Model Context Protocol](https://modelcontextprotocol.io) servers over stdio (local subprocess), Streamable-HTTP, or SSE. Each enabled server's tools are injected into every agent turn, namespaced `mcp__<server>__<tool>`. Manage from `bazilion mcp …` or `/config/mcp`. Example: `bazilion mcp add playwright --command npx --args "-y @playwright/mcp"`.
+- **MCP** — the daemon uses Pi's standalone [Model Context Protocol](https://modelcontextprotocol.io) client over stdio (local subprocess) or Streamable HTTP. Admitted ordinary interactive Agents receive `mcp__<server>__<tool>` proxies over IPC; credentials and persistent clients remain daemon-owned. Legacy SSE is retired under the clean-install alpha schema contract. Manage from `bazilion mcp …` or `/config/mcp`; see [MCP configuration and safety](docs/mcp.md). Example: `bazilion mcp add playwright --command npx --args "-y @playwright/mcp"`.
 - **Image generation (0.22 development)** — opt-in `image_generate` offers direct OpenAI API-key access, ChatGPT/Codex login, or Pi's OpenRouter image API. Automatic mode follows enabled OpenAI text providers (the Agent's own route when applicable); explicit image choices override it. Stored credentials and provider failures never trigger a billing-route fallback. Images are durable, policy-authorized Results; rework preserves the original. Account entitlement remains subject to live qualification. See [configuration, limits and the content-Team recipe](docs/image-generation.md).
 - **Images** — bidirectional on every client. Tool-produced images (browser screenshots, MCP image results) show as standalone deliverables: an image block in the web chat, a photo on Telegram. You can also send images *in*: attach/paste/drag in the web composer, send a photo to a bound Telegram topic, or `bazilion agent chat <id> --image <path>` — the model sees them via vision. (Audio/video are deferred — the model can't perceive non-image media yet.)
 - **Documents** — bidirectional too, via store-and-reference (the model can't perceive raw files, so it gets a path and decides how to process). Attach any file in (web 📎/paste/**drag-and-drop**, `bazilion agent chat <id> --file <path>`, or a Telegram document) → saved under the agent's home, referenced by path for the agent to open with its tools. Agents send files back with `deliver_file` → an immutable saved result, a persistent web download card, an authorized Telegram document, and CLI download support. Find them under **Team → Results** or `bazilion result list`. Outgoing files are limited to 25 MiB each and 1 GiB retained bytes per home. See [saved results](docs/results.md) for previews, approvals, retention, and backup behavior.
@@ -300,6 +303,13 @@ cookies used for normal login. The bootstrap bearer is never stored in those coo
 login rejects it after setup completes. Named device credentials remain the normal ongoing login
 and native-client path. See [the private gateway guide](docs/private-gateway.md) for service
 environment, verification, recovery, and remote CLI/mobile details.
+
+## Workspace recovery
+
+If a failed turn leaves a Team blocked, inspect **Workspace recovery** on its Team page or run
+`bazilion team recovery list <team>`. Only recorded, confirmed cleanup can release a writer;
+unconfirmed host-command cleanup remains unsupported. There is no force-clear.
+See [workspace recovery](docs/workspace-recovery.md) for commands and explicit limitations.
 
 ## Agent shell security
 

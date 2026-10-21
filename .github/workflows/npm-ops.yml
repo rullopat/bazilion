@@ -34,6 +34,9 @@ permissions:
   contents: read
   id-token: write
 
+env:
+  PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+
 jobs:
   remove-dist-tag:
     if: inputs.action == 'remove-dist-tag'
@@ -41,7 +44,7 @@ jobs:
     steps:
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: '24.22.0'
           registry-url: https://registry.npmjs.org
       - name: Remove dist-tag
         run: npm dist-tag rm "${{ inputs.package }}" "${{ inputs.tag }}"
@@ -54,7 +57,7 @@ jobs:
     steps:
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: '24.22.0'
           registry-url: https://registry.npmjs.org
       - name: Add dist-tag
         run: npm dist-tag add "${{ inputs.package }}@${{ inputs.version }}" "${{ inputs.tag }}"
@@ -71,7 +74,7 @@ jobs:
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: '24.22.0'
           registry-url: https://registry.npmjs.org
           cache: pnpm
       - name: Set the target version

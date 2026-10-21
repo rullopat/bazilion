@@ -71,7 +71,7 @@ export const doctorCommand = defineCommand({
     )
 
     console.log()
-    console.log('web search (at least one needed for web_search tool)')
+    console.log('web search (managed backends or eligible ordinary native route)')
     if (r.webSearch.braveConfigured) {
       console.log('  ✓ Brave Search configured')
     } else {
@@ -83,7 +83,12 @@ export const doctorCommand = defineCommand({
       console.log('  - SearXNG (set SEARXNG_URL if you self-host one)')
     }
     if (!r.webSearch.braveConfigured && !r.webSearch.searxngConfigured) {
-      console.log('  ⚠ no search backend — web_search will error until one is configured')
+      console.log(
+        '  - no managed backend; eligible OpenAI/ChatGPT Agents may use experimental native discovery',
+      )
+      console.log(
+        '    inspect: bazilion agent search status <id>; route/disablement: bazilion config list',
+      )
     }
 
     console.log()

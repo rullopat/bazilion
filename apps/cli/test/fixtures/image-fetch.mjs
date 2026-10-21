@@ -33,11 +33,38 @@ globalThis.fetch = async (input, init) => {
     `${JSON.stringify({ route, model: body.model, prompt })}\n`,
   )
   if (route === 'openai') return Response.json({ data: [{ b64_json: data }] })
-  if (route === 'openai-codex')
+  if (route === 'openai-codex') {
+    const events = [
+      {
+        type: 'response.created',
+        response: { id: 'codex-fixture', status: 'in_progress', model: 'gpt-6-astra' },
+      },
+      {
+        type: 'response.output_item.done',
+        output_index: 0,
+        item: {
+          type: 'image_generation_call',
+          id: 'ig-fixture',
+          status: 'completed',
+          result: data,
+        },
+      },
+      {
+        type: 'response.completed',
+        response: {
+          id: 'codex-fixture',
+          status: 'completed',
+          ...(prompt === 'Illustration version 6' ? {} : { output: [] }),
+        },
+      },
+    ]
+    // Exercise missing MIME plus both explicit-empty and omitted terminal output offline.
     return new Response(
-      `data: ${JSON.stringify({ type: 'response.completed', response: { id: 'codex-fixture', status: 'completed', output: [{ type: 'image_generation_call', id: 'ig-fixture', status: 'completed', result: data }] } })}\n\n`,
-      { headers: { 'content-type': 'text/event-stream' } },
+      new TextEncoder().encode(
+        events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(''),
+      ),
     )
+  }
   return Response.json({
     id: 'image-fixture',
     choices: [{ message: { images: [{ image_url: { url: `data:image/png;base64,${data}` } }] } }],

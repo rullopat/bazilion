@@ -143,7 +143,7 @@ test.each([
     expect(body.input).toEqual([
       { role: 'user', content: [{ type: 'input_text', text: 'A bird' }] },
     ])
-    return stream([{ type: 'response.output_item.done', item }, complete], '\r\n')
+    return stream([{ type: 'response.output_item.done', item, output_index: 0 }, complete], '\r\n')
   })
   const result = await request(provider, fetcher)
   expect(result.output).toEqual([{ type: 'image', mimeType: 'image/png', data: png }])
@@ -224,10 +224,11 @@ test('Codex rejects malformed event JSON rather than treating a partial stream a
   ).rejects.toThrow()
 })
 
-test('Codex recovers a completed image event only when final output is omitted', async () => {
+test('Codex omitted-output recovery requires bound lifecycle and completed snapshot identity', async () => {
   const result = await request('openai-codex', async () =>
     stream([
-      { type: 'response.output_item.done', item },
+      { type: 'response.created', response: { id: 'resp', status: 'in_progress' } },
+      { type: 'response.output_item.done', item, output_index: 0 },
       { type: 'response.completed', response: { id: 'resp', status: 'completed' } },
     ]),
   )

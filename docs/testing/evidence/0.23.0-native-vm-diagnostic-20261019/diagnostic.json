@@ -1,0 +1,37 @@
+{
+  "basis": "r22 current application, unchanged Node24.20.0/ABI137 and better-sqlite3@12.10.0 native binary",
+  "basisSourceInputAggregateSha256": "b815a37567ffff025030e6107eb2b862fd74c38dc88e2bf9e573100c17aa9c32",
+  "applicationEdits": false,
+  "dependencyOrVersionChanges": false,
+  "probe": "Two predeclared bounded standalone synthetic VM/native-statement comparisons; same SQLite queries and VM workload, only statement reachability differs; no actual Agent/provider/credential/network operation",
+  "outcomes": {
+    "kind": "Two predeclared VM-context diagnostic comparisons, not candidate pass counts",
+    "cases": [
+      {
+        "mode": "vm-dropped",
+        "exitCode": -6,
+        "forced": false,
+        "elapsedSeconds": 0.21444873200380243,
+        "closed": true,
+        "stdoutSha256": "10f586aacf856f2980d329a1eb4dea378eace5f50e455ed83295a1692eefab0a",
+        "stderrSha256": "a91ebc29a4d8fce3a76a3efbe5762a81fdb9c0b379fc9f135d5d2be36a846fd9"
+      },
+      {
+        "mode": "vm-retained",
+        "exitCode": 0,
+        "forced": false,
+        "elapsedSeconds": 0.11414657699060626,
+        "closed": true,
+        "stdoutSha256": "eaae2d7e8672286bd312d3f94f66cdf2a7b9f2dc0c13dbfba615794d7b560ca2",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    ]
+  },
+  "observation": "Dropped statements: observed SIGABRT(-6), same RemoveEnvironmentCleanupHook/env assertion and Statement destructor/V8GC frames, JS trace at vm.createContext. Retained statements: exit0, full524288-object VM workload completed and DB closed. This is mechanism reproduction, not an approved production retention/GC workaround.",
+  "limitations": "Does not yet identify the exact worker context-creation caller or a safe supported fix. The earlier standalone sync/asyncGC comparisons and earlier unexplained image-barrier failure retain their original limits. One run/case; retention also changes heap/timing, no GC count pinned/observed in the normal control and no general production-fix claim.",
+  "fixtureProfileCorrectionValidated": false,
+  "targetedChatRerunPerformed": false,
+  "fullOrSecurityGateRerunPerformed": false,
+  "interruption": "Parent API returned possible-cybersecurity-risk rejection on preceding turn. No retry, alternate provider, restriction evasion, account access or access-control change attempted; diagnostic execution stopped and state retained. The rejection cause is not inferred from the preceding dependency output.",
+  "publicationPerformed": false
+}

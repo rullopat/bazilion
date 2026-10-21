@@ -1,0 +1,63 @@
+{
+  "format": "bazilion-source-freeze-amendment-v1",
+  "revision": 10,
+  "recordedAt": "2026-10-19T17:48:31.221273+00:00",
+  "authorization": "Operator approved bounded registry.npmjs.org-only metadata/pinned-package availability downloads; keep lifecycle scripts disabled, all pnpm checks on, no providers/publication",
+  "parentAmendment": "docs/testing/0.23.0-install-prereq-20261019.json",
+  "parentAmendmentSha256": "91d8b512e875bb59b112aabfbf0b811e376447811b64bfe949dbd26b300bee58",
+  "parentSourceInputAggregateSha256": "9e8b63706a8d26c310ab9379759348ea0303d85257ddc979c71fe9fc15e3e4d1",
+  "amendedSourceInputAggregateSha256": "558a7b1191f768f0aebcaef8a4a5ff19fc950a2014ee6566bdc4b85ca06bfdff",
+  "amendedCoreEntryCount": 1139,
+  "reconstruction": "Apply preserved r9 core then this inputDelta; membership unchanged; inherited sorted aggregate algorithm",
+  "inputDelta": [
+    {
+      "path": "docs/releases.md",
+      "before": {
+        "path": "docs/releases.md",
+        "kind": "file",
+        "sha256": "1fba409210e3a141035404f90d64a15487c523db70e1cd909250118ddbfa0dec",
+        "bytes": 14154,
+        "executable": false
+      },
+      "after": {
+        "path": "docs/releases.md",
+        "kind": "file",
+        "sha256": "a948fd51382b86507a613610f8d062f6f260aefa2a2a2fd70bb1fce511662a13",
+        "bytes": 14339,
+        "executable": false
+      }
+    }
+  ],
+  "qualification": {
+    "candidate": "pnpm12.14.0,Node24.20.0; policy1068 entries; packages919 reused919 downloaded0; frozen source/lock unchanged; exit0",
+    "priorTags": "All8 actual pnpm11.14.0 frozen --ignore-scripts installs exited0 with unchanged tracked files; cached policy-verdict reuse labelled in raw output",
+    "availabilitySuccesses": 9,
+    "candidateDisconnectedCacheRecheck": "exit0; existing node_modules/cache and recent verdict reused, not another fresh install",
+    "setupFailure": "Namespace443 EACCES before pnpm and zero registry connections; preserved; corrected with high-port canonical-only CONNECT, no privileges/system/TLS/policy relaxation",
+    "networkTLSBytesBothDirections": 153424344,
+    "newOriginRequested": false,
+    "ownedRelayStreamsAfterEach": 0,
+    "lifecycleScriptsExecuted": false,
+    "agentSkillsApproved": false,
+    "genuineOldHomeMatrixExecuted": false
+  },
+  "status": "Availability cache prerequisite cleared; normal offline lifecycle/build, genuine prior-home and final version/artifact qualification remain open",
+  "additionalPlanningAndEvidence": [
+    {
+      "path": "docs/testing/0.23.0-registry-availability-20261019.md",
+      "sha256": "b4387fb2c15f661bbf788be9711bfdb0409125b5f980a7e8e99ce0446b4120d0"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-registry-availability-20261019/availability.json",
+      "sha256": "d783c198a6a09751081ceb65dbf41e9003a8f43d3115a80b7b254360c1ae5132"
+    },
+    {
+      "path": "docs/testing/evidence/0.23.0-registry-availability-20261019/prior-plan.json.gz",
+      "sha256": "c428e71abf99c4e7eb388bc66688a51300c8224da6b9f8b874367bdd611c925c"
+    }
+  ],
+  "nextScope": "Project-allowlisted lifecycle/native-build checks OFFLINE, existing headers/tools, no browser downloads/agent-skill or unknown-build approvals; then genuine prior-home refusal qualification",
+  "earlierResults": "r8 required366 security pass retained; earlier intermittent failure still unexplained for final independent risk review",
+  "publicVersions": "0.22.0 unchanged; pending minor changeset retained",
+  "publicationAuthorized": false
+}

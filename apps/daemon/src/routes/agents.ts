@@ -1,8 +1,8 @@
 import * as conversationRepo from '../core/repos/conversations.ts'
 import { WorkspaceBusyError } from '../lib/coding-environment/workspace.ts'
+import { selectedConversationTarget } from '../lib/conversation-target.ts'
 import { ContextReadError } from '../lib/repository-context/files.ts'
 import { RepositoryContextIncompleteError } from '../lib/repository-context/index.ts'
-import { selectedConversationTarget } from '../lib/conversation-target.ts'
 // /api/agents/* — agent CRUD + lifecycle + sub-resources (team, skills,
 // triggers, messages, sessions, chat). Memory is per-team and lives on
 // the teams router.
@@ -48,6 +48,7 @@ import {
   type UpdateAgentLessonProposalRequest,
   type UpdateAgentReviewConfigRequest,
 } from '@bazilion/api-types'
+import type { Context } from 'hono'
 import { Hono } from 'hono'
 import {
   agentLessonProposalRepo,
@@ -80,7 +81,40 @@ import { runAgentLifecycleMutation } from '../lib/agent-lifecycle-lease.ts'
 import { AgentLoopLimitError, listAgentLoopBreaks } from '../lib/agent-loop-guard.ts'
 import { prepareAgentTurn, runAgentTurn } from '../lib/agent-turn.ts'
 import { resolveAgentApiKey } from '../lib/api-key.ts'
-import { closeBrowserSession } from '../lib/browser/pool.ts'
+import { isBrowserEnabled, resolveBrowserConfig } from '../lib/browser/config.ts'
+import {
+  browserStatusFor,
+  clearBrowserProfile,
+  closeBrowserSession,
+  PoolError,
+  safeBrowserRemedy,
+} from '../lib/browser/pool.ts'
+import { ordinarySearchStatus } from '../lib/ordinary-search-config.ts'
+import { hasCredentials as hasSearchCodexCredentials } from '../runtime/auth/openai-codex.ts'
+
+/** D6: browser cleanup refusals are 409-class conflicts, not generic errors. */
+function browserConflict(error: unknown): { code: PoolError['reasonCode']; status: 409 } | null {
+  if (!(error instanceof PoolError)) return null
+  return { code: error.reasonCode, status: 409 }
+}
+
+/** Error response for the browser control routes: 409 refusals carry codes; nothing leaks stderr. */
+function browserControlErrorResponse(c: Context, error: unknown): Response {
+  const message = (error as Error).message
+  const browser = browserConflict(error)
+  const turnActive = message.startsWith('agent_turn_active')
+  return c.json(
+    {
+      error: browser ? safeBrowserRemedy(browser.code) : message,
+      ...(browser ? { code: browser.code } : turnActive ? { code: 'agent_turn_active' } : {}),
+    },
+    browser || turnActive ? 409 : 400,
+  )
+}
+
+/** The explicit reset confirmation literal (D6: an unconfirmed reset is a 400, never a guess). */
+export const BROWSER_RESET_CONFIRMATION = 'reset-browser-profile'
+
 import {
   authorizeHttpChatFrame,
   CommunicationDeniedError,
@@ -352,9 +386,14 @@ agentsRouter.patch('/:id', async (c) => {
 })
 
 agentsRouter.delete('/:id', async (c) => {
-  const { db } = getCtx()
+  const { db, paths } = getCtx()
   const id = agentRepo.resolveId(db, c.req.param('id'))
   if (!id) return c.json({ error: `agent not found: ${c.req.param('id')}` }, 404)
+  const agent = agentRepo.get(db, id)
+  if (!agent) return c.json({ error: `agent not found: ${id}` }, 404)
+  // Declared above the try: a late failure AFTER cleanup must still be able
+  // to report the partial filesystem side effect honestly.
+  const warnings: string[] = []
   try {
     const revisionParam = c.req.query('expectedTeamRevision')
     const expectedTeamRevision = revisionParam ? Number.parseInt(revisionParam, 10) : undefined
@@ -365,28 +404,59 @@ agentsRouter.delete('/:id', async (c) => {
     ) {
       return c.json({ error: 'expectedTeamRevision must be a positive integer' }, 400)
     }
-    await runAgentLifecycleMutation(id, () => deleteAgent(db, id, expectedTeamRevision as number))
-    // Best-effort teardown after the mutation wins the lifecycle lease. An
-    // active-turn rejection must not close resources owned by that turn.
-    void closeBrowserSession(id).catch(() => {})
+    // Preflight the revision BEFORE touching browser state: a stale-revision
+    // request must not cost the agent its profile. The canonical mutation
+    // still revalidates authoritatively inside its transaction.
+    const preflight = teamPolicyRepo.get(db, agent.teamId)
+    if (preflight && preflight.revision !== (expectedTeamRevision as number)) {
+      return c.json(
+        {
+          error: `team_revision_conflict: expected ${expectedTeamRevision as number}, current ${preflight.revision}`,
+          code: 'team_revision_conflict',
+        },
+        409,
+      )
+    }
+    await runAgentLifecycleMutation(id, async () => {
+      // D6 ordering: close the owned session and remove its profile BEFORE the
+      // canonical deletion — never a fire-and-forget after it. Cleanup is
+      // atomic per agent and blocks the deletion when it cannot be proven (a
+      // live browser must not be orphaned with its profile removed under it).
+      await clearBrowserProfile(id, paths, agent.teamId)
+      try {
+        deleteAgent(db, id, expectedTeamRevision as number)
+      } catch (error) {
+        // The browser state is already gone; say so instead of pretending the
+        // failed mutation rolled the filesystem back too.
+        warnings.push(
+          'the agent browser session and profile (site state) were already removed and are not recovered by this failure',
+        )
+        throw error
+      }
+    })
     notifyDirectoryDirty()
-    return c.body(null, 204)
+    return warnings.length > 0 ? c.json({ warnings }, 200) : c.body(null, 204)
   } catch (err) {
     const message = (err as Error).message
+    const browser = browserConflict(err)
     return c.json(
       {
-        error: message,
-        ...(message.startsWith('agent_turn_active')
-          ? { code: 'agent_turn_active' }
-          : message.startsWith('placement_required')
-            ? { code: 'revision_required' }
-            : message.startsWith('team_revision_conflict')
-              ? { code: 'team_revision_conflict' }
-              : message.startsWith('team_policy_invalid')
-                ? { code: 'team_policy_invalid' }
-                : {}),
+        error: browser ? safeBrowserRemedy(browser.code) : message,
+        ...(warnings.length > 0 ? { warnings } : {}),
+        ...(browser
+          ? { code: browser.code }
+          : message.startsWith('agent_turn_active')
+            ? { code: 'agent_turn_active' }
+            : message.startsWith('placement_required')
+              ? { code: 'revision_required' }
+              : message.startsWith('team_revision_conflict')
+                ? { code: 'team_revision_conflict' }
+                : message.startsWith('team_policy_invalid')
+                  ? { code: 'team_policy_invalid' }
+                  : {}),
       },
-      message.startsWith('agent_turn_active') ||
+      browser ||
+        message.startsWith('agent_turn_active') ||
         message.startsWith('placement_required') ||
         message.startsWith('team_revision_conflict') ||
         message.startsWith('team_policy_invalid')
@@ -400,21 +470,40 @@ agentsRouter.post('/:id/archive', async (c) => {
   const { db } = getCtx()
   const id = agentRepo.resolveId(db, c.req.param('id'))
   if (!id) return c.json({ error: `agent not found: ${c.req.param('id')}` }, 404)
+  const warnings: string[] = []
   try {
     await runAgentLifecycleMutation(id, async () => {
-      archiveAgent(db, id)
-      await closeBrowserSession(id).catch(() => {})
+      // D6 ordering: stop the owned browser BEFORE the canonical archive — a
+      // failed retirement blocks the archive instead of leaving a live
+      // browser behind an archived agent. The profile (site state) is
+      // preserved: restoring the archive keeps the session usable.
+      await closeBrowserSession(id)
+      try {
+        archiveAgent(db, id)
+      } catch (error) {
+        // The browser was already stopped; say so instead of pretending the
+        // failed archive restored it.
+        warnings.push(
+          'the agent browser session was already stopped; its persistent profile (site state) is preserved',
+        )
+        throw error
+      }
     })
     notifyDirectoryDirty()
-    return c.body(null, 204)
+    return warnings.length > 0 ? c.json({ warnings }, 200) : c.body(null, 204)
   } catch (err) {
     const message = (err as Error).message
+    const browser = browserConflict(err)
     return c.json(
       {
-        error: message,
-        ...(message.startsWith('agent_turn_active') ? { code: 'agent_turn_active' } : {}),
+        error: browser ? safeBrowserRemedy(browser.code) : message,
+        ...(browser
+          ? { code: browser.code }
+          : message.startsWith('agent_turn_active')
+            ? { code: 'agent_turn_active' }
+            : {}),
       },
-      message.startsWith('agent_turn_active') ? 409 : 400,
+      browser || message.startsWith('agent_turn_active') ? 409 : 400,
     )
   }
 })
@@ -593,6 +682,9 @@ agentsRouter.patch('/:id/team', async (c) => {
   if (!teamRepo.get(db, body.teamId, paths)) {
     return c.json({ error: `team not found: ${body.teamId}` }, 404)
   }
+  // Declared above the try: a late failure AFTER cleanup must still be able
+  // to report the partial filesystem side effect honestly.
+  const warnings: string[] = []
   try {
     const sourceExpectedRevision = body.sourceExpectedRevision
     const destinationExpectedRevision = body.destinationExpectedRevision
@@ -612,14 +704,52 @@ agentsRouter.patch('/:id/team', async (c) => {
         400,
       )
     }
-    await runAgentLifecycleMutation(resolved.agent.id, () =>
-      moveAgentCanonical(db, paths, resolved.agent.id, {
-        destinationTeamId: body.teamId,
-        sourceExpectedRevision,
-        destinationExpectedRevision,
-        placement,
-      }),
-    )
+    // Preflight the revisions BEFORE touching browser state: a stale-revision
+    // request must not cost the agent its profile. The canonical mutation
+    // still revalidates authoritatively inside its transaction.
+    const sourcePolicy = teamPolicyRepo.get(db, resolved.team.id)
+    const destinationPolicy = teamPolicyRepo.get(db, body.teamId)
+    if (sourcePolicy && sourcePolicy.revision !== sourceExpectedRevision) {
+      return c.json(
+        {
+          error: `source_team_revision_conflict: expected ${sourceExpectedRevision}, current ${sourcePolicy.revision}`,
+          code: 'team_revision_conflict',
+        },
+        409,
+      )
+    }
+    if (destinationPolicy && destinationPolicy.revision !== destinationExpectedRevision) {
+      return c.json(
+        {
+          error: `destination_team_revision_conflict: expected ${destinationExpectedRevision}, current ${destinationPolicy.revision}`,
+          code: 'team_revision_conflict',
+        },
+        409,
+      )
+    }
+    await runAgentLifecycleMutation(resolved.agent.id, async () => {
+      // D6: a team transfer closes AND clears the profile before admission in
+      // the new team — no account/site-state carryover. Unresolved cleanup
+      // blocks the transition. A no-op move (same team) touches nothing.
+      if (resolved.team.id !== body.teamId) {
+        await clearBrowserProfile(resolved.agent.id, paths, resolved.team.id)
+      }
+      try {
+        moveAgentCanonical(db, paths, resolved.agent.id, {
+          destinationTeamId: body.teamId,
+          sourceExpectedRevision,
+          destinationExpectedRevision,
+          placement,
+        })
+      } catch (error) {
+        // The profile is already cleared; say so instead of pretending the
+        // failed move restored the agent's site state.
+        warnings.push(
+          'the agent browser profile (site state: cookies, logins) was already cleared for the transfer and is not recovered by this failure',
+        )
+        throw error
+      }
+    })
     notifyDirectoryDirty()
     return c.json({
       agent: resolveAgent(db, paths, resolved.agent.id),
@@ -633,21 +763,111 @@ agentsRouter.patch('/:id/team', async (c) => {
       message.startsWith('placement_required') ||
       message.startsWith('team_policy_invalid') ||
       message.includes('team_revision_conflict')
+    const browser = browserConflict(err)
     return c.json(
       {
-        error: message,
-        ...(message.startsWith('agent_turn_active')
-          ? { code: 'agent_turn_active' }
-          : message.startsWith('placement_required')
-            ? { code: 'placement_required' }
-            : message.includes('team_revision_conflict')
-              ? { code: message.split(':')[0] }
-              : message.startsWith('team_policy_invalid')
-                ? { code: 'team_policy_invalid' }
-                : {}),
+        error: browser ? safeBrowserRemedy(browser.code) : message,
+        ...(warnings.length > 0 ? { warnings } : {}),
+        ...(browser
+          ? { code: browser.code }
+          : message.startsWith('agent_turn_active')
+            ? { code: 'agent_turn_active' }
+            : message.startsWith('placement_required')
+              ? { code: 'placement_required' }
+              : message.includes('team_revision_conflict')
+                ? { code: message.split(':')[0] }
+                : message.startsWith('team_policy_invalid')
+                  ? { code: 'team_policy_invalid' }
+                  : {}),
       },
-      conflict ? 409 : 400,
+      browser || conflict ? 409 : 400,
     )
+  }
+})
+
+// ─── Browser session management (BAZ-069 T13 / D6) ───────────────────────
+//
+// Narrow operator controls under the existing Agent/browser ownership.
+// Scopes follow the defaults (GET → `read`, mutations → `write`) and session
+// CSRF is enforced by the auth middleware. None of these can bypass
+// admission: stop/reset run under the lifecycle lease (active turns refuse)
+// and refuse busy/unresolved-cleanup states. GET never launches anything.
+
+// Readiness only: no token refresh, provider request, browser launch or charge.
+agentsRouter.get('/:id/search-status', (c) => {
+  const { db, paths, authToken } = getCtx()
+  const id = resolveAgentIdParam(db, c.req.param('id'))
+  if (!id || !agentRepo.get(db, id)) return c.json({ error: 'agent not found' }, 404)
+  const agent = resolveAgent(db, paths, id)
+  return c.json(
+    ordinarySearchStatus({
+      env: mergeSecretsIntoEnv(db, authToken),
+      model: agent.model,
+      codexConnected: hasSearchCodexCredentials(db, authToken),
+    }),
+  )
+})
+
+agentsRouter.get('/:id/browser', async (c) => {
+  const { db, paths, authToken } = getCtx()
+  const id = resolveAgentIdParam(db, c.req.param('id'))
+  if (!id) return c.json({ error: `agent not found: ${c.req.param('id')}` }, 404)
+  const agent = agentRepo.get(db, id)
+  if (!agent) return c.json({ error: `agent not found: ${id}` }, 404)
+  const env = mergeSecretsIntoEnv(db, authToken)
+  return c.json(
+    browserStatusFor(
+      id,
+      resolveBrowserConfig(env),
+      { paths, agentId: id, teamId: agent.teamId },
+      isBrowserEnabled(env),
+    ),
+  )
+})
+
+agentsRouter.post('/:id/browser/stop', async (c) => {
+  const { db } = getCtx()
+  const id = resolveAgentIdParam(db, c.req.param('id'))
+  if (!id) return c.json({ error: `agent not found: ${c.req.param('id')}` }, 404)
+  if (!agentRepo.get(db, id)) return c.json({ error: `agent not found: ${id}` }, 404)
+  try {
+    // Stop the owned browser WITHOUT clearing persistent state. Active turns
+    // refuse (the browser may be that turn's work surface) and in-flight
+    // actions are never killed by a stop.
+    await runAgentLifecycleMutation(id, () => closeBrowserSession(id))
+    return c.body(null, 204)
+  } catch (error) {
+    return browserControlErrorResponse(c, error)
+  }
+})
+
+agentsRouter.delete('/:id/browser/profile', async (c) => {
+  const { db, paths } = getCtx()
+  const id = resolveAgentIdParam(db, c.req.param('id'))
+  if (!id) return c.json({ error: `agent not found: ${c.req.param('id')}` }, 404)
+  const agent = agentRepo.get(db, id)
+  if (!agent) return c.json({ error: `agent not found: ${id}` }, 404)
+  // D6: an explicitly confirmed operator reset — a malformed or missing
+  // confirmation is a 400, never a best-effort guess.
+  if (c.req.query('confirm') !== BROWSER_RESET_CONFIRMATION) {
+    return c.json(
+      {
+        error: `this destructive reset removes the agent's browser profile (cookies, logins) and requires confirm=${BROWSER_RESET_CONFIRMATION}`,
+        code: 'confirmation_required',
+      },
+      400,
+    )
+  }
+  try {
+    await runAgentLifecycleMutation(id, async () => {
+      // Stop first, then remove only this Agent's owned profile. Active-turn
+      // and unknown-cleanup races refuse with 409; an uncertain browser is
+      // never silently reset.
+      await clearBrowserProfile(id, paths, agent.teamId)
+    })
+    return c.body(null, 204)
+  } catch (error) {
+    return browserControlErrorResponse(c, error)
   }
 })
 
