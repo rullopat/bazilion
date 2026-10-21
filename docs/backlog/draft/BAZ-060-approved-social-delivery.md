@@ -75,6 +75,6 @@ publication cases is a prerequisite for that manual core, and no execution is cl
 - Asset retention/reference policy inherited from BAZ-058.
 
 See [design](../design/social-content-team.md). Depends on BAZ-058 and security refinement;
-[BAZ-059](../in_progress/BAZ-059-pi-image-generation.md) adds bounded Pi-backed image generation, not
+[BAZ-059](../done/BAZ-059-pi-image-generation.md) adds bounded Pi-backed image generation, not
 publishing authority or protected web search. Safe research capability for an isolated publishing
 Team remains a separate refinement prerequisite.

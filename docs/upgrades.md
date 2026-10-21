@@ -1,8 +1,8 @@
 # Upgrading Bazilion
 
-## Current 0.23.0 candidate: clean rebootstrap, not in-place upgrade
+## Released 0.23.0: clean rebootstrap, not in-place upgrade
 
-**The unreleased 0.23.0 candidate uses the clean-install alpha schema contract.** Its complete
+**Released0.23.0 uses the clean-install alpha schema contract.** Its complete
 canonical schema is `apps/daemon/src/core/db/migrations/0001_init.sql`; this release does not add
 ALTER migrations, legacy importers or compatibility adapters. A prior release number is not proof
 that its home can be opened by the candidate.
@@ -27,7 +27,11 @@ canonical chain/prefix checks. Startup must refuse rather than silently alter/im
 [Read-only source inspection](testing/0.23.0-prior-schema-inspection-20261019.json) records local
 commits, migration paths/digests and transport declarations. This establishes matrix expectations,
 **not** an executed prior-home/installed-artifact pass or verification of public registry/tag state.
-The actual 0.23.0 matrix, backup/refusal, final package and platform checks remain pending.
+The [actual installed backup/refusal matrix](testing/0.23.0-installed-backup-closeout-20261021.md)
+and [final package/platform/public installation closeout](testing/0.23.0-release-status.md) now pass.
+All eight genuine prior schemas were refused with unchanged recorded ledgers/state/sentinels;
+current-format encrypted backup/restore and three invalid-archive refusals passed in disposable
+fixtures. These are not personal-home upgrades or a promise that old backups import into0.23.0.
 
 ## Preserve state before an operator-authorized reset
 
@@ -85,6 +89,6 @@ Historical 0.22 evidence reports successful source-worktree sentinel upgrades fr
 changed 0.23 canonical schema. The current clean-install boundary explicitly supersedes any
 unconditional promise here that every older home upgrades in place.
 
-See the [current release checklist](testing/0.23.0-release-checklist.md) and
+See the [current release checklist](testing/0.23.0-release-status.md) and
 [MCP retirement contract](mcp.md#legacy-sse-is-retired-2026-10-02). Publication and any destructive
 operator migration/reset remain separate explicit decisions.

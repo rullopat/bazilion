@@ -10,7 +10,7 @@ supports that direction and identifies existing image-generation patterns, inclu
 auth routes. Treat the connector stories below as optional integration choices, not prerequisites
 for the first research/content/review demonstration; preserve the final-approval execution boundary.
 
-**0.22 milestone:** [BAZ-059](../in_progress/BAZ-059-pi-image-generation.md) implements Pi's two curated
+**0.22 milestone:** [BAZ-059](../done/BAZ-059-pi-image-generation.md) implements Pi's two curated
 OpenRouter image choices and, following the operator's expanded requirement, **direct OpenAI API-key
 and ChatGPT/Codex login routes**. Automatic billing/authentication selection follows explicitly enabled OpenAI text providers;
 manual image choices override it. Stored credentials alone and failures never cause fallback.
@@ -214,7 +214,7 @@ live generator is configured.
 | Story | Deliverable | Dependencies |
 | --- | --- | --- |
 | [BAZ-058](../draft/BAZ-058-content-proposals-and-editorial-review.md) | Immutable proposals/variants, preview, rework, review/export, web/CLI | Existing Team/results/conversation foundations; no platform account needed. |
-| [BAZ-059](../in_progress/BAZ-059-pi-image-generation.md) | Image tool with two OpenRouter selections, direct OpenAI API-key and ChatGPT/Codex routes, durable Results | Frozen 0.22.0 candidate; live qualification pending, no protected-search expansion. |
+| [BAZ-059](../done/BAZ-059-pi-image-generation.md) | Image tool with two OpenRouter selections, direct OpenAI API-key and ChatGPT/Codex routes, durable Results | Frozen 0.22.0 candidate; live qualification pending, no protected-search expansion. |
 | [BAZ-060](../draft/BAZ-060-approved-social-delivery.md) | Credential isolation, account contract, approved delivery/scheduling/reconciliation, fake adapter | BAZ-058; enforced content-Team posture; no live publishing by itself. |
 | [BAZ-061](../draft/BAZ-061-meta-page-and-instagram-publishing.md) | Official Facebook Page and Instagram photo connectors, scoped media staging | BAZ-060; app/account access and staging choice. Split if refinement exceeds L. |
 | [BAZ-062](../draft/BAZ-062-linkedin-publishing.md) | Official granted LinkedIn author connector, images and receipts | BAZ-060; selected member/org scope and access. |

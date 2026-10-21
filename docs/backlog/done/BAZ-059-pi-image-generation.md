@@ -1,16 +1,35 @@
 ---
 id: BAZ-059
 title: Image generation with explicit OpenAI, ChatGPT and OpenRouter routes
-status: in_progress
+status: done
 size: L
 created: 2026-09-19
 refined: 2026-09-19
-target_release: 0.22.0 (shipped 2026-09-23); live qualification carried into 0.23.0 as its top story
+target_release: 0.23.0
+closed: 2026-10-21
 ---
 
 # BAZ-059 — Image generation with explicit credential routes
 
-**0.23.0 release-closeout update,2026-10-19:** [Fresh bounded historical evidence review and
+## Released scoped closeout —2026-10-21
+
+**Done within the operator-approved ChatGPT-only scope**, released in
+[v0.23.0](https://github.com/rullopat/bazilion/releases/tag/v0.23.0), exact code commit b6d354b.
+[Final source/CI/artifact/public-install acceptance](../../testing/0.23.0-release-status.md) and
+current installed backup/refusal/private-image checks complete the remaining release gates.
+The operator accepted the explicitly documented absence of npm build attestations; no provenance
+badge is claimed. No new generation or account access occurred during release closeout.
+
+Historical bounded live-evidence acceptance retains missing raw PNG/full-input/source-pin records,
+geometry mismatches and observer limits. Direct OpenAI/OpenRouter routes remain live-unqualified;
+protected HTTP does not qualify scheduled/inbox execution. Private-image inventory/recovery/discard
+is policy-gated and does not regenerate or replay uncertain provider work. Broader content-Team
+live/human acceptance remains separate and unrun. Earlier checkpoints below retain their original
+status at the time and do not supersede this limited closeout.
+
+## Historical release-closeout update,2026-10-19
+
+ [Fresh bounded historical evidence review and
 corrections](../../testing/0.23.0-baz059-evidence-closeout-20261019.md) accept the revised ChatGPT live
 gate with stated limits. The separate post-commit private-image retention/recovery/discard repair
 is independently accepted. No new generation, full current artifact or release acceptance is claimed;

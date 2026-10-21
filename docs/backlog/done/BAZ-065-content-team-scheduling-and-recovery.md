@@ -6,12 +6,16 @@ size: M
 created: 2026-09-20
 refined: 2026-09-21
 target_release: 0.23.0 (operator-approved limited scheduler/process scope)
-note: Limited option 1 explicitly approved. Fixture DNS failure diagnosed and corrected without production changes; 101 unique focused/process checks and 3 story security cases pass, actual counters retained, root/web types and scoped lint pass. Retry positive-control assertion strengthened/retested. Independent native review ACCEPT on 2026-10-17; parent matched all 35 reviewed hashes. Done for limited scope, not yet released; composed D/S remains open/unassigned.
+note: Limited option 1 explicitly approved. Fixture DNS failure diagnosed and corrected without production changes; 101 unique focused/process checks and 3 story security cases pass, actual counters retained, root/web types and scoped lint pass. Retry positive-control assertion strengthened/retested. Independent native review ACCEPT on 2026-10-17; parent matched all 35 reviewed hashes. Released0.23.0 for limited scope; composed D/S remains open/unassigned.
 ---
 
 # BAZ-065 — Content scheduling and recovery
 
-## Current limited-scope verification — 2026-10-17
+Released2026-10-21 in [v0.23.0](https://github.com/rullopat/bazilion/releases/tag/v0.23.0).
+[Release closeout](../../testing/0.23.0-release-status.md) preserves the accepted limited scope;
+composed D/S remains unqualified and unassigned.
+
+## Historical limited-scope verification — 2026-10-17
 
 [Fresh evidence and retained first failures](../BAZ-065-limited-acceptance-20261017.md): 101 unique
 checks/14 files pass (87 focused + 14 real-process cases), zero failures/skips; all three required

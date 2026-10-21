@@ -1,5 +1,10 @@
 # BAZ-059 local implementation evidence
 
+**Released scoped closeout,2026-10-21:** [BAZ-059 is done](done/BAZ-059-pi-image-generation.md)
+within the operator-approved ChatGPT-only scope. [Final0.23 release acceptance](../testing/0.23.0-release-status.md)
+includes current CI, public packages/installations and private-image/backup/refusal checks. All dated
+checkpoints below retain their original limits; no new live or paid-route acceptance is implied.
+
 **Current consolidated status:** [qualification matrix and independent live-evidence review](BAZ-059-qualification-status-20261004.md).
 The operator approved **ChatGPT-only required live qualification** (“I'm fine reducing the scope”):
 [scope decision](BAZ-059-chatgpt-only-live-scope-20261004.md). Required generation/rework/protected
@@ -124,7 +129,7 @@ The following records the 0.22.0 candidate before publication. Old migration/ver
 steps and then-current test counts are historical, not current alpha-schema/release instructions.
 
 **2026-09-19 — working-tree candidate, not a published release.** Target: **0.22.0**.
-[Story](in_progress/BAZ-059-pi-image-generation.md) · [Operator guide](../image-generation.md) ·
+[Story](done/BAZ-059-pi-image-generation.md) · [Operator guide](../image-generation.md) ·
 [Scope freeze and validation](../testing/0.22.0-freeze.md)
 
 Feature scope is frozen. Local validation has advanced; live qualification and release review remain

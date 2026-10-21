@@ -1,0 +1,72 @@
+[
+  {
+    "name": "bazilion",
+    "version": "0.23.0",
+    "latest": "0.23.0",
+    "sha256": "da311aa4f30b0bd38245217b611a6aa2c22719d20d1d83f4df73c0a91aa7f625",
+    "integrity": "sha512-7GrZcBv3dsLFUaF6qeVc1/XTs/Q3Vx1zEChNANpM7luLcLcGg200CJ/tKGnOtVTKEVJqSVIWaWkMN3fC/PP5gg==",
+    "members": 262,
+    "memberDifferencesFromReviewed": [
+      "package/dist/web/server/assets/_tanstack-start-manifest_v-CPSd5WEy.js",
+      "package/dist/web/server/assets/_tanstack-start-manifest_v-DKDwjB9I.js",
+      "package/dist/web/server/server.js"
+    ],
+    "attestationMetadata": null,
+    "attestationEndpointStatus": 404,
+    "signatures": [
+      {
+        "sig": "MEYCIQCr/7VPUuaNMEH80cn2Qs+w8z/QokZhn2DqPQcPDcrIKgIhANav+970wjIXZdytZakc23/wpiE6mMhBY/h60mB3Jml+",
+        "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+      },
+      {
+        "sig": "MEYCIQDbLQAS1Ukfc5Kehx1TSqnbMVFnkWVELp7Tj6YG7WiU5AIhAK0Ozqs74K4GMQGZoeKCRFGmgr3rIzLS8NdA+wehZx0q",
+        "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+      }
+    ],
+    "bytes": 3654275
+  },
+  {
+    "name": "@bazilion/api-types",
+    "version": "0.23.0",
+    "latest": "0.23.0",
+    "sha256": "d55a67ea47b29a9891722338c43465b7976c9a84afa16d020a744596a3ad5baa",
+    "integrity": "sha512-2jalH3WtJasLASutNa7xXgQnKQA2XVMIvQP9u97tSGcK174+wUvNJFohV6ipzQ1yQux+Zc+1W9Fe2U2sB87GGw==",
+    "members": 6,
+    "memberDifferencesFromReviewed": [],
+    "attestationMetadata": null,
+    "attestationEndpointStatus": 404,
+    "signatures": [
+      {
+        "sig": "MEUCIQCNsEwI4/fSmNHvuRT3iW6EWPmW5sfvfyPev2LtUvYFywIgNkGey6MzURE1uwB4BBQfYr7Ffut6Md++O0eUw8kGOes=",
+        "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+      },
+      {
+        "sig": "MEUCIQDrUti0jaFcWmGT4XPa5PQLopN7ZxxStn/l2teNgTolOgIgG+O3p4/TL2LVILxcpmH8bKpWE/8G5PfhRv5gT1Y8siQ=",
+        "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+      }
+    ],
+    "bytes": 53522
+  },
+  {
+    "name": "@bazilion/client",
+    "version": "0.23.0",
+    "latest": "0.23.0",
+    "sha256": "bb7c433f0d4fb9400556760e9c6762a533bc6b15bdf290455cb7b78f6fd68a43",
+    "integrity": "sha512-7L4I0hfH9Isn8KJ2uGWH7Pw1g6/oyXvpKqxnr+t36QAwX2rV1e/OrZHP6mslJ0dlkGUW+lCcjwXzQoUjaQqoQA==",
+    "members": 6,
+    "memberDifferencesFromReviewed": [],
+    "attestationMetadata": null,
+    "attestationEndpointStatus": 404,
+    "signatures": [
+      {
+        "sig": "MEQCIB63jMtvpoZxeAwboWAT4czdJl8fnRhGnudtmRFl/qb4AiBrSVr1/D/NBU2Js/YJ1hv+p/p+LW11alzgwwuDGzaR1g==",
+        "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+      },
+      {
+        "sig": "MEUCIQCDilJRYLjhd+2hSz+9to26CYJdchSJxmAaJKPXINO4ZQIgCk5H9F3BCF2UTGYw95i8zRaDrpitQAH0FAG7+HPgjPM=",
+        "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+      }
+    ],
+    "bytes": 13328
+  }
+]

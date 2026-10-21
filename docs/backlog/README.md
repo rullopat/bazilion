@@ -106,6 +106,11 @@ No stories currently in Todo.
 
 ### 0.23.0 plan (operator decision 2026-09-23)
 
+**Released2026-10-21:** [v0.23.0](https://github.com/rullopat/bazilion/releases/tag/v0.23.0),
+[final closeout and retained scope limits](../testing/0.23.0-release-status.md). BAZ-059/065/068/069
+ship within their accepted scopes; BAZ-066 stays canceled and BAZ-064 composed qualification unrun.
+The dated preparation/ordered slate below is historical, not the current release status.
+
 **Current preparation packet (2026-10-19):** [candidate freeze](../testing/0.23.0-freeze.md) ·
 [release checklist](../testing/0.23.0-release-checklist.md). Source baseline recorded; release HOLD.
 Story acceptance below is not current whole-candidate/artifact or publication approval.
@@ -179,20 +184,20 @@ Deliberately out: BAZ-058/060 (L stories, 0.24.0 candidates), BAZ-061/062 (depen
 post-1.0 holders (BAZ-048/054/057). Open question carried from the release review: the 14
 pre-existing lint errors get cleaned up or formally waived during this cycle.
 
-## In Progress (2)
+## In Progress (1)
 
 | ID | Title | Size | Target | Notes |
 |----|-------|------|--------|-------|
-| [BAZ-059](in_progress/BAZ-059-pi-image-generation.md) | Image generation with explicit OpenAI, ChatGPT and OpenRouter routes | L | 0.22.0 shipped; live qualification is the 0.23.0 top story | Published in 0.22.0 (2026-09-23). Revised required ChatGPT-only live samples/operator inspections satisfied (test 9); paid routes live-unqualified/deferred; release closeout separate. [Evidence](../testing/0.22.0-freeze.md) · [Usage](../image-generation.md). |
 | [BAZ-064](in_progress/BAZ-064-content-team-recipe-and-manual-handoff.md) | Topic-neutral content Team recipe and manual handoff | M | Composed qualification unrun | Canned-model plumbing done (delegation, protected wake, approval sequencing, image-once oracle, handoff, two-topic reuse, restart retention). No live journey is scheduled. [Evidence](BAZ-064-acceptance.md) · [Recipe](../../examples/content-team/README.md). |
 
-## Done (53)
+## Done (54)
 
 | ID | Title | Size | Shipped | Release | Notes |
 |----|-------|------|---------|---------|-------|
-| [BAZ-065](done/BAZ-065-content-team-scheduling-and-recovery.md) | Limited scheduler/process and communication-policy acceptance | M | Not yet released; independently accepted 2026-10-17 | Target 0.23.0; publication not authorized | Explicit limited scope: 101 unique checks, 3 required story security assertions, root/web types and lint pass; actual counters retained and review ACCEPT. Composed D/S remains open/unassigned. [Acceptance/evidence](BAZ-065-limited-acceptance-20261017.md). |
-| [BAZ-068](done/BAZ-068-workspace-recovery-surface.md) | Limited operator workspace recovery | S | Not yet released; independently accepted 2026-10-17 | Target 0.23.0; publication not authorized | Review P1 corrected and re-reviewed ACCEPT; 94 focused tests, 21 required story security cases, root/web types and web build pass. Recorded cleanup only; guaranteed abnormal host-command recovery deferred. [Review/evidence](BAZ-068-independent-review-20261017.md). |
-| [BAZ-069](done/BAZ-069-browser-backed-default-web-search.md) | Agent-led web research with native OpenAI search and optional managed browsing | L | Not yet released; accepted 2026-10-03 | Target 0.23.0; publication not authorized | Operator accepted T18/story close-out after independent source-evidence review, current Linux package/CLI/web checks, 2,365 full passes and 324 security cases. API-key mode remains experimental/unqualified; optional browser safeguards and historical limitations retained. [Acceptance and package evidence](BAZ-069-evidence-and-packed-closeout-20261003.md) · [Chronological trial log](BAZ-069-acceptance.md). |
+| [BAZ-059](done/BAZ-059-pi-image-generation.md) | Image generation and scoped ChatGPT-only qualification | L | 2026-10-21 | v0.23.0 | Final release/CI/public-install closeout complete; bounded historical evidence, geometry and paid-route limits retained. [Release status](../testing/0.23.0-release-status.md). |
+| [BAZ-065](done/BAZ-065-content-team-scheduling-and-recovery.md) | Limited scheduler/process and communication-policy acceptance | M | 2026-10-21; independently accepted 2026-10-17 | v0.23.0 | Explicit limited scope: 101 unique checks, 3 required story security assertions, root/web types and lint pass; actual counters retained and review ACCEPT. Composed D/S remains open/unassigned. [Acceptance/evidence](BAZ-065-limited-acceptance-20261017.md). |
+| [BAZ-068](done/BAZ-068-workspace-recovery-surface.md) | Limited operator workspace recovery | S | 2026-10-21; independently accepted 2026-10-17 | v0.23.0 | Review P1 corrected and re-reviewed ACCEPT; 94 focused tests, 21 required story security cases, root/web types and web build pass. Recorded cleanup only; guaranteed abnormal host-command recovery deferred. [Review/evidence](BAZ-068-independent-review-20261017.md). |
+| [BAZ-069](done/BAZ-069-browser-backed-default-web-search.md) | Agent-led web research with native OpenAI search and optional managed browsing | L | 2026-10-21; accepted 2026-10-03 | v0.23.0 | Operator accepted T18/story close-out after independent source-evidence review, current Linux package/CLI/web checks, 2,365 full passes and 324 security cases. API-key mode remains experimental/unqualified; optional browser safeguards and historical limitations retained. [Acceptance and package evidence](BAZ-069-evidence-and-packed-closeout-20261003.md) · [Chronological trial log](BAZ-069-acceptance.md). |
 | [BAZ-067](done/BAZ-067-protected-web-discovery.md) | Bounded public-web discovery for protected Agent turns | M | 2026-09-23 | v0.22.0 | SearXNG via daemon-owned IPC host; worker sees bounded results, restricted workers denied. Opt-in protected discovery remains separate from BAZ-069 ordinary browser research. |
 | [BAZ-050](done/BAZ-050-post-coding-sequence-ui-consistency-sweep.md) | UI/UX consistency sweep of the post-hardening coding surfaces | L | 2026-09-18 | v0.21.0-beta.5 | Router-level default error+pending components (every route degrades well); surface-named error components on 18 coding routes; cancel-verification confirmed; apps/web typecheck added to CI (it was excluded — a type error sat in main); browser-acceptance walk with a real daemon-kill error-state pass (85 evidence files). |
 | [BAZ-052](done/BAZ-052-beta-supportability-gates-and-growth.md) | Beta supportability — security gate in CI, growth documentation | S | 2026-09-18 | v0.21.0-beta.4 | 153-case adversarial security gate now runs on every PR (fails closed on a deleted case). New growth-and-retention operator doc: bounded coding evidence (7-day TTLs, 256 MB budget), unbounded messages/sessions (the record), pre-migration snapshot hygiene, `logs/` documented as intentionally empty. Log rotation dropped — stale premise (the daemon writes no log files). |

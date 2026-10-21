@@ -6,10 +6,14 @@ size: S
 created: 2026-09-21
 refined: 2026-10-17
 target_release: 0.23.0
-note: Limited scope explicitly accepted by the operator on 2026-10-17. Implemented; 94 focused tests, 21 required BAZ-068 security cases, root/web types and web build pass. Initial independent review's P1 corrected with synchronous final release and regression tests; fresh re-review ACCEPT on 2026-10-17. Not yet released. Guaranteed abnormal host-command recovery is deferred.
+note: Limited scope explicitly accepted by the operator on 2026-10-17. Implemented; 94 focused tests, 21 required BAZ-068 security cases, root/web types and web build pass. Initial independent review's P1 corrected with synchronous final release and regression tests; fresh re-review ACCEPT on 2026-10-17. Released0.23.0. Guaranteed abnormal host-command recovery is deferred.
 ---
 
 # BAZ-068 — Supported, limited workspace recovery
+
+Released2026-10-21 in [v0.23.0](https://github.com/rullopat/bazilion/releases/tag/v0.23.0).
+[Release closeout](../../testing/0.23.0-release-status.md) does not expand the accepted cleanup scope.
+Unknown ownership stays blocked; abnormal host-command recovery remains deferred.
 
 ## Accepted 0.23.0 scope — 2026-10-17
 

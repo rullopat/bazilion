@@ -1,6 +1,26 @@
 # Releasing Bazilion
 
-## Current target: 0.23.0 — release HOLD
+## Released: 0.23.0
+
+[GitHub release](https://github.com/rullopat/bazilion/releases/tag/v0.23.0) ·
+[Single release checklist/evidence index](testing/0.23.0-release-status.md) · [Upgrade guidance](upgrades.md)
+
+All three public packages are0.23.0 on npm `latest`; package and umbrella tags name exact released
+commit `b6d354b5e5e6bc8f82febd1a8047f7a7984c7443`. Six exact-head CI jobs and independent final
+acceptance preceded the single successful main-triggered publication. Public integrity, registry
+signatures and fresh public-byte installations passed. **Npm build attestations are absent**;
+the operator explicitly accepted completing this release with that limitation documented. Registry
+signatures are not build attestations; no provenance badge is claimed, and no republish was attempted.
+
+This remains alpha maturity and a clean-rebootstrap schema boundary, not an in-place upgrade.
+BAZ-059 closes with its accepted ChatGPT-only/evidence limits; BAZ-065/068/069 retain limited scopes,
+BAZ-066 remains canceled, and broader live/human campaigns stay unqualified. Website completion is
+tracked separately in the single checklist. The homepage must never state the Pi version.
+
+<details>
+<summary>Historical0.23 preparation record — superseded by the release checklist above</summary>
+
+## Historical target: 0.23.0 — preparation HOLD
 
 **Current checklist:** [0.23.0 release status](testing/0.23.0-release-status.md). Reuse the applicable
 passes below; final candidate commit/CI/artifact review and publication remain pending. Historical
@@ -128,6 +148,8 @@ This packet authorizes no tests/services/installations, new live requests, versi
 commit/merge/push, npm/tag/workflow operation or website deployment. Obtain explicit authorization
 for execution and publication boundaries. The main-branch Release workflow can publish
 conditionally on any push; merging the version PR is not a draft-only step.
+
+</details>
 
 ## Historical 0.22.0 release procedure — not the current checklist
 

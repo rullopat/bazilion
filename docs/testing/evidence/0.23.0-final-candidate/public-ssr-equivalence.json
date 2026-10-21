@@ -1,0 +1,7 @@
+{
+  "changedMembersOnly": "SSR manifest filename/content and its server.js import",
+  "manifestChange": "All bytes equal after exact sandbox\u2192GitHub source-directory prefix substitution",
+  "serverChange": "All bytes equal after exact manifest filename substitution",
+  "otherMembers": "all content/modes/sizes identical",
+  "notClaimed": "Public CLI archive SHA differs; registry SHA512/SHA1 verified; actual public install still required"
+}

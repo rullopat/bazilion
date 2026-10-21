@@ -12,7 +12,11 @@ note: Operator-approved scope revision on 2026-09-30. Provider-backed discovery 
 
 # BAZ-069 — Agent-led web research
 
-## Current qualification evidence (2026-10-03)
+Released2026-10-21 in [v0.23.0](https://github.com/rullopat/bazilion/releases/tag/v0.23.0).
+[Release closeout](../../testing/0.23.0-release-status.md) retains API-key experimental/live-unqualified
+status, browser-site/entitlement limits and the recorded historical evidence scope.
+
+## Historical qualification evidence (2026-10-03)
 
 [The authorized post-accumulator source trial](../BAZ-069-native-t18b-post-accumulator-trial-20261003.md)
 observed actual subscription-native search → five guarded NASA reads → source-grounded cited

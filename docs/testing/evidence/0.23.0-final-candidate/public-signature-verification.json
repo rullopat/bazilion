@@ -1,0 +1,47 @@
+[
+  {
+    "name": "bazilion",
+    "version": "0.23.0",
+    "registrySignatures": [
+      {
+        "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U",
+        "valid": true
+      },
+      {
+        "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U",
+        "valid": true
+      }
+    ],
+    "npmBuildProvenancePresent": false
+  },
+  {
+    "name": "@bazilion/api-types",
+    "version": "0.23.0",
+    "registrySignatures": [
+      {
+        "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U",
+        "valid": true
+      },
+      {
+        "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U",
+        "valid": true
+      }
+    ],
+    "npmBuildProvenancePresent": false
+  },
+  {
+    "name": "@bazilion/client",
+    "version": "0.23.0",
+    "registrySignatures": [
+      {
+        "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U",
+        "valid": true
+      },
+      {
+        "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U",
+        "valid": true
+      }
+    ],
+    "npmBuildProvenancePresent": false
+  }
+]

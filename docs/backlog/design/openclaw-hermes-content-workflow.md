@@ -30,7 +30,7 @@ new image-provider adapters were required. Pi already exposes a separate `Images
 and `generateImages()`. Its current built-in image provider is **OpenRouter only**, with Google and
 OpenAI image-model entries. This does not reuse direct vendor keys or Codex OAuth.
 
-[BAZ-059](../in_progress/BAZ-059-pi-image-generation.md) targets **0.22.0**: one Hermes-style
+[BAZ-059](../done/BAZ-059-pi-image-generation.md) targets **0.22.0**: one Hermes-style
 tool, daemon execution and durable Results. The operator subsequently expanded the initial two-entry
 Pi/OpenRouter scope to expose **both direct OpenAI API-key and ChatGPT/Codex login routes** to end
 users. These use distinct bounded transports, not Pi's OpenRouter adapter. Automatic mode now

@@ -1,0 +1,44 @@
+[
+  {
+    "name": "bazilion",
+    "latest": "0.23.0",
+    "attestations": null,
+    "provenance": null,
+    "distKeys": [
+      "shasum",
+      "tarball",
+      "fileCount",
+      "integrity",
+      "signatures",
+      "unpackedSize"
+    ]
+  },
+  {
+    "name": "@bazilion/api-types",
+    "latest": "0.23.0",
+    "attestations": null,
+    "provenance": null,
+    "distKeys": [
+      "shasum",
+      "tarball",
+      "fileCount",
+      "integrity",
+      "signatures",
+      "unpackedSize"
+    ]
+  },
+  {
+    "name": "@bazilion/client",
+    "latest": "0.23.0",
+    "attestations": null,
+    "provenance": null,
+    "distKeys": [
+      "shasum",
+      "tarball",
+      "fileCount",
+      "integrity",
+      "signatures",
+      "unpackedSize"
+    ]
+  }
+]
