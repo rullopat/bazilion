@@ -10,7 +10,7 @@
     "lint": "biome check .",
     "format": "biome check --write .",
     "typecheck": "tsc --noEmit && pnpm --filter @bazilion/web typecheck",
-    "test": "vitest run",
+    "test": "vitest run apps/daemon/test/lib/browser-live.test.ts --maxWorkers=1 --no-file-parallelism && vitest run --exclude apps/daemon/test/lib/browser-live.test.ts",
     "test:upgrade-harness": "node --test scripts/testing/upgrade-harness.test.mjs",
     "security:acceptance": "node scripts/security-acceptance.mjs",
     "build": "pnpm --filter @bazilion/web build && pnpm -r --filter @bazilion/api-types --filter @bazilion/client --filter bazilion run build",
