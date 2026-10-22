@@ -54,10 +54,10 @@ export function overlappingWorkspaceRoots(a: string, b: string): boolean {
 
 /** Pin the registered root (including its deliberate symlink) during identity capture. */
 export function workspaceIdentity(registeredRoot: string): { root: string; rootIdentity: string } {
-  if (process.platform === 'linux') {
-    // Linux pins the root with a directory descriptor: the identity is captured
-    // from the open fd and validated against a re-stat, closing the
-    // swap-between-realpath-and-stat window entirely.
+  if (process.platform === 'linux' || process.platform === 'darwin') {
+    // Capture the exact directory identity and validate the registered binding.
+    // Linux retains fd-relative access; Darwin adds guarded pathname observations.
+    // These observations are not an atomic namespace snapshot.
     const directory = new ContextDirectory(registeredRoot)
     try {
       const root = realpathSync(registeredRoot)
@@ -67,7 +67,7 @@ export function workspaceIdentity(registeredRoot: string): { root: string; rootI
       directory.close()
     }
   }
-  // Off-Linux (BAZ-049 option A; BAZ-057 holds full content-read portability):
+  // Unsupported platforms retain management-only claim identity (BAZ-049 option A):
   // the claim needs a *stable root identity*, not content ancestry, so the
   // same dev/ino identity is taken from a stat of the canonical root. The
   // fd-pinned ancestry window is the documented cost; the identity semantics

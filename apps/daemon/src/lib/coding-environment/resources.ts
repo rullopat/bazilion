@@ -1,9 +1,14 @@
+import type { ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { type BazilionDb, inTx } from '../../core/db/client.ts'
 import {
   type DockerContainerIdentity,
   terminateRecordedContainer,
 } from '../../runtime/shell/docker.ts'
+import {
+  type ObservedChildIdentity,
+  ObservedChildWorker,
+} from '../../runtime/worker/observed-child.ts'
 import {
   captureWorkerProcess,
   terminateWorkerProcess,
@@ -12,7 +17,7 @@ import {
 import type { WorkspaceLease, WorkspaceWriter } from './workspace.ts'
 
 type Resource =
-  | { kind: 'worker'; identity: WorkerProcessIdentity }
+  | { kind: 'worker'; identity: WorkerProcessIdentity | ObservedChildIdentity }
   | { kind: 'container'; identity: DockerContainerIdentity }
 interface Row {
   id: string
@@ -30,9 +35,23 @@ interface ManagementCleanup {
 }
 
 export class WorkspaceResources {
+  private readonly observedWorkers = new Map<string, ObservedChildWorker>()
   constructor(private readonly db: BazilionDb) {}
 
-  registerWorker(lease: WorkspaceLease, pid: number, hostCommands = false): string {
+  registerWorker(
+    lease: WorkspaceLease,
+    pid: number,
+    hostCommands = false,
+    child?: ChildProcess,
+  ): string {
+    if (process.platform === 'darwin') {
+      if (!child || this.observedWorkers.size >= 256)
+        throw new Error('Live worker ownership unavailable')
+      const observed = new ObservedChildWorker(pid, child, hostCommands)
+      const id = this.register(lease, { kind: 'worker', identity: observed.identity })
+      this.observedWorkers.set(id, observed)
+      return id
+    }
     return this.register(lease, {
       kind: 'worker',
       identity: { ...captureWorkerProcess(pid), hostCommands },
@@ -89,12 +108,17 @@ export class WorkspaceResources {
     // record. A concurrent change must not turn container cleanup into worker signalling.
     if (management?.confirmedWorkersOnly && row.kind === 'worker') return false
     const identity = JSON.parse(row.identity_json)
+    const observed = this.observedWorkers.get(id)
     const confirmed =
       row.kind === 'worker'
-        ? await terminateWorkerProcess(identity, observedNormalExit)
+        ? identity.kind === 'observed-posix-child'
+          ? !!observed && observed.matches(identity) && (await observed.settled(observedNormalExit))
+          : await terminateWorkerProcess(identity, observedNormalExit)
         : await terminateRecordedContainer(identity, row.creation_acknowledged === 1)
-    if (confirmed)
+    if (confirmed) {
       this.db.raw.run('UPDATE workspace_resources SET cleanup_confirmed = 1 WHERE id = ?', [id])
+      this.observedWorkers.delete(id)
+    }
     return confirmed
   }
 
