@@ -37,7 +37,7 @@ For ongoing access, mint a different device credential for each browser or phone
 always require a device credential. The plaintext is shown once:
 
 ```sh
-bazilion token create personal-laptop --expires-days 90 --qr
+bazilion token create personal-laptop --expires-days 90
 bazilion token list
 bazilion session list
 ```
@@ -45,7 +45,9 @@ bazilion session list
 Open the HTTPS origin from a tailnet device and log in with its named device token. The daemon
 exchanges that token for a bounded server session without retaining the bearer in browser cookies.
 To recover from a lost device, revoke that device token; all browser sessions derived from it
-become invalid immediately.
+become invalid immediately. A phone can use the same private HTTPS browser UI. The former Expo
+application was removed; native mobile apps remain future scope. Credential/pairing APIs are
+available to compatible native consumers, not evidence that a mobile app is shipped.
 
 Verify externally that ports 4321 and 4322 are not reachable directly and that the HTTPS name is
 unreachable off-tailnet. `tailscale serve status --json` must show Serve, never Funnel. See the

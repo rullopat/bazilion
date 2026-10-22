@@ -35,9 +35,9 @@ Other text, or send `/answer <question-id> <text>`. Earlier chunks of a long pro
 answers. Unrelated topic text remains a normal queued message. Replies must come from the paired
 owner in the original authorized topic. Stale or rebound buttons cannot answer another question.
 
-Native mobile does not offer question controls. Its waiting notice links to the paired web
-origin where supported; the browser uses its own login. Mobile-only turns, background schedules,
-inbox wakeups and review turns do not receive this interactive tool.
+The former Expo app was removed; use the web UI or CLI for question controls. Native mobile
+apps remain future scope. Background schedules, inbox wakeups and review turns do not receive
+this interactive tool.
 
 ## What the status means
 
