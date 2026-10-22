@@ -18,6 +18,15 @@ describe('chat Markdown hydration', () => {
     )
   })
 
+  test('composer exposes queue initialization as busy before client readiness', () => {
+    const html = renderToString(createElement(ChatPane, {
+      agentId: 'agent-1',
+      agentName: 'Tour Guide',
+      initialMessages: [],
+    }))
+    expect(html).toMatch(/<form[^>]*aria-busy="true"/)
+  })
+
   test('server-renders persisted assistant Markdown as the hydration fallback', () => {
     const initialMessages: ProviderMessage[] = [
       { role: 'user', content: 'Show me Markdown' },

@@ -183,9 +183,63 @@ export async function qualifyPortableChat({
       evidence.diagnostics.viewports.push({ width, rendered: true, overflow: false })
     }
     await page.setViewportSize({ width: 1280, height: 900 })
+    let checkedQueueReadiness = false
+    let chatRequests = 0
+    page.on('request', (request) => {
+      if (
+        request.method() === 'POST' &&
+        new URL(request.url()).pathname === `/api/agents/${agentId}/chat`
+      )
+        chatRequests++
+    })
     const webTurn = async (message) => {
-      await page.goto(`${webUrl}/agents/${agentId}`)
-      const composer = page.getByPlaceholder('Write a message…')
+      const queuePattern = `${webUrl}/api/agents/${agentId}/queue?*`
+      let releaseQueue
+      const gate = new Promise((resolve) => {
+        releaseQueue = resolve
+      })
+      const checkQueueReadiness = !checkedQueueReadiness
+      if (checkQueueReadiness) {
+        await page.route(queuePattern, async (route) => {
+          await gate
+          await route.continue()
+        })
+      }
+      try {
+        const loadingQueue = page.waitForRequest(
+          (request) => new URL(request.url()).pathname === `/api/agents/${agentId}/queue`,
+        )
+        await page.goto(`${webUrl}/agents/${agentId}`)
+        await loadingQueue
+        const composer = page.getByPlaceholder('Write a message…')
+        await composer.waitFor({ state: 'visible' })
+        if (checkQueueReadiness) {
+          // Deterministically reproduce the pre-dispatch refusal. This is not a
+          // retry: no chat request may leave the browser and the draft must stay.
+          const probe = 'BAZ071 queue initialization draft'
+          const before = chatRequests
+          assert.equal(await composer.locator('..').getAttribute('aria-busy'), 'true')
+          await composer.fill(probe)
+          await page.getByRole('button', { name: 'Send', exact: true }).click()
+          await page
+            .getByText('Queue status is loading. Your draft is preserved.', { exact: true })
+            .waitFor({ state: 'visible' })
+          assert.equal(chatRequests, before)
+          assert.equal(await composer.inputValue(), probe)
+          evidence.diagnostics.queueReadiness = {
+            preDispatchRefusal: true,
+            chatRequests: 0,
+            draftPreserved: true,
+          }
+          checkedQueueReadiness = true
+        }
+      } finally {
+        releaseQueue()
+        if (checkQueueReadiness) await page.unroute(queuePattern)
+      }
+      // A visible SSR textarea is not a ready composer. Wait for the real
+      // client queue state, then submit this new trial exactly once.
+      const composer = page.locator('form[aria-busy="false"]').getByPlaceholder('Write a message…')
       await composer.waitFor({ state: 'visible' })
       const previous = await page.getByText(finalText, { exact: true }).count()
       await composer.fill(message)

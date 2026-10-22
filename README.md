@@ -316,8 +316,8 @@ protected baseline is reported with remediation, not as a broken ordinary-chat i
 Automation requiring protected work must inspect `protectedWorkBaselineReady` in the authenticated
 `/api/health/details` response separately.
 
-Platform support is not an execution or connectivity test: ordinary chat remains **Not checked**
-until you test a provider and run a turn. Linux/macOS ordinary-chat support does not grant
+Platform support is not an execution or connectivity test: these diagnostics label ordinary chat
+**Not checked**. Test a provider and run an Agent turn separately. Linux/macOS chat support does not grant
 Linux-only hardened Git inspection or MCP stdio; macOS can use Streamable HTTP MCP instead.
 All per-turn checks and protected-turn refusals remain mandatory, regardless of diagnostic status.
 
