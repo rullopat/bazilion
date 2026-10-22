@@ -28,7 +28,7 @@ test('Pi catalog retains Astra for API keys and Codex subscriptions', () => {
   }
 })
 
-test('Pi 1.0 catalog includes exact GPT-6.1 Sol on official API and subscription transports', () => {
+test('Pi catalog includes exact GPT-6.1 Sol on official API and subscription transports', () => {
   for (const provider of ['openai', 'openai-codex'] as const) {
     expect(getBuiltinModels(provider).find((model) => model.id === 'gpt-6.1-sol')).toMatchObject({
       provider,

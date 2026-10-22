@@ -2291,7 +2291,7 @@
       "id": "PI100-SOL-CATALOG",
       "owner": "Pi 1.0 upgrade / BAZ-069",
       "file": "apps/daemon/test/runtime/providers.test.ts",
-      "test": "Pi 1.0 catalog includes exact GPT-6.1 Sol on official API and subscription transports"
+      "test": "Pi catalog includes exact GPT-6.1 Sol on official API and subscription transports"
     },
     {
       "id": "IMAGE-CODEC-CLOSED-DIAGNOSTICS",

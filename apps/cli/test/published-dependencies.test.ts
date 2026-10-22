@@ -44,16 +44,16 @@ const PI_PACKAGES = [
   '@earendil-works/pi-agent-core',
   '@earendil-works/pi-ai',
   '@earendil-works/pi-coding-agent',
+  '@earendil-works/pi-mcp',
 ] as const
 
 test('published CLI pins the Pi package family to its tested compatible version', () => {
-  const manifest = JSON.parse(
-    readFileSync(join(import.meta.dirname, '..', 'package.json'), 'utf8'),
-  ) as { dependencies: Record<string, string> }
-
-  const compatibleVersion = manifest.dependencies['@earendil-works/pi-ai']
-  expect(compatibleVersion).toMatch(/^\d+\.\d+\.\d+$/)
-  for (const name of PI_PACKAGES) {
-    expect(manifest.dependencies[name]).toBe(compatibleVersion)
+  for (const relative of ['../package.json', '../../daemon/package.json']) {
+    const manifest = JSON.parse(readFileSync(join(import.meta.dirname, relative), 'utf8')) as {
+      dependencies: Record<string, string>
+    }
+    for (const name of PI_PACKAGES) {
+      expect(manifest.dependencies[name], `${relative}: ${name}`).toBe('1.4.0')
+    }
   }
 })

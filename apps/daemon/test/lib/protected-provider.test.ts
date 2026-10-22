@@ -1,4 +1,5 @@
 import type { ResolvedAgent } from '@bazilion/api-types'
+import { getBuiltinModels, getBuiltinProviders } from '@earendil-works/pi-ai/providers/all'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { openConfig, openSecrets, providerStateRepo } from '../../src/core/index.ts'
 import {
@@ -6,6 +7,7 @@ import {
   PROTECTED_PROVIDER_NAMES,
   PROVIDER_API_KEY_ENV,
   PROVIDER_CREDENTIAL_ENV,
+  piProviderName,
 } from '../../src/runtime/providers/pi-runtime.ts'
 import { listRegisteredProviderNames } from '../../src/runtime/providers/registry.ts'
 import { makeTestEnv, type TestEnv } from '../core/helpers.ts'
@@ -107,6 +109,16 @@ test('fails closed for disabled providers or missing Codex refresh', async () =>
 
 test('accounts exhaustively for every provider in the pinned Pi registry', () => {
   expect([...PROTECTED_PROVIDER_NAMES].sort()).toEqual(listRegisteredProviderNames().sort())
+  const admitted = new Set(PROTECTED_PROVIDER_NAMES.map(piProviderName))
+  for (const provider of getBuiltinProviders()) {
+    if (getBuiltinModels(provider).length > 0) {
+      expect(admitted.has(provider), `${provider} has no explicit chat admission`).toBe(true)
+    } else {
+      // Non-chat-only services do not silently acquire a protected chat capability.
+      expect(provider).toBe('typesafe')
+      expect(admitted.has(provider)).toBe(false)
+    }
+  }
   for (const provider of PROTECTED_PROVIDER_NAMES) {
     expect(
       provider === 'openai-codex' ||

@@ -4,7 +4,7 @@ import { ModelRuntime } from '@earendil-works/pi-coding-agent'
 
 const PROVIDER_ALIASES: Record<string, string> = {
   bedrock: 'amazon-bedrock',
-  'azure-openai': 'azure-openai-responses',
+  'azure-openai': 'azure',
 }
 
 export const PROTECTED_PROVIDER_NAMES = [

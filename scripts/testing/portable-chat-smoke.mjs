@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { join } from 'node:path'
+import { dirname, join, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 const instruction = 'BAZ057_PACKED_TEAM_INSTRUCTIONS_8f2d1'
@@ -55,6 +55,16 @@ export async function qualifyPortableChat({
 
   // Resolve from the installed distribution, never from the source workspace.
   const require = createRequire(join(moduleRoot, 'daemon-main.js'))
+  const piVersions = {}
+  for (const pkg of ['pi-ai', 'pi-agent-core', 'pi-coding-agent', 'pi-mcp']) {
+    const name = `@earendil-works/${pkg}`
+    const entry = require.resolve(name)
+    assert.ok(entry.startsWith(`${dirname(moduleRoot)}${sep}`), `${name}: not installed locally`)
+    const metadata = JSON.parse(readFileSync(join(dirname(dirname(entry)), 'package.json'), 'utf8'))
+    assert.equal(metadata.name, name)
+    assert.equal(metadata.version, '1.4.0', name)
+    piVersions[name] = metadata.version
+  }
   const manifest = require('@openclaw/fs-safe/package.json')
   assert.equal(manifest.version, '0.26.8')
   const { getFsSafeNativeStatus } = await import(
@@ -65,6 +75,7 @@ export async function qualifyPortableChat({
     platform: process.platform,
     node: process.version,
     fsSafeVersion: manifest.version,
+    piVersions,
     native,
     api: [],
     cli: [],

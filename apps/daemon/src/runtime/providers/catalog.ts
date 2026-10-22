@@ -16,13 +16,7 @@
 
 import { getBuiltinModels } from '@earendil-works/pi-ai/providers/all'
 import { fetch as undiciFetch } from 'undici'
-
-// piProviderName: what pi-ai's catalog indexes by. For bedrock we use the
-// Bazilion-registry-key 'bedrock' externally but pi uses 'amazon-bedrock'.
-const REGISTRY_TO_PI: Record<string, string> = {
-  bedrock: 'amazon-bedrock',
-  'azure-openai': 'azure-openai-responses',
-}
+import { piProviderName } from './pi-runtime.ts'
 
 // baseURL for providers whose /v1/models we can probe. Omitted for the
 // big cloud APIs that require a real key and generally aren't "explore me"
@@ -57,7 +51,7 @@ function liveEndpointFor(providerName: string, env: NodeJS.ProcessEnv): string |
     case 'nvidia':
       return 'https://integrate.api.nvidia.com/v1'
     case 'opencode-go':
-      return 'https://opencode.ai/zen/go/v1'
+      return 'https://opencode.ai/inference/go/v1'
     case 'xiaomi-token-plan-ams':
       return 'https://token-plan-ams.xiaomimimo.com/v1'
     case 'xiaomi-token-plan-cn':
@@ -72,7 +66,7 @@ function liveEndpointFor(providerName: string, env: NodeJS.ProcessEnv): string |
 }
 
 function piModels(providerName: string): string[] {
-  const piName = REGISTRY_TO_PI[providerName] ?? providerName
+  const piName = piProviderName(providerName)
   try {
     const models = (
       getBuiltinModels as unknown as (provider: string) => { id: string }[] | undefined

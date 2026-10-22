@@ -34,7 +34,8 @@ route/model/account/qualification description.
   the request and `observedMode: unknown`; it does not claim the provider attested its execution
   mode. Custom native endpoint overrides are refused.
 
-The embedded [Pi runtime is pinned to 1.0.0](pi-runtime.md). The bundled official catalogs
+The embedded [Pi runtime is pinned to 1.4.0 on the unreleased 0.24 branch](pi-runtime.md).
+Published 0.23.0 still embeds 1.0.0. The bundled official catalogs
 include `gpt-6.1-sol` for explicitly selected research configurations. Existing
 Agent/Profile selections are not silently changed. This catalog update does not qualify search
 entitlement, automatically enable Pi's MCP/codemode extensions, or authorize a live call.
