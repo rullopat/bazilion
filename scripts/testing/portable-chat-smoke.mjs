@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
-import { createRequire } from 'node:module'
+import { createRequire, findPackageJSON } from 'node:module'
 import { dirname, join, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
@@ -58,9 +58,13 @@ export async function qualifyPortableChat({
   const piVersions = {}
   for (const pkg of ['pi-ai', 'pi-agent-core', 'pi-coding-agent', 'pi-mcp']) {
     const name = `@earendil-works/${pkg}`
-    const entry = require.resolve(name)
-    assert.ok(entry.startsWith(`${dirname(moduleRoot)}${sep}`), `${name}: not installed locally`)
-    const metadata = JSON.parse(readFileSync(join(dirname(dirname(entry)), 'package.json'), 'utf8'))
+    // Pi's public entry points are import-only; CommonJS require.resolve rejects them.
+    const metadataPath = findPackageJSON(name, pathToFileURL(join(moduleRoot, 'daemon-main.js')))
+    assert.ok(
+      metadataPath?.startsWith(`${dirname(moduleRoot)}${sep}`),
+      `${name}: not installed locally`,
+    )
+    const metadata = JSON.parse(readFileSync(metadataPath, 'utf8'))
     assert.equal(metadata.name, name)
     assert.equal(metadata.version, '1.4.0', name)
     piVersions[name] = metadata.version
