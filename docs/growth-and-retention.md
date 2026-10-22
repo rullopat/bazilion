@@ -44,9 +44,9 @@ per-table `SELECT COUNT(*)` on the tables named below.
 **Unbounded by design — this is your history, not a leak:**
 
 - **Messages** (`messages`): the inter-Agent mailbox, growing with communication.
-  Conversation content is canonical in Pi JSONL, not this table. Structural retention and
-  cold-archiving remain deferred (BAZ-048); preserve both database state and transcripts
-  with a full backup (`bazilion backup create`).
+  Conversation content is canonical in Pi JSONL, not this table. There is no automatic
+  structural retention or cold-archiving for this history; preserve both database state
+  and transcripts with a full backup (`bazilion backup create`).
 - **Image generation receipts** (`image_generations`, BAZ-059): at most four admissions per turn,
   with bounded identities, request digest, selected model and reported usage — never prompts or
   image bytes. No TTL: replay protection survives restart/restore; original Team deletion removes
@@ -99,7 +99,7 @@ starts growing, that is a bug, not a configuration problem.
 ## What is deliberately absent
 
 - **No automatic retention on messages or sessions** — the conversation record is
-  the product; structural retention/cold-archiving is post-1.0 work (BAZ-048).
+  the product; structural retention/cold-archiving is not committed roadmap scope.
 - **No log shipping or telemetry, ever** — by product stance. The only things
   that leave your machine are the configured provider and integration requests, including
   LLMs, research/fetch/browser traffic, MCP and Telegram. Those services have their own data policies.

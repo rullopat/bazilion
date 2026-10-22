@@ -90,7 +90,7 @@ non-interactive turn behavior (BAZ-006).
   single-use pairing token, and the gateway TLS certificate fingerprint (the private
   gateway already serves a pinnable leaf — BAZ-028).
 - Minted from the web tokens page and CLI ("pair a device"); rendered as copyable
-  text *and* QR for the future native apps (BAZ-054). The exchange admits exactly one
+  text *and* QR for compatible device clients. The exchange admits exactly one
   credential mint, which creates a durable scoped device credential with scopes
   chosen at mint time. Pairing token ≠ device credential — the short-lived key that
   admits a durable identity, per OpenClaw's phrasing.
@@ -107,12 +107,12 @@ non-interactive turn behavior (BAZ-006).
 ## Out of scope
 
 - **Capability-approval lifecycle** (OpenClaw's second pairing layer: devices declare
-  a surface, expansions create persistent pending requests) — moves with BAZ-054,
-  because a declaring client only exists once native apps do.
+  a surface, expansions create persistent pending requests) — requires a separately
+  designed declaring client; no native app implementation is committed.
 - **Trusted-proxy auth mode** — rejected in the comparison: exists for shared/K8s
   deployments; Bazilion is single-operator, Tailscale-first. Revisit only if
   multi-operator becomes real.
-- **Published protocol/client packages** — with BAZ-054.
+- **Published protocol/client packages** — not part of this story's accepted scope.
 - Multi-operator accounts, user identity mapping, any change to secret encryption or
   bootstrap semantics.
 

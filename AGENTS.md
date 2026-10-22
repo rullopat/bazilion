@@ -61,7 +61,7 @@ The daemon and web application remain loopback-only. `BAZILION_PUBLIC_ORIGIN` ac
 
 ### Native clients
 
-The Expo app was removed (BAZ-053); native iOS/Android apps remain deferred (BAZ-054).
+The Expo app was removed (BAZ-053); no native iOS/Android app is currently shipped or committed.
 Leftover local/generated `apps/mobile` artifacts are not a supported application. Keep
 `@bazilion/api-types` hermetic and native consumers on HTTP through `@bazilion/client`;
 never add runtime imports of daemon internals.

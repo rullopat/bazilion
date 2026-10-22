@@ -15,14 +15,11 @@ Use `BAZ-NNN-short-slug.md` and frontmatter with `id`, `title`, `status`, `size`
 applicable release dates. Move the same story between state folders rather than creating a
 progress/acceptance sidecar. Current behavior belongs in the [product documentation](../README.md).
 
-## Draft (4)
+## Draft (1)
 
 | Story | Outcome |
 | --- | --- |
-| [BAZ-048](draft/BAZ-048-storage-refinements-post-1.0.md) | Storage refinements when actual scale requires them |
-| [BAZ-054](draft/BAZ-054-native-ios-android-apps.md) | Future native mobile applications |
 | [BAZ-057](draft/BAZ-057-portable-safe-reads.md) | Safe repository reads off Linux |
-| [BAZ-058](draft/BAZ-058-content-proposals-and-editorial-review.md) | Revision-bound content/editorial review |
 
 The [Telegram roadmap](../telegram-v2.md) retains unnumbered future user stories. It is not an
 implementation commitment or supported-feature list. The

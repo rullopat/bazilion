@@ -6,7 +6,7 @@ size: S (afternoon)
 created: 2026-09-17
 release: v0.21.0-beta.1
 priority: medium
-note: Operator decision 2026-09-17 — the Expo app ships neither in beta nor 1.0. Successor vision in BAZ-054 (post-1.0 native apps). Removal must preserve the private gateway (BAZ-028), which serves mobile browsers and future native clients.
+note: Operator decision 2026-09-17 — the Expo app ships neither in beta nor 1.0. Removal preserves the private gateway (BAZ-028), which serves mobile browsers and compatible native clients; no native app release is committed.
 ---
 
 # BAZ-053 - Remove the Expo mobile app; mobile story becomes responsive web
@@ -20,15 +20,15 @@ note: Operator decision 2026-09-17 — the Expo app ships neither in beta nor 1.
 
 ## Goal
 
-Delete `apps/mobile` cleanly, keeping every piece of infrastructure the future native
-apps (BAZ-054) and mobile browsers depend on: the hardened private gateway, device
-credentials, and the Telegram pairing flow's web path.
+Delete `apps/mobile` cleanly, keeping the infrastructure used by mobile browsers and
+compatible HTTP clients: the hardened private gateway, device credentials, and the
+Telegram pairing flow's web path.
 
 ## Why
 
-Operator decision (2026-09-17): the Expo app is not the mobile strategy — native iOS
-and Android apps are (BAZ-054) — and shipping a thin half-verified wrapper in beta
-would cost more (support, platform matrix, review) than it returns. Verified on
+Operator decision (2026-09-17): prefer native device integration over the Expo wrapper
+if dedicated mobile apps are built. Shipping a thin half-verified wrapper in beta would
+cost more (support, platform matrix, review) than it returns. No native release is committed. Verified on
 2026-09-17: the daemon has no mobile-specific routes ("mobile" appears only in comments
 about generic HTTP bearer clients), no CI or workspace references target `apps/mobile`,
 and the app is ~1,600 self-contained lines.
@@ -41,12 +41,12 @@ and the app is ~1,600 self-contained lines.
   identical to desktop browsers.
 - Verify Telegram pairing works fully from the web UI
   (`routes/config/integrations/telegram.tsx`) without the app's `pair.tsx` screen.
-- Preserve for BAZ-054: the gateway design note that "native clients always require a
-  device credential" — the auth path future native apps will use already exists.
+- Preserve the gateway rule that native clients always require a device credential;
+  removing the app does not remove that HTTP authentication path.
 
 ## Out of scope
 
-- Building the native apps (BAZ-054, post-1.0).
+- Building native apps.
 - Any gateway/auth changes — none are needed for the removal.
 
 ## Tests
@@ -68,7 +68,7 @@ and the app is ~1,600 self-contained lines.
   in source, workflows, scripts, or config (backlog history excepted).
 - **Gateway untouched, as scoped:** the BAZ-028 private gateway, named device
   credentials, and the "native clients always require a device credential" auth path
-  remain — mobile browsers today, BAZ-054's native apps later.
+  remain available without a bundled native app.
 - **Pairing unaffected:** pairing is daemon-side logic (covered by
   `telegram-pairing.test.ts`, `telegram-routing`, `telegram-queue-binding` tests) with
   the web route `routes/config/integrations/telegram.tsx` as the operator surface; the

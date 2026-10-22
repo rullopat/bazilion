@@ -68,8 +68,8 @@ novelty.
 
 ## Out of scope
 
-- Per-agent database split (OpenClaw's two-database model) — see BAZ-048.
-- FTS over conversations, cold transcript archives — see BAZ-048.
+- Per-agent database split (OpenClaw's two-database model).
+- FTS over conversations, cold transcript archives.
 - Restoring data from pre-alpha wiped homes.
 - Rewriting historical migrations to undo the in-place edits already made.
 

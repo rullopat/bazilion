@@ -78,14 +78,14 @@ small; together they define whether a months-old beta home is supportable.
     is confirmed good.
   - `logs/` — created but never written; service diagnostics live in the service
     manager's journal, whose rotation it owns.
-  - Pointers: structural retention/cold-archiving is deliberately deferred to
-    BAZ-048 (post-1.0); no log shipping/telemetry exists by product stance.
+  - Structural retention/cold-archiving is outside this accepted scope;
+    no log shipping/telemetry exists by product stance.
 - **Website mirror:** the new doc page plus index/redirects wiring, gated by
   `pnpm check:docs`.
 
 ## Out of scope
 
-- Structural DB retention / cold archives (BAZ-048, post-1.0).
+- Structural DB retention / cold archives.
 - External log shipping / telemetry (none, by product stance).
 - Log rotation for `logs/` (nothing writes there; see refinement decision 1).
 
