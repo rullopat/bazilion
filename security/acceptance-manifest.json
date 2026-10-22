@@ -2,6 +2,12 @@
   "version": 1,
   "cases": [
     {
+      "id": "DIAGNOSTICS-HEALTH-AUTH-SEPARATION",
+      "owner": "BAZ-071",
+      "file": "apps/cli/test/doctor.test.ts",
+      "test": "actual doctor exits zero for a healthy install while retaining unavailable protected diagnostics"
+    },
+    {
       "id": "RECOVERY-SAME-TIMESTAMP-TEAM",
       "owner": "BAZ-068",
       "file": "apps/daemon/test/core/workspace-recovery.test.ts",

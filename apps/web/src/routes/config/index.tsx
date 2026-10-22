@@ -21,6 +21,10 @@ import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { ConfigPage } from '../../components/ConfigPage'
 import { ExecutionSecurityCard } from '../../components/ExecutionSecurityCard'
 import { FieldRow } from '../../components/FieldRow'
+import {
+  InstallationReadinessCard,
+  type InstallationReadiness,
+} from '../../components/InstallationReadinessCard'
 import { EmptyState, StatusBadge } from '../../components/Page'
 import { daemonClient } from '../../lib/daemon-client'
 import {
@@ -33,6 +37,7 @@ interface ProvidersData {
   providers: ProviderConfigEntry[]
   openaiCodex: OpenAICodexStatus
   executionSecurity: HealthReport['executionSecurity']
+  readiness: InstallationReadiness
 }
 
 const fetchProvidersData = createServerFn({ method: 'GET' }).handler(
@@ -43,7 +48,16 @@ const fetchProvidersData = createServerFn({ method: 'GET' }).handler(
       c.get<OpenAICodexStatus>('/api/auth/openai'),
       c.get<HealthReport>('/api/health/details'),
     ])
-    return { providers, openaiCodex, executionSecurity: health.executionSecurity }
+    return {
+      providers,
+      openaiCodex,
+      executionSecurity: health.executionSecurity,
+      readiness: {
+        ok: health.ok,
+        protectedWorkBaselineReady: health.protectedWorkBaselineReady,
+        platformCapabilities: health.platformCapabilities,
+      },
+    }
   },
 )
 
@@ -53,7 +67,7 @@ export const Route = createFileRoute('/config/')({
 })
 
 function ProvidersPage() {
-  const { providers, openaiCodex, executionSecurity } = Route.useLoaderData()
+  const { providers, openaiCodex, executionSecurity, readiness } = Route.useLoaderData()
   const setupComplete = providers.some((p) => p.enabled && p.curated.length > 0)
   const startedComplete = useRef(setupComplete)
   const [showCompletion, setShowCompletion] = useState(false)
@@ -86,6 +100,8 @@ function ProvidersPage() {
           detail="configured; test connectivity separately"
         />
       </div>
+
+      <InstallationReadinessCard report={readiness} />
 
       <details className="rounded-2xl border border-border bg-card shadow-baziu-sm">
         <summary className="flex min-h-12 cursor-pointer list-none items-center gap-3 px-4 py-3 text-sm font-semibold text-foreground marker:hidden sm:px-5">

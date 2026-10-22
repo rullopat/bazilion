@@ -308,6 +308,19 @@ login rejects it after setup completes. Named device credentials remain the norm
 and native-client path. See [the private gateway guide](docs/private-gateway.md) for service
 environment, verification, recovery, and remote CLI/mobile details.
 
+## Installation and platform diagnostics
+
+`bazilion doctor` and `/config` show installation health, platform support and protected unattended
+readiness separately. **Doctor exits zero for structural installation health only**; a missing
+protected baseline is reported with remediation, not as a broken ordinary-chat installation.
+Automation requiring protected work must inspect `protectedWorkBaselineReady` in the authenticated
+`/api/health/details` response separately.
+
+Platform support is not an execution or connectivity test: ordinary chat remains **Not checked**
+until you test a provider and run a turn. Linux/macOS ordinary-chat support does not grant
+Linux-only hardened Git inspection or MCP stdio; macOS can use Streamable HTTP MCP instead.
+All per-turn checks and protected-turn refusals remain mandatory, regardless of diagnostic status.
+
 ## Workspace recovery
 
 If a failed turn leaves a Team blocked, inspect **Workspace recovery** on its Team page or run

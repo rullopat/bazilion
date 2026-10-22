@@ -15,6 +15,7 @@ export async function qualifyPortableChat({
   agentId,
   finalText,
   runCli,
+  runDoctor,
 }) {
   const token = JSON.parse(readFileSync(join(home, 'auth.json'), 'utf8')).token
   const authorization = { authorization: `Bearer ${token}` }
@@ -85,6 +86,39 @@ export async function qualifyPortableChat({
     cli: [],
     web: [],
   }
+  const health = await (await api('/api/health/details')).json()
+  assert.equal(health.ok, true)
+  assert.equal(
+    health.platformCapabilities.platform,
+    process.platform === 'darwin' ? 'macOS' : 'Linux',
+  )
+  assert.deepEqual(
+    health.platformCapabilities.capabilities.map((c) => [c.id, c.support]),
+    [
+      ['ordinary_chat', 'supported'],
+      ['git_inspection', process.platform === 'linux' ? 'supported' : 'unsupported'],
+      ['mcp_stdio', process.platform === 'linux' ? 'supported' : 'unsupported'],
+      ['mcp_http', 'supported'],
+    ],
+  )
+  if (process.platform === 'darwin') assert.equal(health.protectedWorkBaselineReady, false)
+  const doctor = await runDoctor()
+  assert.equal(doctor.code, 0, doctor.stderr)
+  assert.ok(doctor.stdout.includes('install is healthy ✓'))
+  assert.ok(doctor.stdout.includes('ordinary chat execution: not checked'))
+  assert.ok(doctor.stdout.includes(`platform support: ${health.platformCapabilities.platform}`))
+  assert.ok(
+    doctor.stdout.includes(
+      `protected unattended baseline: ${health.protectedWorkBaselineReady ? 'ready' : 'unavailable'}`,
+    ),
+  )
+  evidence.diagnostics = {
+    installHealthy: health.ok,
+    platformCapabilities: health.platformCapabilities,
+    protectedWorkBaselineReady: health.protectedWorkBaselineReady,
+    doctorExit: doctor.code,
+    viewports: [],
+  }
   const { chromium } = require('playwright')
   const browserPath = [
     process.env.BAZILION_INSTALLER_UI_BROWSER,
@@ -116,6 +150,39 @@ export async function qualifyPortableChat({
       page.waitForURL((url) => url.pathname !== '/login'),
       page.getByRole('button', { name: 'Open Bazilion', exact: true }).click(),
     ])
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 900 })
+      await page.goto(`${webUrl}/config`)
+      const card = page.getByRole('region', {
+        name: 'Installation and platform support',
+        exact: true,
+      })
+      await card.waitFor({ state: 'visible' })
+      const content = await card.innerText()
+      assert.ok(content.includes(`Daemon platform: ${health.platformCapabilities.platform}`))
+      assert.ok(content.includes('Not checked'))
+      assert.ok(
+        content.includes(
+          health.protectedWorkBaselineReady ? 'Ready · per-turn checks still apply' : 'Unavailable',
+        ),
+      )
+      for (const capability of health.platformCapabilities.capabilities) {
+        const row = card.getByText(capability.label, { exact: true }).locator('..')
+        assert.ok(
+          (await row.innerText()).includes(
+            `${capability.support === 'supported' ? 'Supported' : 'Unsupported'} on this platform`,
+          ),
+        )
+        assert.ok((await row.innerText()).includes(capability.detail))
+      }
+      assert.equal(
+        await card.evaluate((element) => element.scrollWidth > element.clientWidth),
+        false,
+      )
+      assert.deepEqual(errors, [])
+      evidence.diagnostics.viewports.push({ width, rendered: true, overflow: false })
+    }
+    await page.setViewportSize({ width: 1280, height: 900 })
     const webTurn = async (message) => {
       await page.goto(`${webUrl}/agents/${agentId}`)
       const composer = page.getByPlaceholder('Write a message…')

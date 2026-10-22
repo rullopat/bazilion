@@ -822,6 +822,7 @@ try {
       finalText: provider.finalText,
       runCli: (message) =>
         run(process.execPath, [bazilionBin, 'agent', 'chat', agentId, '--message', message]),
+      runDoctor: () => run(process.execPath, [bazilionBin, 'doctor']),
     })
     if (provider.instructedTurns !== 3)
       fail('three instructed turns reached the provider', `observed ${provider.instructedTurns}`)

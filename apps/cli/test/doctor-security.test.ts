@@ -1,6 +1,12 @@
 import type { ExecutionSecurityReport, HealthReport } from '@bazilion/api-types'
 import { expect, test } from 'vitest'
-import { doctorHasIssues, executionSecurityDoctorLines } from '../src/commands/doctor.ts'
+import { projectPlatformCapabilities } from '../../daemon/src/lib/platform-capabilities.ts'
+import {
+  doctorHasIssues,
+  doctorSummaryLines,
+  executionSecurityDoctorLines,
+  platformCapabilityDoctorLines,
+} from '../src/commands/doctor.ts'
 
 const executionSecurity: ExecutionSecurityReport = {
   configuredOperatorHttp: {
@@ -108,8 +114,39 @@ test('doctor treats near-expiry connected OAuth as refreshable baseline eligibil
 test.each([
   [{ ok: true, protectedWorkBaselineReady: true }, false],
   [{ ok: false, protectedWorkBaselineReady: true }, true],
-  [{ ok: true, protectedWorkBaselineReady: false }, true],
+  [{ ok: true, protectedWorkBaselineReady: false }, false],
   [{ ok: false, protectedWorkBaselineReady: false }, true],
-] as const)('doctor issue status keeps structural health and protected baseline mandatory: %j', (report, expected) => {
+] as const)('doctor exit status reflects installation health independently of protected readiness: %j', (report, expected) => {
   expect(doctorHasIssues(report)).toBe(expected)
+  const output = doctorSummaryLines(report).join('\n')
+  expect(output).toContain(report.ok ? 'install is healthy ✓' : 'installation issues found ✗')
+  expect(output).toContain('ordinary chat execution: not checked')
+  expect(output).toContain(
+    report.protectedWorkBaselineReady
+      ? 'protected unattended baseline: ready — per-turn checks still apply'
+      : 'protected unattended baseline: unavailable — see reasons and remediation above',
+  )
+  expect(output).toContain('exit status covers installation health only')
+  expect(output).not.toContain('all good')
+})
+
+test.each([
+  'linux',
+  'darwin',
+  'win32',
+])('doctor renders daemon platform support for %s without success badges', (platform) => {
+  const report = projectPlatformCapabilities(platform)
+  const output = platformCapabilityDoctorLines(report).join('\n')
+  expect(output).toContain(`platform support: ${report.platform}`)
+  expect(output).toContain('not an execution or connectivity test')
+  for (const capability of report.capabilities) {
+    expect(output).toContain(`${capability.label}: ${capability.support} on this platform`)
+    expect(output).toContain(capability.detail)
+  }
+  expect(output).not.toContain('✓')
+  if (platform === 'darwin') {
+    expect(output).toContain('MCP stdio: unsupported')
+    expect(output).toContain('Use Streamable HTTP instead')
+    expect(output).toContain('Ordinary interactive chat: supported')
+  }
 })

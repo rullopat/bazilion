@@ -16,6 +16,8 @@ export const doctorCommand = defineCommand({
 
     console.log(`bazilion home: ${r.home}`)
     console.log()
+    for (const line of platformCapabilityDoctorLines(r.platformCapabilities)) console.log(line)
+    console.log()
     console.log('paths')
     check('home dir exists', r.paths.home)
     check('database exists', r.paths.db, 'run: bazilion serve (auto-bootstraps on first run)')
@@ -121,17 +123,11 @@ export const doctorCommand = defineCommand({
     const hasAgents = (r.database?.ok ? r.database.totalAgents : 0) > 0
 
     console.log()
-    if (doctorHasIssues(r)) {
-      console.log('issues found ✗')
-      process.exit(1)
-    }
-    // Install is structurally healthy. Differentiate "ready to use" from "just
-    // initialized" so a fresh install doesn't masquerade as fully configured.
-    // (Local providers — lmstudio/ollama — are reported with default URLs
-    // whether or not they're actually running, so we can only advise; cloud
-    // providers have api keys we can check.)
+    for (const line of doctorSummaryLines(r)) console.log(line)
+    if (doctorHasIssues(r)) process.exit(1)
+    // Counts are setup guidance, never proof that a chat/provider will work.
     if (!hasProfiles || !hasAgents) {
-      console.log('install is healthy, but not yet ready to run ⚠')
+      console.log('setup guidance (not an execution test)')
       const todo: string[] = []
       if (!anyCloudProvider) {
         todo.push('  - set a cloud api key (ANTHROPIC_API_KEY / OPENAI_API_KEY / GEMINI_API_KEY)')
@@ -143,8 +139,6 @@ export const doctorCommand = defineCommand({
       }
       if (!hasAgents) todo.push('  - spawn an agent: bazilion agent spawn --profile <id>')
       for (const line of todo) console.log(line)
-    } else {
-      console.log('all good ✓')
     }
   },
 })
@@ -212,10 +206,34 @@ export function executionSecurityDoctorLines(
   return lines
 }
 
-export function doctorHasIssues(
+export function platformCapabilityDoctorLines(
+  report: HealthReport['platformCapabilities'],
+): string[] {
+  return [
+    `platform support: ${report.platform}`,
+    `  ${report.note}`,
+    ...report.capabilities.flatMap((capability) => [
+      `  - ${capability.label}: ${capability.support} on this platform`,
+      `    ${capability.detail}`,
+    ]),
+  ]
+}
+
+export function doctorSummaryLines(
   report: Pick<HealthReport, 'ok' | 'protectedWorkBaselineReady'>,
-): boolean {
-  return !report.ok || !report.protectedWorkBaselineReady
+): string[] {
+  return [
+    report.ok ? 'install is healthy ✓' : 'installation issues found ✗',
+    'ordinary chat execution: not checked — select/test a provider and try an Agent chat',
+    report.protectedWorkBaselineReady
+      ? 'protected unattended baseline: ready — per-turn checks still apply'
+      : 'protected unattended baseline: unavailable — see reasons and remediation above',
+    'doctor exit status covers installation health only; it does not authorize execution.',
+  ]
+}
+
+export function doctorHasIssues(report: Pick<HealthReport, 'ok'>): boolean {
+  return !report.ok
 }
 
 function openAIAccessStatus(

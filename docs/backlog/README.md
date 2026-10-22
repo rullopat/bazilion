@@ -29,14 +29,16 @@ Removed stories remain recoverable through Git history; do not reuse their IDs.
 
 No stories currently ready to pull.
 
-## In progress (1)
+## In progress (2)
 
 | Story | Release priority and outcome |
 | --- | --- |
 | [BAZ-057](in_progress/BAZ-057-portable-safe-reads.md) | **First priority for Release 0.24:** implemented and actual-macOS-qualified ordinary Agent chat; awaiting release integration, with platform/capability limits recorded |
+| [BAZ-071](in_progress/BAZ-071-platform-readiness-diagnostics.md) | **Final scoped addition for Release 0.24:** separate installation health, platform support and protected readiness in CLI/web; execution gates unchanged |
 
-Release 0.24 is developed on `release/0.24`; additional user stories can join its PR as refined.
-Current released platform support is unchanged until the fix is implemented and qualified.
+Release 0.24 is developed on `release/0.24`. Scope is frozen to these stories and the embedded Pi
+1.4.0 upgrade; Codemode and Durable are excluded. Current released platform support remains unchanged
+until release integration and publication.
 
 ## Done (54)
 
