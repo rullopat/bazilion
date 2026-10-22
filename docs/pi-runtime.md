@@ -70,6 +70,26 @@ See [image generation](image-generation.md).
   Removed IDs are never silently mapped to another model; without an explicit endpoint that
   can admit the same ID, resolution fails closed.
 
+## Upgrade qualification (unreleased 0.24)
+
+Code **`5ab045cb3b6b2018378556857e2cdb32084c84a7`** passed all six jobs in
+[CI 39778352776](https://github.com/rullopat/bazilion/actions/runs/39778352776): Linux/macOS
+checks/builds, both guarded installed trials, the upgrade matrix and **398 required security
+cases** (the original 397 IDs plus the Azure bound-refresh regression). Including serial browser
+checks, Linux passed 2,676 tests / 49 existing skips; macOS passed 2,227 / 73 existing skips.
+
+Fresh installed CLI/API/browser turns passed for empty and instructed Teams on Linux and actual
+macOS 26.6.2 arm64, Node 24.22.0. Both trials observed all four installed Pi packages at 1.4.0,
+provider-side instruction markers, settled owned closes and successful fixture removal. This
+revalidates the ordinary BAZ-057 path, not all macOS capabilities or live-provider entitlement.
+
+Retained failed attempts: an old User-Agent expectation and renamed security-test reference were
+corrected; initial installed probes used CommonJS resolution against ESM-only Pi exports and
+failed before browser turns. The probe now uses Node's public ESM-aware metadata API with the
+same strict version/path checks. A red/green SDK-loop test reproduced and fixed the protected
+Azure refresh-name mismatch. An outer local check deadline was not counted as a pass; separate
+local checks and the final CI succeeded. Earlier failures remain in Git/CI, not a new evidence archive.
+
 ## Upstream interfaces
 
 - [Pi v1.4.0](https://github.com/earendil-works/pi/releases/tag/v1.4.0)

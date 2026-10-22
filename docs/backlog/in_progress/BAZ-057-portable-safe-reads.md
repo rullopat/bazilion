@@ -33,7 +33,12 @@ Git/container/subprocess capabilities are not implied by ordinary chat success.
 
 ## Capture contract and as built
 
-Code candidate: **`b14b7c21ecce928100eb2172d0914d00d33dec82`**.
+Initial code candidate: **`b14b7c21ecce928100eb2172d0914d00d33dec82`**.
+The ordinary path was subsequently revalidated after the Pi 1.4.0 upgrade at
+**`5ab045cb3b6b2018378556857e2cdb32084c84a7`** in
+[CI 39778352776](https://github.com/rullopat/bazilion/actions/runs/39778352776), including actual
+installed Linux/macOS CLI/API/browser turns. See [embedded Pi](../../pi-runtime.md) for that
+upgrade's qualification and retained failures; the filesystem/process limits below still apply.
 
 - `lib/repository-context/files.ts` is the shared daemon-owned capture adapter. It uses public
   `@openclaw/fs-safe@0.26.8` APIs, pinned in both daemon and packed-CLI manifests; no private
