@@ -136,6 +136,16 @@ are labelled Agent instructions, separately from repository guidance. Restricted
 repository capability. See `docs/repository-context.md` and
 `docs/backlog/done/BAZ-039-repository-coding-context.md` for limits and accepted scope. Do not treat context fingerprints as code checks.
 
+On the **unreleased 0.24 branch**, BAZ-057 adds macOS ordinary chat through a shared capture
+adapter using public `@openclaw/fs-safe@0.26.8` APIs. Preserve Linux fd-relative access;
+macOS guarded opens need capture-wide registration/directory/file/absence checks, not a
+native-mode label or an atomic-snapshot claim. Hardened Git and MCP stdio remain Linux-only.
+macOS worker settlement requires live ChildProcess authority, normal exit, natural pipe EOF
+and an absent original group. Persisted receipts never authorize PID signalling; unknown
+ownership after restart/restore remains blocked. See `docs/repository-context.md`,
+`docs/agent-engine.md` and `docs/backlog/in_progress/BAZ-057-portable-safe-reads.md` for scope.
+Do not describe the still-published 0.23.0 package as having this unreleased macOS support.
+
 ### Coding evidence: progress, retained diagnostics and change review (BAZ-041/042, shipped in v0.17.0)
 
 Retained diagnostics and source snapshots are **narrow evidence stores**, not a general runs/events
@@ -182,7 +192,7 @@ Memory is **per-team**, shared across every agent in the team. The qmd backend l
 Every chat turn runs in its own Node subprocess (`apps/daemon/src/runtime/worker/{entry,spawn,ipc-protocol}.ts`). The daemon's `apps/daemon/src/lib/agent-turn.ts:runAgentTurn`:
 1. Resolves the agent + provider gate + merged secrets env in-process (the worker no longer holds a SQLite handle).
 2. Pre-fetches the OAuth access token for `openai-codex` agents via `apps/daemon/src/lib/api-key.ts:resolveAgentApiKey` (env-key providers return `{}`).
-3. Spawns the worker with `stdio: ['pipe', 'pipe', 'inherit', 'ipc']` — the IPC channel is what makes messaging tools work without a worker DB handle.
+3. Spawns the worker with `stdio: ['pipe', 'pipe', 'pipe', 'ipc']` — stdout/stderr are drained by the daemon (stderr is bounded and redacted); IPC makes messaging tools work without a worker DB handle.
 4. Sends `{agent, message, enabledProviders, apiKey?}` on stdin.
 5. Line-parses NDJSON `ChatFrame`s from worker stdout and yields them.
 6. Services worker `process.send({type:'rpc', method, args, id})` calls (daemon-owned tools, shell approval, and OAuth refresh) by dispatching to turn-scoped hosts and replying with `child.send({type:'rpc-reply', id, ok, result|error})`.

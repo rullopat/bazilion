@@ -33,7 +33,7 @@ No stories currently ready to pull.
 
 | Story | Release priority and outcome |
 | --- | --- |
-| [BAZ-057](in_progress/BAZ-057-portable-safe-reads.md) | **First priority for Release 0.24:** safe repository context and usable ordinary Agent chat on macOS; implementation and actual-platform qualification outstanding |
+| [BAZ-057](in_progress/BAZ-057-portable-safe-reads.md) | **First priority for Release 0.24:** implemented and actual-macOS-qualified ordinary Agent chat; awaiting release integration, with platform/capability limits recorded |
 
 Release 0.24 is developed on `release/0.24`; additional user stories can join its PR as refined.
 Current released platform support is unchanged until the fix is implemented and qualified.

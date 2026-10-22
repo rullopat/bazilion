@@ -160,8 +160,12 @@ container `bash`, bounded mounts, a scrubbed environment and read-only inputs. F
 back to host execution. Dangerous-command approval is an independent ephemeral interactive control,
 not a Team Policy communication approval.
 
-Agent turns and ancestry-pinned repository reads remain Linux-only. macOS installation/management
-support does not imply macOS Agent-turn support. See [repository context](repository-context.md)
+Published 0.23.0 Agent turns remain Linux-only. On the unreleased 0.24 branch, ordinary macOS chat
+has actual installed CLI/API/browser qualification through a shared capture adapter: Linux retains
+fd-relative reads; macOS uses guarded public fs-safe opens plus capture-wide identity/source checks.
+This is not an atomic filesystem snapshot or complete platform parity. Hardened Git inspection and
+MCP stdio retain Linux-only admission; unknown process ownership remains blocked. See
+[repository context](repository-context.md), [BAZ-057](backlog/in_progress/BAZ-057-portable-safe-reads.md)
 and [coding environments](coding-environments.md).
 
 ### Communication and scheduling

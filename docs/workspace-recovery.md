@@ -4,6 +4,16 @@ A failed or interrupted turn can leave a recorded writer blocking its Team with
 `workspace_recovery_required`. The block protects against overlapping writes; restarting the daemon
 or acknowledging an error does not prove that work stopped.
 
+## macOS ownership on the unreleased 0.24 branch
+
+Ordinary macOS chat uses a live daemon-owned ChildProcess observer, not Linux `/proc` identity.
+Normal exit, natural output-pipe EOF and an absent original process group permit recorded cleanup.
+A locally closed pipe, an abnormal exit or a persisted receipt without its live owner does not.
+After daemon restart or restore, missing live authority remains recovery-required; management
+never guesses PID ownership or force-clears the record. This is not arbitrary detached-host-writer
+recovery. Published 0.23.0 still refuses macOS turns; see
+[BAZ-057](backlog/in_progress/BAZ-057-portable-safe-reads.md) for qualification limits.
+
 ## Inspect and attempt supported cleanup
 
 Open the Team page's **Workspace recovery** section, or use:
@@ -29,7 +39,8 @@ Both routes require owner/admin authorization, including read-only reports:
 - **Recovery required, no blocker code:** recorded cleanup can be attempted. The writer remains
   blocking until every selected resource has a persisted cleanup confirmation.
 - **Unconfirmed host commands:** host commands may detach and outlive a failed turn. Guaranteed
-  recovery from those failures is **not supported in 0.23.0**; the workspace remains blocked.
+  recovery from those failures is **not supported in 0.23.0** and is not added by the 0.24
+  ordinary-chat port; the workspace remains blocked.
 - **Unconfirmed worker:** management will not signal it or manufacture a confirmation. Existing
   lifecycle cleanup must establish the confirmation first.
 - **Missing/inconsistent records:** ownership cannot be established, so cleanup stays blocked.
