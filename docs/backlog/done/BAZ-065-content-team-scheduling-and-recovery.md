@@ -6,7 +6,7 @@ size: M
 created: 2026-09-20
 refined: 2026-10-17
 target_release: 0.23.0
-note: Operator-approved limited scheduler/process closure. Composed D/S and live/human journey qualification remains open, unassigned and not scheduled.
+note: Operator-approved limited scheduler/process closure. This does not establish the composed live/human journey; no further qualification campaign is scheduled.
 ---
 
 # BAZ-065 — Content Team scheduling and recovery
@@ -35,9 +35,10 @@ journey**. That slice received independent acceptance and 101 unique focused che
   run too. No host/browser/MCP fallback to compensate for missing capability.
 - CLI policy import retains `approval_required` instead of silently discarding it.
 
-See [BAZ-063's acceptance cases](../draft/BAZ-063-content-team-real-world-acceptance.md#acceptance-cases)
-for the remaining original composed D/S and live/human configurations. They are **not passed,
-assigned or scheduled** by this closure. BAZ-063 consolidates, not secretly executes them.
+This acceptance does **not** qualify the complete content-Team live/human workflow. The
+[experimental recipe](../../../examples/content-team/README.md) is an example of existing
+capabilities, not an active implementation/acceptance programme. Retiring its former tracking
+items does not broaden this story's accepted scope.
 
 ## Product contract
 
@@ -58,23 +59,20 @@ assigned or scheduled** by this closure. BAZ-063 consolidates, not secretly exec
 - Recovery concerns recorded owned resources only. [BAZ-068](BAZ-068-workspace-recovery-surface.md)
   does not guarantee arbitrary abnormal host-command cleanup; unknown writers remain blocked.
 
-## Original composed work still open
+## Limits of the accepted scope
 
-Original ownership was D/S CT-08–13 and CT-16, plus S CT-02/14/15. The broader target still needs:
+The focused scheduler/process checks do not establish:
 
-- Complete [BAZ-064's recipe](../in_progress/BAZ-064-content-team-recipe-and-manual-handoff.md)
-  and observe fresh outputs/approvals across actual recurring cycles.
-- Model-level brief/cadence amendments, editorial cutoff/withheld/stale approval judgment and no
-  inherited concept/final approval. Canned scheduler turns cannot demonstrate that judgment.
-- Scheduled image crash/ACK, usage/error/disclosure, admitted research/image composition and
-  protected/inbox configurations with independent provider counters and actual retained bytes.
-- Truthful late/missed/uncertain outcomes, policy changes and authorized Results after restart;
-  no private disclosure or blind image replay to hide lost output.
-- Explicit execution/reviewer ownership, bounded isolated fixtures and separately authorized live/
-  independent-user observations. No original-machine timezone changes, spend or social grants.
+- Complete recurring content preparation with model-level brief amendments, editorial cutoffs,
+  withheld/stale approval judgment or independent human usability.
+- Composed scheduled image crash/ACK, usage/disclosure and research/image behavior across every
+  protected/inbox configuration. Source receipts and actual side effects need their own observations.
+- General live-provider quality, account entitlement, exact-once external effects or arbitrary-host
+  cleanup. Policy, Result privacy and no-blind-replay contracts remain mandatory regardless.
 
-Protected discovery exists through [BAZ-067](BAZ-067-protected-web-discovery.md), but actual selected
-backend and composed scheduled qualification remain prerequisites, not inferred entitlement.
+Protected discovery exists through [BAZ-067](BAZ-067-protected-web-discovery.md); a configured backend
+is not proof of live access or a successful composed workflow. No validation campaign is scheduled.
+If use exposes a concrete missing capability or defect, file that bounded product work separately.
 
 ## Tests and exclusions
 

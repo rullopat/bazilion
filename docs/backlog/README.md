@@ -2,7 +2,9 @@
 
 One file per user story, organized by state. Each story owns its user outcome, scope, exclusions,
 acceptance criteria, unresolved work and concise As-built summary. Done means the accepted scope
-shipped, not that every provider, platform or future journey is qualified.
+shipped, not that every provider, platform or future journey is qualified. Active stories describe
+concrete product capability changes or defects; example recipes and validation campaigns are not
+standalone implementation work.
 
 - **Draft:** uncommitted ideas or unresolved prerequisites; refine before starting.
 - **Todo:** refined and ready to implement.
@@ -13,7 +15,7 @@ Use `BAZ-NNN-short-slug.md` and frontmatter with `id`, `title`, `status`, `size`
 applicable release dates. Move the same story between state folders rather than creating a
 progress/acceptance sidecar. Current behavior belongs in the [product documentation](../README.md).
 
-## Draft (8)
+## Draft (7)
 
 | Story | Outcome |
 | --- | --- |
@@ -24,21 +26,21 @@ progress/acceptance sidecar. Current behavior belongs in the [product documentat
 | [BAZ-060](draft/BAZ-060-approved-social-delivery.md) | Deterministic approved social delivery |
 | [BAZ-061](draft/BAZ-061-meta-page-and-instagram-publishing.md) | Official Facebook Page/Instagram connectors |
 | [BAZ-062](draft/BAZ-062-linkedin-publishing.md) | Official LinkedIn connector |
-| [BAZ-063](draft/BAZ-063-content-team-real-world-acceptance.md) | Composed scheduled content-Team acceptance |
 
 The [Telegram roadmap](../telegram-v2.md) retains unnumbered future user stories. It is not an
 implementation commitment or supported-feature list. BAZ-066's native-boundary/live programme
 was cancelled; do not revive it as a dependency or infer permission for live spending.
+BAZ-063/064 were retired as acceptance/example tracking, not completed features. The
+[experimental content-Team recipe](../../examples/content-team/README.md) remains available;
+retirement does not declare the unfinished end-to-end validation passed.
 
 ## Todo (0)
 
 No stories currently ready to pull.
 
-## In progress (1)
+## In progress (0)
 
-| Story | Remaining work |
-| --- | --- |
-| [BAZ-064](in_progress/BAZ-064-content-team-recipe-and-manual-handoff.md) | Experimental recipe and partial deterministic coverage; full composed acceptance remains unrun/unassigned |
+No product implementation stories currently in progress.
 
 ## Done (54)
 

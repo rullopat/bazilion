@@ -1,8 +1,11 @@
-# Content Team recipe — first BAZ-064 slice
+# Experimental content Team recipe
 
 **Experimental, partial acceptance only.** This recipe prepares topic-neutral Mastodon content for
 manual handoff using existing Profiles, Team Templates, prompt-only skills, policy and Results.
 It is not auto-installed, not a publisher and not evidence that the end-to-end campaign passed.
+This is an example configuration of existing capabilities, not a separate product feature or
+active implementation story. Concrete product gaps discovered while using it should become
+separately scoped feature/defect stories.
 
 **Discovery prerequisite:** BAZ-067 implements daemon-owned `web_search` for normal protected
 peer/inbox and scheduled turns when `BAZILION_WEB_SEARCH_URL` explicitly configures a SearXNG
@@ -101,8 +104,10 @@ final review → exact manual handoff. Send substantive work via messaging and e
 workspace ownership; don't create acknowledgment loops or wait while holding a peer's workspace.
 
 A failed/held tool is not a reason to weaken the graph or rerun uncertain images. Keep known private-
-image loss and no-refund limits visible. No trigger is included; BAZ-065 owns actual cron qualification
-while live/human observations remain unassigned and unrun. Mastodon API publication needs separate implementation/consent.
+image capture/recovery and no-refund limits visible. No trigger is included; existing scheduler
+behavior is documented in [BAZ-065](../../docs/backlog/done/BAZ-065-content-team-scheduling-and-recovery.md).
+The composed live/human workflow remains unqualified and no validation programme is scheduled.
+Mastodon API publication needs separate implementation/consent.
 
 ## Local validation (no provider calls)
 
@@ -110,8 +115,8 @@ while live/human observations remain unassigned and unrun. Mastodon API publicat
 pnpm vitest run apps/cli/test/content-team-recipe.test.ts
 ```
 
-The first slice checks import/spawn, exact role documents and skill attachment, canonical lineage,
-unfilled brief context across two Teams, the directed policy matrix and rejected direct specialist ingress. It **does not**
-run a model, demonstrate research/rework, or qualify the full D/S/L/H journey. Those observations remain
-open in [BAZ-064](../../docs/backlog/in_progress/BAZ-064-content-team-recipe-and-manual-handoff.md)
-and [the parent story's acceptance criteria](../../docs/backlog/draft/BAZ-063-content-team-real-world-acceptance.md#acceptance-cases).
+This checks import/spawn, exact role documents and skill attachment, canonical lineage,
+unfilled brief context across two Teams, the directed policy matrix and rejected direct specialist
+ingress. It **does not** run a model, demonstrate research/rework or establish end-to-end scheduling,
+live-provider quality or independent human usability. Retiring the former BAZ-063/064 tracking
+items does not turn these unperformed observations into passes. No live usage is authorized.

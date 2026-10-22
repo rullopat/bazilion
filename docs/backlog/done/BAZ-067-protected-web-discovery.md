@@ -13,8 +13,8 @@ note: Implemented and locally verified (2026-09-21); re-verified inside the 0.22
 > **Repositioned 2026-09-21 (operator decision, BAZ-069):** SearXNG was never meant to be
 > Bazilion's *default* search story. This capability is the **opt-in, protected-turn discovery
 > backend** (protected workers keep their no-browser posture). Ordinary turns get a
-> planned Agent-led browser research via the existing browser tools — see
-> [BAZ-069](BAZ-069-browser-backed-default-web-search.md), rewritten 2026-09-25.
+> provider-backed discovery with optional separate managed browsing — see
+> [BAZ-069](BAZ-069-browser-backed-default-web-search.md).
 > This does not add browser access to protected or scheduled turns.
 
 ## User stories
@@ -26,11 +26,12 @@ note: Implemented and locally verified (2026-09-21); re-verified inside the 0.22
 
 ## Goal and finding
 
-Unblock the discovery prerequisite for [BAZ-064](../in_progress/BAZ-064-content-team-recipe-and-manual-handoff.md)
-and BAZ-065 without weakening the protected runtime. This is separate product work, not an exception
-inside the acceptance harness and not additional scope for frozen `0.22.0`.
+Give protected delegated/scheduled Agents a bounded source-discovery capability without
+passing credentials or browser/MCP/host access into their workers. The
+[content-Team example](../../../examples/content-team/README.md) is one consumer, not a separate
+runtime or reason to bypass admission.
 
-`runtime/pi/tools.ts` registers ordinary `webTools({env})`, but its protected custom-tool set only
+The original gap: `runtime/pi/tools.ts` registered ordinary `webTools({env})`, but its protected custom-tool set only
 includes `protectedWebFetchTool()`. `turn-invocation.ts` assigns scheduled/inbox invocations to the
 protected surface. `worker-runtime.test.ts` explicitly asserts absence of `web_search` there.
 Configuring Brave/SearXNG therefore does not provide protected source discovery. No defect in the
@@ -82,14 +83,11 @@ implementation. No live network execution is implied by this story's readiness.
 
 ## Dependencies
 
-Implementing this touches `runtime/pi/tools.ts`, worker IPC/entry/spawn and tests — files inside the
-BAZ-059 frozen fingerprint. That fingerprint already moved on 2026-09-21 for the worker-exit defect
-fix found by BAZ-064's harness (`worker/entry.ts`); the freeze evidence re-verification required by
-that change is also the moment this story's merge can land. Coordinate both with the BAZ-059
-release sequence. See [the BAZ-064 story](../in_progress/BAZ-064-content-team-recipe-and-manual-handoff.md).
-No blocked CT cell becomes Passed merely because this story is ready.
+Uses the existing Pi tool projection, worker IPC and turn-bound daemon hosts. Keep protected
+provider admission and restricted-worker denials intact. The capability and deterministic checks
+do not establish live backend access or the full research/image workflow.
 
-## As-built (2026-09-21, uncommitted)
+## As built
 
 - `apps/daemon/src/lib/web-search.ts`: the daemon-owned SearXNG host. `BAZILION_WEB_SEARCH_URL`
   (operator-set, https or loopback http) is validated and re-read per request — configuration drift

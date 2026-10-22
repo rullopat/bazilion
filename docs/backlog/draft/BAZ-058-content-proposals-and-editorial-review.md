@@ -62,4 +62,5 @@ formal fact verification, multi-person approval chains and a general-purpose wor
 
 [BAZ-060](BAZ-060-approved-social-delivery.md) adds deterministic publication authorization;
 this story must not label a generic review decision as a completed post. The composed manual
-journey is defined in [BAZ-063](BAZ-063-content-team-real-world-acceptance.md).
+workflow can be explored with the [experimental recipe](../../../examples/content-team/README.md),
+which uses existing capabilities and does not establish this native editorial feature.

@@ -47,13 +47,13 @@ closed read permissions by workaround and assumed access to every organization a
 - Live acceptance on a dedicated approved member/org target verifies actual payload and remote ID;
   unsupported author types are not advertised from mocked tests.
 
-### Composed acceptance ownership
+### Platform acceptance
 
-Own the LinkedIn configurations of **PUB-01–06** in the
-[parent acceptance cases](BAZ-063-content-team-real-world-acceptance.md#conditional-publication), including platform
-contract faults and separately authorized live/human evidence. Reuse BAZ-060's shared fake-host checks;
-report each claimed author type independently to BAZ-063. This is conditional publishing qualification,
-not work inside the BAZ-064/065 manual core. No live execution is authorized by this assignment.
+Apply [BAZ-060's shared publication requirements](BAZ-060-approved-social-delivery.md#shared-publication-acceptance)
+(PUB-01–06) to each claimed LinkedIn author type, including platform faults and separately
+authorized live/human observations. Reuse shared fake-host checks without presenting them as
+live publication. This connector is not a prerequisite for manual content preparation; this
+draft authorizes no live execution.
 
 ## Open Questions
 

@@ -19,7 +19,7 @@ created: 2026-09-19
 
 Create the daemon-owned connection and publication contract with a deterministic local/fake
 adapter. Official platform adapters are separate work. The first content-Team test now uses
-[Mastodon manual handoff](BAZ-063-content-team-real-world-acceptance.md); a Mastodon adapter would need
+[Mastodon manual handoff](../../../examples/content-team/README.md); a Mastodon adapter would need
 its own refinement. BAZ-061/062 retain the deferred Meta/LinkedIn scope.
 
 ## Why
@@ -40,7 +40,7 @@ scheduled Agent prompt or logged-in browser cannot enforce immutable final-conte
 - Revalidate approval, account/grants and immutable bytes before any media upload/staging.
 - Distinguish preparing/uploaded/published/blocked/failed/uncertain. Reconcile only with actual host
   evidence/permissions; no universal exactly-once claim, auto-replay or guessed remote URL.
-- Dedicated source Attention links, status/receipts and API/CLI/web parity; forward migrations.
+- Dedicated source Attention links, status/receipts and API/CLI/web parity; current alpha schema contract.
 - Restore blocks social execution pending operator reconciliation; never clone active publication.
 
 ## Out of scope
@@ -58,14 +58,25 @@ through browser automation, modifying Git-publication contracts, analytics or po
 - Restore while original lives does not publish or touch original-owned resources.
 - Test-only host observes exact payload/digest/destination; history/UI/CLI agree after restart.
 
-### Composed acceptance ownership
+### Shared publication acceptance
 
-Own the shared deterministic/fake-host contract for **PUB-01–06** in the
-[parent acceptance cases](BAZ-063-content-team-real-world-acceptance.md#conditional-publication). Each separately
-refined adapter owns its platform contract and authorized live/human observations. BAZ-061/062
-cover Meta/LinkedIn only; they do not establish Mastodon support. BAZ-063 records the separate
-publication result; its core children BAZ-064/065 stop at approved manual handoff. None of these
-publication cases is a prerequisite for that manual core, and no execution is claimed yet.
+These requirements belong to the publishing feature, independent of any content-Team example.
+This story owns deterministic/fake-host checks; each adapter owns its platform-specific contract
+and separately authorized live/human observations. Mocked success does not establish actual
+account access or publication. BAZ-061/062 cover Meta/LinkedIn only, not Mastodon.
+
+| Case | Required behavior |
+| --- | --- |
+| PUB-01 | Validate the exact account, official grants and supported action/format. Readiness is not entitlement or approval; revoked access never causes credential/browser/MCP substitution. |
+| PUB-02 | Approve exact text/media digests, destination and time. Only approved variants leave the home through the isolated supported publisher; no premature upload or media staging. |
+| PUB-03 | Independently observe the remote object/receipt, actual slot/timezone and lateness. Preparation cron is not publication; a missed time requires a fresh decision. |
+| PUB-04 | Changed content/account/time, revoked approval and near-dispatch cancellation cannot reuse stale grants. Report too-late cancellation without promising deletion of an existing post. |
+| PUB-05 | Lost acknowledgement, duplicate confirmation, restart and restored clones retain intent and reconcile remote effects. No blind replay or external exactly-once claim. |
+| PUB-06 | Partial targets, quota/rejection and missing reconciliation retain per-target sent/held/failed/unknown status. Never duplicate successful or uncertain posts. |
+
+Any media staging is external disclosure and needs the same explicit authorization. Unsupported
+platforms stay unsupported, not positively qualified. Manual export does not depend on these
+future publishing features, and no live execution is authorized by this draft.
 
 ## Open Questions
 
@@ -74,7 +85,7 @@ publication cases is a prerequisite for that manual core, and no execution is cl
 - Isolated posture admission and connection storage exclusion from all generic secret-merging paths.
 - Asset retention/reference policy inherited from BAZ-058.
 
-See [content-Team parent story](BAZ-063-content-team-real-world-acceptance.md). Depends on BAZ-058 and security refinement;
+Depends on [BAZ-058](BAZ-058-content-proposals-and-editorial-review.md) and security refinement;
 [BAZ-059](../done/BAZ-059-pi-image-generation.md) adds bounded Pi-backed image generation, not
 publishing authority or protected web search. Safe research capability for an isolated publishing
 Team remains a separate refinement prerequisite.

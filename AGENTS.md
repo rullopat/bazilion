@@ -213,6 +213,9 @@ API in `apps/daemon/src/core/`: `openSecrets(db, password)` and `openConfig(db)`
 - Keep `docs/` for current product/architecture documentation and canonical user stories.
 - Stories live in `docs/backlog/{draft,todo,in_progress,done}/`; their scope, acceptance criteria,
   unresolved work and concise As-built summary belong in the story, not separate progress files.
+- Active stories must describe concrete product capabilities or defects. Keep example configurations
+  in `examples/`; do not track recipes or open-ended acceptance campaigns as implementation features.
+  Retiring such tracking must never relabel unfinished validation as passed.
 - Do not check in test evidence dumps, release journals, review transcripts, temporary paths,
   generated artifacts or archive folders. Use CI/release records and Git history for those.
 - Update product guides when behavior changes; do not leave superseded plans presented as current

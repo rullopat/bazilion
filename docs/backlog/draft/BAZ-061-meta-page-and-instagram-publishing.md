@@ -51,13 +51,13 @@ platform-rule bypass, public Bazilion hosting and all-platform scheduling librar
 - Dedicated operator-approved real accounts: inspect actual final post and account independently;
   capture selected app/API version and actual granted scopes. No claim from mocks alone.
 
-### Composed acceptance ownership
+### Platform acceptance
 
-Own the Facebook/Instagram configurations of **PUB-01–06** in the
-[parent acceptance cases](BAZ-063-content-team-real-world-acceptance.md#conditional-publication), including platform
-contract faults and separately authorized live/human evidence. Reuse BAZ-060's shared fake-host checks;
-report each platform independently to BAZ-063. This is conditional publishing qualification, not work
-inside the BAZ-064/065 manual core. No live execution is authorized by this assignment.
+Apply [BAZ-060's shared publication requirements](BAZ-060-approved-social-delivery.md#shared-publication-acceptance)
+(PUB-01–06) to Facebook and Instagram independently, including platform faults and separately
+authorized live/human observations. Reuse shared fake-host checks without presenting them as
+live publication. These connectors are not prerequisites for manual content preparation; this
+draft authorizes no live execution.
 
 ## Open Questions
 
