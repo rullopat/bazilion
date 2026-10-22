@@ -235,7 +235,9 @@ export async function qualifyPortableChat({
         }
       } finally {
         releaseQueue()
-        if (checkQueueReadiness) await page.unroute(queuePattern)
+        // Wait for held route handlers to finish before unregistering them;
+        // plain unroute can race their continuation under runner contention.
+        if (checkQueueReadiness) await page.unrouteAll({ behavior: 'wait' })
       }
       // A visible SSR textarea is not a ready composer. Wait for the real
       // client queue state, then submit this new trial exactly once.
