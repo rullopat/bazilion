@@ -85,9 +85,12 @@ status command is limited to five seconds and 1 MiB of output. Metadata copying 
 or written. Git metadata beyond these limits is unavailable; instructions can still be complete.
 
 Current implementation uses Linux directory descriptors and `/proc` to pin ancestry during safe
-reads. Other platforms report `safe_reads_unavailable` and cannot prepare coding context through this
-resolver. Linux is the validated safe-read platform; no weaker path-based fallback is used.
-Portability is held as [BAZ-057](backlog/draft/BAZ-057-portable-safe-reads.md); until then, CI runs
+reads, then revalidates registered-root binding, retained directories and observed files before
+accepting the report. These are change detectors, not an atomic filesystem snapshot or a universal
+claim against every concurrent rename. Other platforms report `safe_reads_unavailable` and cannot
+prepare coding context through this resolver. Linux is the validated safe-read platform; no weaker
+path-based fallback is used. The [BAZ-057 investigation](backlog/draft/BAZ-057-portable-safe-reads.md)
+has not admitted a replacement or enabled another platform; until then, CI runs
 the coding suites on Linux only (BAZ-049) and the platform-support statement in `README.md` is the
 operator-facing version of this boundary.
 
