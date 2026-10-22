@@ -15,7 +15,9 @@ Engineer-to-engineer walkthrough of how a chat turn actually runs, end to end.
 
 ## 1. Request → subprocess boundary
 
-A chat turn starts at `POST /api/agents/:id/chat` (the daemon at `apps/daemon`). The route hands off to `apps/daemon/src/lib/agent-turn.ts:runAgentTurn`, which is a thin relay (~30 lines). It:
+A chat turn starts at `POST /api/agents/:id/chat` (the daemon at `apps/daemon`). The route hands off to `apps/daemon/src/lib/agent-turn.ts:runAgentTurn`. Admission resolves policy,
+conversation selection, invocation posture, provider/tool capabilities, repository context and
+workspace ownership before execution. The main orchestration stages include:
 
 1. Resolves the agent (`resolveAgent(db, paths, id)`) — joins agent + profile + team + skills.
 2. Reads the enabled-provider set (`providerStateRepo.listEnabled(db)`).
@@ -25,7 +27,10 @@ A chat turn starts at `POST /api/agents/:id/chat` (the daemon at `apps/daemon`).
 6. Registers an `AbortController` keyed by `agentId` (`apps/daemon/src/lib/agent-cancel.ts:registerAgent`).
 7. Calls `spawnWorkerTurn({agent, message, enabledProviders, apiKey}, {signal, env, messagingHost, apiKeyRefreshHost})`.
 
-**No LLM work happens in the daemon process.** The worker runs in its own Node child.
+The main chat loop runs in its own Node child. Auxiliary provider tests, native search and image
+hosts can make explicit daemon-owned requests; credential/admission authority remains in the daemon.
+Worker input and environment depend on the admitted kind: protected/restricted workers receive
+minimal credential/tool projections, not the daemon's entire merged environment.
 
 `apps/daemon/src/runtime/worker/spawn.ts` spawns the child:
 
@@ -36,7 +41,8 @@ node --import <file:///…/tsx/loader.mjs> apps/daemon/src/runtime/worker/entry.
 The tsx loader path is discovered once via `createRequire(import.meta.url).resolve('tsx')` → `pathToFileURL`. Result cached. This lets the child execute `.ts` source with no build step and works under pnpm's hoisted layout because the specifier is absolute, not bare.
 
 Stdio is `['pipe','pipe','inherit','ipc']`:
-- **stdin** — parent writes one JSON line (`{agent, message, enabledProviders, apiKey?}`), closes it.
+- **stdin** — one resolved `WorkerInput` JSON line, including explicit conversation/turn identity
+  and admitted hosts/capabilities; the parent closes the stream after delivery.
 - **stdout** — line-buffered NDJSON stream of `ChatFrame`s (`session/frame.ts`):
   - `{kind:'event', event}` — one per `SessionEvent`
   - `{kind:'done', messages}` — exactly once on clean exit
@@ -48,7 +54,8 @@ Cancellation is keyed by **agentId** (not runId — there are no runIds anymore,
 
 ## 2. Child bootstrap (`worker/entry.ts`)
 
-The worker has **no DB handle**. Everything DB-shaped came in over stdin:
+The worker has **no DB handle**. Resolved values arrive on stdin; live DB-backed operations use
+bound IPC. This simplified normal-worker sketch is not the exact input schema for every posture:
 
 ```
 process.on('SIGTERM' / 'SIGINT', onSignal)            // installed FIRST so a signal during boot
@@ -119,7 +126,12 @@ Then three team-related blocks are appended (when applicable):
 
 - **`# Agent Home`** — describes the agent's private home (`agents/<id>/`) and points the model at `home_read` / `home_write` / `home_list` for self-edits and at `memory_write` for things-to-remember-later. Frames the distinction between "who I am" (home) and "what I produce" (team dir).
 - **`# Team`** — `- <id> (<name>): <path>`. Reminds the model that the currently exposed workspace tools operate on team work product, that the team may be shared with other agents, and that it must use `home_*` (not workspace tools) to edit its own identity files. In Docker mode the only coding tool is the containerized `bash`, so the prompt does not claim that host file tools remain available.
-- **`# About the User`** — only when `teams.user_md` is non-empty. Read-only context block about the human; the agent is told it can't edit it directly.
+- **`# About the User`** — only when `teams.user_md` is non-empty. Team-owned DB context;
+  raw filesystem writes do not edit it. Admitted `user_md_*` operations use revision checks.
+
+Repository guidance and passive Git/command context are supplied separately by the daemon's bounded
+repository-context resolver; private Agent documents remain separately labelled instructions.
+Restricted review workers do not gain repository capability from this context path.
 
 Finally appends: the list of attached skills (each skill's SKILL.md body is injected into the prompt), and a memory blurb explaining the **team-shared** scope: "You share a persistent memory backend with every other agent in this team. Use `memory_write` for project knowledge — codebase notes, decisions, things the user told you about the work. For personal notes about yourself (preferences, persona quirks), use `home_write` on IDENTITY.md instead." Each injected skill also names its runtime directory so relative helper scripts/assets resolve correctly: the installed host directory when sandboxing is off, or that skill's matching read-only `/skills/...` mount when Docker mode is on.
 
@@ -169,9 +181,14 @@ Implementation: calls `buildSystemPrompt(resolved)` for the total, re-renders th
 
 ## 5. Provider layer (`providers/pi-adapter.ts` + `registry.ts`)
 
-All provider traffic goes through pi-ai (`@earendil-works/pi-ai`). `piProvider(cfg)` adapts pi's `streamSimple(model, {systemPrompt, messages, tools}, {signal, apiKey, reasoning, …})` to Bazilion's `Provider.chat(ProviderRequest): Promise<ProviderResponse>`.
+The chat-provider adapter uses pi-ai (`@earendil-works/pi-ai`); auxiliary search/image transports
+have their own bounded daemon hosts and no-replay contracts. `piProvider(cfg)` adapts pi's `streamSimple(model, {systemPrompt, messages, tools}, {signal, apiKey, reasoning, …})` to Bazilion's `Provider.chat(ProviderRequest): Promise<ProviderResponse>`.
 
-Model lookup tries `getModel(piProviderName, modelId)` first — returns a typed `Model<>` with cost/context-window metadata for catalog hits. Miss falls back to a hand-built literal (32k ctx, 4k maxTokens, zero cost) — this is what makes `lmstudio:<any-loaded-model>` or unreleased OpenAI models Just Work.
+Model resolution first checks the selected provider's catalog. An uncatalogued model without an
+explicit endpoint throws `UnknownModelError`; it must not inherit a provider-default destination
+and receive that provider's credential. Custom/local models require the configured endpoint and
+route-specific validation. Protected provider admission applies its additional endpoint/credential
+restrictions before spawn.
 
 Message conversion: `system` is passed separately (pi keeps it out of the message array), `assistant` messages with tool calls are rebuilt as `{type:'text'|'toolCall'}` content blocks, `tool` messages become pi `toolResult` messages. The synthesized `usage`/`stopReason`/`api` fields on replayed assistant messages are load-bearing only for pi's type checker, not the LLM.
 
@@ -179,20 +196,25 @@ Message conversion: `system` is passed separately (pi keeps it out of the messag
 
 `loadProviderConfigFromEnv(env, oauth?)` takes an optional `{db, authToken}` to enable OAuth-backed providers; daemon-side callers always pass it, env-only callers (currently none in production code) can omit it.
 
-`withRetry` wraps every provider uniformly. Retryable: 5xx, 429, connection resets, `overloaded_error`, etc. Non-retryable: 4xx auth/invalid_request/context_length. **Hard rule**: if `onDelta` already fired on this attempt (`streamed=true`), we throw instead of retrying — a retry would duplicate streamed text in the UI. Exponential backoff with `AbortSignal`-aware sleep, default 3 total attempts.
+The standalone `Provider.chat` wrapper uses `withRetry`; this is not a generic retry policy for
+image/search/publication effects or every Pi SDK operation. Retryable: 5xx, 429, connection resets, `overloaded_error`, etc. Non-retryable: 4xx auth/invalid_request/context_length. **Hard rule**: if `onDelta` already fired on this attempt (`streamed=true`), we throw instead of retrying — a retry would duplicate streamed text in the UI. Exponential backoff with `AbortSignal`-aware sleep, default 3 total attempts.
 
 ## 6. Tool registry (`tools/registry.ts` + `pi/tools.ts`)
 
 `createToolRegistry(handlers[])` gives a dumb Map keyed on `def.name` with `list()/has()/invoke(name, jsonArgs)`. On `invoke`:
 - `JSON.parse(jsonArgs)` — wrap errors with the tool name for better debugging
 - Guard non-object args
-- Call `handler.invoke(args)` — handler returns a string (the tool result content)
+- Call `handler.invoke(args)` — returns text or multimodal `ToolResultPart[]`; the Pi bridge
+  projects text/images without inventing disclosure permission.
 
 `createBazilionCustomTools` (`apps/daemon/src/runtime/pi/tools.ts`) composes the Bazilion-specific tool list and adapts each `ToolHandler` to pi's `ToolDefinition`:
 
 - `memory_{write,read,search,list}` — qmd BM25 over markdown files in `<team.path>/memory/`. The store is **shared by every agent in the team** — descriptions explicitly say so and direct personal notes to `home_write IDENTITY.md` instead.
 - `home_{read,write,list}` — scope = `<agentDir>/`, hard whitelist of identity files (`SOUL.md`, `IDENTITY.md`, `BOOTSTRAP.md`, `AGENTS.md`, `TOOLS.md`). No path arg, no traversal. `BOOTSTRAP.md` is read-only — `bootstrap_done` owns its lifecycle.
-- `web_search` + `web_fetch` — SSRF-guarded, Readability + markdown, 15-min LRU cache, UA spoof, 20s timeout, 3 max redirects.
+- `web_search` — daemon-owned, explicitly admitted managed/native discovery; no account/provider
+  fallback. Provider-hosted networking is not confined by the local browser SSRF proxy.
+- `web_fetch` — guarded source retrieval, Readability + Markdown, bounded redirects/time/cache.
+  Discovery citations are not proof that original sources were read; see [web research](web-research.md).
 - `bootstrap_done` — deletes `BOOTSTRAP.md` after onboarding.
 - `send_message` / `read_inbox` / `wait_for_reply` — registered only when a `messagingHost` is supplied (always true in production). The **MessagingHost interface** is the seam between the worker (which uses an IPC-backed implementation) and the daemon (which uses a DB-backed implementation):
 

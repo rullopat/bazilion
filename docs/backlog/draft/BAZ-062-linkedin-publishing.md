@@ -50,7 +50,7 @@ closed read permissions by workaround and assumed access to every organization a
 ### Composed acceptance ownership
 
 Own the LinkedIn configurations of **PUB-01–06** in the
-[content-Team protocol](../../testing/beta-readiness/content-team-acceptance.md), including platform
+[parent acceptance cases](BAZ-063-content-team-real-world-acceptance.md#conditional-publication), including platform
 contract faults and separately authorized live/human evidence. Reuse BAZ-060's shared fake-host checks;
 report each claimed author type independently to BAZ-063. This is conditional publishing qualification,
 not work inside the BAZ-064/065 manual core. No live execution is authorized by this assignment.
@@ -61,4 +61,7 @@ not work inside the BAZ-064/065 manual core. No live execution is authorized by 
 - Available read capabilities and explicit manual-reconciliation UX when they are unavailable.
 - Selected current API version and maintenance/deprecation policy.
 
-Depends on BAZ-060. See [research and design](../design/social-content-team.md).
+Depends on BAZ-060. Use the official
+[Posts API](https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/posts-api)
+and [Community Management access requirements](https://learn.microsoft.com/en-us/linkedin/marketing/community-management/community-management-overview).
+Selected versions, granted author types and reconciliation rights require actual validation.

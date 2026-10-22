@@ -6,7 +6,7 @@ It has OpenAI API-key, ChatGPT/Codex login and optional OpenRouter routes.
 The operator-approved required live qualification is now ChatGPT-only: generation, rework and
 protected HTTP samples visually accepted. Direct OpenAI and both OpenRouter selections remain
 implemented/offline-tested but **live-unqualified**, with optional live qualification deferred.
-[Scope decision and limits](backlog/BAZ-059-chatgpt-only-live-scope-20261004.md).
+[Accepted scope and limits](backlog/done/BAZ-059-pi-image-generation.md).
 Image models are separate
 from text models; Automatic authentication selection follows enabled OpenAI text providers. Restricted reviewers and verification specialists cannot receive or call it.
 Agent turns remain Linux-only.
@@ -151,8 +151,9 @@ Team deletion removes them. Restoring a home cannot replay them automatically.
 Use existing Profiles/skills and a Team; no special roster or workflow runtime is required:
 
 1. Research with the tools that the selected posture actually permits, cite sources, and distinguish
-   facts from suggestions. Protected turns still have public `web_fetch`, not general web search.
-   If sources are unavailable, ask the user for source material instead of widening capabilities.
+   facts from suggestions. Protected discovery requires its separately configured bounded
+   SearXNG capability; native search/browser/MCP cannot be added as a fallback. If sources are
+   unavailable, explain the blocker or ask for source material instead of widening capabilities.
 2. Draft a platform-appropriate caption and an illustration prompt, honoring the user's brand/brief.
 3. Call `image_generate`; explain where the saved image can be previewed and downloaded.
 4. Ask for feedback. Revise the caption or generate a new image only as requested. Do not automatically
@@ -162,51 +163,26 @@ Use existing Profiles/skills and a Team; no special roster or workflow runtime i
 This supports content preparation/manual export. Editorial packets, irreversible publishing,
 platform credentials and native social connectors are separate future scope.
 
-## Validation status
+## Supported scope and limitations
 
-Deterministic tests use synthetic images with Pi's real OpenRouter adapter and the direct OpenAI/
-Codex transports. Real one-shot Agent turns exercise all three routes through mocked HTTP, not live
-accounts. They do not establish image quality, entitlement or upstream compatibility in production.
-Live acceptance for **every advertised selection** remains part of the 0.23.0 plan and requires
-separately authorized credentials and usage/spending limits. The [2026-10-03 preflight and live
-proposal](backlog/BAZ-059-live-qualification-plan-20261003.md) rechecked 71 focused tests but made
-no live image call. No paid calls are made by the test suite.
+[BAZ-059](backlog/done/BAZ-059-pi-image-generation.md) shipped with bounded ChatGPT-only live
+acceptance for generation, same-conversation rework and protected HTTP. Direct OpenAI and both
+OpenRouter selections remain implemented/offline-tested but live-unqualified. Synthetic transport
+and UI checks are not evidence of account entitlement, image quality or every provider's live API.
+Protected HTTP does not qualify unattended scheduled/inbox execution or the composed content-Team
+live/human journey. New paid trials require their own explicit authorization and limits.
 
-The [2026-10-04 guarded subscription attempt](backlog/BAZ-059-evidence-refusal-and-trial-20261004.md)
-sent one image request and pinpointed `terminal_output_empty` after HTTP 200/missing MIME. No image
-was saved; usage is uncertain. Earlier event bytes were not retained, so recoverability is unknown.
-Reviewed closed diagnostics do not relax image acceptance or establish live entitlement/quality.
-The operator's images-off posture and account were restored; no automatic retry is performed.
+Exact output geometry is not guaranteed: accepted ChatGPT samples differed from the requested
+1024×1024 size. No automatic resizing/regeneration, reference-image editing or backend-model
+attestation is implied. Historical unretained outputs cannot be recovered by replaying a request.
 
-The subsequent [strict recovery integration](backlog/BAZ-059-image-recovery-integration-20261004.md)
-passed offline real-worker/host tests and independent review. Fresh Codex tool results retain
-`imageEvidence.outputSource` (`terminal` or `completed_stream`) in canonical Pi details; receipt
-replays omit this fact instead of guessing. This is evidence origin, not model/quality attestation.
-The subsequent [authorized subscription trial](backlog/BAZ-059-recovery-trial-20261004.md) saved one
-PNG using completed-stream evidence, with matching downloaded bytes after restart and no retry.
-It returned **1374×1145 instead of requested 1024×1024**. The operator accepted its visual quality
-(“the image looks great”); exact-size compliance remains unproven. This is one observed route/account, not blanket entitlement or all-route qualification.
-Past unretained images remain unavailable; no failed operation was replayed. A subsequent
-[independent bounded evidence review](backlog/BAZ-059-qualification-status-20261004.md) accepted this
-one source journey with limits. Exact dimension controls remain outside current scope; the recorded
-mismatch does not imply automatic resizing or regeneration.
+Fresh Codex tool details distinguish `imageEvidence.outputSource: terminal` from `completed_stream`.
+The latter requires complete identity-bound completed-image evidence, not deltas or partial output
+union. Receipt replays do not invent a source fact. Retained private captures can be managed through
+[Results](results.md#retained-private-images), subject to the same disclosure policy.
 
-A [fresh Linux installed-artifact check](backlog/BAZ-059-packed-closeout-20261004.md) also covers
-all four selections with synthetic providers, browser generation/rework, persistent cards,
-preview/download at desktop/mobile widths and restart. Those offline mechanics checks do not
-qualify the three remaining paid live routes.
-
-[Subsequent authorized subscription rework and protected HTTP trials](backlog/BAZ-059-rework-and-protected-trials-20261004.md)
-saved two more images, one request each, matching hashes after restart and the accepted original
-unchanged. The protected worker's actual kind and bounded credential-environment check were
-recorded. This is protected HTTP, not unattended scheduled/inbox qualification. The operator visually
-accepted both new images (“both images looks great”); actual dimensions still differ from requested size. No further
-regeneration is authorized or queued.
-
-The Codex route follows the separate image-tool Responses protocol observed in
-[OpenClaw](https://github.com/openclaw/openclaw/blob/e1b8056605a912d45ef3329b3a70a3de81c973ed/extensions/openai/image-generation-provider.ts).
-It requests `gpt-image-2` using a pinned `gpt-6-astra` orchestrator, forces the image tool, disables
-storage and waits for a complete, bounded event stream. Backend availability/model choices can
-change; this is not a claim that the public Images API accepts subscription tokens. The public
-API-key route follows the [OpenAI image guide](https://developers.openai.com/api/docs/guides/image-generation).
-Neither route downloads provider-returned URLs, retries a failed request or falls back to the other.
+The Codex route uses the separate image-tool Responses protocol, a pinned `gpt-6-astra`
+orchestrator and requested `gpt-image-2`, with storage disabled and bounded complete-stream checks.
+This does not mean the public Images API accepts subscription tokens. The direct API-key route uses
+the [OpenAI image API](https://developers.openai.com/api/docs/guides/image-generation). Neither
+route downloads provider-returned URLs, retries an uncertain call or falls back to another account.

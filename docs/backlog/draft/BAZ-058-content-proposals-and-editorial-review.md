@@ -38,7 +38,7 @@ Approving delivery of a file to the owner is not approval to post its contents p
   tombstone behavior and retention/pinning without a parallel unbounded file store.
 - Source-owned Attention link for pending review; preserve existing Team communication policy.
 - Follow-up rework uses existing messaging/queue mechanisms, not an orchestration/stages engine.
-- Forward migration and hermetic wire types; backup/restore and deletion ownership rules.
+- Current alpha schema contract and hermetic wire types; backup/restore and deletion ownership rules.
 
 ## Out of scope
 
@@ -60,5 +60,6 @@ formal fact verification, multi-person approval chains and a general-purpose wor
 - Which review fields are required in a manual-export-only proposal versus a connected destination?
 - Operator scope mapping for editorial decisions versus destination/account administration.
 
-See [scenario and architecture](../design/social-content-team.md). BAZ-060 adds deterministic
-publication authorization; this story must not label a generic review decision as a completed post.
+[BAZ-060](BAZ-060-approved-social-delivery.md) adds deterministic publication authorization;
+this story must not label a generic review decision as a completed post. The composed manual
+journey is defined in [BAZ-063](BAZ-063-content-team-real-world-acceptance.md).

@@ -19,11 +19,5 @@
       "semicolons": "asNeeded",
       "trailingCommas": "all"
     }
-  },
-  "overrides": [
-    {
-      "includes": ["docs/backlog/evidence/**/*.json", "docs/testing/evidence/**/*.json"],
-      "formatter": { "enabled": false }
-    }
-  ]
+  }
 }

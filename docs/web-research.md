@@ -25,7 +25,8 @@ route/model/account/qualification description.
 - Explicit `brave`, `searxng`, `openai` or `openai-codex` selects only that route. Native selection
   must match the Agent's provider. Missing configuration, account replacement, unsupported model,
   cancellation or failure does **not** switch provider, account, model or browser.
-- Native **direct API and subscription routes are experimental/unqualified pending live checks**.
+- Native **direct API search remains experimental/live-unqualified**. Subscription search has
+  bounded ChatGPT journey acceptance, not general model/account entitlement.
   Protocol admission uses a narrow pinned catalog subset, not an entitlement guarantee. API mode
   may incur additional search charges; ChatGPT mode uses account entitlement and subscription
   limits. A saved credential or an ordinary model connection does not prove hosted search works.
@@ -34,17 +35,14 @@ route/model/account/qualification description.
   mode. Custom native endpoint overrides are refused.
 
 The embedded [Pi runtime is pinned to 1.0.0](pi-runtime.md). The bundled official catalogs
-include `gpt-6.1-sol`, selected for the bounded subscription qualification trial below. Existing
+include `gpt-6.1-sol` for explicitly selected research configurations. Existing
 Agent/Profile selections are not silently changed. This catalog update does not qualify search
 entitlement, automatically enable Pi's MCP/codemode extensions, or authorize a live call.
 
-A [2026-10-03 reviewed source-candidate trial](backlog/BAZ-069-native-t18b-post-accumulator-trial-20261003.md)
-observed one subscription-native search, five guarded NASA reads and a source-grounded cited
-answer with clean completion. [Independent evidence review accepted that source journey; current
-Linux packed-install and automated CLI/web checks pass](backlog/BAZ-069-evidence-and-packed-closeout-20261003.md).
-The operator accepted BAZ-069 on 2026-10-03. This is scoped evidence, not general model/account
-entitlement or release/publication approval. The official API-key route remains explicitly
-experimental/unqualified; qualifying it requires its own separately authorized live smoke.
+[BAZ-069](backlog/done/BAZ-069-browser-backed-default-web-search.md) shipped in 0.23.0 with
+bounded subscription search → guarded source reading → cited-answer acceptance. It does not
+establish general model/account entitlement, API-key search qualification, arbitrary browser-site
+access or permission for a new paid trial. Missing access must be reported, never worked around.
 
 ## Evidence, bounds and safety
 
@@ -79,6 +77,6 @@ restrictions still apply to reading; the ordinary Agent is not a structural doma
 
 Protected/restricted review/verification, scheduled and inbox turns gain no new native capability.
 Managed browser ownership, freshness, egress and operator controls remain unchanged; see
-[browser research](browser-research.md). Trial evidence and the mandatory revised T18(b) gate live
-in [BAZ-069 acceptance](backlog/BAZ-069-acceptance.md). No live qualification or release approval
-is implied by these settings.
+[browser research](browser-research.md). The accepted scope and exclusions are recorded in
+[BAZ-069](backlog/done/BAZ-069-browser-backed-default-web-search.md). Settings alone do not
+establish live capability or authorize provider usage.

@@ -28,7 +28,7 @@ Make an explicit `deliver_file` call publish a durable snapshot with a stable re
 those results through authenticated downloads, conversation cards, and a small Team results view.
 
 Implementation checkpoints, decisions, and validation evidence are tracked in the
-[implementation record](../BAZ-034-progress.md).
+[historical implementation record](https://github.com/rullopat/bazilion/blob/231911c78b9e882d3d03971d76435145c3954932/docs/backlog/BAZ-034-progress.md).
 
 ## Why and current baseline
 

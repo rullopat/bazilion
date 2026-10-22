@@ -1,250 +1,111 @@
-# Bazilion — Product Backlog
+# Product backlog
 
-Backlog items live in this directory, one file per item, organised by state.
+One file per user story, organized by state. Each story owns its user outcome, scope, exclusions,
+acceptance criteria, unresolved work and concise As-built summary. Done means the accepted scope
+shipped, not that every provider, platform or future journey is qualified.
 
-```
-docs/backlog/
-├── draft/        ← needs more definition / open questions / explicitly deferred
-├── todo/         ← refined, ready to pull into a sprint
-├── in_progress/  ← actively being worked on right now
-└── done/         ← shipped, kept as a historical record
-```
+- **Draft:** uncommitted ideas or unresolved prerequisites; refine before starting.
+- **Todo:** refined and ready to implement.
+- **In progress:** active implementation or incomplete acceptance.
+- **Done:** shipped within the explicit recorded scope.
 
-## Conventions
+Use `BAZ-NNN-short-slug.md` and frontmatter with `id`, `title`, `status`, `size`, `created` and
+applicable release dates. Move the same story between state folders rather than creating a
+progress/acceptance sidecar. Current behavior belongs in the [product documentation](../README.md).
 
-- **Naming:** `BAZ-NNN-short-slug.md` (sequential at creation time so codes don't shift when priority changes).
-- **Frontmatter** (every file): `id`, `title`, `status`, `size`, `created`, optional `refined` / `shipped` / `priority` / `deferred` / `deferred_reason` / `note`.
-- **Body shape:** User stories (As a / I want / So that) → Goal → Why → Scope → Out of scope → Tests. Open items add Open Questions; shipped items add an As-built block.
-- **Sizes** (solo-dev pace): XS ≈ afternoon, S ≈ 1–2 days, M ≈ ~1 week, L ≈ 1–2 weeks, XL > 2 weeks → split into multiple BAZs.
-- **State transitions:** to move an item, `git mv` it between dirs and update the `status:` field in frontmatter.
+## Draft (8)
 
-## State definitions
+| Story | Outcome |
+| --- | --- |
+| [BAZ-048](draft/BAZ-048-storage-refinements-post-1.0.md) | Storage refinements when actual scale requires them |
+| [BAZ-054](draft/BAZ-054-native-ios-android-apps.md) | Future native mobile applications |
+| [BAZ-057](draft/BAZ-057-portable-safe-reads.md) | Safe repository reads off Linux |
+| [BAZ-058](draft/BAZ-058-content-proposals-and-editorial-review.md) | Revision-bound content/editorial review |
+| [BAZ-060](draft/BAZ-060-approved-social-delivery.md) | Deterministic approved social delivery |
+| [BAZ-061](draft/BAZ-061-meta-page-and-instagram-publishing.md) | Official Facebook Page/Instagram connectors |
+| [BAZ-062](draft/BAZ-062-linkedin-publishing.md) | Official LinkedIn connector |
+| [BAZ-063](draft/BAZ-063-content-team-real-world-acceptance.md) | Composed scheduled content-Team acceptance |
 
-- **Draft** — captured but not committed-to. Has open questions, missing acceptance criteria, or no forcing function. Don't start work without resolving the open questions.
-- **Todo** — refined and ready. User stories + scope are clear; pulling it into a sprint is a yes/no decision, not a "let's first figure out what this means" decision.
-- **In Progress** — actively being worked on right now. Move here from `todo/` when implementation starts, so it's clear what's in flight. There's no enforced limit — solo-dev pace usually keeps this folder at 0–1 items, but a refactor with multiple side BAZs in parallel is fine. Move to `done/` when shipped.
-- **Done** — shipped. The file becomes part of the project's release history; the `As-built` block records what actually happened (vs. what was planned).
-
----
-
-## Draft (9)
-
-| ID | Title | Size | Notes |
-|----|-------|------|-------|
-| [BAZ-048](draft/BAZ-048-storage-refinements-post-1.0.md) | Storage refinements from the OpenClaw/Hermes comparison (post-1.0) | L (likely split) | Menu, not commitment: FTS over conversations, cold `jsonl.zst` archives, per-agent data-plane split, bounded-memory injection, upgrade preflight. Graduates only on a concrete trigger. [Findings](design/storage-comparison-openclaw-hermes.md) |
-| [BAZ-054](draft/BAZ-054-native-ios-android-apps.md) | Native iOS and Android apps (post-1.0) | XL — split before refinement | Deferred to post-1.0 (operator decision). Successor to the removed Expo app over the existing gateway/device-credential model. Push-notification architecture is the gating open question; held as a design-constraint holder meanwhile. |
-| [BAZ-057](draft/BAZ-057-portable-safe-reads.md) | Portable safe reads — repository context off-Linux | L (likely split) | Split out of BAZ-049 refinement. The coding sequence is Linux-only by design (`safe_reads_unavailable`); macOS safe-read portability remains open. Windows is unsupported. Holder with the security constraints written down; graduates on a real trigger. |
-| [BAZ-058](draft/BAZ-058-content-proposals-and-editorial-review.md) | Content proposals with revision-bound editorial review | L | Durable variants, human rework, preview and manual export; not communication approval or code review. |
-| [BAZ-060](draft/BAZ-060-approved-social-delivery.md) | Deterministic delivery of approved social posts | L | Exact revision/account/schedule, credential isolation, per-target receipts and uncertainty; no Agent publishing tool. |
-| [BAZ-061](draft/BAZ-061-meta-page-and-instagram-publishing.md) | Facebook Page and Instagram photo connectors | L | Official APIs, actual grants and approved-asset staging without exposing Bazilion; split if refinement exceeds L. |
-| [BAZ-062](draft/BAZ-062-linkedin-publishing.md) | LinkedIn text and image connector | M | Granted member/org authors, official Posts API, write/read capability distinction. |
-| [BAZ-063](draft/BAZ-063-content-team-real-world-acceptance.md) | Scheduled content Team — parent acceptance checklist | S | Consolidation/review only; broader-beta core evidence from BAZ-064/065. Topic is an input. [Protocol and ownership](../testing/beta-readiness/content-team-acceptance.md). |
-| [BAZ-070](draft/BAZ-070-optional-exa-parallel-web-discovery.md) | Optional Exa and Parallel web discovery | M | Optional anonymous/keyed providers, separate from BAZ-069's revised native OpenAI T18(b) qualification and BAZ-067 protected discovery; no live provider use authorized. |
-
-
-BAZ-058–067 capture the content capabilities, split acceptance work and discovered prerequisites. See the
-[capability audit, platform research and implementation sequence](design/social-content-team.md).
-BAZ-059 is the scoped **0.22.0** image-generation story below. BAZ-064 has started with an
-experimental recipe and management/policy checks; BAZ-067 (done) unblocked its protected
-discovery cells. The other items remain drafts. BAZ-063 consolidates BAZ-064/065 rather than implementing the whole
-journey. Their generic-topic core acceptance is required for broader beta maturity, with manual
-handoff and a reusable Team recipe; it is not added feature scope for frozen 0.22. Native
-social connectors and direct publication remain conditional later scope, not prerequisites for the
-manual journey or this limited image release. The [first-platform decision](design/content-platform-first-test.md)
-selects Mastodon for manual handoff; its future direct adapter would need separate refinement, not
-BAZ-061/062 evidence. No composed acceptance or beta.5 support is claimed.
-
-The original coding stories were drafted on 2026-09-07 from the OpenClaw 2.0 / Hermes desktop
-review. BAZ-034 through BAZ-038 shipped in v0.15.0 through PRs #44 and #45; their decisions and
-acceptance evidence remain in [the milestone progress log](BAZ-035-038-progress.md). Desktop
-packaging and Team conversation views remain later ideas rather than part of this coding sequence.
-
-Coding stories BAZ-039 through BAZ-044 were reviewed on 2026-09-09 after the Agent-led
-BAZ-039/040 remake. The remake shipped in v0.16.0 through PR #46 and version PR #47. See
-[acceptance](BAZ-039-040-agent-led-acceptance.md) and the
-[successor-story review](design/coding-successors-review.md).
-
-BAZ-041 and BAZ-042 shipped in **v0.17.0** on 2026-09-16. They were paired in one release because they
-share the receipt and snapshot evidence model: 042 attaches source identity to the receipts 041 makes
-observable, and a two-release split would need two clean-install schema revisions for one feature area.
-
-BAZ-045 and BAZ-046 shipped in **v0.20.0** on 2026-09-16. BAZ-046 adds the publication step the rest of the
-sequence was building towards — an operator decision, with no model in the path at all — and BAZ-045 closes
-the boundary claims that were asserted but never observed in the configuration where they are claimed. The
-same release fixed a pre-existing BAZ-043 defect found by building on top of it: a recorded conclusion left
-the packet `open` while the report's own facts said it was reviewed.
-
-BAZ-043 shipped in **v0.19.0** on 2026-09-16, completing the coding sequence. The v0.19.0 work also closed
-three gaps in BAZ-044: a container check now runs with the posture its receipt claims, declared output paths
-are *checked* rather than trusted, and a coding Agent can ask for verification at all — which is what makes
-the result delivery reachable in production. BAZ-044 added
-finite, snapshot-bound tester capability; BAZ-043 adds read-only reviewer capability and handoff
-evidence. Neither adds basic delegation, which BAZ-040 already provides. There is no mandatory
-tester-to-reviewer-to-deployer pipeline.
-
-Managed parallel checkouts and controlled deployment were removed from this backlog sequence.
-Writer coordination already exists; checkout lifecycle and deployment integration can be proposed
-later from a concrete use case. Automatic Git publication, managed services/previews and ambient Pi
-extension loading remain separate, uncommitted scope.
-
-## Release maturity
-
-The 0.21 hardening ladder is complete; the operator requested an image-capable **0.22.0**
-feature checkpoint before considering 1.0. **Retargeted 2026-09-21:** 0.22.0 ships **as-is** —
-no beta tag, **alpha maturity**, current frozen scope only. The earlier 0.22.0-beta.1 plan was
-dropped as premature, and the same-day "release on defaults" gate was withdrawn: the
-browser research ([BAZ-069](done/BAZ-069-browser-backed-default-web-search.md))
-targets the **next release (0.23.0)**. The
-[beta readiness campaign](../testing/beta-readiness/README.md) continues as the pre-1.0
-qualification campaign rather than a release gate.
-Neither this plan nor a target version is completed acceptance or authorization to publish now;
-a 1.0.0-beta.1 release remains an explicit operator decision.
+The [Telegram roadmap](../telegram-v2.md) retains unnumbered future user stories. It is not an
+implementation commitment or supported-feature list. BAZ-066's native-boundary/live programme
+was cancelled; do not revive it as a dependency or infer permission for live spending.
 
 ## Todo (0)
 
-No stories currently in Todo.
+No stories currently ready to pull.
 
-### 0.23.0 plan (operator decision 2026-09-23)
+## In progress (1)
 
-**Released2026-10-21:** [v0.23.0](https://github.com/rullopat/bazilion/releases/tag/v0.23.0),
-[final closeout and retained scope limits](../testing/0.23.0-release-status.md). BAZ-059/065/068/069
-ship within their accepted scopes; BAZ-066 stays canceled and BAZ-064 composed qualification unrun.
-The dated preparation/ordered slate below is historical, not the current release status.
-
-**Current preparation packet (2026-10-19):** [candidate freeze](../testing/0.23.0-freeze.md) ·
-[release checklist](../testing/0.23.0-release-checklist.md). Source baseline recorded; release HOLD.
-Story acceptance below is not current whole-candidate/artifact or publication approval.
-
-0.22.0 published 2026-09-23; work moves to the `0.23.0` branch with this ordered slate. Live
-spend (BAZ-059 samples) still requires explicit authorization and limits at the
-time each lane runs.
-
-1. **BAZ-059 — live image qualification** (top story): [operator-approved ChatGPT-only required
-   live scope](BAZ-059-chatgpt-only-live-scope-20261004.md); generation/rework/protected HTTP samples
-   and operator inspections satisfied (revised test 9). Direct OpenAI/both OpenRouter remain
-   implemented/offline-tested but live-unqualified; optional live trials deferred, not passed.
-   Other original release gates unchanged; no further calls/release authorized. Historical evidence: [2026-10-03 continuation](BAZ-059-live-qualification-plan-20261003.md):
-   71 focused tests and four offline contract probes pass; all live samples remain unqualified.
-   [Authorized first subscription attempt](BAZ-059-subscription-attempt-20261003.md) refused local
-   canonical composite tool-ID validation before image dispatch: zero image requests/Results,
-   clean blocker completion, cleanup restored images off/account retained. Offline source/Results
-   defect reproduced; original authorization exhausted. [Identity repair and fresh authorized retry](BAZ-059-identity-repair-and-retry-20261003.md)
-   then passed independent review and 2,396 full tests/324 security cases: one image dispatch,
-   upstream 200/missing MIME, adapter refusal/uncertain operation, no saved image. No retry;
-   images off/account preserved, new authorization exhausted. [Reviewed missing-MIME image codec
-   and next authorized attempt](BAZ-059-image-codec-and-trial-20261003.md): 2,433 full passes/327
-   security cases; one image dispatch, upstream 200/missing MIME, recognized completed terminal
-   then evidence refused. Exact output/predicate unknown, uncertain/no image, no retry; cleanup
-   restored images off/account. [Reviewed closed reasons and 2026-10-04 authorized attempt](BAZ-059-evidence-refusal-and-trial-20261004.md):
-   2,459 full passes/329 security cases; one dispatch pinpoints **`terminal_output_empty`**, explicitly
-   empty final output. Earlier streamed image bytes unknown; uncertain/no saved image, no retry,
-   images off/account preserved. Authorization exhausted. [Offline recovery evaluation](BAZ-059-completed-image-evaluation-20261004.md):
-   24 synthetic comparisons; reject broad upstream fallback and address existing omitted-output
-   reconciliation gaps. Strict image-specific direction independently accepted with design gates,
-   no production/live change. [Staged validator](BAZ-059-image-evidence-validator-20261004.md):
-   65 new fixtures/236 focused passes/types; static review accepted after annotation repair,
-   initially unwired. [Integration now accepted](BAZ-059-image-recovery-integration-20261004.md):
-   244 focused/2,532 full passes/336 security cases/types; synthetic real-worker canonical source
-   facts, PNG capture/reopen/privacy and no replay. [Authorized live trial then succeeded](BAZ-059-recovery-trial-20261004.md):
-   one saved/released PNG, completed-stream evidence, matching bytes after restart, no retry.
-   Actual 1374×1145 versus requested 1024×1024; operator visual acceptance recorded (“the image
-   looks great”), exact-size compliance still open. Agent archived, images off/account preserved;
-   authorization exhausted. [Current qualification matrix](BAZ-059-qualification-status-20261004.md):
-   independent bounded live review accepted; exact geometry already out of scope, mismatch retained
-   without required resize. [Fresh offline/package closeout](BAZ-059-packed-closeout-20261004.md):
-   nine installed image checks/Linux installer/Docker fixture, 2,538 full passes/336 security cases/
-   types and bounded review accepted. Implementation/offline ready; live qualification still blocked
-   on paid-route credentials/budgets/authorization. [Subsequent live rework/protected HTTP](BAZ-059-rework-and-protected-trials-20261004.md)
-   both succeeded, one saved/reloaded Result each, original preserved; operator visually accepted
-   both new images (“both images looks great”), authorizations exhausted. Protected HTTP does not pass scheduled/inbox lanes. The subsequent explicit scope decision
-   defers paid live qualification; the rest of the release slate is unchanged.
-   BAZ-065 also gained six isolated DST/timezone matcher tests (41 focused passes); actual controlled-
-   clock dispatch/held-cycle/recovery acceptance remains separate.
-2. **BAZ-069 — Agent-led web research** (L): **done, operator accepted 2026-10-03** under the
-   revised native-discovery scope. Subscription-native search → guarded source reading → cited
-   answer → clean completion independently accepted; current Linux package/CLI/web checks pass.
-   Optional managed-browser safeguards remain intact. API-key search stays experimental/unqualified.
-   [Close-out evidence](BAZ-069-evidence-and-packed-closeout-20261003.md); release remains separate.
-3. **BAZ-068 — limited workspace recovery** (S): operator accepted narrowed scope on 2026-10-17.
-   CLI/API/web explain blockers and attempt recorded cleanup only; management cannot signal
-   unconfirmed workers. Guaranteed abnormal host-command recovery is explicitly deferred.
-   **Done, independently accepted 2026-10-17** after the review's P1 correction. 94 focused
-   tests, 21 required story security cases, types and web build pass. Not yet released.
-   [Review/evidence](BAZ-068-independent-review-20261017.md).
-4. **BAZ-065 — evidence/review closeout**: those headline slices have later source/historical
-   evidence, but original composed D/S cells remain open. [2026-10-17 reconciliation](BAZ-065-evidence-reconciliation-20261017.md)
-   records the operator's explicit limited-scope option 1 approval. Scheduler/process checks/review
-   now have 101 unique fresh passes, actual counter/cleanup observations, types/lint and all three
-   required security assertions. Fixture DNS failure corrected; first failures retained.
-   **Done, independently accepted 2026-10-17**, after matching reviewed source identity.
-   Missing composed D/S stays open and execution unassigned; not yet released.
-   [Current evidence and retained review](BAZ-065-limited-acceptance-20261017.md).
-
-Deliberately out: BAZ-058/060 (L stories, 0.24.0 candidates), BAZ-061/062 (depend on BAZ-060),
-post-1.0 holders (BAZ-048/054/057). Open question carried from the release review: the 14
-pre-existing lint errors get cleaned up or formally waived during this cycle.
-
-## In Progress (1)
-
-| ID | Title | Size | Target | Notes |
-|----|-------|------|--------|-------|
-| [BAZ-064](in_progress/BAZ-064-content-team-recipe-and-manual-handoff.md) | Topic-neutral content Team recipe and manual handoff | M | Composed qualification unrun | Canned-model plumbing done (delegation, protected wake, approval sequencing, image-once oracle, handoff, two-topic reuse, restart retention). No live journey is scheduled. [Evidence](BAZ-064-acceptance.md) · [Recipe](../../examples/content-team/README.md). |
+| Story | Remaining work |
+| --- | --- |
+| [BAZ-064](in_progress/BAZ-064-content-team-recipe-and-manual-handoff.md) | Experimental recipe and partial deterministic coverage; full composed acceptance remains unrun/unassigned |
 
 ## Done (54)
 
-| ID | Title | Size | Shipped | Release | Notes |
-|----|-------|------|---------|---------|-------|
-| [BAZ-059](done/BAZ-059-pi-image-generation.md) | Image generation and scoped ChatGPT-only qualification | L | 2026-10-21 | v0.23.0 | Final release/CI/public-install closeout complete; bounded historical evidence, geometry and paid-route limits retained. [Release status](../testing/0.23.0-release-status.md). |
-| [BAZ-065](done/BAZ-065-content-team-scheduling-and-recovery.md) | Limited scheduler/process and communication-policy acceptance | M | 2026-10-21; independently accepted 2026-10-17 | v0.23.0 | Explicit limited scope: 101 unique checks, 3 required story security assertions, root/web types and lint pass; actual counters retained and review ACCEPT. Composed D/S remains open/unassigned. [Acceptance/evidence](BAZ-065-limited-acceptance-20261017.md). |
-| [BAZ-068](done/BAZ-068-workspace-recovery-surface.md) | Limited operator workspace recovery | S | 2026-10-21; independently accepted 2026-10-17 | v0.23.0 | Review P1 corrected and re-reviewed ACCEPT; 94 focused tests, 21 required story security cases, root/web types and web build pass. Recorded cleanup only; guaranteed abnormal host-command recovery deferred. [Review/evidence](BAZ-068-independent-review-20261017.md). |
-| [BAZ-069](done/BAZ-069-browser-backed-default-web-search.md) | Agent-led web research with native OpenAI search and optional managed browsing | L | 2026-10-21; accepted 2026-10-03 | v0.23.0 | Operator accepted T18/story close-out after independent source-evidence review, current Linux package/CLI/web checks, 2,365 full passes and 324 security cases. API-key mode remains experimental/unqualified; optional browser safeguards and historical limitations retained. [Acceptance and package evidence](BAZ-069-evidence-and-packed-closeout-20261003.md) · [Chronological trial log](BAZ-069-acceptance.md). |
-| [BAZ-067](done/BAZ-067-protected-web-discovery.md) | Bounded public-web discovery for protected Agent turns | M | 2026-09-23 | v0.22.0 | SearXNG via daemon-owned IPC host; worker sees bounded results, restricted workers denied. Opt-in protected discovery remains separate from BAZ-069 ordinary browser research. |
-| [BAZ-050](done/BAZ-050-post-coding-sequence-ui-consistency-sweep.md) | UI/UX consistency sweep of the post-hardening coding surfaces | L | 2026-09-18 | v0.21.0-beta.5 | Router-level default error+pending components (every route degrades well); surface-named error components on 18 coding routes; cancel-verification confirmed; apps/web typecheck added to CI (it was excluded — a type error sat in main); browser-acceptance walk with a real daemon-kill error-state pass (85 evidence files). |
-| [BAZ-052](done/BAZ-052-beta-supportability-gates-and-growth.md) | Beta supportability — security gate in CI, growth documentation | S | 2026-09-18 | v0.21.0-beta.4 | 153-case adversarial security gate now runs on every PR (fails closed on a deleted case). New growth-and-retention operator doc: bounded coding evidence (7-day TTLs, 256 MB budget), unbounded messages/sessions (the record), pre-migration snapshot hygiene, `logs/` documented as intentionally empty. Log rotation dropped — stale premise (the daemon writes no log files). |
-| [BAZ-051](done/BAZ-051-failure-mode-visibility-audit.md) | Failure-mode visibility audit — every recovery is seen or surfaced | M | 2026-09-18 | v0.21.0-beta.3 | Two silent failures fixed: the post-crash queue stall (new `queue_interrupted` attention kind) and opaque OAuth refresh errors. Six failure modes pinned by deterministic injection tests asserting the observed surface. Build race (web ∥ CLI vite on one dist) fixed en route. |
-| [BAZ-049](done/BAZ-049-cross-platform-ci-and-installer-e2e.md) | Cross-platform CI matrix and fresh-machine installer E2E | M (ran longer) | 2026-09-18 | — | 3-OS test matrix + hermetic installer E2E, all green at merge (PR #61). Caught six real product defects incl. Windows breaking every conversation write (dir-fsync) and `pnpm pack` shipping an empty tarball from Windows (build filters matched nothing). Workspace-claim identity portable; turns stay Linux-only until BAZ-057 (content-read portability); off-Linux refusal is a structured 422 naming `safe_reads_unavailable`. |
-| [BAZ-056](done/BAZ-056-remove-cli-chat-repl.md) | Remove the interactive chat REPL from the CLI; one-shot chat stays | S | 2026-09-17 | [v0.21.0-beta.1](https://github.com/rullopat/bazilion/releases/tag/v0.21.0-beta.1) | Operator decision: the bare readline REPL in `agent chat` was not worth completing; 1.0 keeps one-shot chat + dedicated commands + web. Piped stdin scripting kept (fail-closed `auto_deny`). PR #56. |
-| [BAZ-055](done/BAZ-055-scoped-device-credentials-and-pairing.md) | Scoped device credentials and one-paste pairing (OpenClaw's authz model, adapted) | L (M + S + S) | 2026-09-17 | [v0.21.0-beta.1](https://github.com/rullopat/bazilion/releases/tag/v0.21.0-beta.1) | Per-device scopes (`read/write/approvals/admin`) with fixture-generated route tests; `0002` scopes migration (first live exercise of the BAZ-047 contract); backup validator moved onto the canonical chain; `bazilion-pair://` single-use setup codes; Hermes-style auth-posture probe. PRs #57, #58. |
-| [BAZ-053](done/BAZ-053-remove-expo-mobile-app.md) | Remove the Expo mobile app; mobile story becomes responsive web | S | 2026-09-17 | [v0.21.0-beta.1](https://github.com/rullopat/bazilion/releases/tag/v0.21.0-beta.1) | The thin Expo app (v0.0.0, 4 screens) removed; mobile = responsive web over the private gateway + device credentials — the auth path BAZ-054's native apps will use. PR #55. |
-| [BAZ-047](done/BAZ-047-stable-schema-contract.md) | Stable schema contract and in-place upgrades for beta | L (1-2 weeks) | 2026-09-17 | [v0.21.0-beta.1](https://github.com/rullopat/bazilion/releases/tag/v0.21.0-beta.1) | Forward-only prefix migrations with receipts, `PRAGMA user_version` refuse-newer, `VACUUM INTO` pre-upgrade snapshots, CI release-upgrade matrix verified against real prior releases (v0.20.0 upgrades, v0.19.0 refused). PR #54. |
-| [BAZ-046](done/BAZ-046-publish-accepted-change.md) | Publish an accepted change to a code host | L | 2026-09-16 | [v0.20.0](https://github.com/rullopat/bazilion/releases/tag/v0.20.0) | An operator decision with no model in the path: the daemon commits the reviewed revision and opens a pull request. Refusals send nothing; never a force push; unsigned and said so. [Acceptance record](BAZ-046-acceptance.md) |
-| [BAZ-045](done/BAZ-045-boundary-claims-observed.md) | Boundary claims observed where they are claimed | M | 2026-09-16 | [v0.20.0](https://github.com/rullopat/bazilion/releases/tag/v0.20.0) | Three guards existed and were asserted; none was observed where the claim is made. Also found the operator-conclusion defect. [Acceptance record](BAZ-045-acceptance.md) |
-| [BAZ-043](done/BAZ-043-coding-review-handoff.md) | Revision-bound coding review and handoff | L | 2026-09-16 | [v0.19.0](https://github.com/rullopat/bazilion/releases/tag/v0.19.0) | One captured revision per packet; a reviewer restricted to four read-only tools; operator-reported completion facts; exports as durable publications. [Acceptance record](BAZ-043-acceptance.md) |
-| [BAZ-044](done/BAZ-044-specialist-verification-handoff.md) | Specialist verification of a captured code change | L | 2026-09-16 | [v0.18.0](https://github.com/rullopat/bazilion/releases/tag/v0.18.0) | Snapshot-bound finite checks handed to a selected same-Team specialist, with the capability closed to two tools; adds four tables. [Acceptance record](BAZ-044-acceptance.md) · [Review](BAZ-044-review.md) |
-| [BAZ-041](done/BAZ-041-coding-command-verification.md) | Live coding progress and retained diagnostics in chat | M | 2026-09-16 | [v0.17.0](https://github.com/rullopat/bazilion/releases/tag/v0.17.0) | Bounded live command progress plus retained diagnostics with explicit disclosure states; adds the `coding_command_logs` table. [Acceptance record](BAZ-041-acceptance.md) |
-| [BAZ-042](done/BAZ-042-git-change-review.md) | Git changes and review beside coding conversations | M | 2026-09-16 | [v0.17.0](https://github.com/rullopat/bazilion/releases/tag/v0.17.0) | Baseline-pinned change review, bounded diffs, source snapshots and snapshot-bound applicability; adds the `source_snapshots` table. [Acceptance record](BAZ-042-acceptance.md) |
-| [BAZ-039](done/BAZ-039-repository-coding-context.md) | Agents discover repository context while working | M | 2026-09-14 | [v0.16.0](https://github.com/rullopat/bazilion/releases/tag/v0.16.0) | Agent-led repository discovery, scoped AGENTS.md context and passive command suggestions; implemented in PR #46 |
-| [BAZ-040](done/BAZ-040-coding-environment-readiness.md) | Agents prepare and check their environment during a task | L | 2026-09-14 | [v0.16.0](https://github.com/rullopat/bazilion/releases/tag/v0.16.0) | Admitted runtime inspection, scoped coding commands and workspace coordination; changes the alpha schema. Implemented in PR #46 |
-| [BAZ-034](done/BAZ-034-durable-agent-deliverables.md) | Durable agent deliverables and a Team results library | M | 2026-09-08 | [v0.15.0](https://github.com/rullopat/bazilion/releases/tag/v0.15.0) | Implemented in PR #44; guided acceptance and release verified |
-| [BAZ-035](done/BAZ-035-conversation-library.md) | Conversation library and safe new conversations | L | 2026-09-08 | [v0.15.0](https://github.com/rullopat/bazilion/releases/tag/v0.15.0) | Implemented in PR #44; guided acceptance and release verified |
-| [BAZ-036](done/BAZ-036-visible-follow-up-queue.md) | Visible, durable follow-up queue | L (1-2 weeks) | 2026-09-08 | [v0.15.0](https://github.com/rullopat/bazilion/releases/tag/v0.15.0) | Implemented in PR #44; guided acceptance and release verified |
-| [BAZ-037](done/BAZ-037-structured-agent-questions.md) | Structured agent questions across web, CLI, and Telegram | L | 2026-09-08 | [v0.15.0](https://github.com/rullopat/bazilion/releases/tag/v0.15.0) | Implemented in PR #44; guided acceptance and release verified |
-| [BAZ-038](done/BAZ-038-telegram-attention-notifications.md) | Opt-in Telegram delivery of existing Attention items | M | 2026-09-08 | [v0.15.0](https://github.com/rullopat/bazilion/releases/tag/v0.15.0) | Implemented in PR #44; guided acceptance and release verified |
-| [BAZ-033](done/BAZ-033-product-experience-hardening.md) | Product experience hardening across web and mobile | L | 2026-08-29 | [v0.14.0](https://github.com/rullopat/bazilion/releases/tag/v0.14.0) | First-run, chat, navigation, configuration, responsive, accessibility, and destructive-action UX hardening |
-| [BAZ-031](done/BAZ-031-protected-runtime-provider-expansion.md) | Provider-neutral protected runtime | L | 2026-08-27 | [v0.13.0](https://github.com/rullopat/bazilion/releases/tag/v0.13.0) | Exhaustive credential-minimal protected execution for every provider in the pinned Pi catalog |
-| [BAZ-032](done/BAZ-032-personal-server-security-acceptance.md) | Personal-server adversarial security acceptance gate | M | 2026-08-26 | [v0.13.0](https://github.com/rullopat/bazilion/releases/tag/v0.13.0) | 60-case deterministic cross-boundary release gate for BAZ-027 through BAZ-031, with live posture evidence kept separate |
-| [BAZ-028](done/BAZ-028-secure-personal-web-mobile-gateway.md) | Secure personal web and mobile gateway | L | 2026-08-26 | [v0.13.0](https://github.com/rullopat/bazilion/releases/tag/v0.13.0) | Expiring device credentials, hashed browser sessions, hardened private HTTPS gateway, and loopback-only Tailscale Serve preflight |
-| [BAZ-030](done/BAZ-030-encrypted-backups-credential-recovery.md) | Encrypted backups and single-operator credential recovery | L | 2026-08-26 | [v0.13.0](https://github.com/rullopat/bazilion/releases/tag/v0.13.0) | Standard age recipient encryption, authenticated staged restore, secret-safe inventory, local token rotation, and external recovery guidance |
-| [BAZ-029](done/BAZ-029-single-owner-telegram-pairing.md) | Single-owner Telegram pairing and visibility hardening | M | 2026-08-26 | [v0.13.0](https://github.com/rullopat/bazilion/releases/tag/v0.13.0) | One-time owner pairing, fail-closed ingress identity, private-supergroup warnings, and secret-safe diagnostics |
-| [BAZ-027](done/BAZ-027-credential-minimal-protected-agent-execution.md) | Credential-minimal protected Agent execution | L | 2026-08-23 | [v0.13.0](https://github.com/rullopat/bazilion/releases/tag/v0.13.0) | Minimal OpenAI Codex credentials, mandatory protected Docker, exact unattended-turn identity, no browser/MCP, and operator readiness visibility |
-| [BAZ-026](done/BAZ-026-operator-attention-center.md) | Operator Attention Center — one queue for actionable runtime signals | M | 2026-08-05 | [v0.12.0](https://github.com/rullopat/bazilion/releases/tag/v0.12.0) | Unified source-owned queue, informational acknowledgement state, CLI parity, responsive web UI, and navigation badge |
-| [BAZ-003](done/BAZ-003-hermes-self-learning.md) | Reviewed learning loop — transcript digest to durable lessons | M | 2026-08-03 | [v0.12.0](https://github.com/rullopat/bazilion/releases/tag/v0.12.0) | Opt-in restricted review worker, evidence-backed human approval, private prompt lessons, and shared Team-memory lessons |
-| [BAZ-002](done/BAZ-002-profile-groups.md) | Profile Groups — preconfigured team templates (historical) | M | 2026-05-25 | [v0.2.0](https://github.com/rullopat/bazilion/releases/tag/v0.2.0) | Superseded by the canonical Team Template model in BAZ-018 |
-| [BAZ-005](done/BAZ-005-agent-templates-refresh.md) | Agent templates refresh — two-sided bootstrap, USER.md seed, workspace doc | M | 2026-05-29 | v0.5.0 | Two-phase bootstrap, USER.md seed + backfill, creature/avatar, default-on AGENTS/TOOLS (HEARTBEAT opt-in) — see As-built for deltas |
-| [BAZ-006](done/BAZ-006-skill-execution-security.md) | Skill execution security - sandbox and command approval | L | 2026-08-02 | [v0.11.0](https://github.com/rullopat/bazilion/releases/tag/v0.11.0) | Independent default-off Docker shell isolation and one-shot dangerous-command approval; non-interactive turns fail closed |
-| [BAZ-007](done/BAZ-007-simple-installer-and-dashboard.md) | Simple installer and dashboard launch for non-technical users | M | 2026-06-22 | v0.6.0 | Bundled web UI, `bazilion dashboard`, and one-line website installers |
-| [BAZ-008](done/BAZ-008-skill-content-scan.md) | Skill content scan — prompt-injection and exfiltration warnings | S | 2026-07-02 | [v0.8.0](https://github.com/rullopat/bazilion/releases/tag/v0.8.0) | Static scan on import/list/attach; confirmation required for risky imports and attaches |
-| [BAZ-009](done/BAZ-009-configurable-agent-harness.md) | Configurable agent harness prototype (historical) | L | 2026-07-10 | Superseded before release | Local-only prototype removed after its interaction model graduated to Team Policy in v0.9.0 |
-| [BAZ-010](done/BAZ-010-harness-persistence-api.md) | Production harness persistence foundation (historical) | L | 2026-07-11 | [v0.9.0](https://github.com/rullopat/bazilion/releases/tag/v0.9.0) | Canonical storage retained; transitional migration/adapters removed by BAZ-018 |
-| [BAZ-015](done/BAZ-015-harness-policy-lifecycle-api.md) | Revisioned Team Template, Team Policy, and Agent lifecycle APIs | L | 2026-07-11 | [v0.9.0](https://github.com/rullopat/bazilion/releases/tag/v0.9.0) | Canonical APIs, stable-slot workflows, explicit placement, and atomic lifecycle |
-| [BAZ-011](done/BAZ-011-harness-runtime-enforcement.md) | Team Policy authorizer, denial audit, and gated Agent messaging | L | 2026-07-11 | [v0.9.0](https://github.com/rullopat/bazilion/releases/tag/v0.9.0) | Shared authorizer, immutable denial audit, diagnostic evaluation, and gated messaging |
-| [BAZ-012](done/BAZ-012-production-harness-web.md) | Production Templates and Teams web information architecture | L | 2026-07-11 | [v0.9.0](https://github.com/rullopat/bazilion/releases/tag/v0.9.0) | Canonical navigation, projections, lifecycle shells, and degraded recovery |
-| [BAZ-016](done/BAZ-016-harness-runtime-boundaries.md) | Team Policy ingress, egress, scheduler, and turn-boundary enforcement | L | 2026-07-11 | [v0.9.0](https://github.com/rullopat/bazilion/releases/tag/v0.9.0) | All runtime boundaries and activation-safe lifecycle linearization |
-| [BAZ-017](done/BAZ-017-harness-web-editor-migration.md) | Production Team Policy editors, activity, and web QA | L | 2026-07-11 | [v0.9.0](https://github.com/rullopat/bazilion/releases/tag/v0.9.0) | Server-backed editors, conflicts/import/activity, accessibility, and viewport matrix |
-| [BAZ-013](done/BAZ-013-harness-cli-policy-tools.md) | Team Policy CLI management and block history | M | 2026-07-11 | [v0.9.0](https://github.com/rullopat/bazilion/releases/tag/v0.9.0) | Revision-safe typed CLI management, portable JSON, diagnostics, and block filters |
-| [BAZ-014](done/BAZ-014-harness-communication-approvals.md) | Human approval gates for Team Policy communication | L | 2026-07-11 | [v0.9.0](https://github.com/rullopat/bazilion/releases/tag/v0.9.0) | Durable approval-required edges, at-most-once dispatch, authenticated queue, CLI/tools, and responsive web workflow |
-| [BAZ-018](done/BAZ-018-canonical-teams-cleanup.md) | Canonical Teams cleanup and clean-install schema | L | 2026-07-12 | [v0.9.0](https://github.com/rullopat/bazilion/releases/tag/v0.9.0) | Removed Group/Harness/Profile Group compatibility and made Teams the only product vocabulary |
-| [BAZ-019](done/BAZ-019-scheduled-trigger-reliability.md) | Scheduled triggers without heartbeat files | L | 2026-08-01 | [v0.10.0](https://github.com/rullopat/bazilion/releases/tag/v0.10.0) + [v0.11.0](https://github.com/rullopat/bazilion/releases/tag/v0.11.0) | Removed HEARTBEAT.md; durable coalesced dispatch adds leases, bounded retry, approvals, and diagnostics |
-| [BAZ-023](done/BAZ-023-worker-oauth-refresh.md) | Worker-side OpenAI Codex OAuth refresh | S | 2026-08-02 | [v0.11.0](https://github.com/rullopat/bazilion/releases/tag/v0.11.0) | Turn-bound daemon IPC refresh, token redaction, cancellation cleanup, and concurrent-refresh single-flight |
-| [BAZ-024](done/BAZ-024-consistent-backup-restore.md) | SQLite-consistent backup and validated restore | M | 2026-08-02 | [v0.11.0](https://github.com/rullopat/bazilion/releases/tag/v0.11.0) | Verified online DB snapshot, safe archive validation, staged atomic restore, and rollback |
-| [BAZ-025](done/BAZ-025-agent-loop-circuit-breaker.md) | Durable agent-message loop circuit breaker | M | 2026-08-03 | [v0.12.0](https://github.com/rullopat/bazilion/releases/tag/v0.12.0) | Daemon-enforced causal hop budget with payload-free diagnostics across API, CLI, and web |
+### Agent configuration, policy and runtime
+
+- [BAZ-002 — Profile groups](done/BAZ-002-profile-groups.md)
+- [BAZ-003 — Reviewed self-learning](done/BAZ-003-hermes-self-learning.md)
+- [BAZ-005 — Agent templates](done/BAZ-005-agent-templates-refresh.md)
+- [BAZ-006 — Shell isolation and command approval](done/BAZ-006-skill-execution-security.md)
+- [BAZ-007 — Installer and dashboard](done/BAZ-007-simple-installer-and-dashboard.md)
+- [BAZ-008 — Skill content scan](done/BAZ-008-skill-content-scan.md)
+- [BAZ-009 — Configurable Team policy](done/BAZ-009-configurable-agent-harness.md)
+- [BAZ-010 — Policy persistence/API](done/BAZ-010-harness-persistence-api.md)
+- [BAZ-011 — Policy runtime enforcement](done/BAZ-011-harness-runtime-enforcement.md)
+- [BAZ-012 — Policy management web UI](done/BAZ-012-production-harness-web.md)
+- [BAZ-013 — Policy CLI](done/BAZ-013-harness-cli-policy-tools.md)
+- [BAZ-014 — Communication approvals](done/BAZ-014-harness-communication-approvals.md)
+- [BAZ-015 — Policy lifecycle/API](done/BAZ-015-harness-policy-lifecycle-api.md)
+- [BAZ-016 — Runtime communication boundaries](done/BAZ-016-harness-runtime-boundaries.md)
+- [BAZ-017 — Canonical web editor](done/BAZ-017-harness-web-editor-migration.md)
+- [BAZ-018 — Canonical Teams](done/BAZ-018-canonical-teams-cleanup.md)
+- [BAZ-019 — Scheduled trigger reliability](done/BAZ-019-scheduled-trigger-reliability.md)
+- [BAZ-023 — Worker OAuth refresh](done/BAZ-023-worker-oauth-refresh.md)
+- [BAZ-024 — Consistent backup/restore](done/BAZ-024-consistent-backup-restore.md)
+- [BAZ-025 — Agent-loop circuit breaker](done/BAZ-025-agent-loop-circuit-breaker.md)
+- [BAZ-026 — Operator attention](done/BAZ-026-operator-attention-center.md)
+- [BAZ-027 — Credential-minimal protected execution](done/BAZ-027-credential-minimal-protected-agent-execution.md)
+- [BAZ-028 — Private gateway](done/BAZ-028-secure-personal-web-mobile-gateway.md)
+- [BAZ-029 — Telegram owner pairing](done/BAZ-029-single-owner-telegram-pairing.md)
+- [BAZ-030 — Encrypted backups/recovery](done/BAZ-030-encrypted-backups-credential-recovery.md)
+- [BAZ-031 — Protected provider coverage](done/BAZ-031-protected-runtime-provider-expansion.md)
+- [BAZ-032 — Personal-server security](done/BAZ-032-personal-server-security-acceptance.md)
+- [BAZ-033 — Product experience](done/BAZ-033-product-experience-hardening.md)
+
+### Conversations and Agent-led coding
+
+- [BAZ-034 — Durable Results](done/BAZ-034-durable-agent-deliverables.md)
+- [BAZ-035 — Conversation library](done/BAZ-035-conversation-library.md)
+- [BAZ-036 — Follow-up queue](done/BAZ-036-visible-follow-up-queue.md)
+- [BAZ-037 — Structured questions](done/BAZ-037-structured-agent-questions.md)
+- [BAZ-038 — Attention notifications](done/BAZ-038-telegram-attention-notifications.md)
+- [BAZ-039 — Repository context](done/BAZ-039-repository-coding-context.md)
+- [BAZ-040 — Coding readiness](done/BAZ-040-coding-environment-readiness.md)
+- [BAZ-041 — Coding command receipts](done/BAZ-041-coding-command-verification.md)
+- [BAZ-042 — Captured source changes](done/BAZ-042-git-change-review.md)
+- [BAZ-043 — Specialist review](done/BAZ-043-coding-review-handoff.md)
+- [BAZ-044 — Specialist verification](done/BAZ-044-specialist-verification-handoff.md)
+- [BAZ-045 — Boundary claims](done/BAZ-045-boundary-claims-observed.md)
+- [BAZ-046 — Operator-controlled publication](done/BAZ-046-publish-accepted-change.md)
+- [BAZ-047 — Schema compatibility](done/BAZ-047-stable-schema-contract.md)
+- [BAZ-049 — Platform CI/installer](done/BAZ-049-cross-platform-ci-and-installer-e2e.md)
+- [BAZ-050 — Coding UI consistency](done/BAZ-050-post-coding-sequence-ui-consistency-sweep.md)
+- [BAZ-051 — Failure visibility](done/BAZ-051-failure-mode-visibility-audit.md)
+- [BAZ-052 — Supportability and growth](done/BAZ-052-beta-supportability-gates-and-growth.md)
+- [BAZ-053 — Remove Expo app](done/BAZ-053-remove-expo-mobile-app.md)
+- [BAZ-055 — Device credentials/pairing](done/BAZ-055-scoped-device-credentials-and-pairing.md)
+- [BAZ-056 — Remove CLI REPL](done/BAZ-056-remove-cli-chat-repl.md)
+
+### Released in 0.23.0 within explicit limits
+
+- [BAZ-059 — Image generation](done/BAZ-059-pi-image-generation.md): bounded ChatGPT live scope;
+  direct OpenAI/OpenRouter remain live-unqualified; no exact-geometry guarantee.
+- [BAZ-065 — Scheduling/recovery](done/BAZ-065-content-team-scheduling-and-recovery.md): limited
+  scheduler/process scope; composed D/S and live/human content journey remain unassigned.
+- [BAZ-067 — Protected discovery](done/BAZ-067-protected-web-discovery.md): bounded configured
+  SearXNG, not native search/browser access for protected turns.
+- [BAZ-068 — Workspace recovery](done/BAZ-068-workspace-recovery-surface.md): only known recorded
+  owned resources; no arbitrary-host cleanup or unknown-owner force unlock.
+- [BAZ-069 — Web research](done/BAZ-069-browser-backed-default-web-search.md): bounded subscription
+  acceptance; API-key search remains experimental/live-unqualified and browser access is site-dependent.

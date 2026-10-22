@@ -13,18 +13,14 @@ note: Operator-approved scope revision on 2026-09-30. Provider-backed discovery 
 # BAZ-069 — Agent-led web research
 
 Released2026-10-21 in [v0.23.0](https://github.com/rullopat/bazilion/releases/tag/v0.23.0).
-[Release closeout](../../testing/0.23.0-release-status.md) retains API-key experimental/live-unqualified
-status, browser-site/entitlement limits and the recorded historical evidence scope.
+## As built and accepted scope
 
-## Historical qualification evidence (2026-10-03)
-
-[The authorized post-accumulator source trial](../BAZ-069-native-t18b-post-accumulator-trial-20261003.md)
-observed actual subscription-native search → five guarded NASA reads → source-grounded cited
-answer → clean same-attempt `done`, with no browser/fallback. Canonical receipt/fact checks and
-cleanup passed. [Independent evidence review accepted the source journey; fresh Linux package,
-CLI/web and offline research checks pass](../BAZ-069-evidence-and-packed-closeout-20261003.md).
-**Operator acceptance recorded 2026-10-03; T18 and BAZ-069 are complete.** API-key mode stays
-experimental/unqualified; this is not general entitlement or release approval. Authorization exhausted; no repeat live call.
+An accepted same-attempt subscription journey performed native search, five guarded NASA reads
+and a source-grounded cited answer with clean completion and no browser/fallback. Operator and
+independent bounded acceptance cover that journey, not every model/account or public browser site.
+API-key search remains experimental/live-unqualified. The earlier browser-only gate was explicitly
+superseded, not passed by a diagnostic or assisted attempt. No repeat live call is authorized.
+See [web research](../../web-research.md) and [managed browsers](../../browser-research.md).
 
 ## User stories
 
@@ -60,25 +56,12 @@ The browser architecture is unchanged: direct installed-browser startup with a m
 persistent profile, verified loopback CDP attachment and the normal validating SSRF proxy.
 No stale-control exception, stealth, personal-profile attachment or challenge bypass is added.
 
-## Decision and evidence
+## Design boundary
 
-[OpenClaw investigation](../BAZ-069-openclaw-native-search-investigation.md) pins upstream
-`6248825df550bb9cd38a0da8b2a3592593a3aeb9` and distinguishes:
-
-- Official OpenAI Responses native `web_search`, automatic when enabled and no managed provider
-  is explicitly selected; this is not browser automation.
-- Codex app-server hosted search, normally available without a separate search key.
-- Direct ChatGPT subscription Responses native search, opt-in in OpenClaw. That implementation
-  demonstrates a candidate route, **not** compatibility of Bazilion's current transport.
-- An explicitly selected bounded Codex Hosted Search provider for other parent models. Do not
-  transplant its entire agent harness or auto-select a different model/account.
-
-[Browser evidence](../BAZ-069-acceptance.md) retains human-assisted Google → NASA reading and
-failed Agent/search attempts. The separately authorized [Bing diagnostic](../BAZ-069-bing-readonly-diagnostic-retry.md)
-observed 20 samples, a DOM above current bounds and twenty unknown/over-budget native samples;
-cleanup was verified. It did not perform search, consent selection or source reading. Repeated
-unchanged public browser trials or enabling the rejected dialog-island predicate are not the
-implementation path for this revised story.
+Native Responses search is distinct from browser automation or a Codex app-server harness.
+Do not transplant another Agent runtime, silently select a different account/model or enable
+rejected browser-control predicates. An upstream implementation or a read-only diagnostic does
+not establish Bazilion's transport compatibility or a successful Agent research journey.
 
 ## Scope
 
@@ -204,14 +187,14 @@ provider credential nor a general model connection is permission to add hosted s
   anti-bot acceptance as a default-search prerequisite, stealth and challenge bypass.
 - Replacing Pi/the general Agent runtime with OpenClaw/Codex app-server; a general auxiliary
   agent, new workflow/runs/events store, automatic retries or cross-provider billing fallback.
-- Optional Exa/Parallel providers (BAZ-070), new Gemini/Perplexity search and migration of all
+- Additional search providers and migration of all
   ordinary Brave/SearXNG credentials. Existing env-backed asymmetry remains documented.
 - Broadening protected/restricted/scheduled admission, personal browser accounts, social
   publication, image generation (BAZ-059), generalized recovery or portable Agent turns.
 
 ## Tests and acceptance
 
-The [implementation handoff](../BAZ-069-implementation-plan.md) owns the task checkboxes. T01–T17
+The [managed-browser contract](../../browser-research.md) owns the task checkboxes. T01–T17
 browser work/reviews are retained evidence, not native-search implementation acceptance. New
 native work belongs to **T18.N1–N5**, followed by the revised T18(b) gate; do not close by combining
 old failed attempts with the read-only diagnostics.
@@ -278,6 +261,5 @@ fixes remain load-bearing wherever optional browser tools are admitted.
 
 BAZ-059 release priority and live qualification's protected/scheduled defaults remain separate. This story
 adds ordinary interactive native discovery; it does not make those postures browser/native-search
-capable or qualify their production workflow. BAZ-070 remains optional additional providers.
-Historical browser attempts and their exhausted authorizations are preserved in the acceptance
-log. This refinement authorizes no provider spend, browser visit, account access or publication.
+capable or qualify their production workflow.
+Historical attempts do not renew their exhausted authorizations. This refinement authorizes no provider spend, browser visit, account access or publication.

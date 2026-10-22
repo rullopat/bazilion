@@ -132,7 +132,7 @@ Mirror the existing `bazilion profile` shape:
 - **Template versioning.** Editing a profile team does NOT retroactively affect already-spawned teams; the spawn is a snapshot at point of invocation. No version column, no "upgrade existing team" flow.
 - **Per-member `skills` overrides.** Members inherit the profile's `skillsMode` ('all' or 'selected') verbatim. Per-agent skill tweaks happen post-spawn via `bazilion agent skill add/rm` (the existing surface), not via profile-team members — keeps the member row narrow.
 - **Marketplace / shareable export.** JSON export via `bazilion profile-team show --json` is fine (and falls out of the CLI surface anyway). A registry / `bazilion profile-team install <url>` is a separate BAZ if it ever happens.
-- **Mobile UI.** The mobile app's agent list ([apps/mobile/app/agents/index.tsx](../../../apps/mobile/app/agents/index.tsx)) doesn't even create agents yet; profile-team spawn from mobile is deferred until single-agent spawn lands there.
+- **Mobile UI.** The former Expo client was later removed by [BAZ-053](BAZ-053-remove-expo-mobile-app.md); native mobile management remains future scope.
 - **Cancelling a partial spawn mid-flight.** The spawn loop is short (seconds, not minutes); no `POST /api/profile-teams/:id/spawn/cancel`. If a single `spawnAgent` call hangs, that's the existing `agent cancel` surface's problem.
 
 ## Decisions (resolved 2026-05-24)

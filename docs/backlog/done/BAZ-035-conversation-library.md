@@ -42,9 +42,9 @@ deletes every session JSONL, while last-message editing branches the current Pi 
 named conversations that the operator can browse independently.
 
 The web chat polls the session head, shows a stale-history banner, and offers a destructive reset
-([ChatPane](../../../apps/web/src/components/ChatPane.tsx)). Mobile also loads current messages
-([native chat](../../../apps/mobile/app/agents/[id]/chat.tsx)). Keep those established clients working
-against one daemon-owned selection contract; a browser tab must not become the session authority.
+([ChatPane](../../../apps/web/src/components/ChatPane.tsx)). The former mobile client was removed
+by [BAZ-053](BAZ-053-remove-expo-mobile-app.md). Supported clients share one daemon-owned selection
+contract; a browser tab must not become the session authority.
 
 Inspiration: OpenClaw's [session search](https://docs.openclaw.ai/concepts/session-search) and the
 [Hermes desktop guide at v2026.8.31](https://github.com/NousResearch/hermes-agent/blob/v2026.8.31/website/docs/user-guide/desktop.md)
@@ -176,12 +176,12 @@ copy their storage, branching, or desktop architecture.
   exclude private review input. Backup/restore includes metadata and canonical files.
 
 Track implementation and per-criterion verification in
-[the milestone progress log](../BAZ-035-038-progress.md).
+[the historical milestone record](https://github.com/rullopat/bazilion/blob/231911c78b9e882d3d03971d76435145c3954932/docs/backlog/BAZ-035-038-progress.md).
 
 ## Implementation and acceptance evidence
 
 Committed in draft PR #44 at `0af1061`; released in v0.15.0. See the
-[operator guide](../../conversations.md) and [milestone ledger](../BAZ-035-038-progress.md)
+[operator guide](../../conversations.md) and [historical milestone record](https://github.com/rullopat/bazilion/blob/231911c78b9e882d3d03971d76435145c3954932/docs/backlog/BAZ-035-038-progress.md)
 for repeatable flows, detailed criterion evidence and passing integrated checks.
 
 | Acceptance area | Evidence |

@@ -45,7 +45,7 @@ The operator accepted the recommended interaction defaults during refinement:
 - Use **Mastodon only for the first test**, replacing the earlier three-platform scope to reduce
   access/setup friction. Facebook, Instagram and LinkedIn are deferred. Two topics test reuse on
   this one platform; other platform requests are explained as outside the initial scope, not silently
-  substituted. See [the platform decision and sources](../design/content-platform-first-test.md).
+  substituted. This keeps the first manual workflow independent of connector/app-review access.
   This is manual-handoff scope, not an implemented API integration or permission to publish.
 - Discover public-web sources, with optional sources supplied by the user. Retain traceable support
   for factual claims and flag unsupported claims for review. Distinguish user-supplied facts from
@@ -90,7 +90,7 @@ Separate product defects from the recipe/harness PR; never weaken isolation to c
 ## Tests and acceptance
 
 Own the **D lane** of **CT-01–07, CT-14, CT-15 and CT-17** in the
-[shared protocol](../../testing/beta-readiness/content-team-acceptance.md). The same case IDs may have
+[parent acceptance cases](../draft/BAZ-063-content-team-real-world-acceptance.md#acceptance-cases). The same case IDs may have
 other lanes owned by later children; completing D alone does not close their L/H/S observations.
 
 - Actual specialist messages and source references, not one model claiming to delegate.
@@ -124,11 +124,11 @@ remain canonical. No new runtime, table, publisher or approval engine was added.
 `apps/cli/test/content-team-recipe.test.ts` exercises normal import/preview/spawn interfaces, exact
 Agent documents/skill attachment, two isolated Teams, 36 policy paths and rejected direct specialist
 chat with zero provider requests. Four checks passed; these are partial preflight evidence, **not**
-passes for the composed CT cases. See [the evidence and remaining work](../BAZ-064-acceptance.md).
+passes for the composed CT cases. Remaining work is listed below and in BAZ-063.
 
 ## Dependencies and remaining work
 
-- **Discovery unblocked (2026-09-21):** [BAZ-067](../in_progress/BAZ-067-protected-web-discovery.md) implemented
+- **Discovery unblocked (2026-09-21):** [BAZ-067](../done/BAZ-067-protected-web-discovery.md) implemented
   bounded protected `web_search` (daemon-owned SearXNG host); the researcher wake now discovers
   sources through a test-owned backend. CT-03's model-level judgment still needs the L lane.
 - Actual Agent UUIDs are needed for messaging; no `list_agents`/automatic roster projection exists in
@@ -138,7 +138,7 @@ passes for the composed CT cases. See [the evidence and remaining work](../BAZ-0
   routing inside the provider is not a product capability.
 - **Fixed 2026-09-21:** the protected wake held its Team workspace lease ~30s after the turn because
   the worker process lingered after its work; `worker/entry.ts` now exits explicitly. The harness
-  asserts the lease frees within 5s. See the acceptance record's root-cause and re-verification notes.
+  asserts the lease frees within 5s; this fixes the process lifecycle, not model-level judgment.
 - Done deterministically: two-topic reuse across isolated Teams (CT-17 D), restart retention of the
   composed flow, approval sequencing, the image-once oracle and exact handoff delivery. Remaining:
   withheld/stale-approval nuance at D level where meaningful, and the blocked discovery cells

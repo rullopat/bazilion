@@ -13,7 +13,7 @@ A home (`~/.bazilion` by default) contains:
 | Path | What it is | Grows with |
 |------|------------|------------|
 | `bazilion.db` | The database: messages, agents, receipts, reviews, coding evidence | Usage (turns, coding commands) |
-| `bazilion.pre-migration-*.db` | One verified snapshot per upgrade | Upgrades |
+| `bazilion.pre-migration-*.db` | Historical/supported-prefix migration snapshots, if present | Supported migrations, not incompatible-home refusal |
 | `agents/<id>/sessions/*.jsonl` | Canonical conversation transcripts | Turns |
 | `agents/<id>/uploads/` | User-attached files | Attachments |
 | `profiles/`, `skills/`, `teams/` | Your configuration | You |
@@ -43,10 +43,10 @@ per-table `SELECT COUNT(*)` on the tables named below.
 
 **Unbounded by design — this is your history, not a leak:**
 
-- **Messages** (`messages`): every turn's messages, growing with usage. This is
-  the conversation record the product exists to keep. Structural retention and
-  cold-archiving are deliberately deferred (BAZ-048, post-1.0); today the honest
-  guidance is: the database grows with use, and a full backup (`bazilion backup create`) is the way to snapshot it.
+- **Messages** (`messages`): the inter-Agent mailbox, growing with communication.
+  Conversation content is canonical in Pi JSONL, not this table. Structural retention and
+  cold-archiving remain deferred (BAZ-048); preserve both database state and transcripts
+  with a full backup (`bazilion backup create`).
 - **Image generation receipts** (`image_generations`, BAZ-059): at most four admissions per turn,
   with bounded identities, request digest, selected model and reported usage — never prompts or
   image bytes. No TTL: replay protection survives restart/restore; original Team deletion removes
@@ -60,8 +60,8 @@ per-table `SELECT COUNT(*)` on the tables named below.
 
 Each agent's canonical transcript lives at
 `agents/<agentId>/sessions/<conversationId>.jsonl` and grows with every turn. The
-daemon appends transactionally (staging file + link) but never prunes: the
-transcript is the source of truth a session replays from.
+Pi engine appends the canonical transcript; normal retention does not prune it. Session replay
+uses that file as its source of truth.
 
 - **Safe:** archiving (moving/copying) the `sessions/` directory of an agent you
   have removed.
@@ -77,16 +77,15 @@ see `bazilion uninstall`).
 
 ## Pre-migration snapshots
 
-Every upgrade that applies a pending migration first writes a verified,
-transactionally consistent copy of the database to
-`bazilion.pre-migration-<timestamp>.db` beside `bazilion.db` — one file per
-upgrade, never overwritten by a retry. These exist so a failed migration leaves a
-restorable copy instead of a half-migrated home (see the upgrading guide in
-`docs/upgrades.md`).
+Older releases and genuinely supported pending migration chains may leave verified
+`bazilion.pre-migration-<timestamp>.db` copies beside the database. They are not a substitute
+for a complete home backup: `auth.json`, Team files and transcripts matter too.
 
-**Safe to delete once an upgrade is confirmed good** — the daemon is running and
-your data is intact. They are also included in `bazilion backup` archives (the backup
-tars the whole home), so a fresh backup supersedes the oldest snapshots.
+**0.23 refuses incompatible old homes and promises no automatic pre-refusal snapshot.**
+Preserve the whole paired home and external Team targets before an authorized reset; see
+[upgrades](upgrades.md). Keep wanted historical snapshots with their matching binary/schema
+until recovery is no longer needed. Never delete the only copy of wanted old state merely
+because a fresh, empty home starts successfully.
 
 ## Why `logs/` is empty
 
@@ -102,4 +101,5 @@ starts growing, that is a bug, not a configuration problem.
 - **No automatic retention on messages or sessions** — the conversation record is
   the product; structural retention/cold-archiving is post-1.0 work (BAZ-048).
 - **No log shipping or telemetry, ever** — by product stance. The only things
-  that leave your machine are the LLM API calls you configure.
+  that leave your machine are the configured provider and integration requests, including
+  LLMs, research/fetch/browser traffic, MCP and Telegram. Those services have their own data policies.

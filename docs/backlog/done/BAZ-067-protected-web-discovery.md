@@ -86,7 +86,7 @@ Implementing this touches `runtime/pi/tools.ts`, worker IPC/entry/spawn and test
 BAZ-059 frozen fingerprint. That fingerprint already moved on 2026-09-21 for the worker-exit defect
 fix found by BAZ-064's harness (`worker/entry.ts`); the freeze evidence re-verification required by
 that change is also the moment this story's merge can land. Coordinate both with the BAZ-059
-release sequence. See [the BAZ-064 acceptance record](../BAZ-064-acceptance.md).
+release sequence. See [the BAZ-064 story](../in_progress/BAZ-064-content-team-recipe-and-manual-handoff.md).
 No blocked CT cell becomes Passed merely because this story is ready.
 
 ## As-built (2026-09-21, uncommitted)

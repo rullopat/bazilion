@@ -217,12 +217,12 @@ completed, obtained communication approval, or delivered a response.
   inspectable terminal receipts do not mean Telegram delivery or external task success.
 
 Track implementation, races and acceptance evidence in
-[the milestone progress log](../BAZ-035-038-progress.md).
+[the historical milestone record](https://github.com/rullopat/bazilion/blob/231911c78b9e882d3d03971d76435145c3954932/docs/backlog/BAZ-035-038-progress.md).
 
 ## Implementation and acceptance evidence
 
 Committed in draft PR #44 at `fa126ac`; released in v0.15.0. See the
-[operator guide](../../follow-up-queue.md) and [milestone ledger](../BAZ-035-038-progress.md)
+[operator guide](../../follow-up-queue.md) and [historical milestone record](https://github.com/rullopat/bazilion/blob/231911c78b9e882d3d03971d76435145c3954932/docs/backlog/BAZ-035-038-progress.md)
 for repeatable flows, detailed criterion evidence and passing integrated checks.
 
 | Acceptance area | Evidence |

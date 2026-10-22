@@ -125,7 +125,7 @@ Every item below was confirmed by reading the code before this story was written
 
 ## As built (2026-09-16)
 
-Implemented and observed; acceptance evidence in [BAZ-045-acceptance.md](BAZ-045-acceptance.md). Four
+Implemented and observed; acceptance evidence in [historical acceptance](https://github.com/rullopat/bazilion/blob/231911c78b9e882d3d03971d76435145c3954932/docs/backlog/BAZ-045-acceptance.md). Four
 things changed and are not what the story assumed when it was written:
 
 1. **The declared-writable-path guards already existed and were mostly untested.** Six refusal branches,

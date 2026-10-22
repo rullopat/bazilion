@@ -35,7 +35,7 @@ the gateway, or any authn semantics (BAZ-028).
 
 ## Why
 
-The [auth comparison](../design/authn-authz-comparison-openclaw-hermes.md) established:
+The [private gateway](../../private-gateway.md) established:
 Bazilion's *authentication* is at parity (named, expiring, revocable device records;
 fail-closed ingress), but *authorization* is all-or-nothing — `middleware-auth.ts`
 checks identity, not capability. OpenClaw's per-device operator scopes and setup-code

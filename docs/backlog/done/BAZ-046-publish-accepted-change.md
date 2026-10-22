@@ -111,7 +111,7 @@ property is that no model is ever in this path, which is stronger than a capabil
 
 ## As built (2026-09-16)
 
-Implemented and observed; evidence in [BAZ-046-acceptance.md](BAZ-046-acceptance.md). Released in
+Implemented and observed; evidence in [historical acceptance](https://github.com/rullopat/bazilion/blob/231911c78b9e882d3d03971d76435145c3954932/docs/backlog/BAZ-046-acceptance.md). Released in
 **v0.20.0**. Three things are not what the draft assumed:
 
 1. **No publication turn, no publication capability.** The draft's restricted worker would have added a

@@ -96,20 +96,18 @@ qualified by this normal-retirement evidence. Other platforms refuse stdio befor
 than using Pi's native close without equivalent ownership checks. No portable stdio cleanup or
 abnormal-exit guarantee is claimed.
 
-## Migration evidence
+## Implementation and regression coverage
 
-Operator authorized legacy SSE retirement and daemon-side client migration on 2026-10-02.
-No personal server/account or native-search trial was run, and no publication was authorized.
-The implementation and fixtures are in `apps/daemon/src/lib/mcp/` and:
+The daemon-owned implementation is in `apps/daemon/src/lib/mcp/`. Regression fixtures cover:
 
-- `test/lib/mcp-{call,pool,stdio-owner,retirement}.test.ts`: local real Pi HTTP/stdio composition,
+- `apps/daemon/test/lib/mcp-{call,pool,stdio-owner,retirement}.test.ts`: local real Pi HTTP/stdio composition,
   pagination, pooling, tool drift, busy reaping, opening retirement, cancellation, no replay,
   credential/redirect boundaries, descendant shutdown and pure reused-identity refusals.
-- `test/routes/mcp.test.ts`: schema/API retirement, encrypted write-only credentials,
+- `apps/daemon/test/routes/mcp.test.ts`: schema/API retirement, encrypted write-only credentials,
   stale config/revocation, credential rotation and namespace collisions.
 - `apps/cli/test/mcp.test.ts`: SSE rejection before any client/auth lookup and correct help.
 - `scripts/installer-e2e.mjs`: installed CLI MCP registration/discovery, no token disclosure,
   deterministic Linux Agent/Pi/worker/IPC tool receipt round-trip and delete.
 
-Final regression/review/artifact evidence is recorded in [Pi runtime](pi-runtime.md).
-These fixtures are not entitlement, human UI acceptance, site research or release approval.
+See [embedded Pi ownership](pi-runtime.md). Fixtures do not establish account entitlement,
+independent human acceptance or arbitrary site access.

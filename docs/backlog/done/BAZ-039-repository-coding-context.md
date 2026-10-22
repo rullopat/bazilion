@@ -31,7 +31,7 @@ required. One Agent can finish the work. Existing teammates can help through nor
 
 This story owns **discovering and understanding** the repository. BAZ-040 owns **trying commands and
 preparing the actual execution environment**. Neither story claims that old test results verify
-current code. The concrete shared design is [Agent-led coding](../design/agent-led-coding.md).
+current code. The concrete shared design is [Agent-led coding](../../coding-environments.md).
 
 ## Agent workflow
 
@@ -103,9 +103,9 @@ local implementation. Change the primary acceptance fixture and prompt/tool guid
 Agent-led task. Remove operator preview and “Add to checks” from the required journey; inspection
 can remain under advanced diagnostics. Do not discard useful safety code to remove the dashboard.
 
-Existing [progress](../BAZ-039-progress.md) proves the previous implementation, not all revised
-criteria. The [2026-09-08 refinement](../archive/BAZ-039-2026-09-08-operator-refinement.md) is historical.
-The revised Agent task and same-Team reuse are demonstrated in the [remake acceptance](../BAZ-039-040-agent-led-acceptance.md). The story remains in progress until PR delivery and release.
+The Agent-led remake and same-Team reuse shipped in v0.16.0 as recorded below. Earlier operator-
+probe observations are not acceptance of every revised criterion; current bounds are documented
+in [repository context](../../repository-context.md).
 
 ## Dependencies and exclusions
 

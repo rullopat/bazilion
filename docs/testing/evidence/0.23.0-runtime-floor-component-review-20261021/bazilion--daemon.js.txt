@@ -1,4 +1,0 @@
-#!/usr/bin/env node
-import './runtime-version.js'
-
-await import('./daemon-main.js')

@@ -179,5 +179,5 @@ file-level (a snapshot already records a digest per changed path, so staleness s
 synthesizing hunk identities, and a selected line range travels as context), and applicability is
 three-valued — `identical` / `changed` / `unknown` — and never rendered as a pass.
 
-Evidence: [acceptance record](../BAZ-042-acceptance.md), [progress record](../BAZ-042-progress.md),
+Evidence: [historical acceptance](https://github.com/rullopat/bazilion/blob/231911c78b9e882d3d03971d76435145c3954932/docs/backlog/BAZ-042-acceptance.md), [historical implementation](https://github.com/rullopat/bazilion/blob/231911c78b9e882d3d03971d76435145c3954932/docs/backlog/BAZ-042-progress.md),
 nine adversarial cases in the release gate, and `scripts/check-git-review-ui.mjs` for the panel.

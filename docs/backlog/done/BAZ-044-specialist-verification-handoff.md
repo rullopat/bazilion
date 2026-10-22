@@ -199,8 +199,8 @@ commit/push/PR creation, deployment, and treating a tester's conclusion as execu
 ## As-built release record
 
 Shipped in **v0.18.0** on 2026-09-16. Implemented in one pass across ten slices, with a defect review
-before release; see [the progress log](../BAZ-044-progress.md), [the acceptance record](../BAZ-044-acceptance.md)
-and [the review](../BAZ-044-review.md).
+before release; see [historical implementation](https://github.com/rullopat/bazilion/blob/231911c78b9e882d3d03971d76435145c3954932/docs/backlog/BAZ-044-progress.md), [historical acceptance](https://github.com/rullopat/bazilion/blob/231911c78b9e882d3d03971d76435145c3954932/docs/backlog/BAZ-044-acceptance.md)
+and [historical review](https://github.com/rullopat/bazilion/blob/231911c78b9e882d3d03971d76435145c3954932/docs/backlog/BAZ-044-review.md).
 
 **Delivered as scoped.** One typed request binds a BAZ-042 snapshot, at most eight captured commands and
 the frozen admitted environment to one same-Team specialist. The capability is two tools with no command

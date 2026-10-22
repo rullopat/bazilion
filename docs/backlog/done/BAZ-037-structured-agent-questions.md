@@ -223,7 +223,7 @@ on a persistent workflow engine or changing its single-operator model.
 ## Implementation and acceptance evidence
 
 The implementation is committed in PR #44 at `6e37e77`; this story shipped in v0.15.0. Passing
-integrated checks and commit references are tracked in [the milestone progress log](../BAZ-035-038-progress.md).
+integrated checks and commit references are tracked in [the historical milestone record](https://github.com/rullopat/bazilion/blob/231911c78b9e882d3d03971d76435145c3954932/docs/backlog/BAZ-035-038-progress.md).
 See [Agent questions](../../questions.md) for operator instructions and the repeatable real-worker demo.
 
 | Acceptance | Evidence |

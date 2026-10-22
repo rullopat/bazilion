@@ -114,4 +114,4 @@ The first slice checks import/spawn, exact role documents and skill attachment, 
 unfilled brief context across two Teams, the directed policy matrix and rejected direct specialist ingress. It **does not**
 run a model, demonstrate research/rework, or qualify the full D/S/L/H journey. Those observations remain
 open in [BAZ-064](../../docs/backlog/in_progress/BAZ-064-content-team-recipe-and-manual-handoff.md)
-and [the shared protocol](../../docs/testing/beta-readiness/content-team-acceptance.md).
+and [the parent story's acceptance criteria](../../docs/backlog/draft/BAZ-063-content-team-real-world-acceptance.md#acceptance-cases).

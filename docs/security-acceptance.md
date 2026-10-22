@@ -1,6 +1,6 @@
 # Security acceptance gate
 
-Bazilion 0.13's deterministic personal-server security gate is:
+The deterministic personal-server security gate is:
 
 ```sh
 pnpm security:acceptance
@@ -20,24 +20,18 @@ validate the exact hardened invocation and fail-closed checks without claiming a
 daemon was exercised. The repository has no deterministic browser viewport harness, so gateway
 security assertions are DOM-independent; this gate does not make a visual mobile-layout claim.
 
-## Release evidence
+## What the gate establishes
 
-Record these as four separate states:
-
-1. Offline acceptance passed: preserve the commit SHA and the command's final case count.
-2. Live private-gateway preflight passed: on the target server, run the read-only
-   `bazilion gateway preflight` and record its timestamp separately.
-3. Release committed: record the release commit or tag.
-4. Release published: record the registry and GitHub release result.
-
-A green offline gate is not a deployment or penetration-test claim. It does not inspect the live
+An offline suite pass, live `bazilion gateway preflight`, release commit and published release
+are separate facts. A green offline gate is not a deployment or penetration-test claim. It does not inspect the live
 tailnet, firewall, reverse proxy, cloud account, third-party logs, dependency supply chain, or
 unknown vulnerabilities.
 
 ## Failure handling
 
-The runner deletes its temporary Vitest JSON report even on failure and prints no synthetic secret
-values. Reproduce a failure with the exact file and test name from the manifest. If a temporary
+The runner removes its private temporary Vitest report only after successful execution and report
+validation. Failed/partial/missing/malformed reports retain their diagnostic directory; treat all
+such output as potentially sensitive. Reproduce a failure with the exact file and test name from the manifest. If a temporary
 artifact must be preserved for diagnosis, first inspect it for bearer/cookie/CSRF values, OAuth or
 Telegram credentials, encrypted-secret plaintext, and private host paths; retain only a redacted
 copy outside the repository.

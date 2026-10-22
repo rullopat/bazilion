@@ -19,7 +19,7 @@ created: 2026-09-19
 
 Create the daemon-owned connection and publication contract with a deterministic local/fake
 adapter. Official platform adapters are separate work. The first content-Team test now uses
-[Mastodon manual handoff](../design/content-platform-first-test.md); a Mastodon adapter would need
+[Mastodon manual handoff](BAZ-063-content-team-real-world-acceptance.md); a Mastodon adapter would need
 its own refinement. BAZ-061/062 retain the deferred Meta/LinkedIn scope.
 
 ## Why
@@ -61,7 +61,7 @@ through browser automation, modifying Git-publication contracts, analytics or po
 ### Composed acceptance ownership
 
 Own the shared deterministic/fake-host contract for **PUB-01–06** in the
-[content-Team protocol](../../testing/beta-readiness/content-team-acceptance.md). Each separately
+[parent acceptance cases](BAZ-063-content-team-real-world-acceptance.md#conditional-publication). Each separately
 refined adapter owns its platform contract and authorized live/human observations. BAZ-061/062
 cover Meta/LinkedIn only; they do not establish Mastodon support. BAZ-063 records the separate
 publication result; its core children BAZ-064/065 stop at approved manual handoff. None of these
@@ -74,7 +74,7 @@ publication cases is a prerequisite for that manual core, and no execution is cl
 - Isolated posture admission and connection storage exclusion from all generic secret-merging paths.
 - Asset retention/reference policy inherited from BAZ-058.
 
-See [design](../design/social-content-team.md). Depends on BAZ-058 and security refinement;
+See [content-Team parent story](BAZ-063-content-team-real-world-acceptance.md). Depends on BAZ-058 and security refinement;
 [BAZ-059](../done/BAZ-059-pi-image-generation.md) adds bounded Pi-backed image generation, not
 publishing authority or protected web search. Safe research capability for an isolated publishing
 Team remains a separate refinement prerequisite.

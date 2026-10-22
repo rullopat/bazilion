@@ -4,11 +4,11 @@
 
 Multi-agent runtime built on [Pi's coding agent](https://www.npmjs.com/package/@earendil-works/pi-coding-agent) as the core engine, with [OpenClaw](https://docs.openclaw.ai)-inspired skill compatibility around it. Pi owns the per-turn agent loop, transcript storage, compaction, provider execution, and coding tools; Bazilion wraps that engine with local-first orchestration: profiles, teams, skills, shared memory, a DB-backed mailbox, a daemon, CLI, and web UI.
 
-Local-only. TypeScript + Node monorepo (pnpm + tsx + vitest). The web UI lives at `apps/web` (TanStack Start + React 19 + Tailwind v4 + shadcn/ui) and is bundled into the published CLI package. It pairs with the standalone Hono daemon at `apps/daemon`. The CLI talks over HTTP, so keep `bazilion dashboard` or `bazilion serve` running while you work in another terminal.
+Local-first, with loopback-only listeners and an optional private HTTPS gateway. TypeScript + Node monorepo (pnpm + tsx + vitest). The web UI lives at `apps/web` (TanStack Start + React 19 + Tailwind v4 + shadcn/ui) and is bundled into the published CLI package. It pairs with the standalone Hono daemon at `apps/daemon`. The CLI talks over HTTP, so keep `bazilion dashboard` or `bazilion serve` running while you work in another terminal.
 
 ## Status
 
-Whole-run subprocess isolation with worker↔daemon Node-IPC for messaging, ChatGPT OAuth, qmd memory (team-shared), scheduler/triggers, profile skills mode, and teams (one-to-one agent membership). The Pi agent engine remains the center of every chat turn; the daemon is the **single owner of `~/.bazilion`** — config + secrets live in the SQLite DB, the only other file at the root is `auth.json` (the bootstrap bearer). See `docs/architecture.md` for the engineer-to-engineer reference.
+Per-turn subprocess execution with worker↔daemon Node-IPC for messaging, ChatGPT OAuth, qmd memory (team-shared), scheduler/triggers, profile skills mode, and teams (one-to-one agent membership). The Pi agent engine remains the center of every chat turn; the daemon is the **single owner of `~/.bazilion`** — config + secrets live in the SQLite DB, the only other file at the root is `auth.json` (the bootstrap bearer). See the [documentation index](docs/README.md) and [architecture](docs/architecture.md).
 
 ## Quickstart
 
@@ -34,13 +34,12 @@ npm install -g bazilion
 bazilion dashboard
 ```
 
-`dashboard` starts the daemon on `127.0.0.1:4321`, starts the bundled web UI on `127.0.0.1:4322`, and opens the dashboard in your browser. The daemon auto-bootstraps `~/.bazilion` on first run (creates dirs, runs migrations, mints the bootstrap token, writes `auth.json`). The local CLI reads that token automatically. While provider setup is still incomplete, you can also paste it into the browser login to obtain a bounded setup session; remote CLI and mobile clients always use separately minted device credentials.
+`dashboard` starts the daemon on `127.0.0.1:4321`, starts the bundled web UI on `127.0.0.1:4322`, and opens the dashboard in your browser. The daemon auto-bootstraps `~/.bazilion` on first run (creates dirs, runs migrations, mints the bootstrap token, writes `auth.json`). The local CLI reads that token automatically. While provider setup is still incomplete, you can also paste it into the browser login to obtain a bounded setup session; remote native clients use separately minted device credentials. The former Expo app is removed; native mobile apps remain future scope.
 
-> **Schema contract:** Bazilion migrates its database forward on startup. Before the first migration
-> touches an existing home it writes a verified `bazilion.pre-migration-<timestamp>.db` snapshot
-> beside `bazilion.db`, and a database written by a newer release is refused rather than mutated.
-> Homes from before this contract (0.19.x and earlier) fail closed with reset guidance. There are
-> still no database, API, URL, or filesystem compatibility adapters. See `docs/upgrades.md`.
+> **Alpha schema contract:** 0.23 refuses incompatible prior homes, including 0.22. Preserve the
+> entire old DB/auth pair, transcripts, Results and external Team work before an explicitly
+> authorized reset/rebootstrap. There is no automatic import or pre-refusal snapshot guarantee.
+> Unknown, drifted or newer schemas fail closed. See [upgrade guidance](docs/upgrades.md).
 
 For a daemon-only CLI flow:
 
@@ -60,9 +59,10 @@ bazilion provider models-set anthropic claude-opus-5
 bazilion agent spawn --profile default --name first
 # → spawned agent <uuid> (first)
 
-# Chat — interactive REPL or one-shot.
-bazilion agent chat <uuid>
+# One-shot chat (use the web UI for an interactive conversation).
 bazilion agent chat <uuid> --message "say hi"
+# Or pipe input:
+printf 'say hi\n' | bazilion agent chat <uuid>
 ```
 
 In the web UI, open `http://127.0.0.1:4322` after running `bazilion dashboard`. On a fresh install every page redirects to `/welcome` until you finish first-run setup: enable a provider on `/config` and save at least one curated model for it. The moment both conditions hold, a `default` profile + `default` team (at `~/.bazilion/teams/default/`) are auto-created wired to that model. The default profile uses `skillsMode: 'all'` so spawned agents inherit every installed skill out of the box.
@@ -107,7 +107,7 @@ bazilion team user-md show|set|clear      # per-team USER.md (read-only to agent
 bazilion team policy show|export|import|diff|evaluate|blocks  # effective live policy
 bazilion agent spawn|list|show|archive|unarchive|delete  # agent lifecycle
 bazilion agent edit <id> [--model …] [--reasoning …]    # patch agent settings
-bazilion agent chat <id> [--message X] [--image path] [--file path]  # REPL/one-shot; attach images (vision) or any file (reference)
+bazilion agent chat <id> --message X [--image path] [--file path]  # one-shot; piped stdin also supported
 bazilion agent cancel <id>                 # abort an in-flight turn
 bazilion agent move <id> <team>           # move an agent to a different team
 bazilion agent skill add|rm <id> <name>    # attach/detach a skill on an agent
@@ -178,10 +178,10 @@ create a fresh encrypted backup.
 - **Mailbox** — `messages` table. Agents talk to each other via `send_message` / `read_inbox` / `wait_for_reply` tools, via `bazilion send` from the CLI, or from outside the loop: `bazilion inbox list <agent> [--unread]`, `bazilion inbox show <id>`, `bazilion inbox read <id>`, or the web UI at `/agents/<id>/inbox`. The worker delegates these tool calls to the daemon over Node IPC — workers don't hold their own SQLite handle.
 - **Agent-loop circuit breaker** — every Agent message carries a durable causal chain id and hop count. Explicit replies inherit from `reply_to`; messages sent from an inbox wake inherit the highest-hop claimed message even if the Agent omits `reply_to`. The daemon rejects sends beyond `BAZILION_AGENT_LOOP_MAX_HOPS` (default 8) before another LLM turn can wake and records payload-free diagnostics visible in the Agent inbox, HTTP API, and `bazilion inbox loop-breaks`.
 - **Trigger** — an interval in seconds or cron expression that periodically wakes an agent with a stored instruction. An in-process scheduler ticks every 5 s (overridable via `BAZILION_SCHEDULER_TICK_MS`; disable with `BAZILION_SCHEDULER=off`) and fires due triggers through the same code path as user chat. Example: `bazilion trigger add <agent> --every 300 --message "check your inbox"`.
-- **Web discovery** — ordinary interactive Agents use configured Brave/SearXNG or experimental native OpenAI/ChatGPT search on their own eligible model/account. Search and source-reading evidence are separate; no engine/account/browser fallback. Route settings are on `/config` → Web Search; inspect with `bazilion agent search status <id>`. Native entitlement/live qualification remains pending. See [web research](docs/web-research.md).
+- **Web discovery** — ordinary interactive Agents use configured Brave/SearXNG or experimental native OpenAI/ChatGPT search on their own eligible model/account. Search and source-reading evidence are separate; no engine/account/browser fallback. Route settings are on `/config` → Web Search; inspect with `bazilion agent search status <id>`. API-key search remains live-unqualified; subscription acceptance is limited, not blanket entitlement. See [web research](docs/web-research.md).
 - **Browser automation** — agents get a `browser_*` tool suite backed by a persistent per-agent Playwright (Chromium) session that survives across turns. Perception is accessibility-tree-first (`browser_snapshot` → aria tree with `[ref=eN]` refs; no vision model needed); screenshots are a secondary tool rendered inline in chat. A network-layer SSRF guard blocks loopback/private targets by default. The matching Chromium build is installed with Bazilion. Toggle/tune on `/config` → Browser Automation.
 - **MCP** — the daemon uses Pi's standalone [Model Context Protocol](https://modelcontextprotocol.io) client over stdio (Linux-only local subprocess) or Streamable HTTP. Other platforms refuse stdio before spawn; use HTTP instead. Admitted ordinary interactive Agents receive `mcp__<server>__<tool>` proxies over IPC; credentials and persistent clients remain daemon-owned. Legacy SSE is retired under the clean-install alpha schema contract. Manage from `bazilion mcp …` or `/config/mcp`; see [MCP configuration and safety](docs/mcp.md). Example: `bazilion mcp add playwright --command npx --args "-y @playwright/mcp"`.
-- **Image generation (0.22 development)** — opt-in `image_generate` offers direct OpenAI API-key access, ChatGPT/Codex login, or Pi's OpenRouter image API. Automatic mode follows enabled OpenAI text providers (the Agent's own route when applicable); explicit image choices override it. Stored credentials and provider failures never trigger a billing-route fallback. Images are durable, policy-authorized Results; rework preserves the original. Account entitlement remains subject to live qualification. See [configuration, limits and the content-Team recipe](docs/image-generation.md).
+- **Image generation** — opt-in `image_generate` offers direct OpenAI API-key access, ChatGPT/Codex login, or Pi's OpenRouter image API. Automatic mode follows enabled OpenAI text providers (the Agent's own route when applicable); explicit image choices override it. Stored credentials and provider failures never trigger a billing-route fallback. Images are durable, policy-authorized Results; rework preserves the original. ChatGPT-only live acceptance is bounded; direct OpenAI/OpenRouter routes remain live-unqualified. See [configuration, limits and the content-Team recipe](docs/image-generation.md).
 - **Images** — bidirectional on every client. Tool-produced images (browser screenshots, MCP image results) show as standalone deliverables: an image block in the web chat, a photo on Telegram. You can also send images *in*: attach/paste/drag in the web composer, send a photo to a bound Telegram topic, or `bazilion agent chat <id> --image <path>` — the model sees them via vision. (Audio/video are deferred — the model can't perceive non-image media yet.)
 - **Documents** — bidirectional too, via store-and-reference (the model can't perceive raw files, so it gets a path and decides how to process). Attach any file in (web 📎/paste/**drag-and-drop**, `bazilion agent chat <id> --file <path>`, or a Telegram document) → saved under the agent's home, referenced by path for the agent to open with its tools. Agents send files back with `deliver_file` → an immutable saved result, a persistent web download card, an authorized Telegram document, and CLI download support. Find them under **Team → Results** or `bazilion result list`. Outgoing files are limited to 25 MiB each and 1 GiB retained bytes per home. See [saved results](docs/results.md) for previews, approvals, retention, and backup behavior.
 
@@ -196,11 +196,10 @@ bazilion/
 ├── apps/
 │   ├── cli/                      # bazilion binary
 │   ├── daemon/                   # Hono HTTP API (booted by `bazilion serve`)
-│   ├── web/                      # TanStack Start UI (pairs with apps/daemon)
-│   └── mobile/                   # Expo / React Native app (private HTTPS gateway pairing)
+│   └── web/                      # TanStack Start UI (pairs with apps/daemon)
 └── packages/
     ├── api-types/                # hermetic HTTP/IPC wire types (zero deps)
-    └── client/                   # cross-origin HTTP client used by CLI + mobile
+    └── client/                   # platform-neutral HTTP client used by CLI/native consumers
 ```
 
 The daemon's data layer (`apps/daemon/src/core/`: DB, repos, profile/agent/team ops, skills) and LLM/runtime stack (`apps/daemon/src/runtime/`: providers, tools, memory, worker subprocess) live inside the daemon — they're not separate packages.
@@ -235,7 +234,7 @@ pnpm tsx apps/cli/src/index.ts auth openai login --device-code
 # CLI device-code flow from a remote client or when localhost:1455 is busy.
 ```
 
-After connecting, enable `openai-codex` on `/config` and curate at least one model (e.g. `gpt-6-astra`, `gpt-5.6-terra`, or `gpt-5.6-sol`). GPT-6 Astra is available through both OpenAI API keys and ChatGPT OAuth in the Pi 0.85.1 catalog. Credentials are stored AES-256-GCM-encrypted in the daemon's `secrets` table (key derived from the bootstrap token in `auth.json`); the access token auto-refreshes via the stored refresh token.
+After connecting, enable `openai-codex` on `/config` and curate at least one model (e.g. `gpt-6-astra`, `gpt-5.6-terra`, or `gpt-5.6-sol`). The embedded Pi 1.0.0 catalog includes OpenAI and ChatGPT model choices; catalog membership is not account entitlement. Credentials are stored AES-256-GCM-encrypted in the daemon's `secrets` table (key derived from the bootstrap token in `auth.json`); the access token auto-refreshes via the stored refresh token.
 
 ## Uninstalling
 

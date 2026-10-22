@@ -6,14 +6,14 @@ size: S
 created: 2026-09-21
 refined: 2026-10-17
 target_release: 0.23.0
-note: Limited scope explicitly accepted by the operator on 2026-10-17. Implemented; 94 focused tests, 21 required BAZ-068 security cases, root/web types and web build pass. Initial independent review's P1 corrected with synchronous final release and regression tests; fresh re-review ACCEPT on 2026-10-17. Released0.23.0. Guaranteed abnormal host-command recovery is deferred.
+note: Limited scope accepted and independently reviewed for 0.23.0. Guaranteed abnormal host-command recovery remains deferred; unknown ownership stays blocked.
 ---
 
 # BAZ-068 — Supported, limited workspace recovery
 
 Released2026-10-21 in [v0.23.0](https://github.com/rullopat/bazilion/releases/tag/v0.23.0).
-[Release closeout](../../testing/0.23.0-release-status.md) does not expand the accepted cleanup scope.
-Unknown ownership stays blocked; abnormal host-command recovery remains deferred.
+Unknown ownership stays blocked; release does not expand the accepted cleanup scope or
+establish abnormal host-command recovery.
 
 ## Accepted 0.23.0 scope — 2026-10-17
 
@@ -66,38 +66,19 @@ daemon restart or an operator acknowledgement does not establish their cleanup.
 - Team page **Workspace recovery**, with explicit explanations and read-only status refresh.
 - [Operator instructions and limitations](../../workspace-recovery.md).
 
-## Qualification / closeout — 2026-10-17
+## Tests and As-built limits
 
-- **94 tests / seven files pass**, with all **21 current BAZ-068 security-manifest cases** matched
-  to passed assertions in the Vitest JSON report. Root/web typechecks and the web production build
-  pass. Scoped Biome has no errors (two pre-existing unused-import warnings in the shared Teams
-  route); diff whitespace checks pass. This is not the whole-tree/security release gate.
-- Isolated same-UID test home, private network/PID/proc, read-only repository/system mounts,
-  scheduler/browser/images off and no connected-account access. Final logs:
-  `/tmp/baz068-reviewed-5MNQpr/{tests.json,status.log,security-match.json,web-build.log,lint.log}`.
-  Earlier implementation evidence and fixture failures remain in `/tmp/baz068-final-vVDtwq`
-  and `/tmp/baz068-check-9aYFWo`:
-  missing daemon-test client dependency, JSON schema rejection, and first-run setup refusal.
-  Fixes stay in tests; production schema/setup gates were not weakened.
-- Removed obsolete security entries for the canceled supervision path and replaced them with
-  current limited-scope cases; no claim that the removed behavior is still qualified.
-- Focused tests cover Team/admin selection, active/restored/changed identity, missing or changed
-  records, concurrent/reentrant attempts, recorded confirmations, refusal without confirmations,
-  real controlled child cleanup, real HTTP/client transport and CLI/presentation behavior.
-- A controlled child is not a full Agent/provider/container qualification. HTTP fixtures with prior
-  confirmations model those records; they do not prove a real Docker teardown occurred.
-- No live operator failure experiment, account access, reboot, original-home mutation or unsafe
-  cleanup is required or authorized by this story.
-- Initial independent review found a P1 finalization microtask gap; final validation now shares
-  the coordinator's synchronous deletion transaction. Three nested-microtask regressions refuse
-  confirmation, identity and registration drift while retaining the blocker.
-- **Independent re-review ACCEPT**, native fresh-context reviewer run
-  `30329d53-b614-4b6c-8e8f-63e1c2d5891c`: original P1 resolved, no remaining P0/P1/P2 findings
-  within the accepted scope/fix blast radius. Parent confirmed every reviewed source digest
-  unchanged before closing; only acceptance documentation/backlog bookkeeping changed afterward.
-  [Durable review/evidence record](../BAZ-068-independent-review-20261017.md).
-- **Done means limited-scope story acceptance, not release.** Whole-release validation, packaging
-  and publication remain separate; scoped passes do not approve 0.23.0.
+Limited-scope implementation and independent review were accepted before 0.23.0 publication.
+Required coverage remains:
 
-Historical safety rationale: [audit](../BAZ-068-recovery-safety-refinement-20261005.md).
-Current review checklist: [contract](../BAZ-068-recovery-review-contract-20261005.md).
+- Team/admin selection; active, restored or changed identity; missing/inconsistent inventories.
+- Concurrent/reentrant attempts, resource substitution and absent cleanup confirmations.
+- Final confirmation/identity/registration drift, including nested microtasks, must retain the
+  blocker. Validation and writer deletion share the coordinator's synchronous transaction.
+- Controlled owned-child cleanup, HTTP/client transport and CLI/web presentation.
+- No signalling unconfirmed workers, force unlock, turn replay, credential/path/PID disclosure or
+  caller-supplied cleanup assertion.
+
+A controlled child is not full Agent/provider/container qualification; seeded confirmation records
+are not proof of an actual Docker teardown. No original-home failure experiment, account access,
+reboot or unsafe ownership recovery is authorized. Done covers the limited contract only.

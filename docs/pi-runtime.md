@@ -1,134 +1,61 @@
-# Embedded Pi runtime: 1.0.0 upgrade and MCP ownership
+# Embedded Pi runtime
 
-## Current boundary (2026-10-02)
+Bazilion pins `@earendil-works/pi-ai`, `pi-agent-core`, `pi-coding-agent` and standalone
+`pi-mcp` to **1.0.0** in the daemon and packed CLI. This is the embedded runtime, not the
+operator's global Pi installation.
 
-Bazilion pins `@earendil-works/pi-ai`, `pi-agent-core` and `pi-coding-agent` to **1.0.0**
-in both the daemon and packed CLI. This updates the embedded engine, not the operator's global
-Pi installation. The bundled official OpenAI and ChatGPT/Codex catalogs include **`gpt-6.1-sol`**.
-It is the requested default for forthcoming research qualification attempts, not a silent
-replacement of existing Agent/Profile models or historical trial evidence.
+## Ownership
 
-Native discovery admits this exact model only when the bundled provider, API and official
-endpoint match. An unrecognized next model still refuses; catalog membership is not hosted-search
-entitlement or a successful live trial. No authenticated research ran during the upgrade.
+Pi owns the Agent's provider/tool loop, compaction, replay and canonical session JSONL.
+Bazilion owns Agent/Team identity, policy, credentials, tool admission, subprocesses,
+resource lifecycles and durable Results. Workers receive resolved turn inputs and use
+identity-bound IPC for daemon-owned operations; they never open the live DB.
 
-The daemon remains the credential, policy and resource owner. SDK sessions have explicit in-memory
-credentials/settings, `modelsPath: null`, `allowModelNetwork: false`, disabled automatic resource
-loading, and **`cacheWarming: 'off'`**. Protected/restricted capabilities are not widened.
-No Pi MCP, `codemode` or `tool_search` extension is enabled by this upgrade.
+SDK sessions use explicit in-memory credentials/settings, `modelsPath: null`,
+`allowModelNetwork: false`, disabled automatic resource loading and `cacheWarming: 'off'`.
+Pi CLI MCP/codemode/tool-search extensions are not implicitly enabled. A model catalog
+entry does not prove provider/account entitlement; existing Agent/Profile choices are
+not silently rewritten when the bundled catalog changes.
 
-Pi 1.0 unifies chat, image and classifier providers through `createModels`. Bazilion's existing
-image host now selects `getModelOfType('image', ...)` on `openrouterProvider()`. Its separate
-admission, bounded transport, durable result capture, no-replay and communication controls remain
-in force. Pi's codemode image/classifier paths are not an alternative admission or billing route.
+## MCP stays inside the daemon
 
-## Why MCP cannot simply move into a worker
+A worker lasts one turn; MCP clients may persist across turns. Putting Pi's CLI MCP extension
+in a worker would introduce ambient discovery, another credential/config store and per-turn
+connection ownership. A hidden tool or server annotation is not an authorization boundary.
 
-Pi's **CLI** loads MCP/codemode/tool-search built-ins; embedded **SDK** sessions opt in through
-extension factories. Pi's default MCP extension connects on session start, disconnects with the
-session, discovers `mcp.json`, and owns its own OAuth files/logs. Bazilion's worker lasts one turn,
-while its daemon's MCP resources persist across turns. A direct worker delegation would:
+The daemon uses standalone `@earendil-works/pi-mcp` for protocol/framing/HTTP sessions and
+multimodal results. Bazilion retains:
 
-- move server credentials and persistent clients out of the daemon;
-- reconnect/retire servers every turn, including stateful stdio sessions;
-- introduce a second config/auth store and project-controlled executable discovery;
-- potentially expose resource tools, codemode and classifier/image calls beyond admitted tools.
+- Canonical `mcp_servers` configuration and encrypted credentials.
+- Turn-specific server/tool/config/credential admission and worker IPC projection.
+- Process-lifetime resource slots, cancellation, busy reaping and opening-client retirement.
+- Ownership until close settles; uncertain effects are never permission to replay a tool call.
+- No ambient `mcp.json`, shell interpolation, automatic OAuth or resource discovery.
 
-A `hidden` tool or a server annotation is not an authorization boundary. Restricted workers must
-never receive the server capability in the first place.
+Streamable HTTP is portable. Stdio is **Linux-only**, refused before allocation or spawn on
+other platforms. Pi 1.0's native close can settle after its leader exits while descendants
+survive; `lib/mcp/stdio-owner.ts` guards anchored Linux descendant retirement. Unknown identity
+or cleanup retains a blocked slot, not a native-close fallback. Legacy SSE is retired and its
+old schema requires clean rebootstrap. See [MCP](mcp.md) and [upgrades](upgrades.md).
 
-## Recommended delegation: Pi client inside the daemon
+## Auxiliary capabilities
 
-Pi 1.0 ships **`@earendil-works/pi-mcp`**, a standalone client with no dependency on Pi sessions or
-the official MCP SDK. Its `McpClient`, `StdioTransport`, `StreamableHttpTransport`, cancellation and
-process-group shutdown are a suitable replacement for Bazilion's low-level protocol/transport
-implementation **inside the daemon**. Its OAuth helper accepts an injected durable state store;
-it does not choose an auth-file path or open a browser itself.
+Native search is an explicit daemon-owned request, not an ambient Pi extension or a second
+agent harness. It admits the selected official model/endpoint and account only. Catalog
+membership is not live search qualification. See [web research](web-research.md).
 
-Keep Bazilion's canonical `mcp_servers` table, encrypted secrets, API/CLI/web management, turn-bound
-IPC, selected tool projection and process-lifetime resource registry. Replace implementation
-plumbing, not product ownership. Use explicit daemon-supplied configs/credentials, no ambient
-`mcp.json`, `!command` interpolation or automatic OAuth sign-in. Preserve no tool-call replay and
-truthful uncertain-effect handling. Client reconnects are not permission to repeat a tool call.
+The OpenRouter image host uses `createModels` and `getModelOfType('image', ...)` with
+`openrouterProvider()`. Direct OpenAI and ChatGPT image routes have separate bounded daemon
+adapters. Image admission, no-replay receipts, durable capture and disclosure policy remain
+independent from chat credentials and Pi's codemode image/classifier paths.
+See [image generation](image-generation.md).
 
-### Implemented after explicit operator approval (2026-10-02)
+## Upstream interfaces
 
-Legacy SSE is retired across the canonical schema, wire types, API, CLI and web UI. Old
-SSE-capable schemas require clean rebootstrap, even without SSE rows; no ALTER/import adapter
-or guessed endpoint fallback was added. Pi's event-stream framing for Streamable HTTP remains
-supported and is not legacy SSE.
+- [Pi v1.0.0](https://github.com/earendil-works/pi/releases/tag/v1.0.0)
+- [SDK](https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/sdk.md)
+- [Models](https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/models.md)
+- [Standalone MCP client](https://github.com/earendil-works/pi/blob/v1.0.0/packages/mcp/README.md)
 
-The daemon now directly depends on `pi-mcp@1.0.0`, not the official MCP SDK. It delegates
-protocol/framing/HTTP sessions and multimodal projection to Pi, while retaining captured
-server/tool/credential admission, bounded catalogs, turn cancellation, shared ownership and
-no uncertain tool-call replay. Protected/background capabilities and resource discovery remain
-unchanged. Failed retirement retains ownership instead of orphaning a slot.
-
-**Observed Pi 1.0 edge:** native stdio close can resolve after the leader exits with only SIGTERM
-for a remaining descendant. A Linux ownership wrapper handles anchored original descendants
-that ignore SIGTERM, refusing unknown/reused identities. This is not a replacement MCP protocol
-stack. Native cross-platform closure has no claimed Linux proof.
-
-**0.23.0 platform update:** required macOS CI observed the surviving-descendant edge. With explicit
-operator approval, stdio now refuses before slot allocation/spawn off-Linux; Streamable HTTP stays
-available. The Linux retirement guard is unchanged. Earlier cross-platform limits below remain
-historical observations, not acceptance of native-close fallback.
-
-See [MCP operator contract and evidence](mcp.md). MCP account/OAuth trials, native research,
-human UI acceptance and publication remain separate approvals.
-
-### Reconciled migration evidence
-
-- Initial independent Sol review (`/tmp/bazilion-mcp-review-current`) blocked two P1 and one P2:
-  Pi initialization failure cleared client transport ownership too early; native close could
-  signal a reused numeric group before our guard; mixed-case JSON/error bodies bypassed the cap.
-  All three were repaired, never relabelled as passing.
-- `retirement.ts` retains a shared transport close independent of Pi's client reference; only
-  settled successful retirement releases the slot. Actual Pi memory/HTTP cleanup fixtures cover
-  pending and rejected close. Linux native close is entered only after its child handle is gone;
-  guarded normal TERM/KILL replaces its unsafe timers, not its protocol/framing. HTTP caps include
-  normalized media types and every non-SSE/error body.
-- Repaired independent Sol follow-up (`/tmp/bazilion-mcp-repaired-review-current`) accepts the
-  narrow candidate with **25 pins unchanged** and no remaining actionable P1/P2. Pure checks,
-  not fixture reruns/live entitlement/human acceptance. `/proc` checks are non-atomic, detached
-  sessions and abrupt-exit/emergency hooks are outside normal-retirement qualification;
-  non-Linux closure remains unobserved.
-- **113 scoped tests / 12 files**, root/web types passed. Final full **2,301 passed / 47 skipped;
-  267 files passed / seven skipped** (`/tmp/bazilion-mcp-repaired-full.log`, exit 0).
-  Security **261 required cases passed** (`/tmp/bazilion-mcp-repaired-security.log`, exit 0).
-- Scoped Biome exits 0 with seven test-style warnings. Whole-tree lint still has **10 unrelated
-  errors / 110 warnings / nine infos** (`/tmp/bazilion-mcp-whole-lint.log`); unrelated edits were
-  preserved. This is not a whole-HEAD approval.
-- Fresh rebuilt packed Linux installation passed with actual default Agent/Pi/worker/IPC/local
-  HTTP MCP execution and a receipt observed by the scripted parent, exactly one tool POST,
-  encrypted write-only credential, SSE refusal, delete, search/browser diagnostics without
-  launch, deterministic chat/coding and uninstall cleanup.
-  `/tmp/bazilion-mcp-repaired-packed-current` points to logs/artifact; exit 0.
-- The first installed MCP trial returned only prose because the fixture mistook array user
-  content for a string; it **failed**, not an MCP pass. Corrected array recognition then passed
-  on the earlier artifact, followed by the final repaired rebuild/pass above. No public model
-  or account/server was used.
-- Source/dependency/test freeze: `/tmp/bazilion-mcp-frozen.sha256`. Artifact:
-  `/tmp/bazilion-mcp-repaired-packed-jpi270/bazilion-0.22.0.tgz`, SHA-256
-  `cddbd3626cf719b9b7c07649937c62d42b6bc38430a97cbfc7bf5c02b794d865`.
-  Local dirty-tree engineering artifact, not a published release. No commit/publication recorded.
-
-## Sources and upgrade evidence
-
-- Official Pi tag: [v1.0.0](https://github.com/earendil-works/pi/releases/tag/v1.0.0).
-- [SDK](https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/sdk.md),
-  [MCP](https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/mcp.md),
-  [models](https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/models.md),
-  [standalone client](https://github.com/earendil-works/pi/blob/v1.0.0/packages/mcp/README.md).
-- Inspected package/docs and release JSON: `/tmp/bazilion-pi100-inspect-current`.
-- Read the `pi-upgrade` skill from `mrclrchtr/skills`, pinned to
-  `886e012d91408e837516e2db7a95e022c366f486` (17 installs, repository eight stars at inspection).
-  Its helper was reviewed, not executed/installed globally: broad automatic install/dedupe is
-  unsuitable for this dirty tree. Exact manifest edits and `pnpm install --ignore-scripts` were
-  used instead. No personal/global Pi settings or credentials were copied.
-- Focused upgrade regression: **167 tests / eight files**, root/web types passed.
-- Review/full/security/packed evidence is reconciled in the
-  [native qualification handoff](backlog/BAZ-069-native-search-implementation.md).
-
-These are code/configuration and fixture observations, not entitlement, human UI acceptance,
-live research or release approval.
+Any future engine upgrade must preserve explicit admission and daemon ownership rather than
+turn on new upstream defaults. See [architecture](architecture.md) and [Agent engine](agent-engine.md).

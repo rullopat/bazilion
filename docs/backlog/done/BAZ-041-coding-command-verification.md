@@ -143,5 +143,5 @@ Policy `approval_required` edge) exposed two defects in the shipped approval mac
 that required images on every tool result, stranding captured frames, and an approval dispatch that
 released result files but never a retained coding log. Both are fixed here.
 
-Evidence: [acceptance record](../BAZ-041-acceptance.md) (all six criteria observed, with stated
-caveats), [progress record](../BAZ-041-progress.md), and 14 adversarial cases in the release gate.
+Evidence: [historical acceptance](https://github.com/rullopat/bazilion/blob/231911c78b9e882d3d03971d76435145c3954932/docs/backlog/BAZ-041-acceptance.md) (all six criteria observed, with stated
+caveats), [historical implementation](https://github.com/rullopat/bazilion/blob/231911c78b9e882d3d03971d76435145c3954932/docs/backlog/BAZ-041-progress.md), and 14 adversarial cases in the release gate.

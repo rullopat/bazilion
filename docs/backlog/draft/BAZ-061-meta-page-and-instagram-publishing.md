@@ -54,7 +54,7 @@ platform-rule bypass, public Bazilion hosting and all-platform scheduling librar
 ### Composed acceptance ownership
 
 Own the Facebook/Instagram configurations of **PUB-01–06** in the
-[content-Team protocol](../../testing/beta-readiness/content-team-acceptance.md), including platform
+[parent acceptance cases](BAZ-063-content-team-real-world-acceptance.md#conditional-publication), including platform
 contract faults and separately authorized live/human evidence. Reuse BAZ-060's shared fake-host checks;
 report each platform independently to BAZ-063. This is conditional publishing qualification, not work
 inside the BAZ-064/065 manual core. No live execution is authorized by this assignment.
@@ -65,5 +65,7 @@ inside the BAZ-064/065 manual core. No live execution is authorized by this assi
 - Instagram Login versus Facebook Login path and supported account capabilities.
 - Staging vendor and budget, upload expiry sufficient for Meta fetch, privacy/cleanup policy.
 
-See [primary references and constraints](../design/social-content-team.md). Depends on BAZ-060.
+Use the official [Page posts API](https://developers.facebook.com/documentation/pages-api/posts)
+and [Instagram publishing API](https://developers.facebook.com/documentation/instagram-platform/content-publishing).
+Selected API versions and actual grants must be validated during implementation. Depends on BAZ-060.
 No live post or external storage setup is authorized by this draft.

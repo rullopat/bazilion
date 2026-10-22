@@ -62,5 +62,5 @@ history retains the consumed question and outcome under its normal authorization
 Run `node --import tsx scripts/check-question-flow.mts` from the repository. It creates a disposable
 home and loopback model simulator, runs real daemon/Pi workers, and verifies choice, Other and Skip
 with persisted consumption. It sends no external model or Telegram traffic. The printed fixture
-home is retained for inspection. Browser and terminal acceptance evidence is recorded in
-[the release progress log](backlog/BAZ-035-038-progress.md).
+home is retained for inspection. This synthetic demo is not a live provider or independent-user
+acceptance claim. See [BAZ-037](backlog/done/BAZ-037-structured-agent-questions.md) for scope.

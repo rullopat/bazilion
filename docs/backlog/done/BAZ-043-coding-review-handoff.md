@@ -170,8 +170,8 @@ general approval workflows, and treating peer review as an execution authorizati
 ## As-built release record
 
 Shipped in **v0.19.0** on 2026-09-16, together with three closures from BAZ-044's gap work. Implemented
-across eight slices; see the [progress log](../BAZ-043-progress.md) and the
-[acceptance record](../BAZ-043-acceptance.md).
+across eight slices; see the [historical implementation](https://github.com/rullopat/bazilion/blob/231911c78b9e882d3d03971d76435145c3954932/docs/backlog/BAZ-043-progress.md) and the
+[historical acceptance](https://github.com/rullopat/bazilion/blob/231911c78b9e882d3d03971d76435145c3954932/docs/backlog/BAZ-043-acceptance.md).
 
 **Delivered as scoped.** One packet binds one captured revision; the reviewer's capability is four read-only
 tools with no execution, editing, browsing or publication verb; findings are append-only with explicit

@@ -1,56 +1,45 @@
-# Agent files & storage — which surface holds what
+# Agent files and storage
 
-One-page map of Bazilion's storage surfaces: who writes each artifact, where it lives,
-and which surface is canonical when a doubt arises. Modeled on Hermes Agent's
-"which file does what" and OpenClaw's memory tier table (see
-`docs/backlog/design/storage-comparison-openclaw-hermes.md`).
+Every artifact has one canonical owner. Files are not interchangeable with DB rows, and a
+Team work tree is not an Agent's private home. See [architecture](architecture.md).
 
-## The rule
+## Ownership map
 
-There are three storage surfaces, and every artifact has exactly one canonical owner:
+| Artifact | Canonical location | Writer / access |
+| --- | --- | --- |
+| SOUL.md, IDENTITY.md, AGENTS.md, TOOLS.md | `agents/<id>/` | Seeded from a Profile; supported private-home tools edit admitted files |
+| BOOTSTRAP.md | `agents/<id>/` | Prompt input until `bootstrap_done` completes onboarding |
+| Profile documents | `profiles/<id>/` | Operator-managed templates; existing Agents have their own copies |
+| Team USER.md | DB `teams.user_md` | Operator management and admitted `user_md_*` tools with revision checks |
+| Team memory notes/index | `teams/<slug>/memory/` | Shared `memory_*` tools / Team memory API; qmd BM25 |
+| Conversation transcript | `agents/<id>/sessions/<sessionId>.jsonl` | Pi's canonical append-only transcript |
+| Input attachments | `agents/<id>/uploads/` | Daemon saves non-image files and supplies references to the turn |
+| Saved Results | DB `agent_results` | Immutable bytes, digest and provenance; policy controls disclosure |
+| Roster, policy, selection, queues, approvals | SQLite | Daemon only, through supported APIs/tools |
+| Learned proposals/reviews | SQLite | Existing learning/review operations, not a second memory directory |
+| Credentials | Encrypted `secrets` rows | Daemon resolves only the admitted credential; never a prompt document |
+| Bootstrap identity | `auth.json` paired with DB token hash | Daemon bootstrap and trusted local CLI; preserve together |
+| Browser profile/cookies | `browsers/<agent-id>/` | Daemon-owned browser lifecycle; sensitive and excluded from backup |
 
-1. **Workspace files** (the team filesystem root) — canonical for persona, identity,
-   and instruction documents. Agents edit them with file tools (`home_write`); the
-   daemon never rewrites them behind the agent's back.
-2. **`bazilion.db` (SQLite)** — canonical for all domain state: rosters, policies,
-   conversations metadata, queues, approvals, evidence, secrets (encrypted),
-   and USER.md content.
-3. **The filesystem around them** (`auth.json`, Pi session JSONL, logs) — credentials
-   pair, canonical transcripts, and diagnostics.
+Agent instruction documents live **outside the Team tree**. Repository instructions are a separate,
+labelled input supplied by the repository-context resolver; an Agent's private AGENTS.md is not the
+repository's AGENTS.md. Host coding-tool cwd is not filesystem confinement.
 
-Never hand-edit `bazilion.db`; stop the daemon and use the CLI instead.
+## USER.md and memory
 
-## The master table
+USER.md is a Team-owned DB value even though it is presented as Markdown. A file named USER.md
+in the work tree is not its authority. Edit through Team management or admitted tools, not a
+hand-edited SQLite row or assumed generated-file synchronization. Revision conflicts require a
+fresh read before writing.
 
-| Artifact | What it holds | Canonical | Who writes it | When the agent sees it |
-|---|---|---|---|---|
-| **SOUL.md** | Personality, tone, behavioral red lines | Workspace file | You (seeded on first run) | System prompt, every turn |
-| **IDENTITY.md** | The agent's name, creature, avatar | Workspace file | The agent during bootstrap (`home_write`) | System prompt, every turn |
-| **AGENTS.md** | Team operating manual: memory discipline, messaging rules | Workspace file | You (seeded default) | System prompt, every turn |
-| **TOOLS.md** | Tool-use guidance | Workspace file | You (seeded default, opt-in) | System prompt, every turn |
-| **USER.md** | Who you are: preferences, context | **DB** (`teams.user_md`) | The agent via `user_md_get`/`user_md_write` with etag; capped at 12 KB | Inlined into every agent's system prompt, every turn |
-| **Session transcripts** | Conversation history | Pi session JSONL files | Pi engine | Replay / resume |
-| **Memory & lessons** | Durable learned lessons | DB tables | The agent, human-approved (learning loop) | Prompt lessons on relevant turns |
-| **Domain state** | Teams, policies, queue, approvals, receipts, snapshots, publications | DB tables | The daemon | Via API/tools |
-| **Secrets** | Credentials | DB tables, PBKDF2-encrypted from `auth.json` | The daemon | Never in prompts |
+Team memory is shared across all members. Keep personal identity/preferences in the Agent's
+private IDENTITY.md rather than treating shared memory as an Agent-private store. Memory notes
+are Markdown; the qmd index is derived state and excluded from backups.
 
-## The USER.md duality, explained
+## Preservation
 
-USER.md *looks* like a workspace file but is stored in `teams.user_md`. The daemon
-materializes it at the team root for inspection. Writes go through
-`user_md_get` → `user_md_write` with an etag (optimistic concurrency — no locks; a
-conflict means another agent in the team wrote concurrently, re-read, re-merge, retry).
-The content is capped because it is inlined into every system prompt on every turn:
-uncapped growth would silently blow out context.
-
-Do not edit the materialized USER.md file directly — edit via the tools (or the API);
-a hand edit to the file is not canonical and will be overwritten.
-
-## Why the mix
-
-Plain Markdown keeps persona/instructions inspectable and agent-editable with zero
-hidden state (the model only "remembers" what is written to disk it can see). SQLite
-keeps domain state transactional, concurrent-safe, and consistently backupable —
-BAZ-024 online snapshots, BAZ-030 encryption. Both reference projects in the personal
-agent space converged on this same split; see the storage comparison in the backlog
-for the full analysis.
+Pi JSONL is the conversation record, not a disposable cache. Do not truncate live transcripts,
+edit Result blobs/tombstones or delete ownership markers to reclaim space. Use the supported
+management interfaces and preserve the complete DB/auth identity pair before any reset.
+See [Results](results.md), [conversations](conversations.md), [retention](growth-and-retention.md)
+and [upgrades](upgrades.md).

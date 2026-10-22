@@ -4,7 +4,7 @@ title: Storage refinements from the OpenClaw/Hermes comparison (post-1.0)
 status: draft
 size: L (1-2 weeks, if built as one slice — more likely split)
 created: 2026-09-17
-note: Capture of post-1.0 storage ideas from design/storage-comparison-openclaw-hermes.md. Not committed; refine individually when a concrete use case exists.
+note: Post-1.0 storage ideas, not committed scope. Refine individually only when a concrete use case exists.
 ---
 
 # BAZ-048 - Storage refinements from the OpenClaw/Hermes comparison (post-1.0)
@@ -30,8 +30,7 @@ building them; it exists so the analysis is not lost and each can graduate to it
 
 ## Why
 
-The [storage comparison](../design/storage-comparison-openclaw-hermes.md) found that
-Bazilion's SQLite + Markdown mix matches where both mature projects converged. The remaining
+Bazilion's existing SQLite + Markdown split already provides explicit ownership and durable state. The remaining
 gaps are refinements, not rewrites: both projects add capabilities around the same core that
 Bazilion has not needed yet — and may never need at current scale.
 
@@ -81,5 +80,5 @@ Bazilion has not needed yet — and may never need at current scale.
 ## Tests
 
 _Per candidate, when it graduates to its own BAZ. The one shared invariant to test today:
-nothing here changes BAZ-047's contract — forward-only migrations, receipts, and
-refuse-newer-schema hold regardless of which refinements land._
+nothing here weakens canonical ownership, receipts, schema validation or newer-schema refusal.
+The current alpha clean-rebootstrap boundary still applies; see [upgrades](../../upgrades.md)._

@@ -31,7 +31,7 @@ may choose ad hoc commands and prepare compatible workspace dependencies within 
 permissions. An operator-created environment configuration, named check or explicit probe request
 is not a prerequisite. The normal user experience is a coding conversation, not Team configuration.
 
-Full design and implementation mapping: [Agent-led coding](../design/agent-led-coding.md).
+Full design and implementation mapping: [Agent-led coding](../../coding-environments.md).
 
 ## Primary workflow
 
@@ -157,9 +157,9 @@ Implement the shared design in order: Agent context/capabilities, admitted comma
 receipts, offline preparation, policy-checked yield/handoff, conversation presentation, then removal
 of mandatory operator-probe UX. Preserve safety infrastructure and original regression coverage.
 
-The [old acceptance audit](../BAZ-040-acceptance.md) and [progress](../BAZ-040-progress.md) cover the
-previous operator-probe scope. The [2026-09-08 refinement](../archive/BAZ-040-2026-09-08-operator-refinement.md)
-is archived. The revised criteria are covered by [remake acceptance](../BAZ-039-040-agent-led-acceptance.md). The story remains in progress until PR delivery and release.
+The Agent-led remake shipped in v0.16.0 as recorded below. Earlier operator-probe observations
+are historical, not proof that every runtime/provider configuration is qualified. Current behavior
+and supported setup are documented in [coding environments](../../coding-environments.md).
 No implementation goal is created or reopened merely by this refinement.
 
 ## Dependencies and exclusions

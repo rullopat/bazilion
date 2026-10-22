@@ -110,7 +110,7 @@ Patch release. Three packages bumped in lockstep: `bazilion`, `@bazilion/client`
 - **Provider expansion.** Migrated the underlying [pi-ai](https://www.npmjs.com/package/@earendil-works/pi-ai) package from the `@mariozechner` scope to `@earendil-works`. New providers wired up: DeepSeek, Fireworks, Together, Moonshot AI, Kimi Coding, MiniMax, Xiaomi MiMo, OpenCode, GitHub Copilot, Cloudflare AI Gateway, Cloudflare Workers AI, and a self-hosted llama.cpp endpoint (set `LLAMACPP_URL`).
 - **Web fetch tool hardened.** `@mozilla/readability` + `linkedom` extraction with markdown output, SSRF guard with DNS-rebinding re-validation pinning resolved IPs into undici's connect-lookup, 15-min LRU per `${mode}|${url}` (100-entry cap), desktop-Safari UA, 20s timeout, 3 max redirects.
 - **Web UI polish.** Services config page, root chat layout, theme tokens, `FieldRow` component refresh.
-- **Backlog system.** Two new draft items landed under `docs/backlog/draft/`: [BAZ-002 Profile Groups](docs/backlog/done/BAZ-002-profile-groups.md) (preconfigured team templates) and [BAZ-003 Hermes-style self-learning loop](docs/backlog/draft/BAZ-003-hermes-self-learning.md) (background reviewer + skill self-editing, modeled on Nous Research's hermes-agent).
+- **Backlog system.** Two new draft items landed under `docs/backlog/draft/`: [BAZ-002 Profile Groups](docs/backlog/done/BAZ-002-profile-groups.md) (preconfigured team templates) and [BAZ-003 Hermes-style self-learning loop](docs/backlog/done/BAZ-003-hermes-self-learning.md) (background reviewer + skill self-editing, modeled on Nous Research's hermes-agent).
 
 ## 0.1.0 — 2026-05-22
 

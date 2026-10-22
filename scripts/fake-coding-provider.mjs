@@ -26,7 +26,7 @@
 //     BAZILION_BASH_SANDBOX=docker BAZILION_BASH_SANDBOX_IMAGE=debian:bookworm-slim \
 //     pnpm tsx apps/cli/src/index.ts serve
 //
-// See docs/backlog/BAZ-041-acceptance.md for the full procedure.
+// See docs/coding-evidence.md for the command/receipt contract.
 
 import { createServer } from 'node:http'
 
