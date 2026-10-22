@@ -118,5 +118,5 @@ pnpm vitest run apps/cli/test/content-team-recipe.test.ts
 This checks import/spawn, exact role documents and skill attachment, canonical lineage,
 unfilled brief context across two Teams, the directed policy matrix and rejected direct specialist
 ingress. It **does not** run a model, demonstrate research/rework or establish end-to-end scheduling,
-live-provider quality or independent human usability. Retiring the former BAZ-063/064 tracking
-items does not turn these unperformed observations into passes. No live usage is authorized.
+live-provider quality or independent human usability. Those observations remain unperformed,
+not passing acceptance. No live usage is authorized.

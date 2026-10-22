@@ -15,7 +15,7 @@ Use `BAZ-NNN-short-slug.md` and frontmatter with `id`, `title`, `status`, `size`
 applicable release dates. Move the same story between state folders rather than creating a
 progress/acceptance sidecar. Current behavior belongs in the [product documentation](../README.md).
 
-## Draft (7)
+## Draft (4)
 
 | Story | Outcome |
 | --- | --- |
@@ -23,16 +23,12 @@ progress/acceptance sidecar. Current behavior belongs in the [product documentat
 | [BAZ-054](draft/BAZ-054-native-ios-android-apps.md) | Future native mobile applications |
 | [BAZ-057](draft/BAZ-057-portable-safe-reads.md) | Safe repository reads off Linux |
 | [BAZ-058](draft/BAZ-058-content-proposals-and-editorial-review.md) | Revision-bound content/editorial review |
-| [BAZ-060](draft/BAZ-060-approved-social-delivery.md) | Deterministic approved social delivery |
-| [BAZ-061](draft/BAZ-061-meta-page-and-instagram-publishing.md) | Official Facebook Page/Instagram connectors |
-| [BAZ-062](draft/BAZ-062-linkedin-publishing.md) | Official LinkedIn connector |
 
 The [Telegram roadmap](../telegram-v2.md) retains unnumbered future user stories. It is not an
-implementation commitment or supported-feature list. BAZ-066's native-boundary/live programme
-was cancelled; do not revive it as a dependency or infer permission for live spending.
-BAZ-063/064 were retired as acceptance/example tracking, not completed features. The
-[experimental content-Team recipe](../../examples/content-team/README.md) remains available;
-retirement does not declare the unfinished end-to-end validation passed.
+implementation commitment or supported-feature list. The
+[experimental content-Team recipe](../../examples/content-team/README.md) remains an example,
+not a product implementation commitment or qualified end-to-end workflow.
+Removed stories remain recoverable through Git history; do not reuse their IDs.
 
 ## Todo (0)
 

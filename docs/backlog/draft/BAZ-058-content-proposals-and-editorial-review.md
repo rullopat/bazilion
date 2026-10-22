@@ -31,7 +31,7 @@ Approving delivery of a file to the owner is not approval to post its contents p
 - One Team-owned proposal with immutable, source-linked revisions and platform variants.
 - Captured text, links, image references/hashes/order, alt text, rights/provenance notes and target
   account or explicitly unbound manual-export destination. Unbound approval cannot later authorize
-  an arbitrary connected account; actual delivery requires BAZ-060's bound decision.
+  an arbitrary connected account; review/export grants no permission to upload or publish.
 - Bounded Agent IPC submission and operator API/CLI/web review with revision conflict checks.
 - Preview, request changes with feedback, reject, compare revisions, review/export history.
 - Reuse durable result storage deliberately; define private disclosure, reference ownership,
@@ -60,7 +60,6 @@ formal fact verification, multi-person approval chains and a general-purpose wor
 - Which review fields are required in a manual-export-only proposal versus a connected destination?
 - Operator scope mapping for editorial decisions versus destination/account administration.
 
-[BAZ-060](BAZ-060-approved-social-delivery.md) adds deterministic publication authorization;
-this story must not label a generic review decision as a completed post. The composed manual
-workflow can be explored with the [experimental recipe](../../../examples/content-team/README.md),
+This story adds no publishing authority and must not label a review decision as a completed post.
+The manual workflow can be explored with the [experimental recipe](../../../examples/content-team/README.md),
 which uses existing capabilities and does not establish this native editorial feature.

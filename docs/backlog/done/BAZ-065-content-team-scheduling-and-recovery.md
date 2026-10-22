@@ -37,8 +37,8 @@ journey**. That slice received independent acceptance and 101 unique focused che
 
 This acceptance does **not** qualify the complete content-Team live/human workflow. The
 [experimental recipe](../../../examples/content-team/README.md) is an example of existing
-capabilities, not an active implementation/acceptance programme. Retiring its former tracking
-items does not broaden this story's accepted scope.
+capabilities, not an active implementation/acceptance programme. It does not broaden this
+story's accepted scope.
 
 ## Product contract
 
