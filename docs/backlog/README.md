@@ -15,11 +15,9 @@ Use `BAZ-NNN-short-slug.md` and frontmatter with `id`, `title`, `status`, `size`
 applicable release dates. Move the same story between state folders rather than creating a
 progress/acceptance sidecar. Current behavior belongs in the [product documentation](../README.md).
 
-## Draft (1)
+## Draft (0)
 
-| Story | Outcome |
-| --- | --- |
-| [BAZ-057](draft/BAZ-057-portable-safe-reads.md) | Safe repository reads off Linux |
+No draft stories currently retained.
 
 The [Telegram roadmap](../telegram-v2.md) retains unnumbered future user stories. It is not an
 implementation commitment or supported-feature list. The
@@ -31,9 +29,14 @@ Removed stories remain recoverable through Git history; do not reuse their IDs.
 
 No stories currently ready to pull.
 
-## In progress (0)
+## In progress (1)
 
-No product implementation stories currently in progress.
+| Story | Release priority and outcome |
+| --- | --- |
+| [BAZ-057](in_progress/BAZ-057-portable-safe-reads.md) | **First priority for Release 0.24:** safe repository context and usable ordinary Agent chat on macOS; implementation and actual-platform qualification outstanding |
+
+Release 0.24 is developed on `release/0.24`; additional user stories can join its PR as refined.
+Current released platform support is unchanged until the fix is implemented and qualified.
 
 ## Done (54)
 

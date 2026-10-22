@@ -1,31 +1,37 @@
 ---
 id: BAZ-057
 title: Portable safe reads — repository context off-Linux
-status: draft
+status: in_progress
 size: L (likely split)
 created: 2026-09-17
-priority: undecided
-note: fs-safe investigation completed 2026-10-22. Candidate building block, not an admitted replacement; implementation and macOS/Windows qualification remain outstanding.
+priority: high
+target_release: '0.24'
+note: First priority for Release 0.24, macOS first. Investigation completed; implementation and actual macOS Agent-chat qualification remain outstanding.
 ---
 
 # BAZ-057 — Portable safe reads — repository context off-Linux
 
 ## User stories
 
-- As an operator on macOS or Windows, I want Bazilion to prepare repository instructions
-  safely on my machine without requiring a weaker filesystem boundary.
+- As an operator on macOS, I want to install Bazilion and actually chat with my Agents,
+  rather than finish setup only to discover every ordinary turn is refused.
+- As an operator, I want repository instructions prepared safely without requiring a weaker
+  filesystem boundary.
 - As a maintainer, I want explicit, tested per-platform guarantees and visible refusal when
   an operation cannot satisfy them, rather than an unsupported promise of equivalent safety.
 
 ## Goal
 
-Support bounded repository-context inspection on a selected additional operating system,
-using reusable public filesystem APIs where possible. Preserve the existing Linux path
-until an alternative demonstrates the required behavior.
+**Release 0.24's first priority is usable ordinary Agent chat on macOS**, not merely a
+successful installer, dashboard or repository-context endpoint. Implement bounded macOS
+repository-context inspection using reusable public filesystem APIs where possible. Preserve
+the existing Linux path until an alternative demonstrates the required behavior.
 
-This is **not complete cross-platform Agent-turn support**. Owned process retirement, MCP
-stdio, hardened Git inspection and other platform-dependent capabilities have separate
-constraints. Passing repository-read checks must not enable those capabilities implicitly.
+Trace the complete ordinary-turn path and address any further blocker to that outcome rather
+than moving the refusal to the next preflight. Independently restricted capabilities such as
+MCP stdio and hardened Git inspection must keep their own explicit admission boundaries;
+successful chat does not qualify every coding, container or subprocess capability.
+Windows support is not committed in this release scope.
 
 ## Current contract
 
@@ -107,8 +113,8 @@ private native bindings or internal package paths to bypass the public contract.
 
 ## Next implementation scope — still to refine
 
-1. Select the first target OS and obtain a real test environment. Do not simulate a platform
-   by changing `process.platform` and call that native qualification.
+1. Target macOS first and obtain a real test environment. Do not simulate a platform by
+   changing `process.platform` and call that native qualification.
 2. Prototype a read-only capture adapter using public library APIs. Preserve registration
    binding, ancestry/absence/source revalidation, exact bytes/digests, limits and error behavior.
    Do not weaken the existing Linux implementation or assume native `require` selects an atomic read.
@@ -128,14 +134,18 @@ private native bindings or internal package paths to bypass the public contract.
   becomes a silently truncated success. Absent files and directory listings remain bounded evidence.
 - Identity uncertainty, missing native capability where required, cancellation and read failure
   release owned resources and produce truthful unavailable/incomplete states.
-- Linux regressions and actual target-platform adversarial tests pass. Packed installs resolve the
+- Linux regressions and actual macOS adversarial tests pass. Packed installs resolve the
   intended package/native policy without runtime downloads or private API imports.
+- On actual macOS, an installed package completes setup and an ordinary authenticated Agent turn
+  through the supported CLI/web/API paths, using a synthetic provider for deterministic coverage.
+  An empty Team and a Team with repository instructions both work; startup-only or clean-refusal
+  tests do not establish success. New paid/live-provider usage requires separate authorization.
 - Repository instructions, passive Git availability and Agent-turn platform support are reported
   independently. No result is advertised as a general sandbox or atomic namespace snapshot.
 
 ## Open questions
 
-- Which platform and filesystems should be supported first, and where can they be exercised?
+- Which macOS versions/filesystems should be admitted initially, and where can they be exercised?
 - Can public library APIs plus capture-wide validation meet the chosen admission contract, or is
   a narrowly scoped upstream API addition needed? A new Bazilion native module is not the default.
 - Which remaining Git/process/container capabilities would still block a useful local coding turn?

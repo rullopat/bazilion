@@ -89,7 +89,7 @@ reads, then revalidates registered-root binding, retained directories and observ
 accepting the report. These are change detectors, not an atomic filesystem snapshot or a universal
 claim against every concurrent rename. Other platforms report `safe_reads_unavailable` and cannot
 prepare coding context through this resolver. Linux is the validated safe-read platform; no weaker
-path-based fallback is used. The [BAZ-057 investigation](backlog/draft/BAZ-057-portable-safe-reads.md)
+path-based fallback is used. The [BAZ-057 investigation](backlog/in_progress/BAZ-057-portable-safe-reads.md)
 has not admitted a replacement or enabled another platform; until then, CI runs
 the coding suites on Linux only (BAZ-049) and the platform-support statement in `README.md` is the
 operator-facing version of this boundary.
