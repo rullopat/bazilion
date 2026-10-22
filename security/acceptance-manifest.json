@@ -2294,6 +2294,12 @@
       "test": "Pi catalog includes exact GPT-6.1 Sol on official API and subscription transports"
     },
     {
+      "id": "PI140-AZURE-BOUND-REFRESH",
+      "owner": "Pi 1.4 upgrade",
+      "file": "apps/daemon/test/runtime/protected-session-redaction.test.ts",
+      "test": "protected Pi persistence credential boundary > Azure SDK requests refresh only the bound Bazilion credential"
+    },
+    {
       "id": "IMAGE-CODEC-CLOSED-DIAGNOSTICS",
       "owner": "BAZ-059",
       "file": "apps/daemon/test/lib/image-codec.test.ts",

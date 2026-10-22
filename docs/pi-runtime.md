@@ -54,7 +54,9 @@ See [image generation](image-generation.md).
 
 - Bazilion's stored provider ID remains `azure-openai`; the SDK/catalog boundary maps it to Pi's
   renamed `azure` provider. Credentials and both Azure Responses/Foundry catalog APIs use that
-  same mapping. Existing Agents/Profiles are not renamed or silently assigned another model.
+  same mapping. Protected refresh matches the SDK's canonical provider name but requests only the
+  original Bazilion-bound credential over IPC; rotated tokens join the live redaction set.
+  Existing Agents/Profiles are not renamed or silently assigned another model.
 - Kimi Code catalog models now use Chat Completions at `https://api.kimi.com/coding/v1`.
   OpenCode Go model discovery follows its current `/inference/go/v1/models` endpoint.
 - MCP structured content may be any JSON value, including arrays, primitives and null; projection
