@@ -88,18 +88,61 @@ function initHome(options: TestServerFixtureOptions = {}): { home: string; token
   return { home, token: created.token }
 }
 
-async function waitForHttp(url: string, timeoutMs: number): Promise<void> {
-  const start = Date.now()
-  while (Date.now() - start < timeoutMs) {
-    try {
-      const res = await fetch(url)
-      if (res.status >= 200 && res.status < 500) return
-    } catch {
-      // server not yet listening
+/** Test-only readiness: the endpoint must come from this child's bound-listener output. */
+export async function waitForFixtureServer(
+  proc: ChildProcess,
+  token: string,
+  timeoutMs = 20_000,
+): Promise<string> {
+  const url = await new Promise<string>((resolve, reject) => {
+    if (!proc.stdout) return reject(new Error('fixture stdout pipe is unavailable'))
+    let output = ''
+    const finish = (error?: Error, endpoint?: string) => {
+      clearTimeout(timer)
+      proc.stdout?.removeListener('data', onData)
+      proc.removeListener('close', onClose)
+      proc.removeListener('error', onError)
+      proc.stdout?.resume()
+      if (error) reject(error)
+      else resolve(endpoint as string)
     }
-    await new Promise((r) => setTimeout(r, 150))
+    const onData = (chunk: Buffer) => {
+      output = (output + chunk.toString()).slice(-65_536)
+      // Require the complete line; a chunk ending mid-port is not an endpoint.
+      const match = /(?:^|\n)bazilion daemon listening at (http:\/\/127\.0\.0\.1:(\d+))\r?\n/.exec(
+        output,
+      )
+      if (match && Number(match[2]) > 0 && Number(match[2]) <= 65_535) finish(undefined, match[1])
+    }
+    const onClose = () =>
+      finish(new Error(`fixture exited before publishing its listener: ${output}`))
+    const onError = (error: Error) => finish(error)
+    const timer = setTimeout(
+      () => finish(new Error(`fixture listener deadline exceeded: ${output}`)),
+      timeoutMs,
+    )
+    proc.stdout.on('data', onData)
+    proc.once('close', onClose)
+    proc.once('error', onError)
+    if (proc.exitCode !== null || proc.signalCode !== null) onClose()
+  })
+  // Authentication failure is not liveness and is never retried as startup success.
+  const response = await fetch(`${url}/api/auth/whoami`, {
+    headers: { authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(timeoutMs),
+    redirect: 'error',
+  })
+  if (response.status !== 200)
+    throw new Error(`fixture owner authentication failed: HTTP ${response.status}`)
+  const owner = (await response.json()) as {
+    authenticated?: boolean
+    principal?: { kind?: string }
   }
-  throw new Error(`timeout waiting for ${url}`)
+  if (owner.authenticated !== true || owner.principal?.kind !== 'bootstrap')
+    throw new Error('fixture owner authentication returned an unexpected principal')
+  if (proc.exitCode !== null || proc.signalCode !== null)
+    throw new Error('fixture exited during owner authentication')
+  return url
 }
 
 export interface TestServer {
@@ -201,32 +244,30 @@ async function bootTestServer(
   extraServerEnv: NodeJS.ProcessEnv,
   preserveOnFailure = false,
 ): Promise<TestServer> {
-  const port = await findFreePort()
-  const url = `http://127.0.0.1:${port}`
-
+  // Let the owned listener allocate its port atomically. Closing a parent-side
+  // free-port probe before spawn permits another parallel fixture to claim it.
   // Opt-in diagnostics for disposable test daemons only, never the operator daemon.
   // Ephemeral ports can be reused during a serial gate; never overwrite/collide with prior logs.
   const stderrDir = process.env.BAZILION_TEST_DAEMON_STDERR_DIR
   const stderrFd = stderrDir
-    ? openSync(join(stderrDir, `fixture-${port}-${randomUUID()}.stderr.log`), 'wx', 0o600)
+    ? openSync(join(stderrDir, `fixture-${randomUUID()}.stderr.log`), 'wx', 0o600)
     : undefined
   const proc: ChildProcess = spawn('node', ['--import', 'tsx/esm', daemonEntry], {
     env: {
       ...process.env,
+      ...extraServerEnv,
       BAZILION_HOME: home,
       HOST: '127.0.0.1',
-      PORT: String(port),
-      ...extraServerEnv,
+      PORT: '0',
     },
-    stdio: stderrFd === undefined ? 'ignore' : ['ignore', 'ignore', stderrFd],
+    stdio: ['ignore', 'pipe', stderrFd ?? 'ignore'],
   })
   if (stderrFd !== undefined) closeSync(stderrFd)
 
   const closed = new Promise<void>((resolve) => proc.once('close', () => resolve()))
+  let url: string
   try {
-    // /api/health is unauthenticated — perfect liveness probe. Daemon should
-    // come up in well under a second; 20s is paranoia headroom.
-    await waitForHttp(`${url}/api/health`, 20_000)
+    url = await waitForFixtureServer(proc, token)
   } catch (err) {
     proc.kill()
     await closed
