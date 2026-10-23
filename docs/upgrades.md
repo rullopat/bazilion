@@ -7,6 +7,18 @@ The CLI and daemon require **Node 24.22.0+ within 24.x or 26.4.0+ within 26.x**
 For a runtime refusal, upgrade Node; do not reset the DB, replace `auth.json` or clear ownership.
 Rebuild native dependencies when changing their Node ABI.
 
+## Unreleased 0.24: existing 0.23 homes
+
+The 0.24 branch keeps the canonical 0.23 schema unchanged. A valid 0.23.0 home is expected to
+reopen in place; do not reset it just to upgrade. Stop the old daemon safely and preserve the
+entire home, including `bazilion.db` and `auth.json` together, before updating.
+
+The default release matrix now seeds a genuine `v0.23.0` home and checks retained Team sentinel
+data, unchanged paired `auth.json` bytes and two healthy starts under the candidate. This is
+bounded startup/state-continuity coverage, not a general transcript, backup or platform guarantee.
+Versioned 0.24.0 artifact checks remain required before publication. Incompatible older homes
+still follow the unchanged refusal/rebootstrap boundary below.
+
 ## 0.23 schema boundary
 
 Bazilion remains alpha. **0.23.0 requires clean rebootstrap for incompatible prior homes,

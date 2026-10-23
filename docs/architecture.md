@@ -196,7 +196,8 @@ its loopback debugging listener and attaches Playwright via CDP. Normal launches
 SSRF proxy, including service-worker egress; downloads are denied. CDP disconnect is not process
 shutdown. Unknown/live owners remain recovery-required; never manually delete profile locks.
 
-MCP uses standalone `@earendil-works/pi-mcp@1.0.0` inside the daemon. Streamable HTTP is portable;
+MCP uses standalone `@earendil-works/pi-mcp` inside the daemon; its pinned version is documented
+in [embedded Pi ownership](pi-runtime.md). Streamable HTTP is portable;
 stdio refuses before allocation/spawn off-Linux. Legacy SSE is retired. Turn-bound tool/config/key
 revalidation, no tool-call replay and ownership until close settles remain load-bearing.
 See [browser research](browser-research.md) and [MCP](mcp.md).

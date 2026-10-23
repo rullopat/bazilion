@@ -9,7 +9,9 @@ implemented/offline-tested but **live-unqualified**, with optional live qualific
 [Accepted scope and limits](backlog/done/BAZ-059-pi-image-generation.md).
 Image models are separate
 from text models; Automatic authentication selection follows enabled OpenAI text providers. Restricted reviewers and verification specialists cannot receive or call it.
-Agent turns remain Linux-only.
+Published 0.23.0 Agent turns remain Linux-only. The unreleased 0.24 ordinary macOS chat
+qualification does not qualify macOS image generation; the accepted live image observations
+remain Linux-scoped.
 
 ## Configure
 

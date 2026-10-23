@@ -239,7 +239,7 @@ pnpm tsx apps/cli/src/index.ts auth openai login --device-code
 # CLI device-code flow from a remote client or when localhost:1455 is busy.
 ```
 
-After connecting, enable `openai-codex` on `/config` and curate at least one model (e.g. `gpt-6-astra`, `gpt-5.6-terra`, or `gpt-5.6-sol`). The embedded Pi 1.0.0 catalog includes OpenAI and ChatGPT model choices; catalog membership is not account entitlement. Credentials are stored AES-256-GCM-encrypted in the daemon's `secrets` table (key derived from the bootstrap token in `auth.json`); the access token auto-refreshes via the stored refresh token.
+After connecting, enable `openai-codex` on `/config` and curate at least one model (e.g. `gpt-6-astra`, `gpt-5.6-terra`, or `gpt-5.6-sol`). The [embedded Pi catalog](docs/pi-runtime.md) includes OpenAI and ChatGPT model choices; catalog membership is not account entitlement. Credentials are stored AES-256-GCM-encrypted in the daemon's `secrets` table (key derived from the bootstrap token in `auth.json`); the access token auto-refreshes via the stored refresh token.
 
 ## Uninstalling
 
