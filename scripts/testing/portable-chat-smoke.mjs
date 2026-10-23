@@ -96,7 +96,7 @@ export async function qualifyPortableChat({
     health.platformCapabilities.capabilities.map((c) => [c.id, c.support]),
     [
       ['ordinary_chat', 'supported'],
-      ['git_inspection', process.platform === 'linux' ? 'supported' : 'unsupported'],
+      ['git_inspection', 'supported'],
       ['mcp_stdio', process.platform === 'linux' ? 'supported' : 'unsupported'],
       ['mcp_http', 'supported'],
     ],

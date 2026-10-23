@@ -161,8 +161,10 @@ contracts, updates CLI/web Git capability diagnostics, and adds seven BAZ-072 ca
 manifest. See [repository context](../../repository-context.md) for bounds and layout limitations.
 
 Local normal-suite tests, the expanded 406-case security gate, lint and root/web typechecks passed.
-The follow-up's focused Git/snapshot/diagnostic tests also pass locally; its CI results remain
-pending. An initial root/PID-namespace invocation failed browser startup, permission-sensitive
+Follow-up `6cdd512` passed source/build, security/upgrade and focused macOS jobs in
+[CI](https://github.com/rullopat/bazilion/actions/runs/39957517544), but the installed macOS trial
+failed on its stale expected Git-unsupported projection. The fixture expectation is corrected;
+installed revalidation remains pending. An initial root/PID-namespace invocation failed browser startup, permission-sensitive
 backup and delayed-child settlement checks; the normal suite passed without relaxing checks. A concurrent security run timed
 out; a standalone run passed. These do not establish macOS qualification.
 
