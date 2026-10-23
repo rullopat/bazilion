@@ -4,15 +4,15 @@ A failed or interrupted turn can leave a recorded writer blocking its Team with
 `workspace_recovery_required`. The block protects against overlapping writes; restarting the daemon
 or acknowledging an error does not prove that work stopped.
 
-## macOS ownership on the unreleased 0.24 branch
+## macOS ownership (shipped in 0.24.0)
 
 Ordinary macOS chat uses a live daemon-owned ChildProcess observer, not Linux `/proc` identity.
 Normal exit, natural output-pipe EOF and an absent original process group permit recorded cleanup.
 A locally closed pipe, an abnormal exit or a persisted receipt without its live owner does not.
 After daemon restart or restore, missing live authority remains recovery-required; management
 never guesses PID ownership or force-clears the record. This is not arbitrary detached-host-writer
-recovery. Published 0.23.0 still refuses macOS turns; see
-[BAZ-057](backlog/in_progress/BAZ-057-portable-safe-reads.md) for qualification limits.
+recovery. See
+[BAZ-057](backlog/done/BAZ-057-portable-safe-reads.md) for qualification limits.
 
 ## Inspect and attempt supported cleanup
 

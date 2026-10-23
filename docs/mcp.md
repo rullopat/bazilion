@@ -1,7 +1,7 @@
 # MCP: daemon-owned Pi client
 
-On the unreleased 0.24 branch, Bazilion uses **`@earendil-works/pi-mcp@1.4.0`** inside the daemon
-(published 0.23.0 uses 1.0.0). Pi handles JSON-RPC,
+Bazilion 0.24.0 uses **`@earendil-works/pi-mcp@1.4.0`** inside the daemon.
+Pi handles JSON-RPC,
 initialization, request correlation/cancellation, stdio framing and Streamable HTTP sessions.
 Bazilion retains database configuration, encrypted credentials, capability admission, bounded
 catalogs and process-lifetime ownership. Workers receive selected definitions and use `mcpInvoke`

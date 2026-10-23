@@ -55,7 +55,7 @@ Stdio is `['pipe','pipe','pipe','ipc']`:
 
 Cancellation is keyed by **agentId** (not runId — there are no runIds anymore, since the runs table is gone). The agent-cancel registry is pinned to `globalThis[Symbol.for('bazilion.agent-cancel.registry')]` so module reloads don't replace it. `POST /api/agents/:id/cancel` looks up the controller and aborts it; the parent's abort handler calls `child.kill('SIGTERM')`, arms a 3s timer, and SIGKILLs if the child doesn't exit.
 
-### Ordinary-worker ownership on the unreleased 0.24 branch
+### Ordinary-worker ownership (shipped in 0.24.0)
 
 Linux retains its recorded `/proc` process identity/retirement path. macOS instead retains the actual
 daemon-owned ChildProcess before input delivery. A normal code-zero exit, natural EOF on stdout and
@@ -63,7 +63,7 @@ stderr, and absence of its original process group must all be observed before re
 Locally destroying pipes does not prove EOF. Persisted receipts are not authority to signal a PID;
 restart/restore without live authority, abnormal exits and unknown settlement stay blocked. This
 removes the Linux-only process-registration blocker without promising arbitrary-descendant cleanup.
-See [workspace recovery](workspace-recovery.md) and [BAZ-057](backlog/in_progress/BAZ-057-portable-safe-reads.md).
+See [workspace recovery](workspace-recovery.md) and [BAZ-057](backlog/done/BAZ-057-portable-safe-reads.md).
 
 ## 2. Child bootstrap (`worker/entry.ts`)
 

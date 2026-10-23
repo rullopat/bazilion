@@ -1,11 +1,12 @@
 ---
 id: BAZ-071
 title: Separate installation health from platform and execution readiness
-status: in_progress
+status: done
 size: S
 created: 2026-10-22
 priority: medium
-target_release: '0.24'
+target_release: '0.24.0'
+closed: 2026-10-23
 ---
 
 # BAZ-071 — Installation and platform diagnostics
@@ -66,6 +67,7 @@ route handlers before unregistering them. Fresh final trials passed without long
 blind submission replay. A local cross-Node source probe correctly refused a memory addon built
 for a different Node ABI; dependencies were not rebuilt to suppress that refusal.
 
-Implementation and bounded qualification are complete; release integration remains pending.
-The platform/provider limits in [BAZ-057](BAZ-057-portable-safe-reads.md) still apply. No merge,
-version bump, publication, website deployment or expanded platform/paid-provider qualification.
+Published 2026-10-23 in [0.24.0](https://github.com/rullopat/bazilion/releases/tag/v0.24.0).
+Final six-job CI and actual public Linux guarded-install/library checks passed; see
+[releases](../../releases.md). The platform/provider limits in [BAZ-057](BAZ-057-portable-safe-reads.md)
+still apply. No expanded platform/paid-provider qualification or execution-admission change.

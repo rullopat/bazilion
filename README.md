@@ -14,12 +14,10 @@ Per-turn subprocess execution with worker↔daemon Node-IPC for messaging, ChatG
 
 Requires **Node 24.22.0+ within 24.x, or 26.4.0+ within 26.x**. Earlier releases and other
 major lines are refused before opening Bazilion state; this excludes an upstream native cleanup-hook
-bug. See `docs/upgrades.md`. **Linux is the validated platform.** On this **unreleased 0.24
-branch**, ordinary macOS Agent chat is also implemented and qualified on macOS 26.6.2 arm64 /
-Node 24.22.0, including fresh installed CLI/API/browser turns with repository instructions.
-**Published npm 0.23.0 still refuses macOS Agent chat**; the commands below install that published
-version until 0.24 is released. See [BAZ-057](docs/backlog/in_progress/BAZ-057-portable-safe-reads.md)
-for the exact candidate and qualification limits.
+bug. See `docs/upgrades.md`. **Published 0.24.0 supports ordinary chat on Linux and macOS.**
+macOS qualification is bounded to macOS 26.6.2 arm64 / Node 24.22.0, including fresh installed
+CLI/API/browser turns with repository instructions. See [BAZ-057](docs/backlog/done/BAZ-057-portable-safe-reads.md)
+for qualification limits and [release notes](docs/releases.md) for public-artifact verification.
 
 The shared capture adapter keeps Linux fd-relative access and adds guarded macOS capture with
 explicit identity/source revalidation. This is not an atomic filesystem snapshot or blanket
