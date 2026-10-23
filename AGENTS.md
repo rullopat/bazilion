@@ -79,8 +79,7 @@ never add runtime imports of daemon internals.
 
 ### Embedded Pi ownership
 
-The daemon and packed CLI pin the embedded Pi engine to **1.4.0** on the unreleased 0.24
-branch (published 0.23.0 uses 1.0.0). SDK sessions do not
+The daemon and packed CLI pin the embedded Pi engine to **1.4.0**, shipped in 0.24.0. SDK sessions do not
 implicitly enable Pi's CLI MCP/codemode/tool-search extensions. Keep explicit tool admission,
 in-memory credentials/settings, `modelsPath: null`, `allowModelNetwork: false` and
 `cacheWarming: 'off'`; do not add implicit provider requests or ambient resource discovery.
@@ -137,15 +136,15 @@ are labelled Agent instructions, separately from repository guidance. Restricted
 repository capability. See `docs/repository-context.md` and
 `docs/backlog/done/BAZ-039-repository-coding-context.md` for limits and accepted scope. Do not treat context fingerprints as code checks.
 
-On the **unreleased 0.24 branch**, BAZ-057 adds macOS ordinary chat through a shared capture
+Shipped in **0.24.0**, BAZ-057 adds macOS ordinary chat through a shared capture
 adapter using public `@openclaw/fs-safe@0.26.8` APIs. Preserve Linux fd-relative access;
 macOS guarded opens need capture-wide registration/directory/file/absence checks, not a
 native-mode label or an atomic-snapshot claim. Hardened Git and MCP stdio remain Linux-only.
 macOS worker settlement requires live ChildProcess authority, normal exit, natural pipe EOF
 and an absent original group. Persisted receipts never authorize PID signalling; unknown
 ownership after restart/restore remains blocked. See `docs/repository-context.md`,
-`docs/agent-engine.md` and `docs/backlog/in_progress/BAZ-057-portable-safe-reads.md` for scope.
-Do not describe the still-published 0.23.0 package as having this unreleased macOS support.
+`docs/agent-engine.md` and `docs/backlog/done/BAZ-057-portable-safe-reads.md` for scope.
+The historical 0.23.0 package does not have this ordinary macOS chat support.
 
 ### Coding evidence: progress, retained diagnostics and change review (BAZ-041/042, shipped in v0.17.0)
 

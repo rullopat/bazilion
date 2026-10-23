@@ -84,7 +84,7 @@ status command is limited to five seconds and 1 MiB of output. Metadata copying 
 64 MiB and 16,384 entries, with a shorter preparation deadline. The original index is not refreshed
 or written. Git metadata beyond these limits is unavailable; instructions can still be complete.
 
-On the **unreleased 0.24 branch**, the shared daemon capture adapter uses public
+Shipped in **0.24.0**, the shared daemon capture adapter uses public
 `@openclaw/fs-safe@0.26.8` APIs. Linux retains `/proc/self/fd` directory-relative access. macOS uses
 guarded rooted opens with exact retained-directory/registration checks around operations and final
 acceptance. Both revalidate observed files, absence and captured listings, reject unwanted links
@@ -93,8 +93,8 @@ hostile concurrent mutation; neither implementation is an atomic namespace snaps
 A native-mode label does not establish these guarantees.
 
 Ordinary CLI/API/browser turns with empty and instructed Teams passed on actual macOS 26.6.2 arm64 /
-Node 24.22.0. See [BAZ-057](backlog/in_progress/BAZ-057-portable-safe-reads.md) for code/CI identity and
-limits. **Published 0.23.0 still has the Linux-only turn boundary.** Windows remains refused with
+Node 24.22.0. See [BAZ-057](backlog/done/BAZ-057-portable-safe-reads.md) for code/CI identity and
+limits. Historical 0.23.0 retains its Linux-only turn boundary. Windows remains refused with
 `safe_reads_unavailable`; no Windows support is claimed.
 
 The one hardened Git inspector still requires its Linux fd-pinned worktree. A macOS repository

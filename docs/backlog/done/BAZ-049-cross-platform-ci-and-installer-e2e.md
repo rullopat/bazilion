@@ -52,7 +52,7 @@ clean-install contract had.
    supported for daemon, web UI, chat, schedules, and backups; the coding sequence is
    Linux-only. This is a documented product boundary, not a bug to fix here. Making
    safe reads portable is security-sensitive enough to be its own story →
-   [BAZ-057](../in_progress/BAZ-057-portable-safe-reads.md) (not a blocker for that beta;
+   [BAZ-057](BAZ-057-portable-safe-reads.md) (not a blocker for that beta;
    now Release 0.24's first priority).
 2. **The E2E turn needs no LLM, no API key, no docker.** Reuse the deterministic fake
    provider (`scripts/fake-coding-provider.mjs`, OpenAI-compatible, selected via

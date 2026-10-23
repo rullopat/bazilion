@@ -29,18 +29,19 @@ Removed stories remain recoverable through Git history; do not reuse their IDs.
 
 No stories currently ready to pull.
 
-## In progress (2)
+## In progress (0)
 
-| Story | Release priority and outcome |
-| --- | --- |
-| [BAZ-057](in_progress/BAZ-057-portable-safe-reads.md) | **First priority for Release 0.24:** implemented and actual-macOS-qualified ordinary Agent chat; awaiting release integration, with platform/capability limits recorded |
-| [BAZ-071](in_progress/BAZ-071-platform-readiness-diagnostics.md) | **Final scoped addition for Release 0.24:** CLI/web diagnostics implemented and Linux/macOS-qualified; awaiting release integration, with execution gates unchanged |
+No active implementation stories. Release 0.24.0 shipped the two bounded stories below and the
+embedded Pi 1.4.0 upgrade. Codemode and Durable were not included.
 
-Release 0.24 is developed on `release/0.24`. Scope is frozen to these stories and the embedded Pi
-1.4.0 upgrade; Codemode and Durable are excluded. Current released platform support remains unchanged
-until release integration and publication.
+## Done (56)
 
-## Done (54)
+### Released in 0.24.0 within explicit limits
+
+- [BAZ-057 — Ordinary macOS chat](done/BAZ-057-portable-safe-reads.md): bounded macOS arm64
+  CLI/API/browser qualification; Linux-only Git/stdio and conservative ownership remain.
+- [BAZ-071 — Installation and platform diagnostics](done/BAZ-071-platform-readiness-diagnostics.md):
+  independent CLI/web health, support and protected readiness; execution gates unchanged.
 
 ### Agent configuration, policy and runtime
 

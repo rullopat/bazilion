@@ -1,8 +1,8 @@
 # Embedded Pi runtime
 
 Bazilion pins `@earendil-works/pi-ai`, `pi-agent-core`, `pi-coding-agent` and standalone
-`pi-mcp` to **1.4.0** in the daemon and packed CLI on the **unreleased 0.24 branch**.
-Published 0.23.0 embeds Pi 1.0.0. This upgrade does not change the operator's global Pi installation.
+`pi-mcp` to **1.4.0** in the daemon and packed CLI, shipped in **0.24.0**.
+Historical 0.23.0 embeds Pi 1.0.0. This upgrade does not change the operator's global Pi installation.
 
 ## Ownership
 
@@ -70,7 +70,7 @@ See [image generation](image-generation.md).
   Removed IDs are never silently mapped to another model; without an explicit endpoint that
   can admit the same ID, resolution fails closed.
 
-## Upgrade qualification (unreleased 0.24)
+## Upgrade qualification (shipped in 0.24.0)
 
 Code **`5ab045cb3b6b2018378556857e2cdb32084c84a7`** passed all six jobs in
 [CI 39778352776](https://github.com/rullopat/bazilion/actions/runs/39778352776): Linux/macOS

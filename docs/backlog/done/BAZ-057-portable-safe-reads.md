@@ -1,12 +1,13 @@
 ---
 id: BAZ-057
 title: Portable safe reads — repository context off-Linux
-status: in_progress
+status: done
 size: L
 created: 2026-09-17
 priority: high
-target_release: '0.24'
-note: Implemented and qualified on the unreleased 0.24 branch; awaiting release integration. Actual macOS arm64 qualification is bounded below; Windows remains unsupported.
+target_release: '0.24.0'
+closed: 2026-10-23
+note: Shipped in 0.24.0. Actual macOS arm64 qualification is bounded below; Windows remains unsupported.
 ---
 
 # BAZ-057 — Portable safe reads — repository context off-Linux
@@ -22,11 +23,10 @@ note: Implemented and qualified on the unreleased 0.24 branch; awaiting release 
 
 ## Goal and release scope
 
-**Release 0.24's first priority is usable ordinary Agent chat on macOS**, not merely a
-successful installer, dashboard or repository-context endpoint. The implementation is on
-`release/0.24`, [PR #79](https://github.com/rullopat/bazilion/pull/79), and is not yet released.
-Published 0.23.0 still refuses macOS turns. This story remains In progress until release integration;
-its implementation/qualification work is complete within the scope recorded here.
+**Released in 0.24.0: usable ordinary Agent chat on macOS**, not merely a successful installer,
+dashboard or repository-context endpoint. [PR #79](https://github.com/rullopat/bazilion/pull/79)
+integrated the implementation; final CI/publication and public-artifact checks are recorded in
+[releases](../../releases.md). The historical 0.23.0 package retains its Linux-only turn boundary.
 
 Windows, universal native-platform parity, paid/live-provider qualification and additional
 Git/container/subprocess capabilities are not implied by ordinary chat success.
@@ -117,9 +117,10 @@ harness needed `NODE_ENV=test` and hardlink-fixture cleanup; those were not libr
 Registry tarball integrity checks were not a build-provenance audit. Fuller investigation detail
 remains in Git history, not a separate progress/evidence archive.
 
-## Remaining release boundary
+## Release integration
 
-Keep the release PR draft and unmerged until the operator decides its remaining story scope and
-release gates. Update the website only as a separately authorized release/deployment action; its
-published 0.23.0 boundary remains accurate. Any broader platform/capability qualification needs
-its own observed contract, not a blanket support claim from this implementation.
+Published 2026-10-23 in [0.24.0](https://github.com/rullopat/bazilion/releases/tag/v0.24.0).
+Final six-job CI and actual public Linux guarded-install/library checks passed; the original
+qualification limits above remain authoritative. No cryptographic npm build-source provenance is
+claimed. Any broader platform/capability qualification needs its own observed contract, not a
+blanket support claim from this implementation.

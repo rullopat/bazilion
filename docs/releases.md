@@ -1,32 +1,47 @@
 # Releases
 
-## 0.24.0 — prepared, unreleased
+## 0.24.0
 
-`bazilion`, `@bazilion/api-types` and `@bazilion/client` are versioned **0.24.0** on the release
-branch. They are not yet published; npm latest remains 0.23.0 and PR #79 remains draft/unmerged.
-See the [changelog](../CHANGELOG.md) for ordinary macOS chat, embedded Pi 1.4.0
-and independent installation/platform/protected-readiness diagnostics. Product maturity remains alpha.
+[GitHub release](https://github.com/rullopat/bazilion/releases/tag/v0.24.0) ·
+[What's new](https://bazilion.com/docs/whats-new-0-24/) · [Upgrade guidance](upgrades.md)
 
-Versioned candidate **`2a2bb4acdaa8225efcd8c38c9a76ce83dedc35a8`** passed all six jobs in
-[CI 39923495901](https://github.com/rullopat/bazilion/actions/runs/39923495901): source checks,
-build/pack and installed CLI trials on Linux/macOS Node 24.22.0; offline installation of both
-unpublished library tarballs together, runtime imports and browser-only consumer types; 399 required
-security cases; and the nine-entry genuine-release matrix. The 0.23.0 fixture preserved its Team
-sentinel and paired auth across two candidate starts; all eight older fixtures refused unchanged.
-CLI tarballs have platform/build-specific hashes; no cross-platform byte-equivalence is claimed.
+Published 2026-10-23. `bazilion`, `@bazilion/api-types` and `@bazilion/client` are **0.24.0/latest**.
+The annotated tag identifies `06e4c3ddd724474484a675cdadc248a8c2762be6`. Product maturity remains alpha.
+See the [changelog](../CHANGELOG.md) for ordinary macOS chat, embedded Pi 1.4.0 and independent
+installation/platform/protected-readiness diagnostics. Doctor exits on structural health only;
+protected automation separately inspects authenticated `protectedWorkBaselineReady`.
 
-Existing platform/provider/ownership limits remain. See [upgrade guidance](upgrades.md),
-[BAZ-057](backlog/in_progress/BAZ-057-portable-safe-reads.md) and
-[BAZ-071](backlog/in_progress/BAZ-071-platform-readiness-diagnostics.md). Publication, public-registry
-artifact verification, release integration and website promotion still require operator approval.
+[Final six-job CI](https://github.com/rullopat/bazilion/actions/runs/39941560898) and
+[publication](https://github.com/rullopat/bazilion/actions/runs/39942502773) passed: Linux/macOS
+source/build/installed trials, offline library imports/browser-only types, 399 required security
+cases and nine genuine-release fixtures. The 0.23 sentinel/auth pair survived two starts; eight
+older fixtures refused unchanged. Platform/provider/ownership limits remain in
+[BAZ-057](backlog/done/BAZ-057-portable-safe-reads.md) and
+[BAZ-071](backlog/done/BAZ-071-platform-readiness-diagnostics.md).
+
+Actual public archives passed integrity, structure and registry ECDSA signature checks. Both public
+libraries passed offline imports/browser-only types; the public CLI passed a fresh Linux Node
+24.22.0 guarded install, CLI/API/browser chat, diagnostics and owned cleanup. Scripts were disabled
+and admitted dependencies rebuilt explicitly: no unrestricted lifecycle or new public macOS
+qualification claim. Library bytes match the qualified archives; the CLI differs from the local
+qualified archive only in proven generated SSR source-root metadata and its filename reference.
+No cross-platform byte-equivalence is claimed. npm attestations returned 404 and metadata supplied
+no `gitHead`; **no cryptographic build-source provenance is claimed**.
+
+The first release run stopped before publication on a restart-test HTTP 401. A demonstrated
+fixture readiness flaw was corrected without changing runtime authentication, then all six jobs
+were repeated. The original cause remains unconfirmed;
+[the failed run](https://github.com/rullopat/bazilion/actions/runs/39937913021) remains in CI.
+[Website PR #23](https://github.com/rullopat/bazilion-web/pull/23) deployed through the existing
+Git-driven build; 13 production URLs matched the checked build bytes, including the unchanged installer.
 
 ## 0.23.0
 
 [GitHub release](https://github.com/rullopat/bazilion/releases/tag/v0.23.0) ·
 [What's new](https://bazilion.com/docs/whats-new-0-23/) · [Upgrade guidance](upgrades.md)
 
-Published 2026-10-21. `bazilion`, `@bazilion/api-types` and `@bazilion/client` are 0.23.0 on
-npm `latest`. The release tag identifies code commit `b6d354b5e5e6bc8f82febd1a8047f7a7984c7443`.
+Published 2026-10-21. `bazilion`, `@bazilion/api-types` and `@bazilion/client` were 0.23.0 on
+npm `latest` at publication. The release tag identifies code commit `b6d354b5e5e6bc8f82febd1a8047f7a7984c7443`.
 The version is stable-tagged; product maturity remains **alpha**, not general-availability acceptance.
 
 ### Changes
