@@ -139,12 +139,19 @@ repository capability. See `docs/repository-context.md` and
 Shipped in **0.24.0**, BAZ-057 adds macOS ordinary chat through a shared capture
 adapter using public `@openclaw/fs-safe@0.26.8` APIs. Preserve Linux fd-relative access;
 macOS guarded opens need capture-wide registration/directory/file/absence checks, not a
-native-mode label or an atomic-snapshot claim. Hardened Git and MCP stdio remain Linux-only.
+native-mode label or an atomic-snapshot claim. In that release, hardened Git and MCP stdio remain Linux-only.
 macOS worker settlement requires live ChildProcess authority, normal exit, natural pipe EOF
 and an absent original group. Persisted receipts never authorize PID signalling; unknown
 ownership after restart/restore remains blocked. See `docs/repository-context.md`,
 `docs/agent-engine.md` and `docs/backlog/done/BAZ-057-portable-safe-reads.md` for scope.
 The historical 0.23.0 package does not have this ordinary macOS chat support.
+
+Unreleased **0.25 / BAZ-072** adds a bounded private-worktree backend to the single hardened Git
+inspector on macOS. Never give external Git the live macOS source pathname: ignore-aware guarded
+reads materialize private scratch, source observations validate independently, and snapshot file
+reads use the frozen private bytes. Linux retains its fd-pinned worktree. Unsafe/oversized layouts
+still refuse; this first increment does not qualify complete macOS feature parity or remove MCP
+stdio/process restrictions. See `docs/repository-context.md` and the active BAZ-072 story.
 
 ### Coding evidence: progress, retained diagnostics and change review (BAZ-041/042, shipped in v0.17.0)
 
@@ -167,8 +174,9 @@ layer and not a second transcript. Pi's session JSONL stays the authoritative co
   the change was relevant to what was tested; do not add a "verified" badge.
 - Git inspection has **one** hardened implementation, `src/lib/git/capture.ts`. Do not add a second Git
   path: it copies bounded metadata into scratch with a Bazilion-authored config, refuses unsupported
-  layouts, reaches the work tree through a pinned directory descriptor, and applies every hardening flag
-  inside `runGit` so a caller cannot forget them. Inspection never mutates the repository and never runs
+  layouts, reaches Linux source through a pinned directory descriptor (macOS uses bounded private
+  worktree scratch), and applies every hardening flag inside `runGit` so a caller cannot forget them.
+  Inspection never mutates the repository and never runs
   repository-configured helpers.
 - Review feedback is **file-level**: identity is `(team, snapshotId, path)`, with a selected line range
   carried as context only. A snapshot already records a digest per changed path, so staleness stays

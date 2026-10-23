@@ -123,8 +123,13 @@ observations and the registered root binding. These are change detectors, not an
 of a concurrently hostile source tree. The source and private-copy observations are independent.
 
 Git capture/changes/identity and private-backend tests now run on the macOS source-test path, with
-a focused actual-arm64 job for both supported Node lines. Actual macOS results and broader coding,
-container/process acceptance are still pending; this is not a 0.25 release qualification claim.
+a focused actual-arm64 job for both supported Node lines. The initial Git candidate passed all 67
+focused cases on actual macOS 26.6.2 arm64 with Node 24.22.0 and 26.4.0 in
+[CI](https://github.com/rullopat/bazilion/actions/runs/39955676046). CLI/web platform diagnostics
+now describe bounded macOS Git support independently of the remaining MCP stdio restriction.
+The hosted `macos-latest` image reported 26.6.2: its label does not establish latest-stable macOS
+qualification. Latest-stable release acceptance and broader coding/container/process work remain
+open; these focused checks are not a 0.25 feature-parity release qualification claim.
 
 ## Development and acceptance
 

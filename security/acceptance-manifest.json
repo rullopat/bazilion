@@ -2,6 +2,48 @@
   "version": 1,
   "cases": [
     {
+      "id": "MACOS-GIT-IGNORE-NO-FOLLOW",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/core/git-private-worktree.test.ts",
+      "test": "ignored dependency trees are skipped without following links or copying their bytes"
+    },
+    {
+      "id": "MACOS-GIT-REGISTERED-ROOT-BINDING",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/core/git-private-worktree.test.ts",
+      "test": "a registered root link works, but retargeting cannot validate the capture"
+    },
+    {
+      "id": "MACOS-GIT-SOURCE-MUTATION",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/core/git-private-worktree.test.ts",
+      "test": "source mutation during materialization cannot return a successful capture"
+    },
+    {
+      "id": "MACOS-GIT-BOUNDED-WORKTREE",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/core/git-private-worktree.test.ts",
+      "test": "oversized files refuse instead of creating a truncated successful view"
+    },
+    {
+      "id": "MACOS-GIT-NO-REPOSITORY-HELPERS",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/core/git-private-worktree.test.ts",
+      "test": "repository-configured executable helpers cannot run against the private tree"
+    },
+    {
+      "id": "MACOS-GIT-FROZEN-SNAPSHOT-BYTES",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/core/git-private-worktree.test.ts",
+      "test": "source snapshots fingerprint private bytes and a fresh capture detects later edits"
+    },
+    {
+      "id": "MACOS-GIT-CAPTURE-DISPOSAL",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/core/git-private-worktree.test.ts",
+      "test": "cleanup removes the private bytes and prevents further Git invocations"
+    },
+    {
       "id": "DIAGNOSTICS-HEALTH-AUTH-SEPARATION",
       "owner": "BAZ-071",
       "file": "apps/cli/test/doctor.test.ts",

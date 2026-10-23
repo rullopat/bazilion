@@ -10,7 +10,7 @@ const platformCapabilities: PlatformCapabilitiesReport = {
   note: 'Platform support only, not an execution or connectivity test.',
   capabilities: [
     { id: 'ordinary_chat', label: 'Ordinary interactive chat', support: 'supported', detail: 'No chat was run by this report.' },
-    { id: 'git_inspection', label: 'Hardened Git inspection', support: 'unsupported', detail: 'Requires Linux descriptor-pinned Git inspection.' },
+    { id: 'git_inspection', label: 'Hardened Git inspection', support: 'supported', detail: 'Uses a bounded private worktree capture. Unsafe layouts and capture limits still refuse inspection.' },
     { id: 'mcp_stdio', label: 'MCP stdio', support: 'unsupported', detail: 'Requires Linux process-tree retirement. Use Streamable HTTP instead.' },
     { id: 'mcp_http', label: 'MCP Streamable HTTP', support: 'supported', detail: 'Enable and test a configured server separately; protected turns still deny MCP.' },
   ],
@@ -35,13 +35,13 @@ test.each([
   expect(html).not.toContain('all good')
 })
 
-test('macOS presentation retains Linux-only boundaries and the portable MCP alternative', () => {
+test('macOS presentation admits bounded Git and retains the portable MCP alternative', () => {
   const html = renderToStaticMarkup(createElement(InstallationReadinessCard, {
     report: { ok: true, protectedWorkBaselineReady: false, platformCapabilities },
   }))
   expect(html).toContain('Daemon platform: macOS')
-  expect(html.match(/Unsupported on this platform/g)).toHaveLength(2)
-  expect(html.match(/Supported on this platform/g)).toHaveLength(2)
+  expect(html.match(/Unsupported on this platform/g)).toHaveLength(1)
+  expect(html.match(/Supported on this platform/g)).toHaveLength(3)
   for (const capability of platformCapabilities.capabilities) {
     expect(html).toContain(capability.label)
     expect(html).toContain(capability.detail)

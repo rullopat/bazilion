@@ -150,16 +150,23 @@ credentials/spend; this story does not authorize paid calls or use of personal a
 Initial Git implementation is in progress: the single hardened inspector retains Linux fd-relative
 access and adds a bounded private-worktree backend for macOS. Ignore-aware guarded copying,
 independent source validation, frozen snapshot bytes and scratch disposal have focused tests on
-Linux; Git capture/changes/identity suites are admitted to the actual macOS CI path. A focused
-arm64 job exercises both supported Node lines and reports actual OS/architecture versions.
-See [repository context](../../repository-context.md) for the candidate's bounds and limitations.
+Linux; Git capture/changes/identity suites run on the actual macOS CI path. Initial candidate
+`0ae74d6` passed all eight jobs in [CI](https://github.com/rullopat/bazilion/actions/runs/39955676046),
+including Linux/macOS source/build/installed trials, the existing security/upgrade gates and all 67
+focused cases on actual macOS **26.6.2 arm64**, Node **24.22.0** and **26.4.0**. The hosted
+`macos-latest` label is not latest-stable OS qualification; that remains a separate release gate.
 
-Local normal-suite tests, the existing security gate, lint and root/web typechecks passed. A root/
-PID-namespace test invocation failed browser startup, permission-sensitive backup and delayed-child
-settlement checks; the normal suite passed without relaxing checks. A concurrent security run timed
+The follow-up admits the source-snapshot suite to macOS with explicit private/live backend read
+contracts, updates CLI/web Git capability diagnostics, and adds seven BAZ-072 cases to the security
+manifest. See [repository context](../../repository-context.md) for bounds and layout limitations.
+
+Local normal-suite tests, the expanded 406-case security gate, lint and root/web typechecks passed.
+The follow-up's focused Git/snapshot/diagnostic tests also pass locally; its CI results remain
+pending. An initial root/PID-namespace invocation failed browser startup, permission-sensitive
+backup and delayed-child settlement checks; the normal suite passed without relaxing checks. A concurrent security run timed
 out; a standalone run passed. These do not establish macOS qualification.
 
-Actual macOS results, broader coding workflow acceptance, private-worktree layout parity and the
-Git platform diagnostic update remain open. MCP stdio, browser/protected lifecycle work, image/live
-acceptance and the technical-minimum audit are not implemented/qualified by this increment. No
-version bump, publication or expanded released-support claim has occurred.
+Latest-stable macOS acceptance, broader coding workflow acceptance and private-worktree layout
+parity remain open. MCP stdio, browser/protected lifecycle work, image/live acceptance and the
+technical-minimum audit are not implemented/qualified by this increment. No version bump,
+publication or expanded released-support claim has occurred.

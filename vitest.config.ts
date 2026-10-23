@@ -1,7 +1,7 @@
 import { defineConfig } from 'vitest/config'
 
 // Linux-only suites retain Linux process identities or legacy live-worktree/coding assumptions.
-// BAZ-072 adds actual-platform Git capture/changes/identity and private-worktree coverage alongside
+// BAZ-072 adds actual-platform Git capture/changes/identity/snapshot and private-worktree coverage alongside
 // repository-context-capture, observed-child and portable-chat. Never exclude those suites to hide
 // a portability failure. A captured Git backend alone does not qualify the broader protected,
 // container, restricted-worker or scheduled-provider configurations.
@@ -11,10 +11,6 @@ const LINUX_ONLY = [
   'apps/daemon/test/core/repository-context-git-errors.test.ts',
   'apps/daemon/test/runtime/repository-context.test.ts',
   'apps/cli/test/repository-context.test.ts',
-  // This legacy snapshot suite assumes a live worktree and accepts symlinks as incomplete
-  // per-path entries. Private macOS captures freeze bytes and refuse unignored links up front;
-  // git-private-worktree.test.ts exercises their snapshot/refresh contract on both platforms.
-  'apps/daemon/test/core/git-review-snapshot.test.ts',
   // Broader legacy pipeline suites retain their existing qualification boundary.
   // BAZ-057 adds actual-platform ordinary-turn coverage separately; a new failure
   // must be fixed or explicitly scoped, not hidden by extending this list.

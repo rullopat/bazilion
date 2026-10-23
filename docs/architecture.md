@@ -162,8 +162,10 @@ not a Team Policy communication approval.
 
 Shipped in 0.24.0, ordinary macOS chat has actual installed CLI/API/browser qualification through a shared capture adapter: Linux retains
 fd-relative reads; macOS uses guarded public fs-safe opens plus capture-wide identity/source checks.
-This is not an atomic filesystem snapshot or complete platform parity. Hardened Git inspection and
-MCP stdio retain Linux-only admission; unknown process ownership remains blocked. See
+This is not an atomic filesystem snapshot or complete platform parity. In that release hardened
+Git inspection and MCP stdio retain Linux-only admission. Unreleased BAZ-072 adds bounded private
+macOS Git worktree capture while preserving Linux descriptor-pinned access; MCP stdio and unknown
+process ownership remain blocked. See
 [repository context](repository-context.md), [BAZ-057](backlog/done/BAZ-057-portable-safe-reads.md)
 and [coding environments](coding-environments.md).
 

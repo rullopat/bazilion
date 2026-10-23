@@ -22,10 +22,12 @@ export function projectPlatformCapabilities(
       {
         id: 'git_inspection',
         label: 'Hardened Git inspection',
-        support: linux ? 'supported' : 'unsupported',
+        support: portable ? 'supported' : 'unsupported',
         detail: linux
           ? 'Repository layout and source checks still apply at capture time.'
-          : 'Requires Linux descriptor-pinned Git inspection; ordinary chat does not grant this capability.',
+          : portable
+            ? 'Uses a bounded private worktree capture. Unsafe layouts, source changes and capture limits still refuse inspection.'
+            : unsupported,
       },
       {
         id: 'mcp_stdio',

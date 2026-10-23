@@ -109,6 +109,7 @@ jobs:
           apps/daemon/test/core/git-private-worktree.test.ts
           apps/daemon/test/core/git-review-changes.test.ts
           apps/daemon/test/core/git-review-identity.test.ts
+          apps/daemon/test/core/git-review-snapshot.test.ts
           apps/daemon/test/core/repository-context-capture.test.ts
 
   installer-e2e:

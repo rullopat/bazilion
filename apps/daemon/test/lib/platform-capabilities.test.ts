@@ -3,7 +3,7 @@ import { projectPlatformCapabilities } from '../../src/lib/platform-capabilities
 
 test.each([
   ['linux', 'Linux', ['supported', 'supported', 'supported', 'supported']],
-  ['darwin', 'macOS', ['supported', 'unsupported', 'unsupported', 'supported']],
+  ['darwin', 'macOS', ['supported', 'supported', 'unsupported', 'supported']],
   ['win32', 'Unsupported platform', ['unsupported', 'unsupported', 'unsupported', 'unsupported']],
   ['freebsd', 'Unsupported platform', ['unsupported', 'unsupported', 'unsupported', 'unsupported']],
 ] as const)('platform support projection is explicit for %s', (platform, label, support) => {
@@ -21,9 +21,10 @@ test.each([
   expect(report.capabilities.every((c) => c.detail.length > 0)).toBe(true)
 })
 
-test('macOS explains independent Linux-only refusals and the HTTP alternative', () => {
+test('macOS explains bounded Git capture separately from the remaining stdio refusal', () => {
   const report = projectPlatformCapabilities('darwin')
-  expect(report.capabilities[1]?.detail).toContain('ordinary chat does not grant this capability')
+  expect(report.capabilities[1]?.detail).toContain('bounded private worktree capture')
+  expect(report.capabilities[1]?.detail).toContain('still refuse inspection')
   expect(report.capabilities[2]?.detail).toContain('Use Streamable HTTP instead')
   expect(report.capabilities[3]?.detail).toContain('protected turns still deny MCP')
 })
