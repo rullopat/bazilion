@@ -1,5 +1,11 @@
 # @bazilion/api-types
 
+## 0.24.0
+
+### Minor Changes
+
+- Add a hermetic PlatformCapabilitiesReport to authenticated detailed health, separating static platform support from structural installation health and protected-work prerequisites. Supported does not mean an execution or connectivity test passed. Preserve the independent protectedWorkBaselineReady signal, public health's minimal shape and zero daemon/Node runtime dependencies.
+
 ## 0.23.0
 
 ### Minor Changes

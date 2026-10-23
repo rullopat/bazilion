@@ -1,5 +1,17 @@
 # bazilion
 
+## 0.24.0
+
+### Minor Changes
+
+- Enable ordinary interactive Agent chat on macOS with guarded repository-context capture and live child-process ownership, while retaining Linux descriptor-relative reads. Fresh installed CLI/API/browser turns with empty and instructed Teams are qualified on macOS arm64 / Node 24.22.0. Guarded reads are change detectors, not atomic filesystem snapshots or a general sandbox; hardened Git inspection and MCP stdio remain Linux-only, and unknown cleanup remains blocked.
+
+  Upgrade the embedded Pi AI/agent/coding-agent/MCP family to 1.4.0. Preserve stored provider IDs, map Azure catalog/auth/refresh through the canonical SDK name, and retain explicit admission, daemon-owned credentials/resources and no uncertain-call replay. Codemode, Durable, ambient discovery and automatic MCP OAuth remain excluded.
+
+  Separate installation health, static platform support and protected unattended readiness in CLI/web diagnostics. **Doctor exit status now covers structural installation health only**; automation requiring protected work must inspect authenticated health's `protectedWorkBaselineReady` separately. Ordinary chat execution is labelled Not checked, never inferred from configuration or platform support.
+
+  The canonical 0.23 schema is unchanged. A genuine 0.23.0 home retains its Team sentinel and paired auth.json across two candidate starts; all eight older incompatible fixtures still refuse unchanged. Preserve the entire home before upgrading. Windows, broader macOS/provider/image qualification and arbitrary detached-writer recovery are not implied. Node support remains ^24.22.0 || ^26.4.0.
+
 ## 0.23.0
 
 ### Minor Changes

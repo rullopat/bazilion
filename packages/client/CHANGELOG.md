@@ -1,5 +1,16 @@
 # @bazilion/client
 
+## 0.24.0
+
+### Minor Changes
+
+- Align the client/API-types package family at 0.24.0 for the new platform-support health report. The client remains a stateless HTTP consumer with explicit bearer authentication; no daemon ownership, execution permission or Node-only dependency is added.
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @bazilion/api-types@0.24.0
+
 ## 0.23.0
 
 ### Minor Changes

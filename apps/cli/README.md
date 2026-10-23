@@ -12,6 +12,10 @@ Requires **Node 24.22.0+ within 24.x, or 26.4.0+ within 26.x**. Earlier releases
 major lines are refused before application imports or state bootstrap. This floor includes the
 upstream native cleanup-hook fix; upgrading Node does not authorize resetting any Bazilion data.
 
+Version 0.24 adds ordinary macOS chat, qualified on macOS arm64 / Node 24.22.0, alongside Linux.
+Windows is unsupported. Hardened Git inspection and MCP stdio still require Linux; macOS can use
+Streamable HTTP MCP. Guarded repository reads are not atomic snapshots or a general sandbox.
+
 ```sh
 npx bazilion dashboard     # one-shot
 # or install globally
@@ -27,13 +31,13 @@ bazilion dashboard
 bazilion dashboard
 ```
 
-The daemon writes a bootstrap token to `~/.bazilion/auth.json`, binds `127.0.0.1:4321`, and the bundled web UI binds `127.0.0.1:4322`. CLI commands pick the token up automatically from `auth.json`; paste it into the web login screen.
+The daemon writes a bootstrap token to `~/.bazilion/auth.json`, binds `127.0.0.1:4321`, and the bundled web UI binds `127.0.0.1:4322`. CLI commands pick the token up automatically from `auth.json`. The bootstrap credential can finish browser setup only while setup is incomplete; use a named device credential for subsequent browser login.
 
 From another terminal:
 
 ```sh
-# Set up a provider (env var, or `bazilion config set` to persist it).
-export ANTHROPIC_API_KEY=sk-ant-...
+# First save the provider credential on /config (avoids shell-history exposure).
+# Environment credentials must be present in the daemon's environment at startup.
 bazilion provider enable anthropic
 bazilion provider models-set anthropic claude-opus-5
 
@@ -41,8 +45,8 @@ bazilion provider models-set anthropic claude-opus-5
 bazilion agent spawn --profile default --name first
 # → spawned agent <uuid> (first)
 
-bazilion agent chat <uuid>                       # interactive REPL
 bazilion agent chat <uuid> --message "say hi"    # one-shot
+printf 'say hi' | bazilion agent chat <uuid>       # piped input; no interactive REPL
 ```
 
 Run `bazilion --help` for the full command list, or `bazilion <command> --help` for details on any subcommand.
@@ -118,16 +122,23 @@ pnpm tsx apps/cli/src/index.ts auth openai login --device-code
 ```
 
 After connecting, enable `openai-codex` and curate at least one model, for example
-`gpt-6-astra` (GPT-6 Astra, available through both OpenAI API keys and ChatGPT OAuth
-in the Pi 0.85.1 catalog).
+`gpt-6-astra` (GPT-6 Astra, present in the embedded OpenAI and ChatGPT catalogs).
+Catalog membership is not proof of account entitlement.
 Credentials are stored AES-256-GCM-encrypted in the daemon's `secrets` table.
 
 ## What's in the box
 
 - **CLI + daemon + web UI**, spawned together via `bazilion dashboard`. The daemon binds `127.0.0.1:4321`, the web UI binds `127.0.0.1:4322`, and the daemon owns `~/.bazilion/` (SQLite DB, profiles, agents, teams, skills, logs).
-- **Operator command families** include `agent`, `profile`, `team`, `team`, `skill`, `provider`, `config`, `auth`, `memory`, `send`, `inbox`, `trigger`, `serve`, `doctor`, `backup`, `token`, `login`, and `uninstall`.
+- **Operator command families** include `agent`, `profile`, `team`, `team-template`, `skill`, `provider`, `config`, `auth`, `memory`, `send`, `inbox`, `trigger`, `serve`, `doctor`, `backup`, `token`, `login`, and `uninstall`.
 - **Provider support** via [pi-ai](https://www.npmjs.com/package/@earendil-works/pi-ai): Anthropic, OpenAI (key + ChatGPT OAuth), Google AI Studio + Vertex, Azure OpenAI, AWS Bedrock, Mistral, Groq, Cerebras, xAI, zAI, Hugging Face, OpenRouter, Vercel AI Gateway, Cloudflare, GitHub Copilot, DeepSeek, Fireworks, Together, Baseten, Moonshot/Kimi, MiniMax, Qwen Token Plan (including Individual), Xiaomi MiMo, Ant Ling, NVIDIA NIM, OpenCode, LM Studio, Ollama, and llama.cpp.
 - **OpenClaw-compatible skills**: drop a `SKILL.md` into `~/.bazilion/skills/<name>/`, or import in bulk via `bazilion skill import --from openclaw`.
+
+## Installation diagnostics
+
+`bazilion doctor` and `/config` distinguish installation health, platform support and protected
+unattended readiness. Doctor exits zero for structural installation health only. Automation
+requiring protected work must inspect `protectedWorkBaselineReady` in authenticated
+`/api/health/details`; ordinary chat execution is Not checked. All execution gates remain mandatory.
 
 ## Uninstall
 
