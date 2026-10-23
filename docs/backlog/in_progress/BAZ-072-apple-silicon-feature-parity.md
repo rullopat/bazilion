@@ -201,7 +201,7 @@ qualify worker/browser/protected process parity or latest-stable macOS: the host
 26.6.2. Those milestones, broader layout/coding acceptance and unrelated image/live criteria remain
 open; no merge, release publication, package-version bump or website deployment is authorized.
 
-### Worker ownership — in progress
+### Worker ownership — implemented, bounded platform evidence
 
 The candidate now records live ChildProcess authority plus the shared public-libproc birth,
 uid/session/group observations before executable input, checking native readiness before spawn.
@@ -229,7 +229,18 @@ CoreFoundation added `__CF_USER_TEXT_ENCODING` after exec. Production minimal bo
 only that OS-generated bookkeeping key before the unchanged exact key/value validator; the
 six-key assertion and rejection of other ambient variables remain. The security gate also exposed
 an omitted describe-prefix in its new readiness-case name; that exact manifest name is corrected.
-These are failed candidate checks, not passed qualification; the fixed candidate must rerun both. The broader worker-runtime
-suite now runs on macOS after canonicalizing temporary fixture roots and forwarding the actual
-child/lifecycle hooks. These controlled/offline tests do not qualify actual Docker, a live provider,
-GUI browsing or latest-stable macOS. Worker milestone completion awaits the real-platform results.
+Those failed candidate checks remain failures, not relabelled passes. Fixed candidate `164c61b`
+passes both baseline jobs in [CI](https://github.com/rullopat/bazilion/actions/runs/39991428077):
+**237 passed** per job, four existing Linux `/proc`-mock cases separately covered on Linux, on
+**macOS 26.6.2 (25G83) arm64**, Node **24.22.0** and **26.4.0**. This includes native normal/abnormal
+settlement, ignored-TERM original descendants, no adoption of unknown descendants, local-pipe EOF
+refusal, workspace exclusion, receipt substitution, restart/restore refusal, supported management
+acknowledgement and real active-turn daemon shutdown/restart. Packaged Linux/macOS trials and the
+431-case CI security gate also pass; full source/build and upgrade jobs are still running.
+
+Local normal-suite checks pass **2,767 tests / 64 skips** (the prior 50 plus 14 actual-Mac-only
+worker/workspace cases); all **431 required security cases** pass standalone. Root/web typechecks
+and lint pass with existing warnings. The broader worker-runtime suite now runs on macOS after
+canonicalizing temporary fixture roots and forwarding actual child/lifecycle hooks. The worker
+milestone has its bounded real-platform evidence, not actual Docker, live-provider, GUI-browser or
+latest-stable qualification. Those later milestones and unrelated BAZ-072 acceptance remain open.
