@@ -2,6 +2,78 @@
   "version": 1,
   "cases": [
     {
+      "id": "MACOS-MCP-NATIVE-ADMISSION",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/mcp-darwin-owner.test.ts",
+      "test": "unavailable Darwin native inspection refuses before Pi can spawn"
+    },
+    {
+      "id": "MACOS-MCP-NATIVE-SLOT-ADMISSION",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/mcp-darwin-owner.test.ts",
+      "test": "unavailable Darwin inspection refuses pool admission before allocating a resource slot"
+    },
+    {
+      "id": "MACOS-MCP-UNKNOWN-CLOSE",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/mcp-darwin-owner.test.ts",
+      "test": "Darwin inspection failure retains ownership without unsafe native-close fallback"
+    },
+    {
+      "id": "MACOS-MCP-ANCHOR-REUSE",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/mcp-darwin-owner.test.ts",
+      "test": "Darwin anchor reuse between TERM and KILL refuses escalation and slot release"
+    },
+    {
+      "id": "MACOS-PROCESS-NO-WALL-CLOCK-FALLBACK",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/darwin-process.test.ts",
+      "test": "denied or unavailable monotonic birth evidence cannot fall back to a wall-clock anchor"
+    },
+    {
+      "id": "MACOS-PROCESS-PERMISSION-ABI-UNKNOWN",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/darwin-process.test.ts",
+      "test": "Darwin permission errors, partial ABI responses and invalid fields are unknown, not absent"
+    },
+    {
+      "id": "MACOS-PROCESS-ENUMERATION-FORK-RACE",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/darwin-process.test.ts",
+      "test": "a leader disappearing during enumeration cannot hide a newly forked Darwin group member"
+    },
+    {
+      "id": "MACOS-PROCESS-SESSION-DRIFT",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/darwin-process.test.ts",
+      "test": "inconsistent Darwin session membership cannot become an empty-group receipt"
+    },
+    {
+      "id": "MACOS-PROCESS-PID-LIST-UNKNOWN",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/darwin-process.test.ts",
+      "test": "duplicate and invalid native PID lists refuse instead of hiding ambiguous membership"
+    },
+    {
+      "id": "MCP-STDIO-CANCELLATION-BUSY-NO-REPLAY",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/mcp-pool.test.ts",
+      "test": "owned stdio cancellation retains busy ownership, reports uncertainty and never replays the call"
+    },
+    {
+      "id": "MCP-STDIO-OPENING-RETIREMENT",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/mcp-pool.test.ts",
+      "test": "owned stdio retirement during initialization cannot publish an opening client"
+    },
+    {
+      "id": "MCP-STDIO-FAILED-INITIALIZATION",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/mcp-pool.test.ts",
+      "test": "owned stdio initialization failure retires its descendants before releasing the slot"
+    },
+    {
       "id": "MACOS-GIT-IGNORE-NO-FOLLOW",
       "owner": "BAZ-072",
       "file": "apps/daemon/test/core/git-private-worktree.test.ts",

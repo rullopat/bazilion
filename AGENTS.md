@@ -91,8 +91,13 @@ extensions. Legacy SSE is retired across the schema/API/CLI/web; prior schemas n
 rebootstrap, never ALTER/import/fallback adapters. Keep turn-specific tool/config/credential
 revalidation, no POST/tool-call replay, opening-client retirement, busy reaping and ownership
 until close settles. Linux `stdio-owner.ts` retains the surviving-descendant close guard with Pi 1.4;
-unknown identity/cleanup retains a blocked slot. Stdio admission refuses before spawn off-Linux;
-Streamable HTTP remains available. See `docs/mcp.md` and `docs/pi-runtime.md`.
+unknown identity/cleanup retains a blocked slot. Published 0.24 stdio admission refuses off-Linux.
+Unreleased BAZ-072 adds a macOS candidate using daemon-only public libproc inspection through
+pinned `koffi@3.3.3` (install scripts disabled). Preserve exact BSD and monotonic Mach birth facts,
+uid/session/group revalidation, bounded lists and unknown-state refusal before spawn or signalling;
+never substitute shell `ps`, a native-availability label, persisted PIDs or Pi's unsafe close path.
+The binding stays out of workers and is never loaded on Linux. Streamable HTTP remains available.
+See `docs/mcp.md` and `docs/pi-runtime.md`.
 
 ### SQLite driver
 
@@ -150,8 +155,8 @@ Unreleased **0.25 / BAZ-072** adds a bounded private-worktree backend to the sin
 inspector on macOS. Never give external Git the live macOS source pathname: ignore-aware guarded
 reads materialize private scratch, source observations validate independently, and snapshot file
 reads use the frozen private bytes. Linux retains its fd-pinned worktree. Unsafe/oversized layouts
-still refuse; this first increment does not qualify complete macOS feature parity or remove MCP
-stdio/process restrictions. See `docs/repository-context.md` and the active BAZ-072 story.
+still refuse; the Git increment does not qualify complete macOS feature parity, MCP stdio or
+worker-process parity. See `docs/repository-context.md` and the active BAZ-072 story.
 
 ### Coding evidence: progress, retained diagnostics and change review (BAZ-041/042, shipped in v0.17.0)
 

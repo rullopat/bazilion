@@ -1,7 +1,9 @@
-// Linux ownership retirement only, not MCP framing/client code. Do not invoke Pi
-// 1.0's unguarded numeric-group close timers until its child handle is gone.
+// Ownership retirement only, not MCP framing/client code. Do not invoke Pi's unguarded
+// numeric-group close timers until its child handle is gone. Linux retains /proc inspection;
+// macOS uses public libproc birth-time/session/group observations, never shell ps or stored PIDs.
 import { opendirSync, readFileSync } from 'node:fs'
 import { StdioTransport } from '@earendil-works/pi-mcp'
+import { getDarwinProcessInspector } from '../process/darwin.ts'
 
 interface Member {
   pid: number
@@ -10,6 +12,11 @@ interface Member {
   session: number
   start: string
   state: string
+  uid?: number
+}
+interface ProcessInspector {
+  member(pid: number): Member | null
+  group(pid: number): Member[]
 }
 function member(pid: number): Member | null {
   try {
@@ -59,27 +66,40 @@ function group(pid: number): Member[] {
   }
   return members
 }
+function inspectorForStdio(): ProcessInspector {
+  if (process.platform === 'linux') return { member, group }
+  if (process.platform === 'darwin') {
+    const inspector = getDarwinProcessInspector()
+    inspector.assertReady()
+    return inspector
+  }
+  throw new Error(
+    'MCP stdio requires Linux or macOS with owned process-tree retirement; use Streamable HTTP on this platform.',
+  )
+}
 export function assertStdioPlatform(): void {
-  if (process.platform !== 'linux')
-    throw new Error(
-      'MCP stdio requires Linux for owned process-tree retirement; use Streamable HTTP on this platform.',
-    )
+  inspectorForStdio()
 }
 
 export class OwnedStdioTransport extends StdioTransport {
   private leader: Member | null = null
   private ownedPid?: number
   private retirement?: Promise<void>
+  private inspection?: ProcessInspector
+  private admissionStarted = false
   override async start(): Promise<void> {
-    assertStdioPlatform()
+    if (this.admissionStarted || this.retirement)
+      throw new Error('MCP stdio transport already started or retired')
+    this.admissionStarted = true
+    this.inspection = inspectorForStdio()
     // Capture before yielding: another daemon child cannot be spawned/reaped into
     // this pid between the native spawn and our initial identity admission.
     const starting = super.start()
     let error: unknown
-    if (process.platform === 'linux' && this.pid !== undefined) {
+    if (this.pid !== undefined) {
       this.ownedPid = this.pid
       try {
-        this.leader = member(this.pid)
+        this.leader = this.inspection.member(this.pid)
         if (
           !this.leader ||
           this.leader.parent !== process.pid ||
@@ -99,19 +119,24 @@ export class OwnedStdioTransport extends StdioTransport {
     return this.retirement
   }
   private async retire(): Promise<void> {
-    if (process.platform !== 'linux' || this.ownedPid === undefined) {
+    if (this.ownedPid === undefined || !this.inspection) {
+      // No admitted native child means no numeric-group signalling is safe. Native close is
+      // harmless only if Pi has no child handle (e.g. refusal before spawn or a failed spawn).
+      if (this.pid !== undefined) throw new Error('MCP subprocess ownership unknown')
       await super.close()
       return
     }
+    const inspection = this.inspection
     const pid = this.ownedPid
     const leader = this.leader
-    let survivors = group(pid)
+    let survivors = inspection.group(pid)
     if (survivors.length) {
-      const current = leader ? member(pid) : null
+      const current = leader ? inspection.member(pid) : null
       if (
         !leader ||
         !current ||
         current.start !== leader.start ||
+        current.uid !== leader.uid ||
         current.group !== pid ||
         current.session !== pid
       )
@@ -119,10 +144,11 @@ export class OwnedStdioTransport extends StdioTransport {
       const anchored = survivors
       const signal = (kind: NodeJS.Signals) => {
         const anchor = anchored.find((a) => {
-          const now = member(a.pid)
+          const now = inspection.member(a.pid)
           return (
             now &&
             now.start === a.start &&
+            now.uid === a.uid &&
             now.group === pid &&
             now.session === pid &&
             !['Z', 'X'].includes(now.state)
@@ -140,13 +166,13 @@ export class OwnedStdioTransport extends StdioTransport {
       const grace = performance.now() + 500
       while (survivors.length && performance.now() < grace) {
         await new Promise((resolve) => setTimeout(resolve, 10))
-        survivors = group(pid)
+        survivors = inspection.group(pid)
       }
       if (survivors.length) signal('SIGKILL')
       const deadline = performance.now() + 2000
       while (survivors.length && performance.now() < deadline) {
         await new Promise((resolve) => setTimeout(resolve, 10))
-        survivors = group(pid)
+        survivors = inspection.group(pid)
       }
       if (survivors.length) throw new Error('MCP process retirement did not settle')
     }

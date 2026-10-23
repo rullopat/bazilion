@@ -164,11 +164,28 @@ Local normal-suite tests, the expanded 406-case security gate, lint and root/web
 Follow-up `6cdd512` passed source/build, security/upgrade and focused macOS jobs in
 [CI](https://github.com/rullopat/bazilion/actions/runs/39957517544), but the installed macOS trial
 failed on its stale expected Git-unsupported projection. The fixture expectation is corrected;
-installed revalidation remains pending. An initial root/PID-namespace invocation failed browser startup, permission-sensitive
+installed revalidation passed with all eight jobs at `7bbcb3c` in
+[CI](https://github.com/rullopat/bazilion/actions/runs/39969375375). An initial root/PID-namespace invocation failed browser startup, permission-sensitive
 backup and delayed-child settlement checks; the normal suite passed without relaxing checks. A concurrent security run timed
 out; a standalone run passed. These do not establish macOS qualification.
 
 Latest-stable macOS acceptance, broader coding workflow acceptance and private-worktree layout
-parity remain open. MCP stdio, browser/protected lifecycle work, image/live acceptance and the
-technical-minimum audit are not implemented/qualified by this increment. No version bump,
-publication or expanded released-support claim has occurred.
+parity remain open. Browser/protected lifecycle work, image/live acceptance and the technical-minimum
+audit are not implemented/qualified by the Git increment. No version bump, publication or expanded
+released-support claim has occurred.
+
+### MCP stdio candidate — native macOS qualification pending
+
+The next increment adds daemon-only public libproc inspection through pinned `koffi@3.3.3` in the
+daemon and packed CLI. Its install script stays disabled; prebuilt loading needs no compiler or
+shell process-inspection fallback. Admission checks native identity/list access before client/slot
+allocation and spawn. Exact BSD and monotonic Mach birth facts, uid/session/group checks, bounded
+enumeration and empty-group confirmation feed the shared retirement guard; Linux keeps `/proc`.
+Unknown identity never enters Pi's unsafe native close or gains permission to signal stored PIDs.
+
+Focused parser/owner/protocol checks and typechecks pass locally. Native-only cases are explicitly
+not exercised on Linux. Actual arm64 jobs on both Node lines now include native identity, tool
+calls, cancellation/busy reaping and opening/failed-initialization retirement. Packaged CLI trials
+also exercise stdio discovery and descendant shutdown. Twelve added security cases protect the
+new boundaries. Real macOS results and the corresponding capability/help update are still pending;
+this candidate is not yet qualified or evidence of worker/browser/protected process parity.

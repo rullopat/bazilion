@@ -52,7 +52,7 @@ afterEach(() => {
   vi.useRealTimers()
 })
 test.each([
-  'darwin',
+  'freebsd',
   'win32',
 ] as const)('direct owned transport refuses controlled %s before Pi can spawn', async (platform) => {
   vi.stubGlobal('process', { ...process, platform })

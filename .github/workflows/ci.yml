@@ -71,7 +71,7 @@ jobs:
         run: pnpm changeset status --since=origin/main
 
   macos-parity:
-    name: macOS arm64 Git parity (Node ${{ matrix.node }})
+    name: macOS arm64 runtime parity (Node ${{ matrix.node }})
     runs-on: macos-latest
     timeout-minutes: 15
     strategy:
@@ -102,7 +102,7 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
-      - name: Test hardened Git and private worktree capture
+      - name: Test hardened Git and owned MCP stdio
         run: >-
           pnpm vitest run
           apps/daemon/test/core/git-capture.test.ts
@@ -111,6 +111,13 @@ jobs:
           apps/daemon/test/core/git-review-identity.test.ts
           apps/daemon/test/core/git-review-snapshot.test.ts
           apps/daemon/test/core/repository-context-capture.test.ts
+          apps/daemon/test/lib/darwin-process.test.ts
+          apps/daemon/test/lib/darwin-process-native.test.ts
+          apps/daemon/test/lib/mcp-darwin-owner.test.ts
+          apps/daemon/test/lib/mcp-stdio-owner.test.ts
+          apps/daemon/test/lib/mcp-pool.test.ts
+          apps/daemon/test/lib/mcp-retirement.test.ts
+          apps/daemon/test/lib/mcp-call.test.ts
 
   installer-e2e:
     name: Fresh-machine installer E2E (${{ matrix.os }})
