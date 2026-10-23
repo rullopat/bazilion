@@ -220,10 +220,16 @@ A shutdown integration gap was also fixed: the scheduler stops, new turn registr
 active controllers abort and registered turns settle before long-lived resources/DB close, within
 the existing shutdown cap. Local real daemon/worker tests exercise active-turn shutdown, no retained
 writer after settlement and a new explicitly requested turn after restart. Focused Linux checks
-pass (60 tests), as do root/web typechecks. The security manifest now names 430 required cases.
+pass (60 tests), as do root/web typechecks. The security manifest now names 431 required cases.
 
-Actual macOS worker/native workspace tests and the portable real-worker/restart journey are added
-to both Node-baseline jobs; their candidate results are still pending. The broader worker-runtime
+Initial candidate `c275bb7` passed the nine native worker, five native workspace and real
+daemon/worker shutdown/restart cases on actual **macOS 26.6.2 arm64**, Node **24.22.0** and
+**26.4.0**, but both focused jobs failed the broader runtime's exact-environment assertion:
+CoreFoundation added `__CF_USER_TEXT_ENCODING` after exec. Production minimal bootstrap now removes
+only that OS-generated bookkeeping key before the unchanged exact key/value validator; the
+six-key assertion and rejection of other ambient variables remain. The security gate also exposed
+an omitted describe-prefix in its new readiness-case name; that exact manifest name is corrected.
+These are failed candidate checks, not passed qualification; the fixed candidate must rerun both. The broader worker-runtime
 suite now runs on macOS after canonicalizing temporary fixture roots and forwarding the actual
 child/lifecycle hooks. These controlled/offline tests do not qualify actual Docker, a live provider,
 GUI browsing or latest-stable macOS. Worker milestone completion awaits the real-platform results.

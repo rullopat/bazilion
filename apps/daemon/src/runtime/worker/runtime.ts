@@ -341,6 +341,20 @@ export function minimalWorkerProcessEnv(
   }
 }
 
+/**
+ * CoreFoundation can add this locale/uid bookkeeping key after exec even when the parent supplies
+ * the exact minimal environment. Remove it, rather than admitting it (or any ambient value) to
+ * the worker contract. Every remaining key and value still passes the unchanged exact validator.
+ */
+export function initializeMinimalWorkerProcessEnv(
+  env: NodeJS.ProcessEnv,
+  scratch: MinimalWorkerScratch,
+  platform: NodeJS.Platform = process.platform,
+): void {
+  if (platform === 'darwin') delete env.__CF_USER_TEXT_ENCODING
+  validateMinimalWorkerProcessEnv(env, scratch, platform)
+}
+
 export function validateMinimalWorkerProcessEnv(
   env: Readonly<NodeJS.ProcessEnv>,
   scratch: MinimalWorkerScratch,

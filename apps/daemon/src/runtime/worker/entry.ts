@@ -37,10 +37,10 @@ import type {
 } from './ipc-protocol.ts'
 import { WorkerOutput } from './output.ts'
 import {
+  initializeMinimalWorkerProcessEnv,
   parseWorkerInput,
   protectedRuntimeSecrets,
   redactJsonValue,
-  validateMinimalWorkerProcessEnv,
   type WorkerInput,
 } from './runtime.ts'
 
@@ -505,7 +505,7 @@ async function main(): Promise<void> {
   const input = await readInput()
   if (aborted) return exitWorker(0)
   if (input.kind !== 'configured_operator_http') {
-    validateMinimalWorkerProcessEnv(process.env, input.scratch)
+    initializeMinimalWorkerProcessEnv(process.env, input.scratch)
   }
   const initialAccessTokens =
     input.kind === 'configured_operator_http'

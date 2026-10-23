@@ -32,6 +32,7 @@ import {
   cleanupMinimalWorkerScratch,
   createMinimalWorkerScratch,
   ExactValueStreamRedactor,
+  initializeMinimalWorkerProcessEnv,
   minimalWorkerProcessEnv,
   type ProtectedWorkerSpec,
   parseWorkerInput,
@@ -466,6 +467,30 @@ describe('minimal worker runtime', () => {
       cleanupMinimalWorkerScratch(scratch)
     }
     expect(existsSync(scratch.root)).toBe(false)
+  })
+
+  test('minimal bootstrap strips only Darwin bookkeeping before unchanged exact validation', () => {
+    const scratch = createMinimalWorkerScratch()
+    try {
+      const expected = minimalWorkerProcessEnv(scratch, 'darwin')
+      const env = { ...expected, __CF_USER_TEXT_ENCODING: 'os-generated-bookkeeping' }
+      initializeMinimalWorkerProcessEnv(env, scratch, 'darwin')
+      expect(env).toEqual(expected)
+      const injected = { ...expected, NODE_OPTIONS: '--require /unadmitted.cjs' }
+      expect(() => initializeMinimalWorkerProcessEnv(injected, scratch, 'darwin')).toThrow(
+        'unexpected keys',
+      )
+      expect(injected.NODE_OPTIONS).toBe('--require /unadmitted.cjs')
+      const linux = {
+        ...minimalWorkerProcessEnv(scratch, 'linux'),
+        __CF_USER_TEXT_ENCODING: 'extra',
+      }
+      expect(() => initializeMinimalWorkerProcessEnv(linux, scratch, 'linux')).toThrow(
+        'unexpected keys',
+      )
+    } finally {
+      cleanupMinimalWorkerScratch(scratch)
+    }
   })
 
   test('constructs the exact Windows bootstrap mechanics without ambient credentials', () => {

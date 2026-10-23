@@ -2,6 +2,12 @@
   "version": 1,
   "cases": [
     {
+      "id": "WORKER-MACOS-BOOTSTRAP-EXACT-ENV",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/runtime/worker-runtime.test.ts",
+      "test": "minimal worker runtime > minimal bootstrap strips only Darwin bookkeeping before unchanged exact validation"
+    },
+    {
       "id": "MACOS-WORKER-LIVE-CHILD-ADMISSION",
       "owner": "BAZ-072",
       "file": "apps/daemon/test/lib/darwin-worker-owner.test.ts",
@@ -35,7 +41,7 @@
       "id": "WORKER-OWNERSHIP-READINESS-BEFORE-INPUT",
       "owner": "BAZ-072",
       "file": "apps/daemon/test/runtime/worker-runtime.test.ts",
-      "test": "worker ownership readiness failure refuses before executable input"
+      "test": "minimal worker runtime > worker ownership readiness failure refuses before executable input"
     },
     {
       "id": "WORKER-RESOURCE-CONFIRMATION-IDENTITY",
