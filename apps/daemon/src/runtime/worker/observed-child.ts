@@ -1,6 +1,13 @@
 import { ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 
+/** Live ChildProcess observations, not a success verdict or permission to signal a receipt PID. */
+export interface ChildExitObservation {
+  readonly closed: boolean
+  readonly codedExit: boolean
+  readonly naturalEOF: boolean
+}
+
 export interface ObservedChildIdentity {
   kind: 'observed-posix-child'
   pid: number
@@ -19,6 +26,8 @@ export class ObservedChildWorker {
   readonly identity: ObservedChildIdentity
   private closeObserved = false
   private closedNormally = false
+  private closedWithCode = false
+  private naturalEOF = false
 
   constructor(
     pid: number,
@@ -54,12 +63,20 @@ export class ObservedChildWorker {
     child.once('close', (code, signal) => {
       // destroy()/local transport retirement is not remote endpoint EOF.
       this.closeObserved = true
-      this.closedNormally =
-        code === 0 &&
-        signal === null &&
-        child.stdout?.readableEnded === true &&
-        child.stderr?.readableEnded === true
+      this.naturalEOF = child.stdout?.readableEnded === true && child.stderr?.readableEnded === true
+      this.closedWithCode =
+        code !== null && signal === null && child.exitCode === code && child.signalCode === null
+      this.closedNormally = code === 0 && signal === null && this.naturalEOF
     })
+  }
+
+  /** A fresh value prevents downstream cleanup code from mutating the retained observations. */
+  exitObservation(): ChildExitObservation {
+    return {
+      closed: this.closeObserved,
+      codedExit: this.closedWithCode,
+      naturalEOF: this.naturalEOF,
+    }
   }
 
   matches(identity: ObservedChildIdentity): boolean {

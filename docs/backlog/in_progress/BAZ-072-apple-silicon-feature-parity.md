@@ -200,3 +200,18 @@ The MCP stdio milestone is implemented and has bounded native/protocol evidence.
 qualify worker/browser/protected process parity or latest-stable macOS: the hosted runner reported
 26.6.2. Those milestones, broader layout/coding acceptance and unrelated image/live criteria remain
 open; no merge, release publication, package-version bump or website deployment is authorized.
+
+### Worker ownership — in progress
+
+The live-child observer now exposes independent close/coded-exit/natural-EOF facts as fresh values,
+not a success verdict or signalling authority. A coded nonzero exit remains distinguishable from
+successful execution; locally destroyed pipes remain insufficient EOF evidence. The legacy
+zero-code-only settlement gate is unchanged. Focused observation tests pass locally and are added
+to the actual macOS jobs on both Node lines.
+
+Native worker/resource integration is still pending. It must check native readiness before spawn,
+record the live child before executable input, and bind any cleanup to the current live owner and
+resource identity. Original-group anchors must be observed while that owner is live, before
+termination; stored/restored PID receipts cannot create anchors or authorize signalling. Preserve
+natural EOF, workspace exclusion and unknown-owner blocks, including the existing limitation on
+forced termination of uncontained host commands. Cleanup confirmation is not a turn-success verdict.

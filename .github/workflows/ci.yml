@@ -118,6 +118,7 @@ jobs:
           apps/daemon/test/lib/mcp-pool.test.ts
           apps/daemon/test/lib/mcp-retirement.test.ts
           apps/daemon/test/lib/mcp-call.test.ts
+          apps/daemon/test/runtime/observed-child.test.ts
 
   installer-e2e:
     name: Fresh-machine installer E2E (${{ matrix.os }})

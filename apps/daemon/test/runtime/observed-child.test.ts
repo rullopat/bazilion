@@ -28,9 +28,30 @@ test('owned normal exit, natural output EOF and empty group settle together', as
   const child = worker()
   const owner = new ObservedChildWorker(child.pid as number, child, true)
   expect(owner.matches(owner.identity)).toBe(true)
+  expect(owner.exitObservation()).toEqual({ closed: false, codedExit: false, naturalEOF: false })
   child.stdin?.end('finish\n')
   await once(child, 'exit')
   expect(await owner.settled(true)).toBe(true)
+  expect(owner.exitObservation()).toEqual({ closed: true, codedExit: true, naturalEOF: true })
+})
+
+test('coded nonzero exit is an observation, never a successful settlement verdict', async () => {
+  const child = worker()
+  const owner = new ObservedChildWorker(child.pid as number, child, false)
+  child.stdin?.end('fail\n')
+  await once(child, 'close')
+  expect(child.exitCode).toBe(1)
+  expect(owner.exitObservation()).toEqual({ closed: true, codedExit: true, naturalEOF: true })
+  // The legacy observer's admission/settlement contract remains unchanged by fact extraction.
+  expect(await owner.settled(true)).toBe(false)
+})
+
+test('a returned observation cannot mutate the retained live-child evidence', async () => {
+  const child = worker()
+  const owner = new ObservedChildWorker(child.pid as number, child, true)
+  Object.assign(owner.exitObservation(), { closed: true, codedExit: true, naturalEOF: true })
+  expect(owner.exitObservation()).toEqual({ closed: false, codedExit: false, naturalEOF: false })
+  expect(await owner.settled(false)).toBe(false)
 })
 
 test('a delayed inherited output/group holder must settle before release', async () => {
@@ -64,6 +85,8 @@ test('signalled exit remains unconfirmed and never signals a receipt PID', async
   const owner = new ObservedChildWorker(child.pid as number, child, true)
   child.kill('SIGTERM')
   await once(child, 'close')
+  expect(owner.exitObservation().closed).toBe(true)
+  expect(owner.exitObservation().codedExit).toBe(false)
   expect(await owner.settled(true)).toBe(false)
 })
 
@@ -74,6 +97,7 @@ test('locally destroyed output pipes do not prove remote EOF', async () => {
   child.stderr?.destroy()
   child.stdin?.end('finish\n')
   await once(child, 'close')
+  expect(owner.exitObservation().naturalEOF).toBe(false)
   expect(await owner.settled(true)).toBe(false)
 })
 

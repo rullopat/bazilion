@@ -1,7 +1,9 @@
 import { spawn } from 'node:child_process'
 
 process.stdin.once('data', (data) => {
-  if (data.toString().trim() === 'holder') {
+  const mode = data.toString().trim()
+  if (mode === 'fail') process.exit(1)
+  if (mode === 'holder') {
     spawn(process.execPath, ['-e', 'setTimeout(() => process.exit(0), 250)'], {
       stdio: ['ignore', 'inherit', 'inherit'],
     }).unref()
