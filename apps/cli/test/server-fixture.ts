@@ -94,6 +94,7 @@ export async function waitForFixtureServer(
   token: string,
   timeoutMs = 20_000,
 ): Promise<string> {
+  const deadline = Date.now() + timeoutMs
   const url = await new Promise<string>((resolve, reject) => {
     if (!proc.stdout) return reject(new Error('fixture stdout pipe is unavailable'))
     let output = ''
@@ -129,7 +130,7 @@ export async function waitForFixtureServer(
   // Authentication failure is not liveness and is never retried as startup success.
   const response = await fetch(`${url}/api/auth/whoami`, {
     headers: { authorization: `Bearer ${token}` },
-    signal: AbortSignal.timeout(timeoutMs),
+    signal: AbortSignal.timeout(Math.max(1, deadline - Date.now())),
     redirect: 'error',
   })
   if (response.status !== 200)
