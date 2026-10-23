@@ -14,6 +14,7 @@ import type { AddressInfo } from 'node:net'
 import { type BrowserContext, chromium } from 'playwright'
 import { installManagedGuards, type ManagedPostureInput } from '../../src/lib/browser/guards.ts'
 import { startOwnedBrowser } from '../../src/lib/browser/process.ts'
+import { ownedDarwinBrowserProcesses } from './browser-managed-darwin.ts'
 
 export type { ManagedPostureInput } from '../../src/lib/browser/guards.ts'
 export {
@@ -176,7 +177,7 @@ export async function createUdpProbe(): Promise<UdpProbe> {
   }
 }
 
-// --- owned-process probe (Linux) ---
+// --- actual owned-process evidence (Linux / Darwin) ---
 
 export interface OwnedBrowserProcess {
   pid: number
@@ -193,9 +194,10 @@ export interface OwnedBrowserProcess {
 /**
  * Find the browser processes owned by a launch, keyed on the exact profile
  * path in their argv — the narrow ownership probe the plan names (never broad
- * process-name matching). Linux-only, like the reviewed lane.
+ * process-name matching). Darwin uses bounded public libproc/sysctl evidence, not ps text.
  */
 export function ownedBrowserProcesses(profileDir: string): OwnedBrowserProcess[] {
+  if (process.platform === 'darwin') return ownedDarwinBrowserProcesses(profileDir)
   const found: OwnedBrowserProcess[] = []
   let entries: string[]
   try {

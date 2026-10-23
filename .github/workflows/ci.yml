@@ -133,6 +133,17 @@ jobs:
           apps/daemon/test/lib/browser-profile.test.ts
           apps/daemon/test/lib/browser-launch.test.ts
 
+      # Actual direct-owned Chrome, not synthetic transport responses or public/provider traffic.
+      # A missing installed browser, unusable GUI or refused non-GUI child session is a failure.
+      - name: Test actual headed, headless and non-GUI managed browser
+        env:
+          BAZILION_TEST_BROWSER: '1'
+          BAZILION_TEST_BROWSER_HEADED: '1'
+        run: >-
+          pnpm vitest run
+          apps/daemon/test/lib/browser-managed.integration.test.ts
+          apps/cli/test/browser-research.test.ts
+
   installer-e2e:
     name: Fresh-machine installer E2E (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

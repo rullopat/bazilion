@@ -1,7 +1,7 @@
 // T01 — managed-browser adapter verification lane (BAZ-069).
 //
 // OPT-IN: this suite only runs with BAZILION_TEST_BROWSER=1 and a provisioned
-// supported browser on Linux. Without the gate it skips with a reason; with
+// supported browser on Linux or Apple Silicon macOS. Without the gate it skips with a reason; with
 // the gate and a missing browser it FAILS (never silently skips). It never
 // touches a public site: every destination is a loopback fixture, and the
 // security assertions are exactly that those fixtures record ZERO hits.
@@ -20,9 +20,11 @@
 //   download denial, bounded capture, cookie persistence across graceful
 //   restart, and no surviving owned processes after close.
 
-import { existsSync, mkdtempSync, readdirSync, realpathSync, rmSync } from 'node:fs'
+import { execFile } from 'node:child_process'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import type { BrowserContext, Page } from 'playwright'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 import { type Paths, resolvePaths } from '../../src/core/paths.ts'
@@ -42,6 +44,7 @@ import {
   readSingletonLockPid,
 } from '../../src/lib/browser/profile.ts'
 import { closeSsrfProxy, getSsrfProxy } from '../../src/lib/browser/proxy.ts'
+import { probeDarwinGuiSession } from '../../src/lib/process/darwin-gui.ts'
 import { resources } from '../../src/lib/resources.ts'
 import {
   createInstrumentedOrigin,
@@ -168,7 +171,17 @@ run('managed browser adapter lane (BAZILION_TEST_BROWSER=1)', () => {
     expect(argv).not.toContain('--no-sandbox')
     expect(procs.some((p) => p.cmdline.includes('--no-sandbox'))).toBe(false)
     expect(argv).not.toContain('--disable-web-security')
-    expect(procs.some((p) => p.cmdline.includes('--type=zygote'))).toBe(true)
+    if (process.platform === 'linux') {
+      expect(procs.some((p) => p.cmdline.includes('--type=zygote'))).toBe(true)
+    } else if (process.platform === 'darwin') {
+      // macOS has Seatbelt clients, not Linux's zygote architecture. Chromium's public
+      // seatbelt_exec protocol requires this inherited policy channel before sandbox init.
+      expect(
+        procs.some(
+          (p) => p.cmdline.includes('--type=renderer') && /--seatbelt-client=\d+/.test(p.cmdline),
+        ),
+      ).toBe(true)
+    } else throw new Error('actual browser sandbox evidence is unavailable on this platform')
 
     // Nonzero loopback listener, directly spawned (not Playwright launch defaults).
     expect(argv.some((a) => /^--remote-debugging-port=[1-9]\d*$/.test(a))).toBe(true)
@@ -1428,10 +1441,47 @@ run('managed browser adapter lane (BAZILION_TEST_BROWSER=1)', () => {
     expect(readMarker()).toBeNull()
   })
 
+  test.runIf(process.platform === 'darwin')(
+    'actual non-GUI child selects headless, refuses headed, launches and retires managed browser',
+    { timeout: 45_000 },
+    async () => {
+      const before = probeDarwinGuiSession()
+      const home = join(scratch, 'actual-nongui-child')
+      mkdirSync(home, { mode: 0o700 })
+      const entry = fileURLToPath(new URL('../fixtures/browser-nongui.mjs', import.meta.url))
+      const stdout = await new Promise<string>((resolve, reject) => {
+        execFile(
+          process.execPath,
+          ['--import', 'tsx/esm', entry, exePath, home],
+          {
+            timeout: 35_000,
+            maxBuffer: 64 * 1024,
+            env: { PATH: '/usr/bin:/bin:/usr/sbin', HOME: home, LANG: 'C', LC_ALL: 'C' },
+          },
+          (error, stdout, stderr) => {
+            if (error)
+              reject(new Error(`controlled non-GUI child failed: ${error.message}; ${stderr}`))
+            else resolve(stdout)
+          },
+        )
+      })
+      expect(JSON.parse(stdout.trim())).toEqual({
+        availability: 'unavailable',
+        mode: 'headless',
+        headedRefused: true,
+        screenshot: true,
+        closed: true,
+        graphicAccess: false,
+      })
+      expect(probeDarwinGuiSession()).toBe(before)
+    },
+  )
+
   test.runIf(process.env.BAZILION_TEST_BROWSER_HEADED === '1')(
     'headed direct launch opens a local window without headless or pipe flags',
     { timeout: 30_000 },
     async () => {
+      if (process.platform === 'darwin') expect(probeDarwinGuiSession()).toBe('available')
       const paths = resolvePaths(join(scratch, 'headed-launch'))
       const handle = await launchManagedBrowser({
         paths,

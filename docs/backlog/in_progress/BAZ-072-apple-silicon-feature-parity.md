@@ -266,5 +266,18 @@ inspection with unknown states retained, never a guessed cleanup confirmation.
 Local focused checks pass **67 cases**, with one actual-Quartz case appropriately waiting for a
 Mac, plus root/web typechecks. Native GUI and existing browser process/profile/launch cases are
 added to both baseline jobs. Five new adversarial cases bring the manifest to **436**; their gate
-is pending. These changes are not yet actual browser or headed/non-GUI qualification: real
-lifecycle, profile/privacy and SSRF/persisted-service-worker acceptance remain required.
+passed in [CI](https://github.com/rullopat/bazilion/actions/runs/39996145521) for candidate
+`7bb1d05` (all eight jobs). Actual **macOS 26.6.2 (25G83) arm64**, Node **24.22.0** and **26.4.0**,
+passes **305 focused cases** per job; public Quartz reports an available console session for
+uid 501. These are native-adapter facts, not yet actual headed/browser/non-GUI qualification.
+
+The actual managed-browser lane is now being extended to macOS without removing the Linux
+assertions or OS-independent SSRF, download, privacy, observation and lifecycle checks. Native
+process evidence uses bounded public libproc/sysctl argv/environment observations for the exact
+profile; Linux retains `/proc`. Linux's zygote evidence remains; macOS checks the renderer's
+Seatbelt policy channel instead. The existing Linux real-browser/worker lane passes 25 cases.
+A controlled Mac child uses public `SessionCreate(0, 0)` before application/security handles to
+establish only its own transient non-graphical session, then must actually select headless, refuse
+headed, launch and retire the real managed browser. It changes no operator login or system
+configuration; refusal is a failed check, never an escalation or fallback. Both baseline jobs
+request actual headed and headless/browser lanes. Their results are pending.
