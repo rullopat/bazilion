@@ -280,4 +280,16 @@ A controlled Mac child uses public `SessionCreate(0, 0)` before application/secu
 establish only its own transient non-graphical session, then must actually select headless, refuse
 headed, launch and retire the real managed browser. It changes no operator login or system
 configuration; refusal is a failed check, never an escalation or fallback. Both baseline jobs
-request actual headed and headless/browser lanes. Their results are pending.
+request actual headed and headless/browser lanes.
+
+Candidate `bd02a3d` **failed** the actual browser lane on both Node baselines in
+[CI](https://github.com/rullopat/bazilion/actions/runs/39998984396): **24 failed / 3 passed** per
+job, with an additional unhandled cancellation assertion. Native argv inspection reported
+`Darwin process arguments cannot be inspected`; several controlled local navigations timed out.
+The non-GUI child was refused by `SessionCreate` with status **100001** on both baselines. This
+runner therefore did not establish the required non-GUI context. No privilege escalation,
+session/system-configuration change, fallback, test weakening or qualification claim followed.
+Other six CI jobs passed, including the 436-case security gate, source/build, installed trials and
+upgrades. Browser milestone remains incomplete. Work pauses for an operator-authorized actual
+non-GUI Apple Silicon Mac/runner context; argv/navigation defects also remain to diagnose and fix.
+The hosted OS remains 26.6.2, not latest-stable qualification.
