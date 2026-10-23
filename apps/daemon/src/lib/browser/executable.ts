@@ -16,21 +16,27 @@ import { accessSync, constants, lstatSync, readdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, isAbsolute, join } from 'node:path'
 import type { BrowserExecutableSource, BrowserMode, BrowserReasonCode } from '@bazilion/api-types'
+import { probeDarwinGuiSession } from '../process/darwin-gui.ts'
 
 export interface BrowserProbeEnvironment {
   platform: NodeJS.Platform
+  arch?: string
   env: NodeJS.ProcessEnv
   homedir: string
   /** A regular, executable file at an absolute path. */
   isExecutableFile(path: string): boolean
   exists(path: string): boolean
   readdir(path: string): string[]
+  /** Public Quartz-session facts; absent/unknown is not inferred from DISPLAY or a TTY. */
+  guiSession?(): DisplayAvailability
 }
 
 export const realBrowserProbes: BrowserProbeEnvironment = {
   platform: process.platform,
+  arch: process.arch,
   env: process.env,
   homedir: homedir(),
+  guiSession: probeDarwinGuiSession,
   isExecutableFile(path) {
     try {
       if (!lstatSync(path).isFile()) return false
@@ -86,29 +92,21 @@ function linuxCandidates(): BrowserCandidate[] {
   ]
 }
 
-function darwinCandidates(): BrowserCandidate[] {
-  return [
-    {
-      path: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-      name: 'Google Chrome',
-      source: 'installed',
-    },
-    {
-      path: '/Applications/Brave Browser.app/Contents/MacOS/Brave Browser',
-      name: 'Brave',
-      source: 'installed',
-    },
-    {
-      path: '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
-      name: 'Microsoft Edge',
-      source: 'installed',
-    },
-    {
-      path: '/Applications/Chromium.app/Contents/MacOS/Chromium',
-      name: 'Chromium',
-      source: 'installed',
-    },
-  ]
+function darwinCandidates(home: string): BrowserCandidate[] {
+  return (
+    [
+      ['Google Chrome', 'Google Chrome'],
+      ['Brave Browser', 'Brave'],
+      ['Microsoft Edge', 'Microsoft Edge'],
+      ['Chromium', 'Chromium'],
+    ] as const
+  ).flatMap(([bundle, name]) =>
+    ['/Applications', join(home, 'Applications')].map((directory) => ({
+      path: join(directory, `${bundle}.app`, 'Contents', 'MacOS', bundle),
+      name,
+      source: 'installed' as const,
+    })),
+  )
 }
 
 function win32Candidates(): BrowserCandidate[] {
@@ -146,8 +144,9 @@ function win32Candidates(): BrowserCandidate[] {
 /** Installed candidates in deterministic order for the platform. */
 export function installedBrowserCandidates(
   platform: NodeJS.Platform = process.platform,
+  home: string = homedir(),
 ): BrowserCandidate[] {
-  if (platform === 'darwin') return darwinCandidates()
+  if (platform === 'darwin') return darwinCandidates(home)
   if (platform === 'win32') return win32Candidates()
   return linuxCandidates()
 }
@@ -189,7 +188,19 @@ export function bundledChromiumCandidate(probes: BrowserProbeEnvironment): Brows
   for (const entry of revisions) {
     const candidates = [
       bundledExecutableIn(join(root, entry.name), probes.platform),
-      join(root, entry.name, 'chrome-linux64', 'chrome'),
+      ...(probes.platform === 'darwin'
+        ? [
+            join(
+              root,
+              entry.name,
+              `chrome-mac-${probes.arch ?? process.arch}`,
+              'Google Chrome for Testing.app',
+              'Contents',
+              'MacOS',
+              'Google Chrome for Testing',
+            ),
+          ]
+        : [join(root, entry.name, 'chrome-linux64', 'chrome')]),
     ]
     for (const path of candidates) {
       if (probes.isExecutableFile(path)) {
@@ -252,7 +263,7 @@ export function resolveBrowserExecutable(
     }
   }
 
-  for (const candidate of installedBrowserCandidates(probes.platform)) {
+  for (const candidate of installedBrowserCandidates(probes.platform, probes.homedir)) {
     if (probes.isExecutableFile(candidate.path)) return { ok: true, candidate }
   }
   const bundled = bundledChromiumCandidate(probes)
@@ -284,8 +295,13 @@ export function resolveDisplayAvailability(
     if (probes.env.WAYLAND_DISPLAY && probes.env.XDG_RUNTIME_DIR) return 'available'
     return 'unavailable'
   }
-  // macOS/Windows GUI-session detection is not portably testable here. Refuse
-  // to guess: auto mode requires an explicit choice on these platforms.
+  if (probes.platform === 'darwin') {
+    try {
+      return probes.guiSession?.() ?? 'unsupported'
+    } catch {
+      return 'unsupported'
+    }
+  }
   return 'unsupported'
 }
 
@@ -307,10 +323,10 @@ export function resolveBrowserMode(
   if (preference === 'headless') return { ok: true, mode: 'headless' }
   if (preference === 'headed') {
     const display = resolveDisplayAvailability(probes)
-    // macOS has no X11/Wayland environment proof. An explicit operator choice
-    // permits a native GUI launch attempt, not a claim that a display exists.
-    // The launcher must report failure; it never falls back to headless.
-    if (display === 'available' || probes.platform === 'darwin') return { ok: true, mode: 'headed' }
+    // Unknown Quartz evidence still permits an explicit native attempt, never an automatic
+    // availability claim. Positively displayless sessions refuse; no headless fallback exists.
+    if (display === 'available' || (probes.platform === 'darwin' && display === 'unsupported'))
+      return { ok: true, mode: 'headed' }
     return {
       ok: false,
       reasonCode: 'browser_display_unavailable',

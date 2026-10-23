@@ -2,6 +2,36 @@
   "version": 1,
   "cases": [
     {
+      "id": "BROWSER-MACOS-LIVE-GROUP-ADMISSION",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/browser-darwin-owner.test.ts",
+      "test": "Darwin browser group authority cannot be reconstructed from a stored PID"
+    },
+    {
+      "id": "BROWSER-MACOS-READINESS-BEFORE-SPAWN",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/browser-darwin-owner.test.ts",
+      "test": "Darwin browser native readiness refuses before profile preparation or spawn"
+    },
+    {
+      "id": "BROWSER-MACOS-UNKNOWN-GROUP-RETAINS",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/browser-darwin-owner.test.ts",
+      "test": "unknown Darwin browser-group inspection is not an absent-group recovery proof"
+    },
+    {
+      "id": "BROWSER-QUARTZ-UNKNOWN-NO-GUESS",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/darwin-gui.test.ts",
+      "test": "unknown Quartz facts cannot be downgraded to a proven headless session"
+    },
+    {
+      "id": "BROWSER-MACOS-HEADED-NO-FALLBACK",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/browser-executable.test.ts",
+      "test": "a proven non-GUI macOS session refuses headed mode without fallback"
+    },
+    {
       "id": "WORKER-MACOS-BOOTSTRAP-EXACT-ENV",
       "owner": "BAZ-072",
       "file": "apps/daemon/test/runtime/worker-runtime.test.ts",

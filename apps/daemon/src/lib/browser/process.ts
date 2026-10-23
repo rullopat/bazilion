@@ -22,6 +22,7 @@ import { createServer } from 'node:net'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import type { Browser, BrowserContext, CDPSession } from 'playwright'
+import { getDarwinProcessInspector } from '../process/darwin.ts'
 import { OwnedGroupAuthority } from './group-authority.ts'
 import {
   installManagedGuards,
@@ -144,11 +145,24 @@ export async function ownsLoopbackListener(pid: number, port: number): Promise<b
       )
     }
     if (process.platform === 'darwin') {
+      const inspector = getDarwinProcessInspector()
+      const before = inspector.member(pid)
+      if (!before || before.state === 'Z') return false
       const { stdout } = await execFileAsync(
         '/usr/sbin/lsof',
         ['-nP', '-a', '-p', String(pid), `-iTCP:${port}`, '-sTCP:LISTEN', '-Fn'],
         { timeout: 1_000, maxBuffer: 16_384, env: { PATH: '/usr/bin:/bin:/usr/sbin' } },
       )
+      const after = inspector.member(pid)
+      if (
+        !after ||
+        after.state === 'Z' ||
+        after.start !== before.start ||
+        after.uid !== before.uid ||
+        after.group !== before.group ||
+        after.session !== before.session
+      )
+        return false
       const addresses = stdout.split('\n').filter((line) => line.startsWith('n'))
       return addresses.length > 0 && addresses.every((line) => line === `n127.0.0.1:${port}`)
     }
@@ -264,6 +278,16 @@ export async function startOwnedBrowser(
       'owned browser process verification is unsupported on this platform',
     )
   }
+  if (process.platform === 'darwin') {
+    try {
+      getDarwinProcessInspector().assertReady()
+    } catch {
+      throw new BrowserProcessError(
+        'browser_security_unavailable',
+        'native process ownership unavailable',
+      )
+    }
+  }
   const deadline = Date.now() + (deps.startupMs ?? STARTUP_MS)
   prepareProfile(input.profileDir)
   const port = await choosePort(deadline - Date.now())
@@ -291,7 +315,9 @@ export async function startOwnedBrowser(
     spawnFailed = true
   })
   const pid = child.pid
-  const authority = pid ? (deps.groupAuthority?.(pid) ?? new OwnedGroupAuthority(pid)) : undefined
+  const authority = pid
+    ? (deps.groupAuthority?.(pid) ?? new OwnedGroupAuthority(pid, undefined, undefined, child))
+    : undefined
   const isGroupAbsent = deps.groupAbsent ?? groupAbsent
   let browser: Browser | undefined
   let cdp: CDPSession | undefined
@@ -371,7 +397,7 @@ export async function startOwnedBrowser(
       }),
       deadline - Date.now(),
     )
-    if (!pid || exited || !(await ownsLoopbackListener(pid, port))) {
+    if (!pid || exited || !authority?.ownsLeader() || !(await ownsLoopbackListener(pid, port))) {
       throw new BrowserProcessError(
         'browser_security_unavailable',
         'browser debugging listener ownership could not be verified',
@@ -382,7 +408,7 @@ export async function startOwnedBrowser(
       timeout: Math.max(1, deadline - Date.now()),
       isLocal: true,
     })
-    if (exited || !(await ownsLoopbackListener(pid, port))) {
+    if (exited || !authority?.ownsLeader() || !(await ownsLoopbackListener(pid, port))) {
       throw new BrowserProcessError(
         'browser_security_unavailable',
         'browser ownership changed during attachment',

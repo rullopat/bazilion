@@ -156,7 +156,7 @@ test('an absent initial leader or an observed empty group cannot authorize signa
   expect(sent).toEqual([])
 })
 
-test.runIf(process.platform === 'linux')(
+test.runIf(process.platform === 'linux' || process.platform === 'darwin')(
   'failed cleanup revokes signalling authority before late exit or group reuse',
   { timeout: 10_000 },
   async () => {
@@ -208,7 +208,7 @@ test('CDP endpoint parsing accepts only the fresh child loopback authority and b
     expect(parseOwnedEndpoint(`DevTools listening on ${endpoint}`, 12345)).toBeNull()
 })
 
-test.runIf(process.platform === 'linux')(
+test.runIf(process.platform === 'linux' || process.platform === 'darwin')(
   'listener ownership rejects a foreign PID and a wildcard listener',
   async () => {
     for (const host of ['127.0.0.1', '0.0.0.0']) {
@@ -246,7 +246,7 @@ test('direct argv pins persistent profile, loopback CDP and proxy without Playwr
   ).toContain('--ozone-platform=wayland')
 })
 
-test.runIf(process.platform === 'linux')(
+test.runIf(process.platform === 'linux' || process.platform === 'darwin')(
   'direct startup failure reaps its owned group',
   async () => {
     let pid = 0
@@ -261,7 +261,7 @@ test.runIf(process.platform === 'linux')(
   },
 )
 
-test.runIf(process.platform === 'linux')(
+test.runIf(process.platform === 'linux' || process.platform === 'darwin')(
   'startup timeout escalates a TERM-ignoring child to KILL and proves exit',
   { timeout: 10_000 },
   async () => {
@@ -284,7 +284,7 @@ test.runIf(process.platform === 'linux')(
   },
 )
 
-test.runIf(process.platform === 'linux')(
+test.runIf(process.platform === 'linux' || process.platform === 'darwin')(
   'a child advertising an unowned debugging endpoint is refused and reaped',
   async () => {
     let pid = 0
@@ -302,7 +302,7 @@ test.runIf(process.platform === 'linux')(
   },
 )
 
-test.runIf(process.platform === 'linux')(
+test.runIf(process.platform === 'linux' || process.platform === 'darwin')(
   'a failed spawn has no listener or owned group to adopt',
   async () => {
     const opts = input()

@@ -2,8 +2,9 @@
 // durable identity: it can be reused after its last member exits. Keep known
 // birth identities, expand them only while an existing member still matches,
 // and revoke authority on loss of identity or at the end of bounded cleanup.
-import { execFileSync } from 'node:child_process'
+import { ChildProcess } from 'node:child_process'
 import { readdirSync, readFileSync } from 'node:fs'
+import { getDarwinProcessInspector } from '../process/darwin.ts'
 
 export type GroupMembers = Map<number, string>
 
@@ -31,17 +32,8 @@ function groupMembers(groupId: number): GroupMembers | undefined {
       return members
     }
     if (process.platform === 'darwin') {
-      const output = execFileSync('/bin/ps', ['-axo', 'pid=,pgid=,lstart='], {
-        encoding: 'utf8',
-        timeout: 1_000,
-        maxBuffer: 4 * 1024 * 1024,
-        env: { PATH: '/usr/bin:/bin', LC_ALL: 'C' },
-      })
-      for (const line of output.trim().split('\n')) {
-        const match = /^\s*(\d+)\s+(\d+)\s+(.+)$/.exec(line)
-        const birth = match?.[3]
-        if (!match || !birth) return undefined
-        if (Number(match[2]) === groupId) members.set(Number(match[1]), birth)
+      for (const member of getDarwinProcessInspector().group(groupId)) {
+        members.set(member.pid, `${member.uid}:${member.start}`)
       }
       return members
     }
@@ -61,13 +53,51 @@ export class OwnedGroupAuthority {
     private readonly send: (id: number, signal: NodeJS.Signals) => void = (id, signal) => {
       process.kill(-id, signal)
     },
+    child?: ChildProcess,
   ) {
+    this.known = new Map()
+    // The real Darwin backend requires the launcher's live handle, not just an id from disk.
+    // Injected inspectors/senders are internal test seams, never operator capabilities.
+    if (process.platform === 'darwin' && inspect === groupMembers) {
+      if (
+        !(child instanceof ChildProcess) ||
+        child.pid !== groupId ||
+        child.exitCode !== null ||
+        child.signalCode !== null
+      ) {
+        this.revoke()
+        return
+      }
+      try {
+        const leader = getDarwinProcessInspector().member(groupId)
+        if (
+          !leader ||
+          leader.parent !== process.pid ||
+          leader.group !== groupId ||
+          leader.session !== groupId ||
+          leader.state === 'Z'
+        ) {
+          this.revoke()
+          return
+        }
+      } catch {
+        this.revoke()
+        return
+      }
+    }
     const initial = inspect(groupId)
     // The fresh detached child is the only initial authority. Never seed from
     // arbitrary descendants after the leader has already disappeared.
     const birth = initial?.get(groupId)
     this.known = birth ? new Map([[groupId, birth]]) : new Map()
     if (!birth) this.revoke()
+  }
+
+  /** Attachment needs the original leader, not merely a surviving known descendant. */
+  ownsLeader(): boolean {
+    if (this.revoked) return false
+    const birth = this.known.get(this.groupId)
+    return birth !== undefined && this.inspect(this.groupId)?.get(this.groupId) === birth
   }
 
   refresh(): boolean {

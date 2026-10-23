@@ -126,6 +126,12 @@ jobs:
           apps/daemon/test/core/workspace-recovery.test.ts
           apps/daemon/test/runtime/worker-runtime.test.ts
           apps/cli/test/portable-chat.test.ts
+          apps/daemon/test/lib/darwin-gui.test.ts
+          apps/daemon/test/lib/browser-darwin-owner.test.ts
+          apps/daemon/test/lib/browser-executable.test.ts
+          apps/daemon/test/lib/browser-process.test.ts
+          apps/daemon/test/lib/browser-profile.test.ts
+          apps/daemon/test/lib/browser-launch.test.ts
 
   installer-e2e:
     name: Fresh-machine installer E2E (${{ matrix.os }})

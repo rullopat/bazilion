@@ -47,6 +47,7 @@ import { join } from 'node:path'
 import type { BrowserReasonCode } from '@bazilion/api-types'
 import type { Paths } from '../../core/index.ts'
 import { getDaemonInstanceId } from '../daemon-liveness.ts'
+import { getDarwinProcessInspector } from '../process/darwin.ts'
 
 export const BROWSER_PROFILE_FORMAT_VERSION = 1 as const
 export const PROFILE_IDENTITY_FILENAME = 'profile.json'
@@ -107,6 +108,13 @@ export function probeProcessPresence(id: number): ProcessPresence {
 /** A group is not its leader PID: surviving descendants must block recovery. */
 export function probeProcessGroupPresence(id: number): ProcessPresence {
   if (!Number.isSafeInteger(id) || id <= 0) return 'unknown'
+  if (process.platform === 'darwin') {
+    try {
+      return getDarwinProcessInspector().group(id).length ? 'alive' : 'absent'
+    } catch {
+      return 'unknown'
+    }
+  }
   try {
     process.kill(-id, 0)
   } catch (error) {

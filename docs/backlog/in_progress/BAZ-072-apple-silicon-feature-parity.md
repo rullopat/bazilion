@@ -236,7 +236,10 @@ passes both baseline jobs in [CI](https://github.com/rullopat/bazilion/actions/r
 settlement, ignored-TERM original descendants, no adoption of unknown descendants, local-pipe EOF
 refusal, workspace exclusion, receipt substitution, restart/restore refusal, supported management
 acknowledgement and real active-turn daemon shutdown/restart. Packaged Linux/macOS trials and the
-431-case CI security gate also pass; full source/build and upgrade jobs are still running.
+431-case CI security gate also pass. Documentation follow-up `7f96470` passed all eight jobs in
+[CI](https://github.com/rullopat/bazilion/actions/runs/39992654254), including full Linux/macOS
+source/build, packaging and upgrade checks. The earlier `164c61b` run's unfinished jobs were
+cancelled by that new push, not recorded as passes.
 
 Local normal-suite checks pass **2,767 tests / 64 skips** (the prior 50 plus 14 actual-Mac-only
 worker/workspace cases); all **431 required security cases** pass standalone. Root/web typechecks
@@ -244,3 +247,24 @@ and lint pass with existing warnings. The broader worker-runtime suite now runs 
 canonicalizing temporary fixture roots and forwarding actual child/lifecycle hooks. The worker
 milestone has its bounded real-platform evidence, not actual Docker, live-provider, GUI-browser or
 latest-stable qualification. Those later milestones and unrelated BAZ-072 acceptance remain open.
+
+### Managed browser — in progress
+
+The next candidate reads public Quartz-session facts rather than Unix display/TTY guesses for
+macOS auto mode. Current-user console/login evidence selects headed; a positively non-GUI session
+selects headless; unknown/malformed native evidence requires an explicit choice. Proven non-GUI
+headed requests refuse, never silently switch. Discovery includes system/per-user applications
+and native-architecture full Playwright Chrome-for-Testing bundles, not the headless shell.
+
+Browser group ownership now uses the shared public libproc exact birth/uid/session facts instead
+of second-resolution `ps` timestamps. The real Darwin group authority requires the fresh launcher's
+ChildProcess; persisted marker PIDs cannot reconstruct it. Native readiness precedes profile
+preparation/spawn, original leader identity is checked around CDP admission, and bounded listener
+inspection rechecks native birth identity before/after. Darwin group absence uses native bounded
+inspection with unknown states retained, never a guessed cleanup confirmation.
+
+Local focused checks pass **67 cases**, with one actual-Quartz case appropriately waiting for a
+Mac, plus root/web typechecks. Native GUI and existing browser process/profile/launch cases are
+added to both baseline jobs. Five new adversarial cases bring the manifest to **436**; their gate
+is pending. These changes are not yet actual browser or headed/non-GUI qualification: real
+lifecycle, profile/privacy and SSRF/persisted-service-worker acceptance remain required.

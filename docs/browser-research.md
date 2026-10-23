@@ -38,13 +38,18 @@ download or substitute a browser. `BROWSER_EXECUTABLE_PATH` selects one explicit
 invalid explicit path fails closed instead of falling back to another browser. The `Mode` setting
 supports `auto`, `headless`, or `headed`: on Linux, auto prefers a usable desktop display and
 otherwise uses headless; explicit headed without a display is refused, never silently changed
-to headless. On macOS, auto cannot infer a GUI session and requires an explicit choice; explicit
-headed permits a native launch attempt, not a guarantee of display availability. Bazilion starts
+to headless. The 0.25 macOS candidate reads public Quartz-session facts (current user, console
+presence and completed login): auto selects headed only with that evidence and headless when a
+GUI session is positively unavailable. Unknown native evidence requires an explicit choice.
+Explicit headed refuses a proven non-GUI session; an explicit attempt with unknown Quartz facts
+is not a guarantee of display availability and never falls back to headless. Bazilion starts
 the selected executable directly with its persistent local profile,
 then attaches Playwright through CDP, like OpenClaw's managed-browser approach. It does not use
 Playwright's browser-launch defaults or attach to your personal browser. X11 and Wayland access
-are forwarded only for headed launches. Linux is the qualification platform; macOS remains
-unqualified.
+are forwarded only for headed launches. Discovery also considers per-user macOS Applications
+and native-architecture full Playwright bundles, never the headless shell. Linux remains the
+released qualification platform; the macOS candidate's actual browser/GUI acceptance is still open
+in BAZ-072.
 
 ## Network boundary
 
@@ -63,7 +68,10 @@ or the web gateway. A local process running as the same OS user is not isolated 
 surface. Stop requests close Chromium itself and verify owned-process/group exit, rather than
 merely disconnecting Playwright. Signalling authority requires live process birth identity and
 expires at the end of bounded cleanup, including failure; disk recovery markers never authorize
-signalling. Startup failure and uncertain cleanup fail closed.
+signalling. The macOS candidate uses public libproc uid and exact BSD/monotonic birth identity,
+not second-resolution `ps` timestamps, and requires the launcher's live ChildProcess. Listener
+inspection also checks native birth identity before and after its bounded socket observation.
+Startup failure and uncertain cleanup fail closed.
 
 `BROWSER_ALLOW_PRIVATE_NETWORK=true` disables the validating proxy and opens loopback/private
 network access for local development. This is a security-sensitive exception, not a workaround for
