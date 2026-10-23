@@ -6,18 +6,16 @@ import {
   terminateRecordedContainer,
 } from '../../runtime/shell/docker.ts'
 import {
-  type ObservedChildIdentity,
-  ObservedChildWorker,
-} from '../../runtime/worker/observed-child.ts'
-import {
   captureWorkerProcess,
   terminateWorkerProcess,
   type WorkerProcessIdentity,
 } from '../../runtime/worker/process-identity.ts'
+import { getDarwinProcessInspector } from '../process/darwin.ts'
+import { type DarwinWorkerIdentity, OwnedDarwinWorker } from '../process/worker.ts'
 import type { WorkspaceLease, WorkspaceWriter } from './workspace.ts'
 
 type Resource =
-  | { kind: 'worker'; identity: WorkerProcessIdentity | ObservedChildIdentity }
+  | { kind: 'worker'; identity: WorkerProcessIdentity | DarwinWorkerIdentity }
   | { kind: 'container'; identity: DockerContainerIdentity }
 interface Row {
   id: string
@@ -35,8 +33,30 @@ interface ManagementCleanup {
 }
 
 export class WorkspaceResources {
-  private readonly observedWorkers = new Map<string, ObservedChildWorker>()
+  private readonly nativeWorkers = new Map<string, OwnedDarwinWorker>()
   constructor(private readonly db: BazilionDb) {}
+
+  assertWorkerReady(): void {
+    if (process.platform === 'darwin') {
+      if (this.nativeWorkers.size >= 256) throw new Error('Live worker ownership unavailable')
+      getDarwinProcessInspector().assertReady()
+    }
+  }
+
+  beforeWorkerSignal(id: string): void {
+    if (process.platform !== 'darwin') return
+    const row = this.db.raw
+      .query<Row, [string]>(`SELECT r.*, w.recovery_mode FROM workspace_resources r
+        JOIN workspace_writers w ON w.id = r.writer_id WHERE r.id = ?`)
+      .get(id)
+    const owner = this.nativeWorkers.get(id)
+    if (row?.kind !== 'worker' || row.recovery_mode !== 'owned' || !owner) return
+    try {
+      if (owner.matches(JSON.parse(row.identity_json))) owner.beforeSignal()
+    } catch {
+      // Invalid receipts do not grant descendant signalling authority.
+    }
+  }
 
   registerWorker(
     lease: WorkspaceLease,
@@ -45,11 +65,11 @@ export class WorkspaceResources {
     child?: ChildProcess,
   ): string {
     if (process.platform === 'darwin') {
-      if (!child || this.observedWorkers.size >= 256)
+      if (!child || this.nativeWorkers.size >= 256)
         throw new Error('Live worker ownership unavailable')
-      const observed = new ObservedChildWorker(pid, child, hostCommands)
-      const id = this.register(lease, { kind: 'worker', identity: observed.identity })
-      this.observedWorkers.set(id, observed)
+      const owner = new OwnedDarwinWorker(pid, child, hostCommands)
+      const id = this.register(lease, { kind: 'worker', identity: owner.identity })
+      this.nativeWorkers.set(id, owner)
       return id
     }
     return this.register(lease, {
@@ -107,19 +127,42 @@ export class WorkspaceResources {
     // Enforce the management restriction at the effect boundary too, after re-reading the
     // record. A concurrent change must not turn container cleanup into worker signalling.
     if (management?.confirmedWorkersOnly && row.kind === 'worker') return false
-    const identity = JSON.parse(row.identity_json)
-    const observed = this.observedWorkers.get(id)
-    const confirmed =
-      row.kind === 'worker'
-        ? identity.kind === 'observed-posix-child'
-          ? !!observed && observed.matches(identity) && (await observed.settled(observedNormalExit))
-          : await terminateWorkerProcess(identity, observedNormalExit)
-        : await terminateRecordedContainer(identity, row.creation_acknowledged === 1)
-    if (confirmed) {
-      this.db.raw.run('UPDATE workspace_resources SET cleanup_confirmed = 1 WHERE id = ?', [id])
-      this.observedWorkers.delete(id)
+    let identity: unknown
+    try {
+      identity = JSON.parse(row.identity_json)
+    } catch {
+      return false
     }
-    return confirmed
+    if (!identity || typeof identity !== 'object' || Array.isArray(identity)) return false
+    let confirmed: boolean
+    if (row.kind === 'worker') {
+      const owner = this.nativeWorkers.get(id)
+      confirmed =
+        process.platform === 'darwin'
+          ? !!owner && owner.matches(identity) && (await owner.settled())
+          : process.platform === 'linux' && !('kind' in identity)
+            ? await terminateWorkerProcess(identity as WorkerProcessIdentity, observedNormalExit)
+            : false
+    } else {
+      confirmed = await terminateRecordedContainer(
+        identity as DockerContainerIdentity,
+        row.creation_acknowledged === 1,
+      )
+    }
+    if (!confirmed) return false
+    // A delayed cleanup cannot acknowledge a substituted resource or restored writer. Keep
+    // the live owner until the exact captured DB record accepts its confirmation atomically.
+    const result = this.db.raw.run(
+      `UPDATE workspace_resources SET cleanup_confirmed = 1
+       WHERE id = ? AND writer_id = ? AND kind = ? AND identity_json = ?
+         AND creation_acknowledged = ?
+         AND EXISTS (SELECT 1 FROM workspace_writers w
+           WHERE w.id = workspace_resources.writer_id AND w.recovery_mode = 'owned')`,
+      [row.id, row.writer_id, row.kind, row.identity_json, row.creation_acknowledged],
+    )
+    if (!result.changes) return false
+    this.nativeWorkers.delete(id)
+    return true
   }
 
   /** Workers first: stop new container requests before removing recorded containers. */

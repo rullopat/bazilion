@@ -52,6 +52,28 @@ afterEach(() => {
 })
 
 describe('minimal worker runtime', () => {
+  test('worker ownership readiness failure refuses before executable input', async () => {
+    const beforeInput = vi.fn()
+    const afterExit = vi.fn(async () => true)
+    const run = async () => {
+      for await (const _frame of spawnWorkerTurn(protectedSpec(tempRoot()), {
+        ...scopedHosts(),
+        apiKeyRefreshHost: { refresh: async () => 'fixture-token' },
+        resourceLifecycle: {
+          beforeSpawn: () => {
+            throw new Error('native ownership unavailable')
+          },
+          beforeInput,
+          afterExit,
+        },
+      })) {
+        /* admission must refuse */
+      }
+    }
+    await expect(run()).rejects.toThrow('native ownership unavailable')
+    expect(beforeInput).not.toHaveBeenCalled()
+    expect(afterExit).not.toHaveBeenCalled()
+  })
   test('real worker Pi loop executes native search IPC, reads guarded source and completes with citations offline', async () => {
     const prepared = protectedSpec(tempRoot())
     prepared.agent.model = 'openai:gpt-6.1-sol'
@@ -307,12 +329,12 @@ describe('minimal worker runtime', () => {
           {
             env: { ...process.env, BAZILION_BASH_SANDBOX: 'off' },
             resourceLifecycle: {
-              beforeInput(pid, hostCommands) {
+              ...worker,
+              beforeInput(pid, hostCommands, child) {
                 workerPid = pid
                 expect(hostCommands).toBe(true)
-                worker.beforeInput(pid, hostCommands)
+                worker.beforeInput(pid, hostCommands, child)
               },
-              afterExit: (normal) => worker.afterExit(normal),
             },
             workerEntryPath: fileURLToPath(
               new URL('../fixtures/worker-host-detached-entry.ts', import.meta.url),
@@ -377,7 +399,7 @@ describe('minimal worker runtime', () => {
             ...workerOwner,
             // This injected fixture really spawns a detached HOST process. Classifying
             // it as a no-host-command protected worker permitted an unsound recovery oracle.
-            beforeInput: (pid) => workerOwner.beforeInput(pid, true),
+            beforeInput: (pid, _hostCommands, child) => workerOwner.beforeInput(pid, true, child),
           },
           workerEntryPath: fileURLToPath(
             new URL('../fixtures/worker-output-holder-entry.ts', import.meta.url),
@@ -1160,7 +1182,7 @@ describe('minimal worker runtime', () => {
 })
 
 function tempRoot(): string {
-  const root = mkdtempSync(join(tmpdir(), 'bazilion-worker-runtime-test-'))
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'bazilion-worker-runtime-test-')))
   cleanup.push(root)
   return root
 }

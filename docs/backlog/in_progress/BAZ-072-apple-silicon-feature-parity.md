@@ -203,15 +203,27 @@ open; no merge, release publication, package-version bump or website deployment 
 
 ### Worker ownership — in progress
 
-The live-child observer now exposes independent close/coded-exit/natural-EOF facts as fresh values,
-not a success verdict or signalling authority. A coded nonzero exit remains distinguishable from
-successful execution; locally destroyed pipes remain insufficient EOF evidence. The legacy
-zero-code-only settlement gate is unchanged. Focused observation tests pass locally and are added
-to the actual macOS jobs on both Node lines.
+The candidate now records live ChildProcess authority plus the shared public-libproc birth,
+uid/session/group observations before executable input, checking native readiness before spawn.
+Original-group anchors are captured while the parent is live, before termination; later escalation
+revalidates an original anchor. Unknown descendants are never adopted after leader exit, and a
+stored/restored PID receipt cannot reconstruct a live owner. Linux retains its `/proc` path.
 
-Native worker/resource integration is still pending. It must check native readiness before spawn,
-record the live child before executable input, and bind any cleanup to the current live owner and
-resource identity. Original-group anchors must be observed while that owner is live, before
-termination; stored/restored PID receipts cannot create anchors or authorize signalling. Preserve
-natural EOF, workspace exclusion and unknown-owner blocks, including the existing limitation on
-forced termination of uncontained host commands. Cleanup confirmation is not a turn-success verdict.
+Independent close/coded-exit/natural-EOF facts are not success verdicts or receipt signalling
+permissions. Natural EOF, actual child closure and original-group absence govern cleanup. Coded
+nonzero exit can establish cleanup without becoming successful execution; forced host-command
+termination still cannot prove detached work stopped. Unknown cleanup retains its writer and
+private scratch. Cleanup confirmation now atomically requires the exact resource identity,
+creation acknowledgement and owned (not restored) writer, preventing asynchronous metadata drift.
+
+A shutdown integration gap was also fixed: the scheduler stops, new turn registrations are fenced,
+active controllers abort and registered turns settle before long-lived resources/DB close, within
+the existing shutdown cap. Local real daemon/worker tests exercise active-turn shutdown, no retained
+writer after settlement and a new explicitly requested turn after restart. Focused Linux checks
+pass (60 tests), as do root/web typechecks. The security manifest now names 430 required cases.
+
+Actual macOS worker/native workspace tests and the portable real-worker/restart journey are added
+to both Node-baseline jobs; their candidate results are still pending. The broader worker-runtime
+suite now runs on macOS after canonicalizing temporary fixture roots and forwarding the actual
+child/lifecycle hooks. These controlled/offline tests do not qualify actual Docker, a live provider,
+GUI browsing or latest-stable macOS. Worker milestone completion awaits the real-platform results.

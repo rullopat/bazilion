@@ -2,6 +2,78 @@
   "version": 1,
   "cases": [
     {
+      "id": "MACOS-WORKER-LIVE-CHILD-ADMISSION",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/darwin-worker-owner.test.ts",
+      "test": "a stored native receipt cannot replace the actual ChildProcess at admission"
+    },
+    {
+      "id": "MACOS-WORKER-BIRTH-REUSE",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/darwin-worker-owner.test.ts",
+      "test": "Darwin worker birth reuse cannot authorize signalling or cleanup"
+    },
+    {
+      "id": "MACOS-WORKER-SIGNAL-ANCHOR-DRIFT",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/darwin-worker-owner.test.ts",
+      "test": "Darwin worker anchor drift at the signalling boundary refuses escalation and release"
+    },
+    {
+      "id": "MACOS-WORKER-UNKNOWN-OWNERSHIP",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/darwin-worker-owner.test.ts",
+      "test": "unknown native inspection cannot authorize group signalling or release"
+    },
+    {
+      "id": "WORKER-SHUTDOWN-ADMISSION-FENCE",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/agent-shutdown.test.ts",
+      "test": "shutdown fences new turns and waits for synchronous and asynchronous owner settlement"
+    },
+    {
+      "id": "WORKER-OWNERSHIP-READINESS-BEFORE-INPUT",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/runtime/worker-runtime.test.ts",
+      "test": "worker ownership readiness failure refuses before executable input"
+    },
+    {
+      "id": "WORKER-RESOURCE-CONFIRMATION-IDENTITY",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/core/workspace-recovery.test.ts",
+      "test": "resource identity drift during cleanup cannot grant a confirmation"
+    },
+    {
+      "id": "WORKER-RESOURCE-CONFIRMATION-CREATION",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/core/workspace-recovery.test.ts",
+      "test": "resource acknowledgement drift during cleanup cannot grant a confirmation"
+    },
+    {
+      "id": "WORKER-RESOURCE-CONFIRMATION-RESTORE",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/core/workspace-recovery.test.ts",
+      "test": "resource restored drift during cleanup cannot grant a confirmation"
+    },
+    {
+      "id": "WORKER-LIVE-OBSERVATION-NO-MUTATION",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/runtime/observed-child.test.ts",
+      "test": "a returned observation cannot mutate the retained live-child evidence"
+    },
+    {
+      "id": "WORKER-LOCAL-CLOSE-NOT-EOF",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/runtime/observed-child.test.ts",
+      "test": "locally destroyed output pipes do not prove remote EOF"
+    },
+    {
+      "id": "WORKER-CODED-FAILURE-NOT-SUCCESS",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/darwin-worker-owner.test.ts",
+      "test": "a coded worker failure may confirm cleanup without becoming a success verdict"
+    },
+    {
       "id": "MACOS-MCP-NATIVE-ADMISSION",
       "owner": "BAZ-072",
       "file": "apps/daemon/test/lib/mcp-darwin-owner.test.ts",

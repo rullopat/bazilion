@@ -49,7 +49,6 @@ const LINUX_ONLY = [
   'apps/daemon/test/routes/verifications.test.ts',
   // Worker/session identity: spawn validates agent dirs against their
   // canonical realpath — the same canonical-path boundary safe reads pin.
-  'apps/daemon/test/runtime/worker-runtime.test.ts',
   'apps/daemon/test/runtime/worker-process-identity.test.ts',
   'apps/daemon/test/runtime/worker-api-key-refresh.test.ts',
   'apps/daemon/test/runtime/session-head.test.ts',

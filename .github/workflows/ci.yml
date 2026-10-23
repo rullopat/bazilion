@@ -102,7 +102,7 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
-      - name: Test hardened Git and owned MCP stdio
+      - name: Test hardened Git, owned MCP stdio and worker retirement
         run: >-
           pnpm vitest run
           apps/daemon/test/core/git-capture.test.ts
@@ -119,6 +119,13 @@ jobs:
           apps/daemon/test/lib/mcp-retirement.test.ts
           apps/daemon/test/lib/mcp-call.test.ts
           apps/daemon/test/runtime/observed-child.test.ts
+          apps/daemon/test/lib/darwin-worker-owner.test.ts
+          apps/daemon/test/lib/darwin-worker-native.test.ts
+          apps/daemon/test/lib/agent-shutdown.test.ts
+          apps/daemon/test/core/darwin-workspace-ownership.test.ts
+          apps/daemon/test/core/workspace-recovery.test.ts
+          apps/daemon/test/runtime/worker-runtime.test.ts
+          apps/cli/test/portable-chat.test.ts
 
   installer-e2e:
     name: Fresh-machine installer E2E (${{ matrix.os }})

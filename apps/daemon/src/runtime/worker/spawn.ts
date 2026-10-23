@@ -153,6 +153,8 @@ type SpecWithCapabilityHost =
   | StaticReviewWorkerSpec
 
 export interface WorkerResourceLifecycle {
+  beforeSpawn?(): void
+  beforeSignal?(): void
   beforeInput(pid: number, hostCommands?: boolean, child?: ChildProcess): void
   afterExit(observedNormalExit?: boolean): Promise<boolean>
 }
@@ -357,6 +359,7 @@ async function* spawnWorker(
         .catch(() => false) ?? Promise.resolve(true))
   let child: ChildProcess
   try {
+    resourceLifecycle?.beforeSpawn?.()
     child = spawn(process.execPath, workerSpawnArgs(requestedEntry), {
       env,
       detached: resourceLifecycle !== undefined,
@@ -440,10 +443,16 @@ async function* spawnWorker(
     ipcLifetime.abort()
     if (child.exitCode !== null || child.signalCode !== null) return
     try {
+      resourceLifecycle?.beforeSignal?.()
+    } catch {}
+    try {
       child.kill('SIGTERM')
     } catch {}
     killTimer = setTimeout(() => {
       if (child.exitCode === null && child.signalCode === null) {
+        try {
+          resourceLifecycle?.beforeSignal?.()
+        } catch {}
         try {
           child.kill('SIGKILL')
         } catch {}
@@ -534,7 +543,7 @@ async function* spawnWorker(
     try {
       child.disconnect()
     } catch {}
-    if (scratch) cleanupMinimalWorkerScratch(scratch)
+    if (scratch && resourcesConfirmed) cleanupMinimalWorkerScratch(scratch)
     if (!resourcesConfirmed)
       // biome-ignore lint/correctness/noUnsafeFinally: Unconfirmed resource teardown must override a successful worker result.
       throw new Error('Worker cleanup could not be confirmed; workspace recovery required')

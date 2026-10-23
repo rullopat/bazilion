@@ -14,6 +14,8 @@ const REGISTRY_KEY = Symbol.for('bazilion.agent-cancel.registry')
 interface Registry {
   active: Map<string, AbortController>
   idleWaiters: Map<string, Set<() => void>>
+  stopping?: boolean
+  stopped?: Promise<void>
 }
 
 export class AgentTurnActiveError extends Error {
@@ -40,6 +42,7 @@ function registry(): Registry {
 }
 
 export function registerAgent(agentId: string, controller: AbortController): void {
+  if (registry().stopping) throw new Error('daemon_shutting_down')
   if (registry().active.has(agentId)) {
     throw new AgentTurnActiveError(agentId)
   }
@@ -72,6 +75,18 @@ export function isActiveAgent(agentId: string): boolean {
 /** A live question belongs to this registration, not a later turn using the same Agent. */
 export function ownsActiveAgent(agentId: string, controller: AbortController): boolean {
   return registry().active.get(agentId) === controller
+}
+
+/** Fence new admissions and settle every registered turn before daemon-owned resources/DB close. */
+export function stopAgentTurns(): Promise<void> {
+  const state = registry()
+  if (state.stopped) return state.stopped
+  state.stopping = true
+  const active = [...state.active]
+  // Install waiters before abort: a synchronous abort handler may release its registration.
+  state.stopped = Promise.all(active.map(([agentId]) => waitForAgentIdle(agentId))).then(() => {})
+  for (const [, controller] of active) controller.abort()
+  return state.stopped
 }
 
 /** Resolve when an existing cross-source turn releases this Agent. */

@@ -47,6 +47,10 @@ class WorkspaceLifecycle {
   worker(lease: WorkspaceLease): WorkerResourceLifecycle {
     let id: string | undefined
     return {
+      beforeSpawn: () => this.resources.assertWorkerReady(),
+      beforeSignal: () => {
+        if (id !== undefined) this.resources.beforeWorkerSignal(id)
+      },
       beforeInput: (pid, hostCommands, child) => {
         if (id) throw new Error('Worker resource already registered')
         id = this.resources.registerWorker(lease, pid, hostCommands, child)

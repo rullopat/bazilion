@@ -145,7 +145,7 @@ Shipped in **0.24.0**, BAZ-057 adds macOS ordinary chat through a shared capture
 adapter using public `@openclaw/fs-safe@0.26.8` APIs. Preserve Linux fd-relative access;
 macOS guarded opens need capture-wide registration/directory/file/absence checks, not a
 native-mode label or an atomic-snapshot claim. In that release, hardened Git and MCP stdio remain Linux-only.
-macOS worker settlement requires live ChildProcess authority, normal exit, natural pipe EOF
+In 0.24, macOS worker settlement requires live ChildProcess authority, normal exit, natural pipe EOF
 and an absent original group. Persisted receipts never authorize PID signalling; unknown
 ownership after restart/restore remains blocked. See `docs/repository-context.md`,
 `docs/agent-engine.md` and `docs/backlog/done/BAZ-057-portable-safe-reads.md` for scope.
@@ -157,6 +157,13 @@ reads materialize private scratch, source observations validate independently, a
 reads use the frozen private bytes. Linux retains its fd-pinned worktree. Unsafe/oversized layouts
 still refuse; the Git increment does not qualify complete macOS feature parity, MCP stdio or
 worker-process parity. See `docs/repository-context.md` and the active BAZ-072 story.
+
+The 0.25 candidate also binds macOS workers to live ChildProcess authority plus daemon-only public
+libproc observations before executable input. Group escalation needs original anchors captured while
+the parent is live; never create an anchor from a stored/restored PID. Natural output EOF and group
+absence are required for cleanup. Coded nonzero exit is not a success verdict; a forced host-command
+exit still cannot prove detached work stopped. Shutdown fences new turns and settles registered
+workers before closing resources/DB. Unknown cleanup retains its writer and private scratch.
 
 ### Coding evidence: progress, retained diagnostics and change review (BAZ-041/042, shipped in v0.17.0)
 
