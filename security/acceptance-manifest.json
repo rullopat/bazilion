@@ -2,6 +2,12 @@
   "version": 1,
   "cases": [
     {
+      "id": "DIAGNOSTICS-HEALTH-AUTH-SEPARATION",
+      "owner": "BAZ-071",
+      "file": "apps/cli/test/doctor.test.ts",
+      "test": "actual doctor exits zero for a healthy install while retaining unavailable protected diagnostics"
+    },
+    {
       "id": "RECOVERY-SAME-TIMESTAMP-TEAM",
       "owner": "BAZ-068",
       "file": "apps/daemon/test/core/workspace-recovery.test.ts",
@@ -2291,7 +2297,13 @@
       "id": "PI100-SOL-CATALOG",
       "owner": "Pi 1.0 upgrade / BAZ-069",
       "file": "apps/daemon/test/runtime/providers.test.ts",
-      "test": "Pi 1.0 catalog includes exact GPT-6.1 Sol on official API and subscription transports"
+      "test": "Pi catalog includes exact GPT-6.1 Sol on official API and subscription transports"
+    },
+    {
+      "id": "PI140-AZURE-BOUND-REFRESH",
+      "owner": "Pi 1.4 upgrade",
+      "file": "apps/daemon/test/runtime/protected-session-redaction.test.ts",
+      "test": "protected Pi persistence credential boundary > Azure SDK requests refresh only the bound Bazilion credential"
     },
     {
       "id": "IMAGE-CODEC-CLOSED-DIAGNOSTICS",

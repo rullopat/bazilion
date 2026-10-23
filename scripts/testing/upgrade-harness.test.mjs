@@ -7,6 +7,7 @@ import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import test from 'node:test'
 import {
+  assertFixtureContinuity,
   awaitDaemon,
   CleanupUnconfirmedError,
   cleanRefusal,
@@ -57,10 +58,18 @@ async function server(t, status, body) {
   return `http://127.0.0.1:${s.address().port}/api/health`
 }
 
-test('import is inert and defaults declare eight prior-schema refusals', () => {
-  assert.equal(DEFAULT_MATRIX.length, 8)
-  assert.equal(DEFAULT_MATRIX[0].tag, 'v0.22.0')
-  assert.ok(DEFAULT_MATRIX.every((entry) => entry.expect === 'refuse'))
+test('import is inert and defaults cover 0.23 reopening plus all eight prior-schema refusals', () => {
+  assert.deepEqual(DEFAULT_MATRIX, [
+    { tag: 'v0.23.0', expect: 'upgrade' },
+    { tag: 'v0.22.0', expect: 'refuse' },
+    { tag: 'v0.21.0-beta.5', expect: 'refuse' },
+    { tag: 'v0.21.0-beta.4', expect: 'refuse' },
+    { tag: 'v0.21.0-beta.3', expect: 'refuse' },
+    { tag: 'v0.21.0-beta.2', expect: 'refuse' },
+    { tag: 'v0.21.0-beta.1', expect: 'refuse' },
+    { tag: 'v0.20.0', expect: 'refuse' },
+    { tag: 'v0.19.0', expect: 'refuse' },
+  ])
 })
 
 test('fixture environment never spreads operator credentials/configuration', (t) => {
@@ -208,6 +217,35 @@ test('fixture ledger inspection preserves actual SQLite and paired auth bytes', 
     ['0001_init'],
   )
   assert.deepEqual(stateManifest(home), before)
+})
+
+test('upgrade continuity requires both the release sentinel and unchanged paired auth', (t) => {
+  const f = fixture(t)
+  const home = join(f.base, 'home')
+  mkdirSync(home)
+  writeFileSync(join(home, 'auth.json'), 'synthetic bootstrap identity')
+  const db = new DatabaseSync(join(home, 'bazilion.db'))
+  db.exec(
+    "CREATE TABLE teams(id TEXT PRIMARY KEY, name TEXT); INSERT INTO teams VALUES ('matrix-sentinel', 'planted-by-v0.23.0')",
+  )
+  db.close()
+  const auth = stateManifest(home).find((row) => row.path === 'auth.json').sha256
+  assert.doesNotThrow(() => assertFixtureContinuity(home, 'v0.23.0', auth))
+  assert.throws(() => assertFixtureContinuity(home, 'v0.22.0', auth), /lost fixture sentinel/)
+  writeFileSync(join(home, 'auth.json'), 'replaced bootstrap identity')
+  assert.throws(() => assertFixtureContinuity(home, 'v0.23.0', auth), /changed paired auth/)
+})
+
+test('upgrade continuity refuses a missing data sentinel even when auth is unchanged', (t) => {
+  const f = fixture(t)
+  const home = join(f.base, 'home')
+  mkdirSync(home)
+  writeFileSync(join(home, 'auth.json'), 'synthetic bootstrap identity')
+  const db = new DatabaseSync(join(home, 'bazilion.db'))
+  db.exec('CREATE TABLE teams(id TEXT PRIMARY KEY, name TEXT)')
+  db.close()
+  const auth = stateManifest(home).find((row) => row.path === 'auth.json').sha256
+  assert.throws(() => assertFixtureContinuity(home, 'v0.23.0', auth), /lost fixture sentinel/)
 })
 
 test('unknown cleanup retains state and still attempts other owned cleanup', async () => {

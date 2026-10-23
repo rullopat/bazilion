@@ -52,7 +52,8 @@ clean-install contract had.
    supported for daemon, web UI, chat, schedules, and backups; the coding sequence is
    Linux-only. This is a documented product boundary, not a bug to fix here. Making
    safe reads portable is security-sensitive enough to be its own story →
-   [BAZ-057](../draft/BAZ-057-portable-safe-reads.md) (draft, not a beta blocker).
+   [BAZ-057](../in_progress/BAZ-057-portable-safe-reads.md) (not a blocker for that beta;
+   now Release 0.24's first priority).
 2. **The E2E turn needs no LLM, no API key, no docker.** Reuse the deterministic fake
    provider (`scripts/fake-coding-provider.mjs`, OpenAI-compatible, selected via
    `LMSTUDIO_URL`) with `BAZILION_BASH_SANDBOX=off` (sandbox modes are `off`/`docker`).
@@ -96,7 +97,8 @@ clean-install contract had.
 ## Out of scope
 
 - Per-OS release packaging changes (release.yml matrix) — follow-up if the E2E finds gaps.
-- Portable safe reads / making the coding sequence work off-Linux → BAZ-057 (draft).
+- Portable safe reads / making the coding sequence work off-Linux → BAZ-057 (separate scope;
+  now in progress for Release 0.24, macOS first).
 - The mobile app — removed by BAZ-053.
 
 ## Flake watch (2026-09-17, during implementation)

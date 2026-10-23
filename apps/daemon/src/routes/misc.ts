@@ -36,6 +36,7 @@ import { communicationDecisionMetrics } from '../lib/communication.ts'
 import { getCtx } from '../lib/ctx.ts'
 import { getDaemonInstanceId } from '../lib/daemon-liveness.ts'
 import { projectExecutionSecurity } from '../lib/execution-security-status.ts'
+import { projectPlatformCapabilities } from '../lib/platform-capabilities.ts'
 import { createProtectedDockerReadinessCache } from '../lib/protected-docker-readiness-cache.ts'
 import {
   TEAM_POLICY_MANAGEMENT_CONTRACT_VERSION,
@@ -238,6 +239,7 @@ miscRouter.get('/health/details', async (c) => {
       parseErrors === 0 &&
       shellSecurity.ok,
     protectedWorkBaselineReady: executionSecurity.protectedUnattendedTurns.baseRuntimeReady,
+    platformCapabilities: projectPlatformCapabilities(),
     home: paths.home,
     paths: pathChecks,
     database,

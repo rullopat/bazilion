@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Genuine prior-release compatibility fixtures, not a product recovery mechanism.
-// The 0.23 clean-install contract refuses the eight default prior schemas.
+// Reopen the unchanged 0.23 schema; retain all eight older clean-install refusals.
 // Importing this module is inert; controlled harness tests do not run the matrix.
 
 import { spawn } from 'node:child_process'
@@ -21,6 +21,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { pathToFileURL } from 'node:url'
 
 export const DEFAULT_MATRIX = [
+  { tag: 'v0.23.0', expect: 'upgrade' },
   { tag: 'v0.22.0', expect: 'refuse' },
   { tag: 'v0.21.0-beta.5', expect: 'refuse' },
   { tag: 'v0.21.0-beta.4', expect: 'refuse' },
@@ -276,6 +277,19 @@ export function readFixtureLedger(home) {
   )
 }
 
+/** Narrow continuity evidence, not a general backup/restore or transcript verification. */
+export function assertFixtureContinuity(home, tag, authSha256) {
+  const name = withDb(
+    home,
+    (db) => db.prepare('SELECT name FROM teams WHERE id = ?').get('matrix-sentinel')?.name,
+  )
+  if (name !== `planted-by-${tag}`) throw new Error('upgrade lost fixture sentinel')
+  const currentAuth = createHash('sha256')
+    .update(readFileSync(join(home, 'auth.json')))
+    .digest('hex')
+  if (currentAuth !== authSha256) throw new Error('upgrade changed paired auth.json')
+}
+
 async function entry(repo, { tag, expect }) {
   if (
     !/^v\d+\.\d+\.\d+(?:-(?:beta|alpha|rc)\.\d+)?$/.test(tag) ||
@@ -374,13 +388,11 @@ async function entry(repo, { tag, expect }) {
       )
       console.log(refusal.outcome.stderr.trim())
     } else {
+      const beforeAuth = beforeState.find((row) => row.path === join('home', 'auth.json'))?.sha256
+      if (!beforeAuth) throw new Error('fixture bootstrap auth evidence is unavailable')
       const current = await boot(repo)
       await stopCleanly(current)
-      const name = withDb(
-        home,
-        (db) => db.prepare('SELECT name FROM teams WHERE id = ?').get('matrix-sentinel')?.name,
-      )
-      if (name !== `planted-by-${tag}`) throw new Error('upgrade lost fixture sentinel')
+      assertFixtureContinuity(home, tag, beforeAuth)
       const chainLength = (cwd) =>
         readdirSync(join(cwd, 'apps/daemon/src/core/db/migrations')).filter((name) =>
           name.endsWith('.sql'),
@@ -394,7 +406,21 @@ async function entry(repo, { tag, expect }) {
       }
       const second = await boot(repo)
       await stopCleanly(second)
-      console.log(`${tag}: sentinel retained and second boot healthy`)
+      assertFixtureContinuity(home, tag, beforeAuth)
+      console.log(`${tag}: sentinel and paired auth retained across two healthy boots`)
+      console.log(
+        JSON.stringify({
+          kind: 'prior-home-upgrade',
+          tag,
+          seedExit: { code: seedClose.code, signal: seedClose.signal, forced: seedClose.forced },
+          beforeLedger,
+          afterLedger: readFixtureLedger(home),
+          authSha256: beforeAuth,
+          sentinelRetained: true,
+          secondBootHealthy: true,
+          migrationChainGrew: grew,
+        }),
+      )
     }
   } catch (error) {
     failure = error

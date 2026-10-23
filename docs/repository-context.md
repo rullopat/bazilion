@@ -84,15 +84,23 @@ status command is limited to five seconds and 1 MiB of output. Metadata copying 
 64 MiB and 16,384 entries, with a shorter preparation deadline. The original index is not refreshed
 or written. Git metadata beyond these limits is unavailable; instructions can still be complete.
 
-Current implementation uses Linux directory descriptors and `/proc` to pin ancestry during safe
-reads, then revalidates registered-root binding, retained directories and observed files before
-accepting the report. These are change detectors, not an atomic filesystem snapshot or a universal
-claim against every concurrent rename. Other platforms report `safe_reads_unavailable` and cannot
-prepare coding context through this resolver. Linux is the validated safe-read platform; no weaker
-path-based fallback is used. The [BAZ-057 investigation](backlog/draft/BAZ-057-portable-safe-reads.md)
-has not admitted a replacement or enabled another platform; until then, CI runs
-the coding suites on Linux only (BAZ-049) and the platform-support statement in `README.md` is the
-operator-facing version of this boundary.
+On the **unreleased 0.24 branch**, the shared daemon capture adapter uses public
+`@openclaw/fs-safe@0.26.8` APIs. Linux retains `/proc/self/fd` directory-relative access. macOS uses
+guarded rooted opens with exact retained-directory/registration checks around operations and final
+acceptance. Both revalidate observed files, absence and captured listings, reject unwanted links
+and special files, and enforce existing limits. macOS pathname observations remain best-effort under
+hostile concurrent mutation; neither implementation is an atomic namespace snapshot or a sandbox.
+A native-mode label does not establish these guarantees.
+
+Ordinary CLI/API/browser turns with empty and instructed Teams passed on actual macOS 26.6.2 arm64 /
+Node 24.22.0. See [BAZ-057](backlog/in_progress/BAZ-057-portable-safe-reads.md) for code/CI identity and
+limits. **Published 0.23.0 still has the Linux-only turn boundary.** Windows remains refused with
+`safe_reads_unavailable`; no Windows support is claimed.
+
+The one hardened Git inspector still requires its Linux fd-pinned worktree. A macOS repository
+therefore reports Git `unavailable` with `git_inspection_unavailable`, independently of complete
+instructions. Linux-only Git/process/container suites are not relabelled as portable; the new
+capture/ownership/ordinary-chat suites run on the actual Linux/macOS CI matrix.
 
 ## Development and acceptance
 

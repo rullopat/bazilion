@@ -15,8 +15,8 @@
 //   - Linux: scripts/fake-coding-provider.mjs (BAZ-041) with
 //     BAZILION_BASH_SANDBOX=off — the turn emits a coding_command executed
 //     host-side, then a final answer, so the receipt path is exercised too.
-//   - macOS/Windows: an inline final-answer-only provider, because the coding
-//     pipeline is Linux-only by product boundary (BAZ-057).
+//   - macOS: ordinary installed CLI/API/browser turns with the inline provider.
+//   - Windows: unsupported; the explicit safe-read refusal remains tested.
 //
 // The website's install.sh/install.ps1 mostly ensure Node 24 (CI brings its
 // own). The guarded profile checked here is: npm global install with scripts off →
@@ -52,10 +52,12 @@ import {
   readBoundedText,
   runGuardedUninstall,
 } from './testing/installer-process.mjs'
+import { PORTABLE_CHAT_INSTRUCTION, qualifyPortableChat } from './testing/portable-chat-smoke.mjs'
 
 const processes = new InstallerProcesses()
 const spawn = (...args) => processes.spawn(...args)
 const IS_LINUX = process.platform === 'linux'
+const SUPPORTS_AGENT_TURNS = IS_LINUX || process.platform === 'darwin'
 const tarball = process.argv[2]
 const failures = []
 
@@ -103,6 +105,7 @@ async function waitForHealthy(child, url) {
 /** Deterministic OpenAI-compatible provider: one streamed assistant reply, no tools. */
 function startFinalAnswerProvider() {
   let mcpRoundTrips = 0
+  let instructedTurns = 0
   const server = createHttpServer(async (request, response) => {
     if (!request.url?.includes('/chat/completions')) {
       response.writeHead(404).end()
@@ -111,6 +114,14 @@ function startFinalAnswerProvider() {
     const body = []
     for await (const part of request) body.push(part)
     const payload = JSON.parse(Buffer.concat(body).toString())
+    const lastUser = JSON.stringify(payload.messages.findLast((m) => m.role === 'user')?.content)
+    if (lastUser?.includes('BAZ057 instructed')) {
+      if (!JSON.stringify(payload).includes(PORTABLE_CHAT_INSTRUCTION)) {
+        response.writeHead(400).end('repository instructions missing from actual provider request')
+        return
+      }
+      instructedTurns++
+    }
     const mcpTrial = JSON.stringify(
       payload.messages.findLast((m) => m.role === 'user')?.content,
     )?.includes('packed MCP probe')
@@ -165,6 +176,9 @@ function startFinalAnswerProvider() {
           }),
         get mcpRoundTrips() {
           return mcpRoundTrips
+        },
+        get instructedTurns() {
+          return instructedTurns
         },
       })
     })
@@ -337,6 +351,7 @@ const expectedVersion = JSON.parse(
 let daemon = null
 let web = null
 let provider = null
+let portableChat = null
 
 try {
   // Install into a controlled prefix: the runner's global prefix is not
@@ -483,9 +498,8 @@ try {
   }
 
   step(`start deterministic provider and daemon on a fresh home (${process.platform})`)
-  // Phase 1 (every OS): a final-answer-only provider — a plain chat turn,
-  // which works off-Linux. The coding turn needs the Linux-only workspace
-  // claim, so it runs as phase 2 in its own home (Linux only).
+  // Ordinary turns are qualified on Linux/macOS. Git-backed coding evidence
+  // retains its separate Linux-only phase and admission boundary.
   provider = await startFinalAnswerProvider()
   daemonPort = await freePort()
   daemon = spawn(process.execPath, [bazilionBin, 'serve', '--port', String(daemonPort)], {
@@ -554,7 +568,6 @@ try {
   const loginHtml = login ? await readBoundedText(login, 256 * 1024) : undefined
   if (login?.status !== 200 || !loginHtml?.includes('Open Bazilion'))
     fail('packed web login SSR', `HTTP ${login?.status ?? 'unavailable'}`)
-  await processes.stop(web, { graceful: true })
 
   step('spawn an agent into the auto-created default team')
   const spawned = await run(process.execPath, [
@@ -744,7 +757,7 @@ try {
       const shown = await run(process.execPath, [bazilionBin, 'mcp', 'show', serverId])
       if (shown.stdout.includes('PACKED_SYNTHETIC_BEARER'))
         fail('packed MCP token disclosure', shown.stdout)
-      if (IS_LINUX && agentId) {
+      if (SUPPORTS_AGENT_TURNS && agentId) {
         const mcpTurn = await run(process.execPath, [
           bazilionBin,
           'agent',
@@ -777,15 +790,13 @@ try {
     [bazilionBin, 'agent', 'chat', agentId, '--message', 'please answer with the fixed reply'],
     { env: { BAZILION_HOME: home } },
   )
-  if (IS_LINUX) {
+  if (SUPPORTS_AGENT_TURNS) {
     if (turn.code !== 0 || !turn.stdout.includes(provider.finalText)) {
       fail('one-shot chat turn', (turn.stderr + turn.stdout).slice(0, 400))
     }
   } else {
-    // Off-Linux the turn must refuse cleanly and explicitly: repository
-    // context reads are Linux-only by design (safe reads pin ancestry with
-    // dir-fds; BAZ-057 holds portability). A clean, visible refusal — not a
-    // crash, not a partial turn, daemon still healthy afterwards.
+    // Unsupported platforms remain explicitly refused; no simulated support
+    // or weaker fallback is substituted for actual platform qualification.
     const output = turn.stderr + turn.stdout
     if (turn.code === 0 || !output.includes('safe_reads_unavailable')) {
       fail(
@@ -800,12 +811,31 @@ try {
     console.log('    refused cleanly with safe_reads_unavailable (documented boundary)')
   }
 
+  if (SUPPORTS_AGENT_TURNS && agentId) {
+    step('installed empty/instructed Team turns through API, CLI and real browser UI')
+    portableChat = await qualifyPortableChat({
+      home,
+      moduleRoot,
+      daemonUrl: `http://127.0.0.1:${daemonPort}`,
+      webUrl: `http://127.0.0.1:${webPort}`,
+      agentId,
+      finalText: provider.finalText,
+      runCli: (message) =>
+        run(process.execPath, [bazilionBin, 'agent', 'chat', agentId, '--message', message]),
+      runDoctor: () => run(process.execPath, [bazilionBin, 'doctor']),
+    })
+    if (provider.instructedTurns !== 3)
+      fail('three instructed turns reached the provider', `observed ${provider.instructedTurns}`)
+    console.log(`    portable chat: ${JSON.stringify(portableChat)}`)
+  }
+
   if (IS_LINUX) {
     step('linux only: coding-command turn host-side in a second fresh home')
     await runCodingPhase(bazilionBin)
   }
 
   step('stop the daemon and uninstall the home')
+  await processes.stop(web, { graceful: true })
   await processes.stop(daemon, { graceful: true })
   await runGuardedUninstall(processes, failures, async () => {
     const uninstall = await run(process.execPath, [bazilionBin, 'uninstall', '--yes'], {
@@ -842,6 +872,7 @@ try {
     },
     platform: process.platform,
     node: process.version,
+    portableChat,
     fixtureRoot,
     passed,
     failures,

@@ -57,6 +57,8 @@ export async function captureRepositoryGit(
   root: ContextDirectory,
   budgetMs: number = INSPECTION_BUDGET_MS,
 ): Promise<CapturedGit> {
+  const worktree = root.gitWorktreePath
+  if (!worktree) throw new ContextReadError('git_inspection_unavailable')
   const start = Date.now()
   let bytes = 0
   let count = 0
@@ -110,7 +112,7 @@ export async function captureRepositoryGit(
     const inspectionArgs = (args: string[]): string[] => [
       '--no-optional-locks',
       `--git-dir=${scratch}`,
-      `--work-tree=/proc/${process.pid}/fd/${root.fd}`,
+      `--work-tree=${worktree}`,
       '-c',
       'core.fsmonitor=false',
       '-c',

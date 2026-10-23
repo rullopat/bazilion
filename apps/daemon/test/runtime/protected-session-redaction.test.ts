@@ -15,6 +15,7 @@ import { afterEach, describe, expect, test } from 'vitest'
 import { installProtectedCredentialBoundary } from '../../src/runtime/pi/session.ts'
 import {
   createOpenAICodexPiRuntime,
+  createProtectedPiRuntime,
   resolvePiModel,
 } from '../../src/runtime/providers/pi-runtime.ts'
 
@@ -24,6 +25,49 @@ afterEach(() => {
 })
 
 describe('protected Pi persistence credential boundary', () => {
+  test('Azure SDK requests refresh only the bound Bazilion credential', async () => {
+    const initial = 'azure-initial-fixture-token'
+    const rotated = 'azure-rotated-fixture-token'
+    const harness = await createHarness(initial, [], 'azure-openai')
+    const tokens = [initial]
+    const requests: string[] = []
+    harness.session.agent.streamFunction = (model, _context, options) => {
+      expect(model.provider).toBe('azure')
+      expect(options?.apiKey).toBe(rotated)
+      const stream = createAssistantMessageEventStream()
+      queueMicrotask(() =>
+        stream.push({
+          type: 'done',
+          reason: 'stop',
+          message: assistantMessage(model, 'stop', [{ type: 'text', text: 'finished' }]),
+        }),
+      )
+      return stream
+    }
+    installProtectedCredentialBoundary(
+      harness.session,
+      'azure-openai',
+      tokens,
+      async (provider) => {
+        requests.push(provider)
+        return rotated
+      },
+    )
+    try {
+      for (const provider of ['openai', 'azure-openai-responses']) {
+        expect(await harness.session.agent.getApiKey?.(provider)).toBeUndefined()
+      }
+      expect(await harness.session.agent.getApiKey?.('azure')).toBe(rotated)
+      requests.length = 0
+      await harness.session.prompt('exercise the selected Azure credential')
+      expect(harness.session.getLastAssistantText()).toBe('finished')
+      expect(requests).toEqual(['azure-openai'])
+      expect(tokens).toContain(rotated)
+    } finally {
+      harness.session.dispose()
+    }
+  })
+
   test('sanitizes initial and rotated provider errors before session persistence', async () => {
     const initial = 'initial-provider-access-token'
     const rotated = 'rotated-provider-access-token'
@@ -154,6 +198,7 @@ describe('protected Pi persistence credential boundary', () => {
 async function createHarness(
   accessToken: string,
   tools: ToolDefinition[],
+  providerName: 'openai-codex' | 'azure-openai' = 'openai-codex',
 ): Promise<{
   root: string
   sessionDir: string
@@ -167,6 +212,7 @@ async function createHarness(
   const sessionDir = join(root, 'sessions')
   for (const path of [cwd, agentDir, sessionDir]) mkdirSync(path)
   const settingsManager = SettingsManager.inMemory({
+    cacheWarming: 'off',
     compaction: { enabled: false },
     retry: {
       enabled: false,
@@ -186,12 +232,12 @@ async function createHarness(
     noContextFiles: true,
   })
   await resourceLoader.reload()
-  const modelRuntime = await createOpenAICodexPiRuntime({
-    providerName: 'openai-codex',
-    modelId: 'gpt-5.6-sol',
-    accessToken,
-  })
-  const model = resolvePiModel(modelRuntime, 'openai-codex', 'gpt-5.6-sol')
+  const modelId = providerName === 'azure-openai' ? 'gpt-6.1-sol' : 'gpt-5.6-sol'
+  const modelRuntime =
+    providerName === 'azure-openai'
+      ? await createProtectedPiRuntime({ providerName, modelId, apiKey: accessToken })
+      : await createOpenAICodexPiRuntime({ providerName, modelId, accessToken })
+  const model = resolvePiModel(modelRuntime, providerName, modelId)
   const { session } = await createAgentSession({
     cwd,
     agentDir,

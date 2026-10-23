@@ -1,4 +1,6 @@
+import type { HealthReport } from '@bazilion/api-types'
 import { afterEach, expect, test } from 'vitest'
+import { projectPlatformCapabilities } from '../../src/lib/platform-capabilities.ts'
 import { miscRouter } from '../../src/routes/misc.ts'
 
 const originalEnforcement = process.env.BAZILION_TEAM_POLICY_ENFORCEMENT
@@ -57,6 +59,13 @@ test('health exposes the release-ready teamPolicy management contract with enfor
     degraded: false,
     decisions: { allowed: 0, denied: 0 },
   })
+})
+
+test('detailed health exposes static daemon platform support', async () => {
+  const response = await miscRouter.request('/health/details')
+  expect(response.status).toBe(200)
+  const report = (await response.json()) as HealthReport
+  expect(report.platformCapabilities).toEqual(projectPlatformCapabilities())
 })
 
 test('health reports active enforcement when requested by a release-ready build', async () => {

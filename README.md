@@ -14,16 +14,21 @@ Per-turn subprocess execution with worker↔daemon Node-IPC for messaging, ChatG
 
 Requires **Node 24.22.0+ within 24.x, or 26.4.0+ within 26.x**. Earlier releases and other
 major lines are refused before opening Bazilion state; this excludes an upstream native cleanup-hook
-bug. See `docs/upgrades.md`. **Linux is the validated platform.** macOS can
-install and run the daemon, web UI and first-run setup, but **agent turns (chat)
-require Linux**: every turn resolves repository context through safe reads that
-pin ancestry with Linux-only primitives, by design — they fail closed with a
-visible error elsewhere rather than read with a weaker guarantee. See
-`docs/repository-context.md`; portability is tracked as BAZ-057.
+bug. See `docs/upgrades.md`. **Linux is the validated platform.** On this **unreleased 0.24
+branch**, ordinary macOS Agent chat is also implemented and qualified on macOS 26.6.2 arm64 /
+Node 24.22.0, including fresh installed CLI/API/browser turns with repository instructions.
+**Published npm 0.23.0 still refuses macOS Agent chat**; the commands below install that published
+version until 0.24 is released. See [BAZ-057](docs/backlog/in_progress/BAZ-057-portable-safe-reads.md)
+for the exact candidate and qualification limits.
 
-**Windows is unsupported.** It is untested end to end, no CI covers it, and turns
-require Linux everywhere anyway. A contributor who wants Windows support
-maintains it; the PowerShell installer script is kept as-is for the curious.
+The shared capture adapter keeps Linux fd-relative access and adds guarded macOS capture with
+explicit identity/source revalidation. This is not an atomic filesystem snapshot or blanket
+platform parity: hardened Git inspection and MCP stdio remain Linux-only, and unknown worker
+ownership remains blocked. See [repository context](docs/repository-context.md).
+
+**Windows is unsupported.** It is untested end to end, no CI covers it, and repository-context
+admission still refuses it. A contributor who wants Windows support maintains it; the PowerShell
+installer script is kept as-is for the curious.
 
 ```sh
 # One-shot — npx downloads `bazilion`, starts the daemon, and opens the web UI.
@@ -234,7 +239,7 @@ pnpm tsx apps/cli/src/index.ts auth openai login --device-code
 # CLI device-code flow from a remote client or when localhost:1455 is busy.
 ```
 
-After connecting, enable `openai-codex` on `/config` and curate at least one model (e.g. `gpt-6-astra`, `gpt-5.6-terra`, or `gpt-5.6-sol`). The embedded Pi 1.0.0 catalog includes OpenAI and ChatGPT model choices; catalog membership is not account entitlement. Credentials are stored AES-256-GCM-encrypted in the daemon's `secrets` table (key derived from the bootstrap token in `auth.json`); the access token auto-refreshes via the stored refresh token.
+After connecting, enable `openai-codex` on `/config` and curate at least one model (e.g. `gpt-6-astra`, `gpt-5.6-terra`, or `gpt-5.6-sol`). The [embedded Pi catalog](docs/pi-runtime.md) includes OpenAI and ChatGPT model choices; catalog membership is not account entitlement. Credentials are stored AES-256-GCM-encrypted in the daemon's `secrets` table (key derived from the bootstrap token in `auth.json`); the access token auto-refreshes via the stored refresh token.
 
 ## Uninstalling
 
@@ -302,6 +307,19 @@ cookies used for normal login. The bootstrap bearer is never stored in those coo
 login rejects it after setup completes. Named device credentials remain the normal ongoing login
 and native-client path. See [the private gateway guide](docs/private-gateway.md) for service
 environment, verification, recovery, and remote CLI/mobile details.
+
+## Installation and platform diagnostics
+
+`bazilion doctor` and `/config` show installation health, platform support and protected unattended
+readiness separately. **Doctor exits zero for structural installation health only**; a missing
+protected baseline is reported with remediation, not as a broken ordinary-chat installation.
+Automation requiring protected work must inspect `protectedWorkBaselineReady` in the authenticated
+`/api/health/details` response separately.
+
+Platform support is not an execution or connectivity test: these diagnostics label ordinary chat
+**Not checked**. Test a provider and run an Agent turn separately. Linux/macOS chat support does not grant
+Linux-only hardened Git inspection or MCP stdio; macOS can use Streamable HTTP MCP instead.
+All per-turn checks and protected-turn refusals remain mandatory, regardless of diagnostic status.
 
 ## Workspace recovery
 

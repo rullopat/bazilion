@@ -160,8 +160,12 @@ container `bash`, bounded mounts, a scrubbed environment and read-only inputs. F
 back to host execution. Dangerous-command approval is an independent ephemeral interactive control,
 not a Team Policy communication approval.
 
-Agent turns and ancestry-pinned repository reads remain Linux-only. macOS installation/management
-support does not imply macOS Agent-turn support. See [repository context](repository-context.md)
+Published 0.23.0 Agent turns remain Linux-only. On the unreleased 0.24 branch, ordinary macOS chat
+has actual installed CLI/API/browser qualification through a shared capture adapter: Linux retains
+fd-relative reads; macOS uses guarded public fs-safe opens plus capture-wide identity/source checks.
+This is not an atomic filesystem snapshot or complete platform parity. Hardened Git inspection and
+MCP stdio retain Linux-only admission; unknown process ownership remains blocked. See
+[repository context](repository-context.md), [BAZ-057](backlog/in_progress/BAZ-057-portable-safe-reads.md)
 and [coding environments](coding-environments.md).
 
 ### Communication and scheduling
@@ -192,7 +196,8 @@ its loopback debugging listener and attaches Playwright via CDP. Normal launches
 SSRF proxy, including service-worker egress; downloads are denied. CDP disconnect is not process
 shutdown. Unknown/live owners remain recovery-required; never manually delete profile locks.
 
-MCP uses standalone `@earendil-works/pi-mcp@1.0.0` inside the daemon. Streamable HTTP is portable;
+MCP uses standalone `@earendil-works/pi-mcp` inside the daemon; its pinned version is documented
+in [embedded Pi ownership](pi-runtime.md). Streamable HTTP is portable;
 stdio refuses before allocation/spawn off-Linux. Legacy SSE is retired. Turn-bound tool/config/key
 revalidation, no tool-call replay and ownership until close settles remain load-bearing.
 See [browser research](browser-research.md) and [MCP](mcp.md).

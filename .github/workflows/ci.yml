@@ -61,6 +61,7 @@ jobs:
           for pkg in packages/api-types packages/client apps/cli; do
             (cd "$pkg" && pnpm pack --pack-destination "$RUNNER_TEMP") || exit 1
           done
+          node scripts/testing/library-artifacts.mjs "$RUNNER_TEMP"
 
       # Surface a friendly hint if the PR touches publishable packages but
       # didn't include a changeset. Doesn't fail the build — soft signal.

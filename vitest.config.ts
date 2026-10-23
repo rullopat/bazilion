@@ -1,31 +1,25 @@
 import { defineConfig } from 'vitest/config'
 
-// Repository-context safe reads pin content ancestry with Linux directory
-// descriptors and /proc (apps/daemon/src/lib/repository-context/files.ts) and
-// deliberately refuse a weaker fallback off-Linux; the portability story is
-// BAZ-057. Every agent turn resolves repository context for the team root and
-// requires it complete (turn-preparation.ts), so ALL turns — plain chat
-// included — are Linux-only until BAZ-057 lands; the portable workspace-claim
-// identity (workspaceIdentity) just makes the refusal surface the right,
-// explicit error. Keep this list in sync with the platform-support statement
-// in README.md — a suite belongs here only if it constructs a
-// ContextDirectory or drives the coding pipeline through it.
+// Linux-only suites retain /proc-pinned Git inspection, Linux process identities,
+// or broader coding/scheduling assumptions not qualified by BAZ-057. Portable
+// repository-context-capture, observed-child and portable-chat suites run on the
+// actual Linux/macOS matrix; never exclude them to hide a portability failure.
+// Removing the ordinary-chat safe-read blocker does not qualify every Git,
+// container, restricted-worker or scheduled-provider configuration.
 const LINUX_ONLY = [
-  // Safe reads + repository context directly.
+  // Legacy context suites include the Linux-only hardened Git report contract.
   'apps/daemon/test/core/repository-context.test.ts',
   'apps/daemon/test/core/repository-context-git-errors.test.ts',
   'apps/daemon/test/runtime/repository-context.test.ts',
   'apps/cli/test/repository-context.test.ts',
-  // These four construct a ContextDirectory in their fixtures.
+  // Hardened Git capture still requires its descriptor-pinned /proc worktree.
   'apps/daemon/test/core/git-capture.test.ts',
   'apps/daemon/test/core/git-review-changes.test.ts',
   'apps/daemon/test/core/git-review-identity.test.ts',
   'apps/daemon/test/core/git-review-snapshot.test.ts',
-  // The coding pipeline: turns prepare coding context through safe reads, so
-  // every suite that drives one (directly or through the daemon HTTP/CLI
-  // surface) hits the same Linux-only boundary. List derived from the first
-  // macOS/Windows matrix run (BAZ-049); a new suite that fails off-Linux with
-  // safe_reads_unavailable belongs here.
+  // Broader legacy pipeline suites retain their existing qualification boundary.
+  // BAZ-057 adds actual-platform ordinary-turn coverage separately; a new failure
+  // must be fixed or explicitly scoped, not hidden by extending this list.
   'apps/cli/test/chat.test.ts',
   'apps/cli/test/team.test.ts',
   'apps/cli/test/trigger.test.ts',

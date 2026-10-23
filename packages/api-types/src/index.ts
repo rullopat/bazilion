@@ -1002,6 +1002,18 @@ export interface ExecutionSecurityReport {
   }
 }
 
+/** Static platform support, never a successful execution or connectivity probe. */
+export interface PlatformCapabilitiesReport {
+  platform: 'Linux' | 'macOS' | 'Unsupported platform'
+  note: string
+  capabilities: Array<{
+    id: 'ordinary_chat' | 'git_inspection' | 'mcp_stdio' | 'mcp_http'
+    label: string
+    support: 'supported' | 'unsupported'
+    detail: string
+  }>
+}
+
 export interface HealthReport {
   /** Structural install health only; it does not claim that protected work can execute. */
   ok: boolean
@@ -1010,6 +1022,8 @@ export interface HealthReport {
    * selected normal/review model, bound refresh, and mounts/paths.
    */
   protectedWorkBaselineReady: boolean
+  /** Daemon platform support; independent of install health and live execution readiness. */
+  platformCapabilities: PlatformCapabilitiesReport
   home: string
   paths: {
     home: boolean

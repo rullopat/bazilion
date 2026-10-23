@@ -1,6 +1,7 @@
 # MCP: daemon-owned Pi client
 
-Bazilion uses **`@earendil-works/pi-mcp@1.0.0`** inside the daemon. Pi handles JSON-RPC,
+On the unreleased 0.24 branch, Bazilion uses **`@earendil-works/pi-mcp@1.4.0`** inside the daemon
+(published 0.23.0 uses 1.0.0). Pi handles JSON-RPC,
 initialization, request correlation/cancellation, stdio framing and Streamable HTTP sessions.
 Bazilion retains database configuration, encrypted credentials, capability admission, bounded
 catalogs and process-lifetime ownership. Workers receive selected definitions and use `mcpInvoke`
@@ -74,12 +75,13 @@ of a test; use a fresh isolated home. Old backups require their matching prior b
   captured turn, including queued dispatch; reconnecting does not clear that turn's latch. HTTP tool POSTs are not retried, including 401/429/5xx; no
   automatic OAuth or alternate endpoint. Pi may resume an event stream with GET, not reissue
   the guarded POST. Remote errors/stderr/credentials are not echoed as diagnostics.
-- Pi's `toLlmContent` handles text/images, embedded resources and structured content. Audio and
+- Pi's `toLlmContent` handles text/images, embedded resources and structured content (objects,
+  arrays, primitives and null). Audio and
   non-image binary resources remain textual placeholders; resource URIs are not fetched.
 
 ### Linux stdio ownership guard
 
-Pi 1.0's native close can resolve when the leader exits, sending only SIGTERM to the remaining
+Pi's native close can resolve when the leader exits, sending only SIGTERM to the remaining
 process group. A descendant that ignores SIGTERM and owns no inherited pipe can survive.
 Bazilion's **`stdio-owner.ts`** wrapper therefore owns normal Linux retirement signals, using
 Pi's spawn/framing but not its unguarded numeric-group close timers. It checks process

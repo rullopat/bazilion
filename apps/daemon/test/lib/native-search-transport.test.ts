@@ -94,7 +94,7 @@ describe('offline native search and pinned Pi subscription request comparison', 
       'content-type',
     ])
       expect(nativeHeaders.get(key)).toBe(sdkHeaders.get(key))
-    expect(sdkHeaders.get('user-agent')).toMatch(/^pi \(/)
+    expect(sdkHeaders.get('user-agent')).toMatch(/^pi\/1\.4\.0 \(/)
     expect(nativeHeaders.has('user-agent')).toBe(false)
     expect(sdkHeaders.get('session-id')).toBe('offline_fixture_session')
     expect(sdkHeaders.get('x-client-request-id')).toBe('offline_fixture_session')

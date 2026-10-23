@@ -737,7 +737,7 @@ export function installProtectedCredentialBoundary(
   }
 
   session.agent.getApiKey = async (requestedProvider) => {
-    if (requestedProvider !== providerName) return undefined
+    if (requestedProvider !== piProviderName(providerName)) return undefined
     try {
       const token = await refreshApiKey(providerName)
       if (token && !activeTokens.includes(token)) activeTokens.push(token)

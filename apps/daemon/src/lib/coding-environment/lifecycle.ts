@@ -47,9 +47,9 @@ class WorkspaceLifecycle {
   worker(lease: WorkspaceLease): WorkerResourceLifecycle {
     let id: string | undefined
     return {
-      beforeInput: (pid, hostCommands) => {
+      beforeInput: (pid, hostCommands, child) => {
         if (id) throw new Error('Worker resource already registered')
-        id = this.resources.registerWorker(lease, pid, hostCommands)
+        id = this.resources.registerWorker(lease, pid, hostCommands, child)
       },
       afterExit: async (observedNormalExit) =>
         id === undefined || this.resources.cleanupResource(id, observedNormalExit),

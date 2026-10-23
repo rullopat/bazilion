@@ -50,6 +50,19 @@ test('server error is an error, not success or a replay; remote secrets are not 
 test('empty content yields a placeholder part', async () => {
   expect(await invoke({ content: [] })).toEqual([{ type: 'text', text: '(no content)' }])
 })
+test.each([
+  [],
+  null,
+  42,
+  'structured text',
+  false,
+])('structured JSON %j is projected without replay', async (value) => {
+  expect(await invoke({ structuredContent: value })).toEqual([
+    { type: 'text', text: JSON.stringify(value, null, 2) },
+  ])
+  expect(fixtures[0]?.requests.filter((r) => r.method === 'tools/call')).toHaveLength(1)
+})
+
 test('structured content and embedded images use Pi multimodal projection', async () => {
   expect(await invoke({ structuredContent: { answer: 42 } })).toEqual([
     { type: 'text', text: JSON.stringify({ answer: 42 }, null, 2) },

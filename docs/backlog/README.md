@@ -15,11 +15,9 @@ Use `BAZ-NNN-short-slug.md` and frontmatter with `id`, `title`, `status`, `size`
 applicable release dates. Move the same story between state folders rather than creating a
 progress/acceptance sidecar. Current behavior belongs in the [product documentation](../README.md).
 
-## Draft (1)
+## Draft (0)
 
-| Story | Outcome |
-| --- | --- |
-| [BAZ-057](draft/BAZ-057-portable-safe-reads.md) | Safe repository reads off Linux |
+No draft stories currently retained.
 
 The [Telegram roadmap](../telegram-v2.md) retains unnumbered future user stories. It is not an
 implementation commitment or supported-feature list. The
@@ -31,9 +29,16 @@ Removed stories remain recoverable through Git history; do not reuse their IDs.
 
 No stories currently ready to pull.
 
-## In progress (0)
+## In progress (2)
 
-No product implementation stories currently in progress.
+| Story | Release priority and outcome |
+| --- | --- |
+| [BAZ-057](in_progress/BAZ-057-portable-safe-reads.md) | **First priority for Release 0.24:** implemented and actual-macOS-qualified ordinary Agent chat; awaiting release integration, with platform/capability limits recorded |
+| [BAZ-071](in_progress/BAZ-071-platform-readiness-diagnostics.md) | **Final scoped addition for Release 0.24:** CLI/web diagnostics implemented and Linux/macOS-qualified; awaiting release integration, with execution gates unchanged |
+
+Release 0.24 is developed on `release/0.24`. Scope is frozen to these stories and the embedded Pi
+1.4.0 upgrade; Codemode and Durable are excluded. Current released platform support remains unchanged
+until release integration and publication.
 
 ## Done (54)
 

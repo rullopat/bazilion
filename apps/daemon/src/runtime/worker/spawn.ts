@@ -153,7 +153,7 @@ type SpecWithCapabilityHost =
   | StaticReviewWorkerSpec
 
 export interface WorkerResourceLifecycle {
-  beforeInput(pid: number, hostCommands?: boolean): void
+  beforeInput(pid: number, hostCommands?: boolean, child?: ChildProcess): void
   afterExit(observedNormalExit?: boolean): Promise<boolean>
 }
 
@@ -470,10 +470,11 @@ async function* spawnWorker(
     if (!child.stdout) throw new Error('worker spawn: stdout pipe missing')
     if (resourceLifecycle) {
       if (!child.pid) throw new Error('Worker PID unavailable')
-      resourceLifecycle.beforeInput(
-        child.pid,
-        spec.kind === 'configured_operator_http' && env.BAZILION_BASH_SANDBOX !== 'docker',
-      )
+      const hostCommands =
+        spec.kind === 'configured_operator_http' && env.BAZILION_BASH_SANDBOX !== 'docker'
+      if (process.platform === 'darwin')
+        resourceLifecycle.beforeInput(child.pid, hostCommands, child)
+      else resourceLifecycle.beforeInput(child.pid, hostCommands)
     }
     child.stdin?.write(serializedInput)
     child.stdin?.end()

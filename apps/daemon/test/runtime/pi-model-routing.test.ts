@@ -1,6 +1,7 @@
 import { expect, test } from 'vitest'
 import {
   createBazilionPiRuntime,
+  createProtectedPiRuntime,
   fallbackBaseUrl,
   providerBaseUrl,
   resolvePiModel,
@@ -16,8 +17,42 @@ import { loadProviderConfigFromEnv } from '../../src/runtime/providers/registry.
 // string therefore sent, for example, a Fireworks key to OpenAI. These tests pin
 // the refusal and the endpoint catalogued models actually carry.
 
-// Pi 1.0 retires the dated 0731 entry; pin its current catalogued successor.
+// Pin the catalogued successor of the retired dated 0731 entry.
 const FIREWORKS_CATALOG_ID = 'accounts/fireworks/models/deepseek-v4p1-flash'
+
+test.each([
+  false,
+  true,
+])('Azure credentials/catalog use Pi 1.4 naming (protected=%s)', async (protectedMode) => {
+  const runtime = protectedMode
+    ? await createProtectedPiRuntime({
+        providerName: 'azure-openai',
+        modelId: 'gpt-6.1-sol',
+        apiKey: 'azure-selected-fixture-key',
+      })
+    : await createBazilionPiRuntime({
+        providerName: 'azure-openai',
+        env: { AZURE_OPENAI_API_KEY: 'azure-selected-fixture-key' },
+      })
+  for (const [id, api] of [
+    ['gpt-6.1-sol', 'azure-openai-responses'],
+    ['deepseek-v4-pro', 'openai-completions'],
+  ] as const) {
+    const model = resolvePiModel(runtime, 'azure-openai', id)
+    expect(model).toMatchObject({ provider: 'azure', id, api })
+    expect(JSON.stringify(await runtime.getAuth(model))).toContain('azure-selected-fixture-key')
+  }
+  expect(runtime.getModel('azure-openai-responses', 'gpt-6.1-sol')).toBeUndefined()
+})
+
+test('Kimi Code catalog selects its current Chat Completions protocol and versioned endpoint', async () => {
+  const runtime = await createBazilionPiRuntime({ providerName: 'kimi-coding', env: {} })
+  expect(resolvePiModel(runtime, 'kimi-coding', 'kimi-for-coding')).toMatchObject({
+    provider: 'kimi-coding',
+    api: 'openai-completions',
+    baseUrl: 'https://api.kimi.com/coding/v1',
+  })
+})
 
 test('an uncatalogued model id with no endpoint is refused instead of misrouted', async () => {
   const runtime = await createBazilionPiRuntime({ providerName: 'fireworks', env: {} })
