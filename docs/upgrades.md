@@ -16,6 +16,8 @@ entire home, including `bazilion.db` and `auth.json` together, before updating.
 The default release matrix now seeds a genuine `v0.23.0` home and checks retained Team sentinel
 data, unchanged paired `auth.json` bytes and two healthy starts under the candidate. This is
 bounded startup/state-continuity coverage, not a general transcript, backup or platform guarantee.
+[CI 39916662097](https://github.com/rullopat/bazilion/actions/runs/39916662097) observed this
+continuity at candidate `2f492e3`, along with unchanged-state refusals for all eight older fixtures.
 Versioned 0.24.0 artifact checks remain required before publication. Incompatible older homes
 still follow the unchanged refusal/rebootstrap boundary below.
 
