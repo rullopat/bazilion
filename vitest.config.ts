@@ -1,21 +1,19 @@
 import { defineConfig } from 'vitest/config'
 
-// Linux-only suites retain /proc-pinned Git inspection, Linux process identities,
-// or broader coding/scheduling assumptions not qualified by BAZ-057. Portable
-// repository-context-capture, observed-child and portable-chat suites run on the
-// actual Linux/macOS matrix; never exclude them to hide a portability failure.
-// Removing the ordinary-chat safe-read blocker does not qualify every Git,
-// container, restricted-worker or scheduled-provider configuration.
+// Linux-only suites retain Linux process identities or legacy live-worktree/coding assumptions.
+// BAZ-072 adds actual-platform Git capture/changes/identity and private-worktree coverage alongside
+// repository-context-capture, observed-child and portable-chat. Never exclude those suites to hide
+// a portability failure. A captured Git backend alone does not qualify the broader protected,
+// container, restricted-worker or scheduled-provider configurations.
 const LINUX_ONLY = [
   // Legacy context suites include the Linux-only hardened Git report contract.
   'apps/daemon/test/core/repository-context.test.ts',
   'apps/daemon/test/core/repository-context-git-errors.test.ts',
   'apps/daemon/test/runtime/repository-context.test.ts',
   'apps/cli/test/repository-context.test.ts',
-  // Hardened Git capture still requires its descriptor-pinned /proc worktree.
-  'apps/daemon/test/core/git-capture.test.ts',
-  'apps/daemon/test/core/git-review-changes.test.ts',
-  'apps/daemon/test/core/git-review-identity.test.ts',
+  // This legacy snapshot suite assumes a live worktree and accepts symlinks as incomplete
+  // per-path entries. Private macOS captures freeze bytes and refuse unignored links up front;
+  // git-private-worktree.test.ts exercises their snapshot/refresh contract on both platforms.
   'apps/daemon/test/core/git-review-snapshot.test.ts',
   // Broader legacy pipeline suites retain their existing qualification boundary.
   // BAZ-057 adds actual-platform ordinary-turn coverage separately; a new failure

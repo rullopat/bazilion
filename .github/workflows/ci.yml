@@ -70,6 +70,47 @@ jobs:
         continue-on-error: true
         run: pnpm changeset status --since=origin/main
 
+  macos-parity:
+    name: macOS arm64 Git parity (Node ${{ matrix.node }})
+    runs-on: macos-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['24.22.0', '26.4.0']
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+
+      # A runner label is not an OS-version/architecture observation. Retain the actual values;
+      # release qualification must separately confirm this is the latest stable macOS available.
+      - name: Assert and report actual Apple Silicon environment
+        run: |
+          sw_vers
+          uname -m
+          node -e "console.log(process.version, process.platform, process.arch); if (process.platform !== 'darwin' || process.arch !== 'arm64') process.exit(1)"
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Test hardened Git and private worktree capture
+        run: >-
+          pnpm vitest run
+          apps/daemon/test/core/git-capture.test.ts
+          apps/daemon/test/core/git-private-worktree.test.ts
+          apps/daemon/test/core/git-review-changes.test.ts
+          apps/daemon/test/core/git-review-identity.test.ts
+          apps/daemon/test/core/repository-context-capture.test.ts
+
   installer-e2e:
     name: Fresh-machine installer E2E (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

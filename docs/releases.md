@@ -7,8 +7,8 @@ MCP stdio, managed browsing and protected execution. Intel Mac qualification and
 are out of scope. Qualification targets the latest stable macOS and both supported Node lines;
 older macOS versions remain untested, not automatically incompatible. The technical minimum still
 needs auditing. [BAZ-072](backlog/in_progress/BAZ-072-apple-silicon-feature-parity.md) tracks the
-active release work and gates. Implementation and macOS qualification remain pending; this is not
-a support claim, and 0.24.0 limits below still apply.
+active release work and gates. Initial Git implementation is underway; feature parity and macOS
+qualification remain incomplete. This is not a support claim; 0.24.0 limits below still apply.
 
 ## 0.24.0
 

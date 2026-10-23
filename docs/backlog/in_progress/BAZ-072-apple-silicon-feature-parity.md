@@ -147,6 +147,19 @@ credentials/spend; this story does not authorize paid calls or use of personal a
 
 ## As built
 
-Release work opened with the agreed Apple Silicon/latest-stable qualification policy and explicit
-parity scope. Runtime implementation and macOS qualification are pending. No runtime gates,
-support claims, package versions or published artifacts have changed.
+Initial Git implementation is in progress: the single hardened inspector retains Linux fd-relative
+access and adds a bounded private-worktree backend for macOS. Ignore-aware guarded copying,
+independent source validation, frozen snapshot bytes and scratch disposal have focused tests on
+Linux; Git capture/changes/identity suites are admitted to the actual macOS CI path. A focused
+arm64 job exercises both supported Node lines and reports actual OS/architecture versions.
+See [repository context](../../repository-context.md) for the candidate's bounds and limitations.
+
+Local normal-suite tests, the existing security gate, lint and root/web typechecks passed. A root/
+PID-namespace test invocation failed browser startup, permission-sensitive backup and delayed-child
+settlement checks; the normal suite passed without relaxing checks. A concurrent security run timed
+out; a standalone run passed. These do not establish macOS qualification.
+
+Actual macOS results, broader coding workflow acceptance, private-worktree layout parity and the
+Git platform diagnostic update remain open. MCP stdio, browser/protected lifecycle work, image/live
+acceptance and the technical-minimum audit are not implemented/qualified by this increment. No
+version bump, publication or expanded released-support claim has occurred.
