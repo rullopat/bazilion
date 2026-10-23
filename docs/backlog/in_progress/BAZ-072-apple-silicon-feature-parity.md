@@ -174,7 +174,7 @@ parity remain open. Browser/protected lifecycle work, image/live acceptance and 
 audit are not implemented/qualified by the Git increment. No version bump, publication or expanded
 released-support claim has occurred.
 
-### MCP stdio candidate — native macOS qualification pending
+### MCP stdio — bounded native macOS checks passed
 
 The next increment adds daemon-only public libproc inspection through pinned `koffi@3.3.3` in the
 daemon and packed CLI. Its install script stays disabled; prebuilt loading needs no compiler or
@@ -183,9 +183,20 @@ allocation and spawn. Exact BSD and monotonic Mach birth facts, uid/session/grou
 enumeration and empty-group confirmation feed the shared retirement guard; Linux keeps `/proc`.
 Unknown identity never enters Pi's unsafe native close or gains permission to signal stored PIDs.
 
-Focused parser/owner/protocol checks and typechecks pass locally. Native-only cases are explicitly
-not exercised on Linux. Actual arm64 jobs on both Node lines now include native identity, tool
-calls, cancellation/busy reaping and opening/failed-initialization retirement. Packaged CLI trials
-also exercise stdio discovery and descendant shutdown. Twelve added security cases protect the
-new boundaries. Real macOS results and the corresponding capability/help update are still pending;
-this candidate is not yet qualified or evidence of worker/browser/protected process parity.
+Candidate `21ab568` passed all eight jobs in
+[CI](https://github.com/rullopat/bazilion/actions/runs/39979009335): source/build, guarded installed
+Linux/macOS trials, upgrade checks and all 418 required security cases. Actual **macOS 26.6.2
+arm64**, Node **24.22.0** and **26.4.0**, each passed 153 focused Git/process/MCP cases (four legacy
+Linux `/proc`-mock cases remain Linux-only, with separate Darwin coverage). Native cases exercised
+real libproc birth/group observations; stdio cases exercised tool invocation, cancellation/busy
+reaping and opening/failed-initialization retirement. The installed macOS trial loaded the packaged
+native path, discovered the fixture catalog and retired its descendants with install scripts off.
+
+Local normal-suite checks passed 2,753 tests with 50 skips (49 existing plus the actual-Mac-only
+native case). The CLI/web capability/help follow-up passes its focused checks and root/web
+typechecks locally; it describes native-owned stdio without running probes in passive reports.
+
+The MCP stdio milestone is implemented and has bounded native/protocol evidence. This does not
+qualify worker/browser/protected process parity or latest-stable macOS: the hosted runner reported
+26.6.2. Those milestones, broader layout/coding acceptance and unrelated image/live criteria remain
+open; no merge, release publication, package-version bump or website deployment is authorized.

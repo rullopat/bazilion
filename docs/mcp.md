@@ -98,7 +98,7 @@ qualified by this normal-retirement evidence. In published 0.24.0, other platfor
 before spawn rather than using Pi's native close without equivalent ownership checks. No
 all-platform stdio cleanup or abnormal-exit guarantee is claimed.
 
-## Unreleased 0.25: macOS owned-stdio candidate
+## Unreleased 0.25: macOS owned stdio
 
 BAZ-072 adds a daemon-only macOS inspection backend using public `libproc` APIs through pinned
 `koffi@3.3.3`. Its platform-specific prebuilt is a declared dependency of the daemon and packed CLI;
@@ -124,11 +124,19 @@ retains the slot. Stored PID numbers, restored receipts or a native-package avai
 never authorize signalling. These remain normal-lifecycle observations, not atomic identity
 proofs, arbitrary detached-descendant containment or abrupt-exit recovery guarantees.
 
-Local focused owner/protocol tests pass; real macOS qualification of this candidate is pending.
-The actual-arm64 CI jobs cover both supported Node baselines, native process identity, tool calls,
-busy/cancelled turns, initialization failure and opening-client retirement. The installed trial
-also exercises packaged stdio discovery and descendant retirement without enabling lifecycle
-scripts. No expanded 0.25 released-support claim is made by these candidate changes.
+Implementation `21ab568` passed all eight jobs in
+[CI](https://github.com/rullopat/bazilion/actions/runs/39979009335). On actual **macOS 26.6.2 arm64**,
+both Node **24.22.0** and **26.4.0** passed the 153-case focused Git/process/MCP collection (four
+legacy Linux `/proc`-mock cases remain Linux-only, with separate Darwin coverage). Native cases
+check real process birth/group facts; protocol cases cover tool calls, busy/cancelled turns,
+initialization failure and opening-client retirement. The guarded installed macOS trial also
+passed packaged stdio discovery and descendant retirement without enabling lifecycle scripts.
+The expanded security gate passed all 418 required cases on Linux.
+
+CLI/web platform diagnostics and management help now describe native-owned macOS stdio, while
+actual native inspection still gates every connection. This is bounded normal-lifecycle evidence,
+not complete 0.25 feature parity or latest-stable macOS qualification: the hosted image reported
+26.6.2. Worker/browser/protected parity and latest-stable release acceptance remain open.
 
 ## Implementation and regression coverage
 

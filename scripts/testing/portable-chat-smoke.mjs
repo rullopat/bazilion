@@ -97,7 +97,7 @@ export async function qualifyPortableChat({
     [
       ['ordinary_chat', 'supported'],
       ['git_inspection', 'supported'],
-      ['mcp_stdio', process.platform === 'linux' ? 'supported' : 'unsupported'],
+      ['mcp_stdio', 'supported'],
       ['mcp_http', 'supported'],
     ],
   )

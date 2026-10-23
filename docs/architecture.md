@@ -164,8 +164,9 @@ Shipped in 0.24.0, ordinary macOS chat has actual installed CLI/API/browser qual
 fd-relative reads; macOS uses guarded public fs-safe opens plus capture-wide identity/source checks.
 This is not an atomic filesystem snapshot or complete platform parity. In that release hardened
 Git inspection and MCP stdio retain Linux-only admission. Unreleased BAZ-072 adds bounded private
-macOS Git worktree capture while preserving Linux descriptor-pinned access; MCP stdio and unknown
-process ownership remain blocked. See
+macOS Git worktree capture and public-libproc-owned macOS MCP stdio while preserving Linux
+inspection/retirement paths. Unknown ownership remains blocked; worker/browser/protected parity
+and latest-stable macOS acceptance remain in progress. See
 [repository context](repository-context.md), [BAZ-057](backlog/done/BAZ-057-portable-safe-reads.md)
 and [coding environments](coding-environments.md).
 

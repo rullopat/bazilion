@@ -32,11 +32,11 @@ export function projectPlatformCapabilities(
       {
         id: 'mcp_stdio',
         label: 'MCP stdio',
-        support: linux ? 'supported' : 'unsupported',
+        support: portable ? 'supported' : 'unsupported',
         detail: linux
           ? 'Enable and test a configured server separately; process ownership checks still apply.'
           : portable
-            ? 'Requires Linux process-tree retirement. Use Streamable HTTP instead.'
+            ? 'Requires native process ownership inspection. Unknown identity or cleanup blocks the connection. Use Streamable HTTP if native inspection is unavailable.'
             : unsupported,
       },
       {
