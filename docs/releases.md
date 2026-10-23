@@ -1,5 +1,25 @@
 # Releases
 
+## 0.24.0 — prepared, unreleased
+
+`bazilion`, `@bazilion/api-types` and `@bazilion/client` are versioned **0.24.0** on the release
+branch. They are not yet published; npm latest remains 0.23.0 and PR #79 remains draft/unmerged.
+See the [changelog](../CHANGELOG.md) for ordinary macOS chat, embedded Pi 1.4.0
+and independent installation/platform/protected-readiness diagnostics. Product maturity remains alpha.
+
+Versioned candidate **`2a2bb4acdaa8225efcd8c38c9a76ce83dedc35a8`** passed all six jobs in
+[CI 39923495901](https://github.com/rullopat/bazilion/actions/runs/39923495901): source checks,
+build/pack and installed CLI trials on Linux/macOS Node 24.22.0; offline installation of both
+unpublished library tarballs together, runtime imports and browser-only consumer types; 399 required
+security cases; and the nine-entry genuine-release matrix. The 0.23.0 fixture preserved its Team
+sentinel and paired auth across two candidate starts; all eight older fixtures refused unchanged.
+CLI tarballs have platform/build-specific hashes; no cross-platform byte-equivalence is claimed.
+
+Existing platform/provider/ownership limits remain. See [upgrade guidance](upgrades.md),
+[BAZ-057](backlog/in_progress/BAZ-057-portable-safe-reads.md) and
+[BAZ-071](backlog/in_progress/BAZ-071-platform-readiness-diagnostics.md). Publication, public-registry
+artifact verification, release integration and website promotion still require operator approval.
+
 ## 0.23.0
 
 [GitHub release](https://github.com/rullopat/bazilion/releases/tag/v0.23.0) ·
