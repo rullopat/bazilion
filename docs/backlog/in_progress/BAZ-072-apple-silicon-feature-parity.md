@@ -404,4 +404,23 @@ old authority before activation, and refuses fresh-ref publication on activation
 an actual select/observe/navigate regression and strengthens the non-GUI fixture's permanent-drop
 and final native-session assertions. The **450-case security gate**, root typecheck, 79 focused
 observation/lifecycle cases, and **26 actual Linux browser/worker cases / two platform-only skips**
-passed locally. The final CLI/Mac rerun is pending; browser milestone remains incomplete.
+passed locally. In `4a9d113` /
+[CI 40090814788](https://github.com/rullopat/bazilion/actions/runs/40090814788), all six other
+jobs and Node 24's **355 focused / 28 actual-browser cases** passed. Node 26 passed the same 355
+focused cases and both CLI research/cancellation journeys, but its actual suite was **27 passed /
+one failed**: the fixture read proc_pidpath after a matched process exited during crash retirement.
+
+The follow-up rechecks birth/liveness before rejecting that path read and waits inside the same
+retirement bound for a fresh positive absence observation; UNKNOWN never counts as empty. Fixture
+cleanup now requires confirmed launches/retirements, no remaining owners and positive absence;
+uncertain slots are retained, not manually removed. CLI qualification additionally resets the real
+browser profile, verifies keychain removal, launches a fresh profile with a different secret digest,
+and resets it again. Native qualification now checks caller search-list preservation too.
+The WebRTC exposure control is credential-scrubbed and explicitly removes Playwright's default
+mock-keychain flag, using the same real private keychain path as the product. The temporary
+runner-wide account keychain setup/unlock is retired as unnecessary: only the process-private
+non-GUI audit-session bootstrap needs explicitly opted-in hosted-CI privilege, with ordinary-user
+execution after permanent credential drop. Closed command-construction/refusal tests cover that
+boundary; no product sudo path is added. Root typecheck, **453 required security cases** and
+**26 actual Linux browser/worker cases / two platform-only skips** passed locally. The final
+both-baseline Mac reset/retirement rerun is pending; browser milestone remains incomplete.

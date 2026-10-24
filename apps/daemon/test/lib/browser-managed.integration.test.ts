@@ -21,7 +21,15 @@
 //   restart, and no surviving owned processes after close.
 
 import { execFile } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync } from 'node:fs'
+import {
+  existsSync,
+  globSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -46,9 +54,11 @@ import {
 import { closeSsrfProxy, getSsrfProxy } from '../../src/lib/browser/proxy.ts'
 import { probeDarwinGuiSession } from '../../src/lib/process/darwin-gui.ts'
 import { resources } from '../../src/lib/resources.ts'
+import { nonGuiFixtureCommand } from '../fixtures/browser-ci-session.ts'
 import {
   createInstrumentedOrigin,
   createUdpProbe,
+  fixtureOwnersConfirmed,
   type InstrumentedOrigin,
   launchLaneContext,
   MANAGED_DENIAL_ARGS,
@@ -80,6 +90,7 @@ const contextProfile = join(contextSlot, 'user-data')
 let instrumented: InstrumentedOrigin
 let postureCtx: BrowserContext | null = null
 let contextCtx: BrowserContext | null = null
+let uncertainNonGuiFixture = false
 
 async function sleep(ms: number): Promise<void> {
   await new Promise((r) => setTimeout(r, ms))
@@ -87,11 +98,21 @@ async function sleep(ms: number): Promise<void> {
 
 async function waitForNoOwnedProcesses(profileDir: string, ms = 8_000): Promise<void> {
   const deadline = Date.now() + ms
+  let lastError: unknown
   while (Date.now() < deadline) {
-    if (ownedBrowserProcesses(profileDir).length === 0) return
+    try {
+      if (ownedBrowserProcesses(profileDir).length === 0) return
+      lastError = undefined
+    } catch (error) {
+      // An exit can temporarily make argv/path inspection unavailable. Waiting for a fresh
+      // positive absence observation is allowed; treating that UNKNOWN as empty is not.
+      lastError = error
+    }
     await sleep(250)
   }
-  throw new Error(`owned browser processes for ${profileDir} did not exit within ${ms}ms`)
+  throw new Error(`owned browser processes for ${profileDir} did not exit within ${ms}ms`, {
+    cause: lastError,
+  })
 }
 
 async function activePage(ctx: BrowserContext): Promise<Page> {
@@ -135,15 +156,46 @@ run('managed browser adapter lane (BAZILION_TEST_BROWSER=1)', () => {
     // assertion; if it failed partway, still try to retire everything here
     // without letting a stalled close hang the hook (a known proxy-close
     // defect T05 exists to fix — never let it obscure the suite result).
-    const bestEffort = async (p: Promise<unknown> | undefined) => {
-      if (!p) return
-      await Promise.race([p.catch(() => {}), new Promise((r) => setTimeout(r, 10_000))])
+    const bestEffort = async (p: Promise<unknown> | undefined): Promise<boolean> => {
+      if (!p) return true
+      let timer: ReturnType<typeof setTimeout> | undefined
+      const confirmed = await Promise.race([
+        p.then(
+          () => true,
+          () => false,
+        ),
+        new Promise<false>((resolve) => {
+          timer = setTimeout(() => resolve(false), 10_000)
+        }),
+      ])
+      clearTimeout(timer)
+      return confirmed
     }
-    await bestEffort(postureCtx?.close().catch(() => {}))
-    await bestEffort(contextCtx?.close().catch(() => {}))
+    const closed = await Promise.all([
+      bestEffort(postureCtx?.close()),
+      bestEffort(contextCtx?.close()),
+      ...[...resources().browsers.values()].map((entry) => bestEffort(entry.close())),
+    ])
     await bestEffort(instrumented?.close())
     await bestEffort(closeSsrfProxy())
-    rmSync(scratch, { recursive: true, force: true })
+    let absent = false
+    try {
+      await waitForNoOwnedProcesses(scratch)
+      absent = globSync('*/browsers/*/owner.json', { cwd: scratch }).length === 0
+    } catch {
+      /* Unknown inspection/markers retain all fixture slots. */
+    }
+    const confirmed =
+      closed.every(Boolean) && fixtureOwnersConfirmed() && !uncertainNonGuiFixture && absent
+    if (confirmed) rmSync(scratch, { recursive: true, force: true })
+    else
+      console.warn(
+        `[browser-managed] retained fixture profiles with unconfirmed ownership: ${scratch}`,
+      )
+    expect(
+      confirmed,
+      'fixture cleanup requires confirmed ownership; never erase uncertain slots',
+    ).toBe(true)
   }, 60_000)
 
   test('argv pins direct local spawn: sandbox on, owned loopback CDP, proxy, denials, explicit binary', {
@@ -163,6 +215,7 @@ run('managed browser adapter lane (BAZILION_TEST_BROWSER=1)', () => {
     expect(argv).toContain(`--user-data-dir=${postureProfile}`)
     expect(root!.exe).toBeTruthy()
     expect(root!.exe).not.toMatch(/headless[_-]?shell/i)
+    expect(argv).not.toContain('--use-mock-keychain')
     expect(root!.exe).toMatch(/chrom/i)
     expect(existsSync(realpathSync(exePath))).toBe(true)
 
@@ -1511,35 +1564,8 @@ run('managed browser adapter lane (BAZILION_TEST_BROWSER=1)', () => {
       const home = join(scratch, 'actual-nongui-child')
       mkdirSync(home, { mode: 0o700 })
       const entry = fileURLToPath(new URL('../fixtures/browser-nongui.mjs', import.meta.url))
-      const accountState = process.env.BAZILION_TEST_MACOS_ACCOUNT_STATE
-      if (
-        accountState &&
-        (process.env.GITHUB_ACTIONS !== 'true' ||
-          process.env.RUNNER_ENVIRONMENT !== 'github-hosted')
-      )
-        throw new Error(
-          'privileged non-GUI provisioning requires the authorized disposable CI account',
-        )
-      const command = accountState ? '/usr/bin/sudo' : process.execPath
-      const args = accountState
-        ? [
-            '-n',
-            '--',
-            '/usr/bin/env',
-            '-i',
-            'PATH=/usr/bin:/bin:/usr/sbin',
-            `HOME=${home}`,
-            'BAZILION_TEST_DISPOSABLE_MACOS=1',
-            process.execPath,
-            entry,
-            '--create-session',
-            String(process.getuid?.()),
-            String(process.getgid?.()),
-            exePath,
-            home,
-            accountState,
-          ]
-        : ['--import', 'tsx/esm', entry, exePath, home]
+      const { command, args, env } = nonGuiFixtureCommand(entry, exePath, home)
+      uncertainNonGuiFixture = true
       const stdout = await new Promise<string>((resolve, reject) => {
         execFile(
           command,
@@ -1547,7 +1573,7 @@ run('managed browser adapter lane (BAZILION_TEST_BROWSER=1)', () => {
           {
             timeout: 35_000,
             maxBuffer: 64 * 1024,
-            env: { PATH: '/usr/bin:/bin:/usr/sbin', HOME: home, LANG: 'C', LC_ALL: 'C' },
+            env,
           },
           (error, stdout, stderr) => {
             if (error)
@@ -1565,6 +1591,7 @@ run('managed browser adapter lane (BAZILION_TEST_BROWSER=1)', () => {
         graphicAccess: false,
       })
       expect(probeDarwinGuiSession()).toBe(before)
+      uncertainNonGuiFixture = false
     },
   )
 

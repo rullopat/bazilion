@@ -35,11 +35,9 @@ function argumentsFor(pid: number): Buffer | null {
   const status = api.sysctl(mib, 3, buffer, size, null, 0)
   const errno = api.errno()
   if (status !== 0) {
-    // Exit/permission races among other users' processes are not our browser evidence.
-    if ([1, 3, 13].includes(errno)) return null // EPERM, ESRCH, EACCES
-    if (errno === 22) {
-      // XNU also returns EINVAL for a process which disappeared/lost its task during the
-      // stack copy. Do not blanket-ignore it: require a fresh positive exit/uid observation.
+    if ([1, 3, 13, 22].includes(errno)) {
+      // Permission/exit races and XNU's EINVAL for a vanished task are not empty-process
+      // proofs. Skip only after a fresh positive exit/zombie/uid-change observation.
       const current = getDarwinProcessInspector().member(pid)
       if (!current || current.state === 'Z' || current.uid !== process.geteuid?.()) return null
     }
@@ -122,13 +120,17 @@ export function ownedDarwinBrowserProcesses(profileDir: string): OwnedBrowserPro
     const { argv, environ } = decodeDarwinProcessArguments(buffer)
     if (!argv.some((arg) => arg.includes(profileDir))) continue
     const executable = Buffer.alloc(4096)
+    api.errno(0)
     const length = api.path(pid, executable, executable.length)
-    if (length <= 0 || length >= executable.length)
-      throw new Error('matched executable unavailable')
+    const pathErrno = api.errno()
+    // A process can exit after matching argv but before proc_pidpath. Observe its current
+    // birth/liveness before rejecting the path read; never turn an alive unknown into absence.
     const after = inspector.member(pid)
     if (!after || after.state === 'Z') continue
     if (before.start !== after.start || before.uid !== after.uid)
       throw new Error('matched process identity changed')
+    if (length <= 0 || length >= executable.length)
+      throw new Error(`matched executable unavailable: status=${length}, errno=${pathErrno}`)
     const nul = executable.indexOf(0)
     const exe = executable.toString('utf8', 0, nul < 0 ? length : nul)
     const cmdline = argv.join(' ')

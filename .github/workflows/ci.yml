@@ -129,7 +129,7 @@ jobs:
           apps/daemon/test/lib/darwin-gui.test.ts
           apps/daemon/test/lib/browser-darwin-owner.test.ts
           apps/daemon/test/lib/browser-darwin-evidence.test.ts
-          apps/daemon/test/lib/browser-ci-account.test.ts
+          apps/daemon/test/lib/browser-ci-session.test.ts
           apps/daemon/test/lib/browser-darwin-keychain.test.ts
           apps/daemon/test/lib/browser-darwin-keychain-owner.test.ts
           apps/daemon/test/lib/browser-executable.test.ts
@@ -138,11 +138,9 @@ jobs:
           apps/daemon/test/lib/browser-launch.test.ts
           apps/daemon/test/lib/browser-lifecycle.test.ts
 
-      # Operator-authorized disposable test account only: no personal credentials, no product
-      # keychain/privilege feature, and no mock keychain or encryption/security-check relaxation.
-      - name: Provision disposable browser test keychain
-        run: node scripts/testing/macos-browser-account.mjs setup
-
+      # Private keychains are admitted by the ordinary product path inside each browser HOME.
+      # Only creating the fixture's process-private non-GUI audit session needs CI privilege;
+      # the helper permanently drops to the runner user before any app/browser code.
       # Actual direct-owned Chrome, not synthetic transport responses or public/provider traffic.
       # A missing installed browser, unusable GUI or refused non-GUI child session is a failure.
       - name: Test actual headed, headless and non-GUI managed browser
@@ -150,14 +148,11 @@ jobs:
           BAZILION_TEST_BROWSER: '1'
           BAZILION_TEST_BROWSER_HEADED: '1'
           BAZILION_TEST_BROWSER_DIAGNOSTICS: '1'
+          BAZILION_TEST_PRIVILEGED_NONGUI: '1'
         run: >-
           pnpm vitest run
           apps/daemon/test/lib/browser-managed.integration.test.ts
           apps/cli/test/browser-research.test.ts
-
-      - name: Restore test account and delete disposable browser keychain
-        if: always()
-        run: node scripts/testing/macos-browser-account.mjs cleanup
 
   installer-e2e:
     name: Fresh-machine installer E2E (${{ matrix.os }})

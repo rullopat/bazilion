@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import {
   chmodSync,
   existsSync,
@@ -128,13 +129,25 @@ test.skipIf(process.platform !== 'darwin')(
     const before = execFileSync('/usr/bin/security', ['default-keychain', '-d', 'user'], {
       encoding: 'utf8',
     })
+    const beforeSearch = execFileSync('/usr/bin/security', ['list-keychains', '-d', 'user'], {
+      encoding: 'utf8',
+    })
     await ensureDarwinBrowserKeychain(home, 8000)
-    const secret = readFileSync(join(home, '.bazilion-keychain-secret'), 'utf8')
+    const secretDigest = createHash('sha256')
+      .update(readFileSync(join(home, '.bazilion-keychain-secret')))
+      .digest('hex')
     expect(existsSync(join(home, 'Library', 'Keychains', 'bazilion.keychain-db'))).toBe(true)
     await ensureDarwinBrowserKeychain(home, 8000)
-    expect(readFileSync(join(home, '.bazilion-keychain-secret'), 'utf8')).toBe(secret)
+    expect(
+      createHash('sha256')
+        .update(readFileSync(join(home, '.bazilion-keychain-secret')))
+        .digest('hex'),
+    ).toBe(secretDigest)
     expect(
       execFileSync('/usr/bin/security', ['default-keychain', '-d', 'user'], { encoding: 'utf8' }),
     ).toBe(before)
+    expect(
+      execFileSync('/usr/bin/security', ['list-keychains', '-d', 'user'], { encoding: 'utf8' }),
+    ).toBe(beforeSearch)
   },
 )

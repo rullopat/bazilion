@@ -22,17 +22,19 @@ if (phase === '--create-session') {
     throw new Error(
       'privileged non-GUI bootstrap is restricted to the authorized disposable CI fixture',
     )
-  const [uidText, gidText, executablePath, home, accountState] = args
+  const [uidText, gidText, executablePath, home] = args
   const uid = Number(uidText)
   const gid = Number(gidText)
   if (
+    args.length !== 4 ||
     !Number.isSafeInteger(uid) ||
     uid <= 0 ||
+    uid > 0xffffffff ||
     !Number.isSafeInteger(gid) ||
-    gid < 0 ||
+    gid <= 0 ||
+    gid > 0xffffffff ||
     !executablePath ||
-    !home ||
-    !accountState
+    !home
   )
     throw new Error('invalid ordinary-user fixture identity or paths')
   ffi.errno(0)
@@ -88,7 +90,6 @@ if (phase === '--create-session') {
       '--session-ready',
       executablePath,
       home,
-      accountState,
     ],
     {
       PATH: '/usr/bin:/bin:/usr/sbin',
@@ -111,27 +112,11 @@ if (phase !== '--session-ready') {
 if (beforeStatus !== 0 || (attributes.readUInt32LE() & 0x10) !== 0)
   throw new Error('ordinary-user child has not established a non-graphical security session')
 
-const [executablePath, home, accountState] = args
-if (!executablePath || !home) throw new Error('missing controlled fixture paths')
-if (accountState) {
-  if (process.env.BAZILION_TEST_DISPOSABLE_MACOS !== '1')
-    throw new Error('test account provisioning was not admitted')
-  const { readFileSync, statSync } = await import('node:fs')
-  const { spawnSync } = await import('node:child_process')
-  const stat = statSync(accountState)
-  if (stat.uid !== process.getuid() || (stat.mode & 0o077) !== 0)
-    throw new Error('unsafe test-account state permissions')
-  const { keychain, password } = JSON.parse(readFileSync(accountState, 'utf8'))
-  // Unlock in THIS new audit session after permanent privilege drop. Generated disposable test
-  // credentials only; never log the command arguments, password or keychain contents.
-  const unlocked = spawnSync('/usr/bin/security', ['unlock-keychain', '-p', password, keychain], {
-    encoding: 'utf8',
-    timeout: 10_000,
-    maxBuffer: 64 * 1024,
-  })
-  if (unlocked.error || unlocked.status !== 0)
-    throw new Error('disposable non-GUI test keychain could not be unlocked')
-}
+const [executablePath, home] = args
+if (args.length !== 2 || !executablePath || !home)
+  throw new Error('missing controlled fixture paths')
+// No account-wide keychain setup/unlock is needed: the ordinary product path admits a native
+// private keychain inside this browser's managed HOME, including in a fresh non-GUI session.
 const { probeDarwinGuiSession } = await import('../../src/lib/process/darwin-gui.ts')
 const { resolveBrowserMode } = await import('../../src/lib/browser/executable.ts')
 const { launchManagedBrowser } = await import('../../src/lib/browser/launch.ts')

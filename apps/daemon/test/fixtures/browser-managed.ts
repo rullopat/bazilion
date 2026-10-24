@@ -14,12 +14,32 @@ import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { promisify } from 'node:util'
 import { type BrowserContext, chromium } from 'playwright'
-import { installManagedGuards, type ManagedPostureInput } from '../../src/lib/browser/guards.ts'
+import { ensureDarwinBrowserKeychain } from '../../src/lib/browser/darwin-keychain.ts'
+import {
+  installManagedGuards,
+  type ManagedPostureInput,
+  managedBrowserEnv,
+} from '../../src/lib/browser/guards.ts'
 import { startOwnedBrowser } from '../../src/lib/browser/process.ts'
 import { getDarwinProcessInspector } from '../../src/lib/process/darwin.ts'
 import { ownedDarwinBrowserProcesses } from './browser-managed-darwin.ts'
 
 let nativeNavigationSampleRequested = false
+let uncertainFixtureOwner = false
+let pendingFixtureOperations = 0
+export function fixtureOwnersConfirmed(): boolean {
+  return !uncertainFixtureOwner && pendingFixtureOperations === 0
+}
+function observeFixtureOperation<T>(operation: Promise<T>): Promise<T> {
+  pendingFixtureOperations++
+  return operation.catch(retainUncertainFixture).finally(() => {
+    pendingFixtureOperations--
+  })
+}
+function retainUncertainFixture(error: unknown): never {
+  uncertainFixtureOwner = true
+  throw error
+}
 
 export type { ManagedPostureInput } from '../../src/lib/browser/guards.ts'
 export {
@@ -40,17 +60,32 @@ export interface ManagedLaneInput extends ManagedPostureInput {
   beforeGuards?: (context: BrowserContext) => Promise<void>
 }
 
-export async function launchLaneContext(input: ManagedLaneInput): Promise<BrowserContext> {
+export function launchLaneContext(input: ManagedLaneInput): Promise<BrowserContext> {
+  return observeFixtureOperation(launchLaneContextInner(input))
+}
+
+async function launchLaneContextInner(input: ManagedLaneInput): Promise<BrowserContext> {
   if (input.denialArgs !== undefined) {
-    // Exposure control ONLY, not evidence for the product launch adapter.
-    return chromium.launchPersistentContext(input.profileDir, {
-      executablePath: input.executablePath,
-      headless: input.headless,
-      chromiumSandbox: true,
-      // This control removes only the WebRTC denials under comparison. Starting an installed
-      // browser updater is not part of that experiment and may alter the runner-user account.
-      args: ['--disable-updater-scheduler', ...input.denialArgs],
-    })
+    // Exposure control ONLY, not evidence for the product launch adapter. Keep credentials and
+    // native private keychain admission identical; WebRTC denials are the experiment's variable.
+    const env = managedBrowserEnv(input)
+    if (process.platform === 'darwin')
+      await ensureDarwinBrowserKeychain(input.home, 8000).catch(retainUncertainFixture)
+    const context = await chromium
+      .launchPersistentContext(input.profileDir, {
+        executablePath: input.executablePath,
+        headless: input.headless,
+        chromiumSandbox: true,
+        env,
+        ignoreDefaultArgs: ['--use-mock-keychain'],
+        // This control removes only the WebRTC denials under comparison. Starting an installed
+        // browser updater is not part of that experiment and may alter the runner-user account.
+        args: ['--disable-updater-scheduler', ...input.denialArgs],
+      })
+      .catch(retainUncertainFixture)
+    const close = context.close.bind(context)
+    context.close = (options) => observeFixtureOperation(close(options))
+    return context
   }
   mkdirSync(input.home, { recursive: true, mode: 0o700 })
   let diagnosticBytes = 0
@@ -131,10 +166,10 @@ export async function launchLaneContext(input: ManagedLaneInput): Promise<Browse
       await input.beforeGuards?.(context)
       await installManagedGuards(context)
     },
-  })
+  }).catch(retainUncertainFixture)
   // Test convenience: context.close must retire the child, not just disconnect.
   const ctx = owned.context
-  ctx.close = () => owned.close()
+  ctx.close = () => observeFixtureOperation(owned.close())
   return ctx
 }
 

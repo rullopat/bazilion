@@ -5,8 +5,11 @@
 // A canned model drives observed refs; this proves plumbing and fixture behavior,
 // not live-model research judgment, real search-engine access or site reliability.
 
+import { createHash } from 'node:crypto'
+import { existsSync, readFileSync } from 'node:fs'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
-import { afterAll, beforeAll, describe, expect, test } from 'vitest'
+import { join } from 'node:path'
+import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest'
 import { resolvePaths } from '../../daemon/src/core/paths.ts'
 import { resolveBrowserExecutable } from '../../daemon/src/lib/browser/executable.ts'
 import { ownedBrowserProcesses } from '../../daemon/test/fixtures/browser-managed.ts'
@@ -368,6 +371,55 @@ run('offline managed-browser research journey (T16)', () => {
       expect(url.searchParams.has('key')).toBe(false)
       expect(url.searchParams.has('api_key')).toBe(false)
     }
+
+    // Exercise the real destructive operator route, not just profile-removal fixtures. Native
+    // processes must retire before the persistent cookies AND managed keychain state disappear.
+    const slot = paths.browserDir(agentId)
+    expect(existsSync(slot)).toBe(true)
+    const oldKeychainSecret =
+      process.platform === 'darwin'
+        ? createHash('sha256')
+            .update(readFileSync(join(slot, 'home', '.bazilion-keychain-secret')))
+            .digest('hex')
+        : undefined
+    if (process.platform === 'darwin') {
+      expect(existsSync(join(slot, 'home', '.bazilion-keychain-secret'))).toBe(true)
+      expect(existsSync(join(slot, 'home', 'Library', 'Keychains', 'bazilion.keychain-db'))).toBe(
+        true,
+      )
+    }
+    const reset = await server.cli(['agent', 'browser', 'reset', agentId, '--yes'])
+    expect(reset.exitCode, reset.stderr).toBe(0)
+    expect(existsSync(slot)).toBe(false)
+    await vi.waitFor(() => expect(ownedBrowserProcesses(profileDir)).toEqual([]), { timeout: 8000 })
+
+    mock.push([
+      response('browser_tabs', { op: 'new' }),
+      final('A fresh managed browser tab is ready.'),
+    ])
+    const fresh = await server.cli([
+      'agent',
+      'chat',
+      agentId,
+      '--message',
+      'SCENARIO:reset Open a new empty managed browser after the operator reset.',
+    ])
+    expect(fresh.exitCode, fresh.stderr).toBe(0)
+    expect(ownedBrowserProcesses(profileDir).some((process) => process.kind === 'root')).toBe(true)
+    if (oldKeychainSecret !== undefined) {
+      expect(
+        createHash('sha256')
+          .update(readFileSync(join(slot, 'home', '.bazilion-keychain-secret')))
+          .digest('hex'),
+      ).not.toBe(oldKeychainSecret)
+      expect(existsSync(join(slot, 'home', 'Library', 'Keychains', 'bazilion.keychain-db'))).toBe(
+        true,
+      )
+    }
+    const resetAgain = await server.cli(['agent', 'browser', 'reset', agentId, '--yes'])
+    expect(resetAgain.exitCode, resetAgain.stderr).toBe(0)
+    expect(existsSync(slot)).toBe(false)
+    await vi.waitFor(() => expect(ownedBrowserProcesses(profileDir)).toEqual([]), { timeout: 8000 })
   }, 180_000)
 
   test('cancellation settles a worker while its provider request is pending', async () => {

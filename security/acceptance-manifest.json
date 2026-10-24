@@ -2,6 +2,24 @@
   "version": 1,
   "cases": [
     {
+      "id": "BROWSER-CI-PRIVILEGE-NO-OPERATOR-SESSION",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/browser-ci-session.test.ts",
+      "test": "non-GUI privileged fixture refuses ordinary operator and self-hosted sessions"
+    },
+    {
+      "id": "BROWSER-CI-PRIVILEGE-CALLER-ADMISSION",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/browser-ci-session.test.ts",
+      "test": "non-GUI privileged fixture refuses the wrong platform, architecture and privileged parent"
+    },
+    {
+      "id": "BROWSER-CI-PRIVILEGE-NO-ROOT-APPLICATION",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/browser-ci-session.test.ts",
+      "test": "authorized CI fixture executes no loader or application module before privilege drop"
+    },
+    {
       "id": "BROWSER-NATIVE-TAB-ACTIVATION-LEASE",
       "owner": "BAZ-072",
       "file": "apps/daemon/test/lib/browser-lifecycle.test.ts",
