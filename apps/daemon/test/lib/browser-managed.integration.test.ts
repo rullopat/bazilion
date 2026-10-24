@@ -96,12 +96,16 @@ async function sleep(ms: number): Promise<void> {
   await new Promise((r) => setTimeout(r, ms))
 }
 
-async function waitForNoOwnedProcesses(profileDir: string, ms = 8_000): Promise<void> {
+async function waitForNoOwnedProcesses(
+  profileDir: string,
+  ms = 8_000,
+  alsoAbsent: () => boolean = () => true,
+): Promise<void> {
   const deadline = Date.now() + ms
   let lastError: unknown
   while (Date.now() < deadline) {
     try {
-      if (ownedBrowserProcesses(profileDir).length === 0) return
+      if (ownedBrowserProcesses(profileDir).length === 0 && alsoAbsent()) return
       lastError = undefined
     } catch (error) {
       // An exit can temporarily make argv/path inspection unavailable. Waiting for a fresh
@@ -1536,15 +1540,23 @@ run('managed browser adapter lane (BAZILION_TEST_BROWSER=1)', () => {
     const root = ownedBrowserProcesses(profileDir()).find((p) => p.kind === 'root')
     expect(root).toBeTruthy()
     process.kill(root!.pid, 'SIGKILL')
-    await waitForNoOwnedProcesses(profileDir())
     expect(readMarker()).toMatchObject({ phase: 'running' })
-    const assessed = assessBrowserProfile(
-      paths,
-      { agentId: 'prod-agent', teamId: 'prod-team' },
-      { daemonInstanceId: 'daemon-b' },
-    )
-    expect(assessed.state).toBe('ready')
-    expect(assessed.staleOwner).toBe(true)
+    let assessed: ReturnType<typeof assessBrowserProfile> | undefined
+    await waitForNoOwnedProcesses(profileDir(), 8_000, () => {
+      // Some retiring members carry no profile argv. Require the production assessment's
+      // positive PID AND original-group absence too, inside the same existing bound. This
+      // is observation only: no marker deletion, forced reconciliation or launch retry.
+      assessed = assessBrowserProfile(
+        paths,
+        { agentId: 'prod-agent', teamId: 'prod-team' },
+        { daemonInstanceId: 'daemon-b' },
+      )
+      if (assessed.state !== 'ready')
+        throw new Error(assessed.detail ?? 'original browser group remains unconfirmed')
+      return assessed.staleOwner
+    })
+    expect(assessed?.state).toBe('ready')
+    expect(assessed?.staleOwner).toBe(true)
 
     // The next launch (as the new daemon) reclaims the stale marker and works.
     const relaunched = await launchProd('daemon-b')

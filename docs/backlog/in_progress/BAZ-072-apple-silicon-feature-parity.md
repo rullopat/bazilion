@@ -453,5 +453,24 @@ Docker engine/image architecture and real container uname; TCG, if selected, is 
 emulation, never synthetic Docker responses or Intel/Rosetta qualification. Only public images
 are pulled during explicit CI provisioning; runtime commands retain pull-never and fail closed.
 Real filesystem/env/network isolation, cancellation, create/restart recovery and protected inbox
-boundaries remain required. Actual Mac VM/protected results, approval handling and the remaining
-background/restricted journeys are pending, not marked passed.
+boundaries remain required.
+
+The first actual VM run (`f5e8b2c`, CI `40098342588`) established local Docker execution on
+macOS **26.6.2 (25G83) arm64**, Node **24.22.0 / 26.4.0**: Colima **0.10.3**, QEMU **11.1.2**,
+Docker **29.5.2 linux/aarch64**, Debian image/container **arm64/aarch64**. Native observations
+reported **`virt,accel=tcg` / `max`** on both runners; HVF was unavailable. These are real local ARM
+VMs, not hardware-accelerated Docker qualification. The required suites **failed**: Node 24
+**five passed / four failed**, Node 26 **four passed / five failed**. Failures included unchanged
+two-second image/start deadlines, unconfirmed removal and coordinator HTTP 500s. No timeout was
+raised and no uncertain workspace was released. Subsequent CI serializes files (preserving every
+case and intentional within-test concurrency) to distinguish artificial TCG contention, retains
+controlled daemon failure diagnostics, and preserves unresolved integration workspaces/receipts.
+Actual local Linux rerun: all **nine** Docker/protected cases passed with that serial invocation.
+Mac protected qualification, approval handling and remaining background/restricted journeys are
+still pending.
+
+The same run's Node 24 browser lane failed its crash-recovery assertion: profile-argv absence
+preceded positive original-group absence. Node 26's browser lane passed. The fixture now observes
+both facts within its **existing eight-second bound**, without changing production admission,
+removing markers or retrying a launch. Actual Linux browser/CLI regression: **26 passed / two
+platform-only skips**. The failed Mac lane remains failed evidence; a new full run is required.

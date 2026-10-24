@@ -238,11 +238,25 @@ jobs:
       - name: Test actual Docker isolation, lifecycle recovery and protected inbox work
         env:
           BAZILION_TEST_DOCKER: '1'
-        run: >-
-          pnpm vitest run
-          apps/daemon/test/runtime/shell-docker.integration.test.ts
-          apps/daemon/test/runtime/coding-recovery.integration.test.ts
-          apps/cli/test/content-team-research.test.ts
+          BAZILION_TEST_DAEMON_STDERR_DIR: ${{ runner.temp }}/protected-daemon-stderr
+        run: |
+          mkdir -p "$BAZILION_TEST_DAEMON_STDERR_DIR"
+          # A CPU-emulated local VM is deliberately not a parallel-test throughput benchmark.
+          # Serialize files, retaining every case, intentional within-test concurrency, and all
+          # existing product deadlines and isolation/ownership assertions unchanged.
+          pnpm vitest run --fileParallelism=false \
+            apps/daemon/test/runtime/shell-docker.integration.test.ts \
+            apps/daemon/test/runtime/coding-recovery.integration.test.ts \
+            apps/cli/test/content-team-research.test.ts
+
+      - name: Retain controlled daemon diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-protected-node-${{ matrix.node }}-stderr
+          path: ${{ runner.temp }}/protected-daemon-stderr
+          if-no-files-found: ignore
+          retention-days: 3
 
       - name: Stop the owned Docker VM without force-unlocking application state
         if: always() && env.COLIMA_HOME != ''
