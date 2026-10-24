@@ -423,4 +423,16 @@ non-GUI audit-session bootstrap needs explicitly opted-in hosted-CI privilege, w
 execution after permanent credential drop. Closed command-construction/refusal tests cover that
 boundary; no product sudo path is added. Root typecheck, **453 required security cases** and
 **26 actual Linux browser/worker cases / two platform-only skips** passed locally. The final
-both-baseline Mac reset/retirement rerun is pending; browser milestone remains incomplete.
+both-baseline Mac reset/retirement rerun then passed in `81c331d` /
+[CI 40095104539](https://github.com/rullopat/bazilion/actions/runs/40095104539): **all eight jobs
+passed**, including both actual Mac browser lanes. Each baseline passed **357 focused cases /
+five platform-only skips** and **all 28 actual-browser cases with no skips** on macOS **26.6.2
+(25G83), arm64**, using Node **24.22.0** and **26.4.0**. This includes native keychain
+create/reopen and caller default/search-list preservation, headed and genuinely non-graphical
+caller-session screenshots, permanent privilege drop, native tab activation, complete CLI
+research/cancellation and actual reset/relaunch with changed secret digest, SSRF/persisted-service-
+worker egress, crash retirement and strict fixture cleanup. Local whole-tree typecheck/lint and
+**2,801 normal tests / 68 skips**, **453 required security cases**, and **26 actual Linux browser/
+worker cases / two platform-only skips** passed. The managed-browser milestone is complete for
+this observed environment; it is not latest-stable integrated qualification or release readiness.
+Protected/Docker/background execution and the final latest-stable qualification remain next.

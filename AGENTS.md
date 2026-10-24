@@ -107,7 +107,9 @@ after live native ownership admission, with authentication UI disabled. Keep tha
 credential-scrubbed, and fail closed; unknown retirement retains the browser owner marker. Its
 private password is owner-only profile state, excluded from backup with the profile, not a new
 provider secret or Agent capability. Privileged session provisioning is disposable-CI-only; the
-product never elevates privileges. Real macOS browser qualification remains open in BAZ-072.
+product never elevates privileges. Native headed/non-GUI browsing, reset/relaunch and lifecycle
+checks passed on macOS 26.6.2 arm64 with both Node baselines; integrated latest-stable/Docker
+qualification remains open in BAZ-072.
 
 ### SQLite driver
 

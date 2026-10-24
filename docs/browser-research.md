@@ -47,13 +47,15 @@ is not a guarantee of display availability and never falls back to headless. Baz
 the selected executable directly with its persistent local profile. Direct-launch denials include
 both component updates and the installed-browser updater scheduler; these are distinct mechanisms.
 Disabling the latter prevents its normal scheduled startup, but does not prove arbitrary installed
-browser builds have no other account-level side effects. The macOS candidate's updater/profile
-isolation still needs real-platform revalidation (BAZ-072). Bazilion then attaches Playwright through CDP, like OpenClaw's managed-browser approach. It does not use
+browser builds have no other account-level side effects. Bazilion then attaches Playwright
+through CDP, like OpenClaw's managed-browser approach. It does not use
 Playwright's browser-launch defaults or attach to your personal browser. X11 and Wayland access
 are forwarded only for headed launches. Discovery also considers per-user macOS Applications
 and native-architecture full Playwright bundles, never the headless shell. Linux remains the
-released qualification platform; the macOS candidate's actual browser/GUI acceptance is still open
-in BAZ-072.
+released qualification platform. The macOS candidate passed headed, non-GUI, private-keychain,
+reset/relaunch, lifecycle and SSRF/service-worker checks on macOS 26.6.2 (25G83) arm64 with Node
+24.22.0 and 26.4.0. Latest-stable integrated release qualification and protected/Docker acceptance
+remain open in BAZ-072; this evidence does not guarantee arbitrary browser builds or sites.
 
 On macOS the candidate creates a native keychain and native preference selection **inside each
 Agent's managed HOME**, with a generated owner-only secret stored beside it. The short-lived,
@@ -64,7 +66,8 @@ selection. Failed native admission refuses browser startup; unknown helper settl
 profile owner marker. This is not a mock keychain or an encryption-disable flag. A party able to
 read the entire private profile can also read its keychain secret: filesystem permissions, not a
 separate personal credential, protect this store. Stop preserves it; reset/delete/transfer clear it
-with the profile; backup/restore still excludes it. Actual macOS qualification remains in BAZ-072.
+with the profile; backup/restore still excludes it. Qualification scope and remaining integrated
+release checks are recorded in BAZ-072.
 
 ## Network boundary
 
