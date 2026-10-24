@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs'
+import { existsSync, writeFileSync } from 'node:fs'
 import { createServer, type ServerResponse } from 'node:http'
 import { join } from 'node:path'
 import type { ChatFrame, CommandApproval } from '@bazilion/api-types'
@@ -156,7 +156,10 @@ let server: TestServer
 
 beforeAll(async () => {
   mock = await startLmStudioMock()
-  server = await startTestServer({ LMSTUDIO_URL: mock.url })
+  server = await startTestServer({
+    LMSTUDIO_URL: mock.url,
+    LMSTUDIO_API_KEY: 'synthetic-lmstudio-fixture-key',
+  })
 })
 afterAll(async () => {
   await server.stop()
@@ -255,6 +258,14 @@ function authHeaders(json = false): Record<string, string> {
   }
 }
 
+function riskyFixtureCommand(agent: ReturnType<typeof resolvedAgent>, effect: string): string {
+  // Exercise a real credential-shaped read, but never an operator's ~/.ssh or other credentials.
+  const target = join(agent.agent.dir, '.env')
+  writeFileSync(target, 'SYNTHETIC_NON_PERSONAL_APPROVAL_FIXTURE\n')
+  const quoted = `'${target.replaceAll("'", `'"'"'`)}'`
+  return `cat ${quoted} >/dev/null 2>&1; ${effect}`
+}
+
 async function runInteractiveBashDecision(decision: 'allow' | 'deny'): Promise<{
   frames: ChatFrame[]
   approval: CommandApproval
@@ -265,7 +276,7 @@ async function runInteractiveBashDecision(decision: 'allow' | 'deny'): Promise<{
   const agent = resolvedAgent(agentId)
   const proofName = `approval-${decision}-proof.txt`
   const proofPath = join(agent.team.path, proofName)
-  const command = `cat ~/.ssh/id_rsa >/dev/null 2>&1; printf executed > ${proofName}`
+  const command = riskyFixtureCommand(agent, `printf executed > ${proofName}`)
   mock.push([
     {
       choices: [
@@ -420,8 +431,10 @@ test('cancelling a turn releases its pending approval and never executes the com
                 function: {
                   name: 'bash',
                   arguments: JSON.stringify({
-                    command:
-                      'cat ~/.ssh/id_rsa >/dev/null 2>&1; printf executed > cancelled-approval-proof.txt',
+                    command: riskyFixtureCommand(
+                      agent,
+                      'printf executed > cancelled-approval-proof.txt',
+                    ),
                   }),
                 },
               },
@@ -488,8 +501,7 @@ test('non-TTY CLI turns auto-deny risky bash without waiting for stdin or execut
                 function: {
                   name: 'bash',
                   arguments: JSON.stringify({
-                    command:
-                      'cat ~/.ssh/id_rsa >/dev/null 2>&1; printf executed > auto-deny-proof.txt',
+                    command: riskyFixtureCommand(agent, 'printf executed > auto-deny-proof.txt'),
                   }),
                 },
               },

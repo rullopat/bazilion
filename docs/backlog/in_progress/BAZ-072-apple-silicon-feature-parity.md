@@ -509,3 +509,18 @@ of scheduled/inbox containers. Root typecheck/lint and the **455-case** security
 selected actual Linux diagnostics/approval/inbox **10 cases** and the real scheduled-container
 sentinel case passed. The earlier full **21-case** Linux run remains distinct from these reruns.
 Mac protected and latest-stable integrated qualification remain open.
+
+`6b22207` / CI `40103510815` again passed all eight non-Docker jobs. Both default-`max`,
+one-vCPU ARM VMs booted and executed the expanded lane, which **failed**: Node 24 **21 passed /
+two failed**, Node 26 **15 passed / eight failed**, with retained-writer hook failures on Node 26;
+each skipped only the mutually exclusive non-live guard. Standalone setup container-start times
+were **3.735 s / 2.360 s**, exceeding the unchanged **2 s** product admission limit. Coordinator
+refusals, missed cron execution, one allow journey and a lifecycle preflight still prevent
+qualification. The next explicit provisioning change gives the guest the runner's three CPUs and
+records native `-smp` evidence; no deadline is raised and no failed Agent effect is replayed.
+
+Local regression now passes **2,803 tests / 72 gated or platform skips** and all **455 required
+security cases**. Four existing host-approval journeys also pass after replacing their real-home
+SSH path with an explicit synthetic credential-shaped file under the fixture-owned Agent home;
+local regressions must not touch personal credentials. The Mac Docker failures above remain failed
+evidence, not a partial milestone completion.

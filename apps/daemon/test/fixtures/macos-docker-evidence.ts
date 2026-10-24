@@ -25,12 +25,19 @@ const value = (name: string) => {
 }
 const machine = value('-machine')
 const cpu = value('-cpu')
-if (!machine || !/^virt,accel=(tcg|hvf)(,|$)/.test(machine) || !cpu)
+const smp = value('-smp')
+if (
+  !machine ||
+  !/^virt,accel=(tcg|hvf)(,|$)/.test(machine) ||
+  !cpu ||
+  !smp ||
+  !/^(?:cpus=)?[1-9][0-9]*(?:,|$)/.test(smp)
+)
   throw new Error('actual native ARM VM accelerator/CPU evidence is unavailable')
 console.log(
   JSON.stringify({
     host: { platform: process.platform, arch: process.arch, node: process.version },
-    vm: { architecture: 'aarch64', machine, cpu },
+    vm: { architecture: 'aarch64', machine, cpu, smp },
     note: 'Local full-system ARM Docker VM; TCG is real CPU emulation, not synthetic Docker responses. No Intel/Rosetta qualification.',
   }),
 )
