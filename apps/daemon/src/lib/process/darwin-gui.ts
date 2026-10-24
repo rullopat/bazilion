@@ -25,6 +25,22 @@ export function classifyDarwinGuiSession(session: unknown, uid: number): DarwinG
   return facts.uid === uid && facts.onConsole && facts.loginDone ? 'available' : 'unavailable'
 }
 
+/** Graphic permission belongs to the caller's audit session, not to the console user. */
+export function classifyDarwinGraphicAccess(
+  status: unknown,
+  attributes: unknown,
+): DarwinGuiAvailability {
+  if (
+    status !== 0 ||
+    typeof attributes !== 'number' ||
+    !Number.isSafeInteger(attributes) ||
+    attributes < 0 ||
+    attributes > 0xffffffff
+  )
+    return 'unsupported'
+  return (attributes & 0x10) !== 0 ? 'available' : 'unavailable'
+}
+
 let readSession: (() => DarwinGuiSessionFacts | null) | undefined
 
 /**
@@ -38,6 +54,8 @@ function nativeSessionReader(): () => DarwinGuiSessionFacts | null {
   if (ffi.version !== '3.3.3') throw new Error('unsupported native binding')
   const cg = ffi.load('/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics')
   const cf = ffi.load('/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation')
+  const security = ffi.load('/System/Library/Frameworks/Security.framework/Security')
+  const sessionInfo = security.func('int32_t SessionGetInfo(uint32_t, void *, void *)')
   const copySession = cg.func('void *CGSessionCopyCurrentDictionary(void)')
   const release = cf.func('void CFRelease(void *)')
   const typeId = cf.func('ulong CFGetTypeID(void *)')
@@ -49,6 +67,16 @@ function nativeSessionReader(): () => DarwinGuiSessionFacts | null {
   const boolean = cf.func('uint8_t CFBooleanGetValue(void *)')
   const number = cf.func('uint8_t CFNumberGetValue(void *, long, void *)')
   return () => {
+    const attributes = Buffer.alloc(4)
+    const id = Buffer.alloc(4)
+    // callerSecuritySession = -1. Quartz may describe a logged-in console even when THIS
+    // process belongs to an independently created, positively non-graphical audit session.
+    const graphic = classifyDarwinGraphicAccess(
+      sessionInfo(0xffffffff, id, attributes),
+      attributes.readUInt32LE(),
+    )
+    if (graphic === 'unsupported') throw new Error('security-session facts unavailable')
+    if (graphic === 'unavailable') return null
     const session = copySession()
     if (session === null) return null
     const keys: unknown[] = []

@@ -1,8 +1,25 @@
 import { expect, test } from 'vitest'
 import {
+  classifyDarwinGraphicAccess,
   classifyDarwinGuiSession,
   probeDarwinGuiSession,
 } from '../../src/lib/process/darwin-gui.ts'
+
+test('caller audit-session graphic permission is required independently of console facts', () => {
+  expect(classifyDarwinGraphicAccess(0, 0)).toBe('unavailable')
+  expect(classifyDarwinGraphicAccess(0, 0x20)).toBe('unavailable')
+  expect(classifyDarwinGraphicAccess(0, 0x10)).toBe('available')
+  expect(classifyDarwinGraphicAccess(0, 0x30)).toBe('available')
+  for (const [status, attributes] of [
+    [1, 0],
+    [null, 0],
+    [0, -1],
+    [0, 2 ** 32],
+    [0, '16'],
+    [0, undefined],
+  ])
+    expect(classifyDarwinGraphicAccess(status, attributes)).toBe('unsupported')
+})
 
 // Pure classification; native Quartz observation has its own actual-macOS case below.
 test('Quartz GUI classification needs the current user, completed login and console evidence', () => {

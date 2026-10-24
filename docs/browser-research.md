@@ -38,9 +38,10 @@ download or substitute a browser. `BROWSER_EXECUTABLE_PATH` selects one explicit
 invalid explicit path fails closed instead of falling back to another browser. The `Mode` setting
 supports `auto`, `headless`, or `headed`: on Linux, auto prefers a usable desktop display and
 otherwise uses headless; explicit headed without a display is refused, never silently changed
-to headless. The 0.25 macOS candidate reads public Quartz-session facts (current user, console
-presence and completed login): auto selects headed only with that evidence and headless when a
-GUI session is positively unavailable. Unknown native evidence requires an explicit choice.
+to headless. The 0.25 macOS candidate combines public Security.framework caller-session graphic
+permission with Quartz facts (current user, console presence and completed login): auto selects
+headed only with both, and headless when the caller's GUI session is positively unavailable.
+A logged-in console is not proof that a separate non-GUI daemon audit session can use it. Unknown native evidence requires an explicit choice.
 Explicit headed refuses a proven non-GUI session; an explicit attempt with unknown Quartz facts
 is not a guarantee of display availability and never falls back to headless. Bazilion starts
 the selected executable directly with its persistent local profile. Direct-launch denials include
@@ -53,6 +54,17 @@ are forwarded only for headed launches. Discovery also considers per-user macOS 
 and native-architecture full Playwright bundles, never the headless shell. Linux remains the
 released qualification platform; the macOS candidate's actual browser/GUI acceptance is still open
 in BAZ-072.
+
+On macOS the candidate creates a native keychain and native preference selection **inside each
+Agent's managed HOME**, with a generated owner-only secret stored beside it. The short-lived,
+ordinary-user helper uses public Security.framework calls, disables authentication UI, and receives
+the secret on stdin only after live process ownership admission. It never opens/unlocks the
+operator's login keychain, inherits provider credentials, or changes the operator's keychain
+selection. Failed native admission refuses browser startup; unknown helper settlement retains the
+profile owner marker. This is not a mock keychain or an encryption-disable flag. A party able to
+read the entire private profile can also read its keychain secret: filesystem permissions, not a
+separate personal credential, protect this store. Stop preserves it; reset/delete/transfer clear it
+with the profile; backup/restore still excludes it. Actual macOS qualification remains in BAZ-072.
 
 ## Network boundary
 

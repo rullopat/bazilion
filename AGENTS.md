@@ -96,8 +96,18 @@ Unreleased BAZ-072 adds a macOS candidate using daemon-only public libproc inspe
 pinned `koffi@3.3.3` (install scripts disabled). Preserve exact BSD and monotonic Mach birth facts,
 uid/session/group revalidation, bounded lists and unknown-state refusal before spawn or signalling;
 never substitute shell `ps`, a native-availability label, persisted PIDs or Pi's unsafe close path.
-The binding stays out of workers and is never loaded on Linux. Streamable HTTP remains available.
-See `docs/mcp.md` and `docs/pi-runtime.md`.
+The binding stays out of coding/chat workers and is never loaded on Linux. Streamable HTTP remains
+available. See `docs/mcp.md` and `docs/pi-runtime.md`.
+
+The unreleased macOS browser candidate requires caller audit-session graphic permission as well
+as Quartz console facts; a logged-in console does not make a separate non-GUI session graphical.
+Its native keychain lives inside each Agent's managed browser HOME, not the operator's login
+keychain. A short-lived ordinary-user Security.framework helper receives its generated secret only
+after live native ownership admission, with authentication UI disabled. Keep that helper packaged,
+credential-scrubbed, and fail closed; unknown retirement retains the browser owner marker. Its
+private password is owner-only profile state, excluded from backup with the profile, not a new
+provider secret or Agent capability. Privileged session provisioning is disposable-CI-only; the
+product never elevates privileges. Real macOS browser qualification remains open in BAZ-072.
 
 ### SQLite driver
 

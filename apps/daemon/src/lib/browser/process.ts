@@ -23,6 +23,7 @@ import { join } from 'node:path'
 import { promisify } from 'node:util'
 import type { Browser, BrowserContext, CDPSession } from 'playwright'
 import { getDarwinProcessInspector } from '../process/darwin.ts'
+import { DarwinBrowserKeychainError, ensureDarwinBrowserKeychain } from './darwin-keychain.ts'
 import { OwnedGroupAuthority } from './group-authority.ts'
 import {
   installManagedGuards,
@@ -290,21 +291,36 @@ export async function startOwnedBrowser(
       )
     }
   }
-  const deadline = Date.now() + (deps.startupMs ?? STARTUP_MS)
   prepareProfile(input.profileDir)
+  const env = managedBrowserEnv({
+    ...input,
+    ...(input.headless
+      ? {
+          display: undefined,
+          xauthority: undefined,
+          waylandDisplay: undefined,
+          xdgRuntimeDir: undefined,
+        }
+      : {}),
+  })
+  if (process.platform === 'darwin') {
+    try {
+      await ensureDarwinBrowserKeychain(input.home, 8000)
+    } catch (error) {
+      throw new BrowserProcessError(
+        error instanceof DarwinBrowserKeychainError && error.cleanupUnknown
+          ? 'browser_recovery_required'
+          : 'browser_security_unavailable',
+        error instanceof DarwinBrowserKeychainError
+          ? error.message
+          : 'managed private browser keychain unavailable',
+      )
+    }
+  }
+  const deadline = Date.now() + (deps.startupMs ?? STARTUP_MS)
   const port = await choosePort(deadline - Date.now())
   const child: ChildProcess = spawn(input.executablePath, managedLaunchArgs(input, port), {
-    env: managedBrowserEnv({
-      ...input,
-      ...(input.headless
-        ? {
-            display: undefined,
-            xauthority: undefined,
-            waylandDisplay: undefined,
-            xdgRuntimeDir: undefined,
-          }
-        : {}),
-    }),
+    env,
     stdio: ['ignore', 'ignore', 'pipe'],
     detached: true,
   })

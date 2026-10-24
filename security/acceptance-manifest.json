@@ -2,6 +2,72 @@
   "version": 1,
   "cases": [
     {
+      "id": "BROWSER-MACOS-CALLER-GRAPHIC-PERMISSION",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/darwin-gui.test.ts",
+      "test": "caller audit-session graphic permission is required independently of console facts"
+    },
+    {
+      "id": "BROWSER-MACOS-PRIVATE-KEYCHAIN-DIRECTORIES",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/browser-darwin-keychain.test.ts",
+      "test": "private browser keychain refuses redirected HOME/library/preference slots"
+    },
+    {
+      "id": "BROWSER-MACOS-PRIVATE-KEYCHAIN-SECRET",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/browser-darwin-keychain.test.ts",
+      "test": "private browser keychain secret refuses symlinks, hardlinks and public permissions"
+    },
+    {
+      "id": "BROWSER-MACOS-PRIVATE-KEYCHAIN-NATIVE-STATE",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/browser-darwin-keychain.test.ts",
+      "test": "private browser keychain refuses redirected native preference and database files"
+    },
+    {
+      "id": "BROWSER-MACOS-PRIVATE-KEYCHAIN-DIAGNOSTICS",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/browser-darwin-keychain.test.ts",
+      "test": "keychain diagnostics disclose only closed native phases and numeric status"
+    },
+    {
+      "id": "BROWSER-MACOS-KEYCHAIN-CHILD-ADMISSION",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/browser-darwin-keychain-owner.test.ts",
+      "test": "private keychain helper admits live ownership before secret input and copies no ambient credential"
+    },
+    {
+      "id": "BROWSER-MACOS-KEYCHAIN-UNKNOWN-BIRTH",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/browser-darwin-keychain-owner.test.ts",
+      "test": "private keychain helper sends no executable input and retains recovery on unknown native birth"
+    },
+    {
+      "id": "BROWSER-MACOS-KEYCHAIN-UNKNOWN-SETTLEMENT",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/browser-darwin-keychain-owner.test.ts",
+      "test": "private keychain helper success cannot override unknown descendant/EOF settlement"
+    },
+    {
+      "id": "BROWSER-MACOS-KEYCHAIN-EXECUTOR-FAILURE",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/browser-darwin-keychain-owner.test.ts",
+      "test": "private keychain helper coded failure remains failure even after complete cleanup"
+    },
+    {
+      "id": "BROWSER-MACOS-KEYCHAIN-TIMEOUT-NO-FALLBACK",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/browser-darwin-keychain-owner.test.ts",
+      "test": "private keychain helper timeout remains failure after owned retirement, never a browser fallback"
+    },
+    {
+      "id": "BROWSER-MACOS-NATIVE-EVIDENCE-UNEXPECTED-ENV",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/browser-darwin-evidence.test.ts",
+      "test": "native browser evidence never removes an unexpected real environment variable"
+    },
+    {
       "id": "BROWSER-MACOS-LIVE-GROUP-ADMISSION",
       "owner": "BAZ-072",
       "file": "apps/daemon/test/lib/browser-darwin-owner.test.ts",

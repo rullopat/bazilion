@@ -130,6 +130,8 @@ jobs:
           apps/daemon/test/lib/browser-darwin-owner.test.ts
           apps/daemon/test/lib/browser-darwin-evidence.test.ts
           apps/daemon/test/lib/browser-ci-account.test.ts
+          apps/daemon/test/lib/browser-darwin-keychain.test.ts
+          apps/daemon/test/lib/browser-darwin-keychain-owner.test.ts
           apps/daemon/test/lib/browser-executable.test.ts
           apps/daemon/test/lib/browser-process.test.ts
           apps/daemon/test/lib/browser-profile.test.ts

@@ -354,4 +354,27 @@ refusal remain actual native assertions. New parser tests preserve unexpected re
 variables while stopping at the first empty native entry instead of filtering padding and adding
 apple-vector strings. EINVAL is ignored only with a fresh positive exit/zombie/uid-change
 observation. Cross-platform parser/account-refusal tests (six), root typecheck, and 25 actual Linux
-browser/worker cases passed locally; actual macOS provisioning and browser results remain pending.
+browser/worker cases passed locally. `be51f9f` / [CI 40086104934](https://github.com/rullopat/bazilion/actions/runs/40086104934)
+proved that setup/restoration and root-to-runner privilege drop worked on both Mac baselines;
+each passed 311 focused cases (four Linux mocks skipped), but actual browser remained **9 passed /
+18 failed**. The parser/env assertion now passes. The fresh caller audit session had no graphic
+permission while the Quartz-only adapter still saw console information: this exposed a real mode
+admission defect, not an unavailable runner. Runner-wide keychain setup also could not satisfy
+private browser HOME preferences. Apple's public DLDBListCFPref.cpp explicitly resolves those
+preferences through HOME, explaining the continuing keychain UI samples. All six other CI jobs
+passed. One local full run failed a content-Team coordinator cleanup assertion under load (2,782
+passed / one failed / 66 skips); its isolated rerun passed, not a relabelled full-suite pass.
+
+The next product candidate therefore combines public caller SessionGetInfo graphic permission
+with Quartz console facts and provisions a native keychain **inside each managed browser HOME**.
+It uses public Security.framework APIs in a short-lived ordinary-user helper, disables UI, sends
+the generated owner-only profile secret on stdin only after exact live birth/group admission,
+and reuses existing OwnedDarwinWorker EOF/group settlement. Unknown admission or retirement keeps
+the profile recovery marker; coded/timeout/native failures refuse startup. No mock keychain,
+encryption-disable flag, personal keychain selection, root product path or browser substitution
+is introduced. The helper is a separately packed CLI payload; private keychain/preferences/secret
+state follows the existing browser profile exclusion/reset/deletion contract. Cross-platform
+private-path, credential, redaction and ownership-failure tests expand the required security gate
+to **447 cases**, passed locally along with the 25 actual Linux browser/worker cases, root
+typecheck and bundled build. Actual native private-keychain and complete browser requalification
+on both Mac baselines remain pending.
