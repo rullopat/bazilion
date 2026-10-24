@@ -560,3 +560,23 @@ changing bounds or exposing raw cause material, and includes the refusal body in
 approval fixture's failed-status assertion. Focused **57 cases** and all **460 security cases**
 pass. The next complete Mac run remains required; no isolated rerun or partial result substitutes
 for it.
+
+### Current qualification blocker
+
+`57540de` / CI `40114411729` **failed** the required Docker suites: Node 24 **10 passed / 13
+failed**, Node 26 **21 passed / two failed**, each with only the non-live guard skipped. Closed
+`start: timeout` and `protected_docker_start_timeout` evidence confirms expiry of the unchanged
+**two-second** guard; cleanup uncertainty also retains resources. This recurs across actual
+one-, two- and three-vCPU TCG attempts, not a missing-Docker assumption. It is not proof that
+macOS or every runner configuration is incompatible. The separate Linux live-browser probe also
+failed its startup deadline; it is not relabelled by local browser passes.
+
+Qualification now needs a usable approved Apple Silicon Mac/runner with responsive local Docker;
+provisioning authority is already granted, but an applicable target/account is still needed.
+The tested hosted Macs expose no HVF. [GitHub's larger-runner documentation](https://docs.github.com/en/actions/concepts/runners/larger-runners)
+limits that paid alternative to organizations/enterprises; this repository is user-owned, and
+[macOS nested virtualization remains unsupported](https://docs.github.com/en/actions/reference/runners/larger-runners#limitations-for-macos-larger-runners).
+No repository transfer, billing change, personal credential search, unapproved remote access,
+limit relaxation or retry-until-green was used to bypass this prerequisite. The protected milestone
+remains incomplete, followed by latest-stable installed CLI/API/web and integrated qualification.
+All implementation changes are pushed; no release publication or version bump occurred.
