@@ -341,3 +341,17 @@ Darwin's post-environment apple-vector entries (ptr_munge/main_stack/etc.; do no
 allowlist), and a same-user process-exit/start race produced KERN_PROCARGS2 EINVAL on Node 24.
 These findings require bounded parser/identity fixes, not skipped checks. Browser, protected and
 latest-stable integrated milestones remain incomplete.
+
+The operator subsequently authorized provisioning and resumed the goal. The next candidate adds
+an explicitly GitHub-hosted-Apple-Silicon-only temporary test keychain with a generated disposable
+password, mode-0600 state, original account selection capture and always-run restoration/deletion.
+No personal keychain is unlocked or read. A minimal privileged CI child creates its own audit
+session and binds the runner audit uid, permanently drops supplementary groups/gid/uid, then
+execs ordinary-user Node before tsx/application/browser imports. Its new audit session unlocks
+only the disposable test keychain after privilege drop. This is test infrastructure, not a product
+privilege capability or a mock-keychain/encryption relaxation; desktop session facts and headed
+refusal remain actual native assertions. New parser tests preserve unexpected real environment
+variables while stopping at the first empty native entry instead of filtering padding and adding
+apple-vector strings. EINVAL is ignored only with a fresh positive exit/zombie/uid-change
+observation. Cross-platform parser/account-refusal tests (six), root typecheck, and 25 actual Linux
+browser/worker cases passed locally; actual macOS provisioning and browser results remain pending.

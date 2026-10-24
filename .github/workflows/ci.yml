@@ -128,10 +128,17 @@ jobs:
           apps/cli/test/portable-chat.test.ts
           apps/daemon/test/lib/darwin-gui.test.ts
           apps/daemon/test/lib/browser-darwin-owner.test.ts
+          apps/daemon/test/lib/browser-darwin-evidence.test.ts
+          apps/daemon/test/lib/browser-ci-account.test.ts
           apps/daemon/test/lib/browser-executable.test.ts
           apps/daemon/test/lib/browser-process.test.ts
           apps/daemon/test/lib/browser-profile.test.ts
           apps/daemon/test/lib/browser-launch.test.ts
+
+      # Operator-authorized disposable test account only: no personal credentials, no product
+      # keychain/privilege feature, and no mock keychain or encryption/security-check relaxation.
+      - name: Provision disposable browser test keychain
+        run: node scripts/testing/macos-browser-account.mjs setup
 
       # Actual direct-owned Chrome, not synthetic transport responses or public/provider traffic.
       # A missing installed browser, unusable GUI or refused non-GUI child session is a failure.
@@ -144,6 +151,10 @@ jobs:
           pnpm vitest run
           apps/daemon/test/lib/browser-managed.integration.test.ts
           apps/cli/test/browser-research.test.ts
+
+      - name: Restore test account and delete disposable browser keychain
+        if: always()
+        run: node scripts/testing/macos-browser-account.mjs cleanup
 
   installer-e2e:
     name: Fresh-machine installer E2E (${{ matrix.os }})

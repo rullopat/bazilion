@@ -1466,10 +1466,39 @@ run('managed browser adapter lane (BAZILION_TEST_BROWSER=1)', () => {
       const home = join(scratch, 'actual-nongui-child')
       mkdirSync(home, { mode: 0o700 })
       const entry = fileURLToPath(new URL('../fixtures/browser-nongui.mjs', import.meta.url))
+      const accountState = process.env.BAZILION_TEST_MACOS_ACCOUNT_STATE
+      if (
+        accountState &&
+        (process.env.GITHUB_ACTIONS !== 'true' ||
+          process.env.RUNNER_ENVIRONMENT !== 'github-hosted')
+      )
+        throw new Error(
+          'privileged non-GUI provisioning requires the authorized disposable CI account',
+        )
+      const command = accountState ? '/usr/bin/sudo' : process.execPath
+      const args = accountState
+        ? [
+            '-n',
+            '--',
+            '/usr/bin/env',
+            '-i',
+            'PATH=/usr/bin:/bin:/usr/sbin',
+            `HOME=${home}`,
+            'BAZILION_TEST_DISPOSABLE_MACOS=1',
+            process.execPath,
+            entry,
+            '--create-session',
+            String(process.getuid?.()),
+            String(process.getgid?.()),
+            exePath,
+            home,
+            accountState,
+          ]
+        : ['--import', 'tsx/esm', entry, exePath, home]
       const stdout = await new Promise<string>((resolve, reject) => {
         execFile(
-          process.execPath,
-          ['--import', 'tsx/esm', entry, exePath, home],
+          command,
+          args,
           {
             timeout: 35_000,
             maxBuffer: 64 * 1024,

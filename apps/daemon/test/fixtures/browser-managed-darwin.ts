@@ -37,6 +37,12 @@ function argumentsFor(pid: number): Buffer | null {
   if (status !== 0) {
     // Exit/permission races among other users' processes are not our browser evidence.
     if ([1, 3, 13].includes(errno)) return null // EPERM, ESRCH, EACCES
+    if (errno === 22) {
+      // XNU also returns EINVAL for a process which disappeared/lost its task during the
+      // stack copy. Do not blanket-ignore it: require a fresh positive exit/uid observation.
+      const current = getDarwinProcessInspector().member(pid)
+      if (!current || current.state === 'Z' || current.uid !== process.geteuid?.()) return null
+    }
     throw new Error(
       `Darwin process arguments cannot be inspected: status=${status}, errno=${errno}, pid=${pid}, self=${pid === process.pid}`,
     )
@@ -46,7 +52,11 @@ function argumentsFor(pid: number): Buffer | null {
   return buffer.subarray(0, Number(count))
 }
 
-function decode(buffer: Buffer): { argv: string[]; environ: string[] } {
+export function decodeDarwinProcessArguments(buffer: Buffer): {
+  argv: string[]
+  environ: string[]
+} {
+  if (buffer.length < 4) throw new Error('incomplete native argc')
   const argc = buffer.readInt32LE()
   if (argc < 1 || argc > 4096) throw new Error('invalid native argc')
   let offset = buffer.indexOf(0, 4)
@@ -59,7 +69,19 @@ function decode(buffer: Buffer): { argv: string[]; environ: string[] } {
     argv.push(buffer.toString('utf8', offset, end))
     offset = end + 1
   }
-  return { argv, environ: buffer.subarray(offset).toString('utf8').split('\0').filter(Boolean) }
+  const environ: string[] = []
+  // KERN_PROCARGS2 copies the stack's strings, including padding and Darwin's apple vector.
+  // The first empty entry ends environment evidence; filtering empty strings incorrectly
+  // appended kernel metadata (ptr_munge/main_stack/etc.) to the child's environment.
+  while (offset < buffer.length && buffer[offset] !== 0) {
+    const end = buffer.indexOf(0, offset)
+    if (end < offset) throw new Error('incomplete native environment')
+    const entry = buffer.toString('utf8', offset, end)
+    if (!/^[^=]+=/s.test(entry)) throw new Error('invalid native environment entry')
+    environ.push(entry)
+    offset = end + 1
+  }
+  return { argv, environ }
 }
 
 export function ownedDarwinBrowserProcesses(profileDir: string): OwnedBrowserProcess[] {
@@ -71,7 +93,8 @@ export function ownedDarwinBrowserProcesses(profileDir: string): OwnedBrowserPro
   inspector.assertReady()
   // Refuse unsupported/denied argument inspection, never turn it into an empty-process proof.
   const self = argumentsFor(process.pid)
-  if (!self || !decode(self).argv.length) throw new Error('native process evidence unavailable')
+  if (!self || !decodeDarwinProcessArguments(self).argv.length)
+    throw new Error('native process evidence unavailable')
   const pids = Buffer.alloc((MAX_PIDS + 1) * 4)
   // PROC_UID_ONLY = 4. The browser launches as this user; unrelated root/system processes
   // need not expose argv to establish profile evidence. proc_listpids returns BYTES, not pids.
@@ -96,7 +119,7 @@ export function ownedDarwinBrowserProcesses(profileDir: string): OwnedBrowserPro
     // Bind actual argv/environment to the same birth on both sides, not a first PID-only scan.
     const buffer = argumentsFor(pid)
     if (!buffer) continue
-    const { argv, environ } = decode(buffer)
+    const { argv, environ } = decodeDarwinProcessArguments(buffer)
     if (!argv.some((arg) => arg.includes(profileDir))) continue
     const executable = Buffer.alloc(4096)
     const length = api.path(pid, executable, executable.length)
