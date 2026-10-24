@@ -173,6 +173,9 @@ export function managedLaunchArgs(input: ManagedPostureInput, port: number): str
     '--disable-sync',
     '--disable-background-networking',
     '--disable-component-update',
+    // Component updates and the installed-browser updater are distinct schedulers. The latter
+    // can spawn an out-of-group service and touch the real macOS user home despite HOME.
+    '--disable-updater-scheduler',
     '--disable-features=Translate,MediaRouter',
     '--disable-session-crashed-bubble',
     '--hide-crash-restore-bubble',

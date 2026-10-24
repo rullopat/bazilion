@@ -233,6 +233,8 @@ test('direct argv pins persistent profile, loopback CDP and proxy without Playwr
   expect(args).toContain(`--user-data-dir=${opts.profileDir}`)
   expect(args).toContain('--proxy-bypass-list=<-loopback>')
   expect(args).toContain('--proxy-server=http://127.0.0.1:43210')
+  expect(args).toContain('--disable-component-update')
+  expect(args).toContain('--disable-updater-scheduler')
   for (const banned of [
     '--no-sandbox',
     '--remote-debugging-pipe',

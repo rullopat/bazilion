@@ -7,14 +7,19 @@
 // instrumentation lives here: an instrumented loopback HTTP origin, a loopback
 // UDP listener, the owned-process probe, and a thin launch helper.
 
+import { execFile } from 'node:child_process'
 import { createSocket } from 'node:dgram'
 import { mkdirSync, readdirSync, readFileSync, readlinkSync } from 'node:fs'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
+import { promisify } from 'node:util'
 import { type BrowserContext, chromium } from 'playwright'
 import { installManagedGuards, type ManagedPostureInput } from '../../src/lib/browser/guards.ts'
 import { startOwnedBrowser } from '../../src/lib/browser/process.ts'
+import { getDarwinProcessInspector } from '../../src/lib/process/darwin.ts'
 import { ownedDarwinBrowserProcesses } from './browser-managed-darwin.ts'
+
+let nativeNavigationSampleRequested = false
 
 export type { ManagedPostureInput } from '../../src/lib/browser/guards.ts'
 export {
@@ -42,7 +47,9 @@ export async function launchLaneContext(input: ManagedLaneInput): Promise<Browse
       executablePath: input.executablePath,
       headless: input.headless,
       chromiumSandbox: true,
-      args: [...input.denialArgs],
+      // This control removes only the WebRTC denials under comparison. Starting an installed
+      // browser updater is not part of that experiment and may alter the runner-user account.
+      args: ['--disable-updater-scheduler', ...input.denialArgs],
     })
   }
   mkdirSync(input.home, { recursive: true, mode: 0o700 })
@@ -60,6 +67,58 @@ export async function launchLaneContext(input: ManagedLaneInput): Promise<Browse
     observeStderr: diagnostic,
     installGuards: async (context) => {
       const observe = (page: import('playwright').Page) => {
+        page.on('request', (request) => {
+          diagnostic(`request: ${request.method()} ${request.url()}`)
+          if (
+            process.platform !== 'darwin' ||
+            nativeNavigationSampleRequested ||
+            process.env.BAZILION_TEST_BROWSER_DIAGNOSTICS !== '1' ||
+            !request.url().endsWith('/sw-page')
+          )
+            return
+          nativeNavigationSampleRequested = true
+          // Read-only diagnostics for this controlled fixture. No sudo, process signalling,
+          // preferences/keychain changes, or mock keychain/encryption switch is permitted.
+          setTimeout(async () => {
+            try {
+              const inspector = getDarwinProcessInspector()
+              const candidates = ownedBrowserProcesses(input.profileDir).filter(
+                (p) => p.kind === 'root' || p.cmdline.includes('network.mojom.NetworkService'),
+              )
+              for (const child of candidates.slice(0, 2)) {
+                const before = inspector.member(child.pid)
+                if (!before) continue
+                try {
+                  const { stdout } = await promisify(execFile)(
+                    '/usr/bin/sample',
+                    [String(child.pid), '1', '1'],
+                    { timeout: 8000, maxBuffer: 2 * 1024 * 1024 },
+                  )
+                  const after = inspector.member(child.pid)
+                  if (!after || before.start !== after.start || before.uid !== after.uid) {
+                    diagnostic('native sample discarded: observed process birth changed')
+                    continue
+                  }
+                  const lines = stdout
+                    .split('\n')
+                    .filter((line) =>
+                      /Keychain|keychain|SecItem|OSCrypt|SafeStorage|Security|Cookie|cookie|Thread_|dispatch_sync|mach_msg|semaphore|ConditionVariable|WaitableEvent|CFRunLoop/.test(
+                        line,
+                      ),
+                    )
+                  diagnostic(`native sample (${child.kind}):\n${lines.slice(0, 120).join('\n')}`)
+                } catch (error) {
+                  diagnostic(`native sample unavailable: ${String(error).slice(0, 1000)}`)
+                }
+              }
+            } catch (error) {
+              diagnostic(`native sample evidence unavailable: ${String(error).slice(0, 1000)}`)
+            }
+          }, 2000).unref()
+        })
+        page.on('response', (response) =>
+          diagnostic(`response: ${response.status()} ${response.url()}`),
+        )
         page.on('requestfailed', (request) =>
           diagnostic(`request failed: ${request.url()} ${request.failure()?.errorText}`),
         )

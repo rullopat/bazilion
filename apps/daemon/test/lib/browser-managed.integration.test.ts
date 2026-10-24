@@ -244,7 +244,7 @@ run('managed browser adapter lane (BAZILION_TEST_BROWSER=1)', () => {
     expect(keys).toContain('LANG')
     const allowed =
       /^(PATH|HOME|LANG|DISPLAY|XAUTHORITY|WAYLAND_DISPLAY|XDG_RUNTIME_DIR|CHROME_[A-Z0-9_]+)$/
-    expect(keys.every((k) => allowed.test(k))).toBe(true)
+    expect(keys.filter((key) => !allowed.test(key))).toEqual([])
     expect(env).toContain(`HOME=${join(postureSlot, 'home')}`)
     expect(keys).not.toContain('TMPDIR')
   })

@@ -293,3 +293,24 @@ Other six CI jobs passed, including the 436-case security gate, source/build, in
 upgrades. Browser milestone remains incomplete. Work pauses for an operator-authorized actual
 non-GUI Apple Silicon Mac/runner context; argv/navigation defects also remain to diagnose and fix.
 The hosted OS remains 26.6.2, not latest-stable qualification.
+
+Resumed diagnosis on the existing runners: `72ceb42` in
+[CI](https://github.com/rullopat/bazilion/actions/runs/40076545771) narrowed native process
+observation to the launching uid, checked process state before argv reads, and added bounded
+controlled-fixture diagnostics. Native argv/sandbox assertions now pass; the Node 24 browser lane
+improved to **8 passed / 19 failed**, not a qualification pass. Navigation and the exact browser-env
+assertion still fail. The non-GUI fixture reports existing graphic access, then status 100001 with
+**errno 1 (EPERM)**. Apple's public Authorization.cpp/ccaudit.cpp implementation confirms that
+SessionCreate calls setaudit_addr; no privilege escalation or alternative session/configuration
+change is attempted. This fixture's failure is not proof that every authorized runner setup is
+incapable of non-GUI qualification.
+
+Diagnostics also observed installed Google Chrome starting GoogleUpdater, touching the actual
+runner-user application-support tree and requesting Google's update endpoint despite the component
+update denial. This is an unresolved isolation finding, not an accepted browser qualification or
+permission to modify operator settings. Chromium's distinct documented
+`--disable-updater-scheduler` denial is now added to direct launch and asserted alongside the
+component-update denial; real-platform revalidation remains required. No browser substitution or
+weakened network/ownership checks hide this finding. CI additionally exposed an intermittent Linux
+MCP cancellation-retirement failure (retained slot, followed by two teardown cascades); the
+standalone 436-case security gate passed, but the failed full Linux run remains failed.
