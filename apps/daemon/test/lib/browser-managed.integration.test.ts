@@ -1343,11 +1343,28 @@ run('managed browser adapter lane (BAZILION_TEST_BROWSER=1)', () => {
         admission,
         deps,
       )
-      const rejected = expect(pending).rejects.toThrow(/cancelled/)
-      await requestStarted
+      // Observe immediately without creating a detached rejecting assertion. If navigation
+      // fails before the held route, report that original failure rather than waiting for the
+      // test deadline and emitting an unrelated unhandled cancellation assertion.
+      const outcome = pending.then(
+        (value) => ({ ok: true as const, value }),
+        (error: unknown) => ({ ok: false as const, error }),
+      )
+      await Promise.race([
+        requestStarted,
+        outcome.then((result) => {
+          throw new Error('navigation settled before reaching the controlled held route', {
+            cause: result.ok ? undefined : result.error,
+          })
+        }),
+      ])
       expect(entry.busy).toBe(1)
       signal.abort()
-      await rejected
+      const result = await outcome
+      expect(result.ok).toBe(false)
+      if (result.ok) throw new Error('cancelled navigation unexpectedly completed')
+      expect(result.error).toBeInstanceOf(Error)
+      expect((result.error as Error).message).toMatch(/cancelled/)
       release()
       await waitForNoOwnedProcesses(profileDir)
       expect(entry.busy).toBe(0)

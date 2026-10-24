@@ -43,8 +43,11 @@ presence and completed login): auto selects headed only with that evidence and h
 GUI session is positively unavailable. Unknown native evidence requires an explicit choice.
 Explicit headed refuses a proven non-GUI session; an explicit attempt with unknown Quartz facts
 is not a guarantee of display availability and never falls back to headless. Bazilion starts
-the selected executable directly with its persistent local profile,
-then attaches Playwright through CDP, like OpenClaw's managed-browser approach. It does not use
+the selected executable directly with its persistent local profile. Direct-launch denials include
+both component updates and the installed-browser updater scheduler; these are distinct mechanisms.
+Disabling the latter prevents its normal scheduled startup, but does not prove arbitrary installed
+browser builds have no other account-level side effects. The macOS candidate's updater/profile
+isolation still needs real-platform revalidation (BAZ-072). Bazilion then attaches Playwright through CDP, like OpenClaw's managed-browser approach. It does not use
 Playwright's browser-launch defaults or attach to your personal browser. X11 and Wayland access
 are forwarded only for headed launches. Discovery also considers per-user macOS Applications
 and native-architecture full Playwright bundles, never the headless shell. Linux remains the

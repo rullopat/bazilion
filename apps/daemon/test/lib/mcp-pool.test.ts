@@ -367,6 +367,9 @@ test.skipIf(!['linux', 'darwin'].includes(process.platform))(
     await rejected
     await expect(host.invoke(server.id, 'foo', {})).rejects.toThrow(/uncertain effect/)
     expect(readFileSync(`${pidFile}.calls`, 'utf8')).toBe('1')
+    // Surface the cached retirement error if cancellation retained ownership. This does not
+    // retry close or force-release the slot; a rejected retirement must still fail the test.
+    await closeMcpConnection(server.id)
     expect(resources().mcp.has(server.id)).toBe(false)
   },
 )

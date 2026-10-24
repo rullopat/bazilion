@@ -301,8 +301,10 @@ controlled-fixture diagnostics. Native argv/sandbox assertions now pass; the Nod
 improved to **8 passed / 19 failed**, not a qualification pass. Navigation and the exact browser-env
 assertion still fail. The non-GUI fixture reports existing graphic access, then status 100001 with
 **errno 1 (EPERM)**. Apple's public Authorization.cpp/ccaudit.cpp implementation confirms that
-SessionCreate calls setaudit_addr; no privilege escalation or alternative session/configuration
-change is attempted. This fixture's failure is not proof that every authorized runner setup is
+SessionCreate calls setaudit_addr; XNU's public audit_syscalls.c explicitly calls suser in that
+syscall before changing audit identity. The current unprivileged fixture therefore needs an
+authority decision, not more mode guessing. No privilege escalation or alternative
+session/configuration change is attempted. This fixture's failure is not proof that every authorized runner setup is
 incapable of non-GUI qualification.
 
 Diagnostics also observed installed Google Chrome starting GoogleUpdater, touching the actual
@@ -314,3 +316,28 @@ component-update denial; real-platform revalidation remains required. No browser
 weakened network/ownership checks hide this finding. CI additionally exposed an intermittent Linux
 MCP cancellation-retirement failure (retained slot, followed by two teardown cascades); the
 standalone 436-case security gate passed, but the failed full Linux run remains failed.
+
+Local follow-up with the updater denial: the normal full suite passed **2,777 tests / 66 skips**;
+the standalone **436 required security cases**, root typecheck, **49 focused browser/process/MCP
+cases**, and **25 actual Linux browser/worker cases / two platform-only skips** passed. The
+cancellation test now observes invocation settlement immediately and reports an early navigation
+failure instead of leaving a detached rejecting assertion; it still requires actual cancellation
+and complete owned-process/marker retirement. The MCP test explicitly awaits the cached close
+result to expose a retained-slot error without retrying, force releasing or weakening ownership.
+
+Updater-denial candidate `8c9b230`,
+[CI](https://github.com/rullopat/bazilion/actions/runs/40078464440): six non-runtime jobs passed,
+including Linux/full source builds, installers, upgrades and the 436-case security gate. Each Mac
+baseline passed 305 focused cases (four Linux-only mocks skipped), but actual browser qualification
+still failed: Node 24 **7 passed / 20 failed**, Node 26 **8 passed / 19 failed**. No GoogleUpdater
+startup appeared in the new controlled stderr; this absence alone is not an account-isolation proof.
+Bounded read-only native samples on both baselines observed the browser inside SecItemAdd,
+defaultKeychainUI and makeLoginAuthUI while controlled navigation remained pending. No mock
+keychain, encryption downgrade, keychain creation/unlock/preferences operation or privileged session
+helper was used. Continuing with CI keychain/session provisioning requires explicit operator
+approval; alternatively an approved Apple Silicon environment can supply those prerequisites.
+Other unresolved fixture findings remain explicit: the environment decoder appears to include
+Darwin's post-environment apple-vector entries (ptr_munge/main_stack/etc.; do not widen the env
+allowlist), and a same-user process-exit/start race produced KERN_PROCARGS2 EINVAL on Node 24.
+These findings require bounded parser/identity fixes, not skipped checks. Browser, protected and
+latest-stable integrated milestones remain incomplete.
