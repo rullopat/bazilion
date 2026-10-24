@@ -139,6 +139,7 @@ jobs:
         env:
           BAZILION_TEST_BROWSER: '1'
           BAZILION_TEST_BROWSER_HEADED: '1'
+          BAZILION_TEST_BROWSER_DIAGNOSTICS: '1'
         run: >-
           pnpm vitest run
           apps/daemon/test/lib/browser-managed.integration.test.ts

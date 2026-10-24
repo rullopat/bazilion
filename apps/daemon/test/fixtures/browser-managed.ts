@@ -46,8 +46,29 @@ export async function launchLaneContext(input: ManagedLaneInput): Promise<Browse
     })
   }
   mkdirSync(input.home, { recursive: true, mode: 0o700 })
+  let diagnosticBytes = 0
+  const diagnostic = (text: string) => {
+    if (process.env.BAZILION_TEST_BROWSER_DIAGNOSTICS !== '1' || diagnosticBytes >= 64 * 1024)
+      return
+    const bounded = text
+      .slice(0, 64 * 1024 - diagnosticBytes)
+      .replace(/ws:\/\/127\.0\.0\.1:\d+\/devtools\/browser\/[^\s]+/g, '[private-cdp]')
+    diagnosticBytes += bounded.length
+    console.log('[controlled-browser-diagnostic]', bounded)
+  }
   const owned = await startOwnedBrowser(input, () => {}, {
+    observeStderr: diagnostic,
     installGuards: async (context) => {
+      const observe = (page: import('playwright').Page) => {
+        page.on('requestfailed', (request) =>
+          diagnostic(`request failed: ${request.url()} ${request.failure()?.errorText}`),
+        )
+        page.on('console', (message) => diagnostic(`console: ${message.type()} ${message.text()}`))
+      }
+      if (process.env.BAZILION_TEST_BROWSER_DIAGNOSTICS === '1') {
+        context.on('page', observe)
+        for (const page of context.pages()) observe(page)
+      }
       await input.beforeGuards?.(context)
       await installManagedGuards(context)
     },

@@ -270,6 +270,8 @@ export async function startOwnedBrowser(
     groupAuthority?: (pid: number) => OwnedGroupAuthority
     groupAbsent?: typeof groupAbsent
     installGuards?: typeof installManagedGuards
+    /** Controlled fixture diagnostics only; never an operator/worker capability or default log. */
+    observeStderr?: (chunk: string) => void
   } = {},
 ): Promise<OwnedBrowserProcess> {
   if (process.platform !== 'linux' && process.platform !== 'darwin') {
@@ -386,6 +388,7 @@ export async function startOwnedBrowser(
         child.once('error', () => reject(new Error('browser spawn failed')))
         child.once('exit', () => reject(new Error('browser exited before attachment')))
         child.stderr?.on('data', (chunk: Buffer) => {
+          deps.observeStderr?.(chunk.toString('utf8'))
           pending = (pending + chunk.toString('utf8')).slice(-16_384)
           const lines = pending.split('\n')
           pending = lines.pop() ?? ''

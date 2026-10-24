@@ -10,10 +10,19 @@ if (ffi.version !== '3.3.3') throw new Error('unexpected native fixture binding'
 const security = ffi.load('/System/Library/Frameworks/Security.framework/Security')
 const create = security.func('int32_t SessionCreate(uint32_t, uint32_t)')
 const info = security.func('int32_t SessionGetInfo(uint32_t, void *, void *)')
-const status = create(0, 0)
-if (status !== 0) throw new Error(`non-GUI child SessionCreate refused (${status}); no fallback`)
 const session = Buffer.alloc(4)
 const attributes = Buffer.alloc(4)
+const beforeStatus = info(0xffffffff, session, attributes)
+console.error(
+  `controlled session before create: status=${beforeStatus}, graphicAccess=${Boolean(attributes.readUInt32LE() & 0x10)}, uid=${process.geteuid?.()}`,
+)
+ffi.errno(0)
+const status = create(0, 0)
+const errno = ffi.errno()
+if (status !== 0)
+  throw new Error(
+    `non-GUI child SessionCreate refused (status=${status}, errno=${errno}); no fallback`,
+  )
 if (info(0xffffffff, session, attributes) !== 0 || (attributes.readUInt32LE() & 0x10) !== 0)
   throw new Error('fresh child did not establish a non-graphical security session')
 

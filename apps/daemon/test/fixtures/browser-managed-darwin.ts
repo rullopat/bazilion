@@ -14,10 +14,10 @@ function nativeCalls() {
   const proc = ffi.load('/usr/lib/libproc.dylib')
   const system = ffi.load('/usr/lib/libSystem.B.dylib')
   return {
-    list: proc.func('int proc_listallpids(void *, int)'),
+    list: proc.func('int proc_listpids(uint32_t, uint32_t, void *, int)'),
     path: proc.func('int proc_pidpath(int, void *, uint32_t)'),
     sysctl: system.func('int sysctl(const int *, uint32_t, void *, void *, void *, ulong)'),
-    errno: () => ffi.errno(),
+    errno: (value?: number) => (value === undefined ? ffi.errno() : ffi.errno(value)),
   }
 }
 
@@ -31,11 +31,15 @@ function argumentsFor(pid: number): Buffer | null {
   const buffer = Buffer.alloc(ARG_BYTES)
   const size = Buffer.alloc(8)
   size.writeBigUInt64LE(BigInt(buffer.length))
+  api.errno(0)
   const status = api.sysctl(mib, 3, buffer, size, null, 0)
+  const errno = api.errno()
   if (status !== 0) {
     // Exit/permission races among other users' processes are not our browser evidence.
-    if ([1, 3, 13].includes(api.errno())) return null // EPERM, ESRCH, EACCES
-    throw new Error('Darwin process arguments cannot be inspected')
+    if ([1, 3, 13].includes(errno)) return null // EPERM, ESRCH, EACCES
+    throw new Error(
+      `Darwin process arguments cannot be inspected: status=${status}, errno=${errno}, pid=${pid}, self=${pid === process.pid}`,
+    )
   }
   const count = size.readBigUInt64LE()
   if (count < 4n || count > BigInt(ARG_BYTES)) throw new Error('invalid process argument size')
@@ -69,9 +73,12 @@ export function ownedDarwinBrowserProcesses(profileDir: string): OwnedBrowserPro
   const self = argumentsFor(process.pid)
   if (!self || !decode(self).argv.length) throw new Error('native process evidence unavailable')
   const pids = Buffer.alloc((MAX_PIDS + 1) * 4)
-  const count = api.list(pids, pids.length)
-  if (!Number.isInteger(count) || count <= 0 || count > MAX_PIDS)
+  // PROC_UID_ONLY = 4. The browser launches as this user; unrelated root/system processes
+  // need not expose argv to establish profile evidence. proc_listpids returns BYTES, not pids.
+  const bytes = api.list(4, process.geteuid?.(), pids, pids.length)
+  if (!Number.isInteger(bytes) || bytes <= 0 || bytes % 4 !== 0 || bytes > MAX_PIDS * 4)
     throw new Error('native process enumeration unavailable/truncated')
+  const count = bytes / 4
   const found: OwnedBrowserProcess[] = []
   const seen = new Set<number>()
   const started = performance.now()
@@ -81,11 +88,11 @@ export function ownedDarwinBrowserProcesses(profileDir: string): OwnedBrowserPro
     if (pid < 0 || seen.has(pid)) throw new Error('invalid native process enumeration')
     seen.add(pid)
     if (pid === 0 || pid === process.pid) continue
-    const candidate = argumentsFor(pid)
-    if (!candidate?.includes(Buffer.from(profileDir))) continue
     const before = inspector.member(pid)
     if (!before || before.state === 'Z') continue
-    if (before.uid !== process.geteuid?.()) throw new Error('matched process uid changed')
+    if (before.uid !== process.geteuid?.()) continue // Positively observed uid change since list.
+    const candidate = argumentsFor(pid)
+    if (!candidate?.includes(Buffer.from(profileDir))) continue
     // Bind actual argv/environment to the same birth on both sides, not a first PID-only scan.
     const buffer = argumentsFor(pid)
     if (!buffer) continue
