@@ -15,11 +15,21 @@ if (process.argv[2]) {
   writeFileSync(process.argv[2], String(child.pid))
 }
 const send = (message) => process.stdout.write(`${JSON.stringify(message)}\n`)
+const mode = process.argv[3]
+let calls = 0
 const rl = createInterface({ input: process.stdin })
 rl.on('line', (line) => {
   const message = JSON.parse(line)
   if (message.id === undefined) return
   let result = {}
+  if (message.method === 'initialize' && mode) {
+    writeFileSync(`${process.argv[2]}.initialize`, 'received')
+    if (mode === 'hold-initialize') return
+    if (mode === 'fail-initialize') {
+      send({ jsonrpc: '2.0', id: message.id, error: { code: -32603, message: 'synthetic' } })
+      return
+    }
+  }
   if (message.method === 'initialize')
     result = {
       protocolVersion: message.params.protocolVersion,
@@ -28,7 +38,9 @@ rl.on('line', (line) => {
     }
   if (message.method === 'tools/list')
     result = { tools: [{ name: 'foo', inputSchema: { type: 'object', properties: {} } }] }
-  if (message.method === 'tools/call')
+  if (message.method === 'tools/call') {
+    if (process.argv[2]) writeFileSync(`${process.argv[2]}.calls`, String(++calls))
+    if (mode === 'hold-call') return
     result = {
       content: [
         {
@@ -41,6 +53,7 @@ rl.on('line', (line) => {
         },
       ],
     }
+  }
   send({ jsonrpc: '2.0', id: message.id, result })
 })
 rl.on('close', () => process.exit(0))

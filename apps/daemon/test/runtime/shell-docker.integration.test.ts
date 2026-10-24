@@ -20,7 +20,21 @@ beforeEach(() => {
   mkdirSync(workspace)
 })
 
-afterEach(() => {
+afterEach(async () => {
+  if (dockerEnabled) {
+    let remaining: string[] | undefined
+    try {
+      remaining = await containersWithPrefix(`bazilion-bash-${process.pid}-`)
+    } catch {
+      /* UNKNOWN is not absence. */
+    }
+    if (!remaining || remaining.length > 0) {
+      console.warn(
+        `[docker integration] retained workspace with unconfirmed container ownership: ${testDir}`,
+      )
+      throw new Error('Docker integration cleanup requires positive exact-scope container absence')
+    }
+  }
   rmSync(testDir, { recursive: true, force: true })
 })
 

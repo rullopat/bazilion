@@ -54,6 +54,8 @@ interface FakeLaunchRecord {
   input: ManagedLaunchInput
   closeCalls: number
   navigationCalls: number
+  activationCalls: number
+  releaseActivation: () => void
   fillCalls: number
   submitCalls: number
   clickCalls: number
@@ -78,6 +80,8 @@ function makeLauncher(
     clickError?: string
     holdLaunches?: boolean
     holdNavigation?: boolean
+    holdActivation?: boolean
+    failActivation?: boolean
     holdFill?: boolean
     holdClick?: boolean
     failPressAfterEffect?: boolean
@@ -96,6 +100,11 @@ function makeLauncher(
       releaseNavigation = r
     })
     if (!opts.holdNavigation) releaseNavigation()
+    let releaseActivation: () => void = () => {}
+    const activationGate = new Promise<void>((resolve) => {
+      releaseActivation = resolve
+    })
+    if (!opts.holdActivation) releaseActivation()
     let releaseFill: () => void = () => {}
     const fillGate = new Promise<void>((resolve) => {
       releaseFill = resolve
@@ -116,6 +125,8 @@ function makeLauncher(
       input,
       closeCalls: 0,
       navigationCalls: 0,
+      activationCalls: 0,
+      releaseActivation,
       fillCalls: 0,
       submitCalls: 0,
       clickCalls: 0,
@@ -139,6 +150,11 @@ function makeLauncher(
         url = next
         record.navigationCalls++
         await navigationGate
+      },
+      bringToFront: async () => {
+        record.activationCalls++
+        if (opts.failActivation) throw new Error('native tab activation refused')
+        await activationGate
       },
       title: async () => 'fake page',
       evaluate: async () =>
@@ -207,6 +223,53 @@ function runner(deps: PoolDeps, admission: BrowserAdmission) {
   return (agentId: string, cfg: BrowserConfig, action = 'snapshot') =>
     invokeBrowserAction(agentId, action, { url: 'http://fixture.test/' }, cfg, admission, deps)
 }
+
+test('tab selection awaits native activation before publishing a new observation', async () => {
+  const admission = makeAdmission('native-activation')
+  const fake = makeLauncher({ holdActivation: true })
+  const run = (method: string, args: Record<string, unknown> = {}) =>
+    invokeBrowserAction('activation-agent', method, args, config(), admission, {
+      launch: fake.launcher,
+    })
+  await run('snapshot')
+  const record = fake.launches[0]
+  if (!record) throw new Error('fixture launch missing')
+  let published = false
+  const selecting = run('tabs', { op: 'select', tabId: 'tab-1' }).then((value) => {
+    published = true
+    return value
+  })
+  try {
+    await sleep(5)
+    expect(record.activationCalls).toBe(1)
+    expect(published).toBe(false)
+  } finally {
+    record.releaseActivation()
+  }
+  const result = await selecting
+  expect(result[0]).toMatchObject({ type: 'text', text: expect.stringContaining('tab tab-1') })
+})
+
+test('failed native tab activation revokes previous refs without dispatching an action', async () => {
+  const admission = makeAdmission('failed-native-activation')
+  const fake = makeLauncher({ failActivation: true })
+  const run = (method: string, args: Record<string, unknown> = {}) =>
+    invokeBrowserAction('activation-agent', method, args, config(), admission, {
+      launch: fake.launcher,
+    })
+  const initial = await run('snapshot')
+  const initialText = initial[0]?.type === 'text' ? initial[0].text : ''
+  const observationId = /Observation: ([^ ]+)/.exec(initialText)?.[1]
+  await expect(run('tabs', { op: 'select', tabId: 'tab-1' })).rejects.toThrow(
+    /native tab activation refused/,
+  )
+  const stale = await run('click', { observationId, ref: 'e1' })
+  expect(stale[0]).toMatchObject({
+    type: 'text',
+    text: expect.stringContaining('No action was dispatched'),
+  })
+  expect(fake.launches[0]?.clickCalls).toBe(0)
+})
 
 test.each([
   'snapshot',

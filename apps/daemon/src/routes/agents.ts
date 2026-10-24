@@ -1,6 +1,7 @@
 import * as conversationRepo from '../core/repos/conversations.ts'
 import { WorkspaceBusyError } from '../lib/coding-environment/workspace.ts'
 import { selectedConversationTarget } from '../lib/conversation-target.ts'
+import { ProtectedExecutionUnavailableError } from '../lib/protected-provider.ts'
 import { ContextReadError } from '../lib/repository-context/files.ts'
 import { RepositoryContextIncompleteError } from '../lib/repository-context/index.ts'
 // /api/agents/* — agent CRUD + lifecycle + sub-resources (team, skills,
@@ -1380,13 +1381,14 @@ agentsRouter.post('/:id/chat', async (c) => {
   } catch (error) {
     if (error instanceof WorkspaceBusyError)
       return c.json({ error: error.message, code: error.message }, 409)
+    if (error instanceof ProtectedExecutionUnavailableError)
+      // Only this daemon-authored refusal crosses the wire, never raw Docker stderr/cause.
+      return c.json({ error: error.message, code: error.code }, 409)
     if (error instanceof ContextReadError || error instanceof RepositoryContextIncompleteError)
-      // Off-Linux turns fail here by design (safe reads pin ancestry with
-      // Linux-only primitives); the refusal must name the boundary, not
-      // collapse into a plain-text 500.
+      // A guarded-read refusal describes its actual boundary, not an unsupported OS claim.
       return c.json(
         {
-          error: `this turn needs repository context, which this platform cannot prepare (${error instanceof RepositoryContextIncompleteError ? error.codes.join(', ') : error.code}); agent turns currently require Linux`,
+          error: `this turn needs repository context that could not be safely prepared (${error instanceof RepositoryContextIncompleteError ? error.codes.join(', ') : error.code}); no model turn was started`,
           code: error instanceof RepositoryContextIncompleteError ? error.codes[0] : error.code,
         },
         422,

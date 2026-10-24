@@ -22,19 +22,21 @@ export function projectPlatformCapabilities(
       {
         id: 'git_inspection',
         label: 'Hardened Git inspection',
-        support: linux ? 'supported' : 'unsupported',
+        support: portable ? 'supported' : 'unsupported',
         detail: linux
           ? 'Repository layout and source checks still apply at capture time.'
-          : 'Requires Linux descriptor-pinned Git inspection; ordinary chat does not grant this capability.',
+          : portable
+            ? 'Uses a bounded private worktree capture. Unsafe layouts, source changes and capture limits still refuse inspection.'
+            : unsupported,
       },
       {
         id: 'mcp_stdio',
         label: 'MCP stdio',
-        support: linux ? 'supported' : 'unsupported',
+        support: portable ? 'supported' : 'unsupported',
         detail: linux
           ? 'Enable and test a configured server separately; process ownership checks still apply.'
           : portable
-            ? 'Requires Linux process-tree retirement. Use Streamable HTTP instead.'
+            ? 'Requires native process ownership inspection. Unknown identity or cleanup blocks the connection. Use Streamable HTTP if native inspection is unavailable.'
             : unsupported,
       },
       {

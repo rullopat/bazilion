@@ -55,15 +55,27 @@ Stdio is `['pipe','pipe','pipe','ipc']`:
 
 Cancellation is keyed by **agentId** (not runId — there are no runIds anymore, since the runs table is gone). The agent-cancel registry is pinned to `globalThis[Symbol.for('bazilion.agent-cancel.registry')]` so module reloads don't replace it. `POST /api/agents/:id/cancel` looks up the controller and aborts it; the parent's abort handler calls `child.kill('SIGTERM')`, arms a 3s timer, and SIGKILLs if the child doesn't exit.
 
-### Ordinary-worker ownership (shipped in 0.24.0)
+### Worker ownership (0.24 baseline; 0.25 candidate)
 
-Linux retains its recorded `/proc` process identity/retirement path. macOS instead retains the actual
-daemon-owned ChildProcess before input delivery. A normal code-zero exit, natural EOF on stdout and
-stderr, and absence of its original process group must all be observed before releasing the writer.
-Locally destroying pipes does not prove EOF. Persisted receipts are not authority to signal a PID;
-restart/restore without live authority, abnormal exits and unknown settlement stay blocked. This
-removes the Linux-only process-registration blocker without promising arbitrary-descendant cleanup.
-See [workspace recovery](workspace-recovery.md) and [BAZ-057](backlog/done/BAZ-057-portable-safe-reads.md).
+Linux retains its recorded `/proc` process identity/retirement path. The 0.24 macOS ordinary-chat
+port used a live ChildProcess observer requiring a normal code-zero exit, natural EOF and original
+group absence. The 0.25 candidate adds daemon-only public libproc birth/uid/session/group inspection:
+readiness is checked before spawn and the actual child is recorded before executable input.
+Original-group descendants become signalling anchors only while that parent is live, before
+termination. Later group escalation revalidates an original anchor; unknown descendants are not
+adopted after the leader exits. Stored/restored receipts cannot reconstruct that live authority.
+
+Cleanup requires natural stdout/stderr EOF, observed child closure and an absent original group.
+A coded nonzero exit may establish cleanup, never successful execution. A forced host-command
+exit still cannot prove independently detached host work stopped. Locally destroyed pipes, missing
+live owners and unknown inspection retain the writer; private scratch is not erased under
+unconfirmed resources. Management does not guess PID ownership or force-clear records.
+
+Daemon shutdown stops the scheduler, fences new turn registrations, aborts active controllers and
+waits for their settlement before closing browser/MCP resources and the DB, within the existing
+shutdown cap. An interrupted/uncertain cleanup remains a durable recovery blocker after restart.
+See [workspace recovery](workspace-recovery.md), the active BAZ-072 story and the historical
+[BAZ-057](backlog/done/BAZ-057-portable-safe-reads.md) qualification limits.
 
 ## 2. Child bootstrap (`worker/entry.ts`)
 

@@ -9,6 +9,7 @@ import { runMigrations } from '../../src/core/db/migrate.ts'
 import { workspaceLifecycle } from '../../src/lib/coding-environment/lifecycle.ts'
 import { WorkspaceRecovery } from '../../src/lib/coding-environment/recovery.ts'
 import { WorkspaceCoordinator } from '../../src/lib/coding-environment/workspace.ts'
+import * as docker from '../../src/runtime/shell/docker.ts'
 
 let root: string
 let db: ReturnType<typeof openInMemoryDb>
@@ -260,6 +261,49 @@ test('management cleanup refuses a substituted record even when the replacement 
   )
 })
 
+test.each([
+  'identity',
+  'acknowledgement',
+  'restored',
+] as const)('resource %s drift during cleanup cannot grant a confirmation', async (drift) => {
+  // Modeled executor result tests the DB effect boundary, not actual Docker qualification.
+  const lifecycle = workspaceLifecycle(db)
+  const lease = lifecycle.coordinator.claim('one', root, 'agent')
+  lease.attach({ id: 'pending-resource', kind: 'container' })
+  db.raw.run(
+    "INSERT INTO workspace_resources(id,writer_id,kind,identity_json) VALUES(?,?,'container','{}')",
+    ['pending-resource', lease.writer.id],
+  )
+  let release!: () => void
+  const waiting = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const executor = vi.spyOn(docker, 'terminateRecordedContainer').mockImplementation(async () => {
+    await waiting
+    return true
+  })
+  try {
+    const pending = lifecycle.resources.cleanupResource('pending-resource')
+    expect(executor).toHaveBeenCalledTimes(1)
+    if (drift === 'identity')
+      db.raw.run('UPDATE workspace_resources SET identity_json = \'{"changed":true}\'')
+    else if (drift === 'acknowledgement')
+      db.raw.run('UPDATE workspace_resources SET creation_acknowledged = 1')
+    else db.raw.run("UPDATE workspace_writers SET recovery_mode = 'restored'")
+    release()
+    expect(await pending).toBe(false)
+    expect(
+      db.raw
+        .query<{ cleanup_confirmed: number }, []>(
+          'SELECT cleanup_confirmed FROM workspace_resources',
+        )
+        .get()?.cleanup_confirmed,
+    ).toBe(0)
+  } finally {
+    executor.mockRestore()
+  }
+})
+
 test('reentrant teardown cannot start a second management cleanup', async () => {
   const lease = coordinator.claim('one', root, 'agent')
   lease.attach({ id: 'reentrant-record', kind: 'container' })
@@ -293,7 +337,7 @@ test('a teardown boolean without recorded cleanup confirmation cannot release a 
   expect(() => coordinator.claim('one', root, 'agent')).toThrow('workspace_recovery_required')
 })
 
-test.skipIf(process.platform !== 'linux')(
+test.skipIf(process.platform !== 'linux' && process.platform !== 'darwin')(
   'recorded real child cleanup permits management recovery and a new writer on the same root',
   async () => {
     // Actual process/output capture and cleanup; the child is a controlled helper, not a
@@ -301,6 +345,7 @@ test.skipIf(process.platform !== 'linux')(
     const lifecycle = workspaceLifecycle(db)
     const lease = lifecycle.coordinator.claim('one', root, 'agent')
     const worker = lifecycle.worker(lease)
+    worker.beforeSpawn?.()
     const child = spawn(
       process.execPath,
       [
@@ -313,7 +358,7 @@ test.skipIf(process.platform !== 'linux')(
     try {
       await once(child.stdout, 'data')
       if (!child.pid) throw new Error('Missing helper child')
-      worker.beforeInput(child.pid, false)
+      worker.beforeInput(child.pid, false, child)
       lease.finish(false)
       const resource = db.raw
         .query<{ id: string }, [string]>(

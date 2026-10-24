@@ -271,6 +271,7 @@ test('explicit build names equal the repository positive policy; false names are
     .filter((line) => line.trim().endsWith(': true'))
     .map((line) => line.trim().split(': ')[0].replaceAll("'", ''))
   assert.deepEqual([...INSTALLER_BUILD_ALLOWLIST].sort(), names.sort())
+  assert.ok(!INSTALLER_BUILD_ALLOWLIST.includes('koffi'))
   assert.ok(!INSTALLER_BUILD_ALLOWLIST.includes('node-llama-cpp'))
   assert.ok(!INSTALLER_BUILD_ALLOWLIST.includes('@google/genai'))
 })

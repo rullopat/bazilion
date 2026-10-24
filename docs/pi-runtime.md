@@ -32,11 +32,19 @@ multimodal results. Bazilion retains:
 - Ownership until close settles; uncertain effects are never permission to replay a tool call.
 - No ambient `mcp.json`, shell interpolation, automatic OAuth or resource discovery.
 
-Streamable HTTP is portable. Stdio is **Linux-only**, refused before allocation or spawn on
-other platforms. Pi's native close can settle after its leader exits while descendants
-survive; `lib/mcp/stdio-owner.ts` guards anchored Linux descendant retirement. Unknown identity
-or cleanup retains a blocked slot, not a native-close fallback. Legacy SSE is retired and its
-old schema requires clean rebootstrap. See [MCP](mcp.md) and [upgrades](upgrades.md).
+Streamable HTTP is portable. In published **0.24.0**, stdio is Linux-only. Unreleased BAZ-072
+adds macOS owned stdio backed by public libproc identity/group inspection through pinned Koffi;
+its install script remains disabled and the binding is never loaded on Linux. Native readiness
+is checked before allocating a client/slot or spawning a server. Missing/unknown inspection
+never falls back to shell `ps` or unguarded native close.
+
+Pi's native close can settle after its leader exits while descendants survive;
+`lib/mcp/stdio-owner.ts` guards anchored retirement and retains Linux's existing `/proc` route.
+Unknown identity or cleanup retains a blocked slot. Native/protocol checks passed on actual
+macOS 26.6.2 arm64 with both supported Node baselines; this is not latest-stable or full-platform
+parity qualification. Neither persisted receipts nor a dependency availability flag grants
+signalling authority. Legacy SSE is retired and its old schema requires clean rebootstrap. See [MCP](mcp.md) and
+[upgrades](upgrades.md).
 
 ## Auxiliary capabilities
 

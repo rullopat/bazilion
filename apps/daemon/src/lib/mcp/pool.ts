@@ -1,6 +1,6 @@
 // Daemon-owned Pi MCP clients. No Pi extension, mcp.json, OAuth store or worker connection.
 // Pi owns protocol correlation/framing, cancellation and transport shutdown.
-// stdio-owner.ts keeps Linux retirement truthful for surviving SIGTERM-ignoring descendants.
+// stdio-owner.ts keeps Linux/macOS retirement truthful for surviving SIGTERM-ignoring descendants.
 // This adapter owns configuration admission, catalog bounds and resource lifetime only.
 import { createHash } from 'node:crypto'
 import type { McpTransport } from '@bazilion/api-types'

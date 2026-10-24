@@ -28,6 +28,8 @@ test('MCP CLI help advertises only stdio and Streamable HTTP', () => {
   const result = cli(['add', '--help'])
   expect(result.status).toBe(0)
   expect(result.stdout).toContain('Streamable HTTP')
+  expect(result.stdout).toContain('Linux / Apple Silicon macOS')
+  expect(result.stdout).not.toContain('Linux only')
   expect(result.stdout).not.toContain('http | sse')
   expect(result.stdout).not.toContain('http/sse')
 })

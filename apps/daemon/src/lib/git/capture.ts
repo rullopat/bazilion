@@ -3,14 +3,16 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { type ContextDirectory, ContextReadError } from '../repository-context/files.ts'
+import { capturePrivateWorktree, type PrivateWorktree } from './worktree.ts'
 
 // Hardened, read-only Git capture shared by repository context (BAZ-039) and Git change review
 // (BAZ-042). There is deliberately ONE implementation of these protections.
 //
 // Git here reads a bounded private copy of metadata with a Bazilion-authored config. No repository
 // config, hooks, alternates, includes, credential helpers, filters or external metadata links enter
-// it. The worktree stays read-only and is reached through the caller's fd-pinned directory, never a
-// path. Scratch is discarded by `cleanup()`.
+// it. Linux reaches the read-only source through its fd-pinned directory. macOS Git sees only a
+// bounded private worktree materialized through guarded reads, never live source pathnames.
+// Scratch is discarded by `cleanup()`.
 
 /** Whole-inspection budget shared by capture and every subsequent read-only invocation. */
 const INSPECTION_BUDGET_MS = 5000
@@ -28,11 +30,11 @@ const RUN_MAX_BUFFER = 1024 * 1024
  * **read-only** Git commands through `runGit` and must call `cleanup()` when finished.
  */
 export interface CapturedGit {
-  /** The fd-pinned worktree directory the capture was validated against. */
+  /** Worktree for bounded file reads: retained Linux source or private macOS capture. */
   root: ContextDirectory
   /**
    * Run one read-only Git command against the captured metadata. The private git-dir, the
-   * fd-pinned worktree and every hardening flag are applied for you, so a caller cannot forget
+   * admitted worktree and every hardening flag are applied for you, so a caller cannot forget
    * them. Append further `-c` settings to override one of the defaults (later flags win).
    */
   runGit(args: string[]): Promise<string>
@@ -57,8 +59,8 @@ export async function captureRepositoryGit(
   root: ContextDirectory,
   budgetMs: number = INSPECTION_BUDGET_MS,
 ): Promise<CapturedGit> {
-  const worktree = root.gitWorktreePath
-  if (!worktree) throw new ContextReadError('git_inspection_unavailable')
+  let worktree = root.gitWorktreePath
+  let privateWorktree: PrivateWorktree | undefined
   const start = Date.now()
   let bytes = 0
   let count = 0
@@ -79,12 +81,23 @@ export async function captureRepositoryGit(
   const cleanup = (): void => {
     if (cleaned) return
     cleaned = true
-    rmSync(scratch, { recursive: true, force: true })
+    try {
+      privateWorktree?.close()
+    } finally {
+      rmSync(scratch, { recursive: true, force: true })
+    }
+  }
+  const checkBudget = (): void => {
+    if (Date.now() - start >= budgetMs) throw new ContextReadError('git_timeout')
   }
   try {
-    const rawGit = (args: string[]): Promise<string> =>
+    const rawGit = (args: string[], input?: string, noMatch = false): Promise<string> =>
       new Promise((resolve, reject) => {
-        execFile(
+        if (cleaned) throw new ContextReadError('unreadable')
+        checkBudget()
+        if (input && Buffer.byteLength(input) > RUN_MAX_BUFFER)
+          throw new ContextReadError('git_output_limit')
+        const child = execFile(
           'git',
           args,
           {
@@ -104,10 +117,13 @@ export async function captureRepositoryGit(
             maxBuffer: RUN_MAX_BUFFER,
             encoding: 'utf8',
           },
-          (error, stdout) => (error ? reject(error) : resolve(stdout)),
+          (error, stdout) =>
+            error && !(noMatch && error.code === 1) ? reject(error) : resolve(stdout),
         )
+        child.stdin?.on('error', reject)
+        child.stdin?.end(input)
       })
-    // Fixed read-only prefix: private metadata, the caller's fd-pinned worktree (never a path),
+    // Fixed read-only prefix: private metadata, the retained Linux or private captured worktree,
     // no optional locks, and no repository-configured executable behavior.
     const inspectionArgs = (args: string[]): string[] => [
       '--no-optional-locks',
@@ -238,9 +254,39 @@ export async function captureRepositoryGit(
     if (git.list().some((name) => name.startsWith('sharedindex.')))
       throw new ContextReadError('unsupported_git_metadata')
     writeFileSync(join(scratch, 'config'), `${configLines.join('\n')}\n`, { mode: 0o600 })
-    const validate = (): void => git.validate()
+    if (!worktree) {
+      worktree = join(scratch, 'worktree')
+      privateWorktree = await capturePrivateWorktree(
+        root,
+        worktree,
+        {
+          trackedPaths: async () =>
+            (await rawGit(inspectionArgs(['ls-files', '--cached', '-z'])))
+              .split('\0')
+              .filter(Boolean),
+          ignoredPaths: async (paths) => {
+            if (!paths.length) return new Set<string>()
+            const output = await rawGit(
+              inspectionArgs(['check-ignore', '--no-index', '--stdin', '-z']),
+              `${paths.join('\0')}\0`,
+              true,
+            )
+            const ignored = new Set(output.split('\0').filter(Boolean))
+            const supplied = new Set(paths)
+            if ([...ignored].some((path) => !supplied.has(path)))
+              throw new ContextReadError('unsupported_git_worktree')
+            return ignored
+          },
+        },
+        checkBudget,
+      )
+    }
+    const validate = (): void => {
+      git.validate()
+      privateWorktree?.validate()
+    }
     validate()
-    return { root, runGit, validate, cleanup }
+    return { root: privateWorktree?.directory ?? root, runGit, validate, cleanup }
   } catch (error) {
     cleanup()
     throw error

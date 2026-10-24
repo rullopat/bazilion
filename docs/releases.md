@@ -1,5 +1,15 @@
 # Releases
 
+## 0.25.0 target — not released
+
+The requested focus is **macOS Apple Silicon feature parity with Linux**, including hardened Git,
+MCP stdio, managed browsing and protected execution. Intel Mac qualification and Windows support
+are out of scope. Qualification targets the latest stable macOS and both supported Node lines;
+older macOS versions remain untested, not automatically incompatible. The technical minimum still
+needs auditing. [BAZ-072](backlog/in_progress/BAZ-072-apple-silicon-feature-parity.md) tracks the
+active release work and gates. Initial Git implementation is underway; feature parity and macOS
+qualification remain incomplete. This is not a support claim; 0.24.0 limits below still apply.
+
 ## 0.24.0
 
 [GitHub release](https://github.com/rullopat/bazilion/releases/tag/v0.24.0) ·

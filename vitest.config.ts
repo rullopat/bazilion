@@ -1,22 +1,16 @@
 import { defineConfig } from 'vitest/config'
 
-// Linux-only suites retain /proc-pinned Git inspection, Linux process identities,
-// or broader coding/scheduling assumptions not qualified by BAZ-057. Portable
-// repository-context-capture, observed-child and portable-chat suites run on the
-// actual Linux/macOS matrix; never exclude them to hide a portability failure.
-// Removing the ordinary-chat safe-read blocker does not qualify every Git,
-// container, restricted-worker or scheduled-provider configuration.
+// Linux-only suites retain Linux process identities or legacy live-worktree/coding assumptions.
+// BAZ-072 adds actual-platform Git capture/changes/identity/snapshot and private-worktree coverage alongside
+// repository-context-capture, observed-child and portable-chat. Never exclude those suites to hide
+// a portability failure. A captured Git backend alone does not qualify the broader protected,
+// container, restricted-worker or scheduled-provider configurations.
 const LINUX_ONLY = [
   // Legacy context suites include the Linux-only hardened Git report contract.
   'apps/daemon/test/core/repository-context.test.ts',
   'apps/daemon/test/core/repository-context-git-errors.test.ts',
   'apps/daemon/test/runtime/repository-context.test.ts',
   'apps/cli/test/repository-context.test.ts',
-  // Hardened Git capture still requires its descriptor-pinned /proc worktree.
-  'apps/daemon/test/core/git-capture.test.ts',
-  'apps/daemon/test/core/git-review-changes.test.ts',
-  'apps/daemon/test/core/git-review-identity.test.ts',
-  'apps/daemon/test/core/git-review-snapshot.test.ts',
   // Broader legacy pipeline suites retain their existing qualification boundary.
   // BAZ-057 adds actual-platform ordinary-turn coverage separately; a new failure
   // must be fixed or explicitly scoped, not hidden by extending this list.
@@ -55,7 +49,6 @@ const LINUX_ONLY = [
   'apps/daemon/test/routes/verifications.test.ts',
   // Worker/session identity: spawn validates agent dirs against their
   // canonical realpath — the same canonical-path boundary safe reads pin.
-  'apps/daemon/test/runtime/worker-runtime.test.ts',
   'apps/daemon/test/runtime/worker-process-identity.test.ts',
   'apps/daemon/test/runtime/worker-api-key-refresh.test.ts',
   'apps/daemon/test/runtime/session-head.test.ts',

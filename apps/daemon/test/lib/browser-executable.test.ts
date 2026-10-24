@@ -73,6 +73,41 @@ test('no installed browser falls back to the highest full bundled Chromium', () 
   expect(result.candidate).toMatchObject({ path: bundled, source: 'bundled' })
 })
 
+test('macOS discovery retains family order across system and per-user applications', () => {
+  const all = installedBrowserCandidates('darwin', '/Users/operator')
+  expect(all[0]?.path).toBe('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome')
+  expect(all[1]?.path).toBe(
+    '/Users/operator/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+  )
+  const result = resolveBrowserExecutable(
+    undefined,
+    probes({
+      platform: 'darwin',
+      homedir: '/Users/operator',
+      isExecutableFile: executable([all[1]?.path ?? '', all[2]?.path ?? '']),
+    }),
+  )
+  expect(result.candidate?.name).toBe('Google Chrome')
+  expect(result.candidate?.path).toBe(all[1]?.path)
+})
+
+test('macOS full bundled discovery uses the native architecture, never the headless shell', () => {
+  const cache = '/Users/operator/Library/Caches/ms-playwright'
+  const path = `${cache}/chromium-1228/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing`
+  const mac = probes({
+    platform: 'darwin',
+    arch: 'arm64',
+    homedir: '/Users/operator',
+    readdir: () => ['chromium-1228', 'chromium_headless_shell-1228'],
+    isExecutableFile: executable([path]),
+  })
+  expect(resolveBrowserExecutable(undefined, mac).candidate).toMatchObject({
+    path,
+    source: 'bundled',
+  })
+  expect(resolveBrowserExecutable(undefined, { ...mac, arch: 'x64' }).ok).toBe(false)
+})
+
 test('a headless shell is never substituted for a missing full browser', () => {
   const shell = `${CACHE}/chromium_headless_shell-1243/chrome-linux/headless_shell`
   const result = resolveBrowserExecutable(
@@ -132,6 +167,50 @@ test('unsupported platforms refuse to infer a desktop', () => {
   expect(auto.ok).toBe(false)
   expect(auto.reasonCode).toBe('browser_display_unavailable')
   expect(auto.remedy).toMatch(/explicitly/)
+})
+
+test('Quartz facts, not Unix display variables, select macOS auto mode', () => {
+  for (const [availability, mode] of [
+    ['available', 'headed'],
+    ['unavailable', 'headless'],
+  ] as const) {
+    const mac = probes({
+      platform: 'darwin',
+      env: { DISPLAY: ':99', WAYLAND_DISPLAY: 'not-quartz', XDG_RUNTIME_DIR: '/tmp' },
+      guiSession: () => availability,
+    })
+    expect(resolveDisplayAvailability(mac)).toBe(availability)
+    expect(resolveBrowserMode('auto', mac)).toEqual({ ok: true, mode })
+  }
+  const unknown = probes({
+    platform: 'darwin',
+    guiSession: () => {
+      throw new Error('denied')
+    },
+  })
+  expect(resolveBrowserMode('auto', unknown)).toMatchObject({
+    ok: false,
+    reasonCode: 'browser_display_unavailable',
+  })
+})
+
+test('a proven non-GUI macOS session refuses headed mode without fallback', () => {
+  const mac = probes({ platform: 'darwin', guiSession: () => 'unavailable' })
+  expect(resolveBrowserMode('headed', mac)).toMatchObject({
+    ok: false,
+    reasonCode: 'browser_display_unavailable',
+  })
+  expect(resolveBrowserMode('headless', mac)).toEqual({ ok: true, mode: 'headless' })
+})
+
+test('explicit headless does not query a GUI or infer that any site works', () => {
+  const mac = probes({
+    platform: 'darwin',
+    guiSession: () => {
+      throw new Error('must not probe')
+    },
+  })
+  expect(resolveBrowserMode('headless', mac)).toEqual({ ok: true, mode: 'headless' })
 })
 
 test('explicit macOS headed mode permits a native launch without pretending auto detected a display', () => {

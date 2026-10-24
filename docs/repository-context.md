@@ -97,10 +97,39 @@ Node 24.22.0. See [BAZ-057](backlog/done/BAZ-057-portable-safe-reads.md) for cod
 limits. Historical 0.23.0 retains its Linux-only turn boundary. Windows remains refused with
 `safe_reads_unavailable`; no Windows support is claimed.
 
-The one hardened Git inspector still requires its Linux fd-pinned worktree. A macOS repository
+In published **0.24.0**, hardened Git requires its Linux fd-pinned worktree. A macOS repository
 therefore reports Git `unavailable` with `git_inspection_unavailable`, independently of complete
-instructions. Linux-only Git/process/container suites are not relabelled as portable; the new
-capture/ownership/ordinary-chat suites run on the actual Linux/macOS CI matrix.
+instructions. That released qualification does not cover the implementation below.
+
+### Unreleased 0.25 work: private macOS Git worktree
+
+[BAZ-072](backlog/in_progress/BAZ-072-apple-silicon-feature-parity.md) adds a private worktree backend
+inside the existing hardened inspector. Linux retains its descriptor-pinned source. On macOS,
+Git receives only a disposable private copy, never the live source pathname. Guarded reads copy
+regular files and preserve executable bits. The captured index and ignore rules determine which
+ignored subtrees can be skipped; tracked ignored files are still copied. Hooks, helpers, filters,
+external configuration and metadata remain subject to the same neutral Git configuration.
+
+The private worktree is limited to 64 MiB, 16,384 entries, 256 directories and 16 directory levels,
+within the shared five-second inspection deadline. Oversized/unsafe captures refuse rather than
+silently omit content. Unignored symlinks, hardlinks, special files and nested repositories refuse
+this backend; this conservative layout restriction remains open parity work. Scratch is private,
+contains transient file bytes (not just digests), and is removed on disposal/failure; it is not a
+retained evidence store or a general sandbox.
+
+Private worktree bytes stay fixed for subsequent Git invocations and source-snapshot file reads;
+a fresh capture is required to observe edits. Final context validation rechecks original source
+observations and the registered root binding. These are change detectors, not an atomic snapshot
+of a concurrently hostile source tree. The source and private-copy observations are independent.
+
+Git capture/changes/identity and private-backend tests now run on the macOS source-test path, with
+a focused actual-arm64 job for both supported Node lines. The initial Git candidate passed all 67
+focused cases on actual macOS 26.6.2 arm64 with Node 24.22.0 and 26.4.0 in
+[CI](https://github.com/rullopat/bazilion/actions/runs/39955676046). CLI/web platform diagnostics
+now describe bounded macOS Git support independently of the remaining MCP stdio restriction.
+The hosted `macos-latest` image reported 26.6.2: its label does not establish latest-stable macOS
+qualification. Latest-stable release acceptance and broader coding/container/process work remain
+open; these focused checks are not a 0.25 feature-parity release qualification claim.
 
 ## Development and acceptance
 

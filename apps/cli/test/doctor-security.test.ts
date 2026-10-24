@@ -145,8 +145,11 @@ test.each([
   }
   expect(output).not.toContain('✓')
   if (platform === 'darwin') {
-    expect(output).toContain('MCP stdio: unsupported')
-    expect(output).toContain('Use Streamable HTTP instead')
+    expect(output).toContain('Hardened Git inspection: supported')
+    expect(output).toContain('bounded private worktree capture')
+    expect(output).toContain('MCP stdio: supported')
+    expect(output).toContain('native process ownership inspection')
+    expect(output).toContain('Use Streamable HTTP if')
     expect(output).toContain('Ordinary interactive chat: supported')
   }
 })

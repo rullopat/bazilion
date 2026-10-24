@@ -156,14 +156,21 @@ test('targeted captures refuse a replaced admission-bound root', async () => {
   expect(report.instructions.issues.some((issue) => issue.code === 'root_changed')).toBe(true)
 })
 
-test('macOS instructions do not imply an admitted hardened Git worktree', async () => {
-  fs.mkdirSync(join(root, '.git'))
+test('instructions and hardened Git prepare on the actual Linux/macOS capture backend', async () => {
+  execFileSync('git', ['init', '-q', '-b', 'main', root], {
+    env: {
+      PATH: '/usr/bin:/bin',
+      HOME: home,
+      GIT_CONFIG_NOSYSTEM: '1',
+      GIT_CONFIG_GLOBAL: '/dev/null',
+    },
+  })
   fs.writeFileSync(join(root, 'AGENTS.md'), 'instructions')
   const report = await resolveRepositoryContext({ teamId: 'test', root })
   expect(report.instructions.state).toBe('complete')
-  expect(report.git.state).toBe('unavailable')
-  if (process.platform === 'darwin') {
-    expect(report.git.issues.map((issue) => issue.code)).toContain('git_inspection_unavailable')
-    expect(capture().gitWorktreePath).toBeNull()
-  }
+  expect(report.git.state).toBe('available')
+  expect(report.git.branch).toBe('main')
+  expect(report.git.untracked).toBe(1)
+  // Darwin never grants an external Git process the live source pathname.
+  if (process.platform === 'darwin') expect(capture().gitWorktreePath).toBeNull()
 })

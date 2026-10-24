@@ -29,10 +29,12 @@ Removed stories remain recoverable through Git history; do not reuse their IDs.
 
 No stories currently ready to pull.
 
-## In progress (0)
+## In progress (1)
 
-No active implementation stories. Release 0.24.0 shipped the two bounded stories below and the
-embedded Pi 1.4.0 upgrade. Codemode and Durable were not included.
+- [BAZ-072 — Apple Silicon macOS feature parity](in_progress/BAZ-072-apple-silicon-feature-parity.md):
+  targets 0.25.0; Git, stdio, browser and protected-runtime parity with Linux. Qualification targets
+  Apple Silicon on the latest stable macOS with both supported Node lines. Technical-floor auditing,
+  safe platform adapters, implementation and macOS qualification remain open.
 
 ## Done (56)
 

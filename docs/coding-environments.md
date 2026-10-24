@@ -1,7 +1,7 @@
 # Coding during an Agent task
 
 Ask an Agent to do the work: **“Fix this bug and run the relevant test.”** There is no Team
-checklist to fill out first. These BAZ-039/040 changes are implemented for this PR, not released.
+checklist to fill out first.
 
 The Agent receives root repository instructions when its turn starts. It can inspect a deeper
 scope, discover source-backed commands, check the actual execution environment, prepare missing
@@ -49,6 +49,16 @@ The image build requires its base image and package-manager artifacts to be avai
 `BAZILION_BASH_SANDBOX_IMAGE=bazilion-coding:node24-pnpm10` for the installation. Ordinary Agent
 turns use Docker when `BAZILION_BASH_SANDBOX=docker`; protected turns always use their protected
 runtime. Host execution remains host execution under its existing policy.
+
+A known protected-runtime admission refusal returns HTTP **409** with
+`code: "protected_execution_unavailable"` and daemon-authored remediation. CLI and web share this
+response; a closed `engine`, `create`, `start` or `cleanup` phase may identify the failed Docker
+boundary; a daemon timer may add `: timeout`. Neither label proves execution or settlement.
+Raw Docker errors and credential material are
+not forwarded. No model turn is started
+and there is no host fallback. A required repository-context refusal instead returns **422** with
+the actual guarded-read issue code, not a blanket Linux-only claim. Resolve the reported boundary;
+do not bypass unsafe paths or uncertain workspace ownership.
 
 ## Working with teammates
 
@@ -116,7 +126,9 @@ Docker defaults do not change a host turn's cwd or environment.
 Canonical workspace ownership covers aliases and overlapping roots, including Teams without
 saved defaults. Commands keep their Agent turn's ownership until process/container cleanup is
 confirmed. Cancellation is not proof of cleanup. Uncertain cleanup leaves the workspace blocked
-for recovery and never records a fabricated success.
+for recovery and never records a fabricated success. A readiness probe also retains its private
+bind-source scratch when exact-container cleanup is unconfirmed; failed readiness is not proof
+that its resources are absent.
 
 A lost host worker may leave separate process groups; restarting the daemon alone cannot prove
 those commands stopped. The same-boot workspace remains blocked when cleanup is uncertain. A host
@@ -124,5 +136,5 @@ restart proves the old local processes are gone. Docker recovery uses recorded c
 
 Restore never adopts copied process/container records as permission to terminate the original
 home's resources. A backup containing active work remains recovery-blocked after restore. Prefer
-backups taken after all Agent turns finish. This uses the canonical schema with forward-only
-migrations: no legacy probe tables, routes or data importers are retained.
+backups taken after all Agent turns finish. This uses the canonical clean-install schema:
+no legacy probe tables, routes or data importers are retained.

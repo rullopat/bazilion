@@ -1064,8 +1064,14 @@ async function dispatchBrowserAction(
             `no open tab with id "${tabId}"; use browser_tabs {"op":"list"} for current ids`,
           )
         }
+        // Logical selection alone leaves a different native tab active. In direct/CDP macOS
+        // headless Chromium that can suspend the selected page's observation polling. Activate
+        // the actual target, with old authority revoked before the await; never publish fresh
+        // refs until activation settles under this same entry's lease.
+        session.obs.invalidate()
+        await target.bringToFront()
+        check()
         session.obs.setActiveTab(tabId)
-        session.obs.invalidate() // tab switch invalidates previous cursors
         return text((await observe()).text)
       }
       if (op === 'close') {
