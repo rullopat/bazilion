@@ -93,7 +93,23 @@ async function containerEnv(command: string): Promise<ContainerEnv> {
     checks: [{ command, cwd: '.', purpose: 'suite', timeoutMs: 60_000 }],
   })
 
-  return { ...env, requestId: request.id }
+  return {
+    ...env,
+    requestId: request.id,
+    cleanup() {
+      const writers = env.db.raw
+        .query<{ count: number }, []>('SELECT count(*) AS count FROM workspace_writers')
+        .get()?.count
+      if (writers !== 0) {
+        env.db.close()
+        console.warn(
+          `[verification container] retained unconfirmed workspace/receipts: ${env.home}`,
+        )
+        throw new Error('verification fixture cleanup requires confirmed workspace settlement')
+      }
+      env.cleanup()
+    },
+  }
 }
 
 interface ExecuteResult {

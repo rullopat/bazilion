@@ -12,7 +12,7 @@ import {
   startLmStudioMock,
 } from './fixtures/mock-lmstudio.ts'
 import { schedulingEvidence } from './fixtures/scheduling-evidence.ts'
-import { startTestServer, type TestServer } from './server-fixture.ts'
+import { startTestServer, stopSettledTestServer, type TestServer } from './server-fixture.ts'
 
 // Second composed BAZ-064 slice: the researcher side. Canned model again —
 // this proves the protected inbox-wake plumbing and refusal boundaries, NOT
@@ -278,11 +278,19 @@ beforeAll(async () => {
 }, 120_000)
 
 afterAll(async () => {
-  await locked.stop()
-  await full.stop()
+  const stopped = await Promise.allSettled([
+    stopSettledTestServer(locked),
+    stopSettledTestServer(full),
+  ])
   await mock.stop()
   webFixture.close()
   searx.close()
+  const failures = stopped.filter((result) => result.status === 'rejected')
+  if (failures.length)
+    throw new AggregateError(
+      failures.map((result) => result.reason),
+      'protected fixture settlement failed',
+    )
   schedulingEvidence('research-fixtures-stopped', { daemonsClosed: true, mockClosed: true })
 })
 

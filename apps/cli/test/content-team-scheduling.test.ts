@@ -13,7 +13,7 @@ import {
   startLmStudioMock,
 } from './fixtures/mock-lmstudio.ts'
 import { schedulingEvidence } from './fixtures/scheduling-evidence.ts'
-import { startTestServer, type TestServer } from './server-fixture.ts'
+import { startTestServer, stopSettledTestServer, type TestServer } from './server-fixture.ts'
 
 // BAZ-065 first slice (CT-08 core): a real cron trigger drives the coordinator
 // through two actual due minutes with the daemon's own scheduler — no manual
@@ -169,8 +169,11 @@ beforeAll(async () => {
 }, 60_000)
 
 afterAll(async () => {
-  await server.stop()
-  await mock.stop()
+  try {
+    await stopSettledTestServer(server)
+  } finally {
+    await mock.stop()
+  }
   schedulingEvidence('cron-fixture-stopped', { daemonClosed: true, mockClosed: true })
 })
 

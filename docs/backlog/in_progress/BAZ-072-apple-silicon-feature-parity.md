@@ -474,3 +474,21 @@ preceded positive original-group absence. Node 26's browser lane passed. The fix
 both facts within its **existing eight-second bound**, without changing production admission,
 removing markers or retrying a launch. Actual Linux browser/CLI regression: **26 passed / two
 platform-only skips**. The failed Mac lane remains failed evidence; a new full run is required.
+
+The serial follow-up (`958c3e1`, CI `40100201002`) passed both full browser/runtime lanes and all
+six other source/build/installer/security/upgrade jobs, but **both Docker jobs still failed**:
+Node 24 **eight passed / one failed**, Node 26 **six passed / three failed**, plus the expected
+fixture-retention failure for an unresolved writer. Protected coordinator errors were confirmed
+as `ProtectedExecutionUnavailableError`; Node 26 also hit the unchanged two-second container-start
+limit. Serialization alone is not a qualification pass. The next provisioned VM uses one generic
+ARMv8 Cortex-A72 vCPU instead of two max-feature vCPUs and records setup operation latency;
+application deadlines and checks remain unchanged. This configuration's Mac outcome is pending.
+
+The scoped real-Docker lane now also includes four actual HTTP/IPC shell-approval journeys
+(allow with duplicate decision and exactly-one append, deny, auto-deny and pending cancellation),
+four real cron/policy/tool-admission journeys and four captured verification executor journeys.
+The approval fixture uses a harmless literal risk trigger, never a personal credential lookup.
+Protected daemon and verification teardown retain the home, DB and receipts when writers remain
+unconfirmed. Actual Linux execution of all six suites passed **21 real cases**, with only the
+one mutually exclusive non-live guard skipped. These are real containers and schedulers with
+synthetic model responses, not live-model or human acceptance. Expanded Mac results are pending.
