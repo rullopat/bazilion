@@ -149,7 +149,10 @@ export async function prepareAgentDockerInputs(
     })
   } catch (error) {
     // Publish only the daemon-authored boundary, never the Docker error/cause or host paths.
-    const phase = error instanceof DockerPreflightError ? ` (${error.phase})` : ''
+    const phase =
+      error instanceof DockerPreflightError
+        ? ` (${error.phase}${error.kind === 'timeout' ? ': timeout' : ''})`
+        : ''
     throw new ProtectedExecutionUnavailableError(
       `Protected Docker runtime is unavailable${phase}. Run \`bazilion doctor\` for remediation.`,
     )

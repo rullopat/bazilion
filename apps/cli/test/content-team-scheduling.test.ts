@@ -177,8 +177,10 @@ beforeEach(async () => {
 function closedFailureReason(error: string | null | undefined): string | null {
   if (!error) return null
   const phase =
-    /^Protected Docker runtime is unavailable(?: \((engine|create|start|cleanup)\))?\./.exec(error)
-  if (phase) return `protected_docker_${phase[1] ?? 'unspecified'}`
+    /^Protected Docker runtime is unavailable(?: \((engine|create|start|cleanup)(: timeout)?\))?\./.exec(
+      error,
+    )
+  if (phase) return `protected_docker_${phase[1] ?? 'unspecified'}${phase[2] ? '_timeout' : ''}`
   if (error.includes('workspace_recovery_required')) return 'workspace_recovery_required'
   if (error.includes('workspace_busy')) return 'workspace_busy'
   return 'other failure'

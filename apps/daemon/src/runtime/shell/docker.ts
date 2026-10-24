@@ -56,12 +56,18 @@ export type DockerPreflightPhase = (typeof DOCKER_PREFLIGHT_PHASES)[number]
 /** Closed failure boundary for diagnostics; never proof of execution, settlement or replay safety. */
 export class DockerPreflightError extends Error {
   readonly phase: DockerPreflightPhase
+  readonly kind: 'failed' | 'timeout'
 
-  constructor(phase: DockerPreflightPhase, cause: unknown) {
-    if (!DOCKER_PREFLIGHT_PHASES.includes(phase)) throw new Error('invalid Docker preflight phase')
+  constructor(phase: DockerPreflightPhase, cause: unknown, kind: 'failed' | 'timeout' = 'failed') {
+    if (!DOCKER_PREFLIGHT_PHASES.includes(phase) || !['failed', 'timeout'].includes(kind))
+      throw new Error('invalid Docker preflight phase or kind')
     super(cause instanceof Error ? cause.message : 'Docker preflight failed', { cause })
     this.phase = phase
-    Object.defineProperty(this, 'phase', { value: phase, writable: false, configurable: false })
+    this.kind = kind
+    Object.defineProperties(this, {
+      phase: { value: phase, writable: false, configurable: false },
+      kind: { value: kind, writable: false, configurable: false },
+    })
     this.name = 'DockerPreflightError'
   }
 }
@@ -571,7 +577,10 @@ async function proveProtectedContainerCreation(
     )
   }
 
-  if (preflightFailed) throw new DockerPreflightError(phase, preflightError)
+  if (preflightFailed)
+    throw preflightError instanceof DockerPreflightError
+      ? preflightError
+      : new DockerPreflightError(phase, preflightError)
 }
 
 function runProtectedContainerCreate(
@@ -627,8 +636,12 @@ function runProtectedContainerCreate(
     const timeoutError = () =>
       commandTimeout
         ? new Error(`timeout:${options?.timeout}`)
-        : new Error(
-            `Docker sandbox could not create its protected preflight container within ${DOCKER_CREATE_TIMEOUT_MS}ms`,
+        : new DockerPreflightError(
+            'create',
+            new Error(
+              `Docker sandbox could not create its protected preflight container within ${DOCKER_CREATE_TIMEOUT_MS}ms`,
+            ),
+            'timeout',
           )
 
     child.stderr?.on('data', (data: Buffer) => {
@@ -689,8 +702,12 @@ function runProtectedContainerProbe(spec: DockerRunSpec, signal?: AbortSignal): 
     }
 
     const timeoutError = () =>
-      new Error(
-        `Docker sandbox could not start its protected preflight container within ${DOCKER_PROBE_START_TIMEOUT_MS}ms`,
+      new DockerPreflightError(
+        'start',
+        new Error(
+          `Docker sandbox could not start its protected preflight container within ${DOCKER_PROBE_START_TIMEOUT_MS}ms`,
+        ),
+        'timeout',
       )
 
     child.stderr?.on('data', (data: Buffer) => {

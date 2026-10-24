@@ -120,7 +120,7 @@ describe.skipIf(!docker)('actual Docker command approval over daemon HTTP and wo
         expectedSelection: { conversationId: null, revision: 0 },
       }),
     })
-    expect(response.status).toBe(200)
+    expect(response.status, response.status === 200 ? undefined : await response.text()).toBe(200)
     if (!response.body) throw new Error('missing chat stream')
     const frames: ChatFrame[] = []
     let pending: CommandApproval | undefined

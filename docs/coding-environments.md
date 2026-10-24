@@ -53,7 +53,8 @@ runtime. Host execution remains host execution under its existing policy.
 A known protected-runtime admission refusal returns HTTP **409** with
 `code: "protected_execution_unavailable"` and daemon-authored remediation. CLI and web share this
 response; a closed `engine`, `create`, `start` or `cleanup` phase may identify the failed Docker
-boundary, but never proves execution or settlement. Raw Docker errors and credential material are
+boundary; a daemon timer may add `: timeout`. Neither label proves execution or settlement.
+Raw Docker errors and credential material are
 not forwarded. No model turn is started
 and there is no host fallback. A required repository-context refusal instead returns **422** with
 the actual guarded-read issue code, not a blanket Linux-only claim. Resolve the reported boundary;

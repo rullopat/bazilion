@@ -544,3 +544,19 @@ caught and fixed with erasable TypeScript, not loader fallback. New Linux execut
 **23 required suite cases** (21 real-Docker cases plus two admission checks; one non-live guard
 skipped), **51 focused cases**, and all **460 required security cases**. Fresh Mac evidence is
 pending; neither the protected milestone nor latest-stable qualification is complete.
+
+`340771c` / CI `40111914657` still failed both actual Docker jobs: Node 24 **16 passed / seven
+failed**, Node 26 **22 passed / one failed** (each one non-live guard skipped). The closed
+boundaries identified `start`/`cleanup` refusals; all four isolated cron scenarios passed on Node
+26, whose remaining cancellation case was refused before command approval admission. This is
+not a completed milestone. Both browser/runtime lanes, macOS source/build, installers, upgrades
+and the 460-case security gate passed. Linux source tests failed one old exact diagnostic-string
+assertion; the strict replacement requires the new `(engine)` tag while preserving retry/count
+and zero-provider assertions. Local full rerun: **2,808 passed / 72 skips**; actual Linux browser/
+CLI: **26 passed / two platform skips**. The failed CI run stays failed.
+
+A follow-up distinguishes daemon-timer `timeout` from other closed preflight failures, without
+changing bounds or exposing raw cause material, and includes the refusal body in the actual
+approval fixture's failed-status assertion. Focused **57 cases** and all **460 security cases**
+pass. The next complete Mac run remains required; no isolated rerun or partial result substitutes
+for it.

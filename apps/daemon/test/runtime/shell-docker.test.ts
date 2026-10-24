@@ -468,15 +468,17 @@ describe('protected Docker preflight and pinned execution', () => {
     mkdirSync(hangingWorkspace)
     const startedAt = Date.now()
 
-    await expect(
-      preflightProtectedDockerRuntime({
-        image: 'fake:image',
-        dockerPath,
-        hostEnv: { PATH: testDir, HOME: testDir },
-        workspaceDir: hangingWorkspace,
-        workspaceRoot: hangingWorkspace,
-      }),
-    ).rejects.toThrow(/could not start its protected preflight container within 2000ms/)
+    const result = preflightProtectedDockerRuntime({
+      image: 'fake:image',
+      dockerPath,
+      hostEnv: { PATH: testDir, HOME: testDir },
+      workspaceDir: hangingWorkspace,
+      workspaceRoot: hangingWorkspace,
+    })
+    await expect(result).rejects.toThrow(
+      /could not start its protected preflight container within 2000ms/,
+    )
+    await expect(result).rejects.toMatchObject({ phase: 'start', kind: 'timeout' })
 
     expect(Date.now() - startedAt).toBeLessThan(3_000)
     const calls = invocations()
@@ -571,6 +573,10 @@ describe('protected Docker preflight and pinned execution', () => {
     const error = new DockerPreflightError('start', new Error('RAW_PRIVATE_SENTINEL'))
     expect(error.phase).toBe('start')
     expect(Reflect.set(error, 'phase', 'RAW_PRIVATE_SENTINEL')).toBe(false)
+    expect(Reflect.set(error, 'kind', 'RAW_PRIVATE_SENTINEL')).toBe(false)
+    expect(
+      () => new DockerPreflightError('start', null, 'RAW_PRIVATE_SENTINEL' as 'timeout'),
+    ).toThrow('invalid Docker preflight phase or kind')
     expect(() => new DockerPreflightError('RAW_PRIVATE_SENTINEL' as 'start', null)).toThrow(
       'invalid Docker preflight phase',
     )
