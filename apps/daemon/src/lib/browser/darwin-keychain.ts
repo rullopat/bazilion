@@ -33,6 +33,7 @@ export class DarwinBrowserKeychainError extends Error {
           'create',
           'unlock',
           'settings',
+          'verify-settings',
           'default',
         ].includes(value.phase) &&
         (value.status === null || Number.isSafeInteger(value.status))
@@ -152,7 +153,10 @@ export async function ensureDarwinBrowserKeychain(home: string, timeoutMs: numbe
   }
   let owner: OwnedDarwinWorker
   try {
-    owner = new OwnedDarwinWorker(child.pid, child, false)
+    // Native keychain operations cross into a system service outside this process group.
+    // Require a coded exit as well as EOF/absent group; forced exit cannot acknowledge those
+    // external side effects or release the profile for a competing writer.
+    owner = new OwnedDarwinWorker(child.pid, child, true)
   } catch {
     // No executable input was sent. EOF lets this exact fresh child exit without numeric-PID
     // signalling; nevertheless failed ownership admission must retain the profile as uncertain.

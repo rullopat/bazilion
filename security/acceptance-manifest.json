@@ -2,6 +2,12 @@
   "version": 1,
   "cases": [
     {
+      "id": "BROWSER-MACOS-KEYCHAIN-UNCERTAIN-SERVICE-EFFECTS",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/browser-darwin-keychain-owner.test.ts",
+      "test": "private keychain timeout with unacknowledged external effects retains recovery ownership"
+    },
+    {
       "id": "BROWSER-MACOS-CALLER-GRAPHIC-PERMISSION",
       "owner": "BAZ-072",
       "file": "apps/daemon/test/lib/darwin-gui.test.ts",

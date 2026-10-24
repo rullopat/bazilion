@@ -40,6 +40,7 @@ try {
   const unlock = security.func('int32_t SecKeychainUnlock(void *, uint32_t, const void *, uint8_t)')
   const select = security.func('int32_t SecKeychainSetDefault(void *)')
   const settings = security.func('int32_t SecKeychainSetSettings(void *, const void *)')
+  const copySettings = security.func('int32_t SecKeychainCopySettings(void *, void *)')
   const release = cf.func('void CFRelease(void *)')
   const check = (status) => {
     nativeStatus = status
@@ -74,9 +75,21 @@ try {
     phase = 'unlock'
     check(unlock(keychain, password.length, password, 1))
     const configuration = Buffer.alloc(12)
-    configuration.writeUInt32LE(1) // SEC_KEYCHAIN_SETTINGS_VERS1; no sleep/interval auto-lock.
+    configuration.writeUInt32LE(1) // SEC_KEYCHAIN_SETTINGS_VERS1.
+    // Match Apple's security(1) no-timeout settings: the implementation uses lockInterval
+    // even when useLockInterval is false. Zero means immediate expiry, not no auto-lock.
+    configuration.writeUInt32LE(0x7fffffff, 8)
     phase = 'settings'
     check(settings(keychain, configuration))
+    phase = 'verify-settings'
+    check(copySettings(keychain, configuration))
+    if (
+      configuration.readUInt32LE() !== 1 ||
+      configuration[4] !== 0 ||
+      configuration[5] !== 0 ||
+      configuration.readUInt32LE(8) !== 0x7fffffff
+    )
+      throw new Error('native keychain lock policy did not match')
     phase = 'default'
     check(select(keychain))
   } finally {

@@ -16,11 +16,13 @@ const state = vi.hoisted(() => ({
   payload: '',
   spawn: vi.fn(),
   settled: vi.fn(),
+  externalEffects: false,
 }))
 vi.mock('node:child_process', () => ({ spawn: (...args: unknown[]) => state.spawn(...args) }))
 vi.mock('../../src/lib/process/worker.ts', () => ({
   OwnedDarwinWorker: class {
-    constructor() {
+    constructor(_pid: number, _child: unknown, externalEffects: boolean) {
+      state.externalEffects = externalEffects
       if (!state.admit) throw new Error('unknown native birth')
     }
     settled() {
@@ -70,6 +72,7 @@ afterEach(() => {
   state.hang = false
   state.noPid = false
   state.payload = ''
+  state.externalEffects = false
   state.spawn.mockReset()
   state.settled.mockReset()
   for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true })
@@ -92,6 +95,7 @@ test('private keychain helper admits live ownership before secret input and copi
   expect(input.home).toBe(home)
   expect(input.password).toMatch(/^[a-f0-9]{64}$/)
   expect(state.settled).toHaveBeenCalledOnce()
+  expect(state.externalEffects).toBe(true)
   expect(child.kill).not.toHaveBeenCalled()
 })
 
@@ -132,6 +136,14 @@ test('private keychain helper timeout remains failure after owned retirement, ne
     cleanupUnknown: false,
   })
   expect(state.settled).toHaveBeenCalledOnce()
+})
+
+test('private keychain timeout with unacknowledged external effects retains recovery ownership', async () => {
+  state.hang = true
+  state.settle = false
+  const { home } = fixture()
+  await expect(ensureDarwinBrowserKeychain(home, 1)).rejects.toMatchObject({ cleanupUnknown: true })
+  expect(state.externalEffects).toBe(true)
 })
 
 test('private keychain failed spawn creates no signalling authority', async () => {

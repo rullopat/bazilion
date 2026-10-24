@@ -378,3 +378,15 @@ private-path, credential, redaction and ownership-failure tests expand the requi
 to **447 cases**, passed locally along with the 25 actual Linux browser/worker cases, root
 typecheck and bundled build. Actual native private-keychain and complete browser requalification
 on both Mac baselines remain pending.
+
+The first private-keychain candidate `c602ae0` /
+[CI 40088437522](https://github.com/rullopat/bazilion/actions/runs/40088437522) failed at native
+SetSettings (status -25293) on both baselines: **318 focused cases passed / six failed / five
+platform-only skips**; the actual-browser step was therefore not reached. No failed assertion was
+weakened. Public SecKeychain.cpp ignores useLockInterval when setting policy, while Apple's
+security(1) source uses INT_MAX, not zero, for no timeout. The follow-up corrects that encoding and
+reads the native settings back before admitting the browser. It also requires coded helper exit
+alongside EOF/absent group because Security.framework can request external system-service writes;
+a forced exit cannot acknowledge those side effects. Unknown settlement retains recovery.
+The expanded **448-case security gate** and root typecheck passed locally. A fresh normal Linux
+full suite passed **2,797 tests / 67 skips**; the earlier failed full run remains recorded above.
