@@ -4,6 +4,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   renameSync,
   rmSync,
   symlinkSync,
@@ -19,6 +20,7 @@ import {
   createDockerBashOperations,
   createPreparedDockerBashOperations,
   type DockerContainerIdentity,
+  DockerPreflightError,
   preflightProtectedDockerRuntime,
   terminateRecordedContainer,
 } from '../../src/runtime/shell/docker.ts'
@@ -74,8 +76,10 @@ if (args[0] === 'image' && args[1] === 'inspect') {
     process.exit(1)
   }
   const volumes = image === 'volume:image' ? { '/var/lib/example': {} } : null
-  const imageId = image.startsWith('sha256:') ? image : image === 'missing-tools:image'
-    ? ${JSON.stringify(`sha256:${'c'.repeat(64)}`)}
+  const imageId = image.startsWith('sha256:') ? image
+    : image === 'cleanup-hang:image' ? ${JSON.stringify(`sha256:${'f'.repeat(64)}`)}
+    : image === 'unacknowledged:image' ? ${JSON.stringify(`sha256:${'e'.repeat(64)}`)}
+    : image === 'missing-tools:image' ? ${JSON.stringify(`sha256:${'c'.repeat(64)}`)}
     : readFileSync(${JSON.stringify(imageIdPath)}, 'utf8').trim()
   process.stdout.write(JSON.stringify(imageId) + '\\t' + JSON.stringify(volumes) + '\\n')
   process.exit(0)
@@ -87,6 +91,10 @@ if (args[0] === 'container' && args[1] === 'create') {
     process.exit(125)
   }
   const name = args[args.indexOf('--name') + 1]
+  if (args.includes(${JSON.stringify(`sha256:${'e'.repeat(64)}`)})) {
+    setInterval(() => {}, 1_000)
+    return
+  }
   writeFileSync(${JSON.stringify(containerStatePath)}, name)
   if (args.some((arg) => arg.includes('fixture-slow-create'))) {
     setTimeout(() => process.exit(0), 1500)
@@ -136,11 +144,15 @@ if (args[0] === 'container' && args[1] === 'rm') {
   const runCommand = calls.find((call) => call[0] === 'run')?.at(-1)
   const createCommand = calls.find((call) => call[0] === 'container' && call[1] === 'create')
   const removeCount = calls.filter((call) => call[0] === 'container' && call[1] === 'rm').length
+  if (createCommand?.includes(${JSON.stringify(`sha256:${'e'.repeat(64)}`)})) {
+    process.stderr.write('Error response from daemon: No such container\\n')
+    process.exit(1)
+  }
   if (runCommand === '__startup_race__' && removeCount === 1) {
     process.stderr.write('Error response from daemon: No such container\\n')
     process.exit(1)
   }
-  if (runCommand === '__cleanup_hang__' || createCommand?.some((arg) => arg.includes('cleanup-hang-preflight'))) {
+  if (runCommand === '__cleanup_hang__' || createCommand?.includes(${JSON.stringify(`sha256:${'f'.repeat(64)}`)}) || createCommand?.some((arg) => arg.includes('cleanup-hang-preflight'))) {
     setInterval(() => {}, 1_000)
   } else {
     rmSync(${JSON.stringify(containerStatePath)}, { force: true })
@@ -498,6 +510,99 @@ describe('protected Docker preflight and pinned execution', () => {
     ).toHaveLength(3)
     expect(invocations().some((entry) => entry.args[0] === 'run')).toBe(false)
   }, 5_000)
+
+  test('readiness retains its private bind source when exact-container cleanup is unconfirmed', async () => {
+    await startDockerSocket()
+    const result = await checkProtectedDockerReadiness({
+      image: 'cleanup-hang:image',
+      dockerPath,
+      hostEnv: { PATH: testDir, HOME: testDir },
+    })
+    expect(result).toEqual({
+      ready: false,
+      image: 'cleanup-hang:image',
+      reason: 'Docker preflight failed',
+    })
+    const create = invocations().find(
+      (entry) => entry.args[0] === 'container' && entry.args[1] === 'create',
+    )
+    const source = flagValues(create?.args ?? [], '--mount')[0]
+      ?.split(',')
+      .find((part) => part.startsWith('source='))
+      ?.slice('source='.length)
+    expect(source?.startsWith(`${realpathSync(tmpdir())}/bazilion-docker-readiness-`)).toBe(true)
+    expect(existsSync(source as string)).toBe(true)
+    expect(JSON.stringify(result)).not.toContain(source)
+    // Synthetic unit fixture only: no real container was created; its timed-out Node helpers
+    // have closed. This is not a recovery operation or real-Docker qualification evidence.
+    rmSync(source as string, { recursive: true, force: true })
+  }, 5_000)
+
+  test('a missing unacknowledged readiness create retains private scratch for late materialization', async () => {
+    await startDockerSocket()
+    const result = await checkProtectedDockerReadiness({
+      image: 'unacknowledged:image',
+      dockerPath,
+      hostEnv: { PATH: testDir, HOME: testDir },
+    })
+    expect(result).toEqual({
+      ready: false,
+      image: 'unacknowledged:image',
+      reason: 'Docker preflight failed',
+    })
+    const create = invocations().find(
+      (entry) => entry.args[0] === 'container' && entry.args[1] === 'create',
+    )
+    const source = flagValues(create?.args ?? [], '--mount')[0]
+      ?.split(',')
+      .find((part) => part.startsWith('source='))
+      ?.slice('source='.length)
+    expect(source?.startsWith(`${realpathSync(tmpdir())}/bazilion-docker-readiness-`)).toBe(true)
+    expect(existsSync(source as string)).toBe(true)
+    expect(existsSync(containerStatePath)).toBe(false)
+    expect(
+      invocations().filter((entry) => entry.args[0] === 'container' && entry.args[1] === 'rm'),
+    ).toHaveLength(3)
+    // This controlled script created no container; cleanup is limited to its synthetic fixture.
+    rmSync(source as string, { recursive: true, force: true })
+  }, 10_000)
+
+  test('preflight failure phases are closed and cannot be mutated into raw diagnostics', () => {
+    const error = new DockerPreflightError('start', new Error('RAW_PRIVATE_SENTINEL'))
+    expect(error.phase).toBe('start')
+    expect(Reflect.set(error, 'phase', 'RAW_PRIVATE_SENTINEL')).toBe(false)
+    expect(() => new DockerPreflightError('RAW_PRIVATE_SENTINEL' as 'start', null)).toThrow(
+      'invalid Docker preflight phase',
+    )
+  })
+
+  test('non-Error create acknowledgement failure cannot admit a protected runtime', async () => {
+    await startDockerSocket()
+    let removed = false
+    await expect(
+      preflightProtectedDockerRuntime({
+        image: 'fake:image',
+        dockerPath,
+        hostEnv: { PATH: testDir, HOME: testDir },
+        workspaceDir: workspace,
+        lifecycle: {
+          name: () => 'bazilion-undefined-ack-fixture',
+          beforeCreate: async () => {},
+          afterCreate: async () => {
+            throw undefined
+          },
+          afterRemove: async () => {
+            removed = true
+            rmSync(containerStatePath, { force: true })
+          },
+        },
+      }),
+    ).rejects.toMatchObject({ phase: 'create' })
+    expect(removed).toBe(true)
+    expect(
+      invocations().some((entry) => entry.args[0] === 'container' && entry.args[1] === 'start'),
+    ).toBe(false)
+  })
 
   test('readiness failures expose a bounded reason without endpoint or executable paths', async () => {
     await startDockerSocket()

@@ -5,6 +5,7 @@ import { loadPromptSkills, loadProtectedHomeDocuments } from '../runtime/index.t
 import { ensureContainedRealDirectory, resolveRealDirectory } from '../runtime/safe-files.ts'
 import type { DockerCodingSelection } from '../runtime/shell/coding.ts'
 import {
+  DockerPreflightError,
   type DockerReadOnlyMount,
   type DockerResourceLifecycle,
   type ProtectedDockerRuntime,
@@ -146,9 +147,11 @@ export async function prepareAgentDockerInputs(
       workspaceRoot: agent.team.path,
       readOnlyMounts,
     })
-  } catch {
+  } catch (error) {
+    // Publish only the daemon-authored boundary, never the Docker error/cause or host paths.
+    const phase = error instanceof DockerPreflightError ? ` (${error.phase})` : ''
     throw new ProtectedExecutionUnavailableError(
-      'Protected Docker runtime is unavailable. Run `bazilion doctor` for remediation.',
+      `Protected Docker runtime is unavailable${phase}. Run \`bazilion doctor\` for remediation.`,
     )
   }
   options.signal?.throwIfAborted()

@@ -52,7 +52,9 @@ runtime. Host execution remains host execution under its existing policy.
 
 A known protected-runtime admission refusal returns HTTP **409** with
 `code: "protected_execution_unavailable"` and daemon-authored remediation. CLI and web share this
-response; raw Docker errors and credential material are not forwarded. No model turn is started
+response; a closed `engine`, `create`, `start` or `cleanup` phase may identify the failed Docker
+boundary, but never proves execution or settlement. Raw Docker errors and credential material are
+not forwarded. No model turn is started
 and there is no host fallback. A required repository-context refusal instead returns **422** with
 the actual guarded-read issue code, not a blanket Linux-only claim. Resolve the reported boundary;
 do not bypass unsafe paths or uncertain workspace ownership.
@@ -123,7 +125,9 @@ Docker defaults do not change a host turn's cwd or environment.
 Canonical workspace ownership covers aliases and overlapping roots, including Teams without
 saved defaults. Commands keep their Agent turn's ownership until process/container cleanup is
 confirmed. Cancellation is not proof of cleanup. Uncertain cleanup leaves the workspace blocked
-for recovery and never records a fabricated success.
+for recovery and never records a fabricated success. A readiness probe also retains its private
+bind-source scratch when exact-container cleanup is unconfirmed; failed readiness is not proof
+that its resources are absent.
 
 A lost host worker may leave separate process groups; restarting the daemon alone cannot prove
 those commands stopped. The same-boot workspace remains blocked when cleanup is uncertain. A host

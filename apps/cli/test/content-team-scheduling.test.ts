@@ -3,8 +3,9 @@ import type {
   Agent,
   CommunicationApproval,
   ListTriggerDispatchesResponse,
+  ListTriggersResponse,
 } from '@bazilion/api-types'
-import { afterAll, beforeAll, expect, test } from 'vitest'
+import { afterEach, beforeEach, expect, test } from 'vitest'
 import type { TeamPolicyDocument } from '../src/team-interchange.ts'
 import {
   type CannedResponse,
@@ -114,7 +115,11 @@ async function until(fn: () => boolean, ms: number, what: string): Promise<void>
   }
 }
 
-beforeAll(async () => {
+beforeEach(async () => {
+  // A failed occurrence must not keep consuming a later scenario's canned responses or leases.
+  rounds.length = 0
+  agents.clear()
+  triggerId = ''
   mock = await startLmStudioMock()
   mock.setFallback(router([], []))
   server = await startTestServer({
@@ -169,14 +174,66 @@ beforeAll(async () => {
   )
 }, 60_000)
 
-afterAll(async () => {
+function closedFailureReason(error: string | null | undefined): string | null {
+  if (!error) return null
+  const phase =
+    /^Protected Docker runtime is unavailable(?: \((engine|create|start|cleanup)\))?\./.exec(error)
+  if (phase) return `protected_docker_${phase[1] ?? 'unspecified'}`
+  if (error.includes('workspace_recovery_required')) return 'workspace_recovery_required'
+  if (error.includes('workspace_busy')) return 'workspace_busy'
+  return 'other failure'
+}
+
+async function recordFixtureDispatchFacts(): Promise<void> {
+  if (
+    process.env.BAZILION_TEST_SCHEDULING_EVIDENCE !== '1' ||
+    !server ||
+    !agents.has('coordinator')
+  )
+    return
+  try {
+    const headers = { authorization: `Bearer ${server.token}` }
+    const response = await fetch(`${server.url}/api/agents/${agentId('coordinator')}/triggers`, {
+      headers,
+      signal: AbortSignal.timeout(1_500),
+    })
+    if (!response.ok) throw new Error('fixture diagnostic unavailable')
+    const listed = (await response.json()) as ListTriggersResponse
+    for (const trigger of listed.triggers.slice(0, 4)) {
+      const historyResponse = await fetch(
+        `${server.url}/api/triggers/${trigger.id}/dispatches?limit=5`,
+        { headers, signal: AbortSignal.timeout(1_500) },
+      )
+      if (!historyResponse.ok) throw new Error('fixture diagnostic unavailable')
+      const history = (await historyResponse.json()) as ListTriggerDispatchesResponse
+      schedulingEvidence('cron-fixture-dispatch-facts', {
+        providerRounds: mock.callCount(),
+        dispatches: history.dispatches.map(
+          ({ id, scheduledAt, status, attemptCount, lastError }) => ({
+            id,
+            scheduledAt,
+            status,
+            attemptCount,
+            failure: closedFailureReason(lastError),
+          }),
+        ),
+      })
+    }
+  } catch {
+    // Observability cannot replace or erase a failure, and may not publish raw error material.
+    schedulingEvidence('cron-fixture-dispatch-facts-unavailable', {})
+  }
+}
+
+afterEach(async () => {
+  await recordFixtureDispatchFacts()
   try {
     await stopSettledTestServer(server)
   } finally {
     await mock.stop()
   }
   schedulingEvidence('cron-fixture-stopped', { daemonClosed: true, mockClosed: true })
-})
+}, 30_000)
 
 test.skipIf(!docker)(
   'two actual cron minutes drive coordinator cycles with distinct dispatches',
@@ -483,7 +540,7 @@ test.runIf(docker)(
                 scheduledAt,
                 status,
                 attemptCount,
-                lastError,
+                failure: closedFailureReason(lastError),
               }),
             ),
           })

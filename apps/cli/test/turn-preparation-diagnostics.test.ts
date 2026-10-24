@@ -86,7 +86,8 @@ test('missing protected Docker prerequisites return the closed refusal before pr
   const body = await response.json()
   expect(body).toEqual({
     code: 'protected_execution_unavailable',
-    error: 'Protected Docker runtime is unavailable. Run `bazilion doctor` for remediation.',
+    error:
+      'Protected Docker runtime is unavailable (engine). Run `bazilion doctor` for remediation.',
   })
   expect(JSON.stringify(body)).not.toContain('synthetic-local-fixture')
   expect(mock.callCount()).toBe(0)

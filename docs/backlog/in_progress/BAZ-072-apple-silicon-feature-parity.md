@@ -524,3 +524,23 @@ security cases**. Four existing host-approval journeys also pass after replacing
 SSH path with an explicit synthetic credential-shaped file under the fixture-owned Agent home;
 local regressions must not touch personal credentials. The Mac Docker failures above remain failed
 evidence, not a partial milestone completion.
+
+`98c2c0f` / CI `40105838246` passed all eight non-Docker jobs, but the three-vCPU Docker run
+**failed**: Node 24 **20 passed / three failed**, Node 26 **15 passed / eight failed** plus a
+retained-writer hook failure. Native observations confirmed `3,sockets=1,cores=3,threads=1`;
+standalone starts improved to **1.124 s / 1.738 s**. That does not explain every per-turn refusal
+or justify declaring the runner incapable. Cron execution, admission and retry-count assertions
+remain required and failed.
+
+Follow-up fixes retain private readiness scratch after unconfirmed cleanup, distinguish closed
+`engine/create/start/cleanup` failures without publishing raw errors, and reject even non-Error
+create-acknowledgement failures before start. The standalone probe also records the actual create
+acknowledgement: a missing unacknowledged create cannot authorize scratch removal when Docker
+may still materialize it late. Independent cron scenarios now use separate daemon
+homes so unfinished dispatches cannot consume another scenario's canned responses; each scenario's
+own occurrences, assertions and deadlines are unchanged. Bounded fixture dispatch facts omit raw
+error material. A source-worker strip-only parsing regression in the new diagnostic class was
+caught and fixed with erasable TypeScript, not loader fallback. New Linux execution passed all
+**23 required suite cases** (21 real-Docker cases plus two admission checks; one non-live guard
+skipped), **51 focused cases**, and all **460 required security cases**. Fresh Mac evidence is
+pending; neither the protected milestone nor latest-stable qualification is complete.

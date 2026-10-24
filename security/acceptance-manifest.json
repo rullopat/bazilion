@@ -2,6 +2,36 @@
   "version": 1,
   "cases": [
     {
+      "id": "DOCKER-READINESS-UNACKNOWLEDGED-MISS-RETAINS-SCRATCH",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/runtime/shell-docker.test.ts",
+      "test": "protected Docker preflight and pinned execution > a missing unacknowledged readiness create retains private scratch for late materialization"
+    },
+    {
+      "id": "DOCKER-READINESS-UNKNOWN-RETAINS-SCRATCH",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/runtime/shell-docker.test.ts",
+      "test": "protected Docker preflight and pinned execution > readiness retains its private bind source when exact-container cleanup is unconfirmed"
+    },
+    {
+      "id": "DOCKER-PREFLIGHT-CLOSED-IMMUTABLE-PHASE",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/runtime/shell-docker.test.ts",
+      "test": "protected Docker preflight and pinned execution > preflight failure phases are closed and cannot be mutated into raw diagnostics"
+    },
+    {
+      "id": "DOCKER-PREFLIGHT-NONERROR-ACK-REFUSAL",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/runtime/shell-docker.test.ts",
+      "test": "protected Docker preflight and pinned execution > non-Error create acknowledgement failure cannot admit a protected runtime"
+    },
+    {
+      "id": "PROTECTED-PREFLIGHT-PHASE-NO-RAW-MATERIAL",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/protected-execution.test.ts",
+      "test": "protected execution preparation > protected Docker diagnostics publish only the closed phase, never raw error material"
+    },
+    {
       "id": "MACOS-CONTEXT-REFUSAL-ACTUAL-BOUNDARY",
       "owner": "BAZ-072",
       "file": "apps/cli/test/turn-preparation-diagnostics.test.ts",

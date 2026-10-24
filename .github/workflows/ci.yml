@@ -247,6 +247,7 @@ jobs:
       - name: Test actual Docker isolation, lifecycle recovery and protected inbox work
         env:
           BAZILION_TEST_DOCKER: '1'
+          BAZILION_TEST_SCHEDULING_EVIDENCE: '1'
           BAZILION_TEST_DAEMON_STDERR_DIR: ${{ runner.temp }}/protected-daemon-stderr
         run: |
           mkdir -p "$BAZILION_TEST_DAEMON_STDERR_DIR"

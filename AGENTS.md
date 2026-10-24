@@ -267,6 +267,7 @@ API in `apps/daemon/src/core/`: `openSecrets(db, password)` and `openConfig(db)`
 
 - Biome formatter: single quotes, no semicolons, trailing commas, 2-space indent, 100-col width.
 - TS is strict with `noUncheckedIndexedAccess` and `verbatimModuleSyntax`. `.ts` extensions are required on all relative imports (`allowImportingTsExtensions: true`) — `tsx` and Vite both handle it.
+- Keep source-worker-reachable modules erasable TypeScript: the worker's native strip-only path cannot parse parameter properties or enums. Use explicit fields/assignments. Root tsc/Vitest success alone is not source-worker execution evidence.
 - `apps/web/` is excluded from the root `tsconfig.json` and from biome (it has its own Vite/TanStack-managed tooling). Run `pnpm --filter @bazilion/web typecheck` for web-only TS checks. The whole-tree `typecheck` intentionally skips it.
 - **The alpha database contract is clean-install only.** The complete canonical schema lives in
   `apps/daemon/src/core/db/migrations/0001_init.sql`. Until a stable migration contract is

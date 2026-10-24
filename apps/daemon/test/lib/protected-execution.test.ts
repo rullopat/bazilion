@@ -167,6 +167,27 @@ describe('protected execution preparation', () => {
     expect(preflightInputs).toHaveLength(1)
   })
 
+  test('protected Docker diagnostics publish only the closed phase, never raw error material', async () => {
+    const { DockerPreflightError } = await import('../../src/runtime/shell/docker.ts')
+    preflightFailure = new DockerPreflightError(
+      'start',
+      new Error(`PRIVATE_RAW_TOKEN ${env.home} unix:///private-endpoint`),
+    )
+    const { prepareProtectedExecution } = await import('../../src/lib/protected-execution.ts')
+    const error = await prepareProtectedExecution(resolveAgent(env.db, env.paths, agentId)).then(
+      () => undefined,
+      (failure: unknown) => failure,
+    )
+    expect(error).toMatchObject({
+      code: 'protected_execution_unavailable',
+      message:
+        'Protected Docker runtime is unavailable (start). Run `bazilion doctor` for remediation.',
+    })
+    expect((error as Error).message).not.toContain('PRIVATE_RAW_TOKEN')
+    expect((error as Error).message).not.toContain(env.home)
+    expect(error).not.toHaveProperty('cause')
+  })
+
   test('returns an immutable nominal preflight that can be consumed only once', async () => {
     const {
       assertPreparedProtectedExecution,
