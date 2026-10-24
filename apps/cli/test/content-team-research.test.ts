@@ -22,9 +22,8 @@ const recipe = join(import.meta.dirname, '../../../examples/content-team')
 const templatePath = join(recipe, 'team-template.json')
 const roles = ['coordinator', 'researcher', 'writer', 'designer'] as const
 const docker = process.env.BAZILION_TEST_DOCKER === '1'
-// Even a never-woken turn first delivers through an operator turn, whose
-// repository-context preparation is Linux-only until BAZ-057.
-const linux = process.platform === 'linux'
+// Operator-turn capture and owned worker settlement now cover both supported POSIX hosts.
+const portable = process.platform === 'linux' || process.platform === 'darwin'
 const WAKE_MARKER = '[[bazilion:inbox-wake]]'
 
 // Public-shaped fixture page with an embedded injection attempt. Loopback
@@ -287,7 +286,7 @@ afterAll(async () => {
   schedulingEvidence('research-fixtures-stopped', { daemonsClosed: true, mockClosed: true })
 })
 
-test.skipIf(!linux)(
+test.skipIf(!portable)(
   'dead protected runtime: delegation is delivered but never wakes the specialist',
   async () => {
     const brief = 'Please retrieve the orchid page and summarize it.'

@@ -435,4 +435,23 @@ worker egress, crash retirement and strict fixture cleanup. Local whole-tree typ
 **2,801 normal tests / 68 skips**, **453 required security cases**, and **26 actual Linux browser/
 worker cases / two platform-only skips** passed. The managed-browser milestone is complete for
 this observed environment; it is not latest-stable integrated qualification or release readiness.
-Protected/Docker/background execution and the final latest-stable qualification remain next.
+Protected/Docker/background execution is now active; final latest-stable qualification follows.
+
+### Protected execution qualification (in progress)
+
+The existing Docker backend already admits supported POSIX numeric uid/gid hosts and uses a
+local Unix endpoint, pinned executable/image identity, clean env-fd input, recursive-bind denial,
+read-only inputs and exact-container settlement. No platform-independent admission control was
+removed to force Mac execution. Nine actual Docker/scheduler-inbox integration cases passed on
+the local Linux Docker 29.9.1 / linux-amd64 engine. The obsolete Linux-only gate on the dead-runtime
+refusal journey is extended to the already-supported macOS operator-turn path.
+
+New hosted Apple Silicon jobs on both Node baselines provision an owned local ARM Docker VM
+through Colima/Lima/QEMU, sharing the canonical home/temp paths needed by real mounts. They record
+host OS/architecture/Node, exact VM accelerator/CPU through birth-bound native argv observation,
+Docker engine/image architecture and real container uname; TCG, if selected, is explicitly CPU
+emulation, never synthetic Docker responses or Intel/Rosetta qualification. Only public images
+are pulled during explicit CI provisioning; runtime commands retain pull-never and fail closed.
+Real filesystem/env/network isolation, cancellation, create/restart recovery and protected inbox
+boundaries remain required. Actual Mac VM/protected results, approval handling and the remaining
+background/restricted journeys are pending, not marked passed.
