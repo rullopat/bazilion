@@ -219,9 +219,9 @@ jobs:
           } >> "$GITHUB_ENV"
           host_home=$(node -e "console.log(require('node:fs').realpathSync(require('node:os').homedir()))")
           host_tmp=$(node -e "console.log(require('node:fs').realpathSync(require('node:os').tmpdir()))")
-          # One generic ARMv8 vCPU avoids emulated cross-vCPU coordination and optional
-          # max-CPU vector features on hosted runners without HVF. Product limits stay fixed.
-          colima start bzd --activate=false --runtime docker --vm-type qemu --arch aarch64 --cpu 1 --cpu-type cortex-a72 --memory 3 --disk 20 --mount-type 9p --binfmt=false --mount "$host_home:w" --mount "$host_tmp:w"
+          # Keep the image's default QEMU CPU model; one vCPU avoids emulated cross-vCPU
+          # coordination on hosted runners without HVF. Product limits stay fixed.
+          colima start bzd --activate=false --runtime docker --vm-type qemu --arch aarch64 --cpu 1 --memory 3 --disk 20 --mount-type 9p --binfmt=false --mount "$host_home:w" --mount "$host_tmp:w"
           colima status bzd
           export DOCKER_HOST="unix://$COLIMA_HOME/bzd/docker.sock"
           printf 'DOCKER_HOST=%s\n' "$DOCKER_HOST" >> "$GITHUB_ENV"
@@ -257,10 +257,23 @@ jobs:
             apps/daemon/test/runtime/coding-recovery.integration.test.ts \
             apps/cli/test/content-team-research.test.ts \
             apps/cli/test/docker-approval.integration.test.ts \
+            apps/cli/test/turn-preparation-diagnostics.test.ts \
             apps/cli/test/content-team-scheduling.test.ts \
             apps/daemon/test/lib/verification-container.integration.test.ts
 
-      - name: Retain controlled daemon diagnostics on failure
+      - name: Collect bounded owned-VM boot diagnostics on failure
+        if: failure()
+        run: |
+          out="$RUNNER_TEMP/protected-daemon-stderr"
+          mkdir -p "$out"
+          # Only logs from this provisioned profile, not config, keys, disk images or host state.
+          if test -n "${COLIMA_HOME:-}"; then
+            for log in "$COLIMA_HOME"/_lima/colima-bzd/serial*.log "$COLIMA_HOME"/_lima/colima-bzd/ha.stderr.log; do
+              if test -f "$log"; then tail -c 65536 "$log" > "$out/vm-$(basename "$log")"; fi
+            done
+          fi
+
+      - name: Retain controlled daemon and VM diagnostics on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:

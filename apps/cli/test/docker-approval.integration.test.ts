@@ -31,6 +31,7 @@ describe.skipIf(!docker)('actual Docker command approval over daemon HTTP and wo
     mock = await startLmStudioMock()
     server = await startTestServer({
       LMSTUDIO_URL: mock.url,
+      LMSTUDIO_API_KEY: 'synthetic-lmstudio-fixture-key',
       BAZILION_BASH_SANDBOX: 'docker',
       BAZILION_BASH_SANDBOX_IMAGE: process.env.BAZILION_TEST_DOCKER_IMAGE ?? 'debian:bookworm-slim',
       BAZILION_BASH_APPROVAL: 'dangerous',

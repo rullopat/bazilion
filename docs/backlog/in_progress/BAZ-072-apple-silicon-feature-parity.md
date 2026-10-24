@@ -492,3 +492,20 @@ Protected daemon and verification teardown retain the home, DB and receipts when
 unconfirmed. Actual Linux execution of all six suites passed **21 real cases**, with only the
 one mutually exclusive non-live guard skipped. These are real containers and schedulers with
 synthetic model responses, not live-model or human acceptance. Expanded Mac results are pending.
+
+`beb2d58` / CI `40101859770` passed all eight non-Docker jobs, including both browser/runtime
+lanes. Both Cortex-A72 VM profiles failed before SSH admission; **no expanded Mac Docker cases
+ran**. The next provisioning attempt restores the image's default `max` CPU model while keeping
+one vCPU, with bounded owned-profile boot logs and independent setup timings. It is not a pass
+or evidence of a product incompatibility.
+
+The observed coordinator 500s also exposed a separate, reproduced API diagnostics defect. Two
+regressions failed before the route fix: known protected-runtime refusal now returns **409** /
+`protected_execution_unavailable` with only daemon-authored remediation, while guarded repository
+context retains **422** and its actual issue code without the obsolete Linux-only claim. CLI/web
+share this daemon response; pre-provider refusal and no fallback remain unchanged. Qualification
+fixtures now plant synthetic selected-provider credentials and check names **and values** stay out
+of scheduled/inbox containers. Root typecheck/lint and the **455-case** security gate passed;
+selected actual Linux diagnostics/approval/inbox **10 cases** and the real scheduled-container
+sentinel case passed. The earlier full **21-case** Linux run remains distinct from these reruns.
+Mac protected and latest-stable integrated qualification remain open.

@@ -258,6 +258,7 @@ beforeAll(async () => {
   const deadSocket = join(tmpdir(), randomUUID(), 'docker.sock')
   const baseEnv = {
     LMSTUDIO_URL: mock.url,
+    LMSTUDIO_API_KEY: 'synthetic-lmstudio-fixture-key',
     BAZILION_TEAM_POLICY_ENFORCEMENT: 'on',
     BAZILION_IMAGE_GENERATION: 'off',
     BAZILION_SCHEDULER_TICK_MS: '200',
@@ -432,6 +433,10 @@ test.runIf(docker)(
     expect(dumped).toContain('PATH=')
     for (const forbidden of [
       full.token,
+      'synthetic-lmstudio-fixture-key',
+      'LMSTUDIO_API_KEY=',
+      'BAZILION_WEB_SEARCH_URL=',
+      searxUrl,
       'OPENAI_API_KEY=',
       'OPENROUTER_API_KEY=',
       'BRAVE_API_KEY=',

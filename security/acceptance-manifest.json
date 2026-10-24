@@ -2,6 +2,18 @@
   "version": 1,
   "cases": [
     {
+      "id": "MACOS-CONTEXT-REFUSAL-ACTUAL-BOUNDARY",
+      "owner": "BAZ-072",
+      "file": "apps/cli/test/turn-preparation-diagnostics.test.ts",
+      "test": "an unsafe repository-context input reports the actual refusal, not a Linux-only claim"
+    },
+    {
+      "id": "PROTECTED-ADMISSION-CLOSED-HTTP-REFUSAL",
+      "owner": "BAZ-072",
+      "file": "apps/cli/test/turn-preparation-diagnostics.test.ts",
+      "test": "missing protected Docker prerequisites return the closed refusal before provider use, never HTTP 500 or host execution"
+    },
+    {
       "id": "BROWSER-CI-PRIVILEGE-NO-OPERATOR-SESSION",
       "owner": "BAZ-072",
       "file": "apps/daemon/test/lib/browser-ci-session.test.ts",

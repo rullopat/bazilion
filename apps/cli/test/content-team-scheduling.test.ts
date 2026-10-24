@@ -119,6 +119,7 @@ beforeAll(async () => {
   mock.setFallback(router([], []))
   server = await startTestServer({
     LMSTUDIO_URL: mock.url,
+    LMSTUDIO_API_KEY: 'synthetic-lmstudio-fixture-key',
     TZ: 'UTC',
     BAZILION_TEAM_POLICY_ENFORCEMENT: 'on',
     BAZILION_IMAGE_GENERATION: 'off',
@@ -345,6 +346,8 @@ test.runIf(docker)(
     expect(env).toContain('PATH=')
     for (const forbidden of [
       server.token,
+      'synthetic-lmstudio-fixture-key',
+      'LMSTUDIO_API_KEY=',
       'OPENAI_API_KEY=',
       'OPENROUTER_API_KEY=',
       'BRAVE_API_KEY=',
