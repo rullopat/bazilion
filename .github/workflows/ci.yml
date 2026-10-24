@@ -136,6 +136,7 @@ jobs:
           apps/daemon/test/lib/browser-process.test.ts
           apps/daemon/test/lib/browser-profile.test.ts
           apps/daemon/test/lib/browser-launch.test.ts
+          apps/daemon/test/lib/browser-lifecycle.test.ts
 
       # Operator-authorized disposable test account only: no personal credentials, no product
       # keychain/privilege feature, and no mock keychain or encryption/security-check relaxation.

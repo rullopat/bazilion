@@ -2,6 +2,18 @@
   "version": 1,
   "cases": [
     {
+      "id": "BROWSER-NATIVE-TAB-ACTIVATION-LEASE",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/browser-lifecycle.test.ts",
+      "test": "tab selection awaits native activation before publishing a new observation"
+    },
+    {
+      "id": "BROWSER-NATIVE-TAB-ACTIVATION-FAILURE-REVOKES",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/browser-lifecycle.test.ts",
+      "test": "failed native tab activation revokes previous refs without dispatching an action"
+    },
+    {
       "id": "BROWSER-MACOS-KEYCHAIN-UNCERTAIN-SERVICE-EFFECTS",
       "owner": "BAZ-072",
       "file": "apps/daemon/test/lib/browser-darwin-keychain-owner.test.ts",

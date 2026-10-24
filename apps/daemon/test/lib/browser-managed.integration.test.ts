@@ -1302,6 +1302,51 @@ run('managed browser adapter lane (BAZILION_TEST_BROWSER=1)', () => {
     }
   })
 
+  test('selecting an existing tab activates its native page before observation and navigation', {
+    timeout: 60_000,
+  }, async () => {
+    const paths = resolvePaths(join(scratch, 'native-tab-selection'))
+    const agentId = 'native-tab-selection'
+    const admission = { paths, agentId, teamId: 'tab-team' }
+    const config = {
+      mode: 'headless' as const,
+      executablePath: exePath,
+      allowPrivate: true,
+      idleMs: 60_000,
+      maxSessions: 4,
+    }
+    const deps = { daemonInstanceId: 'native-tab-fixture' }
+    const invoke = (action: string, args: Record<string, unknown> = {}) =>
+      invokeBrowserAction(agentId, action, args, config, admission, deps)
+    try {
+      await invoke('navigate', { url: instrumented.downloadPage })
+      await invoke('tabs', { op: 'new', url: instrumented.bigPage })
+      const context = resources().browsers.get(agentId)?.handle?.context
+      if (!context) throw new Error('fixture browser not running')
+      const first = context.pages()[0]
+      const second = context.pages()[1]
+      if (!first || !second) throw new Error('fixture tabs missing')
+      await second.bringToFront()
+      expect(await second.evaluate('document.visibilityState')).toBe('visible')
+      const selected = await invoke('tabs', { op: 'select', tabId: 'tab-1' })
+      expect(selected[0]).toMatchObject({
+        type: 'text',
+        text: expect.stringContaining('tab tab-1'),
+      })
+      expect(await first.evaluate('document.visibilityState')).toBe('visible')
+      const target = `${instrumented.origin}/selected-tab`
+      const navigated = await invoke('navigate', { url: target })
+      expect(navigated[0]).toMatchObject({
+        type: 'text',
+        text: expect.stringContaining('instrumented origin'),
+      })
+      expect(first.url()).toBe(target)
+      expect(second.url()).toBe(instrumented.bigPage)
+    } finally {
+      await closeBrowserSession(agentId)
+    }
+  })
+
   test('cancelling active browser navigation retires the real owned process and marker', {
     timeout: 60_000,
   }, async () => {

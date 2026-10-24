@@ -66,6 +66,15 @@ if (phase === '--create-session') {
     process.getgroups().some((group) => group !== gid)
   )
     throw new Error('non-GUI fixture failed to irreversibly drop elevated credentials')
+  let rootRegainDenied = false
+  try {
+    process.setuid(0)
+  } catch (error) {
+    if (error.code !== 'EPERM') throw error
+    rootRegainDenied = true
+  }
+  if (!rootRegainDenied || process.getuid() !== uid || process.geteuid() !== uid)
+    throw new Error('non-GUI fixture retained root credentials after privilege drop')
   console.error(
     `controlled non-GUI audit session created; credentials dropped to uid=${uid}, gid=${gid}`,
   )
@@ -154,6 +163,8 @@ try {
   await handle.close()
   handle = undefined
   getDarwinProcessInspector().assertReady()
+  if (info(0xffffffff, session, attributes) !== 0 || (attributes.readUInt32LE() & 0x10) !== 0)
+    throw new Error('non-GUI caller-session evidence changed during browser qualification')
   process.stdout.write(
     JSON.stringify({
       availability,

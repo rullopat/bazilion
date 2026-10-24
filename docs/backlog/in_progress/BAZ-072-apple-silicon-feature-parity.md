@@ -390,3 +390,18 @@ alongside EOF/absent group because Security.framework can request external syste
 a forced exit cannot acknowledge those side effects. Unknown settlement retains recovery.
 The expanded **448-case security gate** and root typecheck passed locally. A fresh normal Linux
 full suite passed **2,797 tests / 67 skips**; the earlier failed full run remains recorded above.
+
+`d0a1410` / [CI 40089482047](https://github.com/rullopat/bazilion/actions/runs/40089482047)
+passed all six non-runtime jobs and **325 focused cases per Mac baseline / five platform-only
+skips**. Native private keychain create/reopen, caller-account default preservation, actual headed
+and non-GUI screenshots, process/marker retirement, service-worker persistence/egress and the
+other direct-browser cases passed on both Node versions. Each actual lane was **26 passed / one
+failed**: the CLI's second research scenario timed out waiting for body attachment after a tab
+switch. The bounded capture deadline is unchanged. Inspection found logical tab selection did not
+activate the native page; two new deterministic lifecycle tests fail before correcting that
+behavior. The next candidate awaits native bringToFront under the same entry lease, invalidates
+old authority before activation, and refuses fresh-ref publication on activation failure. It adds
+an actual select/observe/navigate regression and strengthens the non-GUI fixture's permanent-drop
+and final native-session assertions. The **450-case security gate**, root typecheck, 79 focused
+observation/lifecycle cases, and **26 actual Linux browser/worker cases / two platform-only skips**
+passed locally. The final CLI/Mac rerun is pending; browser milestone remains incomplete.
