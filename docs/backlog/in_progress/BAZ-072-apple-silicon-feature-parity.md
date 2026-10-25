@@ -137,22 +137,21 @@ credentials/spend; this story does not authorize paid calls or use of personal a
 
 ## Open work and sequencing
 
-- Audit the technical minimum and arrange latest-stable actual arm64 runners/hardware, GUI browser
-  sessions and a local Docker runtime. Testing older macOS versions is not required by the operator;
-  this Linux development host cannot provide macOS evidence.
-- Establish safe macOS Git access and process-ownership designs first; downstream features depend
-  on them. Neither ordinary-chat success nor a `ps`/PID probe alone establishes these contracts.
-- Then implement the dependent coding, stdio, browser and protected-runtime paths. Keep feature
-  gates closed until their own safety requirements pass, even if another macOS capability works.
-- Keep release acceptance here and in CI/release records, not separate progress/evidence dumps.
-  The story is In Progress for the 0.25 release effort; technical-floor auditing and safe platform
-  designs are the first implementation tasks, not settled prerequisites. Split bounded
-  implementation stories if needed without dropping any parity requirement.
+- Git, MCP stdio, owned-worker, managed-browser and protected/background implementations have
+  observed acceptance. Latest-stable arm64 hardware/local Docker and the separate technical-floor
+  audit are available. Older-OS qualification is not required or inferred.
+- Finish the actual latest-stable desktop-GUI case on both Node baselines and reconcile the final
+  integrated/source/installed/security/upgrade/build evidence. Ordinary SSH is positively non-GUI;
+  never substitute a console-user label, privileged hosted-CI fixture or fake mode result.
+- Keep unrelated release acceptance open, including separately authorized live-provider/image
+  generation and any remaining broader captured-change workflows. The bounded implementation
+  goal is not all eight release gates and does not authorize publication, website deployment or
+  version bumps. Keep concise outcomes here and in CI/PR records, not progress/evidence sidecars.
 
 ## As built
 
-Initial Git implementation is in progress: the single hardened inspector retains Linux fd-relative
-access and adds a bounded private-worktree backend for macOS. Ignore-aware guarded copying,
+The initial Git increment extended the single hardened inspector while retaining Linux fd-relative
+access and adding a bounded private-worktree backend for macOS. Ignore-aware guarded copying,
 independent source validation, frozen snapshot bytes and scratch disposal have focused tests on
 Linux; Git capture/changes/identity suites run on the actual macOS CI path. Initial candidate
 `0ae74d6` passed all eight jobs in [CI](https://github.com/rullopat/bazilion/actions/runs/39955676046),
@@ -648,7 +647,33 @@ not a secret-free result. Neither observation is signalling authority or a new w
 The same inputs are independently checked against an actual controlled child's self-report.
 Linux actual browser **26 passed / two platform skips**, focused **19 passed**, full regression
 **2,812 passed / 72 gated skips**, **464 required security cases**, typechecks and lint pass.
-Updated Mac native reruns remain required.
+The updated physical `dec4deb` native reruns now pass on **both** exact Node baselines:
+**19 process/evidence cases**, and **27 managed-browser/CLI cases** with the separately required
+headed case left for a real desktop caller. Full source runs each pass **2,459 / 71 gated skips**,
+plus **four actual headless browser-live cases**, typechecks, builds and packed artifacts. Guarded
+fresh installed trials each pass native fs-safe/Pi 1.4.0 admission, stdio descendant retirement,
+empty/instructed Team chat through actual CLI/API/browser UI, 1280/390-pixel diagnostics and
+settled uninstall. Local ARM Docker is truthfully reported ready across API/doctor/Config. Package
+provisioning may fetch public dependencies; only admitted rebuilds run, not unrestricted npm
+lifecycle hooks. Providers are synthetic; no live-model or human visual acceptance is inferred.
+
+`8ffbc29` / [CI 40193120372](https://github.com/rullopat/bazilion/actions/runs/40193120372) passes
+**all ten jobs**, including both complete hosted TCG Docker lanes. This does not retroactively
+relabel earlier hosted failures or prove every TCG run meets the deadline. `dec4deb` / CI
+`40196430852` passes all eight non-Docker gates, including Linux source/browser, upgrades,
+installers and 464-case security, but **fails both hosted TCG Docker jobs**: Node 24 **15 passed /
+eight failed**, Node 26 **19 passed / four failed**, each with the exclusive non-live guard
+skipped. Closed `start: timeout` / `protected_docker_start_timeout` recurs; these failures remain
+failed. On the approved physical latest-stable VZ target, the **same `dec4deb` complete seven-file
+suite passes all 23 cases on both baselines**, with clean teardown: Node 26 **457.68 s**, Node 24
+**439.43 s**. No required case, two-second deadline, security check or isolation boundary changed.
+This establishes responsive local-Docker behavior, not a green hosted-CI claim.
+
+The remaining required latest-stable desktop-GUI case is **not recorded** on either baseline.
+An operator-run script is prepared in the isolated setup; it first requires positive native GUI
+permission, then runs the real headed case on each baseline. Its checkout is frozen at `8ffbc29`
+while `dec4deb` non-GUI work uses a separate private checkout. No privileged session manufacture
+or personal-Mac service/configuration change is used. The integrated milestone remains open.
 
 The packed UI driver also disables the installed-browser updater scheduler and checks protected
 readiness against actual shared Docker facts, rather than assuming every Mac lacks Docker.

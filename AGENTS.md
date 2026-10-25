@@ -108,8 +108,17 @@ credential-scrubbed, and fail closed; unknown retirement retains the browser own
 private password is owner-only profile state, excluded from backup with the profile, not a new
 provider secret or Agent capability. Privileged session provisioning is disposable-CI-only; the
 product never elevates privileges. Native headed/non-GUI browsing, reset/relaunch and lifecycle
-checks passed on macOS 26.6.2 arm64 with both Node baselines; integrated latest-stable/Docker
-qualification remains open in BAZ-072.
+checks passed on macOS 26.6.2 arm64 with both Node baselines. Latest-stable 27.0.1 arm64 now
+passes protected/local ARM Docker, installed CLI/API/web and non-GUI browser checks on both
+baselines; the final real desktop-GUI case/integrated qualification remains open in BAZ-072.
+The audited core macOS floor is 13.5 (Node), not a claim that older OS versions were tested.
+
+XNU can omit restricted-app environment bytes from `KERN_PROCARGS2` under SIP. An argv-only
+response is **not reported**, never proof of an empty or secret-free environment. Test-only direct
+spawn observation captures the same actual options passed to `spawn`, is birth/profile-bound and
+has no wire/persistent/signalling authority. Preserve native assertions when bytes are reported;
+never disable SIP, request private entitlements or decode unrelated processes' environments to
+obtain a green check.
 
 ### SQLite driver
 

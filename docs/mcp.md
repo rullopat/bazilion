@@ -135,8 +135,10 @@ The expanded security gate passed all 418 required cases on Linux.
 
 CLI/web platform diagnostics and management help now describe native-owned macOS stdio, while
 actual native inspection still gates every connection. This is bounded normal-lifecycle evidence,
-not complete 0.25 feature parity or latest-stable macOS qualification: the hosted image reported
-26.6.2. Worker/browser/protected parity and latest-stable release acceptance remain open.
+not complete 0.25 feature parity: the initial hosted image reported 26.6.2. Subsequent actual
+latest-stable **27.0.1 (26A434) arm64** guarded installed trials pass native stdio admission,
+catalog and descendant retirement on **24.22.0 / 26.4.0**. Worker and protected milestones also
+have observed coverage; the final desktop-GUI/integrated release gate remains open in BAZ-072.
 
 ## Implementation and regression coverage
 

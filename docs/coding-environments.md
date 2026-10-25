@@ -50,6 +50,14 @@ The image build requires its base image and package-manager artifacts to be avai
 turns use Docker when `BAZILION_BASH_SANDBOX=docker`; protected turns always use their protected
 runtime. Host execution remains host execution under its existing policy.
 
+The unreleased 0.25 Apple Silicon candidate has actual latest-stable **macOS 27.0.1 arm64**
+local ARM Docker coverage on Node **24.22.0 / 26.4.0**, including approvals, scheduled/inbox
+workers, captured verification and settlement. It still requires a responsive local Unix-socket
+runtime, an admitted local image and accessible workspace/input/temp mounts. These are ordinary
+prerequisites, not a host-fallback permission. The core audited macOS floor is **13.5**; this does
+not qualify intervening OS or arbitrary Docker distributions. Full integrated release qualification
+remains separate in [BAZ-072](backlog/in_progress/BAZ-072-apple-silicon-feature-parity.md).
+
 A known protected-runtime admission refusal returns HTTP **409** with
 `code: "protected_execution_unavailable"` and daemon-authored remediation. CLI and web share this
 response; a closed `engine`, `create`, `start` or `cleanup` phase may identify the failed Docker

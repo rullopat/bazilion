@@ -24,6 +24,13 @@ explicit identity/source revalidation. This is not an atomic filesystem snapshot
 platform parity: hardened Git inspection and MCP stdio remain Linux-only, and unknown worker
 ownership remains blocked. See [repository context](docs/repository-context.md).
 
+**Unreleased 0.25 candidate:** Apple Silicon hardened Git, native-owned MCP stdio, process
+retirement, managed browsing and protected Docker execution are implemented. Actual latest-stable
+**macOS 27.0.1 arm64** passes installed CLI/API/web and local ARM Docker trials on both exact Node
+baselines. Final desktop-GUI/integrated qualification remains open; this is not a 0.25 release
+announcement. The separately audited core technical floor is **macOS 13.5**, not an execution claim
+for older releases; browser/Git/Docker prerequisites still apply. See [BAZ-072](docs/backlog/in_progress/BAZ-072-apple-silicon-feature-parity.md).
+
 **Windows is unsupported.** It is untested end to end, no CI covers it, and repository-context
 admission still refuses it. A contributor who wants Windows support maintains it; the PowerShell
 installer script is kept as-is for the curious.
@@ -183,7 +190,7 @@ create a fresh encrypted backup.
 - **Trigger** — an interval in seconds or cron expression that periodically wakes an agent with a stored instruction. An in-process scheduler ticks every 5 s (overridable via `BAZILION_SCHEDULER_TICK_MS`; disable with `BAZILION_SCHEDULER=off`) and fires due triggers through the same code path as user chat. Example: `bazilion trigger add <agent> --every 300 --message "check your inbox"`.
 - **Web discovery** — ordinary interactive Agents use configured Brave/SearXNG or experimental native OpenAI/ChatGPT search on their own eligible model/account. Search and source-reading evidence are separate; no engine/account/browser fallback. Route settings are on `/config` → Web Search; inspect with `bazilion agent search status <id>`. API-key search remains live-unqualified; subscription acceptance is limited, not blanket entitlement. See [web research](docs/web-research.md).
 - **Browser automation** — agents get a `browser_*` tool suite backed by a persistent per-agent Playwright (Chromium) session that survives across turns. Perception is accessibility-tree-first (`browser_snapshot` → aria tree with `[ref=eN]` refs; no vision model needed); screenshots are a secondary tool rendered inline in chat. A network-layer SSRF guard blocks loopback/private targets by default. The matching Chromium build is installed with Bazilion. Toggle/tune on `/config` → Browser Automation.
-- **MCP** — the daemon uses Pi's standalone [Model Context Protocol](https://modelcontextprotocol.io) client over stdio (Linux-only local subprocess) or Streamable HTTP. Other platforms refuse stdio before spawn; use HTTP instead. Admitted ordinary interactive Agents receive `mcp__<server>__<tool>` proxies over IPC; credentials and persistent clients remain daemon-owned. Legacy SSE is retired under the clean-install alpha schema contract. Manage from `bazilion mcp …` or `/config/mcp`; see [MCP configuration and safety](docs/mcp.md). Example: `bazilion mcp add playwright --command npx --args "-y @playwright/mcp"`.
+- **MCP** — the daemon uses Pi's standalone [Model Context Protocol](https://modelcontextprotocol.io) client over stdio or Streamable HTTP. In published 0.24, stdio is Linux-only; the unreleased 0.25 candidate also admits Apple Silicon macOS with native process ownership, retaining blocked slots on uncertainty. Admitted ordinary interactive Agents receive `mcp__<server>__<tool>` proxies over IPC; credentials and persistent clients remain daemon-owned. Legacy SSE is retired under the clean-install alpha schema contract. Manage from `bazilion mcp …` or `/config/mcp`; see [MCP configuration and safety](docs/mcp.md). Example: `bazilion mcp add playwright --command npx --args "-y @playwright/mcp"`.
 - **Image generation** — opt-in `image_generate` offers direct OpenAI API-key access, ChatGPT/Codex login, or Pi's OpenRouter image API. Automatic mode follows enabled OpenAI text providers (the Agent's own route when applicable); explicit image choices override it. Stored credentials and provider failures never trigger a billing-route fallback. Images are durable, policy-authorized Results; rework preserves the original. ChatGPT-only live acceptance is bounded; direct OpenAI/OpenRouter routes remain live-unqualified. See [configuration, limits and the content-Team recipe](docs/image-generation.md).
 - **Images** — bidirectional on every client. Tool-produced images (browser screenshots, MCP image results) show as standalone deliverables: an image block in the web chat, a photo on Telegram. You can also send images *in*: attach/paste/drag in the web composer, send a photo to a bound Telegram topic, or `bazilion agent chat <id> --image <path>` — the model sees them via vision. (Audio/video are deferred — the model can't perceive non-image media yet.)
 - **Documents** — bidirectional too, via store-and-reference (the model can't perceive raw files, so it gets a path and decides how to process). Attach any file in (web 📎/paste/**drag-and-drop**, `bazilion agent chat <id> --file <path>`, or a Telegram document) → saved under the agent's home, referenced by path for the agent to open with its tools. Agents send files back with `deliver_file` → an immutable saved result, a persistent web download card, an authorized Telegram document, and CLI download support. Find them under **Team → Results** or `bazilion result list`. Outgoing files are limited to 25 MiB each and 1 GiB retained bytes per home. See [saved results](docs/results.md) for previews, approvals, retention, and backup behavior.
@@ -316,7 +323,9 @@ Automation requiring protected work must inspect `protectedWorkBaselineReady` in
 
 Platform support is not an execution or connectivity test: these diagnostics label ordinary chat
 **Not checked**. Test a provider and run an Agent turn separately. Linux/macOS chat support does not grant
-Linux-only hardened Git inspection or MCP stdio; macOS can use Streamable HTTP MCP instead.
+hardened Git inspection or MCP stdio in published 0.24; macOS can use Streamable HTTP instead.
+The unreleased 0.25 candidate adds native-owned macOS paths, without changing per-turn admission
+or turning a configuration report into execution evidence.
 All per-turn checks and protected-turn refusals remain mandatory, regardless of diagnostic status.
 
 ## Workspace recovery
