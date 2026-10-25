@@ -9,7 +9,10 @@ older macOS versions receive no new qualification claim, not an automatic incomp
 The audited core technical floor is **13.5**, separate from actual latest-stable **27.0.1 (26A434)**
 arm64 trials. Both Node baselines pass installed CLI/API/web, protected ARM Docker and real
 desktop/non-GUI browser journeys. The bounded workstream milestones are implemented and
-observed; hosted TCG Docker CI still has deadline failures, not a green qualification claim.
+observed. The revised implementation passes all ten hosted CI jobs, including both Docker lanes;
+previous failed runs stay failed evidence. Latest-stable source qualification remains blocked by
+Node 26.4.0's upstream SQLite backup completion bug (fixed in 24.22.0 and first fixed in 26.x at
+26.9.0). The declared Node range/baseline has not been changed or silently substituted.
 [BAZ-072](backlog/in_progress/BAZ-072-apple-silicon-feature-parity.md) retains the exact evidence,
 failed runs and unrelated release gates. No release-readiness claim or publication follows from
 these bounded milestones; published 0.24.0 limits below remain historical fact.

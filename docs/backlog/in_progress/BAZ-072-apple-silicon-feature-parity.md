@@ -10,6 +10,14 @@ target_release: '0.25.0'
 
 # BAZ-072 — Apple Silicon macOS feature parity with Linux
 
+## Current qualification decision
+
+**Incomplete.** Implementation `9d1bc31` passes all ten jobs in CI `40242186202`, including both
+Docker and browser/runtime baselines. Latest-stable physical qualification now exposes Node
+26.4.0's upstream SQLite backup completion defect; its required source run fails. Node 24.22.0
+contains the fix, first shipped on 26.x in 26.9.0. Changing the explicitly agreed Node baseline or
+introducing a compatibility adapter requires an operator decision; neither has been done.
+
 ## User outcome and release intent
 
 As an operator on an Apple Silicon Mac, I want the same Bazilion capabilities as on Linux,
@@ -770,17 +778,41 @@ live backup; no SQLite timeout/transaction or application contract is changed. B
 now reports only its closed failing step (process, profile lock or marker), without raw causes,
 extra authority, longer bounds or clearing uncertain profiles. These are diagnostics, not a claim
 to have repaired the CI retirement failure. Focused fixture/launcher tests pass **56**, Linux
-normal regression **2,818 / 72 skips**, security **476**, root/web types and lint. Updated physical
-source/installed trials and required CI remain pending; the goal is incomplete.
+normal regression **2,818 / 72 skips**, security **476**, root/web types and lint.
+
+Implementation `9d1bc31` / [CI `40242186202`](https://github.com/rullopat/bazilion/actions/runs/40242186202)
+subsequently passes **all ten required jobs**: both hosted Docker and browser/runtime baselines,
+Linux/macOS source/build/package checks, guarded installers, security and upgrades. This clears
+the required hosted gate for that implementation; prior failed runs are not relabelled or evidence
+of a guaranteed retirement/cleanup latency.
+
+On latest-stable **27.0.1 (26A434), arm64**, the corrected Node **24.22.0** collection passes
+**2,464 / 71 gated skips**, plus four actual headless cases, **27 non-GUI browser/CLI cases**
+(the separately qualified headed case is not replayed over SSH), types, build, pack and guarded
+installed CLI/API/real UI/MCP trial. Native fs-safe/Pi versions, both viewports, actual Docker
+readiness and settled uninstall pass. The **26.4.0** source collection has **2,463 passed / one
+failed / 71 skips**: corrupt-result snapshot refusal waits past its unchanged 30-second bound.
+Subsequent current-candidate Node 26 browser/build/installed steps stop rather than claiming a pass.
+
+A bounded diagnostic identifies **native backup Promise completion**, not integrity validation or
+Docker, as the wait: on Node 26.4.0 both an in-memory and a real file/WAL backup resume only when
+an unrelated five-second diagnostic timer fires; the same corruption refusal on 24.22.0 takes
+**8 ms**. Upstream [Node #65666](https://github.com/nodejs/node/pull/65666) fixes exactly this
+missing callback scope and adds a final-active-request child regression. Official 24.22.0 source
+contains it; 26.4.0 and 26.8.0 do not. Official **26.9.0** source and its release changelog contain
+fix `18c3867d19`, establishing the first fixed 26.x release. This is runtime-version evidence,
+not an OS-floor change. No heartbeat, timeout increase, test skip, baseline substitution or native
+runtime patch was added. The agreed `^24.22.0 || ^26.4.0` range and exact baseline remain intact;
+the operator must decide whether to amend them or authorize a compatibility design. The goal
+remains incomplete despite the green hosted gate.
 
 Ordinary configuration, credential, local image/runtime and policy prerequisites remain; no
 detached-host-writer recovery or signalling authority from receipts is promised.
 
-This is **not full 0.25 release readiness or closure of this story**. Hosted-TCG CI availability
-remains variable/failed as recorded and is a required unresolved gate, not merely an optional
-availability note; unrelated live-provider/image and broader release acceptance above remain open.
-The temporary VM was gracefully stopped after earlier qualification and restarted only for the
-approved follow-up; data and the uncertain failed fixture remain retained. No unknown writer or
+This is **not full 0.25 release readiness or closure of this story**. The Node 26.4.0 latest-stable
+source failure is unresolved; unrelated live-provider/image and broader release acceptance above
+remain open. The private VM was positively empty and gracefully stopped after follow-up
+qualification; data and the uncertain failed fixture remain retained. No unknown writer or
 receipt was cleared. No merge, release publication,
 website deployment, version bump or personal credential use occurred.
 

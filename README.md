@@ -28,8 +28,12 @@ ownership remains blocked. See [repository context](docs/repository-context.md).
 retirement, managed browsing and protected Docker execution are implemented. Actual latest-stable
 **macOS 27.0.1 arm64** passes installed CLI/API/web and local ARM Docker trials on both exact Node
 baselines, including real desktop and non-GUI browser cases. This bounded qualification is not
-full release readiness or a 0.25 announcement: hosted emulated-Docker CI remains variable and
-unrelated release acceptance stays open. The separately audited core technical floor is **macOS 13.5**, not an execution claim
+full release readiness or a 0.25 announcement. The revised implementation passes all ten hosted CI
+jobs, but latest-stable source qualification exposes an upstream **Node 26.4.0 SQLite backup
+completion bug**; the Node 26 baseline decision and unrelated release acceptance remain open.
+Node 24.22.0 contains the upstream fix; the first fixed 26.x release is 26.9.0. The declared range
+has not been changed pending that decision. The separately audited core technical floor is
+**macOS 13.5**, not an execution claim
 for older releases; browser/Git/Docker prerequisites still apply. See [BAZ-072](docs/backlog/in_progress/BAZ-072-apple-silicon-feature-parity.md).
 
 **Windows is unsupported.** It is untested end to end, no CI covers it, and repository-context
