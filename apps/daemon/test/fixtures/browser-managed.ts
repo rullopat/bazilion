@@ -27,6 +27,22 @@ import { ownedDarwinBrowserProcesses } from './browser-managed-darwin.ts'
 let nativeNavigationSampleRequested = false
 let uncertainFixtureOwner = false
 let pendingFixtureOperations = 0
+const spawnInputs = new Map<
+  number,
+  { profileDir: string; start?: string; environment: Readonly<NodeJS.ProcessEnv> }
+>()
+
+/** Real spawn inputs bound to this still-live native birth, never a reconstructed receipt. */
+export function observedBrowserLaunchEnvironment(profileDir: string, pid: number) {
+  const input = spawnInputs.get(pid)
+  if (!input || input.profileDir !== profileDir) throw new Error('owned spawn input unavailable')
+  if (process.platform === 'darwin') {
+    const current = getDarwinProcessInspector().member(pid)
+    if (!input.start || !current || current.start !== input.start || current.state === 'Z')
+      throw new Error('owned spawn input birth changed or unavailable')
+  }
+  return input.environment
+}
 export function fixtureOwnersConfirmed(): boolean {
   return !uncertainFixtureOwner && pendingFixtureOperations === 0
 }
@@ -100,6 +116,13 @@ async function launchLaneContextInner(input: ManagedLaneInput): Promise<BrowserC
   }
   const owned = await startOwnedBrowser(input, () => {}, {
     observeStderr: diagnostic,
+    observeSpawn: ({ pid, environment }) => {
+      const start =
+        process.platform === 'darwin' ? getDarwinProcessInspector().member(pid)?.start : undefined
+      if (process.platform === 'darwin' && !start)
+        throw new Error('owned spawn evidence has no native birth')
+      spawnInputs.set(pid, { profileDir: input.profileDir, start, environment })
+    },
     installGuards: async (context) => {
       const observe = (page: import('playwright').Page) => {
         page.on('request', (request) => {
@@ -303,6 +326,8 @@ export interface OwnedBrowserProcess {
   /** The full cmdline as one string — reliable for child-process matching. */
   cmdline: string
   environ: string[]
+  /** False is unreported, not evidence of an empty or secret-free environment. */
+  environmentReported: boolean
   kind: 'root' | 'child'
 }
 
@@ -338,8 +363,10 @@ export function ownedBrowserProcesses(profileDir: string): OwnedBrowserProcess[]
       // EACCES on restricted kernels: keep the process, drop the exe detail.
     }
     let environ: string[] = []
+    let environmentReported = false
     try {
       environ = readFileSync(`/proc/${pid}/environ`, 'utf8').split('\0').filter(Boolean)
+      environmentReported = true
     } catch {
       // Not a descendant, or exited between scans.
     }
@@ -350,6 +377,7 @@ export function ownedBrowserProcesses(profileDir: string): OwnedBrowserProcess[]
       argv,
       cmdline,
       environ,
+      environmentReported,
       kind: cmdline.includes('--type=') ? 'child' : 'root',
     })
   }

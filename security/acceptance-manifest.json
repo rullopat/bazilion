@@ -218,6 +218,18 @@
       "test": "durable scheduler dispatches > shutdown drains lifecycle waiters without admitting a late inbox preflight or claim"
     },
     {
+      "id": "BROWSER-NATIVE-ENV-OMISSION-NOT-EMPTY",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/browser-darwin-evidence.test.ts",
+      "test": "argv-only native evidence is unreported, never proof of an empty or secret-free environment"
+    },
+    {
+      "id": "BROWSER-ACTUAL-SPAWN-INPUT-EVIDENCE",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/browser-process.test.ts",
+      "test": "actual spawn input evidence is immutable and agrees with the owned child environment"
+    },
+    {
       "id": "WORKER-SHUTDOWN-ADMISSION-FENCE",
       "owner": "BAZ-072",
       "file": "apps/daemon/test/lib/agent-shutdown.test.ts",

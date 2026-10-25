@@ -62,6 +62,7 @@ import {
   type InstrumentedOrigin,
   launchLaneContext,
   MANAGED_DENIAL_ARGS,
+  observedBrowserLaunchEnvironment,
   ownedBrowserProcesses,
   type UdpProbe,
 } from '../fixtures/browser-managed.ts'
@@ -274,36 +275,45 @@ run('managed browser adapter lane (BAZILION_TEST_BROWSER=1)', () => {
   }, () => {
     const root = ownedBrowserProcesses(postureProfile).find((p) => p.kind === 'root')
     expect(root).toBeTruthy()
-    const env = root!.environ
-    const keys = env.map((e) => e.split('=')[0] ?? '')
-
-    // Nothing ambient leaks: no planted provider secret, no proxy vars.
-    expect(env.some((e) => e.includes('sk-ant-t01-planted-not-a-real-key'))).toBe(false)
-    for (const banned of [
-      'HTTP_PROXY',
-      'HTTPS_PROXY',
-      'ALL_PROXY',
-      'NO_PROXY',
-      'XDG_CONFIG_HOME',
-    ]) {
-      expect(keys).not.toContain(banned)
+    const verifyEnvironment = (env: string[]) => {
+      const keys = env.map((entry) => entry.split('=')[0] ?? '')
+      expect(env.some((entry) => entry.includes('sk-ant-t01-planted-not-a-real-key'))).toBe(false)
+      for (const banned of [
+        'HTTP_PROXY',
+        'HTTPS_PROXY',
+        'ALL_PROXY',
+        'NO_PROXY',
+        'XDG_CONFIG_HOME',
+      ])
+        expect(keys).not.toContain(banned)
+      // Preserve every original assertion for both actual spawn inputs and reported native
+      // strings. Only distro-wrapper CHROME_* additions are admitted; never filter unknowns.
+      expect(keys).toContain('PATH')
+      expect(keys).toContain('LANG')
+      const allowed =
+        /^(PATH|HOME|LANG|DISPLAY|XAUTHORITY|WAYLAND_DISPLAY|XDG_RUNTIME_DIR|CHROME_[A-Z0-9_]+)$/
+      expect(keys.filter((key) => !allowed.test(key))).toEqual([])
+      expect(env).toContain(`HOME=${join(postureSlot, 'home')}`)
+      // Chrome singleton sockets require the ordinary short OS temp path.
+      expect(keys).not.toContain('TMPDIR')
     }
-
-    // Everything present is the allowlist, display access when headed, or
-    // CHROME_* vars added by the executable's own distro wrapper (Arch's
-    // /usr/bin/chromium is a shell script that sets CHROME_WRAPPER,
-    // CHROME_DESKTOP and CHROME_VERSION_EXTRA before exec'ing the real
-    // binary — observed; it adds nothing else and removes nothing). TMPDIR is
-    // deliberately absent: Chromium's singleton socket path is capped by
-    // sockaddr_un (~104 bytes) and an in-slot TMPDIR aborts deep-path
-    // launches (T01-verified 2026-09-25).
-    expect(keys).toContain('PATH')
-    expect(keys).toContain('LANG')
-    const allowed =
-      /^(PATH|HOME|LANG|DISPLAY|XAUTHORITY|WAYLAND_DISPLAY|XDG_RUNTIME_DIR|CHROME_[A-Z0-9_]+)$/
-    expect(keys.filter((key) => !allowed.test(key))).toEqual([])
-    expect(env).toContain(`HOME=${join(postureSlot, 'home')}`)
-    expect(keys).not.toContain('TMPDIR')
+    const supplied = observedBrowserLaunchEnvironment(postureProfile, root!.pid)
+    verifyEnvironment(
+      Object.entries(supplied).map(([key, value]) => {
+        expect(typeof value).toBe('string')
+        return `${key}=${value}`
+      }),
+    )
+    if (root!.environmentReported) verifyEnvironment(root!.environ)
+    else {
+      // XNU can intentionally omit restricted-app environment bytes under SIP. Actual direct
+      // spawn inputs above remain observed; the native view is explicitly NOT checked.
+      expect(process.platform).toBe('darwin')
+      expect(root!.environ).toEqual([])
+      console.log(
+        'browser environment: actual owned spawn inputs checked; native view not reported',
+      )
+    }
   })
 
   test('loopback HTTP/iframe/WebSocket/popup egress hits zero instrumented targets', {

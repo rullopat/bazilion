@@ -628,5 +628,28 @@ HOME, an X11 fake-launcher unit depending on actual macOS GUI availability, and 
 HOME/checkout ancestry in an uninstall fixture. These are being corrected without changing
 production refusals, skipping cases or provisioning a caller keychain. The ordinary SSH caller
 is positively non-graphical; same-UID `launchctl asuser` refuses audit-session switching, so a real
-GUI-session execution remains required, never a simulated mode result. No release publication or
-version bump occurred.
+GUI-session execution remains required, never a simulated mode result. `8ffbc29` corrects all
+three fixture assumptions without skipping assertions or changing production refusals. The full
+Node 26 rerun passes **2,457 source bodies / 71 gated skips**, plus the **four actual headless
+browser-live cases**; root/web typechecks, build and pack pass on the physical latest-stable Mac.
+
+The next actual Node 26 managed-browser run **fails one environment-evidence assertion**:
+**26 passed / one failed / one separately required headed case not selected**. A birth-checked
+owned Chrome read ends exactly after argv, while a controlled owned Node child reports its real
+supplied environment. Apple's [public XNU implementation](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/kern_sysctl.c)
+explicitly omits restricted-target environment bytes under SIP absent a private entitlement.
+No SIP setting, privilege or entitlement is changed. The evidence adapter now distinguishes
+**not reported** from an observed empty environment, scopes environment decoding to an exact
+profile/birth, and clears unmatched buffers. An internal opt-in observer records immutable
+creation inputs from the **same options object passed to the real direct spawn**, under its
+existing cleanup guard. The case retains all allowlist/secret assertions for those actual inputs
+and for native strings whenever reported; an unreported native view is explicitly Not checked,
+not a secret-free result. Neither observation is signalling authority or a new wire surface.
+The same inputs are independently checked against an actual controlled child's self-report.
+Linux actual browser **26 passed / two platform skips**, focused **19 passed**, full regression
+**2,812 passed / 72 gated skips**, **464 required security cases**, typechecks and lint pass.
+Updated Mac native reruns remain required.
+
+The packed UI driver also disables the installed-browser updater scheduler and checks protected
+readiness against actual shared Docker facts, rather than assuming every Mac lacks Docker.
+No release publication or version bump occurred.

@@ -101,7 +101,17 @@ export async function qualifyPortableChat({
       ['mcp_http', 'supported'],
     ],
   )
-  if (process.platform === 'darwin') assert.equal(health.protectedWorkBaselineReady, false)
+  // A Mac with responsive local Docker may be ready; platform is not a prerequisite result.
+  // This fixture's shell configuration is valid, so the shared projection must reflect the
+  // actual Docker readiness fact, identically across API, doctor and rendered Config below.
+  assert.equal(
+    health.protectedWorkBaselineReady,
+    health.executionSecurity.protectedUnattendedTurns.docker.ready,
+  )
+  assert.equal(
+    health.protectedWorkBaselineReady,
+    health.executionSecurity.protectedUnattendedTurns.baseRuntimeReady,
+  )
   const doctor = await runDoctor()
   assert.equal(doctor.code, 0, doctor.stderr)
   assert.ok(doctor.stdout.includes('install is healthy ✓'))
@@ -128,7 +138,12 @@ export async function qualifyPortableChat({
     '/usr/bin/chromium-browser',
   ].find((path) => path && existsSync(path))
   assert.ok(browserPath, 'No existing UI browser; no download or fallback was attempted')
-  const browser = await chromium.launch({ executablePath: browserPath, headless: true })
+  const browser = await chromium.launch({
+    executablePath: browserPath,
+    headless: true,
+    // Test-driver profiles must not schedule an installed browser's account-wide updater either.
+    args: ['--disable-updater-scheduler'],
+  })
   try {
     const context = await browser.newContext()
     await context.route('**/*', (route) => {

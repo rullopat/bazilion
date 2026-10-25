@@ -50,10 +50,7 @@ function argumentsFor(pid: number): Buffer | null {
   return buffer.subarray(0, Number(count))
 }
 
-export function decodeDarwinProcessArguments(buffer: Buffer): {
-  argv: string[]
-  environ: string[]
-} {
+function decodeArgv(buffer: Buffer): { argv: string[]; offset: number } {
   if (buffer.length < 4) throw new Error('incomplete native argc')
   const argc = buffer.readInt32LE()
   if (argc < 1 || argc > 4096) throw new Error('invalid native argc')
@@ -67,7 +64,20 @@ export function decodeDarwinProcessArguments(buffer: Buffer): {
     argv.push(buffer.toString('utf8', offset, end))
     offset = end + 1
   }
+  return { argv, offset }
+}
+
+export function decodeDarwinProcessArguments(buffer: Buffer): {
+  argv: string[]
+  environ: string[]
+  environmentReported: boolean
+} {
+  const { argv, offset: environmentOffset } = decodeArgv(buffer)
+  let offset = environmentOffset
   const environ: string[] = []
+  // XNU intentionally returns argv ONLY for cs_restricted targets under SIP without a private
+  // entitlement. Reaching the exact argv boundary is unreported, never an empty-env proof.
+  const environmentReported = offset < buffer.length
   // KERN_PROCARGS2 copies the stack's strings, including padding and Darwin's apple vector.
   // The first empty entry ends environment evidence; filtering empty strings incorrectly
   // appended kernel metadata (ptr_munge/main_stack/etc.) to the child's environment.
@@ -79,7 +89,7 @@ export function decodeDarwinProcessArguments(buffer: Buffer): {
     environ.push(entry)
     offset = end + 1
   }
-  return { argv, environ }
+  return { argv, environ, environmentReported }
 }
 
 export function ownedDarwinBrowserProcesses(profileDir: string): OwnedBrowserProcess[] {
@@ -113,12 +123,40 @@ export function ownedDarwinBrowserProcesses(profileDir: string): OwnedBrowserPro
     if (!before || before.state === 'Z') continue
     if (before.uid !== process.geteuid?.()) continue // Positively observed uid change since list.
     const candidate = argumentsFor(pid)
-    if (!candidate?.includes(Buffer.from(profileDir))) continue
-    // Bind actual argv/environment to the same birth on both sides, not a first PID-only scan.
+    if (!candidate) continue
+    // Identify only our profile in argv. Never search/decode an unrelated process's environment.
+    let matches = false
+    try {
+      matches = decodeArgv(candidate).argv.some((arg) => arg.includes(profileDir))
+    } finally {
+      candidate.fill(0)
+    }
+    if (!matches) continue
+    const matched = inspector.member(pid)
+    if (!matched || matched.state === 'Z') continue
+    if (matched.start !== before.start || matched.uid !== before.uid)
+      throw new Error('matched process identity changed')
+    // Bind the second read before decoding environment bytes, never a PID-only observation.
     const buffer = argumentsFor(pid)
     if (!buffer) continue
-    const { argv, environ } = decodeDarwinProcessArguments(buffer)
-    if (!argv.some((arg) => arg.includes(profileDir))) continue
+    const current = inspector.member(pid)
+    if (!current || current.state === 'Z') {
+      buffer.fill(0)
+      continue
+    }
+    if (current.start !== before.start || current.uid !== before.uid) {
+      buffer.fill(0)
+      throw new Error('matched process identity changed')
+    }
+    let decoded: ReturnType<typeof decodeDarwinProcessArguments>
+    try {
+      // The profile must still match argv before any environment is decoded.
+      if (!decodeArgv(buffer).argv.some((arg) => arg.includes(profileDir))) continue
+      decoded = decodeDarwinProcessArguments(buffer)
+    } finally {
+      buffer.fill(0)
+    }
+    const { argv, environ, environmentReported } = decoded
     const executable = Buffer.alloc(4096)
     api.errno(0)
     const length = api.path(pid, executable, executable.length)
@@ -139,6 +177,7 @@ export function ownedDarwinBrowserProcesses(profileDir: string): OwnedBrowserPro
       exe,
       argv,
       environ,
+      environmentReported,
       cmdline,
       kind:
         argv.includes(`--user-data-dir=${profileDir}`) && !cmdline.includes('--type=')

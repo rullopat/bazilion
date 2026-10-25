@@ -54,8 +54,9 @@ are forwarded only for headed launches. Discovery also considers per-user macOS 
 and native-architecture full Playwright bundles, never the headless shell. Linux remains the
 released qualification platform. The macOS candidate passed headed, non-GUI, private-keychain,
 reset/relaunch, lifecycle and SSRF/service-worker checks on macOS 26.6.2 (25G83) arm64 with Node
-24.22.0 and 26.4.0. Latest-stable integrated release qualification and protected/Docker acceptance
-remain open in BAZ-072; this evidence does not guarantee arbitrary browser builds or sites.
+24.22.0 and 26.4.0. Protected/Docker suites subsequently passed on actual latest-stable
+27.0.1 (26A434) arm64 with both baselines; latest-stable integrated browser/release qualification
+remains open in BAZ-072. This evidence does not guarantee arbitrary browser builds or sites.
 
 On macOS the candidate creates a native keychain and native preference selection **inside each
 Agent's managed HOME**, with a generated owner-only secret stored beside it. The short-lived,

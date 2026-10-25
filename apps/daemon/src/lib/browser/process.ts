@@ -1,7 +1,7 @@
 // Direct local Chromium ownership (BAZ-069). Spawn first; attach Playwright
 // only to the loopback listener proven to belong to THIS child. Never discover
 // or reconnect using a stale port file, personal browser, or remote endpoint.
-import { type ChildProcess, execFile, spawn } from 'node:child_process'
+import { type ChildProcess, execFile, type SpawnOptions, spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import {
   closeSync,
@@ -273,6 +273,8 @@ export async function startOwnedBrowser(
     installGuards?: typeof installManagedGuards
     /** Controlled fixture diagnostics only; never an operator/worker capability or default log. */
     observeStderr?: (chunk: string) => void
+    /** Actual creation-input evidence only, not post-exec environment or signalling authority. */
+    observeSpawn?: (evidence: { pid: number; environment: Readonly<NodeJS.ProcessEnv> }) => void
   } = {},
 ): Promise<OwnedBrowserProcess> {
   if (process.platform !== 'linux' && process.platform !== 'darwin') {
@@ -319,11 +321,16 @@ export async function startOwnedBrowser(
   }
   const deadline = Date.now() + (deps.startupMs ?? STARTUP_MS)
   const port = await choosePort(deadline - Date.now())
-  const child: ChildProcess = spawn(input.executablePath, managedLaunchArgs(input, port), {
+  const spawnOptions: SpawnOptions = {
     env,
     stdio: ['ignore', 'ignore', 'pipe'],
     detached: true,
-  })
+  }
+  const child: ChildProcess = spawn(
+    input.executablePath,
+    managedLaunchArgs(input, port),
+    spawnOptions,
+  )
   let exited = false
   let spawnFailed = false
   child.once('exit', () => {
@@ -397,6 +404,12 @@ export async function startOwnedBrowser(
     if (pid) {
       if (authority) registerGroup(authority)
       onSpawn(pid)
+      // Observe the same options object passed to the real spawn, only under the owned
+      // child's cleanup guard. No default logging, wire field or authority is introduced.
+      deps.observeSpawn?.({
+        pid,
+        environment: Object.freeze({ ...spawnOptions.env }),
+      })
     }
     let pending = ''
     const endpoint = await bounded(

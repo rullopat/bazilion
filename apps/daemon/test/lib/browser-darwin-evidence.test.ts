@@ -16,7 +16,7 @@ test('native browser evidence separates environment from padded Darwin apple-vec
   const decoded = decodeDarwinProcessArguments(
     evidence(argv, environ, 'ptr_munge=0x123\0main_stack=0x456\0security_config=0x0\0'),
   )
-  expect(decoded).toEqual({ argv, environ })
+  expect(decoded).toEqual({ argv, environ, environmentReported: true })
 })
 
 test('native browser evidence never removes an unexpected real environment variable', () => {
@@ -35,6 +35,17 @@ test('native browser evidence preserves equals signs and an empty environment', 
   expect(
     decodeDarwinProcessArguments(evidence(['/browser'], [], 'main_stack=0x123\0')).environ,
   ).toEqual([])
+})
+
+test('argv-only native evidence is unreported, never proof of an empty or secret-free environment', () => {
+  const argv = ['/browser', '--profile=/owned/profile']
+  const argvOnly = evidence(argv, []).subarray(0, -2)
+  expect(decodeDarwinProcessArguments(argvOnly)).toEqual({
+    argv,
+    environ: [],
+    environmentReported: false,
+  })
+  expect(decodeDarwinProcessArguments(evidence(argv, [])).environmentReported).toBe(true)
 })
 
 test('native browser evidence refuses malformed native arguments and environment', () => {
