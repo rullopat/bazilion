@@ -718,7 +718,37 @@ scheduler retries and retained cleanup uncertainty remain. The headroom hypothes
 No further capacity variants are scheduled. The operator must choose a suitable approved CI
 execution target, authorize a reasoned product-level admission-budget review (not a blind test
 relaxation), or explicitly change the required-gate contract. Physical acceptance cannot waive it.
-The workstream goal remains incomplete; no product deadline, assertion or required case changed.
+The workstream goal remains incomplete; those capacity trials changed no product deadline,
+assertion or required case.
+
+#### Approved product admission-budget review
+
+The operator approved reviewing the startup contract rather than assuming either that two seconds
+is immutable or that it should be raised merely for CI. Audit of the introducing `1d2052a` change
+and BAZ-027 finds bounded, fail-closed preflight as the contract, with no documented two-second
+security/SLO requirement. Metadata inspection is a short read; OCI start includes runtime/mount
+setup and executes only the fixed isolated `true` shell/env probe. OCI create already allows five
+seconds. Aligning **probe-start to that existing five-second admission budget on every platform**
+is a production availability decision, not a CI override. Every identity/image/mount/environment
+check still precedes admission; no model work, extra privilege, startup replay or host fallback is
+introduced. Two-second metadata checks, 650-ms cleanup attempts/three attempts, command-declared
+execution deadlines and the daemon shutdown cap are unchanged.
+
+The review also reproduced a cancellation defect: `prepareAgentDockerInputs` accepted but dropped
+the caller's AbortSignal before Docker preflight. It now forwards that same signal for configured
+and protected work. Active create/start cancellation still waits for exact registered cleanup;
+read-only engine inspection retains its short bound. A responsive 2.5-second probe and both
+high-level cancellation tests failed before the change; already-aborted refusal passed. After the
+fix, the focused **54 cases** pass. The hang test now explicitly requires refusal at **5,000 ms**
+and before **6,000 ms**, with exact removal; its outer harness bound tracks that production
+contract. Existing cleanup-uncertainty/unacknowledged-create and shorter command-timeout assertions
+are retained, not relaxed. Startup beyond the metadata budget must succeed **once**, while hang,
+abort and uncertain cleanup still refuse. New and preserved checks are hard-required in the
+security manifest: **475 cases pass**, along with root/web typechecks and lint. Full Linux source
+regression passes **2,817 / 72 gated skips**; the complete real Linux Docker/background suite
+passes **23 / one exclusive non-live guard skipped**, seven files with clean teardown. These
+results do not substitute for the pending required CI and latest-stable Mac reruns of this change.
+
 Ordinary configuration, credential, local image/runtime and policy prerequisites remain; no
 detached-host-writer recovery or signalling authority from receipts is promised.
 

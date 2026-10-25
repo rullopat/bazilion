@@ -8,6 +8,7 @@ import { makeTestEnv, type TestEnv } from '../core/helpers.ts'
 let env: TestEnv
 let preflightInputs: ProtectedDockerPreflightInput[]
 let preflightFailure: Error | null
+let preflightGate: ((input: ProtectedDockerPreflightInput) => Promise<void>) | undefined
 let agentId: string
 
 describe('protected execution preparation', () => {
@@ -15,6 +16,7 @@ describe('protected execution preparation', () => {
     env = makeTestEnv()
     preflightInputs = []
     preflightFailure = null
+    preflightGate = undefined
     createProfile(env.db, env.paths, {
       id: 'protected',
       defaultModel: 'openai-codex:gpt-5.6-sol',
@@ -48,6 +50,7 @@ describe('protected execution preparation', () => {
         ...actual,
         preflightProtectedDockerRuntime: async (input: ProtectedDockerPreflightInput) => {
           preflightInputs.push(input)
+          await preflightGate?.(input)
           if (preflightFailure) throw preflightFailure
           return {
             dockerPath: '/usr/bin/docker',
@@ -194,6 +197,79 @@ describe('protected execution preparation', () => {
       message:
         'Protected Docker runtime is unavailable (start: timeout). Run `bazilion doctor` for remediation.',
     })
+  })
+
+  test.each([
+    'configured',
+    'protected',
+  ] as const)('%s preparation forwards cancellation through live preflight and waits for cleanup', async (kind) => {
+    const { prepareAgentDockerInputs, prepareProtectedExecution } = await import(
+      '../../src/lib/protected-execution.ts'
+    )
+    const entered = Promise.withResolvers<void>()
+    const cleanup = Promise.withResolvers<void>()
+    let observedAbort = false
+    let settled = false
+    preflightGate = async (input) => {
+      entered.resolve()
+      const signal = input.signal
+      if (!signal) throw new Error('caller cancellation signal missing')
+      await new Promise<void>((_resolve, reject) => {
+        const aborted = () => {
+          observedAbort = true
+          void cleanup.promise.then(() => reject(new Error('aborted')))
+        }
+        signal.addEventListener('abort', aborted, { once: true })
+        if (signal.aborted) aborted()
+      })
+    }
+    const controller = new AbortController()
+    const prepare = kind === 'configured' ? prepareAgentDockerInputs : prepareProtectedExecution
+    const attempt = prepare(resolveAgent(env.db, env.paths, agentId), {
+      signal: controller.signal,
+    }).then(
+      (value) => {
+        settled = true
+        return { value }
+      },
+      (error: unknown) => {
+        settled = true
+        return { error }
+      },
+    )
+    await entered.promise
+    try {
+      expect(preflightInputs[0]?.signal).toBe(controller.signal)
+      controller.abort()
+      expect(observedAbort).toBe(true)
+      await Promise.resolve()
+      expect(settled).toBe(false)
+    } finally {
+      controller.abort()
+      cleanup.resolve()
+      await attempt
+    }
+    const outcome = await attempt
+    expect(outcome).not.toHaveProperty('value')
+    expect(outcome).toMatchObject({ error: { code: 'protected_execution_unavailable' } })
+    expect(settled).toBe(true)
+    expect(preflightInputs).toHaveLength(1)
+  })
+
+  test.each([
+    'configured',
+    'protected',
+  ] as const)('%s preparation refuses an already-aborted signal before Docker preflight', async (kind) => {
+    const { prepareAgentDockerInputs, prepareProtectedExecution } = await import(
+      '../../src/lib/protected-execution.ts'
+    )
+    const controller = new AbortController()
+    controller.abort()
+    const prepare = kind === 'configured' ? prepareAgentDockerInputs : prepareProtectedExecution
+    await expect(
+      prepare(resolveAgent(env.db, env.paths, agentId), { signal: controller.signal }),
+    ).rejects.toThrow(/cancelled|aborted/i)
+    expect(preflightInputs).toEqual([])
   })
 
   test('returns an immutable nominal preflight that can be consumed only once', async () => {

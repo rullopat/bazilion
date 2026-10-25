@@ -2,6 +2,72 @@
   "version": 1,
   "cases": [
     {
+      "id": "DOCKER-ADMISSION-RESPONSIVE-OCI-START",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/runtime/shell-docker.test.ts",
+      "test": "protected Docker preflight and pinned execution > admits responsive OCI startup beyond the metadata-inspection budget without retrying"
+    },
+    {
+      "id": "DOCKER-ADMISSION-START-HARD-BOUND",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/runtime/shell-docker.test.ts",
+      "test": "protected Docker preflight and pinned execution > bounds an unresponsive executable probe and force-removes its exact container"
+    },
+    {
+      "id": "DOCKER-ADMISSION-CLEANUP-BOUND-UNCHANGED",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/runtime/shell-docker.test.ts",
+      "test": "protected Docker preflight and pinned execution > bounds preflight cleanup failures and never returns a protected runtime"
+    },
+    {
+      "id": "DOCKER-ADMISSION-CANCEL-CREATE",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/runtime/shell-docker.test.ts",
+      "test": "protected Docker preflight and pinned execution > preflight cancellation during create waits for registered container removal"
+    },
+    {
+      "id": "DOCKER-ADMISSION-CANCEL-START",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/runtime/shell-docker.test.ts",
+      "test": "protected Docker preflight and pinned execution > preflight cancellation during start waits for registered container removal"
+    },
+    {
+      "id": "DOCKER-COMMAND-CREATE-TIMEOUT-PRESERVED",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/runtime/shell-docker.test.ts",
+      "test": "protected Docker preflight and pinned execution > registered timeout during create never starts project code and awaits cleanup"
+    },
+    {
+      "id": "DOCKER-COMMAND-CREATE-ABORT-PRESERVED",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/runtime/shell-docker.test.ts",
+      "test": "protected Docker preflight and pinned execution > registered abort during create never starts project code and awaits cleanup"
+    },
+    {
+      "id": "CONFIGURED-ADMISSION-CALLER-CANCELLATION",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/protected-execution.test.ts",
+      "test": "protected execution preparation > configured preparation forwards cancellation through live preflight and waits for cleanup"
+    },
+    {
+      "id": "PROTECTED-ADMISSION-CALLER-CANCELLATION",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/protected-execution.test.ts",
+      "test": "protected execution preparation > protected preparation forwards cancellation through live preflight and waits for cleanup"
+    },
+    {
+      "id": "CONFIGURED-ADMISSION-PREABORT-REFUSAL",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/protected-execution.test.ts",
+      "test": "protected execution preparation > configured preparation refuses an already-aborted signal before Docker preflight"
+    },
+    {
+      "id": "PROTECTED-ADMISSION-PREABORT-REFUSAL",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/protected-execution.test.ts",
+      "test": "protected execution preparation > protected preparation refuses an already-aborted signal before Docker preflight"
+    },
+    {
       "id": "DOCKER-READINESS-UNACKNOWLEDGED-MISS-RETAINS-SCRATCH",
       "owner": "BAZ-072",
       "file": "apps/daemon/test/runtime/shell-docker.test.ts",

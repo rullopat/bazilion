@@ -122,6 +122,13 @@ has no wire/persistent/signalling authority. Preserve native assertions when byt
 never disable SIP, request private entitlements or decode unrelated processes' environments to
 obtain a green check.
 
+Docker admission budgets distinguish metadata inspection (2 s) from OCI create/probe-start
+(5 s each, shared across platforms). The probe is fixed `true`, before model/worker admission;
+command-declared deadlines and the separate cleanup bounds are unchanged. Always forward the
+turn's AbortSignal into `prepareAgentDockerInputs` → `preflightProtectedDockerRuntime`: cancellation
+must stop active create/start and await cleanup, never wait out the readiness budget or authorize
+an unknown-resource release. No CI-only timeout override or automatic start replay.
+
 ### SQLite driver
 
 `apps/daemon/src/core/db/client.ts` uses `node:sqlite` (Node 22+ built-in). `node:sqlite` has no callable `transaction()` wrapper, so the wrapper implements manual `BEGIN/COMMIT/ROLLBACK` in its `transaction()` method. Don't look for a `bun:sqlite` fallback — the project is Node-only.

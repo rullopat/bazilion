@@ -126,6 +126,8 @@ if (args[0] === 'container' && args[1] === 'start') {
   }
   if (createCommand?.some((arg) => arg.includes('probe-start-hang'))) {
     setInterval(() => {}, 1_000)
+  } else if (createCommand?.some((arg) => arg.includes('probe-start-delayed'))) {
+    setTimeout(() => process.exit(0), 2_500)
   } else {
     process.exit(0)
   }
@@ -462,6 +464,34 @@ describe('protected Docker preflight and pinned execution', () => {
     expect(calls.some((entry) => entry.args[0] === 'run')).toBe(false)
   })
 
+  test('admits responsive OCI startup beyond the metadata-inspection budget without retrying', async () => {
+    await startDockerSocket()
+    const delayedWorkspace = join(testDir, 'probe-start-delayed-workspace')
+    mkdirSync(delayedWorkspace)
+    const startedAt = Date.now()
+    const runtime = await preflightProtectedDockerRuntime({
+      image: 'fake:image',
+      dockerPath,
+      hostEnv: { PATH: testDir, HOME: testDir },
+      workspaceDir: delayedWorkspace,
+      workspaceRoot: delayedWorkspace,
+    })
+    expect(runtime.workspace.source).toBe(realpathSync(delayedWorkspace))
+    expect(Date.now() - startedAt).toBeGreaterThanOrEqual(2_500)
+    const calls = invocations()
+    const create = calls.filter((entry) => entry.args[1] === 'create')
+    expect(create).toHaveLength(1)
+    const name = flagValues(create[0]?.args ?? [], '--name')[0]
+    expect(calls.filter((entry) => entry.args[1] === 'start').map((entry) => entry.args)).toEqual([
+      ['container', 'start', '--attach', name],
+    ])
+    expect(calls.filter((entry) => entry.args[1] === 'rm').map((entry) => entry.args)).toEqual([
+      ['container', 'rm', '--force', name],
+    ])
+    expect(existsSync(containerStatePath)).toBe(false)
+    expect(calls.some((entry) => entry.args[0] === 'run')).toBe(false)
+  }, 8_000)
+
   test('bounds an unresponsive executable probe and force-removes its exact container', async () => {
     await startDockerSocket()
     const hangingWorkspace = join(testDir, 'probe-start-hang-workspace')
@@ -476,11 +506,12 @@ describe('protected Docker preflight and pinned execution', () => {
       workspaceRoot: hangingWorkspace,
     })
     await expect(result).rejects.toThrow(
-      /could not start its protected preflight container within 2000ms/,
+      /could not start its protected preflight container within 5000ms/,
     )
     await expect(result).rejects.toMatchObject({ phase: 'start', kind: 'timeout' })
 
-    expect(Date.now() - startedAt).toBeLessThan(3_000)
+    expect(Date.now() - startedAt).toBeGreaterThanOrEqual(5_000)
+    expect(Date.now() - startedAt).toBeLessThan(6_000)
     const calls = invocations()
     const create = calls.find(
       (entry) => entry.args[0] === 'container' && entry.args[1] === 'create',
@@ -488,7 +519,7 @@ describe('protected Docker preflight and pinned execution', () => {
     const name = flagValues(create?.args ?? [], '--name')[0]
     expect(calls.map((entry) => entry.args)).toContainEqual(['container', 'rm', '--force', name])
     expect(existsSync(containerStatePath)).toBe(false)
-  }, 4_000)
+  }, 7_000)
 
   test('bounds preflight cleanup failures and never returns a protected runtime', async () => {
     await startDockerSocket()
@@ -756,8 +787,10 @@ describe('protected Docker preflight and pinned execution', () => {
     while (!observed() && Date.now() < deadline)
       await new Promise((resolve) => setTimeout(resolve, 10))
     expect(observed()).toBe(true)
+    const cancelledAt = Date.now()
     controller.abort()
     await rejection
+    expect(Date.now() - cancelledAt).toBeLessThan(1_500)
     expect(acknowledged).toBe(phase === 'start')
     expect(removed).toBe(true)
     expect(existsSync(containerStatePath)).toBe(false)

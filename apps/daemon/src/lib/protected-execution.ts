@@ -141,6 +141,7 @@ export async function prepareAgentDockerInputs(
   try {
     docker = await preflightProtectedDockerRuntime({
       image,
+      signal: options.signal,
       lifecycle: options.dockerLifecycle,
       ...(coding ? { coding } : {}),
       workspaceDir: agent.team.path,

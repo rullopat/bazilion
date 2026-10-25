@@ -20,7 +20,10 @@ const CLEANUP_RETRY_DELAY_MS = 100
 const CLEANUP_ATTEMPTS = 3
 const DOCKER_CONTEXT_TIMEOUT_MS = 2_000
 const DOCKER_CREATE_TIMEOUT_MS = 5_000
-const DOCKER_PROBE_START_TIMEOUT_MS = 2_000
+// OCI create and probe-start perform engine/runtime setup, unlike metadata inspection.
+// Give both the same fixed admission budget on every platform. This runs only the isolated
+// readiness command, not model work; cancellation and separately bounded cleanup still apply.
+const DOCKER_PROBE_START_TIMEOUT_MS = DOCKER_CREATE_TIMEOUT_MS
 const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/
 const CONTAINER_NAME = /^[A-Za-z0-9][A-Za-z0-9_.-]+$/
 const DOCKER_CLIENT_ENV_KEYS = [

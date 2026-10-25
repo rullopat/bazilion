@@ -59,6 +59,15 @@ not qualify intervening OS or arbitrary Docker distributions. Scoped installed a
 journeys also pass on the tested target; hosted TCG deadline failures and broader release
 acceptance remain separate in [BAZ-072](backlog/in_progress/BAZ-072-apple-silicon-feature-parity.md).
 
+Docker admission gives each OCI **create** and isolated **probe-start** operation a fixed
+**five-second** budget on every supported platform; metadata inspection keeps its separate
+two-second bound. The probe runs only the fixed `true` command through the required shell/env
+under the protected mount/network/environment policy, before any model invocation. Caller
+cancellation interrupts create/start and still waits for exact-container cleanup; unconfirmed
+cleanup retains ownership. Cleanup bounds/retries are unchanged. This admission budget neither
+extends a coding command's declared timeout nor enables startup retries, host fallback or CI-only
+overrides.
+
 A known protected-runtime admission refusal returns HTTP **409** with
 `code: "protected_execution_unavailable"` and daemon-authored remediation. CLI and web share this
 response; a closed `engine`, `create`, `start` or `cleanup` phase may identify the failed Docker
