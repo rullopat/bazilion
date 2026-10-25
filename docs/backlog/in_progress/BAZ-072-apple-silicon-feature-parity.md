@@ -711,7 +711,14 @@ not resolve the gate and is not promoted as a fix. One final bounded capacity ad
 the default CPU model with **two guest vCPUs**, leaving headroom on the three-core host for the
 actual daemon/CLI workload. Memory, cases and product bounds remain unchanged. If it also fails,
 a suitable approved CI runner or an explicit requirement decision is needed; not more variants or
-unmodified reruns until green.
+unmodified reruns until green. `680755e` / CI `40232467634` passes the eight other jobs but
+**fails both two-vCPU Docker lanes: 19 passed / four failed / one exclusive guard skipped each**.
+Standalone starts are **2.657 s (Node 24)** and **1.435 s (Node 26)**; startup timeouts, bounded
+scheduler retries and retained cleanup uncertainty remain. The headroom hypothesis is not a fix.
+No further capacity variants are scheduled. The operator must choose a suitable approved CI
+execution target, authorize a reasoned product-level admission-budget review (not a blind test
+relaxation), or explicitly change the required-gate contract. Physical acceptance cannot waive it.
+The workstream goal remains incomplete; no product deadline, assertion or required case changed.
 Ordinary configuration, credential, local image/runtime and policy prerequisites remain; no
 detached-host-writer recovery or signalling authority from receipts is promised.
 
