@@ -27,8 +27,9 @@ ownership remains blocked. See [repository context](docs/repository-context.md).
 **Unreleased 0.25 candidate:** Apple Silicon hardened Git, native-owned MCP stdio, process
 retirement, managed browsing and protected Docker execution are implemented. Actual latest-stable
 **macOS 27.0.1 arm64** passes installed CLI/API/web and local ARM Docker trials on both exact Node
-baselines. Final desktop-GUI/integrated qualification remains open; this is not a 0.25 release
-announcement. The separately audited core technical floor is **macOS 13.5**, not an execution claim
+baselines, including real desktop and non-GUI browser cases. This bounded qualification is not
+full release readiness or a 0.25 announcement: hosted emulated-Docker CI remains variable and
+unrelated release acceptance stays open. The separately audited core technical floor is **macOS 13.5**, not an execution claim
 for older releases; browser/Git/Docker prerequisites still apply. See [BAZ-072](docs/backlog/in_progress/BAZ-072-apple-silicon-feature-parity.md).
 
 **Windows is unsupported.** It is untested end to end, no CI covers it, and repository-context

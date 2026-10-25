@@ -55,8 +55,9 @@ local ARM Docker coverage on Node **24.22.0 / 26.4.0**, including approvals, sch
 workers, captured verification and settlement. It still requires a responsive local Unix-socket
 runtime, an admitted local image and accessible workspace/input/temp mounts. These are ordinary
 prerequisites, not a host-fallback permission. The core audited macOS floor is **13.5**; this does
-not qualify intervening OS or arbitrary Docker distributions. Full integrated release qualification
-remains separate in [BAZ-072](backlog/in_progress/BAZ-072-apple-silicon-feature-parity.md).
+not qualify intervening OS or arbitrary Docker distributions. Scoped installed and desktop/non-GUI
+journeys also pass on the tested target; hosted TCG deadline failures and broader release
+acceptance remain separate in [BAZ-072](backlog/in_progress/BAZ-072-apple-silicon-feature-parity.md).
 
 A known protected-runtime admission refusal returns HTTP **409** with
 `code: "protected_execution_unavailable"` and daemon-authored remediation. CLI and web share this

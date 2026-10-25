@@ -7,9 +7,9 @@ MCP stdio, managed browsing and protected execution. Intel Mac qualification and
 are out of scope. Qualification targets the latest stable macOS and both supported Node lines;
 older macOS versions receive no new qualification claim, not an automatic incompatibility label.
 The audited core technical floor is **13.5**, separate from actual latest-stable **27.0.1 (26A434)**
-arm64 trials. Both Node baselines pass installed CLI/API/web, protected ARM Docker and non-GUI
-browser journeys; the final real desktop-GUI/integrated case remains open. MCP stdio, process
-ownership, managed-browser and protected/background milestones are implemented and observed;
+arm64 trials. Both Node baselines pass installed CLI/API/web, protected ARM Docker and real
+desktop/non-GUI browser journeys. The bounded workstream milestones are implemented and
+observed; hosted TCG Docker CI still has deadline failures, not a green qualification claim.
 [BAZ-072](backlog/in_progress/BAZ-072-apple-silicon-feature-parity.md) retains the exact evidence,
 failed runs and unrelated release gates. No release-readiness claim or publication follows from
 these bounded milestones; published 0.24.0 limits below remain historical fact.

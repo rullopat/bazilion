@@ -43,7 +43,9 @@ Pi's native close can settle after its leader exits while descendants survive;
 Unknown identity or cleanup retains a blocked slot. Native/protocol checks passed on actual
 macOS 26.6.2 arm64 with both supported Node baselines. Latest-stable **27.0.1 (26A434) arm64**
 guarded installed trials also pass native admission, catalog and descendant retirement on
-**24.22.0 / 26.4.0**. This does not complete the separate desktop-GUI/integrated parity gate. Neither persisted receipts nor a dependency availability flag grants
+**24.22.0 / 26.4.0**. Scoped installed, desktop/non-GUI browser and local ARM Docker journeys
+also pass on that actual latest-stable target. Broader BAZ-072 release acceptance and variable
+hosted TCG readiness remain separate. Neither persisted receipts nor a dependency availability flag grants
 signalling authority. Legacy SSE is retired and its old schema requires clean rebootstrap. See [MCP](mcp.md) and
 [upgrades](upgrades.md).
 

@@ -110,7 +110,9 @@ provider secret or Agent capability. Privileged session provisioning is disposab
 product never elevates privileges. Native headed/non-GUI browsing, reset/relaunch and lifecycle
 checks passed on macOS 26.6.2 arm64 with both Node baselines. Latest-stable 27.0.1 arm64 now
 passes protected/local ARM Docker, installed CLI/API/web and non-GUI browser checks on both
-baselines; the final real desktop-GUI case/integrated qualification remains open in BAZ-072.
+baselines. Operator desktop runs also pass the real headed case on each baseline; combined
+collections cover all 28 browser/CLI cases. This is bounded workstream qualification, not full
+BAZ-072 release readiness: hosted TCG deadlines remain variable and unrelated acceptance stays open.
 The audited core macOS floor is 13.5 (Node), not a claim that older OS versions were tested.
 
 XNU can omit restricted-app environment bytes from `KERN_PROCARGS2` under SIP. An argv-only

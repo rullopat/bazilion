@@ -138,7 +138,9 @@ actual native inspection still gates every connection. This is bounded normal-li
 not complete 0.25 feature parity: the initial hosted image reported 26.6.2. Subsequent actual
 latest-stable **27.0.1 (26A434) arm64** guarded installed trials pass native stdio admission,
 catalog and descendant retirement on **24.22.0 / 26.4.0**. Worker and protected milestones also
-have observed coverage; the final desktop-GUI/integrated release gate remains open in BAZ-072.
+have observed coverage, with latest-stable desktop/non-GUI browser and installed journeys now
+passing both baselines. This is not full BAZ-072 release readiness; the story preserves hosted
+TCG deadline failures and unrelated acceptance rather than declaring every environment green.
 
 ## Implementation and regression coverage
 

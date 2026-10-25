@@ -140,9 +140,10 @@ credentials/spend; this story does not authorize paid calls or use of personal a
 - Git, MCP stdio, owned-worker, managed-browser and protected/background implementations have
   observed acceptance. Latest-stable arm64 hardware/local Docker and the separate technical-floor
   audit are available. Older-OS qualification is not required or inferred.
-- Finish the actual latest-stable desktop-GUI case on both Node baselines and reconcile the final
-  integrated/source/installed/security/upgrade/build evidence. Ordinary SSH is positively non-GUI;
-  never substitute a console-user label, privileged hosted-CI fixture or fake mode result.
+- The bounded workstream goal now has actual latest-stable desktop/non-GUI, source, installed,
+  local Docker, Linux/security/upgrade/build evidence on both Node baselines. Retain the explicit
+  hosted TCG capacity failures; do not call the current CI run all green or infer universal Docker
+  performance. Ordinary SSH remains non-GUI; no privileged personal-Mac fixture was used.
 - Keep unrelated release acceptance open, including separately authorized live-provider/image
   generation and any remaining broader captured-change workflows. The bounded implementation
   goal is not all eight release gates and does not authorize publication, website deployment or
@@ -669,11 +670,39 @@ suite passes all 23 cases on both baselines**, with clean teardown: Node 26 **45
 **439.43 s**. No required case, two-second deadline, security check or isolation boundary changed.
 This establishes responsive local-Docker behavior, not a green hosted-CI claim.
 
-The remaining required latest-stable desktop-GUI case is **not recorded** on either baseline.
-An operator-run script is prepared in the isolated setup; it first requires positive native GUI
-permission, then runs the real headed case on each baseline. Its checkout is frozen at `8ffbc29`
-while `dec4deb` non-GUI work uses a separate private checkout. No privileged session manufacture
-or personal-Mac service/configuration change is used. The integrated milestone remains open.
+The operator subsequently ran the desktop-only script on **2026-10-25**. Saved results show
+**exit 0 on both baselines**, with the real headed-launch case and teardown passing: Node 24
+**4.37 s**, Node 26 **3.72 s**. The script first requires positive native GUI availability on each
+baseline; the case checks a real local window, no headless/pipe flags and final owned-process
+absence. Its frozen source is `8ffbc29`, while the non-GUI collection uses `dec4deb`; the direct
+headed launch/mode/retirement behavior is unchanged by the later optional spawn-evidence hook.
+The desktop collection selects one case (25 deselected); it complements, rather than replaces,
+the **27 passed** non-GUI/CLI collection. All **28 cases per baseline** are therefore observed on
+actual latest-stable Apple Silicon, without privileged session manufacture, fake GUI labels or
+personal-Mac service changes. The operator reported the script's successful result; no separate
+human visual approval or live-model judgment is inferred.
+
+Documentation head `cbdfdfb` / [CI 40200056722](https://github.com/rullopat/bazilion/actions/runs/40200056722)
+passes nine jobs, including the Node 24 hosted Docker lane. The Node 26 hosted TCG lane still
+**fails: 16 passed / seven failed / one exclusive non-live guard skipped**, with start-timeout
+refusals. That failed job remains failed; physical VZ's complete 23-case passes are the scoped
+latest-stable Docker evidence, not a relabelled hosted pass. No job was retried merely for green.
+
+### Scoped workstream goal outcome
+
+All five ordered implementation/qualification milestones now have their bounded evidence:
+MCP stdio, owned processes/recovery, managed browsing, protected/background execution and actual
+latest-stable integrated trials on both exact Node baselines. Linux regressions, 464-case security,
+typecheck/lint/build/pack, guarded installers and upgrade gates pass; Docker's complete cases
+pass on the approved responsive physical target. The ordinary configuration, credential, local
+image/runtime and policy prerequisites still apply. Qualification does not require arbitrary TCG
+performance, and does not promise detached-host-writer recovery or safe signalling from receipts.
+
+This is **not full 0.25 release readiness or closure of this story**. Hosted-TCG CI availability
+remains variable/failed as recorded; unrelated live-provider/image and broader release acceptance
+above remain open. The temporary VM is gracefully stopped with data retained, including the
+uncertain failed fixture; no unknown writer/receipt was cleared. No merge, release publication,
+website deployment, version bump or personal credential use occurred.
 
 The packed UI driver also disables the installed-browser updater scheduler and checks protected
 readiness against actual shared Docker facts, rather than assuming every Mac lacks Docker.

@@ -55,8 +55,11 @@ and native-architecture full Playwright bundles, never the headless shell. Linux
 released qualification platform. The macOS candidate passed headed, non-GUI, private-keychain,
 reset/relaunch, lifecycle and SSRF/service-worker checks on macOS 26.6.2 (25G83) arm64 with Node
 24.22.0 and 26.4.0. Protected/Docker suites subsequently passed on actual latest-stable
-27.0.1 (26A434) arm64 with both baselines; latest-stable integrated browser/release qualification
-remains open in BAZ-072. This evidence does not guarantee arbitrary browser builds or sites.
+27.0.1 (26A434) arm64 with both baselines. That target now also passes all 28 browser/CLI cases
+per baseline across separate non-GUI and real operator-desktop collections. Saved desktop cases
+prove software-observed native headed launch/retirement, not an independently reported human
+visual verdict. Broader BAZ-072 release acceptance remains separate; this evidence does not
+guarantee arbitrary browser builds or sites.
 
 On macOS the candidate creates a native keychain and native preference selection **inside each
 Agent's managed HOME**, with a generated owner-only secret stored beside it. The short-lived,
