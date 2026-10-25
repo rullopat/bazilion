@@ -688,19 +688,29 @@ passes nine jobs, including the Node 24 hosted Docker lane. The Node 26 hosted T
 refusals. That failed job remains failed; physical VZ's complete 23-case passes are the scoped
 latest-stable Docker evidence, not a relabelled hosted pass. No job was retried merely for green.
 
-### Scoped workstream goal outcome
+### Observed qualification and remaining required CI gate
 
-All five ordered implementation/qualification milestones now have their bounded evidence:
-MCP stdio, owned processes/recovery, managed browsing, protected/background execution and actual
-latest-stable integrated trials on both exact Node baselines. Linux regressions, 464-case security,
-typecheck/lint/build/pack, guarded installers and upgrade gates pass; Docker's complete cases
-pass on the approved responsive physical target. The ordinary configuration, credential, local
-image/runtime and policy prerequisites still apply. Qualification does not require arbitrary TCG
-performance, and does not promise detached-host-writer recovery or safe signalling from receipts.
+The implementation and physical latest-stable trials have the bounded evidence above: MCP stdio,
+owned processes/recovery, managed browsing and protected/background execution on both exact Node
+baselines. Linux regressions, 464-case security, typecheck/lint/build/pack, guarded installers and
+upgrade gates pass; Docker's complete cases pass on the approved responsive physical target.
+However, the required hosted regression gate still fails as recorded. **Physical passes do not
+waive that gate, and declaring the workstream goal complete was premature.** Completion requires
+resolving the required runner/gate failure without weakening checks, or an explicit operator
+change to that requirement. `66edd21` / CI `40228958987` completes with nine jobs passing,
+including Node 24 Docker, but Node 26 Docker **fails: 14 passed / nine failed / one exclusive guard
+skipped**. Start timeout and cleanup uncertainty recur; its standalone start took **1.771 s**
+against the unchanged two-second admission guard. The next CI-only provisioning hypothesis uses
+ARMv8.2 **`neoverse-n1`** instead of QEMU `max`, avoiding optional-extension advertisement while
+keeping three CPUs, memory, every case and every product deadline/security assertion unchanged.
+Native QEMU birth/argv evidence still reports the actual model; an unbootable profile fails rather
+than skipping qualification. This is a pending experiment, not a pass or an established root cause.
+Ordinary configuration, credential, local image/runtime and policy prerequisites remain; no
+detached-host-writer recovery or signalling authority from receipts is promised.
 
 This is **not full 0.25 release readiness or closure of this story**. Hosted-TCG CI availability
-remains variable/failed as recorded; unrelated live-provider/image and broader release acceptance
-above remain open. The temporary VM is gracefully stopped with data retained, including the
+remains variable/failed as recorded and is a required unresolved gate, not merely an optional
+availability note; unrelated live-provider/image and broader release acceptance above remain open. The temporary VM is gracefully stopped with data retained, including the
 uncertain failed fixture; no unknown writer/receipt was cleared. No merge, release publication,
 website deployment, version bump or personal credential use occurred.
 
