@@ -2480,6 +2480,12 @@
       "test": "startup timeout escalates a TERM-ignoring child to KILL and proves exit"
     },
     {
+      "id": "BROWSER-RETIREMENT-CLOSED-DIAGNOSTIC",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/browser-launch.test.ts",
+      "test": "unresolved process retirement reports its closed step without leaking its cause"
+    },
+    {
       "id": "BROWSER-DIRECT-UNCERTAIN-EXIT-RETAINED",
       "owner": "BAZ-069",
       "file": "apps/daemon/test/lib/browser-launch.test.ts",

@@ -280,6 +280,26 @@ test('startup failure with a live child leaves the marker (recovery_required)', 
   expect(readOwnerMarker(paths.browserDir(ID.agentId))).toMatchObject({ phase: 'starting' })
 })
 
+test('unresolved process retirement reports its closed step without leaking its cause', async () => {
+  const paths = makePaths()
+  const fake = fakeLauncher(() => ({}))
+  const startBrowser = async (...args: Parameters<typeof startOwnedBrowser>) => {
+    const owned = await fake.launcher(...args)
+    return {
+      ...owned,
+      close: async () => {
+        throw new Error('private raw retirement diagnostic')
+      },
+    }
+  }
+  const handle = await launch(paths, fake, { startBrowser })
+  await expect(handle.close()).rejects.toMatchObject({
+    reasonCode: 'browser_recovery_required',
+    message: 'browser retirement could not be proven (process); ownership marker retained',
+  })
+  expect(readOwnerMarker(paths.browserDir(ID.agentId))).toMatchObject({ phase: 'stopping' })
+})
+
 test('an unresolved close leaves the marker and reports recovery_required', async () => {
   const paths = makePaths()
   // The lock keeps naming a live pid after close: exit cannot be established.
@@ -287,6 +307,7 @@ test('an unresolved close leaves the marker and reports recovery_required', asyn
   const handle = await launch(paths, fake, { retirementBoundMs: 150 })
   await expect(handle.close()).rejects.toMatchObject({
     reasonCode: 'browser_recovery_required',
+    message: 'browser retirement could not be proven (profile-lock); ownership marker retained',
   })
   expect(readOwnerMarker(paths.browserDir(ID.agentId))).toMatchObject({ phase: 'stopping' })
 })

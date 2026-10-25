@@ -149,7 +149,9 @@ owner marker, singleton lock or guessed browser processes. There is intentionall
 HTTP bypass for recovery. If safe ownership cannot be established, the cleanup remains blocked.
 Uncertain retirement also continues to reserve browser-pool capacity. Uninstall refuses unknown
 browser ownership, including a starting marker without process identity, and rechecks ownership
-under its exclusive home lock after confirmation prompts.
+under its exclusive home lock after confirmation prompts. Retirement diagnostics distinguish a
+failed process close, profile-lock check or owner-marker update; those closed step labels never
+prove absence or authorize recovery, and do not disclose the raw failure.
 
 Cancelling active browser work requests retirement of that specific session, not a later turn's
 replacement. No later steps may be dispatched after cancellation; effects already sent may still

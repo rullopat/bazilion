@@ -173,19 +173,22 @@ export async function launchManagedBrowser(
         } catch (error) {
           markerError = error
         }
+        let retirementStep: 'process' | 'profile-lock' | 'marker' = 'process'
         try {
           await owned.close()
+          retirementStep = 'profile-lock'
           const deadline = Date.now() + (deps.retirementBoundMs ?? 500)
           while (lockMayBeHeld(profileDir) && Date.now() < deadline) {
             await new Promise((resolve) => setTimeout(resolve, 50))
           }
-          if (lockMayBeHeld(profileDir) || markerError)
-            throw new Error('profile retirement is uncertain')
+          if (lockMayBeHeld(profileDir)) throw new Error('profile retirement is uncertain')
+          retirementStep = 'marker'
+          if (markerError) throw new Error('owner marker publication is uncertain')
           clearOwnerMarker(slotDir)
         } catch {
           throw new ManagedLaunchError(
             'browser_recovery_required',
-            'browser retirement could not be proven; ownership marker retained',
+            `browser retirement could not be proven (${retirementStep}); ownership marker retained`,
           )
         }
       })()

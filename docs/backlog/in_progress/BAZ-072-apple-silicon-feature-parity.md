@@ -747,15 +747,41 @@ abort and uncertain cleanup still refuse. New and preserved checks are hard-requ
 security manifest: **475 cases pass**, along with root/web typechecks and lint. Full Linux source
 regression passes **2,817 / 72 gated skips**; the complete real Linux Docker/background suite
 passes **23 / one exclusive non-live guard skipped**, seven files with clean teardown. These
-results do not substitute for the pending required CI and latest-stable Mac reruns of this change.
+results do not substitute for required CI and latest-stable Mac qualification.
+
+The reviewed implementation `857d3b9` / CI `40237310069` passes eight jobs, including
+Node 24 Docker (**23 passed**). Node 26 Docker improves to **22 passed / one failed** but
+still refuses one preflight at **cleanup**; each Docker collection has its one exclusive non-live
+guard skipped. Node 24 browser/runtime has **27 passed / one failed** at retirement, with its
+uncertain profile retained. Neither failure is waived. Unlike probe-start, the existing cleanup
+bound has an explicit regression contract: three 650-ms attempts plus retry delays must finish
+below the worker's three-second kill grace. It remains unchanged; a startup-budget review does
+not justify extending it to make hosted TCG pass.
+
+On the latest-stable physical **macOS 27.0.1 (26A434), M2 Pro arm64**, the revised Docker
+implementation passes the complete seven-file **23-case** suite on **24.22.0 (461.15 s)** and
+**26.4.0 (439.02 s)**, with clean teardown and only the exclusive guard skipped. The native
+configured/protected preparation unit collection passes **11 cases** on Node 24; the lower-level
+fake-Docker unit file is Linux-only, not native evidence. The Node 24 normal collection has
+**2,462 passed / one failed / 71 gated skips**, plus four passing actual headless cases: its backup
+fixture writes through a second DB handle while asynchronous daemon review/queue finalizers can
+still write. The fixture now stops its owned daemon before private SQL seeding and restarts before
+live backup; no SQLite timeout/transaction or application contract is changed. Browser retirement
+now reports only its closed failing step (process, profile lock or marker), without raw causes,
+extra authority, longer bounds or clearing uncertain profiles. These are diagnostics, not a claim
+to have repaired the CI retirement failure. Focused fixture/launcher tests pass **56**, Linux
+normal regression **2,818 / 72 skips**, security **476**, root/web types and lint. Updated physical
+source/installed trials and required CI remain pending; the goal is incomplete.
 
 Ordinary configuration, credential, local image/runtime and policy prerequisites remain; no
 detached-host-writer recovery or signalling authority from receipts is promised.
 
 This is **not full 0.25 release readiness or closure of this story**. Hosted-TCG CI availability
 remains variable/failed as recorded and is a required unresolved gate, not merely an optional
-availability note; unrelated live-provider/image and broader release acceptance above remain open. The temporary VM is gracefully stopped with data retained, including the
-uncertain failed fixture; no unknown writer/receipt was cleared. No merge, release publication,
+availability note; unrelated live-provider/image and broader release acceptance above remain open.
+The temporary VM was gracefully stopped after earlier qualification and restarted only for the
+approved follow-up; data and the uncertain failed fixture remain retained. No unknown writer or
+receipt was cleared. No merge, release publication,
 website deployment, version bump or personal credential use occurred.
 
 The packed UI driver also disables the installed-browser updater scheduler and checks protected
