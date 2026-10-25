@@ -219,11 +219,11 @@ jobs:
           } >> "$GITHUB_ENV"
           host_home=$(node -e "console.log(require('node:fs').realpathSync(require('node:os').homedir()))")
           host_tmp=$(node -e "console.log(require('node:fs').realpathSync(require('node:os').tmpdir()))")
-          # A bounded ARMv8.2 CPU profile avoids advertising every optional extension from
-          # QEMU's `max` model to emulated guests. Test this provisioning hypothesis with the
-          # same three CPUs, full suite and unchanged application deadlines/security checks.
+          # The alternate CPU profile did not resolve the gate. Restore the default model
+          # and leave one of this runner's three host cores outside the guest vCPU budget
+          # for the actual daemon/CLI workload. Keep every case and product bound unchanged.
           test "$(sysctl -n hw.ncpu)" -ge 3
-          colima start bzd --activate=false --runtime docker --vm-type qemu --arch aarch64 --cpu-type neoverse-n1 --cpu 3 --memory 3 --disk 20 --mount-type 9p --binfmt=false --mount "$host_home:w" --mount "$host_tmp:w"
+          colima start bzd --activate=false --runtime docker --vm-type qemu --arch aarch64 --cpu 2 --memory 3 --disk 20 --mount-type 9p --binfmt=false --mount "$host_home:w" --mount "$host_tmp:w"
           colima status bzd
           export DOCKER_HOST="unix://$COLIMA_HOME/bzd/docker.sock"
           printf 'DOCKER_HOST=%s\n' "$DOCKER_HOST" >> "$GITHUB_ENV"

@@ -704,7 +704,14 @@ against the unchanged two-second admission guard. The next CI-only provisioning 
 ARMv8.2 **`neoverse-n1`** instead of QEMU `max`, avoiding optional-extension advertisement while
 keeping three CPUs, memory, every case and every product deadline/security assertion unchanged.
 Native QEMU birth/argv evidence still reports the actual model; an unbootable profile fails rather
-than skipping qualification. This is a pending experiment, not a pass or an established root cause.
+than skipping qualification. `0d520cf` / CI `40230590237` booted both profiles and passed nine
+jobs, including the Node 26 Docker suite, but Node 24 **failed: 13 passed / ten failed / one
+exclusive guard skipped**. Its standalone start was **1.755 s**. The CPU-feature hypothesis did
+not resolve the gate and is not promoted as a fix. One final bounded capacity adjustment restores
+the default CPU model with **two guest vCPUs**, leaving headroom on the three-core host for the
+actual daemon/CLI workload. Memory, cases and product bounds remain unchanged. If it also fails,
+a suitable approved CI runner or an explicit requirement decision is needed; not more variants or
+unmodified reruns until green.
 Ordinary configuration, credential, local image/runtime and policy prerequisites remain; no
 detached-host-writer recovery or signalling authority from receipts is promised.
 
