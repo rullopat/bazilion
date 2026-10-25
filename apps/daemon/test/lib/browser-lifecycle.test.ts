@@ -13,8 +13,9 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { BrowserContext, Page } from 'playwright'
-import { afterEach, expect, test } from 'vitest'
+import { afterEach, expect, test, vi } from 'vitest'
 import { resolvePaths } from '../../src/core/paths.ts'
+import * as executable from '../../src/lib/browser/executable.ts'
 import { createBrowserHost } from '../../src/lib/browser/host.ts'
 import type { ManagedBrowserHandle, ManagedLaunchInput } from '../../src/lib/browser/launch.ts'
 import {
@@ -333,6 +334,14 @@ test('headed pool launch forwards explicit X11 and Wayland display access', asyn
   process.env.XAUTHORITY = '/test/xauthority'
   process.env.WAYLAND_DISPLAY = 'test-wayland'
   process.env.XDG_RUNTIME_DIR = '/test/runtime'
+  // This fake-launcher unit checks Linux display forwarding, not the caller's actual
+  // macOS audit-session permission. Native mode/session evidence has separate real tests.
+  const resolveMode = executable.resolveBrowserMode
+  const modeProbe = vi
+    .spyOn(executable, 'resolveBrowserMode')
+    .mockImplementation((preference) =>
+      resolveMode(preference, { ...executable.realBrowserProbes, platform: 'linux' }),
+    )
   try {
     await runner({ launch: fake.launcher }, admission)('headed-agent', config({ mode: 'headed' }))
     expect(fake.launches[0]?.input).toMatchObject({
@@ -344,6 +353,7 @@ test('headed pool launch forwards explicit X11 and Wayland display access', asyn
     })
   } finally {
     await closeBrowserSession('headed-agent')
+    modeProbe.mockRestore()
     if (previous.DISPLAY === undefined) delete process.env.DISPLAY
     else process.env.DISPLAY = previous.DISPLAY
     if (previous.XAUTHORITY === undefined) delete process.env.XAUTHORITY

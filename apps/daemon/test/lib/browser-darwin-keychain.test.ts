@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import {
   chmodSync,
@@ -126,26 +126,51 @@ test.skipIf(process.platform !== 'darwin')(
   { timeout: 25_000 },
   async () => {
     const home = scratch()
-    const before = execFileSync('/usr/bin/security', ['default-keychain', '-d', 'user'], {
-      encoding: 'utf8',
-    })
+    const defaultSnapshot = () => {
+      const result = spawnSync('/usr/bin/security', ['default-keychain', '-d', 'user'], {
+        encoding: 'utf8',
+      })
+      if (result.error) throw result.error
+      if (result.signal) throw new Error('default-keychain inspection did not exit normally')
+      if (result.status === 0) return { state: 'present', value: result.stdout }
+      // An isolated HOME may positively have no default. Never create/change the caller's
+      // keychain for this fixture, or treat denied/unknown inspection as absence.
+      if (
+        result.status === 1 &&
+        result.stdout === '' &&
+        result.stderr ===
+          'security: SecKeychainCopyDomainDefault user: A default keychain could not be found.\n'
+      )
+        return { state: 'absent' }
+      throw new Error('default-keychain inspection is unknown')
+    }
+    const ensure = async () => {
+      try {
+        await ensureDarwinBrowserKeychain(home, 8000)
+      } catch (error) {
+        // Do not erase scratch after an uncertain native/external-service operation.
+        const index = directories.indexOf(home)
+        if (index >= 0) directories.splice(index, 1)
+        console.warn(`[private keychain fixture] retained failed native HOME: ${home}`)
+        throw error
+      }
+    }
+    const before = defaultSnapshot()
     const beforeSearch = execFileSync('/usr/bin/security', ['list-keychains', '-d', 'user'], {
       encoding: 'utf8',
     })
-    await ensureDarwinBrowserKeychain(home, 8000)
+    await ensure()
     const secretDigest = createHash('sha256')
       .update(readFileSync(join(home, '.bazilion-keychain-secret')))
       .digest('hex')
     expect(existsSync(join(home, 'Library', 'Keychains', 'bazilion.keychain-db'))).toBe(true)
-    await ensureDarwinBrowserKeychain(home, 8000)
+    await ensure()
     expect(
       createHash('sha256')
         .update(readFileSync(join(home, '.bazilion-keychain-secret')))
         .digest('hex'),
     ).toBe(secretDigest)
-    expect(
-      execFileSync('/usr/bin/security', ['default-keychain', '-d', 'user'], { encoding: 'utf8' }),
-    ).toBe(before)
+    expect(defaultSnapshot()).toEqual(before)
     expect(
       execFileSync('/usr/bin/security', ['list-keychains', '-d', 'user'], { encoding: 'utf8' }),
     ).toBe(beforeSearch)

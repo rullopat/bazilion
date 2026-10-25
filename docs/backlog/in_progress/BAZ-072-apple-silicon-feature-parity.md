@@ -29,10 +29,14 @@ qualified. See [BAZ-057](../done/BAZ-057-portable-safe-reads.md) and
 - Qualification: only the latest stable macOS version is available for testing. Record its exact
   version at qualification time; do not infer it from a runner's `latest` label. Older versions
   are untested, not automatically incompatible.
-- Minimum macOS version: **not decided**. Derive a technical floor from the selected native APIs,
-  Node and packaged dependencies, rather than equating the tested OS with the minimum. Older
-  versions above that floor may work but receive no release-qualification claim. Prefer avoiding
-  unnecessary recent-only APIs; never bypass a safety check to support an older version.
+- Audited technical floor: **macOS 13.5**, not the tested 27.0.1. Both pinned Node baselines
+  [declare arm64 13.5 support](https://github.com/nodejs/node/blob/v26.4.0/BUILDING.md#platform-list)
+  and their actual arm64 Mach-O load commands target **13.5.0**. Active fs-safe, koffi, Pi terminal,
+  SQLite and tree-sitter native artifacts target **11.0.0**; the public libproc, audit-session,
+  Quartz and keychain APIs used here impose no higher floor. The optional llama/Metal artifact
+  targets 14.0 but is not loaded by the admitted BM25-only path (qmd imports it lazily for LLM work).
+  Selected browser/Git/Docker distributions retain their own prerequisites. This audit is not
+  execution qualification on 13.5 or intervening releases, and adds no older-OS refusal or bypass.
 - Node: retain `^24.22.0 || ^26.4.0`, with real arm64 coverage of both supported lines. Do not
   silently narrow the engine range to make macOS qualification pass.
 - Parity means the same supported capabilities and safety contracts, not identical OS mechanisms,
@@ -582,7 +586,10 @@ runs remain failed evidence.
 ### Approved physical-Mac qualification
 
 The operator subsequently authorized an isolated Apple M2 Pro Mac Mini setup. Observed host:
-**macOS 27.0.1 (26A434), arm64**; latest-stable status is still to be established. Portable Node
+**macOS 27.0.1 (26A434), arm64**. On **2026-10-25**, Apple's
+[security releases](https://support.apple.com/en-us/100100) explicitly identifies **27.0.1** as
+the latest macOS version (Golden Gate, released 2026-09-28). This establishes the OS selection,
+not completion of the integrated journeys. Portable Node
 **24.22.0 / 26.4.0**, pnpm **12.14.0**, Colima **0.10.3**, Lima **2.2.1** and Docker CLI **29.9.2**
 leave existing software/defaults untouched. The private VM uses actual **Virtualization.Framework**,
 three CPUs, 3 GiB RAM and verified **8 GiB root + 12 GiB data** sparse capacities. Its only host
@@ -600,7 +607,26 @@ or shutdown deadlines, release unknown receipts, or replay an attempt. Two deter
 regressions failed before the fix; **19 focused tests**, **2,810 normal tests / 72 gated skips**,
 **462 required security cases**, typechecks and lint now pass locally.
 
-Both complete physical Docker suites must still pass on the fixed candidate before the protected
-milestone is complete. Latest-stable installed CLI/API/web and integrated qualification follow;
-failed hosted runs and the unresolved Linux CI browser startup failure are not relabelled by these
-observations. No release publication or version bump occurred.
+The complete fixed-candidate `0a60937` physical suites now pass on **both** baselines: Node
+**24.22.0: 23 passed / one mutually exclusive non-live guard skipped** (452.77 s), Node
+**26.4.0: 23 passed / the same guard skipped** (440.96 s), all seven files with clean teardown.
+These include actual approval/duplicate-decision/deny/cancel, cron minutes and occurrence grants,
+protected inbox/search, credential/network/mount isolation, captured verification and resource
+settlement. Provider responses are synthetic; Docker, native workers and scheduling are real.
+No deadline, tool admission or isolation assertion was weakened. The protected milestone is
+complete for this observed environment, not a latest-stable integrated or full-release claim.
+
+Latest-stable installed CLI/API/web and integrated qualification follow. Failed hosted runs, the
+initial physical teardown failure and the unresolved Linux CI browser startup failure are not
+relabelled by these observations. The fixed candidate's CI `40189624374` passes all eight
+non-Docker jobs, including the new Linux live-browser run; both hosted TCG Docker jobs still fail.
+That does not turn the earlier Linux startup failure or hosted Docker failures into passes.
+
+The first physical latest-stable Node 26 full source run passes the actual four-case headless
+browser-live probe, then **fails three tests** (2,454 bodies pass): no default keychain in isolated
+HOME, an X11 fake-launcher unit depending on actual macOS GUI availability, and overlapping
+HOME/checkout ancestry in an uninstall fixture. These are being corrected without changing
+production refusals, skipping cases or provisioning a caller keychain. The ordinary SSH caller
+is positively non-graphical; same-UID `launchctl asuser` refuses audit-session switching, so a real
+GUI-session execution remains required, never a simulated mode result. No release publication or
+version bump occurred.
