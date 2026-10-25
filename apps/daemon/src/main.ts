@@ -119,7 +119,7 @@ const shutdown = (signal: NodeJS.Signals): void => {
   if (shuttingDown) return
   shuttingDown = true
   notificationPump?.stop()
-  stopScheduler()
+  const schedulerStop = stopScheduler()
   const turnsStop = stopAgentTurns()
   const queueStop = queuePump?.stop() ?? Promise.resolve()
   console.log(`\nbazilion daemon caught ${signal}, shutting down…`)
@@ -132,13 +132,13 @@ const shutdown = (signal: NodeJS.Signals): void => {
         console.error('telegram: stop on shutdown failed:', e instanceof Error ? e.message : e),
       )
     : Promise.resolve()
-  // Cancel and settle workers while their IPC hosts and DB are still available, then
-  // retire browser/MCP resources. Unknown worker cleanup remains durably blocked.
-  const resourcesStop = turnsStop
+  // Drain scheduler readiness/lifecycle waiters as well as registered workers while
+  // IPC hosts and DB remain available. Unknown cleanup stays durably blocked.
+  const resourcesStop = Promise.all([schedulerStop, turnsStop, queueStop])
     .then(() => shutdownResources())
     .catch((e) => console.error('resources: shutdown failed:', e instanceof Error ? e.message : e))
   Promise.race([
-    Promise.all([botStop, resourcesStop, queueStop, turnsStop]),
+    Promise.all([botStop, resourcesStop]),
     new Promise((r) => setTimeout(r, 30_000)), // hard cap: don't wait forever
   ]).finally(() => {
     server.close((err) => {

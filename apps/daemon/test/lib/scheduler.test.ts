@@ -10,7 +10,8 @@ import * as profileRepo from '../../src/core/repos/profiles.ts'
 import * as triggerDispatchRepo from '../../src/core/repos/triggerDispatches.ts'
 import * as triggerRepo from '../../src/core/repos/triggers.ts'
 import { authorizeInSnapshot } from '../../src/core/team-policy/authorization.ts'
-import { registerAgent, unregisterAgent } from '../../src/lib/agent-cancel.ts'
+import { isActiveAgent, registerAgent, unregisterAgent } from '../../src/lib/agent-cancel.ts'
+import { acquireAgentLifecycleLease } from '../../src/lib/agent-lifecycle-lease.ts'
 import { makeTestEnv, type TestEnv } from '../core/helpers.ts'
 import { seedConversationTarget, seedRegisteredConversation } from '../fixtures/conversation.ts'
 
@@ -35,6 +36,7 @@ describe('durable scheduler dispatches', () => {
   let turnCalls: Array<{ agentId: string; message: string }>
   let protectedPreflightError: Error | null
   let protectedPreflightCalls: number
+  let protectedPreflightGate: ((signal: AbortSignal | undefined) => Promise<void>) | undefined
   let repositoryClaimError: Error | null
   let repositorySucceedError: Error | null
   let oldEnforcement: string | undefined
@@ -71,6 +73,7 @@ describe('durable scheduler dispatches', () => {
     turnCalls = []
     protectedPreflightError = null
     protectedPreflightCalls = 0
+    protectedPreflightGate = undefined
     repositoryClaimError = null
     repositorySucceedError = null
     vi.resetModules()
@@ -126,8 +129,9 @@ describe('durable scheduler dispatches', () => {
       },
     }))
     vi.doMock('../../src/lib/protected-execution.ts', () => ({
-      prepareProtectedExecution: async () => {
+      prepareProtectedExecution: async (_agent: unknown, options?: { signal?: AbortSignal }) => {
         protectedPreflightCalls++
+        await protectedPreflightGate?.(options?.signal)
         if (protectedPreflightError) throw protectedPreflightError
         return { testPreparedProtectedExecution: true }
       },
@@ -371,6 +375,80 @@ describe('durable scheduler dispatches', () => {
     expect(turnCalls).toEqual([])
     expect(messageRepo.get(env.db, message.id)).toMatchObject({ readAt: null })
     expect(messageRepo.listInbox(env.db, 'a1', { unreadOnly: true })).toHaveLength(1)
+  })
+
+  test('shutdown aborts and drains unregistered inbox readiness before workspace/DB close', async () => {
+    const entered = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    let signal: AbortSignal | undefined
+    protectedPreflightGate = async (ownedSignal) => {
+      signal = ownedSignal
+      entered.resolve()
+      await release.promise
+    }
+    const message = messageRepo.send(env.db, {
+      from: 'a1',
+      to: 'a1',
+      payload: JSON.stringify({ text: 'unclaimed protected work' }),
+    })
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const tick = scheduler._tickOnce()
+    await entered.promise
+    const stopped = scheduler.stopScheduler()
+    let settled = false
+    void Promise.resolve(stopped).then(() => {
+      settled = true
+    })
+    try {
+      expect(isActiveAgent('a1')).toBe(false)
+      expect(
+        env.db.raw
+          .query<{ count: number }, []>('SELECT count(*) AS count FROM workspace_writers')
+          .get()?.count,
+      ).toBe(1)
+      expect(signal?.aborted).toBe(true)
+      await Promise.resolve()
+      expect(settled).toBe(false)
+      expect(scheduler.stopScheduler()).toBe(stopped)
+      await scheduler._tickOnce()
+      expect(protectedPreflightCalls).toBe(1)
+    } finally {
+      release.resolve()
+      await Promise.all([tick, stopped])
+    }
+    expect(settled).toBe(true)
+    expect(turnCalls).toEqual([])
+    expect(messageRepo.get(env.db, message.id)?.readAt).toBeNull()
+    expect(
+      env.db.raw
+        .query<{ count: number }, []>('SELECT count(*) AS count FROM workspace_writers')
+        .get()?.count,
+    ).toBe(0)
+  })
+
+  test('shutdown drains lifecycle waiters without admitting a late inbox preflight or claim', async () => {
+    const release = await acquireAgentLifecycleLease('a1')
+    const message = messageRepo.send(env.db, {
+      from: 'a1',
+      to: 'a1',
+      payload: JSON.stringify({ text: 'waiting protected work' }),
+    })
+    const tick = scheduler._tickOnce()
+    const stopped = scheduler.stopScheduler()
+    let settled = false
+    void Promise.resolve(stopped).then(() => {
+      settled = true
+    })
+    try {
+      await Promise.resolve()
+      expect(settled).toBe(false)
+    } finally {
+      release()
+      await Promise.all([tick, stopped])
+    }
+    expect(protectedPreflightCalls).toBe(0)
+    expect(turnCalls).toEqual([])
+    expect(messageRepo.get(env.db, message.id)?.readAt).toBeNull()
   })
 
   test('provider error frames retry the materialized occurrence despite a newer watermark', async () => {

@@ -561,7 +561,7 @@ approval fixture's failed-status assertion. Focused **57 cases** and all **460 s
 pass. The next complete Mac run remains required; no isolated rerun or partial result substitutes
 for it.
 
-### Current qualification blocker
+### Hosted capacity failures
 
 `57540de` / CI `40114411729` **failed** the required Docker suites: Node 24 **10 passed / 13
 failed**, Node 26 **21 passed / two failed**, each with only the non-live guard skipped. Closed
@@ -571,12 +571,36 @@ one-, two- and three-vCPU TCG attempts, not a missing-Docker assumption. It is n
 macOS or every runner configuration is incompatible. The separate Linux live-browser probe also
 failed its startup deadline; it is not relabelled by local browser passes.
 
-Qualification now needs a usable approved Apple Silicon Mac/runner with responsive local Docker;
-provisioning authority is already granted, but an applicable target/account is still needed.
-The tested hosted Macs expose no HVF. [GitHub's larger-runner documentation](https://docs.github.com/en/actions/concepts/runners/larger-runners)
+At that point qualification needed an approved Apple Silicon Mac/runner with responsive local
+Docker. The tested hosted Macs expose no HVF. [GitHub's larger-runner documentation](https://docs.github.com/en/actions/concepts/runners/larger-runners)
 limits that paid alternative to organizations/enterprises; this repository is user-owned, and
 [macOS nested virtualization remains unsupported](https://docs.github.com/en/actions/reference/runners/larger-runners#limitations-for-macos-larger-runners).
 No repository transfer, billing change, personal credential search, unapproved remote access,
-limit relaxation or retry-until-green was used to bypass this prerequisite. The protected milestone
-remains incomplete, followed by latest-stable installed CLI/API/web and integrated qualification.
-All implementation changes are pushed; no release publication or version bump occurred.
+limit relaxation or retry-until-green was used to bypass this prerequisite. These failed hosted
+runs remain failed evidence.
+
+### Approved physical-Mac qualification
+
+The operator subsequently authorized an isolated Apple M2 Pro Mac Mini setup. Observed host:
+**macOS 27.0.1 (26A434), arm64**; latest-stable status is still to be established. Portable Node
+**24.22.0 / 26.4.0**, pnpm **12.14.0**, Colima **0.10.3**, Lima **2.2.1** and Docker CLI **29.9.2**
+leave existing software/defaults untouched. The private VM uses actual **Virtualization.Framework**,
+three CPUs, 3 GiB RAM and verified **8 GiB root + 12 GiB data** sparse capacities. Its only host
+share is the qualification directory; personal SSH-key loading/agent forwarding are disabled.
+Actual engine **29.5.2 linux/aarch64** and Debian **linux/arm64** execution are observed, not
+simulated Docker responses. No personal browser profile, credential or keychain is used.
+
+Initial `baca243` physical runs: Node 26 **23 passed / one mutually exclusive non-live guard
+skipped**; Node 24's **23 bodies passed**, but the suite **failed teardown** with a retained active
+workspace writer and no registered resources. That failed run remains failed. Investigation
+reproduced a shutdown gap: scheduler stop neither drained lifecycle/readiness work nor aborted
+inbox readiness before Agent registration. The fix tracks complete ticks, fences late admission,
+aborts that readiness, and drains finalizers before resource/DB closure. It does not change Docker
+or shutdown deadlines, release unknown receipts, or replay an attempt. Two deterministic
+regressions failed before the fix; **19 focused tests**, **2,810 normal tests / 72 gated skips**,
+**462 required security cases**, typechecks and lint now pass locally.
+
+Both complete physical Docker suites must still pass on the fixed candidate before the protected
+milestone is complete. Latest-stable installed CLI/API/web and integrated qualification follow;
+failed hosted runs and the unresolved Linux CI browser startup failure are not relabelled by these
+observations. No release publication or version bump occurred.

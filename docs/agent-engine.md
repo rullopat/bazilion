@@ -71,9 +71,9 @@ exit still cannot prove independently detached host work stopped. Locally destro
 live owners and unknown inspection retain the writer; private scratch is not erased under
 unconfirmed resources. Management does not guess PID ownership or force-clear records.
 
-Daemon shutdown stops the scheduler, fences new turn registrations, aborts active controllers and
-waits for their settlement before closing browser/MCP resources and the DB, within the existing
-shutdown cap. An interrupted/uncertain cleanup remains a durable recovery blocker after restart.
+Daemon shutdown fences scheduler admissions and new turn registrations, aborts active controllers
+including inbox readiness before registration, and drains tracked scheduler/lifecycle waiters and
+registered turns before closing browser/MCP resources and the DB, within the existing shutdown cap. An interrupted/uncertain cleanup remains a durable recovery blocker after restart.
 See [workspace recovery](workspace-recovery.md), the active BAZ-072 story and the historical
 [BAZ-057](backlog/done/BAZ-057-portable-safe-reads.md) qualification limits.
 
