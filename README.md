@@ -12,9 +12,10 @@ Per-turn subprocess execution with worker↔daemon Node-IPC for messaging, ChatG
 
 ## Quickstart
 
-Requires **Node 24.22.0+ within 24.x, or 26.4.0+ within 26.x**. Earlier releases and other
-major lines are refused before opening Bazilion state; this excludes an upstream native cleanup-hook
-bug. See `docs/upgrades.md`. **Published 0.24.0 supports ordinary chat on Linux and macOS.**
+The source/unreleased candidate requires **Node 24.22.0+ within 24.x, or 26.12.1+ within 26.x**.
+The primary development/CI toolchain is **Node 26.12.1 + pnpm 12.15.0**. Earlier releases and other
+major lines are refused before opening Bazilion state; the admitted baselines include upstream
+native cleanup-hook and SQLite backup-completion fixes. See `docs/upgrades.md`. **Published 0.24.0 supports ordinary chat on Linux and macOS.**
 macOS qualification is bounded to macOS 26.6.2 arm64 / Node 24.22.0, including fresh installed
 CLI/API/browser turns with repository instructions. See [BAZ-057](docs/backlog/done/BAZ-057-portable-safe-reads.md)
 for qualification limits and [release notes](docs/releases.md) for public-artifact verification.
@@ -29,10 +30,12 @@ retirement, managed browsing and protected Docker execution are implemented. Act
 **macOS 27.0.1 arm64** passes installed CLI/API/web and local ARM Docker trials on both exact Node
 baselines, including real desktop and non-GUI browser cases. This bounded qualification is not
 full release readiness or a 0.25 announcement. The revised implementation passes all ten hosted CI
-jobs, but latest-stable source qualification exposes an upstream **Node 26.4.0 SQLite backup
-completion bug**; the Node 26 baseline decision and unrelated release acceptance remain open.
-Node 24.22.0 contains the upstream fix; the first fixed 26.x release is 26.9.0. The declared range
-has not been changed pending that decision. The separately audited core technical floor is
+jobs on the previous baselines, but latest-stable source qualification exposed an upstream
+**Node 26.4.0 SQLite backup completion bug**; new-baseline qualification and unrelated release
+acceptance remain open.
+Node 24.22.0 contains the upstream fix; the first fixed 26.x release is 26.9.0. The operator has
+chosen the latest published 26.x, **26.12.1**, as the new minimum/baseline. Its latest-stable Mac
+qualification is still pending; earlier 26.4.0 observations are not relabelled. The separately audited core technical floor is
 **macOS 13.5**, not an execution claim
 for older releases; browser/Git/Docker prerequisites still apply. See [BAZ-072](docs/backlog/in_progress/BAZ-072-apple-silicon-feature-parity.md).
 
@@ -86,7 +89,9 @@ Other provider env vars: `OPENAI_API_KEY`, `GEMINI_API_KEY`, `LMSTUDIO_URL`/`LMS
 
 ## Develop from source
 
-Contributors: clone the repo. Node 24.22.0+ within 24.x or 26.4.0+ within 26.x, and pnpm 10+, are required. If `corepack` is unavailable, install pnpm directly with `npm install -g pnpm`.
+Contributors: clone the repo and run `mise install` for pinned **Node 26.12.1 + pnpm 12.15.0**.
+Node 24.22.0+ within 24.x remains supported. Without mise/Corepack, install the matching pnpm with
+`npm install -g pnpm@12.15.0`.
 The exact development versions are pinned in `mise.toml`; with mise, run `mise install` and prefix
 commands with `mise exec --`. After changing Node versions, rebuild native dependencies before
 starting Bazilion so the worker and qmd use the same Node module ABI.

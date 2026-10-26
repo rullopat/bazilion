@@ -11,9 +11,17 @@ import {
 import { isSupportedNodeVersion, SUPPORTED_NODE_RANGE } from '../src/runtime-version.ts'
 
 test('runtime guards agree on the explicitly supported fixed release lines', () => {
-  expect(SUPPORTED_NODE_RANGE).toBe('^24.22.0 || ^26.4.0')
+  expect(SUPPORTED_NODE_RANGE).toBe('^24.22.0 || ^26.12.1')
   expect(daemonRange).toBe(SUPPORTED_NODE_RANGE)
-  for (const version of ['24.22.0', '24.22.5', '24.99.0', '26.4.0', '26.12.0', '26.99.0']) {
+  for (const version of [
+    '24.22.0',
+    '24.22.5',
+    '24.99.0',
+    '26.12.1',
+    '26.12.2',
+    '26.13.0',
+    '26.99.0',
+  ]) {
     expect(isSupportedNodeVersion(version), version).toBe(true)
     expect(daemonSupports(version), version).toBe(true)
   }
@@ -28,6 +36,11 @@ test('runtime guards refuse old and unqualified major lines without a fallback',
     '25.7.0',
     '26.0.0',
     '26.3.99',
+    '26.4.0',
+    '26.8.0',
+    '26.9.0',
+    '26.11.99',
+    '26.12.0',
     '27.0.0',
   ]) {
     expect(isSupportedNodeVersion(version), version).toBe(false)

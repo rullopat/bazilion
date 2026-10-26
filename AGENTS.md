@@ -5,10 +5,12 @@ Codex reads it directly; Claude Code imports it from `CLAUDE.md`.
 
 ## Dev commands
 
-Supported Node lines are **24.22.0+ within 24.x or 26.4.0+ within 26.x**
-(`^24.22.0 || ^26.4.0`). Earlier/other lines are refused before bootstrap because the native
-cleanup-hook API needs the upstream fix. CLI/daemon launchers must guard before linking payloads;
-keep manifests, guards and CI aligned. pnpm 10+ is the package manager. Everything runs via `tsx`,
+Supported Node lines are **24.22.0+ within 24.x or 26.12.1+ within 26.x**
+(`^24.22.0 || ^26.12.1`). The primary toolchain is Node **26.12.1** and pnpm **12.15.0**,
+pinned in `mise.toml` and the root manifest. Earlier/other lines are refused before bootstrap;
+the admitted baselines include the native cleanup-hook and SQLite backup-completion fixes.
+CLI/daemon launchers must guard before linking payloads; keep manifests, guards and CI aligned.
+Everything runs via `tsx`,
 pinned as a root dev-dependency.
 
 ```sh

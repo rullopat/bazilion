@@ -36,7 +36,7 @@ test('CLI and daemon require Node releases with the fixed cleanup-hook API', () 
     '../../daemon/package.json',
   ]) {
     const manifest = JSON.parse(readFileSync(join(import.meta.dirname, relative), 'utf8'))
-    expect(manifest.engines.node, relative).toBe('^24.22.0 || ^26.4.0')
+    expect(manifest.engines.node, relative).toBe('^24.22.0 || ^26.12.1')
   }
 })
 

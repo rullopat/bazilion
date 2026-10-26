@@ -2,6 +2,12 @@
   "version": 1,
   "cases": [
     {
+      "id": "SQLITE-BACKUP-FINAL-REQUEST-COMPLETION",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/core/sqlite-backup-completion.test.ts",
+      "test": "SQLite backup drains completion when it is the final active child request"
+    },
+    {
       "id": "DOCKER-ADMISSION-RESPONSIVE-OCI-START",
       "owner": "BAZ-072",
       "file": "apps/daemon/test/runtime/shell-docker.test.ts",

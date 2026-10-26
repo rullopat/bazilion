@@ -2,8 +2,11 @@
 
 ## Runtime requirement
 
-The CLI and daemon require **Node 24.22.0+ within 24.x or 26.4.0+ within 26.x**
-(`^24.22.0 || ^26.4.0`). Earlier and other release lines refuse before application bootstrap.
+The source/unreleased CLI and daemon require **Node 24.22.0+ within 24.x or 26.12.1+ within 26.x**
+(`^24.22.0 || ^26.12.1`). Earlier and other release lines refuse before application bootstrap.
+The primary development/CI toolchain is Node **26.12.1 + pnpm 12.15.0**. The Node 26 minimum
+was raised after the 26.4.0 SQLite backup Promise-completion defect surfaced in qualification;
+24.22.0 already contains the fix. Historical published release requirements below are unchanged.
 For a runtime refusal, upgrade Node; do not reset the DB, replace `auth.json` or clear ownership.
 Rebuild native dependencies when changing their Node ABI.
 

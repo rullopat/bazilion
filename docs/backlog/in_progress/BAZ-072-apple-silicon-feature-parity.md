@@ -15,8 +15,11 @@ target_release: '0.25.0'
 **Incomplete.** Implementation `9d1bc31` passes all ten jobs in CI `40242186202`, including both
 Docker and browser/runtime baselines. Latest-stable physical qualification now exposes Node
 26.4.0's upstream SQLite backup completion defect; its required source run fails. Node 24.22.0
-contains the fix, first shipped on 26.x in 26.9.0. Changing the explicitly agreed Node baseline or
-introducing a compatibility adapter requires an operator decision; neither has been done.
+contains the fix, first shipped on 26.x in 26.9.0. The operator subsequently requested the latest
+published Node 26 and pnpm: **26.12.1 + 12.15.0**. Pins, the Node 26 minimum, guards and workflow
+baselines are updated accordingly; Node 24.22.0 support stays. No compatibility heartbeat or
+runtime patch is introduced. New-baseline latest-stable Mac qualification remains pending; the
+broader goal has not been resumed or completed by this scoped toolchain update.
 
 ## User outcome and release intent
 
@@ -45,8 +48,9 @@ qualified. See [BAZ-057](../done/BAZ-057-portable-safe-reads.md) and
   targets 14.0 but is not loaded by the admitted BM25-only path (qmd imports it lazily for LLM work).
   Selected browser/Git/Docker distributions retain their own prerequisites. This audit is not
   execution qualification on 13.5 or intervening releases, and adds no older-OS refusal or bypass.
-- Node: retain `^24.22.0 || ^26.4.0`, with real arm64 coverage of both supported lines. Do not
-  silently narrow the engine range to make macOS qualification pass.
+- Node: the operator-approved current range is `^24.22.0 || ^26.12.1`, with exact baselines
+  **24.22.0 / 26.12.1** and pinned **pnpm 12.15.0**. Earlier evidence used the originally agreed
+  `^24.22.0 || ^26.4.0`; those observations are historical, not new-baseline qualification.
 - Parity means the same supported capabilities and safety contracts, not identical OS mechanisms,
   universal filesystem support, provider entitlement or guaranteed access to external sites.
 - Linux remains supported with its existing protections. OS-independent prerequisites and
@@ -802,16 +806,31 @@ missing callback scope and adds a final-active-request child regression. Officia
 contains it; 26.4.0 and 26.8.0 do not. Official **26.9.0** source and its release changelog contain
 fix `18c3867d19`, establishing the first fixed 26.x release. This is runtime-version evidence,
 not an OS-floor change. No heartbeat, timeout increase, test skip, baseline substitution or native
-runtime patch was added. The agreed `^24.22.0 || ^26.4.0` range and exact baseline remain intact;
-the operator must decide whether to amend them or authorize a compatibility design. The goal
-remains incomplete despite the green hosted gate.
+runtime patch was added. At that checkpoint the agreed `^24.22.0 || ^26.4.0` range and exact
+baseline remained intact, awaiting an operator decision. The goal remained incomplete despite
+the green hosted gate.
+
+The operator then explicitly chose the latest published Node 26 and pnpm rather than a compatibility
+adapter: **26.12.1 / 12.15.0**, verified against the official Node index and npm stable metadata.
+The source/mise pins, application manifests, early guards, CI/release tooling and digest-pinned
+example image now agree; Node 24.22.0 support remains. A required child regression exercises the
+production SQLite/WAL backup driver as its final active request, with no child timer, heartbeat or
+progress callback that could mask the upstream bug. An idle loopback listener keeps that child
+alive without supplying wakeups, matching an idle daemon; an older installed **26.7.0** control
+then times out, while **26.12.1** delivers completion. A child allowed to exit immediately can
+mask this bug through `beforeExit` draining and is not the chosen regression. The older 26.4.0
+results above are not rewritten. Under the new primary tools, frozen install, **14 focused**,
+**2,819 Linux source / 72 skips**, **477 security cases**, root/web types, lint, build, all three
+package artifacts/offline library consumers and **15 upgrade-harness checks** pass. The lockfile
+change is confined to the pinned package manager, not application dependency upgrades.
+Current-baseline real-Mac qualification and goal completion still require the resumed, amended goal.
 
 Ordinary configuration, credential, local image/runtime and policy prerequisites remain; no
 detached-host-writer recovery or signalling authority from receipts is promised.
 
-This is **not full 0.25 release readiness or closure of this story**. The Node 26.4.0 latest-stable
-source failure is unresolved; unrelated live-provider/image and broader release acceptance above
-remain open. The private VM was positively empty and gracefully stopped after follow-up
+This is **not full 0.25 release readiness or closure of this story**. New-baseline latest-stable
+Mac qualification remains open; the older Node 26.4.0 failure is retained, not retroactively passed.
+Unrelated live-provider/image and broader release acceptance above remain open. The private VM was positively empty and gracefully stopped after follow-up
 qualification; data and the uncertain failed fixture remain retained. No unknown writer or
 receipt was cleared. No merge, release publication,
 website deployment, version bump or personal credential use occurred.
