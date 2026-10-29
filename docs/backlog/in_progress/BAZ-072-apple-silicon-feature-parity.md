@@ -34,7 +34,7 @@ protected report with no Docker/native readiness, trusted-host CLI/web labels, p
 and Config rejection, and supported-host/refusal CI instead of mandatory Mac native positives.
 Structural metadata/proxy parsing is not admission and retains history/development utility.
 
-Current verification: Linux full checks pass **3,179/77 platform skips** plus four headless probes,
+Initial revised-scope verification: Linux full checks pass **3,179/77 platform skips** plus four headless probes,
 477 security cases, types/lint/build after the reviewer-only preservation correction. Revised physical
 **macOS 27.0.1 arm64 / Node 26.12.1** source checks pass **2,710/181 platform skips**, plus four
 headless probes. The removed native requirements are deferred, not passes. Initial support-transition
@@ -49,19 +49,60 @@ general collection**: the owned-stdio cancellation test retains an MCP retiremen
 initialization cases/afterEach also encounter retained ownership. This is not a waived retained
 capability failure or a reason to rerun unchanged code. Closed stdio retirement-phase diagnostics
 now distinguish inspection, signal/anchor, group-wait, handle-wait and SDK-close stages without
-PIDs, paths, raw SDK errors or authority. Forty-five focused MCP cases and types pass locally;
-that does not explain the hosted failure. Hosted qualification remains unfinished.
+PIDs, paths, raw SDK errors or authority. At `360d205`, 45 focused MCP cases and matching local
+general collection **3,114/143 gated skips** plus four headless probes, 477 security cases,
+types/lint/build pass. Instrumented hosted run
+[40930133697](https://github.com/rullopat/bazilion/actions/runs/40930133697) passes **all nine jobs**,
+including actual Linux native/Docker, Mac host/refusal, both general/installer lanes and upgrades.
+The earlier MCP failure did not recur; this does not explain it or establish a lifecycle fix.
+
+### Installed integrated observations — Node 26.12.1
+
+Genuine candidate tarballs from `360d205` pass offline API/client runtime and browser-only type
+consumers. On physical **macOS 27.0.1 (26A434), M2 Pro arm64**, guarded installed CLI/API/web chat,
+responsive browser UI, owned MCP stdio, host coding and guarded Git pass. Explicit native/Docker
+Team defaults refuse without provider requests. A separate actual scheduled protected turn refuses
+with **no qualified isolation**, zero model calls and no command/writer/resource rows; it never
+becomes host execution.
+
+Actual installed main-process trials pass shutdown with an active worker and owned MCP descendant,
+then explicit new turns after restart and offline backup/restore. Native session evidence also
+confirms a genuine **non-graphical** caller (`SessionGetInfo` success, graphic access false): the
+managed browser reads RFC 2606, returns snapshots and a real PNG through chat, denies private-network
+navigation without a request, and shuts down with the active worker through the real main process.
+Its profile is preserved after stop but excluded from backup; a restored home starts a fresh owned
+browser only on a new explicit turn. No personal profile/keychain, fabricated session, privilege
+change, private-network bypass or old-turn replay is used.
+
+The first browser harness crashes while trying to format stale page/observation assertions. Its
+transcript records successful navigation, but original teardown is **unconfirmed** and its private
+root remains retained. A corrected provider error handler and documented observation oracle pass
+in a separate fresh home/profile; this does not settle the failed root or erase the failed trial.
+
+On Linux, the same genuine installed candidate, Node 26.12.1 and **Bubblewrap 0.13.1** execute both
+configured native coding and one actual protected scheduled check (one attempt). Both executor
+receipts are successful `linux-bwrap` native receipts with no image/host/Docker fallback, and the
+real main process settles with zero workspace writers/resources. Retained Docker qualification
+remains separately covered by current hosted CI.
+
+**Latest-stable qualification remains missing.** On 2026-10-29 Apple's
+[security releases](https://support.apple.com/en-us/100100) identifies **macOS 27.2, released
+2026-10-26**, while the authorized physical Mac remains 27.0.1. The observations above qualify only
+that exact observed OS; they do not replace latest-stable or headed/desktop acceptance. No OS update,
+alternate latest-stable host or new graphical-session access is authorized. Real-provider/generated-
+image acceptance also remains unobserved without separate credentials/spend authority. The actual
+RFC read and browser PNG are narrow evidence, not model entitlement or arbitrary-site acceptance.
 
 ### Remaining required delivery acceptance
 
-1. Finish current Node 26 host/refusal/native-Linux CI, unrelated security, retained Linux Docker,
-   types/lint/build/packaging and actual authenticated CLI/API management parity.
-2. Qualify installed CLI/API/web trusted-host journeys on actual latest-stable Apple Silicon Mac,
-   supported coding/MCP/guarded Git, actual browser desktop/non-GUI, and real main-process shutdown,
-   restart and restore. Hosted labels/source results do not replace installed/latest-stable acceptance.
-3. Qualify retained Linux protected execution and Mac isolation-required refusals; preserve queues,
-   Team Policy, approvals and ownership. Keep applicable live-provider/site/image acceptance and
-   access/spend limits distinct; missing evidence stays unfinished.
+1. Obtain authorized actual latest-stable **27.2 Apple Silicon** access and bounded desktop/headed
+   browser permission, then qualify the installed supported journeys and lifecycle on that target.
+   Neither the 27.0.1 observations nor older hosted images substitute for this requirement.
+2. Preserve applicable live-provider/site/image acceptance and obtain its specific access/spend
+   authority where required; existing synthetic-provider/RFC/browser-image observations do not
+   silently retire it. Keep prior failed/unconfirmed resources retained without adoption or signalling.
+3. Preserve the passing current CI, installed Linux native/protected checks and actual Mac protected
+   refusals, policy/approval boundaries and ownership. Revalidate affected code if it changes.
 4. Reconcile support diagnostics/guides and prior applicable auditor objections, safely commit/push,
    and request completion audit only with the revised evidence. No merge, release, deployment,
    package-version bump or full-0.25-readiness claim.

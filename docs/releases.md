@@ -2,22 +2,25 @@
 
 ## 0.25.0 target — not released
 
-The requested focus is **macOS Apple Silicon feature parity with Linux**, including hardened Git,
-MCP stdio, managed browsing and protected execution. Intel Mac qualification and Windows support
-are out of scope. Qualification targets the latest stable macOS and both supported Node lines;
-older macOS versions receive no new qualification claim, not an automatic incompatibility label.
-The audited core technical floor is **13.5**, separate from actual latest-stable **27.0.1 (26A434)**
-arm64 trials. Both Node baselines pass installed CLI/API/web, protected ARM Docker and real
-desktop/non-GUI browser journeys. The bounded workstream milestones are implemented and
-observed. The revised implementation passes all ten hosted CI jobs, including both Docker lanes;
-previous failed runs stay failed evidence. Latest-stable source qualification remains blocked by
-Node 26.4.0's upstream SQLite backup completion bug (fixed in 24.22.0 and first fixed in 26.x at
-26.9.0). The operator has now selected **26.12.1** as the 26.x minimum/baseline and **pnpm 12.15.0**
-as the pinned manager, retaining Node 24.22.0 support. Actual latest-stable Mac requalification
-of that new baseline remains pending; earlier observations are not relabelled.
-[BAZ-072](backlog/in_progress/BAZ-072-apple-silicon-feature-parity.md) retains the exact evidence,
-failed runs and unrelated release gates. No release-readiness claim or publication follows from
-these bounded milestones; published 0.24.0 limits below remain historical fact.
+The revised target is **trusted Apple Silicon Mac operation**, with explicitly unisolated host
+execution, independent hardened Git/MCP/managed-browser protections and fail-closed refusal when
+qualified isolation is required. Generic native Mac isolation is deferred/unqualified; Mac Docker/VM
+support is removed. Linux native and retained Linux Docker keep their independent safety contracts.
+
+The candidate supports **Node 26 only**, range **`^26.12.1`**, exact baseline **26.12.1**, pnpm
+**12.15.0**. Node 24 and earlier dual-baseline/VM trials are historical, not current support.
+Current implementation `360d205` passes all nine revised hosted CI jobs. Actual installed Mac
+**27.0.1 (26A434), arm64** trusted-host/non-GUI and main-process lifecycle trials, plus installed
+Linux native/protected checks and Mac protected refusals, have bounded observed coverage.
+
+Latest-stable and desktop qualification remain open: on **2026-10-29**, Apple identifies **27.2**
+(released 26 October) as latest, but the authorized physical Mac is still **27.0.1**. Older releases
+are not automatically incompatible; observed 27.0.1 is not latest-stable acceptance. Intel/Rosetta
+and Windows remain out of scope. Real-provider/generated-image acceptance lacks separate access/
+spend authority; synthetic providers and browser screenshots are not substitutes.
+[BAZ-072](backlog/in_progress/BAZ-072-apple-silicon-feature-parity.md) preserves failed histories,
+unconfirmed ownership and remaining acceptance. No release-readiness claim, publication or version
+bump follows; published 0.24.0 limits below remain historical fact.
 
 ## 0.24.0
 

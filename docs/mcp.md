@@ -138,11 +138,15 @@ The expanded security gate passed all 418 required cases on Linux.
 CLI/web platform diagnostics and management help now describe native-owned macOS stdio, while
 actual native inspection still gates every connection. This is bounded normal-lifecycle evidence,
 not complete 0.25 feature parity: the initial hosted image reported 26.6.2. Subsequent actual
-latest-stable **27.0.1 (26A434) arm64** guarded installed trials pass native stdio admission,
+then-latest **27.0.1 (26A434) arm64** (confirmed 2026-10-25) guarded installed trials pass native stdio admission,
 catalog and descendant retirement on **24.22.0 / 26.4.0**. Worker and protected milestones also
 have observed coverage, with latest-stable desktop/non-GUI browser and installed journeys now
 passing both baselines. This is not full BAZ-072 release readiness; the story preserves hosted
 TCG deadline failures and unrelated acceptance rather than declaring every environment green.
+Those dual-Node observations are historical: current support is Node 26.12.1 only. Current installed
+26.12.1 owned-stdio/main-process trials also pass on physical 27.0.1; on 2026-10-29 Apple's latest
+stable is 27.2, whose installed qualification remains open. Generic Mac shell isolation deferral
+does not retire or qualify MCP's independent ownership contract.
 
 ## Implementation and regression coverage
 
