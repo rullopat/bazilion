@@ -108,7 +108,21 @@ responses, non-ESRCH errors, own-identity failure and exhausted budgets stay unk
 is omitted, effect replayed, PID signalled, deadline extended or third capture allowed.
 Current local checks pass **3,169 Linux/77 platform skips** plus four headless probes, 477 security,
 types/lint/build, and **138 physical Mac checks/13 Linux-Docker-only skips**. Hosted qualification
-of the outside-inventory classification fix is pending; original queue uncertainty is not reclassified.
+at `0d02dcc` is **not complete**:
+[40894638537](https://github.com/rullopat/bazilion/actions/runs/40894638537) passes eight jobs,
+including Linux native, both general collections/installers, upgrade, security and Linux Docker,
+but Mac native fails **seven/38 cases**. The retained Bash-allow worker records two `first_drift`
+captures and unconfirmed canonical resource/template teardown. The detached-writer control also
+fails its positive busy-observation assertion; preparation, scheduling, queue and verification
+failures are not all explained by one diagnosis. No assertion is removed or softened.
+
+The current two-capture proof cannot establish settlement in that observed execution. Further
+unchanged runs, additional captures, broader exclusions, forced cleanup and an older/alternative
+acceptance substitute are not remedies. Work is paused at native CI for an operator decision on a
+bounded lifetime-consistency refinement addressing host PID churn; the approved mechanism/limits
+remain unchanged pending that decision. Original queue uncertainty and failed runs are not
+reclassified. No completed task is reopened, no release readiness is claimed, and installed/latest-
+stable, desktop/site/live-provider and main-process restart/restore acceptance remain unfinished.
 
 The preceding Node 24 source attempt remains **21 passed / one failed**: readiness recorded drift
 then unknown scoped identity and retained its unconfirmed resource. Its cause is not established;

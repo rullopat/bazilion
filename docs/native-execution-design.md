@@ -82,8 +82,11 @@ other jobs but still fails 15/38 Mac cases. Outside-inventory zero-byte ESRCH ca
 explicit drift only when a fresh complete PID list independently changes within the same budget;
 the entire partial inventory is discarded, never admitted or patched. Stable/incomplete lists,
 partial responses, non-ESRCH errors and own-identity failure remain unknown. Hosted revalidation of
-that outside-inventory refinement is pending. No budget, signalling rule or sandbox permission is
-broadened. Original failed captures remain unchanged. A preceding
+that refinement (`0d02dcc`, run 40894638537) passes eight jobs but still fails seven/38 Mac native
+cases. A retained worker exhausts both captures with `first_drift` and cannot confirm canonical
+teardown. Native CI remains unqualified; other failures are not all explained. Work is paused for
+an operator decision on a bounded consistency-proof refinement for host PID churn. No budget,
+signalling rule, assertion, sandbox permission or release condition is broadened. Original failed captures remain unchanged. A preceding
 Node 26 queue cancellation still remains a retained 42/43 source failure (`uncertain`, not
 `cancelled`), with original cause unestablished. These fixes do not explain or erase it.
 
