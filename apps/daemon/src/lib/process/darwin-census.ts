@@ -20,6 +20,12 @@ export type DarwinCensusReason =
   | 'budget'
   | 'pid_list'
   | 'identity'
+  | 'identity_esrch'
+  | 'identity_eacces'
+  | 'identity_eperm'
+  | 'short_esrch'
+  | 'short_eacces'
+  | 'short_eperm'
   | 'layout'
   | 'scope_input'
   | 'owner'
@@ -53,6 +59,18 @@ const SHORT_BYTES = 64
 const EPERM = constants.errno.EPERM
 const unknown = (reason: DarwinCensusReason): DarwinCensusUnknown =>
   Object.freeze({ kind: 'unknown', reason })
+/** Closed syscall facts only. These remain unknown, never an exclusion or retry permission. */
+function identityFailure(
+  result: { bytes: number; errno: number },
+  short = false,
+): DarwinCensusUnknown {
+  if (result.errno === constants.errno.ESRCH)
+    return unknown(short ? 'short_esrch' : 'identity_esrch')
+  if (result.errno === constants.errno.EACCES)
+    return unknown(short ? 'short_eacces' : 'identity_eacces')
+  if (result.errno === EPERM) return unknown(short ? 'short_eperm' : 'identity_eperm')
+  return unknown('identity')
+}
 const validPid = (pid: number) => Number.isSafeInteger(pid) && pid > 0 && pid <= 0x7fffffff
 
 function validIdentity(value: DarwinCensusIdentity): boolean {
@@ -151,7 +169,7 @@ export class DarwinCensusReader {
   private identity(pid: number): DarwinCensusIdentity | DarwinCensusUnknown {
     const buffer = Buffer.alloc(IDENTITY_BYTES)
     const result = this.calls.identity(pid, buffer)
-    if (result.bytes !== IDENTITY_BYTES || result.errno !== 0) return unknown('identity')
+    if (result.bytes !== IDENTITY_BYTES || result.errno !== 0) return identityFailure(result)
     // Published Apple proc_info_private.h ABI, absent from the public SDK. This accepted
     // compatibility dependency must never silently fall back to wall-clock/group inference.
     if (buffer.readBigUInt64LE(40) !== 0n || buffer.readBigUInt64LE(48) !== 0n)
@@ -169,7 +187,7 @@ export class DarwinCensusReader {
     if ('kind' in before) return before
     const buffer = Buffer.alloc(SHORT_BYTES)
     const result = this.calls.short(pid, buffer)
-    if (result.bytes !== SHORT_BYTES || result.errno !== 0) return unknown('identity')
+    if (result.bytes !== SHORT_BYTES || result.errno !== 0) return identityFailure(result, true)
     const state = buffer.readUInt32LE(12)
     if (buffer.readUInt32LE(0) !== pid || state < 2 || state > 5) return unknown('layout')
     const after = this.identity(pid)
@@ -239,7 +257,7 @@ export class DarwinCensusReader {
           outsideCount++
           continue
         }
-        if (result.bytes !== IDENTITY_BYTES || result.errno !== 0) return unknown('identity')
+        if (result.bytes !== IDENTITY_BYTES || result.errno !== 0) return identityFailure(result)
         const actual = this.row(expected.pid)
         if ('kind' in actual) return actual
         if (!sameDarwinCensusIdentity(expected, actual)) return unknown('drift')

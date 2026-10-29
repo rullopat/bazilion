@@ -57,7 +57,20 @@ Expanded physical Node 26 Mac source checks pass **89 cases / 13 Linux-Docker-on
 off an earlier security attempt; that attempt has no verdict and is not a failed/passed backend run.
 The previous expanded Node 26 source run remains **42 passed / one failed**: cancellation settled
 `uncertain` instead of expected `cancelled`; original cause is unestablished and the fixture remains
-retained. Later green checks neither explain nor erase it. Hosted revalidation of the fixes is pending.
+retained. Later green checks neither explain nor erase it. The second hosted run
+[40879000360](https://github.com/rullopat/bazilion/actions/runs/40879000360) **failed** its two native
+lanes while the other seven jobs passed, including both general OS collections and installers.
+Ubuntu 24.04 supplies the libc wrappers but stock policy denies UID-map/net-namespace operations;
+no policy is relaxed. Linux now binds only the fixed public pidfd syscalls on admitted x64/arm64,
+with zero flags and no PID fallback, so the namespace-capable 22.04 lane no longer needs optional
+libc exports. Mac's remaining five failures retain census/readiness uncertainty; new closed errno
+facts distinguish identity/short-info ESRCH, EACCES and EPERM without changing verdicts, retries,
+release authority or budgets. Original captures are not rewritten.
+
+Current local Node 26 checks pass **3,160 Linux / 76 gated skips** plus four headless probes,
+477 security, types/lint/build, and **128 physical Mac checks / 13 Linux-Docker-only skips**.
+Original failure histories and source queue `uncertain` outcome remain unchanged. Hosted
+revalidation of the fixed kernel binding/closed diagnostics is pending.
 
 The preceding Node 24 source attempt remains **21 passed / one failed**: readiness recorded drift
 then unknown scoped identity and retained its unconfirmed resource. Its cause is not established;

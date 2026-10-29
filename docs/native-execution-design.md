@@ -63,7 +63,13 @@ writer's intended six-second expiry now uses monotonic time, not scheduler-depen
 cleanup still requires fresh live-owned proof with unchanged bounds. Native runtime-capture cases
 are selected explicitly in both native lanes, not skipped based on missing prerequisites. Retired
 Docker-backed spawn fixtures retain all assertions on Linux; Mac native counterparts run separately.
-Expanded physical Mac source checks pass 89 cases/13 explicitly Linux-Docker-only skips. A preceding
+Expanded physical Mac source checks pass 89 cases/13 explicitly Linux-Docker-only skips.
+The next hosted candidate still fails native lanes: stock Ubuntu 24.04 denies UID-map/net-namespace
+operations, and five Mac cases retain census/readiness uncertainty. No AppArmor/sysctl relaxation,
+extra census attempt or cleanup-bound increase is used. Linux's fixed public syscall binding permits
+the namespace-capable 22.04 lane without the missing libc exports; real local pidfd/namespace tests
+pass. New Mac diagnostics distinguish closed identity/short-info ESRCH/EACCES/EPERM facts, still as
+unknown rather than policy exclusions or retry permission. Original failed captures remain unchanged. A preceding
 Node 26 queue cancellation still remains a retained 42/43 source failure (`uncertain`, not
 `cancelled`), with original cause unestablished. These fixes do not explain or erase it.
 
@@ -139,9 +145,11 @@ ABI; it does not by itself supply the required filesystem view and process lifet
 upstream best-effort compatibility examples must not be copied into Bazilion's fail-closed policy.
 Likewise, seccomp alone is not a complete sandbox.
 
-Prerequisites include usable unprivileged namespaces, the pinned native components and the exported
-libc `pidfd_open`/`pidfd_send_signal` ABI (glibc provides it from 2.36). Kernel support alone is not
-sufficient for this closed binding; unavailable symbols refuse, without PID/group fallback. Some Linux
+Prerequisites include usable unprivileged namespaces, pinned native components and the public kernel
+pidfd ABI. The closed binding uses fixed `pidfd_open`/`pidfd_send_signal` syscall numbers on admitted
+x64/arm64, with typed variadic arguments and zero flags; it does not require glibc 2.36's optional
+wrapper exports, accept caller syscall numbers or fall back to PID/group signalling. Missing kernel
+operations still refuse. Some Linux
 policies, notably Ubuntu's AppArmor user-namespace restrictions, can prevent setup. Report that
 condition. Do not change global sysctls, install privileged helpers or weaken the profile as an
 automatic remediation. Any disposable-CI prerequisite configuration must be separately approved.

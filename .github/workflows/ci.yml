@@ -180,9 +180,9 @@ jobs:
 
   linux-native:
     name: Linux native security (Node ${{ matrix.node }})
-    # Native pidfd ownership needs the exported libc ABI (glibc >=2.36); 22.04 lacks it.
-    # Use the stock 24.04 policy, never alter user-namespace sysctls or AppArmor to admit tests.
-    runs-on: ubuntu-24.04
+    # This image permits unprivileged namespaces without modifying host sysctls/AppArmor.
+    # The fixed pidfd kernel binding does not require glibc 2.36's optional exported wrappers.
+    runs-on: ubuntu-22.04
     timeout-minutes: 20
     strategy:
       fail-fast: false

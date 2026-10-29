@@ -103,7 +103,7 @@ test('scoped self identity reuses complete ABI/birth checks and never admits a z
   own.state = 5
   expect(f.observer.ownIdentity()).toEqual({ kind: 'unknown', reason: 'owner' })
   f.rows.delete(owner.pid)
-  expect(f.observer.ownIdentity()).toEqual({ kind: 'unknown', reason: 'identity' })
+  expect(f.observer.ownIdentity()).toEqual({ kind: 'unknown', reason: 'identity_esrch' })
 })
 
 test('complete Darwin census sorts IDs, preserves uint64 precision and includes foreign zombies', () => {
@@ -183,7 +183,11 @@ test.each([
 ])('outside collector error %d cannot silently remove a process', (errno) => {
   const f = fixture()
   vi.spyOn(f.outside, 'identity').mockReturnValue({ bytes: 0, errno })
-  expect(f.reader.inventory()).toEqual({ kind: 'unknown', reason: 'identity' })
+  expect(f.reader.inventory()).toEqual({
+    kind: 'unknown',
+    reason:
+      errno === EPERM ? 'identity_eperm' : errno === EACCES ? 'identity_eacces' : 'identity_esrch',
+  })
 })
 
 test('partial identity/short responses and changed reserved ABI fields refuse', () => {
@@ -240,7 +244,25 @@ test.each([EACCES, ESRCH, 0])('scope error %d is not a foreign-policy exclusion'
   const f = fixture()
   const first = inventory(f.reader)
   vi.spyOn(f.inside, 'identity').mockReturnValue({ bytes: 0, errno })
-  expect(f.observer.scope(first, owner)).toEqual({ kind: 'unknown', reason: 'identity' })
+  expect(f.observer.scope(first, owner)).toEqual({
+    kind: 'unknown',
+    reason: errno === EACCES ? 'identity_eacces' : errno === ESRCH ? 'identity_esrch' : 'identity',
+  })
+})
+
+test.each([
+  EPERM,
+  EACCES,
+  ESRCH,
+])('short-BSD syscall error %d stays closed unknown diagnostic facts, not authority', (errno) => {
+  const f = fixture()
+  vi.spyOn(f.outside, 'short').mockReturnValue({ bytes: 0, errno })
+  const value = f.reader.inventory()
+  expect(value).toEqual({
+    kind: 'unknown',
+    reason: errno === EPERM ? 'short_eperm' : errno === EACCES ? 'short_eacces' : 'short_esrch',
+  })
+  expect(Object.keys(value).sort()).toEqual(['kind', 'reason'])
 })
 
 test('denied owner and changed expected process versions cannot produce a view', () => {

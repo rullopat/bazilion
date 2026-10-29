@@ -55,6 +55,10 @@ test.skipIf(process.platform !== 'linux')(
       expect(handle.fd).toBeGreaterThanOrEqual(0)
       fd = handle.fd
       expect(calls.state(fd)).toBe('live')
+      expect(() => calls.open(0)).toThrow('unavailable')
+      expect(() => calls.signal(-1, 'SIGTERM')).toThrow('unavailable')
+      expect(() => calls.signal(handle.fd, 'SIGUSR1' as never)).toThrow('unavailable')
+      expect(calls.state(fd)).toBe('live')
       // Actual original ChildProcess + unchanged native birth precede this controlled signal.
       expect(inspectLinuxProcess(pid)?.start).toBe(fact?.start)
       expect(child.exitCode).toBe(null)

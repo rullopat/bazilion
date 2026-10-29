@@ -132,23 +132,33 @@ export function getLinuxPidfdCalls(): LinuxPidfdCalls {
     if (koffi.version !== '3.3.3') fail()
     // Resolve the libc symbols already loaded into this process, not a caller/PATH-selected DSO.
     const library = koffi.load(null)
-    const open = library.func('int pidfd_open(int pid, unsigned int flags)')
-    const signal = library.func(
-      'int pidfd_send_signal(int fd, int signal, const void *info, unsigned int flags)',
-    )
+    // The public kernel ABI is identical on the two admitted 64-bit architectures. Bind it
+    // directly: older libc can support the kernel operations without exporting 2.36's wrappers.
+    // No arbitrary syscall number/flags, libc-wrapper probing, or PID/group signalling fallback.
+    const syscall = library.func('long syscall(long number, ...)')
     const poll = library.func('int poll(_Inout_ void *fds, unsigned long count, int timeout)')
     cached = Object.freeze({
       open(pid: number) {
         if (!validPid(pid)) fail()
         koffi.errno(0)
-        const fd = open(pid, 0) as number
+        const fd = syscall(434, 'int', pid, 'unsigned int', 0) as number
         return { fd, errno: koffi.errno() }
       },
       signal(fd: number, selected: 'SIGTERM' | 'SIGKILL') {
         if (!Number.isSafeInteger(fd) || fd < 0 || !['SIGTERM', 'SIGKILL'].includes(selected))
           fail()
         koffi.errno(0)
-        const result = signal(fd, selected === 'SIGTERM' ? 15 : 9, null, 0) as number
+        const result = syscall(
+          424,
+          'int',
+          fd,
+          'int',
+          selected === 'SIGTERM' ? 15 : 9,
+          'const void *',
+          null,
+          'unsigned int',
+          0,
+        ) as number
         return { result, errno: koffi.errno() }
       },
       state(fd: number) {
