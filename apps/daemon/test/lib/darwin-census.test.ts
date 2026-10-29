@@ -14,6 +14,7 @@ import {
   DarwinCensusReader,
   type DarwinCensusView,
   getDarwinCensusCalls,
+  hasBracketedDarwinCensusDrift,
 } from '../../src/lib/process/darwin-census.ts'
 
 const { EPERM, EACCES, ESRCH } = constants.errno
@@ -263,6 +264,64 @@ test.each([
     reason: errno === EPERM ? 'short_eperm' : errno === EACCES ? 'short_eacces' : 'short_esrch',
   })
   expect(Object.keys(value).sort()).toEqual(['kind', 'reason'])
+})
+
+test('only complete changed vectors with the original live owner classify explicit bracket drift', () => {
+  const f = fixture(),
+    first = inventory(f.reader)
+  expect(hasBracketedDarwinCensusDrift(first, first, owner, 10)).toBe(false)
+  f.setListed([1, 100, 101, 102])
+  const last = inventory(f.reader)
+  expect(hasBracketedDarwinCensusDrift(first, last, owner, 10)).toBe(true)
+  for (const elapsed of [-1, 501, Number.NaN, Number.POSITIVE_INFINITY])
+    expect(hasBracketedDarwinCensusDrift(first, last, owner, elapsed)).toBe(false)
+  expect(hasBracketedDarwinCensusDrift(first, last, { ...owner, execVersion: 11 }, 10)).toBe(false)
+  expect(
+    hasBracketedDarwinCensusDrift(
+      first,
+      { kind: 'inventory', rows: last.rows.filter((row) => row.pid !== owner.pid) },
+      owner,
+      10,
+    ),
+  ).toBe(false)
+  expect(
+    hasBracketedDarwinCensusDrift(
+      first,
+      {
+        kind: 'inventory',
+        rows: last.rows.map((row) => (row.pid === owner.pid ? { ...row, state: 'zombie' } : row)),
+      },
+      owner,
+      10,
+    ),
+  ).toBe(false)
+  expect(
+    hasBracketedDarwinCensusDrift(
+      first,
+      { kind: 'inventory', rows: [...last.rows, ...last.rows] },
+      owner,
+      10,
+    ),
+  ).toBe(false)
+})
+
+test.each([
+  'identity',
+  'short',
+] as const)('partial %s response plus ESRCH never becomes retry-classifiable absence', (operation) => {
+  const f = fixture()
+  vi.spyOn(f.outside, operation).mockReturnValue({ bytes: 1, errno: ESRCH })
+  expect(f.reader.inventory()).toEqual({ kind: 'unknown', reason: 'identity' })
+})
+
+test('scoped owner inspection failure cannot become retry-classifiable ESRCH', () => {
+  const f = fixture(),
+    first = inventory(f.reader),
+    original = f.inside.identity
+  vi.spyOn(f.inside, 'identity').mockImplementation((pid, buffer) =>
+    pid === owner.pid ? { bytes: 0, errno: ESRCH } : original(pid, buffer),
+  )
+  expect(f.observer.scope(first, owner)).toEqual({ kind: 'unknown', reason: 'owner' })
 })
 
 test('denied owner and changed expected process versions cannot produce a view', () => {

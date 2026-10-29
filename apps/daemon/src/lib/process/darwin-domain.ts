@@ -15,6 +15,7 @@ import {
   type DarwinCensusIdentity,
   DarwinCensusReader,
   getDarwinCensusCalls,
+  hasBracketedDarwinCensusDrift,
   sameDarwinCensusIdentity,
 } from './darwin-census.ts'
 
@@ -412,6 +413,20 @@ export class OwnedDarwinJob {
       Math.min(DARWIN_CENSUS_BUDGET_MS, deadline - performance.now()),
     )
     const last = this.reader.inventory()
+    // ESRCH alone is neither exclusion nor absence proof. A complete changed outside bracket
+    // with the same original live owner is independently explicit drift, permitting only the
+    // existing second full capture. No partial view is ever composed into an empty observation.
+    if (
+      reply.type === 'view' &&
+      reply.view.kind === 'unknown' &&
+      ['identity_esrch', 'short_esrch'].includes(reply.view.reason) &&
+      last.kind === 'inventory' &&
+      this.live() &&
+      hasBracketedDarwinCensusDrift(first, last, owner, performance.now() - started)
+    ) {
+      this.recordCensus({ kind: 'unknown', reason: 'drift' })
+      return null
+    }
     if (
       reply.type !== 'view' ||
       reply.view.kind !== 'view' ||

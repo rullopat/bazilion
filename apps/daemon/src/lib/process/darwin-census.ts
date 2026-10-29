@@ -64,6 +64,8 @@ function identityFailure(
   result: { bytes: number; errno: number },
   short = false,
 ): DarwinCensusUnknown {
+  // Partial or contradictory success/error responses never become retry-classifiable absence.
+  if (result.bytes !== 0) return unknown('identity')
   if (result.errno === constants.errno.ESRCH)
     return unknown(short ? 'short_esrch' : 'identity_esrch')
   if (result.errno === constants.errno.EACCES)
@@ -257,9 +259,10 @@ export class DarwinCensusReader {
           outsideCount++
           continue
         }
-        if (result.bytes !== IDENTITY_BYTES || result.errno !== 0) return identityFailure(result)
+        if (result.bytes !== IDENTITY_BYTES || result.errno !== 0)
+          return expected.pid === owner.pid ? unknown('owner') : identityFailure(result)
         const actual = this.row(expected.pid)
-        if ('kind' in actual) return actual
+        if ('kind' in actual) return expected.pid === owner.pid ? unknown('owner') : actual
         if (!sameDarwinCensusIdentity(expected, actual)) return unknown('drift')
         if (expected.state === 'zombie' && actual.state !== 'zombie') return unknown('drift')
         if (actual.pid === owner.pid) {
@@ -288,6 +291,45 @@ export class DarwinCensusReader {
     } catch {
       return unknown('unavailable')
     }
+  }
+}
+
+/**
+ * Retry classification only, never an empty-domain observation or release authority. Even when
+ * scoped metadata fails, complete outside vectors can independently establish explicit drift.
+ * The original owner must remain exactly live on both sides, within the unchanged capture budget.
+ */
+export function hasBracketedDarwinCensusDrift(
+  first: DarwinCensusInventory,
+  last: DarwinCensusInventory,
+  owner: DarwinCensusIdentity,
+  elapsedMs: number,
+): boolean {
+  try {
+    if (
+      !Number.isFinite(elapsedMs) ||
+      elapsedMs < 0 ||
+      elapsedMs > DARWIN_CENSUS_BUDGET_MS ||
+      first.kind !== 'inventory' ||
+      last.kind !== 'inventory' ||
+      !validRows(first.rows) ||
+      !validRows(last.rows) ||
+      !validIdentity(owner)
+    )
+      return false
+    for (const inventory of [first, last]) {
+      const row = inventory.rows.find((row) => row.pid === owner.pid)
+      if (row?.state !== 'live' || !sameDarwinCensusIdentity(row, owner)) return false
+    }
+    return (
+      first.rows.length !== last.rows.length ||
+      first.rows.some((row, index) => {
+        const other = last.rows[index]
+        return !other || !sameDarwinCensusIdentity(row, other)
+      })
+    )
+  } catch {
+    return false
   }
 }
 

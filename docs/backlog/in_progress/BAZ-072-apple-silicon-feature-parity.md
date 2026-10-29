@@ -83,7 +83,25 @@ so. The zero-FD assertion remains; bounded FD-number/flag/error diagnostics cont
 content. The remaining alias fixture uses the host's actual readonly loader layout. Fourteen real
 local Linux executor/layout/seccomp checks plus types/lint pass; hosted validation is pending.
 No additional Mac census attempts, broader policy, guessed signalling or historical result changes
-are authorized by these fixes. Mac CI availability under PID churn remains unresolved.
+are authorized by these fixes.
+[40885476782](https://github.com/rullopat/bazilion/actions/runs/40885476782) subsequently passes all
+eight other jobs, including Linux native **68 passed/four platform skips**, both general collections,
+installers, upgrade, security and Linux Docker. Mac native alone fails **14/37 cases**; ESRCH and
+repeated drift are retained observations, not proof that a PID disappeared or that every failure
+has the same cause. Mac CI availability remains unresolved.
+
+A fixed physical timing sample reads complete outside inventories in 4–10 ms, including jitless
+staged-JS controls; it does not establish hosted performance. The parent already captures complete
+outside vectors even when a scoped query fails. When those vectors explicitly differ while the
+original owner remains exactly live, zero-byte scoped ESRCH no longer masks that independently
+proven drift. This only permits the existing second full capture; no incomplete view can compose
+an empty domain. Stable/incomplete brackets, owner failure, partial responses, other errors and
+two failed captures still hold. A real outside child exits through its original stdin EOF between
+the first vector and scoped query: exactly two captures settle, the command writes once, and no
+PID is signalled. The actual double-drift controls still hold until later canonical teardown.
+Current local checks pass **3,164 Linux/77 platform skips** plus four headless probes, 477 security,
+types/lint/build, and **133 physical Mac checks/13 Linux-Docker-only skips**. Hosted qualification
+of this bounded classification fix is pending; original queue uncertainty is not reclassified.
 
 The preceding Node 24 source attempt remains **21 passed / one failed**: readiness recorded drift
 then unknown scoped identity and retained its unconfirmed resource. Its cause is not established;

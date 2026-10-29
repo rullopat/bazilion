@@ -63,13 +63,22 @@ writer's intended six-second expiry now uses monotonic time, not scheduler-depen
 cleanup still requires fresh live-owned proof with unchanged bounds. Native runtime-capture cases
 are selected explicitly in both native lanes, not skipped based on missing prerequisites. Retired
 Docker-backed spawn fixtures retain all assertions on Linux; Mac native counterparts run separately.
-Expanded physical Mac source checks pass 89 cases/13 explicitly Linux-Docker-only skips.
-The next hosted candidate still fails native lanes: stock Ubuntu 24.04 denies UID-map/net-namespace
-operations, and five Mac cases retain census/readiness uncertainty. No AppArmor/sysctl relaxation,
-extra census attempt or cleanup-bound increase is used. Linux's fixed public syscall binding permits
-the namespace-capable 22.04 lane without the missing libc exports; real local pidfd/namespace tests
-pass. New Mac diagnostics distinguish closed identity/short-info ESRCH/EACCES/EPERM facts, still as
-unknown rather than policy exclusions or retry permission. Original failed captures remain unchanged. A preceding
+Subsequent hosted checkpoints remain failures. Stock Ubuntu 24.04 denies UID-map/net-namespace
+operations; no host policy is relaxed. The fixed public pidfd kernel binding admits the 22.04 lane
+without optional libc wrappers or PID fallback. Explicit bootstrap non-stdio FD retirement and
+readonly actual-loader fixtures then yield all eight other jobs passing at `295423b`, including
+68 Linux native cases/four platform skips. Mac native still fails 14/37 cases: closed errno facts
+and drift are observations, not proof that every failure has the same cause.
+
+A scoped zero-byte ESRCH remains unknown, never a foreign-policy exclusion or absence proof.
+However, complete outside vectors already captured around that query can independently establish
+explicit drift when the original owner stays exactly live on both sides. That permits only the
+existing second full capture: no partial view can establish an empty domain. Stable/incomplete
+brackets, partial responses, owner failure, other errors and two failed captures still hold.
+An actual outside-child EOF/exit control verifies this with exactly two captures and one command
+effect; actual double-drift controls retain uncertainty. Current physical source checks pass
+133 cases/13 Linux-Docker-only skips; hosted revalidation remains pending. No budget, signalling
+rule or sandbox permission is broadened. Original failed captures remain unchanged. A preceding
 Node 26 queue cancellation still remains a retained 42/43 source failure (`uncertain`, not
 `cancelled`), with original cause unestablished. These fixes do not explain or erase it.
 

@@ -1,4 +1,6 @@
+import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
+import { once } from 'node:events'
 import {
   existsSync,
   mkdirSync,
@@ -13,7 +15,7 @@ import { join } from 'node:path'
 import type { CodingCommandReceipt } from '@bazilion/api-types'
 import { createAssistantMessageEventStream } from '@earendil-works/pi-ai'
 import { SessionManager } from '@earendil-works/pi-coding-agent'
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import { openDb } from '../../src/core/db/client.ts'
 import { runMigrations } from '../../src/core/db/migrate.ts'
 import { createProfile, resolveAgent, spawnAgent } from '../../src/core/index.ts'
@@ -27,6 +29,7 @@ import {
   consumeNativeTurnForWorker,
   prepareNativeTurn,
 } from '../../src/lib/native-execution/turn.ts'
+import { OwnedDarwinJob } from '../../src/lib/process/darwin-domain.ts'
 import { resolveRepositoryContext } from '../../src/lib/repository-context/index.ts'
 import type { MemoryBackend } from '../../src/runtime/memory/types.ts'
 import {
@@ -88,6 +91,74 @@ async function fixture(
     throw new Error(`Native turn admission failed; retained ${root}`, { cause })
   }
 }
+test.skipIf(!enabled || process.platform !== 'darwin')(
+  'actual outside process exit makes a scoped ESRCH explicit bracket drift, never an exclusion or third capture',
+  async () => {
+    await fixture(async (turn, workspace) => {
+      const outside = spawn(
+        process.execPath,
+        ['-e', 'process.stdin.resume();process.stdout.write("ready\\n")'],
+        {
+          cwd: workspace,
+          env: { PATH: '/usr/bin:/bin', HOME: workspace, TMPDIR: workspace, LANG: 'C' },
+          stdio: ['pipe', 'pipe', 'pipe'],
+        },
+      )
+      const closed = once(outside, 'close')
+      outside.stderr.resume()
+      expect((await once(outside.stdout, 'data'))[0].toString()).toBe('ready\n')
+      type ScopeRpc = (
+        this: OwnedDarwinJob,
+        type: string,
+        payload: Record<string, unknown>,
+        timeout?: number,
+      ) => Promise<unknown>
+      const prototype = OwnedDarwinJob.prototype as unknown as { rpc: ScopeRpc },
+        original = prototype.rpc
+      let interrupted: OwnedDarwinJob | undefined,
+        interruptions = 0
+      const spy = vi.spyOn(prototype, 'rpc').mockImplementation(async function (
+        this: OwnedDarwinJob,
+        type,
+        payload,
+        timeout,
+      ) {
+        if (type === 'scope' && interruptions === 0) {
+          interruptions++
+          interrupted = this
+          outside.stdin.end()
+          expect(await closed).toEqual([0, null])
+        }
+        return original.call(this, type, payload, timeout)
+      })
+      try {
+        const result = await turn.exec(
+          {
+            toolCallId: 'outside-exit',
+            command: 'printf once >> bracket-marker',
+            cwd: '.',
+            timeoutMs: 5000,
+          },
+          () => {},
+        )
+        expect(result.code).toBe(0)
+        expect(readFileSync(join(workspace, 'bracket-marker'), 'utf8')).toBe('once')
+        expect(interruptions).toBe(1)
+        const observation = interrupted?.observation()
+        expect(observation?.captures).toEqual([
+          { kind: 'unknown', reason: 'drift' },
+          { kind: 'observation', state: 'empty_at_capture' },
+        ])
+        expect(observation?.terminalProof).toBe(true)
+      } finally {
+        spy.mockRestore()
+        if (!outside.stdin.writableEnded) outside.stdin.end()
+        expect(await closed).toEqual([0, null])
+      }
+    })
+  },
+  20000,
+)
 test.skipIf(!enabled)(
   'real native deny proof admits one frozen turn and serializes concurrent tool paths',
   async () => {
