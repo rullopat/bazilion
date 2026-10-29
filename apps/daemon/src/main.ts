@@ -28,6 +28,7 @@ import {
   stopTelegramBot,
 } from './lib/telegram/bot.ts'
 import { startUserQueuePump } from './lib/user-queue-pump.ts'
+import { stopNativeVerificationCaptures } from './lib/verification/capture-admissions.ts'
 
 const host = process.env.HOST ?? '127.0.0.1'
 const port = Number.parseInt(process.env.PORT ?? '4321', 10)
@@ -119,6 +120,7 @@ const shutdown = (signal: NodeJS.Signals): void => {
   if (shuttingDown) return
   shuttingDown = true
   notificationPump?.stop()
+  const nativeCapturesStop = stopNativeVerificationCaptures()
   const schedulerStop = stopScheduler()
   const turnsStop = stopAgentTurns()
   const queueStop = queuePump?.stop() ?? Promise.resolve()
@@ -134,7 +136,7 @@ const shutdown = (signal: NodeJS.Signals): void => {
     : Promise.resolve()
   // Drain scheduler readiness/lifecycle waiters as well as registered workers while
   // IPC hosts and DB remain available. Unknown cleanup stays durably blocked.
-  const resourcesStop = Promise.all([schedulerStop, turnsStop, queueStop])
+  const resourcesStop = Promise.all([schedulerStop, turnsStop, queueStop, nativeCapturesStop])
     .then(() => shutdownResources())
     .catch((e) => console.error('resources: shutdown failed:', e instanceof Error ? e.message : e))
   Promise.race([

@@ -129,9 +129,12 @@ describe('durable scheduler dispatches', () => {
       },
     }))
     vi.doMock('../../src/lib/protected-execution.ts', () => ({
-      prepareProtectedExecution: async (_agent: unknown, options?: { signal?: AbortSignal }) => {
+      prepareSelectedProtectedExecution: async (
+        _agent: unknown,
+        options: { controller: AbortController },
+      ) => {
         protectedPreflightCalls++
-        await protectedPreflightGate?.(options?.signal)
+        await protectedPreflightGate?.(options.controller.signal)
         if (protectedPreflightError) throw protectedPreflightError
         return { testPreparedProtectedExecution: true }
       },

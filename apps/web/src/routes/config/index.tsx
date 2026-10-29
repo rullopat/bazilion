@@ -101,7 +101,7 @@ function ProvidersPage() {
         />
       </div>
 
-      <InstallationReadinessCard report={readiness} />
+      <InstallationReadinessCard report={readiness} codingSurface={executionSecurity.protectedUnattendedTurns.codingSurface} />
 
       <details className="rounded-2xl border border-border bg-card shadow-baziu-sm">
         <summary className="flex min-h-12 cursor-pointer list-none items-center gap-3 px-4 py-3 text-sm font-semibold text-foreground marker:hidden sm:px-5">

@@ -13,7 +13,7 @@ let priorSandbox: string | undefined
 test('Telegram callback answers a live protected question through its canonical approval without queueing', async () => {
   const preflight = Object.freeze({ marker: 'question-preflight', paths: Object.freeze({}) })
   vi.doMock('../../src/lib/protected-execution.ts', () => ({
-    prepareProtectedExecution: async () => preflight,
+    prepareSelectedProtectedExecution: async () => preflight,
     consumePreparedProtectedExecution: () => {},
   }))
   vi.resetModules()
@@ -540,7 +540,7 @@ test('an internally created protected preflight is consumed before it leaves pre
   const preflight = Object.freeze({ marker: 'nominal-preflight', paths: Object.freeze({}) })
   let consumed = false
   vi.doMock('../../src/lib/protected-execution.ts', () => ({
-    prepareProtectedExecution: async () => preflight,
+    prepareSelectedProtectedExecution: async () => preflight,
     consumePreparedProtectedExecution: (value: unknown) => {
       if (value !== preflight) throw new Error('protected execution was not prepared by the daemon')
       if (consumed) throw new Error('protected execution preflight has already been consumed')
@@ -582,7 +582,7 @@ test('an internally created protected preflight is consumed before it leaves pre
 test('cross-source busy rejection happens before Telegram final authorization', async () => {
   const preflight = Object.freeze({ marker: 'nominal-preflight', paths: Object.freeze({}) })
   vi.doMock('../../src/lib/protected-execution.ts', () => ({
-    prepareProtectedExecution: async () => preflight,
+    prepareSelectedProtectedExecution: async () => preflight,
     consumePreparedProtectedExecution: () => {},
   }))
   vi.resetModules()
@@ -643,7 +643,7 @@ test.each([
 ] as const)('a preclaimed %s lifecycle handoff can be prepared only once', async (kind) => {
   const preflight = Object.freeze({ marker: 'nominal-preflight', paths: Object.freeze({}) })
   vi.doMock('../../src/lib/protected-execution.ts', () => ({
-    prepareProtectedExecution: async () => preflight,
+    prepareSelectedProtectedExecution: async () => preflight,
     consumePreparedProtectedExecution: () => {},
   }))
   vi.resetModules()

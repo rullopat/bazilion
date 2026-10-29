@@ -5,9 +5,12 @@ import type {
 } from '@bazilion/api-types'
 
 export interface ExecutionSecurityProjectionInput {
+  /** Passive platform mapping only, never a successful native proof. */
+  nativeBackend?: 'linux-bwrap' | 'darwin-seatbelt' | null
+  nativeProtected?: boolean
   configuredOperatorHttp: {
     shellSecurity: HealthReport['shellSecurity']
-    dockerImage: string
+    dockerImage: string | null
     browserEnabled: boolean
     mcpEnabled: boolean
   }
@@ -38,8 +41,13 @@ export function projectExecutionSecurity(
     input.protectedUnattendedTurns.openaiCodex.enabled &&
     input.protectedUnattendedTurns.openaiCodex.connected
   // Provider readiness is selected-model-specific and checked immediately before spawn.
-  // The public base-runtime status reports only the provider-neutral Docker boundary.
+  // Legacy Docker can report a process-wide probe. Native remains Not checked until actual turn admission.
+  const native =
+    input.nativeProtected === true ||
+    (input.configuredOperatorHttp.shellSecurity.ok &&
+      input.configuredOperatorHttp.shellSecurity.sandboxMode === 'native')
   const baseRuntimeReady =
+    !native &&
     input.protectedUnattendedTurns.docker.ready &&
     input.protectedUnattendedTurns.docker.configurationValid !== false
 
@@ -47,20 +55,28 @@ export function projectExecutionSecurity(
     configuredOperatorHttp: {
       protected: false,
       codingSurface: configuredCodingSurface(input.configuredOperatorHttp.shellSecurity),
-      dockerImage: input.configuredOperatorHttp.dockerImage,
+      dockerImage: native ? null : input.configuredOperatorHttp.dockerImage,
       browser: input.configuredOperatorHttp.browserEnabled ? 'enabled' : 'disabled',
       mcp: input.configuredOperatorHttp.mcpEnabled ? 'enabled' : 'disabled',
     },
     protectedUnattendedTurns: {
       baseRuntimeReady,
-      codingSurface: 'docker',
-      docker: {
-        ready: input.protectedUnattendedTurns.docker.ready,
-        image: input.protectedUnattendedTurns.docker.image,
-        reason: input.protectedUnattendedTurns.docker.ready
-          ? null
-          : input.protectedUnattendedTurns.docker.reason,
-      },
+      ...(native
+        ? {
+            codingSurface: 'native' as const,
+            docker: null,
+            native: { backend: input.nativeBackend ?? null, readiness: 'not_checked' as const },
+          }
+        : {
+            codingSurface: 'docker' as const,
+            docker: {
+              ready: input.protectedUnattendedTurns.docker.ready,
+              image: input.protectedUnattendedTurns.docker.image,
+              reason: input.protectedUnattendedTurns.docker.ready
+                ? null
+                : input.protectedUnattendedTurns.docker.reason,
+            },
+          }),
       browser: 'denied',
       mcp: 'denied',
       openaiCodex: {
@@ -70,7 +86,11 @@ export function projectExecutionSecurity(
           !input.protectedUnattendedTurns.openaiCodex.accessCurrent,
         baselineEligible: providerBaselineEligible,
       },
-      remediation: baseRuntimeReady ? null : remediationFor(input),
+      remediation: native
+        ? 'Native selection is not readiness. Each turn must admit the local toolchain, filesystem/IP restrictions and live-owned cleanup; unavailable protection refuses without fallback.'
+        : baseRuntimeReady
+          ? null
+          : remediationFor(input),
     },
   }
 }
@@ -79,7 +99,7 @@ function configuredCodingSurface(
   shellSecurity: HealthReport['shellSecurity'],
 ): ExecutionSecurityReport['configuredOperatorHttp']['codingSurface'] {
   if (!shellSecurity.ok) return 'unavailable'
-  return shellSecurity.sandboxMode === 'docker' ? 'docker' : 'host'
+  return shellSecurity.sandboxMode === 'off' ? 'host' : shellSecurity.sandboxMode
 }
 
 function remediationFor(input: ExecutionSecurityProjectionInput): string {
@@ -92,7 +112,7 @@ function remediationFor(input: ExecutionSecurityProjectionInput): string {
 
 const DOCKER_REMEDIATIONS: Record<ProtectedDockerReadinessReason, string> = {
   'unsupported platform':
-    'Run protected unattended work on a POSIX host with local Docker support.',
+    'Use native execution on macOS, or a Linux host with local Docker support.',
   'Docker executable is unavailable':
     'Install Docker locally and ensure the Bazilion daemon can execute it.',
   'Docker must use a local Unix socket':

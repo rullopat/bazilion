@@ -27,6 +27,7 @@ afterEach(() => {
 })
 function enable(id: string) {
   putCodingEnvironment(db, id, 0, {
+    backend: 'docker',
     image: 'node:24',
     cwd: '.',
     env: {},

@@ -8,6 +8,7 @@ import {
   claimVerificationAttempt,
   getVerificationRequestById,
   setRequestState,
+  VERIFICATION_TERMINAL_REQUEST_STATES,
   type VerificationClaim,
 } from '../../core/repos/verification-requests.ts'
 import { authorizeCommunication } from '../../core/team-policy/authorization.ts'
@@ -69,12 +70,30 @@ export async function admitVerificationRequest(
   paths: Paths,
   requestId: string,
   now = Date.now(),
+  assertSelection?: () => void,
 ): Promise<VerificationAdmission> {
   const request = getVerificationRequestById(db, requestId, now)
   // An unknown or expired request is not an error to report: there is simply nothing to run.
   if (!request) return { kind: 'deferred', requestId, reason: 'unknown_or_expired' }
+  if (VERIFICATION_TERMINAL_REQUEST_STATES.includes(request.state))
+    return { kind: 'deferred', requestId, reason: 'already_owned' }
 
+  const backendIssue = (): VerificationBlocker | null => {
+    if (assertSelection) {
+      try {
+        assertSelection()
+      } catch {
+        return blocker(
+          'environment_unavailable',
+          'the selected execution backend no longer matches this captured request; capture a new request after restoring admission',
+        )
+      }
+    }
+    return null
+  }
   const blockedReason = async (): Promise<VerificationBlocker | null> => {
+    const selectionIssue = backendIssue()
+    if (selectionIssue) return selectionIssue
     const team = safeTeam(db, paths, request.teamId)
     if (!team) return blocker('unsupported', 'the request no longer names a known Team')
     const recipient = getAgent(db, request.recipientAgentId)
@@ -157,6 +176,12 @@ export async function admitVerificationRequest(
     throw error
   }
 
+  const changedSelection = backendIssue()
+  if (changedSelection) {
+    await workspaceLifecycle(db).release(workspace)
+    setRequestState(db, requestId, 'blocked')
+    return { kind: 'blocked', requestId, blocker: changedSelection }
+  }
   const claim = claimVerificationAttempt(db, {
     requestId,
     leaseOwner: VERIFICATION_DISPATCH_OWNER,
@@ -190,6 +215,13 @@ export async function admitVerificationRequest(
     return { kind: 'blocked', requestId, blocker: blocker(reason, detail) }
   }
 
+  const lateSelection = backendIssue()
+  if (lateSelection) {
+    await workspaceLifecycle(db).release(workspace)
+    settleUnstarted(db, claim, lateSelection.detail)
+    setRequestState(db, requestId, 'blocked')
+    return { kind: 'blocked', requestId, blocker: lateSelection }
+  }
   return { kind: 'admitted', requestId, claim, workspace }
 }
 

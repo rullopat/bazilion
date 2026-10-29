@@ -10,16 +10,430 @@ target_release: '0.25.0'
 
 # BAZ-072 — Apple Silicon macOS feature parity with Linux
 
-## Current qualification decision
+## Current design and qualification decision
 
-**Incomplete.** Implementation `9d1bc31` passes all ten jobs in CI `40242186202`, including both
-Docker and browser/runtime baselines. Latest-stable physical qualification now exposes Node
-26.4.0's upstream SQLite backup completion defect; its required source run fails. Node 24.22.0
-contains the fix, first shipped on 26.x in 26.9.0. The operator subsequently requested the latest
-published Node 26 and pnpm: **26.12.1 + 12.15.0**. Pins, the Node 26 minimum, guards and workflow
-baselines are updated accordingly; Node 24.22.0 support stays. No compatibility heartbeat or
-runtime patch is introduced. New-baseline latest-stable Mac qualification remains pending; the
-broader goal has not been resumed or completed by this scoped toolchain update.
+**Incomplete; design/ABI/IPC-only approval, native backends and source integration are complete;
+maintained Node 26-only support cleanup is implemented; native CI and installed/latest-stable
+qualification remain in progress.**
+On 2026-10-29 the operator retired Node 24 compatibility and routine qualification. Current support
+is **Node 26.12.1+ within 26.x only** (`^26.12.1`), with exact development/qualification baseline
+**26.12.1** and pnpm **12.15.0**. Earlier dual-baseline observations below are historical, not an
+ongoing Node 24 support or acceptance requirement. Preserve their failed outcomes and any still-
+relevant Node 26 security/ownership defects; removing a gate never counts as passing it.
+
+macOS Docker/VM/tooling removal is complete; its obsolete restart/inventory/cleanup gate is removed.
+Linux Docker's approved disposition is unchanged. The goal is resumed at native CI/regressions, not
+at design review or VM cleanup. Fresh physical **27.0.1 (26A434) arm64 / Node 26.12.1** source CI
+trials pass **22 checks**, including real configured/protected SDK sessions, native worker approvals,
+input preparation and a double-fork/setsid/TERM-resistant writer with closed pipes. That control
+holds the workspace, then requires fresh canonical live-owned settlement after natural expiry.
+After Node 26-only cleanup, a fresh source checkout/frozen install/build on that physical Mac
+passes the expanded **14-file / 42-case** native CI slice, including public capture, restricted
+specialist execution, user/Telegram queue binding, MCP retirement, double-drift controls and runtime/
+manifest rejection checks. Linux Node 26 gates pass **3,156 cases / 76 gated skips** plus four
+headless probes, **477 security cases**, types, lint and build. All three packages pack; genuine
+API/client tarballs pass offline runtime/browser-only type consumers with the new engine metadata.
+These are local/source/packaging results, not hosted CI or installed full-product acceptance.
+Private operational launchers now accept Node 26 only. Old Node 24 runtime/dependency trees tied to
+uncertain or historical fixtures remain forensic retention, not maintained support; no ownership
+rows, markers, retained resources or personal runtimes were removed for compatibility cleanup.
+
+The preceding Node 24 source attempt remains **21 passed / one failed**: readiness recorded drift
+then unknown scoped identity and retained its unconfirmed resource. Its cause is not established;
+retirement is not a pass, a cleanup authorization or proof it cannot affect Node 26.
+
+The revised bounded goal replaces Docker-backed parity with native macOS/Linux sandboxing, without
+a Docker/Linux-VM prerequisite. Preserve completed Git, MCP, worker and browser work and evidence;
+stop further Mac Docker-parity development/provisioning. The explicitly approved
+[native design](../../native-execution-design.md) selects Linux Bubblewrap/seccomp and conditional
+Mac Seatbelt, with native proof before production enablement or Docker retirement/CI replacement.
+No additional privilege, entitlement or system configuration authority was granted.
+
+Dedicated Mac access was renewed and verified before private trials on **macOS 27.0.1 (26A434),
+arm64, Node 24.22.0**. Initial outside argv/environment canary assertions failed despite default and
+sysctl denial. Continued investigation, explicitly requested on 2026-10-27, established a profile
+fix: explicitly deny `process-info*`, then allow that family only for `target same-sandbox`.
+Both `KERN_PROCARGS` variants then denied outside reads with `EPERM`, while self descriptor and
+birth checks worked. Controlled value fingerprints calibrated the tests; no personal environments
+or credentials were queried. The earlier failures remain failed evidence, not a platform-wide
+impossibility claim or a reason to require another approval for ordinary diagnostic fixes.
+
+The corrected profile passed scoped filesystem/network/descriptor/broker probes. A research
+observer using complete matching lifetime/exec-version inventories detected an untracked descendant
+still writing after known-child cleanup, and returned unknown on an intervening exec. Its identity
+ABI is published by Apple but absent from the public SDK; it is not silently adopted as production
+support or signalling authority. A public exit-watch approach stayed unknown on a foreign zombie.
+Production settlement, all-entry integration and both-baseline qualification remain unfinished.
+
+The tested same-sandbox network predicate did not permit even the job's own TCP listener. Private
+pathname Unix IPC worked while denying host-broker and symlink-redirection attempts, but is not a
+transparent replacement for TCP/UDP tests. The operator explicitly accepted both
+[refinements](../../native-execution-design.md#8-approved-refinements--2026-10-27) on 2026-10-27:
+the guarded non-SDK identity dependency and common IPC-only protected networking on both platforms.
+Protected-command TCP/UDP, including localhost, is intentionally unavailable under that accepted
+contract. No broad localhost exception or Docker/host fallback was added.
+Private fixtures and failed histories remain retained. Native foundations now
+include the libproc reader, source Seatbelt/seccomp compilers, bounded full-tree metadata admission,
+public mount identity, retained readonly file inputs and a non-executing ELF dependency reader.
+The source JavaScript scoped reader and source policy compiler ran inside the Mac sandbox after
+trusted JavaScript staging resolved the `--jitless` parser issue. A real root-relocation escape in
+an unsafe counterfactual led to mandatory writable-root/readonly-ancestor anchors. Source probes
+also cover hardlinks, memory/input mutation, private Unix IPC, quoted paths and admission drift.
+One earlier post-cleanup **busy** assertion remains a retained unresolved failure; later passes do
+not authorize premature settlement. See the [bounded foundation summary](../../native-execution-design.md#implementation-foundation-not-an-enabled-backend).
+
+Physical **27.0.1 (26A434), kernel 27.0.0, arm64 / Node 24.22.0** source trials now execute the
+bundled one-command observer and daemon-side live controller. They cover normal completion,
+cancellation, busy double-fork/setsid writers with closed pipes, fresh complete observations after
+natural exit, output bounds, permanent spawn-fence refusal and helper-loss uncertainty. A writer
+using `PT_DENY_ATTACH` remained visible; task-port/debug-attach attempts against the observer denied.
+A fixed-sleep test failed while its canary was correctly still busy; it now waits for observed
+termination within the existing bound, never treating expiry as release evidence. Actual source
+canonical-resource trials verify pre-spawn persistence, one-use input, inactive/restored refusal
+and writer release only after the full observation/terminal handshake. These are not installed
+CLI/API/web qualification or Mac Node 26.12.1 evidence.
+
+On Linux **7.2.8-9-omarchy / Bubblewrap 0.13.1**, installed seccomp tests ran under both exact Node
+baselines. They deny IP sockets, namespace/debug/terminal escape interfaces and unknown calls,
+while private IPC, Node threads and fork/setsid work. Real tests refuse a same-device nested mount
+and keep readonly external symlink targets unavailable. A sparse pinned-file view runs Bash/Node
+without a whole `/usr/lib` grant, using Bubblewrap's FD-bind APIs and closing inherited input FDs
+before payload execution. A whole-library-directory capture remains refused at the unchanged bound.
+Live Linux ownership now uses original-manager birth/group checks and pidfds, with a private
+status-bound namespace-init death handle that never authorizes signalling its PID. Actual normal
+exit, cancellation and manager-crash cases retire a double-forked/setsid, closed-pipe writer;
+local status-stream destruction remains blocked. A diagnosed init-group startup transition led
+to manager-only signalling, not relaxed identity checks. Early JSON namespace binding also failed
+before command input in one Node 24 case and one Node 26 full-source case. A fixed sandboxed-exec
+entry acknowledgement now precedes complete namespace checks; an actual held-startup case proves
+creation JSON alone cannot authorize readiness. No guard or deadline was relaxed. The entry is
+bundled and commands arrive only on stdin, never argv. Canonical resources now persist a no-PID
+intent before spawn, bind the actual live owner and revalidate writer/attachment/definition state
+at creation, the fresh one-use input fence, signalling and confirmation. Restored or substituted records cannot grant release or
+fall through to another cleanup implementation. Both live owner types use that canonical lifecycle;
+production turn preparation, worker/session binding and shared-tool routing remain pending. No
+native backend is enabled.
+
+Private launch-view assemblers and one shared one-shot executor now compose those inputs and
+owners. Actual Linux and Mac Node 24.22.0 trials execute through the assembled boundary; deny
+memory/outside/TCP access; and report nonzero exits and cancellation. Mac private Unix IPC and
+planted-env omission also pass. Prepared views retain their FDs in the canonical resource slot,
+match its exact workspace/root identity and definition, and cannot borrow another writer or be
+reused. Writable overlap with running trusted code and HFS directory-hardlink-capable writer
+layouts refuse. The source/installed manifest stages trusted JS before confinement. These
+foundation views are not themselves installed CLI/API/web acceptance. Approval tests
+initially mistook relative project deletion for a classified danger; corrected absolute canary
+paths preserve the existing classifier and assertions.
+
+Frozen runtime ownership and private turn admission now retain code/toolchain FDs across command
+views and refuse drift. Actual synthetic denial/scratch/IPC proof precedes admission; commands
+serialize, consume their call ids once and support correlated cancellation. These components ran
+on the physical **27.0.1 arm64 Mac with both exact Node baselines**, including Node 26.12.1, after
+private toolchain installation. Hermetic native IPC, bounded live redaction and native bash/
+`coding_command` delegation now bind through production worker input/entry, but product turn
+preparation/selection remains unchanged. Both Pi session factories now have an explicit native-capability branch:
+no host file/coding tools, one host for `bash` and `coding_command`, canonical native default cwd,
+closed proxy fields, mixed-backend refusal and an accurate IPC-only prompt. Actual SDK command
+scopes pass on Linux and the physical Mac with both exact Node baselines, including readonly
+memory denial and positive native resource settlement. Those component trials use synthetic
+provider transport and unpersisted synthetic receipt replies: durable native coding reports and
+installed CLI/API/web journeys remain unqualified. Missing
+conversation fixtures and an absent ordinary native prompt label were corrected without weakening
+assertions. SDK truncation inspection corrected the structured flag while preserving nonzero
+`isError`/exit facts; the failed runs remain recorded.
+
+Closed native worker metadata is not authority: one live capability binds Agent/turn/Team/root and
+runtime facts once, with a fresh owned/active canonical writer check before input. Native workers
+have no host commands. Mixed backends, copied/serialized hosts, restricted-kind widening and
+inactive/restored/substituted ownership refuse; uncertain native cleanup retains worker scratch
+and resources. The same actual production-worker fixture passes on Linux and physical Mac under
+both exact Node baselines, including native bash/coding scopes, readonly memory, live redaction,
+unattended credential-access denial and positive worker/native retirement. Legacy captured-check
+hosts remain explicitly unadmitted for native requesters; the bound native requester below uses
+frozen native capture with no container/host fallback.
+
+Native coding reports and receipts now use the canonical store with an explicit native posture,
+actual bound runtime facts and null image identity. Their input fingerprint uses frozen admitted
+runtime/environment values, not a caller-supplied image label. Live secret suppliers guard command
+input and retention. Bounded IPC carries pre-redaction byte-count/redaction facts so logs do not
+miscount sanitized output; truncation remains explicit. The same real worker fixture now checks
+actual native receipts and private retained logs on Linux and both Mac baselines. UI labels retain
+native/unknown semantics, never inventing host fallback, current availability or verification. The
+initial synthetic coding unit fixtures were separated from real persistence rather than recording
+fake native results under a host posture.
+
+Daemon-native input preparation now shares the fixed protected Agent path/document snapshot,
+requires native defaults and admits only readonly selected skills/uploads plus the leased Team.
+Actual configured and inbox-style preparation and both real worker kinds pass on Linux and Mac
+under both exact Nodes. Inbox readiness fixes its Agent first, then binds the message-derived turn
+once after claims; no model code runs before worker consumption. Actor/Team/model, revision and
+active owned workspace are rechecked. Public backend selection is unchanged.
+
+Protected native preparation now uses the canonical provider projection and one-use actor/turn
+binding, including pending inbox readiness. Disabled providers, missing credentials and unsafe
+endpoints fail before native creation or provider requests. The existing prepared-turn path now
+consumes genuine native protection; no second authorization path was added. Real daemon-context
+fixtures pass on Linux and both Mac Nodes with Team Policy on, peer deny/allow, eight actual inbox
+messages held unread until readiness, canonical claims, native tool admission/redaction/receipts
+and writer release. Bounded opaque inbox attempt IDs hash ordered message IDs, never payloads;
+no valid batch is truncated to fit a binding. Native verification now uses the bound frozen
+contract below, never a legacy host. The first Mac fixture staged only the initial SQL file and failed
+bootstrap on a missing image-generation table; staging now includes the complete existing chain,
+with listener cleanup on bootstrap failure. That failed fixture stays failed; no schema guard or
+deadline changed. This is internal-turn acceptance with a synthetic provider, not public/native
+backend selection, scheduled ticks or installed CLI/API/web qualification.
+
+Native verification metadata now has a closed, image-free wire/store shape with portable native
+facts, bounded defaults and an explicit Team-memory-only readonly-input scope. This is retained
+metadata, never availability or owner authority. Worker admission still requires the current
+runtime and genuine live capability. The legacy executor refuses native records before receipts or
+effects, preventing metadata-only host fallthrough. An earlier verification/native-routing/restore
+milestone passed 87 cases under each Node baseline (four existing gated skips). Five pre-fix counterfactual failures exposed timeout/cancelled evidence being
+miscounted as no execution, unsupported interrupted-receipt outcomes, concurrent ordinal execution
+and exception replay. The runner now fences each ordinal before awaiting, retains exceptions as
+unknown without invented provenance, and settles unknown attempts as uncertain. Only an own
+Team/specialist/attempt-bound interrupted receipt may accompany unknown, with no exit code or cleanup
+claim. Timeout/cancelled evidence counts as execution, never a pass; pruning does not erase that fact.
+A separate failed restore counterfactual led to invalidating already-unknown receipt pointers while
+preserving prior uncertain-attempt history. The canonical initial schema was edited under the existing
+clean-rebootstrap alpha contract; no ALTER/import/fallback migration was added.
+
+The internal native verification executor now runs captured checks through genuine common native
+admission/execution and canonical durable receipts. Its Actor/controller, owned writer, live attempt,
+defaults, runtime facts and original source snapshot are revalidated; no image, private Agent inputs,
+command override or host fallback is admitted. Actual Linux and physical Mac trials pass both exact
+Nodes: runtime/source mismatch refusal, late-secret redaction, read-only memory, captured timeout,
+unattended approval denial and positive settlement. Receipts retain the original snapshot reference
+and capture time, never a comparison recapture. That executor-only fixture uses no provider.
+
+Explicit internal operator capture now freezes actual readiness facts after positive retirement.
+Nominal one-use observations refuse copies, retagging, replay and intent mutation across preparation.
+Canonical policy deny/allow, snapshot admission and real execution pass Linux/Mac trials on both Nodes.
+Canonical dispatch also runs the actual restricted Pi worker with exactly two verification tools.
+Its parent-only nominal ownership token binds Actor/attempt/workspace and reuses existing guards with
+`hostCommands:false`; raw `resourceLifecycle` and coding/native hosts remain forbidden on restricted
+input. Actual SDK trials reject undeclared/repeated checks and an unadmitted Bash call, retain native
+receipts and ignore model verdicts. Provider transport is explicitly synthetic loopback.
+
+Separate controlled-transport cases start real checks and exercise disconnect/cancel without model
+requests. IPC abort rejects new work; native checks/receipts drain before signalling their worker.
+All retirements retain existing bounds and live-birth authority. Current trials pass both exact
+Linux/Mac Nodes, with no late effect or automatic replay. The verification/worker/codec/restore batch
+passed 144 cases per Node with four existing gated skips at that checkpoint. Public operator capture
+now uses that contract below; installed qualification is not implied.
+
+Native Agent requester integration now binds the genuine producing Actor/turn/Team and live native
+admission, freezes intent before awaits, revalidates defaults/runtime and refuses copied, wrong or
+stale hosts. Restricted input cannot enable its closed worker flag. Only native facts and Team-memory
+scope reach the specialist contract, never producer-private inputs. Actual daemon/Pi trials on Linux
+and both exact Mac Nodes modify tracked code, request and dispatch the two-tool specialist, retain
+executor outcomes and deliver a policy-authorized result. Provider transport stays synthetic loopback.
+Both native capture paths now require live secret refusal before storing a command/brief and recheck
+at one-use consumption. Expanded privacy/full-flow trials pass Linux/both Nodes and Mac Node 26.
+Mac Node 24 passed its privacy assertions but its subsequent captured execution remained unknown:
+read-only retained facts show two census drifts, an interrupted receipt and a recovery writer with
+one unconfirmed resource. The outer command timed out; no guessed signalling, release or replay was
+attempted. Its drift source remains unestablished and the full flow stays failed. Separately, a Node
+24 import-cycle failure prevented two suites from executing; dependency-free shared error modules
+preserve the same identities, and current complete focused batches pass on both Nodes.
+
+New lifecycle failures remain failed evidence: an uninstrumented Node 24 cancellation stayed
+uncertain, with cause unestablished. Two reporting counterfactuals exposed loss of positive-cleanup
+cancellation facts during transport or signal-terminal reporting; genuine confirmed cancellation is
+now distinguished without overriding unknown cleanup or known exit facts. A Node 26 disconnect
+recorded two unknown drift captures. A failing Linux ordering control confirmed worker retirement
+before native receipt settlement. Native-first draining removes that avoidable churn, not census
+checks: no extra capture, sleep, command replay or increased per-resource bound was added. Current
+stricter Mac lifecycle trials pass both Nodes; earlier uncertain attempts are never rewritten.
+
+Retained executor-fixture failures are not relabelled: two Linux assertions assumed lowercase
+redaction and incorrectly classified bounded Team-relative removal. Fixture corrections use canonical
+redaction and an explicitly checked existing credential-access tripwire, not classifier changes.
+The initial Mac negative-admission control encountered unconfirmed readiness cleanup; later canonical
+live-owner teardown positively settled it, with no captured command executed. Its cause remains
+unestablished. Closed preparation observations are now retained, and negative controls require exact
+runtime/source refusal reasons and confirmed cleanup. Current stricter Mac trials pass both Nodes
+under unchanged bounds; this does not explain the earlier refusal.
+
+Native approval now binds the existing daemon registry/event channel once to the actual worker's
+Actor/Team/turn/mode before input. Raw native-worker approval RPCs refuse; only the common daemon
+executor classifies and requests approval. Real bash/coding-command allow, deny and correlated
+cancel cases pass on Linux and both Mac baselines: pending has no effects, allow executes once,
+repeated/conflicting responses cannot replay, and unattended modes auto-deny. The provider remains
+synthetic; installed UI/CLI approval and background scheduling acceptance are still separate.
+
+Node 24 worker trials initially refused `better-sqlite3` compiled for Node 26 ABI 147 (Node 24
+requires ABI 137), on both hosts. Fresh isolated Node 24 dependency installs from the unchanged
+frozen lockfile pass without mutating the Node 26 trees. The mismatched runs remain failed
+packaging evidence; no ABI shim or runtime substitution was added. Synthetic fixture credential/
+refresh mistakes and unattended secret-name inspection also refused correctly; the positive
+control and explicit negative denial remain separate, with the classifier unchanged.
+
+One separate **Node 26.12.1 TERM-resistant cancellation** failed to obtain positive retirement.
+Its preceding normal and detached-writer cases passed, but that does not resolve the refusal.
+Closed diagnostic facts were added without relaxed checks/deadlines; later diagnostics passed,
+including a bounded canary, but the original cause remains unestablished. Retain that failure and
+the earlier post-cleanup busy observation as unresolved; neither elapsed fixture time nor a PID
+oracle authorizes cleanup or release.
+
+A controlled real outside-process insertion between complete inventories reproduced `drift` after
+confirmed TERM/KILL and natural EOF. Fresh complete evidence recovered through the same live
+observer without repeating signals or commands. A fixed maximum of two read-only captures now
+handles explicit drift within the unchanged 3.5-second retirement deadline. Single-/double-drift
+controls pass on both Mac Node baselines: one extra complete proof may settle, but two unknowns
+retain the live observer/resource until later positive recovery. Busy and other unknown states
+are not resampled. The current Node 26 adversarial retirement regression passes; the original
+uninstrumented refusal remains failed evidence with its cause unestablished.
+
+A later Node 24 protected-worker trial retained an acknowledged coding job with unconfirmed
+cleanup; its cause likewise remains unestablished. It exposed an evidence-finalization bug: a
+blocked native admission left its issued receipt running. Finalization now verifies the live
+Actor/current Team and issued receipt without authorizing new execution, and persists interrupted
+facts even after native admission stops. Closed retirement diagnostics expose no PIDs/authority.
+A real-Mac worker counterfactual inserts two actual outside lifetimes, retains both unknown census
+captures and the interrupted receipt, then releases only through a fresh complete proof from the
+same live owner. Template cleanup follows positive retained-view release, without repeated signals,
+commands or reopened admission. This source fixture passes on both Nodes under unchanged checks
+and deadlines. Its first diagnostic assertion wrongly assumed an enum-shaped reason rather than
+the wire's free-text reason; that failed fixture stays failed evidence. Current normal preparation/
+worker trials pass both baselines, but do not explain or erase either original uninstrumented
+refusal. Older unknown fixtures remain untouched, with no guessed PID signalling or marker removal.
+
+Team defaults now use an explicit native/Docker discriminator across API, CLI and web. Native
+settings have no image; opposite-backend resolution and legacy image-only records refuse rather
+than being reinterpreted. Directory and closed environment flags are passive defaults, not runtime
+readiness. Both exact Nodes pass 33 focused defaults/management cases (one existing Docker-only
+skip). Saving defaults alone does not qualify installed UI or select an execution backend.
+
+Explicit installation selection now accepts `BAZILION_BASH_SANDBOX=native`. Configured HTTP turns,
+protected scheduled occurrences and inbox readiness use genuine native preparation, shared coding
+and existing ownership. A stale selection refuses before worker/provider input. Native risk gating
+is mandatory; unprotected host remains explicit, and legacy Docker stays only until qualified
+conditional cutover, never as native fallback. Health/doctor/Config show Not checked and null native
+image/Docker facts; health does not probe Docker for native selection.
+
+Actual Linux and both exact Mac Node baselines exercise configured commands, a real scheduled tick,
+eight-message inbox handling, wrong-backend readiness refusal without consuming messages, and
+shutdown during acknowledged but unregistered native readiness with positive resource settlement.
+Only provider transport is synthetic. The initial selected-caller/status/legacy-regression batch passed
+188 cases per baseline. A subsequent expanded Node 24 SDK/worker batch passed 222/223 but failed
+configured-worker retirement. Read-only retained state confirms three native resources and a succeeded
+coding receipt, while the ordinary worker resource and recovery writer remain blocked. Its cause
+is unestablished; later PID absence authorizes no release, guessed signalling or replay. Expanded
+Node 26 passes 223/223. The failed Node 24 batch is not replaced by the earlier smaller pass.
+A separate real, read-only Linux control reproduces the legacy FD inspection refusing a newly born
+independently owned non-dumpable sibling, despite normal original-worker EOF and an absent group.
+That sibling retires through its own stdin EOF, not PID signalling. This establishes a possible
+availability mechanism, not the original uninstrumented cause or a production retirement fix.
+
+Native-only Linux worker retirement now uses its genuine child, matched birth/uid/parent/namespaces
+and original pidfd. No-host-command worker control is separate from the owned native jobs. Require
+natural output EOF, exited pidfd and positive original-group absence; signals target only that pidfd,
+never a receipt PID or adopted descendant. Restored/substituted bindings permanently revoke authority
+and cannot fall through to legacy cleanup; handles/resources remain blocked. Legacy host/Docker
+worker recovery is unchanged. Seven real controls cover inaccessible independent siblings, cold
+receipts/concurrency, original-pidfd TERM/KILL, inherited output, destroyed local pipes, row restoration/
+substitution and fake/widened admission. The Node 24 expanded batch now passes 231 cases concurrently
+with the full Node 26 run; Node 26 also passes 231 focused cases. Both Mac baselines pass affected
+configured/background/shutdown, actual restricted SDK dispatch and native-first cancellation/
+disconnect trials. Original failed histories and retained writers remain unchanged, not replayed.
+Nine initial unit failures were stale preparation-entrypoint mocks; updated
+mocks retain authorization/shutdown assertions and deadlines.
+
+Authenticated operator capture now selects native through the existing HTTP endpoint shared by CLI/
+web. Fixed readiness probes retire positively before facts are stored; JSON cannot provide an
+execution environment or impersonate an Agent. A bounded ephemeral admission set fences, aborts and
+drains native operator preparation during shutdown under the unchanged cap, without another runs/
+workflow layer. Capture and canonical dispatch/check/input validate current backend selection; legacy
+checks cannot fall through to host work under native selection. Completed histories remain unchanged.
+One initial unit regression changed the running-request `workspace_busy` reason; narrowing the new
+history guard to terminal requests preserves that original assertion and behavior.
+
+Actual authenticated Hono API trials pass Linux and both exact physical Mac Nodes: no provider
+request before capture readiness, actual two-tool specialist/check execution, backend-off refusal
+before an attempt, mid-readiness drift refusal, secret-input rejection and shutdown admission draining.
+Only provider transport is synthetic; installed clients, live providers and real main SIGTERM remain
+unqualified. CLI/web labels distinguish captured native metadata from current readiness. The Node 24
+API/verification batch passes 105 cases/four existing gated skips. Further protected/queue/recovery
+trials remain open. Current real mixed-capability source trials pass Linux and physical Mac/both
+exact Nodes: native coding, daemon-owned MCP stdio, managed headless Chromium, guarded repository
+instructions, private-network SSRF denial, background tool denial and positive resource retirement.
+They qualify blank-page observation, not a website or desktop/installed journey.
+
+The first mixed Mac Node 24 trial remains failed. Its canonical transcript records scheduled Bash
+cleanup uncertainty and subsequent coding refusal; later canonical teardown released the resources.
+The original cause remains unestablished. A fresh read-only diagnostic run passed without explaining
+it; its temporary observer was removed. Failure IPC had discarded the closed native observation;
+canonical Bash errors now retain bounded phase/boolean/census facts, no PID/path or cleanup authority.
+Actual double-drift controls pass both exact Mac Nodes, preserving Bash error facts and the existing
+interrupted coding receipt in separate trials, without replay or changed checks/deadlines. The
+expanded Node 24 regression batch passes 148 cases/four existing gated skips.
+
+Authenticated native user queues and communication approvals now have actual Linux/Mac evidence
+on both exact Nodes: denied/paused input has no effect, approval dispatch runs once with readonly
+attachments, deny/duplicate decisions cannot replay, incompatible defaults fail without fallback,
+and the independent queue pump runs configured native work. Bound Telegram input and approved
+Telegram delivery use protected native workers; changed topics refuse before execution and cannot
+receive old-topic notices. Telegram notices and model transport are synthetic, not a live bot test.
+
+The first cancellation trial remains failed: its receipt was correctly `cancelled` with positive
+resource settlement, but Pi's `This operation was aborted` event made the queue report `failed`.
+Worker reporting now maps only known abort strings after an actual cancellation signal to canonical
+`cancelled`; unrelated errors and cleanup uncertainty remain unchanged. Direct/approved queue
+counterfactuals preserve `uncertain`, pause and no replay when cleanup throws after a cancellation
+frame. Current queue trials pass both exact Mac/Linux Nodes. Affected ownership/queue/refresh/
+restore regressions pass 165 cases on Node 24. Current MCP stdio admission, explicit environment,
+surviving-descendant retirement, busy cancellation/reaping and opening/failing initialization also
+pass both exact Mac/Linux Nodes; their oracle PIDs confer no signalling authority.
+
+Installed/main-process restart/restore, website/desktop and live-provider qualification remains
+separate and unfinished.
+
+On 2026-10-29 the operator explicitly requested removal of all macOS Docker-related support and
+private infrastructure, without removing Linux Docker. Canonical Colima deletion removed the known
+stopped private VM and data disk without starting it. Lima then reported no instances/disks, and
+native read-only inspection found no matching live helpers before removing only its private Docker/
+Colima/Lima tools, caches and wrappers. Personal Docker data was untouched; the historical failed
+fixture DB remains unchanged, never relabelled as settled execution or manually unlocked.
+
+Mac Docker execution now refuses before CLI/socket access, including cold container cleanup;
+legacy selections are not silently rewritten. Protected Mac work uses native admission even when
+ordinary configured host mode is off. Health/doctor/defaults expose no Mac Docker readiness or
+selection option. The Mac VM CI job/provisioning fixture are removed; applicable Docker tests remain
+in a Linux-only job, while the Mac matrix exercises native workflows. Changes remain local and the
+full goal has resumed under the amended Node 26-only contract; installed/native CI acceptance and
+other unfinished qualification are not claimed by the scoped removal. At the preceding checkpoint Linux native/source gates passed **3,152 cases / 75 skips** plus four headless probes;
+the earlier verification/requester/worker/codec/restore batch passed **144 cases per Node** plus four existing
+gated skips. Earlier native/regression batches passed **286 cases** plus one Mac-only skip (the
+worker double-drift fixture passes separately on the physical Mac), and the unchanged security gate
+passes **477 required cases**. A concurrent security attempt was cut off by the outer 240-second
+tool limit without a verdict; its empty report was retained. A progress-instrumented serial run
+validated the same manifest, then the original gate passed serially with test/cleanup deadlines
+unchanged. The first interruption is not relabelled as a pass or a proven test defect. Further caller/recovery qualification, historical Mac refusal analysis,
+affected ordinary-worker recovery revalidation, CI transition and integrated Mac qualification remain pending. Code stays local; the Mac VM workflow is now removed, Linux Docker is unchanged, and native CI
+transition remains unobserved on hosted runners. Sender review found swallowed
+worker `beforeSignal` refusals. Three live regressions failed before the fix: TERM/KILL now respect
+guard refusal, unregistered ownership cannot signal, and cancellation is rechecked before input.
+Withheld-input bootstrap EOF/exit is observed naturally before caching cleanup; no local pipe
+destruction or expiry grants settlement. These cases pass on Linux and both Mac Nodes, with the
+existing kill grace unchanged. The initial partial fix still cached cleanup before bootstrap exit;
+that failure remains failed evidence. This narrows the worker regression gap, not the remaining
+installed/background/native qualification scope.
+
+After the dedicated grant expired, the operator authorized a 15-day renewal of the same restricted
+SSH key. Pinned access and the original private-root ownership identity were verified on
+**2026-10-27 at 22:12:08 UTC**; the new expiry is **2026-11-11 22:11:33 UTC**. No expired-grant
+connection or credential fallback is authorized. Earlier feasibility observations used Node
+24.22.0 only; the new private turn/runtime observations above explicitly cover both baselines.
+The new native-only wrapper has an isolated HOME and no personal Homebrew or Docker environment.
+Node 26.12.1 and pnpm 12.15.0 report their exact versions on both selected baselines. The initial
+pnpm entry-layout failure was resolved with the explicitly verified platform package, without an
+implicit downloader or personal configuration.
+
+At that earlier checkpoint, toolchain pins/guards/workflows used Node **24.22.0 / 26.12.1** and
+pnpm **12.15.0**. The current amendment is Node **26.12.1 only**, range **`^26.12.1`**. Historical Node 26.4.0 failures and Docker observations below are not relabelled as
+new-baseline or native-sandbox evidence. Implementation `9d1bc31` passed all ten jobs in
+CI `40242186202` on its then-current baselines; that remains a scoped historical result.
 
 ## User outcome and release intent
 
@@ -40,22 +454,26 @@ qualified. See [BAZ-057](../done/BAZ-057-portable-safe-reads.md) and
 - Qualification: only the latest stable macOS version is available for testing. Record its exact
   version at qualification time; do not infer it from a runner's `latest` label. Older versions
   are untested, not automatically incompatible.
-- Audited technical floor: **macOS 13.5**, not the tested 27.0.1. Both pinned Node baselines
+- Previously audited core technical floor: **macOS 13.5**, not the tested 27.0.1. The then-pinned
+  **24.22.0 / 26.4.0** Node artifacts
   [declare arm64 13.5 support](https://github.com/nodejs/node/blob/v26.4.0/BUILDING.md#platform-list)
-  and their actual arm64 Mach-O load commands target **13.5.0**. Active fs-safe, koffi, Pi terminal,
+  and their actual arm64 Mach-O load commands target **13.5.0**. The privately installed official
+  **26.12.1** artifact also declares Mach-O **13.5**; pnpm **12.15.0** declares **11.0**. Native-backend
+  SPI/profile prerequisites still require qualification; no execution claim for older OS releases follows. Active fs-safe, koffi, Pi terminal,
   SQLite and tree-sitter native artifacts target **11.0.0**; the public libproc, audit-session,
   Quartz and keychain APIs used here impose no higher floor. The optional llama/Metal artifact
   targets 14.0 but is not loaded by the admitted BM25-only path (qmd imports it lazily for LLM work).
   Selected browser/Git/Docker distributions retain their own prerequisites. This audit is not
   execution qualification on 13.5 or intervening releases, and adds no older-OS refusal or bypass.
-- Node: the operator-approved current range is `^24.22.0 || ^26.12.1`, with exact baselines
-  **24.22.0 / 26.12.1** and pinned **pnpm 12.15.0**. Earlier evidence used the originally agreed
-  `^24.22.0 || ^26.4.0`; those observations are historical, not new-baseline qualification.
+- Node: the operator-approved current range is **`^26.12.1` only**, with exact baseline
+  **26.12.1** and pinned **pnpm 12.15.0**. Node 24 support and routine qualification are retired.
+  Earlier dual-baseline and Node 26.4.0 observations remain historical, not current acceptance.
 - Parity means the same supported capabilities and safety contracts, not identical OS mechanisms,
   universal filesystem support, provider entitlement or guaranteed access to external sites.
-- Linux remains supported with its existing protections. OS-independent prerequisites and
-  capability restrictions stay: Docker/image availability, credentials, Team Policy, approvals,
-  restricted-worker tool admission and unknown-ownership refusals.
+- Linux remains supported with its existing protections. Credentials, Team Policy, approvals,
+  restricted-worker admission and unknown-ownership refusals remain authoritative. Native
+  prerequisites replace Docker/image requirements only for the approved new native path; existing
+  Docker behavior is not silently removed or reinterpreted during design review.
 
 ## Concrete implementation scope
 
@@ -97,14 +515,19 @@ Retain persistent-profile privacy, validating SSRF proxy coverage (including ser
 download denial and conservative ownership/cleanup. No stealth, CAPTCHA bypass or guarantee of
 Google/site access. Browser/MCP admission remains denied to protected and restricted turns.
 
-### 4. Protected and background execution
+### 4. Native protected and background execution — approved source integration
 
-Implement any missing macOS adapters required for Docker-backed coding, credential-minimal
-protected turns, restricted review/verification, scheduled/inbox turns and resource settlement.
-Qualify an actual local Apple Silicon Docker runtime, image architecture and mount behavior;
-synthetic Docker responses are not proof of container execution. Missing prerequisites fail closed,
-never fall back to host execution. Preserve workspace exclusivity, read-only private inputs,
-network/credential boundaries, approval handling and scheduler at-most-once/uncertain semantics.
+The former Docker-parity requirement is replaced by approved native macOS/Linux execution requiring
+neither Docker nor a Linux VM. The design and guarded-ABI/IPC-only refinements are approved; native
+backends and source integration are complete. Preserve the accepted restrictions, tool/helper
+coverage, ownership and disclosed API/lifetime limits. Do not reopen completed approval gates.
+See the [accepted design](../../native-execution-design.md).
+
+Continue qualifying the actual native boundary for credential-minimal protected turns,
+restricted review/verification, scheduled/inbox work and resource settlement. Missing mechanisms
+fail closed, never fall back silently to host or Docker. Preserve workspace exclusivity, private
+read-only inputs, policy/approvals and scheduler at-most-once/uncertain semantics. Decide existing
+Docker retention/retirement explicitly; historical Docker tests are not native qualification.
 
 ### 5. Remaining supported user journeys
 
@@ -122,7 +545,7 @@ credentials/spend; this story does not authorize paid calls or use of personal a
 
 1. Document the audited technical minimum separately from the tested OS. CI and installed-release
    jobs run on the latest stable macOS available for qualification, assert actual `darwin`/`arm64`
-   and report OS, architecture and Node versions. Cover both supported Node lines. Simulated
+   and report OS, architecture and Node versions. Cover exact Node 26.12.1 only. Simulated
    platform branches cannot establish support; older macOS releases remain explicitly untested,
    not an additional hardware/test-matrix requirement.
 2. Hardened Git and MCP stdio work on actual Macs, with adversarial filesystem/process tests,
@@ -132,8 +555,11 @@ credentials/spend; this story does not authorize paid calls or use of personal a
    owner-publication paths on macOS, including changed-source refusal and uncertain-effect handling.
    The local publication adapter can establish deterministic host-independent behavior; live host
    publication needs separate authorization and cannot be inferred from a local pass.
-4. Actual macOS managed-browser and Docker/protected runs pass the scoped lifecycle and security
-   checks above. Scheduled/inbox execution retains its narrower tools and policy enforcement.
+4. Actual macOS managed-browser and approved native protected runs pass the scoped lifecycle and
+   security checks, with corresponding Linux native qualification. This supersedes the former
+   Mac Docker/VM parity requirement, not its historical results. Implement the approved CI
+   replacement only after the native boundary is established. Scheduled/inbox execution retains
+   narrower tools and policy enforcement.
 5. Installed CLI/API/web journeys and authorized ChatGPT image generation/rework run on macOS.
    Synthetic provider/transport checks, live-provider results and human visual acceptance remain
    distinct; no missing live acceptance is relabelled as a synthetic pass.
@@ -149,13 +575,16 @@ credentials/spend; this story does not authorize paid calls or use of personal a
 
 ## Open work and sequencing
 
-- Git, MCP stdio, owned-worker, managed-browser and protected/background implementations have
-  observed acceptance. Latest-stable arm64 hardware/local Docker and the separate technical-floor
-  audit are available. Older-OS qualification is not required or inferred.
-- The bounded workstream goal now has actual latest-stable desktop/non-GUI, source, installed,
-  local Docker, Linux/security/upgrade/build evidence on both Node baselines. Retain the explicit
-  hosted TCG capacity failures; do not call the current CI run all green or infer universal Docker
-  performance. Ordinary SSH remains non-GUI; no privileged personal-Mac fixture was used.
+- Preserve Git, MCP stdio, owned-worker and managed-browser implementations and scoped historical
+  acceptance. Docker-backed protected/background observations remain historical, not proof of
+  native execution. Older-OS qualification is not required or inferred.
+- Native design, guarded non-SDK identity and IPC-only refinements are approved and source-integrated.
+  Preserve TCP/UDP restrictions and fail-closed settlement; do not repeat approval milestones.
+  Complete actual latest-stable/installed qualification on Node 26.12.1, not the retired Node 24 line.
+- Mac Docker/VM/tooling removal and maintained Node 24 support cleanup are implemented. Native CI
+  replaces the Mac VM gate, with real Linux native and retained Linux Docker coverage on Node 26.
+  Hosted acceptance is still pending, not inferred from local workflow edits or retired checks.
+  Preserve prior failures. SSH is not a GUI session; personal-Mac privilege changes remain unauthorized.
 - Keep unrelated release acceptance open, including separately authorized live-provider/image
   generation and any remaining broader captured-change workflows. The bounded implementation
   goal is not all eight release gates and does not authorize publication, website deployment or
@@ -813,7 +1242,8 @@ the green hosted gate.
 The operator then explicitly chose the latest published Node 26 and pnpm rather than a compatibility
 adapter: **26.12.1 / 12.15.0**, verified against the official Node index and npm stable metadata.
 The source/mise pins, application manifests, early guards, CI/release tooling and digest-pinned
-example image now agree; Node 24.22.0 support remains. A required child regression exercises the
+example image agreed at that checkpoint. The subsequent Node 26-only amendment retires Node 24
+support; the following dual-baseline outcomes remain historical. A required child regression exercises the
 production SQLite/WAL backup driver as its final active request, with no child timer, heartbeat or
 progress callback that could mask the upstream bug. An idle loopback listener keeps that child
 alive without supplying wakeups, matching an idle daemon; an older installed **26.7.0** control
@@ -823,7 +1253,8 @@ results above are not rewritten. Under the new primary tools, frozen install, **
 **2,819 Linux source / 72 skips**, **477 security cases**, root/web types, lint, build, all three
 package artifacts/offline library consumers and **15 upgrade-harness checks** pass. The lockfile
 change is confined to the pinned package manager, not application dependency upgrades.
-Current-baseline real-Mac qualification and goal completion still require the resumed, amended goal.
+Installed/latest-stable Node 26 qualification and goal completion remain unfinished under the
+resumed, amended goal.
 
 Ordinary configuration, credential, local image/runtime and policy prerequisites remain; no
 detached-host-writer recovery or signalling authority from receipts is promised.

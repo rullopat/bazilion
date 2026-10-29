@@ -11,14 +11,9 @@ import {
 import type { ProtectedProviderWorkerRuntime } from '../runtime/worker/runtime.ts'
 import { resolveAgentApiKey } from './api-key.ts'
 
-export class ProtectedExecutionUnavailableError extends Error {
-  readonly code = 'protected_execution_unavailable'
+import { ProtectedExecutionUnavailableError } from './protected-execution-error.ts'
 
-  constructor(message: string) {
-    super(message)
-    this.name = 'ProtectedExecutionUnavailableError'
-  }
-}
+export { ProtectedExecutionUnavailableError } from './protected-execution-error.ts'
 
 export interface ProtectedProviderResolution {
   runtime: ProtectedProviderWorkerRuntime

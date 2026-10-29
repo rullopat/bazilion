@@ -23,7 +23,9 @@ export interface PromptSkill {
 
 export interface BuildSystemPromptOptions {
   skills?: readonly PromptSkill[]
-  sandboxMode?: BashSandboxMode
+  sandboxMode?: BashSandboxMode | 'native'
+  /** Display-only canonical native workspace; this never grants filesystem authority. */
+  modelWorkspace?: string
   /** Daemon-prepared fixed document bytes; protected workers must supply this. */
   homeDocuments?: ProtectedHomeDocuments
   /**
@@ -215,10 +217,18 @@ export function buildSystemPrompt(
     parts.push(browserGuideSection())
   }
 
+  if (options.sandboxMode === 'native')
+    parts.push(
+      [
+        '# Native command execution',
+        'bash and coding_command use the daemon-admitted native OS sandbox, not direct host tools. Team memory and admitted inputs are read-only. TCP/UDP, including localhost, are denied; pipes and private per-job pathname Unix IPC are available. There is no host-tool, Docker or VM fallback. Report unavailable protection or missing native tools instead of bypassing the boundary. Dangerous commands require the current operator approval; unattended requests deny.',
+      ].join('\n\n'),
+    )
+
   const teamLines = [
     '# Team',
     '',
-    `- ${agent.team.id} (${agent.team.name}): ${options.sandboxMode === 'docker' ? '/workspace' : agent.team.path}`,
+    `- ${agent.team.id} (${agent.team.name}): ${options.sandboxMode === 'docker' ? '/workspace' : (options.modelWorkspace ?? agent.team.path)}`,
     '',
     'Your team is where work product lives — code, docs, artefacts, shared scratch. It may be shared with other agents in the same team. Use the workspace tools currently exposed to work there. Never use workspace tools to edit your identity/soul/behaviour files — those live in your private home and are reached via `home_write` / `home_read`.',
   ]

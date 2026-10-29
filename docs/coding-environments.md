@@ -14,7 +14,7 @@ send you to a configuration dashboard.
 | Tool | Purpose |
 | --- | --- |
 | `repository_context` | Resolve applicable instructions, Git state and suggested commands for a scope |
-| `coding_environment` | Describe this turn's actual host/Docker/protected posture, directory and restrictions |
+| `coding_environment` | Describe this turn's admitted host/Docker/native/protected posture, directory and restrictions |
 | `coding_command` | Execute a task-selected runtime, dependency, preparation, build or test command |
 | `coding_receipt` | Read retained command evidence and check whether its recorded inputs still apply |
 
@@ -26,9 +26,56 @@ Pi owns the model/tool loop and canonical session transcript. Bazilion supplies 
 context and the execution adapter. Existing Bazilion-managed skills remain available; this change
 does not activate ambient Pi extensions or repository-provided executable plugins.
 
+## Explicit native selection (unreleased 0.25 work)
+
+`BAZILION_BASH_SANDBOX=native`, or the same Agent Shell Security setting in Config, now selects
+native coding for operator HTTP turns and protected scheduled/inbox turns. Saving Team defaults
+alone does not select a backend. Host mode `off` remains visibly unisolated; legacy Docker behavior
+remains during the approved conditional cutover, not as a native prerequisite or fallback.
+
+Linux requires the admitted unprivileged Bubblewrap and mandatory seccomp boundary. Apple Silicon
+macOS uses deprecated Seatbelt through `/usr/bin/sandbox-exec`; see the API and support limits in
+[native execution](native-execution-design.md). Missing mechanisms, toolchain drift or unsafe inputs
+refuse. Do not assume arbitrary host tools or the whole host library tree are available.
+
+Native `bash` and `coding_command` share one daemon-owned executor. Host-backed file tools are hidden;
+Team memory, skills and admitted uploads are read-only to commands. Only closed Team environment
+flags enter commands, never provider credentials or the Docker environment allowlist. TCP/UDP,
+including localhost, are denied; explicitly admitted private job Unix IPC is not a localhost exception.
+Native always uses dangerous-command approval: interactive turns may approve once, unattended turns
+auto-deny. Ordinary separately admitted browser/MCP capabilities are not confined by the coding
+sandbox; protected/restricted workers still deny them.
+
+Health, doctor and Config report native selection as **Not checked** until real per-turn admission,
+not an image or readiness badge. Unknown ownership/cleanup retains the resource and writer; persisted
+receipts do not authorize signalling. Agent-requested native verification uses its bound producing
+turn and the two-tool specialist. Operator capture through the existing HTTP/CLI/web verification
+surface now runs fixed readiness probes and positively retires them before storing native facts;
+it does not execute the captured checks. JSON cannot supply environment facts or impersonate an Agent.
+Capture is fenced/drained during shutdown. Backend changes refuse rather than substituting legacy
+host/Docker execution; completed history is not rewritten. CLI/web distinguish captured native facts
+from current readiness.
+
+Native Bash failures retain bounded native retirement facts in the canonical transcript and error
+text when available: phase, boolean observations and at most two census verdicts. These are
+troubleshooting metadata, not process identity, cleanup authority or a successful check. An uncertain
+attempt is never converted into success merely because later same-live-owner teardown retires its resources;
+never replay its effects merely because a later capture is empty.
+
+Queued operator input keeps its configured posture; approved deliveries and bound Telegram queue
+input use protected native execution. Communication approval grants the captured input, not a shell
+risk exemption: queued dangerous commands still auto-deny. Holds, pause and duplicate/denied decisions
+cannot execute the input. Topic/owner/credential rebinding refuses delayed Telegram execution.
+Cancellation reporting recognizes known abort messages only after an actual worker cancellation
+signal; unconfirmed cleanup still requires recovery rather than a cancellation/success claim.
+
+Actual Linux and both exact Mac Node baselines now exercise configured workers, real scheduled/inbox
+ticks and shutdown during acknowledged native readiness. Provider transport is synthetic loopback;
+installed-client, live-provider, integrated browser and final cutover qualification remain separate.
+
 ## Missing prerequisites
 
-In a protected or Docker turn, every command runs in a fresh network-disabled container. Workspace
+In a Docker-selected turn, every command runs in a fresh network-disabled container. Workspace
 files persist; temporary files do not. The root filesystem and Team memory are read-only to shell
 commands. There are no ambient host credentials or package caches.
 
@@ -37,7 +84,12 @@ its existing authority. If a package must be downloaded, a service is unavailabl
 lacks a required tool, it should name the missing prerequisite and yield. It cannot silently switch
 to host execution. Network-enabled dependency provisioning is outside this feature.
 
-A local toolchain image is an installation prerequisite for Docker execution, not a per-task
+Docker execution is **Linux-only**. macOS protected work uses native execution, including when
+ordinary configured host mode remains explicitly unisolated. A stored `docker` selection on macOS
+is refused, never silently converted into another backend. No Docker Desktop, Colima or Linux VM
+is needed or supported for Mac execution.
+
+A local toolchain image is an installation prerequisite for Linux Docker execution, not a per-task
 checklist. The supplied [Dockerfile](../examples/coding-environment/Dockerfile) contains Node and
 pnpm. Build it explicitly from a source checkout:
 
@@ -50,14 +102,14 @@ The image build requires its base image and package-manager artifacts to be avai
 turns use Docker when `BAZILION_BASH_SANDBOX=docker`; protected turns always use their protected
 runtime. Host execution remains host execution under its existing policy.
 
-The unreleased 0.25 Apple Silicon candidate has actual latest-stable **macOS 27.0.1 arm64**
-local ARM Docker coverage on Node **24.22.0 / 26.4.0**, including approvals, scheduled/inbox
-workers, captured verification and settlement. It still requires a responsive local Unix-socket
-runtime, an admitted local image and accessible workspace/input/temp mounts. These are ordinary
-prerequisites, not a host-fallback permission. The core audited macOS floor is **13.5**; this does
-not qualify intervening OS or arbitrary Docker distributions. Scoped installed and desktop/non-GUI
-journeys also pass on the tested target; hosted TCG deadline failures and broader release
-acceptance remain separate in [BAZ-072](backlog/in_progress/BAZ-072-apple-silicon-feature-parity.md).
+Historical 0.25 development trials recorded local ARM Docker coverage on **macOS 27.0.1 arm64**
+with Node **24.22.0 / 26.4.0**, including approvals, scheduled/inbox workers, captured verification
+and settlement. That is not native-backend or current Node 26.12.1 qualification. The approved
+replacement and its integration limits are described in [native execution](native-execution-design.md).
+Those Mac Docker trials remain historical only: the backend and its private qualification VM have
+been removed from macOS support. Linux Docker still requires a responsive local Unix socket, admitted
+local image and accessible mounts. Historical failures and unfinished installed/native acceptance
+remain distinct in [BAZ-072](backlog/in_progress/BAZ-072-apple-silicon-feature-parity.md).
 
 Docker admission gives each OCI **create** and isolated **probe-start** operation a fixed
 **five-second** budget on every supported platform; metadata inspection keeps its separate
@@ -127,6 +179,7 @@ bazilion team environment configure default --file environment.json
 {
   "expectedRevision": 0,
   "config": {
+    "backend": "docker",
     "image": "bazilion-coding:node24-pnpm10",
     "cwd": ".",
     "env": { "CI": "true", "NO_COLOR": "1", "TZ": "UTC" }
@@ -137,7 +190,28 @@ bazilion team environment configure default --file environment.json
 `GET/PUT /api/teams/:id/coding-environment` reads/saves these defaults. Later writes require the
 current revision. Saving never executes commands. Allowed environment values are only
 `CI=true|false`, `NO_COLOR=0|1` and `TZ=UTC`; arbitrary credentials/startup hooks are rejected.
-Docker defaults do not change a host turn's cwd or environment.
+Defaults do not change an explicitly unprotected host turn's cwd or environment.
+
+The unreleased native configuration uses a distinct explicit choice, with no image:
+
+```json
+{
+  "expectedRevision": 1,
+  "config": {
+    "backend": "native",
+    "cwd": ".",
+    "env": { "CI": "true", "NO_COLOR": "1", "TZ": "UTC" }
+  }
+}
+```
+
+CLI, API and web accept the same backend/directory/environment fields. A native config containing
+`image` is refused, as is a Docker config consumed by native admission (and vice versa). Storing
+native defaults is not runtime readiness and does not by itself select native execution;
+turn preparation/captured verification remain under integration. There is no host or Docker
+fallback from a native request. The alpha clean-install contract has no importer for earlier
+image-only defaults: missing `backend` fails closed rather than reinterpreting an old image. Use a
+clean current-schema bootstrap; no existing operator choice is rewritten automatically.
 
 ## Ownership and recovery
 

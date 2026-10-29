@@ -322,6 +322,36 @@ test('waiting for an active Agent never overlaps and rechecks policy after admis
   expect(mocks.run).not.toHaveBeenCalled()
   expect(queue.get(env.db, agentId, item.id)?.status).toBe('failed')
 })
+test.each([
+  'direct',
+  'approved',
+] as const)('a cancellation frame cannot hide unconfirmed %s queue cleanup or replay its effects', async (kind) => {
+  mocks.run.mockImplementation(async function* () {
+    yield { kind: 'event', event: { type: 'error', error: 'cancelled' } }
+    throw new Error('native cleanup unconfirmed')
+  })
+  let item: import('@bazilion/api-types').UserQueueItem
+  if (kind === 'approved') {
+    const heldInput = await held()
+    item = heldInput.item
+    await expect(deliverQueuedApproval(claim(heldInput.approval))).rejects.toThrow(
+      'native cleanup unconfirmed',
+    )
+  } else {
+    env.db.raw.run("UPDATE team_policy_edges SET posture = 'allow' WHERE team_id = ?", [env.teamId])
+    item = await enqueueHttpInput(agentId, {
+      requestId: randomUUID(),
+      expectedSelection: conversations.selection(env.db, agentId),
+      message: 'controlled cancellation',
+    })
+    await drainUserQueueHead(agentId)
+  }
+  expect(queue.get(env.db, agentId, item.id)?.status).toBe('uncertain')
+  expect(queue.control(env.db, agentId).paused).toBe(true)
+  expect(await drainUserQueueHead(agentId)).toBe(false)
+  expect(mocks.run).toHaveBeenCalledTimes(1)
+})
+
 test('missing outcome is uncertain, pauses the queue and cannot replay', async () => {
   const { item, approval } = await held()
   mocks.run.mockImplementation(async function* () {})

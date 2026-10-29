@@ -20,6 +20,19 @@ PID ownership or force-clears records. This is not arbitrary detached-host-write
 [BAZ-057](backlog/done/BAZ-057-portable-safe-reads.md) for historical qualification limits and the
 active BAZ-072 story for current candidate evidence.
 
+## Linux native coding workers (unreleased 0.25)
+
+The native coding worker is trusted SDK/control-plane code with no host-command tool surface;
+sandboxed commands have their own independent resource owners. The daemon binds its actual child,
+Linux birth/uid/parent/namespaces and original pidfd before input. Signals target that pidfd only.
+Cleanup requires natural stdout/stderr EOF, exited pidfd and positive original-group absence. Group
+absence alone, locally destroyed pipes or another process's FD visibility are not cleanup proofs.
+
+A stored `owned-linux-native-child` identity cannot construct live authority. Restart/restore,
+substituted bindings and lost original handles remain blocked; no receipt or census PID is adopted.
+Legacy host/Docker worker recovery retains its existing stricter global endpoint inspection. This
+is not arbitrary detached-host-job recovery or a claim that the provider worker itself is sandboxed.
+
 ## Inspect and attempt supported cleanup
 
 Open the Team page's **Workspace recovery** section, or use:

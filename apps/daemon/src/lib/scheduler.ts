@@ -53,7 +53,12 @@ import {
 } from './communication.ts'
 import { matchesCron, type ParsedCron, parseCron } from './cron.ts'
 import { getCtx } from './ctx.ts'
-import { prepareProtectedExecution } from './protected-execution.ts'
+import { inboxAttemptId } from './inbox-attempt.ts'
+import { isPreparedProtectedNativeExecution } from './native-execution/protected.ts'
+import {
+  type PreparedProtectedExecution,
+  prepareSelectedProtectedExecution,
+} from './protected-execution.ts'
 import { protectedFailureMessage, protectedFrameFailure } from './protected-failure.ts'
 import { dispatchableReviews, dispatchReviewPacket } from './review/dispatch.ts'
 import { dispatchClaimableReviews } from './review-dispatcher.ts'
@@ -393,6 +398,7 @@ async function fireInboxWake(agentId: string): Promise<void> {
   s.preparing.add(controller)
   let registered = false
   let handoffStarted = false
+  let heldProtected: PreparedProtectedExecution | undefined
   let workspaceLease: WorkspaceLease | undefined
   try {
     // Readiness must be established before `claimDeliverableInbox` marks the
@@ -405,13 +411,11 @@ async function fireInboxWake(agentId: string): Promise<void> {
       'agent',
     )
     controller.signal.throwIfAborted()
-    const protectedExecution = await prepareProtectedExecution(
-      resolveAgent(ctx.db, ctx.paths, agentId),
-      {
-        signal: controller.signal,
-        dockerLifecycle: workspaceLifecycle(ctx.db).containers(workspaceLease),
-      },
-    )
+    const protectedExecution = await prepareSelectedProtectedExecution(resolvedAgent, {
+      lease: workspaceLease,
+      controller,
+    })
+    heldProtected = protectedExecution
     controller.signal.throwIfAborted()
     const conversation = resolveConversationTarget(ctx.db, ctx.paths, agentId)
     const msgs = claimDeliverableInbox(
@@ -435,7 +439,7 @@ async function fireInboxWake(agentId: string): Promise<void> {
       if (sender) fromNames.set(fid, sender.name)
     }
     const prompt = buildInboxPrompt(agentId, msgs, fromNames)
-    const attemptId = `${agentId}:${msgs.map((message) => message.id).join(',')}`
+    const attemptId = inboxAttemptId(agentId, msgs)
     const invocation = createTrustedTurnInvocation({
       kind: 'inbox_wake',
       authorization: {
@@ -487,7 +491,10 @@ async function fireInboxWake(agentId: string): Promise<void> {
     )
   } finally {
     try {
+      const native = isPreparedProtectedNativeExecution(heldProtected) ? heldProtected : undefined
+      const closed = native ? await native.close().catch(() => false) : true
       if (workspaceLease) await workspaceLifecycle(ctx.db).release(workspaceLease)
+      if (!closed && native) await native.close().catch(() => false)
     } finally {
       s.preparing.delete(controller)
       s.firing.delete(key)

@@ -15,6 +15,7 @@ import { createCodingHost } from '../../src/lib/coding-environment/agent-host.ts
 import { CodingDiagnostics, codingSecrets } from '../../src/lib/coding-environment/diagnostics.ts'
 import { createDbMessagingHost } from '../../src/lib/messaging-host.ts'
 import { codingTools } from '../../src/runtime/pi/coding.ts'
+import type { CodingHost, CodingRequest } from '../../src/runtime/pi/coding-contract.ts'
 import { makeTestEnv, type TestEnv } from '../core/helpers.ts'
 import { emptyRepositoryContext } from '../fixtures/repository-context.ts'
 
@@ -50,7 +51,11 @@ afterEach(() => {
   vi.unstubAllEnvs()
   env.cleanup()
 })
-function host(agentId = owner, turnId = 'turn', secrets: string[] = []) {
+function host(
+  agentId = owner,
+  turnId = 'turn',
+  secrets: string[] | (() => readonly string[]) = [],
+) {
   return createCodingHost({
     db: env.db,
     paths: env.paths,
@@ -354,6 +359,113 @@ test('dangerous command approval remains mandatory and does not execute on denia
   )
   expect(JSON.parse((result.content[0] as { text: string }).text).state).toBe('blocked')
   expect(readFileSync(join(root, 'keep'), 'utf8')).toBe('preserve')
+})
+
+test('coding retention and command refusal read the live secrets supplier at the execution boundary', async () => {
+  const values: string[] = [],
+    h = host(owner, 'live-secrets', () => values)
+  const started = (await h.invoke({
+    action: 'start',
+    toolCallId: 'live-start',
+    input: command,
+  })) as CodingCommandReceipt
+  values.push('rotated-private-secret-value')
+  const done = (await h.invoke({
+    action: 'finish',
+    id: started.id,
+    outcome: {
+      state: 'succeeded',
+      exitCode: 0,
+      diagnostic: 'rotated-private-secret-value',
+      truncated: false,
+      reason: null,
+    },
+  })) as CodingCommandReceipt
+  expect(done.diagnostic).toBe('[redacted]')
+  await expect(
+    h.invoke({
+      action: 'start',
+      toolCallId: 'secret-command',
+      input: { ...command, command: 'printf rotated-private-secret-value' },
+    }),
+  ).rejects.toThrow('protected credential material')
+})
+
+// Synthetic transport unit only: never persist a fake native result under a host posture.
+// Actual native receipt persistence is covered by the real worker/backend integration fixture.
+function nativeProxyReceiptHost(requests: CodingRequest[] = []): CodingHost {
+  return {
+    async invoke(value) {
+      requests.push(value)
+      if (value.action === 'start')
+        return { id: 'synthetic-native-receipt', startedAt: Date.now() } as CodingCommandReceipt
+      if (value.action === 'finish')
+        return { id: value.id, ...value.outcome } as CodingCommandReceipt
+      throw new Error('unused synthetic receipt action')
+    },
+  }
+}
+
+test('native coding_command delegates to its bound capability and retains explicit capture truncation', async () => {
+  const calls: unknown[] = [],
+    receipts: CodingRequest[] = []
+  const tools = codingTools({
+    host: nativeProxyReceiptHost(receipts),
+    root,
+    context: async () => emptyRepositoryContext(env.teamId),
+    approval: true,
+    native: {
+      cancel() {
+        return false
+      },
+      async exec(request, output) {
+        calls.push(request)
+        output('stdout', Buffer.from('short native capture'), {
+          observedBytes: 123,
+          redacted: true,
+        })
+        return { code: 0, signal: null, stdoutTruncated: true, stderrTruncated: false }
+      },
+    },
+  })
+  const run = tools.find((tool) => tool.name === 'coding_command')
+  if (!run) throw new Error('coding tool missing')
+  const result = await run.execute('native-call', command, undefined, undefined, {} as never)
+  const receipt = JSON.parse((result.content[0] as { text: string }).text) as CodingCommandReceipt
+  expect(receipt.state).toBe('succeeded')
+  expect(receipt.truncated).toBe(true)
+  expect(receipts.at(-1)).toMatchObject({
+    action: 'finish',
+    capture: { observedBytes: 123, redacted: true },
+  })
+  expect(calls).toEqual([
+    { toolCallId: 'native-call', command: command.command, cwd: '.', timeoutMs: 5000 },
+  ])
+})
+test.each([
+  ['timed_out', true, 'timed_out'],
+  ['cancelled', true, 'cancelled'],
+  ['approval_denied', true, 'blocked'],
+  ['recovery_required', false, 'interrupted'],
+] as const)('native coding failure %s preserves executor state instead of selecting host execution', async (code, cleanupConfirmed, state) => {
+  const tools = codingTools({
+    host: nativeProxyReceiptHost(),
+    root,
+    context: async () => emptyRepositoryContext(env.teamId),
+    approval: true,
+    native: {
+      cancel() {
+        return false
+      },
+      async exec() {
+        throw Object.assign(new Error('Native execution refused'), { code, cleanupConfirmed })
+      },
+    },
+  })
+  const run = tools.find((tool) => tool.name === 'coding_command')
+  if (!run) throw new Error('coding tool missing')
+  const result = await run.execute('native-failure', command, undefined, undefined, {} as never)
+  expect(JSON.parse((result.content[0] as { text: string }).text).state).toBe(state)
 })
 
 // ─── BAZ-042: turn-bound source snapshot + receipt linkage ────────────────────

@@ -11,7 +11,7 @@ let preflightFailure: Error | null
 let preflightGate: ((input: ProtectedDockerPreflightInput) => Promise<void>) | undefined
 let agentId: string
 
-describe('protected execution preparation', () => {
+describe.skipIf(process.platform !== 'linux')('protected execution preparation', () => {
   beforeEach(async () => {
     env = makeTestEnv()
     preflightInputs = []
@@ -121,6 +121,7 @@ describe('protected execution preparation', () => {
     const resolved = resolveAgent(env.db, env.paths, agentId)
     mkdirSync(join(resolved.team.path, 'app'))
     putCodingEnvironment(env.db, env.teamId, 0, {
+      backend: 'docker',
       image: 'prepared/node:24',
       cwd: 'app',
       env: { CI: 'true', NO_COLOR: '1' },

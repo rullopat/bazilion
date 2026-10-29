@@ -23,6 +23,8 @@ export default defineConfig({
     'runtime-version': 'src/runtime-version.ts',
     worker: '../daemon/src/runtime/worker/entry.ts',
     'browser-keychain': '../daemon/src/lib/browser/darwin-keychain-entry.mjs',
+    'native-linux-entry': '../daemon/src/runtime/shell/native/linux-entry.ts',
+    'native-darwin-entry': '../daemon/src/runtime/shell/native/darwin-entry.ts',
     'web-server': 'src/web-server.ts',
   },
   format: ['esm'],

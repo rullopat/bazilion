@@ -4,6 +4,7 @@ import {
   getVerificationRequest,
   getVerificationRequestById,
   listVerificationAttempts,
+  listVerificationCheckOutcomes,
   pruneVerificationRequests,
 } from '../../core/repos/verification-requests.ts'
 import { mergeSecretsIntoEnv } from '../../core/secrets.ts'
@@ -13,6 +14,7 @@ import { codingSecrets } from '../coding-environment/diagnostics.ts'
 import { workspaceLifecycle } from '../coding-environment/lifecycle.ts'
 import { getCtx } from '../ctx.ts'
 import { readSnapshotApplicability } from '../git-review/service.ts'
+import { assertSelectedVerificationBackend } from '../native-execution/selection.ts'
 import { protectedFailureMessage } from '../protected-failure.ts'
 import {
   admitVerificationRequest,
@@ -20,6 +22,10 @@ import {
   type VerificationAdmission,
 } from './admission.ts'
 import { createProtectedCheckExecutor } from './executor.ts'
+import {
+  type PreparedNativeVerificationExecutor,
+  prepareNativeVerificationExecutor,
+} from './native-executor.ts'
 import {
   bindVerificationCapability,
   executePreparedVerification,
@@ -31,6 +37,7 @@ import {
   createVerificationHost,
   settleVerificationAttempt,
 } from './runner.ts'
+import { createVerificationWorkerOwnership } from './worker-ownership.ts'
 import { compareWorkspaceFingerprints, fingerprintWorkspace } from './writes.ts'
 
 // BAZ-044: the one dispatch owner for a verification request.
@@ -83,9 +90,11 @@ export async function dispatchVerificationRequest(
   requestId: string,
   opts: { signal?: AbortSignal; workerEntryPath?: string } = {},
 ): Promise<VerificationDispatchResult> {
-  const { db, paths } = getCtx()
+  const ctx = getCtx(),
+    { db, paths } = ctx
   const request = getVerificationRequestById(db, requestId)
   if (!request) return 'not_dispatchable'
+  const assertSelection = () => assertSelectedVerificationBackend(ctx, request.environment.sandbox)
   if (isActiveAgent(request.recipientAgentId)) return 'agent_busy'
 
   const releaseLease = await acquireAgentLifecycleLease(request.recipientAgentId)
@@ -99,13 +108,17 @@ export async function dispatchVerificationRequest(
   } finally {
     releaseLease()
   }
-  if (opts.signal) opts.signal.addEventListener('abort', () => controller.abort(), { once: true })
+  const onCallerAbort = () => controller.abort()
+  if (opts.signal?.aborted) onCallerAbort()
+  else opts.signal?.addEventListener('abort', onCallerAbort, { once: true })
 
   dispatchRegistry().controllers.set(requestId, controller)
 
   let admission: VerificationAdmission | undefined
+  let nativeExecutor: PreparedNativeVerificationExecutor | undefined
   try {
-    admission = await admitVerificationRequest(db, paths, requestId)
+    controller.signal.throwIfAborted()
+    admission = await admitVerificationRequest(db, paths, requestId, Date.now(), assertSelection)
     if (admission.kind !== 'admitted') return 'not_dispatchable'
     const admitted = admission
 
@@ -130,24 +143,53 @@ export async function dispatchVerificationRequest(
       request: live,
       attemptId: admitted.claim.attempt.id,
     })
+    let executor: import('./runner.ts').VerificationCheckExecutor
+    if (live.environment.sandbox === 'native') {
+      nativeExecutor = await prepareNativeVerificationExecutor({
+        db,
+        paths,
+        requestId,
+        attemptId: admitted.claim.attempt.id,
+        leaseOwner: VERIFICATION_DISPATCH_OWNER,
+        lease: admitted.workspace,
+        controller,
+        assertSelection,
+        secrets: () => currentSecrets(),
+      })
+      executor = nativeExecutor.executor
+    } else {
+      executor = createProtectedCheckExecutor({
+        db,
+        paths,
+        request: live,
+        attemptId: admitted.claim.attempt.id,
+        teamPath: paths.teamDir(live.teamId),
+        secrets: () => currentSecrets(),
+        signal: controller.signal,
+        env: () => mergeSecretsIntoEnv(db, ctx.authToken),
+        containerLifecycle: workspaceLifecycle(db).containers(admitted.workspace),
+      })
+    }
+    const verificationOwnership =
+      live.environment.sandbox === 'native'
+        ? createVerificationWorkerOwnership({
+            db,
+            paths,
+            requestId,
+            attemptId: admitted.claim.attempt.id,
+            leaseOwner: VERIFICATION_DISPATCH_OWNER,
+            lease: admitted.workspace,
+            controller,
+            assertSelection,
+          })
+        : undefined
     const capability = bindVerificationCapability(
       createVerificationHost({
         db,
         request: live,
         attemptId: admitted.claim.attempt.id,
         applicability: 'identical',
-        executor: createProtectedCheckExecutor({
-          db,
-          paths,
-          request: live,
-          attemptId: admitted.claim.attempt.id,
-          teamPath: paths.teamDir(live.teamId),
-          secrets: () => currentSecrets(),
-          signal: controller.signal,
-          // The checks run while this dispatch holds the workspace lease, so their containers register
-          // against it and are reconciled rather than leaked if the daemon dies mid-check.
-          containerLifecycle: workspaceLifecycle(db).containers(admitted.workspace),
-        }),
+        executor,
       }),
       { requestId, attemptId: admitted.claim.attempt.id },
     )
@@ -155,6 +197,7 @@ export async function dispatchVerificationRequest(
     let failure: string | null = null
     for await (const frame of executePreparedVerification(prepared, {
       verificationHost: capability,
+      ...(verificationOwnership ? { verificationOwnership } : {}),
       signal: controller.signal,
       ...(opts.workerEntryPath ? { workerEntryPath: opts.workerEntryPath } : {}),
     })) {
@@ -162,6 +205,20 @@ export async function dispatchVerificationRequest(
       else if (frame.kind === 'event' && frame.event.type === 'error') failure ??= frame.event.error
     }
 
+    // Finish every issued receipt before settling the attempt, including an early worker exit.
+    if (nativeExecutor) await nativeExecutor.close()
+    if (
+      listVerificationCheckOutcomes(db, admitted.claim.attempt.id).some(
+        (outcome) => outcome.state === 'unknown',
+      )
+    ) {
+      settleVerificationAttempt(db, {
+        attemptId: admitted.claim.attempt.id,
+        requestId,
+        leaseOwner: VERIFICATION_DISPATCH_OWNER,
+      })
+      return 'settled'
+    }
     if (controller.signal.aborted) {
       const abandoned = abandonVerificationAttempt(db, {
         attemptId: admitted.claim.attempt.id,
@@ -203,6 +260,19 @@ export async function dispatchVerificationRequest(
     return 'dispatched'
   } catch (error) {
     if (admission?.kind === 'admitted') {
+      if (nativeExecutor) await nativeExecutor.close().catch(() => false)
+      if (
+        listVerificationCheckOutcomes(db, admission.claim.attempt.id).some(
+          (outcome) => outcome.state === 'unknown',
+        )
+      ) {
+        settleVerificationAttempt(db, {
+          attemptId: admission.claim.attempt.id,
+          requestId,
+          leaseOwner: VERIFICATION_DISPATCH_OWNER,
+        })
+        return 'settled'
+      }
       abandonVerificationAttempt(db, {
         attemptId: admission.claim.attempt.id,
         requestId,
@@ -213,9 +283,12 @@ export async function dispatchVerificationRequest(
     }
     return 'settled'
   } finally {
-    // The workspace claim is released only after the attempt is settled, so a cancelled or failed
-    // verification can never leave the Team blocked.
+    // An uncertain native owner retains its resource/writer; release never guesses authority.
+    if (nativeExecutor) await nativeExecutor.close().catch(() => false)
     if (admission?.kind === 'admitted') await workspaceLifecycle(db).release(admission.workspace)
+    // Only retire template handles after canonical resource cleanup positively releases all loans.
+    if (nativeExecutor) await nativeExecutor.close().catch(() => false)
+    opts.signal?.removeEventListener('abort', onCallerAbort)
     dispatchRegistry().controllers.delete(requestId)
     if (registered) unregisterAgent(request.recipientAgentId)
   }
@@ -277,5 +350,5 @@ export async function dispatchPendingVerifications(now = Date.now()): Promise<vo
  */
 function currentSecrets(): readonly string[] {
   const { db, authToken } = getCtx()
-  return codingSecrets(mergeSecretsIntoEnv(db, authToken))
+  return [authToken, ...codingSecrets(mergeSecretsIntoEnv(db, authToken))]
 }

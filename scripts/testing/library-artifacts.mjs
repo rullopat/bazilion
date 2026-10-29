@@ -71,6 +71,7 @@ try {
     )
     assert.equal(manifest.name, `@bazilion/${name}`)
     assert.equal(manifest.version, version)
+    assert.equal(manifest.engines?.node, '^26.12.1')
     assert.deepEqual(
       Object.keys(manifest.dependencies ?? {}),
       name === 'client' ? ['@bazilion/api-types'] : [],

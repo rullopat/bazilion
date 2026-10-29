@@ -1,4 +1,6 @@
+import type { CodingEnvironmentValues } from './coding-environment.ts'
 import type { SnapshotComparison } from './git-review.ts'
+import type { NativeExecutionFacts } from './native-execution.ts'
 
 // BAZ-044 wire shapes: one typed verification request handed to a selected same-Team specialist.
 //
@@ -50,14 +52,28 @@ export type VerificationCheckState =
 export type VerificationRequester = { kind: 'agent'; agentId: string } | { kind: 'operator' }
 
 /** Bounded environment facts frozen at admission, from the BAZ-040 admitted environment. */
-export interface VerificationEnvironmentFacts {
-  image: string
-  sandbox: 'off' | 'docker'
-  cwd?: string
-  env?: Record<string, string>
+export type VerificationEnvironmentFacts = {
   /** Declared, bounded locations a check may write generated output to. */
   writablePaths?: string[]
-}
+} & (
+  | {
+      image: string
+      sandbox: 'off' | 'docker'
+      cwd?: string
+      env?: Record<string, string>
+      native?: never
+      inputScope?: never
+    }
+  | {
+      image: null
+      sandbox: 'native'
+      native: NativeExecutionFacts
+      /** No producer-private Agent documents/uploads/skills are granted to the specialist command. */
+      inputScope: 'team-memory'
+      cwd: string
+      env: CodingEnvironmentValues
+    }
+)
 
 /** One captured check: an exact command, cwd, purpose and timeout. Never arbitrary shell text. */
 export interface VerificationCheckInput {

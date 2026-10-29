@@ -8,9 +8,9 @@ Multi-agent runtime CLI — spawn LLM agents, manage profiles/teams/skills, and 
 
 ## Install
 
-The source/unreleased candidate requires **Node 24.22.0+ within 24.x, or 26.12.1+ within 26.x**.
+The source/unreleased candidate requires **Node 26.12.1+ within 26.x only** (`^26.12.1`).
 Earlier releases and other major lines are refused before application imports or state bootstrap.
-The admitted baselines include the upstream native cleanup-hook and SQLite backup-completion
+The admitted Node 26 baseline includes the upstream native cleanup-hook and SQLite backup-completion
 fixes; upgrading Node does not authorize resetting any Bazilion data.
 
 Version 0.24 adds ordinary macOS chat, qualified on macOS arm64 / Node 24.22.0, alongside Linux.
@@ -101,8 +101,7 @@ bazilion dashboard
 ```
 
 For source development, clone the repo and run `mise install` for pinned Node **26.12.1** and
-pnpm **12.15.0**, then run the daemon plus Vite dev server. Node 24.22.0+ within 24.x remains
-supported. Without mise/Corepack, install pnpm with `npm install -g pnpm@12.15.0`.
+pnpm **12.15.0**, then run the daemon plus Vite dev server. Node 24 is no longer supported. Without mise/Corepack, install pnpm with `npm install -g pnpm@12.15.0`.
 
 ```sh
 git clone https://github.com/rullopat/bazilion

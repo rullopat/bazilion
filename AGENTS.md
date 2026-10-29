@@ -5,8 +5,8 @@ Codex reads it directly; Claude Code imports it from `CLAUDE.md`.
 
 ## Dev commands
 
-Supported Node lines are **24.22.0+ within 24.x or 26.12.1+ within 26.x**
-(`^24.22.0 || ^26.12.1`). The primary toolchain is Node **26.12.1** and pnpm **12.15.0**,
+Supported Node is **26.12.1+ within 26.x only** (`^26.12.1`). Node 24 support is retired;
+retain historical evidence and unsupported-version rejection tests, not compatibility branches. The primary toolchain is Node **26.12.1** and pnpm **12.15.0**,
 pinned in `mise.toml` and the root manifest. Earlier/other lines are refused before bootstrap;
 the admitted baselines include the native cleanup-hook and SQLite backup-completion fixes.
 CLI/daemon launchers must guard before linking payloads; keep manifests, guards and CI aligned.
@@ -110,11 +110,12 @@ credential-scrubbed, and fail closed; unknown retirement retains the browser own
 private password is owner-only profile state, excluded from backup with the profile, not a new
 provider secret or Agent capability. Privileged session provisioning is disposable-CI-only; the
 product never elevates privileges. Native headed/non-GUI browsing, reset/relaunch and lifecycle
-checks passed on macOS 26.6.2 arm64 with both Node baselines. Latest-stable 27.0.1 arm64 now
-passes protected/local ARM Docker, installed CLI/API/web and non-GUI browser checks on both
-baselines. Operator desktop runs also pass the real headed case on each baseline; combined
-collections cover all 28 browser/CLI cases. This is bounded workstream qualification, not full
-BAZ-072 release readiness: hosted TCG deadlines remain variable and unrelated acceptance stays open.
+checks passed on macOS 26.6.2 arm64 with both Node baselines. Historical 27.0.1 trials included local ARM Docker and the older Node 26.4.0 baseline; do not
+relabel them as current acceptance. macOS Docker/VM execution and its private tooling are removed
+by operator request. Protected Mac turns select native even with ordinary host mode off; explicit
+Docker selections refuse without CLI/socket access or fallback. Linux Docker remains intact. Current
+native source trials cover Node 26.12.1; Node 24 trials are historical. Installed/headed and broader
+acceptance remain open.
 The audited core macOS floor is 13.5 (Node), not a claim that older OS versions were tested.
 
 XNU can omit restricted-app environment bytes from `KERN_PROCARGS2` under SIP. An argv-only
@@ -124,8 +125,8 @@ has no wire/persistent/signalling authority. Preserve native assertions when byt
 never disable SIP, request private entitlements or decode unrelated processes' environments to
 obtain a green check.
 
-Docker admission budgets distinguish metadata inspection (2 s) from OCI create/probe-start
-(5 s each, shared across platforms). The probe is fixed `true`, before model/worker admission;
+Linux-only Docker admission budgets distinguish metadata inspection (2 s) from OCI create/probe-start
+(5 s each). The probe is fixed `true`, before model/worker admission;
 command-declared deadlines and the separate cleanup bounds are unchanged. Always forward the
 turn's AbortSignal into `prepareAgentDockerInputs` → `preflightProtectedDockerRuntime`: cancellation
 must stop active create/start and await cleanup, never wait out the readiness budget or authorize
@@ -196,6 +197,14 @@ the parent is live; never create an anchor from a stored/restored PID. Natural o
 absence are required for cleanup. Coded nonzero exit is not a success verdict; a forced host-command
 exit still cannot prove detached work stopped. Shutdown fences new turns and settles registered
 workers before closing resources/DB. Unknown cleanup retains its writer and private scratch.
+
+Unreleased native coding on Linux uses a separate live trusted-worker owner: actual ChildProcess,
+matched birth/uid/parent/namespaces and an original pidfd. Only workers with `hostCommands:false`
+enter it; native commands remain separately owned sandbox jobs. Require actual natural stdout/stderr
+EOF and an absent original worker group; inaccessible unrelated `/proc/*/fd` entries are not a native
+worker authority source. Signal only the original pidfd, never a restored PID or adopted descendant.
+Restored/substituted native-worker rows permanently revoke their live binding; keep blocked resources
+and handles, with no legacy-recovery fallback. Legacy host/Docker worker recovery is unchanged.
 
 ### Coding evidence: progress, retained diagnostics and change review (BAZ-041/042, shipped in v0.17.0)
 

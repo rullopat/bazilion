@@ -46,16 +46,19 @@ export function codingRelativePath(value: unknown, field = 'cwd'): string {
 }
 
 export function validateCodingEnvironmentConfig(input: unknown): CodingEnvironmentConfig {
-  const config = object(input, ['image', 'cwd', 'env'], 'configuration')
-  const image = text(config.image, 512, 'image')
-  if (!/^[A-Za-z0-9][A-Za-z0-9._/:@-]*$/.test(image)) invalid('image')
+  const config = object(input, ['backend', 'image', 'cwd', 'env'], 'configuration')
+  if (config.backend !== 'native' && config.backend !== 'docker') invalid('backend')
+  if (config.backend === 'native' && Object.hasOwn(config, 'image')) invalid('native image')
   const cwd = codingRelativePath(config.cwd)
   const env = object(config.env, ['CI', 'NO_COLOR', 'TZ'], 'environment values')
   for (const [key, value] of Object.entries(env)) {
     const allowed = key === 'CI' ? ['true', 'false'] : key === 'NO_COLOR' ? ['0', '1'] : ['UTC']
     if (typeof value !== 'string' || !allowed.includes(value)) invalid('environment values')
   }
-  return { image, cwd, env } as CodingEnvironmentConfig
+  if (config.backend === 'native') return { backend: 'native', cwd, env } as CodingEnvironmentConfig
+  const image = text(config.image, 512, 'image')
+  if (!/^[A-Za-z0-9][A-Za-z0-9._/:@-]*$/.test(image)) invalid('image')
+  return { backend: 'docker', image, cwd, env } as CodingEnvironmentConfig
 }
 export function validateCodingCommand(
   input: unknown,

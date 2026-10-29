@@ -77,7 +77,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node: ['24.22.0', '26.12.1']
+        node: ['26.12.1']
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -101,6 +101,27 @@ jobs:
 
       - name: Install
         run: pnpm install --frozen-lockfile
+
+      - name: Build native worker and trusted helper artifacts
+        run: pnpm --filter bazilion build
+
+      - name: Test native protected execution instead of a macOS Docker VM
+        env:
+          BAZILION_TEST_NATIVE: '1'
+        run: >-
+          pnpm vitest run --fileParallelism=false
+          apps/daemon/test/lib/macos-docker-removal.test.ts
+          apps/daemon/test/runtime/native-turn.integration.test.ts
+          apps/daemon/test/runtime/native-worker.integration.test.ts
+          apps/daemon/test/runtime/native-preparation.integration.test.ts
+          apps/daemon/test/runtime/native-selected-turns.integration.test.ts
+          apps/daemon/test/runtime/native-user-queue.integration.test.ts
+          apps/daemon/test/runtime/native-mcp-retirement.integration.test.ts
+          apps/daemon/test/runtime/native-verification-api.integration.test.ts
+          apps/daemon/test/runtime/native-verification-dispatch.integration.test.ts
+          apps/daemon/test/runtime/native-verification-lifecycle.integration.test.ts
+          apps/daemon/test/runtime/native-darwin-lifetime.integration.test.ts
+          apps/daemon/test/runtime/native-darwin-worker-retirement.integration.test.ts
 
       - name: Test hardened Git, owned MCP stdio and worker retirement
         run: >-
@@ -146,115 +167,101 @@ jobs:
       - name: Test actual headed, headless and non-GUI managed browser
         env:
           BAZILION_TEST_BROWSER: '1'
+          BAZILION_TEST_NATIVE: '1'
           BAZILION_TEST_BROWSER_HEADED: '1'
           BAZILION_TEST_BROWSER_DIAGNOSTICS: '1'
           BAZILION_TEST_PRIVILEGED_NONGUI: '1'
         run: >-
-          pnpm vitest run
+          pnpm vitest run --fileParallelism=false
           apps/daemon/test/lib/browser-managed.integration.test.ts
           apps/cli/test/browser-research.test.ts
+          apps/daemon/test/runtime/native-platform-tools.integration.test.ts
 
-  macos-docker-parity:
-    name: macOS arm64 Docker/protected parity (Node ${{ matrix.node }})
-    runs-on: macos-latest
-    timeout-minutes: 60
+  linux-native:
+    name: Linux native security (Node ${{ matrix.node }})
+    # This runner permits unprivileged user namespaces without changing host sysctls/AppArmor.
+    # The version is a CI prerequisite, not a qualification claim for arbitrary Linux hosts.
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        node: ['24.22.0', '26.12.1']
+        node: ['26.12.1']
     steps:
       - name: Checkout
         uses: actions/checkout@v6
-
       - name: Set up pnpm
         uses: pnpm/action-setup@v6
-
       - name: Set up Node
         uses: actions/setup-node@v6
         with:
           node-version: ${{ matrix.node }}
           cache: pnpm
-
-      - name: Assert actual Apple Silicon environment
+      - name: Build pinned non-setuid Bubblewrap prerequisite
+        shell: bash
         run: |
-          sw_vers
-          uname -m
-          sysctl -n machdep.cpu.brand_string
-          sysctl -n kern.hv_support
-          node -e "console.log(process.version, process.platform, process.arch); if (process.platform !== 'darwin' || process.arch !== 'arm64') process.exit(1)"
-          test "$GITHUB_ACTIONS" = true
-          test "$RUNNER_ENVIRONMENT" = github-hosted
-
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends build-essential meson ninja-build pkg-config libcap-dev
+          cd "$RUNNER_TEMP"
+          curl --fail --silent --show-error --location --max-time 60 \
+            https://github.com/containers/bubblewrap/releases/download/v0.13.1/bubblewrap-0.13.1.tar.xz \
+            -o bubblewrap.tar.xz
+          echo '0e85c8702248b8dd64144f594147553650cdd0e4c951690345faace79c217c4d  bubblewrap.tar.xz' | sha256sum --check --strict
+          tar -xf bubblewrap.tar.xz
+          meson setup bwrap-build bubblewrap-0.13.1 -Dtests=false -Dman=disabled -Dselinux=disabled -Dbash_completion=disabled -Dzsh_completion=disabled
+          meson compile -C bwrap-build
+          sudo install -o root -g root -m 0755 bwrap-build/bwrap /usr/bin/bwrap
+          test "$(stat -c '%u:%a' /usr/bin/bwrap)" = 0:755
+          /usr/bin/bwrap --version
+          uname -a
+          node -e 'console.log(process.version, process.platform, process.arch)'
       - name: Install
         run: pnpm install --frozen-lockfile
-
-      # Operator-authorized disposable CI provisioning. Colima/Lima chooses its supported
-      # accelerator from kern.hv_support; software TCG, if selected, is recorded, not hidden.
-      # This is a real local ARM Linux Docker VM, never a remote engine or fake Docker script.
-      - name: Install local Docker VM tooling
+      - name: Build native worker and trusted helpers
+        run: pnpm --filter bazilion build
+      - name: Test actual native confinement and canonical execution
         env:
-          HOMEBREW_NO_AUTO_UPDATE: '1'
-        run: |
-          brew install colima docker qemu
-          colima version
-          limactl --version
-          qemu-system-aarch64 --version
-          docker --version
+          BAZILION_TEST_NATIVE: '1'
+        run: >-
+          pnpm vitest run --fileParallelism=false
+          apps/daemon/test/runtime/native-*.integration.test.ts
+          apps/daemon/test/runtime/linux-native-worker-owner.integration.test.ts
+          apps/daemon/test/runtime/linux-worker-fd-census.integration.test.ts
 
-      - name: Start owned local ARM Docker VM and provision the admitted image
+  linux-docker-regression:
+    # macOS Docker/VM execution is removed. Retain every applicable Docker case on Linux.
+    name: Linux Docker regression (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['26.12.1']
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Prepare the existing Linux Docker engine
         run: |
-          umask 077
-          base=$(mktemp -d /tmp/bz-docker.XXXXXX)
-          base=$(node -e "console.log(require('node:fs').realpathSync(process.argv[1]))" "$base")
-          export COLIMA_HOME="$base/c"
-          export DOCKER_CONFIG="$base/docker-client"
-          mkdir -p "$COLIMA_HOME" "$DOCKER_CONFIG"
-          printf '{}\n' > "$DOCKER_CONFIG/config.json"
-          export DOCKER_CONTEXT=
-          {
-            printf 'COLIMA_HOME=%s\n' "$COLIMA_HOME"
-            printf 'DOCKER_CONFIG=%s\n' "$DOCKER_CONFIG"
-            printf 'DOCKER_CONTEXT=\n'
-            printf 'BAZILION_TEST_DOCKER_PATH=%s\n' "$(command -v docker)"
-          } >> "$GITHUB_ENV"
-          host_home=$(node -e "console.log(require('node:fs').realpathSync(require('node:os').homedir()))")
-          host_tmp=$(node -e "console.log(require('node:fs').realpathSync(require('node:os').tmpdir()))")
-          # The alternate CPU profile did not resolve the gate. Restore the default model
-          # and leave one of this runner's three host cores outside the guest vCPU budget
-          # for the actual daemon/CLI workload. Keep every case and product bound unchanged.
-          test "$(sysctl -n hw.ncpu)" -ge 3
-          colima start bzd --activate=false --runtime docker --vm-type qemu --arch aarch64 --cpu 2 --memory 3 --disk 20 --mount-type 9p --binfmt=false --mount "$host_home:w" --mount "$host_tmp:w"
-          colima status bzd
-          export DOCKER_HOST="unix://$COLIMA_HOME/bzd/docker.sock"
-          printf 'DOCKER_HOST=%s\n' "$DOCKER_HOST" >> "$GITHUB_ENV"
+          test "$(uname -s)" = Linux
           docker info --format 'engine={{.ServerVersion}} os={{.OSType}} arch={{.Architecture}}'
-          engine_arch=$(docker info --format '{{.Architecture}}')
-          case "$engine_arch" in arm64|aarch64) ;; *) exit 1;; esac
-          docker pull --platform linux/arm64 debian:bookworm-slim
-          docker image inspect debian:bookworm-slim --format 'image={{.Id}} os={{.Os}} arch={{.Architecture}}'
-          test "$(docker image inspect debian:bookworm-slim --format '{{.Os}}/{{.Architecture}}')" = linux/arm64
-          docker run --rm --pull never --network none --read-only --cap-drop ALL --security-opt no-new-privileges --entrypoint /bin/uname debian:bookworm-slim -m
-          # Record setup-owned container operation latency, independently of application
-          # preflight deadlines. These are diagnostics, not substitute acceptance results.
-          timing_name="bazilion-ci-timing-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          time docker container create --name "$timing_name" --pull never --network none --read-only --cap-drop ALL --security-opt no-new-privileges --user "$(id -u):$(id -g)" --entrypoint /bin/bash debian:bookworm-slim -c true
-          time docker container start --attach "$timing_name"
-          time docker container rm "$timing_name"
-          # Bind actual QEMU argv to native birth/uid facts; never infer its accelerator
-          # merely from a runner label or the presence of a virtualization API.
-          pnpm tsx apps/daemon/test/fixtures/macos-docker-evidence.ts "$(command -v qemu-system-aarch64)"
-          find "$COLIMA_HOME" -name lima.yaml -exec grep -E 'vmType:|arch:|mountType:|cpuType:|aarch64:|location:|writable:' {} \;
-
-      - name: Test actual Docker isolation, lifecycle recovery and protected inbox work
+          docker pull debian:bookworm-slim
+      - name: Test Linux Docker isolation, recovery, approvals and scheduling
         env:
           BAZILION_TEST_DOCKER: '1'
           BAZILION_TEST_SCHEDULING_EVIDENCE: '1'
           BAZILION_TEST_DAEMON_STDERR_DIR: ${{ runner.temp }}/protected-daemon-stderr
         run: |
           mkdir -p "$BAZILION_TEST_DAEMON_STDERR_DIR"
-          # A CPU-emulated local VM is deliberately not a parallel-test throughput benchmark.
-          # Serialize files, retaining every case, intentional within-test concurrency, and all
-          # existing product deadlines and isolation/ownership assertions unchanged.
           pnpm vitest run --fileParallelism=false \
             apps/daemon/test/runtime/shell-docker.integration.test.ts \
             apps/daemon/test/runtime/coding-recovery.integration.test.ts \
@@ -263,31 +270,14 @@ jobs:
             apps/cli/test/turn-preparation-diagnostics.test.ts \
             apps/cli/test/content-team-scheduling.test.ts \
             apps/daemon/test/lib/verification-container.integration.test.ts
-
-      - name: Collect bounded owned-VM boot diagnostics on failure
-        if: failure()
-        run: |
-          out="$RUNNER_TEMP/protected-daemon-stderr"
-          mkdir -p "$out"
-          # Only logs from this provisioned profile, not config, keys, disk images or host state.
-          if test -n "${COLIMA_HOME:-}"; then
-            for log in "$COLIMA_HOME"/_lima/colima-bzd/serial*.log "$COLIMA_HOME"/_lima/colima-bzd/ha.stderr.log; do
-              if test -f "$log"; then tail -c 65536 "$log" > "$out/vm-$(basename "$log")"; fi
-            done
-          fi
-
-      - name: Retain controlled daemon and VM diagnostics on failure
+      - name: Retain bounded daemon diagnostics on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: macos-protected-node-${{ matrix.node }}-stderr
+          name: linux-docker-node-${{ matrix.node }}-stderr
           path: ${{ runner.temp }}/protected-daemon-stderr
           if-no-files-found: ignore
           retention-days: 3
-
-      - name: Stop the owned Docker VM without force-unlocking application state
-        if: always() && env.COLIMA_HOME != ''
-        run: colima stop bzd
 
   installer-e2e:
     name: Fresh-machine installer E2E (${{ matrix.os }})

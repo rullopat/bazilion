@@ -83,6 +83,61 @@ function input(
   }
 }
 
+test('native verification facts round-trip as portable metadata, never an image or live capability', () => {
+  const env = makeTestEnv()
+  try {
+    seedAgents(env.db, env.teamId)
+    // Synthetic retained wire facts only; executor admission is tested separately on real backends.
+    const native = {
+      backend: 'darwin-seatbelt' as const,
+      architecture: 'arm64' as const,
+      nodeVersion: 'v26.12.1',
+      kernelRelease: '27.0.0',
+      fingerprint: 'a'.repeat(64),
+      policyFingerprint: 'b'.repeat(64),
+    }
+    const environment = {
+      sandbox: 'native' as const,
+      image: null,
+      native,
+      inputScope: 'team-memory' as const,
+      cwd: '.',
+      env: { CI: 'true' as const },
+    }
+    const request = createVerificationRequest(env.db, input(env.teamId, { environment }))
+    expect(getVerificationRequest(env.db, env.teamId, request.id)?.environment).toEqual(environment)
+    for (const patch of [
+      { image: 'must-not-be-reinterpreted' },
+      { inputScope: 'host' },
+      { env: { API_KEY: 'forbidden' } },
+      { native: { ...native, pid: 1234 } },
+      { native: { ...native, backend: { toString: () => 'darwin-seatbelt' } } },
+      { native: { ...native, architecture: 'x64' } },
+      { native: { ...native, fingerprint: 'not-a-fingerprint' } },
+    ])
+      expect(() =>
+        createVerificationRequest(
+          env.db,
+          input(env.teamId, {
+            id: 'invalid-native',
+            environment: { ...environment, ...patch } as never,
+          }),
+        ),
+      ).toThrow('invalid closed facts')
+    expect(() =>
+      createVerificationRequest(
+        env.db,
+        input(env.teamId, {
+          id: 'mixed',
+          environment: { ...environment, sandbox: 'docker', image: 'local/image' } as never,
+        }),
+      ),
+    ).toThrow('mixed backend')
+  } finally {
+    env.cleanup()
+  }
+})
+
 test('a request round-trips with its captured checks and environment facts', () => {
   const env = makeTestEnv()
   try {
@@ -407,6 +462,62 @@ test('check outcomes are executor-owned, recorded once, and receipt-backed', () 
       finishedAt: 99,
     })
     expect(outcomes[1]?.state).toBe('not_executed')
+  } finally {
+    env.cleanup()
+  }
+})
+
+test('unknown outcomes retain only their own interrupted receipt and remain prunable', () => {
+  const env = makeTestEnv()
+  try {
+    seedAgents(env.db, env.teamId)
+    createVerificationRequest(env.db, input(env.teamId))
+    const claim = claimVerificationAttempt(env.db, {
+      requestId: 'req-1',
+      leaseOwner: 'owner',
+      leaseMs: 60_000,
+    })
+    const attemptId = claim?.attempt.id ?? ''
+    seedCommandReceipt(env.db, env.teamId, 'uncertain-receipt')
+    const outcome = {
+      attemptId,
+      ordinal: 0,
+      state: 'unknown' as const,
+      commandId: 'uncertain-receipt',
+    }
+    const update = (agent: string, turn: string, state: string) =>
+      env.db.raw.run('UPDATE coding_commands SET agent_id=?,turn_id=?,state=? WHERE id=?', [
+        agent,
+        turn,
+        state,
+        'uncertain-receipt',
+      ])
+    for (const [agent, turn, state] of [
+      ['tester', attemptId, 'succeeded'],
+      ['coder', attemptId, 'interrupted'],
+      ['tester', 'another-attempt', 'interrupted'],
+    ]) {
+      update(agent ?? '', turn ?? '', state ?? '')
+      expect(() => recordVerificationCheckOutcome(env.db, outcome)).toThrow(
+        'own interrupted command receipt',
+      )
+    }
+    update('tester', attemptId, 'interrupted')
+    expect(() => recordVerificationCheckOutcome(env.db, { ...outcome, exitCode: 0 })).toThrow(
+      'exit code',
+    )
+    expect(recordVerificationCheckOutcome(env.db, outcome)).toBe(true)
+    expect(recordVerificationCheckOutcome(env.db, outcome)).toBe(false)
+    expect(listVerificationCheckOutcomes(env.db, attemptId)[0]).toMatchObject({
+      state: 'unknown',
+      commandId: 'uncertain-receipt',
+      exitCode: null,
+    })
+    env.db.raw.run('DELETE FROM coding_commands WHERE id=?', ['uncertain-receipt'])
+    expect(listVerificationCheckOutcomes(env.db, attemptId)[0]).toMatchObject({
+      state: 'unknown',
+      commandId: null,
+    })
   } finally {
     env.cleanup()
   }

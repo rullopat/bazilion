@@ -23,6 +23,7 @@ test.each([
   [false, true],
 ])('web keeps install health %s independent of protected baseline %s', (ok, protectedWorkBaselineReady) => {
   const html = renderToStaticMarkup(createElement(InstallationReadinessCard, {
+    codingSurface:'docker',
     report: { ok, protectedWorkBaselineReady, platformCapabilities },
   }))
   expect(html).toContain(ok ? 'Healthy' : 'Issues found')
@@ -37,6 +38,7 @@ test.each([
 
 test('macOS presentation admits bounded Git and native-owned stdio without claiming execution', () => {
   const html = renderToStaticMarkup(createElement(InstallationReadinessCard, {
+    codingSurface:'docker',
     report: { ok: true, protectedWorkBaselineReady: false, platformCapabilities },
   }))
   expect(html).toContain('Daemon platform: macOS')
@@ -54,6 +56,7 @@ test('macOS presentation admits bounded Git and native-owned stdio without claim
 
 test('unsupported platforms cannot inherit supported capability labels', () => {
   const html = renderToStaticMarkup(createElement(InstallationReadinessCard, {
+    codingSurface:'docker',
     report: {
       ok: true,
       protectedWorkBaselineReady: false,

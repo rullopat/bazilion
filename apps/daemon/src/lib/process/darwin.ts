@@ -41,7 +41,10 @@ type BsdMember = Omit<DarwinProcessMember, 'session'>
 
 /** Synchronous snapshots preserve the caller's capture-before-yield ownership boundary. */
 export class DarwinProcessInspector {
-  constructor(private readonly calls: DarwinProcessCalls) {}
+  private readonly calls: DarwinProcessCalls
+  constructor(calls: DarwinProcessCalls) {
+    this.calls = calls
+  }
 
   private bsd(pid: number): BsdMember | null {
     if (!validPid(pid)) return unavailable()

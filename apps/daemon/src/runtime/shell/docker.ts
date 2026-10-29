@@ -317,6 +317,11 @@ export function buildDockerRunSpec(input: DockerRunSpecInput): DockerRunSpec {
  * absolute executable, local Unix endpoint, socket access, immutable image id,
  * and image VOLUME policy without returning any host path or endpoint.
  */
+function assertDockerPlatform(): void {
+  if (process.platform !== 'linux')
+    throw new Error('Docker execution is supported only on Linux. Use native execution on macOS.')
+}
+
 export async function checkProtectedDockerReadiness(
   input: Pick<ProtectedDockerPreflightInput, 'image' | 'dockerPath' | 'hostEnv'>,
 ): Promise<ProtectedDockerReadiness> {
@@ -327,7 +332,8 @@ export async function checkProtectedDockerReadiness(
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     let reason: Exclude<ProtectedDockerReadiness, { ready: true }>['reason']
-    if (/numeric uid\/gid|supported only on POSIX/i.test(message)) reason = 'unsupported platform'
+    if (/numeric uid\/gid|supported only on POSIX|supported only on Linux/i.test(message))
+      reason = 'unsupported platform'
     else if (/required \/bin\/bash and \/usr\/bin\/env probe/i.test(message)) {
       reason = 'Docker preflight failed'
     } else if (/executable|ENOENT|not found|spawn/i.test(message)) {
@@ -369,6 +375,7 @@ async function proveProtectedImageReadiness(engine: ProtectedDockerEngineRuntime
 export async function preflightProtectedDockerRuntime(
   input: ProtectedDockerPreflightInput,
 ): Promise<ProtectedDockerRuntime> {
+  assertDockerPlatform()
   if (input.signal?.aborted) throw new Error('aborted')
   const coding = input.coding ? validateDockerCodingSelection(input.coding) : undefined
   if (coding) resolveCodingDirectory(input.workspaceDir, coding.cwd)
@@ -423,6 +430,7 @@ export function createPreparedDockerBashOperations(
   validatePreparedDockerRuntime(runtime)
   return {
     async exec(command, cwd, { onData, signal, timeout }) {
+      assertDockerPlatform()
       const timeoutMs = resolveTimeoutMs(timeout)
       if (signal?.aborted) throw new Error('aborted')
 
@@ -488,6 +496,7 @@ export function createPreparedDockerBashOperations(
 export async function preflightProtectedDockerEngine(
   input: Pick<ProtectedDockerPreflightInput, 'image' | 'dockerPath' | 'hostEnv'>,
 ): Promise<ProtectedDockerEngineRuntime> {
+  assertDockerPlatform()
   validateImage(input.image)
   const { uid, gid } = hostIdentity()
   const hostEnv = input.hostEnv ?? process.env
@@ -922,6 +931,7 @@ export function createDockerBashOperations(options: DockerBashOptions): BashOper
 
   return {
     async exec(command, cwd, { onData, signal, timeout }) {
+      assertDockerPlatform()
       const timeoutMs = resolveTimeoutMs(timeout)
       if (signal?.aborted) throw new Error('aborted')
 
@@ -1559,6 +1569,7 @@ export async function terminateRecordedContainer(
   identity: DockerContainerIdentity,
   creationAcknowledged = false,
 ): Promise<boolean> {
+  if (process.platform !== 'linux') return false
   try {
     validateContainerName(identity.containerName)
     if (!identity.containerName.startsWith('bazilion-')) return false

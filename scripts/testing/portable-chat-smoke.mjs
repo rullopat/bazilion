@@ -101,13 +101,18 @@ export async function qualifyPortableChat({
       ['mcp_http', 'supported'],
     ],
   )
-  // A Mac with responsive local Docker may be ready; platform is not a prerequisite result.
-  // This fixture's shell configuration is valid, so the shared projection must reflect the
-  // actual Docker readiness fact, identically across API, doctor and rendered Config below.
-  assert.equal(
-    health.protectedWorkBaselineReady,
-    health.executionSecurity.protectedUnattendedTurns.docker.ready,
-  )
+  // Passive native status is not a successful admission. Linux's retained Docker projection
+  // still reflects its actual readiness probe; all surfaces must tell the same bounded story.
+  const protectedTurns = health.executionSecurity.protectedUnattendedTurns
+  const nativeProtected = protectedTurns.codingSurface === 'native'
+  if (process.platform === 'darwin') assert.equal(nativeProtected, true)
+  if (nativeProtected) {
+    assert.equal(protectedTurns.docker, null)
+    assert.equal(protectedTurns.native.readiness, 'not_checked')
+    assert.equal(health.protectedWorkBaselineReady, false)
+  } else {
+    assert.equal(health.protectedWorkBaselineReady, protectedTurns.docker.ready)
+  }
   assert.equal(
     health.protectedWorkBaselineReady,
     health.executionSecurity.protectedUnattendedTurns.baseRuntimeReady,
@@ -119,7 +124,7 @@ export async function qualifyPortableChat({
   assert.ok(doctor.stdout.includes(`platform support: ${health.platformCapabilities.platform}`))
   assert.ok(
     doctor.stdout.includes(
-      `protected unattended baseline: ${health.protectedWorkBaselineReady ? 'ready' : 'unavailable'}`,
+      `protected unattended baseline: ${nativeProtected ? 'not checked' : health.protectedWorkBaselineReady ? 'ready' : 'unavailable'}`,
     ),
   )
   evidence.diagnostics = {
@@ -178,7 +183,11 @@ export async function qualifyPortableChat({
       assert.ok(content.includes('Not checked'))
       assert.ok(
         content.includes(
-          health.protectedWorkBaselineReady ? 'Ready · per-turn checks still apply' : 'Unavailable',
+          nativeProtected
+            ? 'Not checked · per-turn admission required'
+            : health.protectedWorkBaselineReady
+              ? 'Ready · per-turn checks still apply'
+              : 'Unavailable',
         ),
       )
       for (const capability of health.platformCapabilities.capabilities) {

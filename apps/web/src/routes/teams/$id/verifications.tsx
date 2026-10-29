@@ -1,8 +1,10 @@
 // Per-Team specialist verification (BAZ-044). A request binds one captured change to a finite set of
-// checks and one Team member. Requesting verification never runs anything: the daemon's verification
-// state machine claims it, revalidates the change, and executes only the captured checks. This panel
+// checks and one Team member. Capture never executes those checks; native capture admits fixed
+// readiness probes first. The daemon's state machine then claims the request, revalidates the change,
+// and executes only the captured checks. This panel
 // therefore shows a comparison and per-check outcomes — never a pass, and never a merge verdict.
 
+import{verificationEnvironmentLabel}from'../../../lib/verification-presentation'
 import { VERIFICATION_OUTCOME_LIMITS } from '@bazilion/api-types'
 import { createFileRoute, Link, redirect } from '@tanstack/react-router'
 import { RecoveryState } from '../../../components/RecoveryState'
@@ -227,7 +229,7 @@ function VerificationsPage() {
                   </div>
                   <p className="muted">
                     change {report.request.snapshot.id.slice(0, 12)} ·{' '}
-                    {report.request.environment.image} (shell {report.request.environment.sandbox})
+                    {verificationEnvironmentLabel(report.request.environment)}
                   </p>
                   <ul>
                     {report.checks.map((check) => {

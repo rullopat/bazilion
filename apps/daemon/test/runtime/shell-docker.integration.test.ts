@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import { createDockerBashOperations } from '../../src/runtime/shell/docker.ts'
 
 const execFileAsync = promisify(execFile)
-const dockerEnabled = process.env.BAZILION_TEST_DOCKER === '1'
+const dockerEnabled = process.platform === 'linux' && process.env.BAZILION_TEST_DOCKER === '1'
 const dockerPath = process.env.BAZILION_TEST_DOCKER_PATH ?? 'docker'
 const image = process.env.BAZILION_TEST_DOCKER_IMAGE ?? 'debian:bookworm-slim'
 

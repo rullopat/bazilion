@@ -18,8 +18,8 @@
 //   - macOS: ordinary installed CLI/API/browser turns with the inline provider.
 //   - Windows: unsupported; the explicit safe-read refusal remains tested.
 //
-// The website's install.sh/install.ps1 mostly ensure Node 24 (CI brings its
-// own). The guarded profile checked here is: npm global install with scripts off →
+// This harness brings the pinned Node 26 runtime; public website runtime bootstrappers are
+// not exercised here. The guarded profile is: npm global install with scripts off →
 // explicit admitted offline rebuilds →
 // `bazilion serve` bootstraps a fresh BAZILION_HOME → CLI configures the
 // provider → agent spawn → one-shot turn → `uninstall --yes` leaves the home

@@ -11,17 +11,9 @@ import {
 import { isSupportedNodeVersion, SUPPORTED_NODE_RANGE } from '../src/runtime-version.ts'
 
 test('runtime guards agree on the explicitly supported fixed release lines', () => {
-  expect(SUPPORTED_NODE_RANGE).toBe('^24.22.0 || ^26.12.1')
+  expect(SUPPORTED_NODE_RANGE).toBe('^26.12.1')
   expect(daemonRange).toBe(SUPPORTED_NODE_RANGE)
-  for (const version of [
-    '24.22.0',
-    '24.22.5',
-    '24.99.0',
-    '26.12.1',
-    '26.12.2',
-    '26.13.0',
-    '26.99.0',
-  ]) {
+  for (const version of ['26.12.1', '26.12.2', '26.13.0', '26.99.0']) {
     expect(isSupportedNodeVersion(version), version).toBe(true)
     expect(daemonSupports(version), version).toBe(true)
   }
@@ -33,6 +25,8 @@ test('runtime guards refuse old and unqualified major lines without a fallback',
     '24.0.0',
     '24.20.0',
     '24.21.99',
+    '24.22.0',
+    '24.99.0',
     '25.7.0',
     '26.0.0',
     '26.3.99',
@@ -51,16 +45,16 @@ test('runtime guards refuse old and unqualified major lines without a fallback',
 test('runtime guards refuse malformed and prerelease declarations', () => {
   for (const version of [
     '',
-    'v24.22.0',
-    '24.22',
-    '24.22.0-rc.1',
-    '24.22.0+custom',
-    '024.22.0',
-    '24.022.0',
-    '24.22.00',
-    '24.22.0\n',
-    ' 24.22.0',
-    '24.22.9007199254740992',
+    'v26.12.1',
+    '26.12',
+    '26.12.1-rc.1',
+    '26.12.1+custom',
+    '026.12.1',
+    '26.012.1',
+    '26.12.01',
+    '26.12.1\n',
+    ' 26.12.1',
+    '26.12.9007199254740992',
   ]) {
     expect(isSupportedNodeVersion(version), JSON.stringify(version)).toBe(false)
     expect(daemonSupports(version), JSON.stringify(version)).toBe(false)
@@ -88,7 +82,7 @@ for (const [surface, entry] of [
     const launcher = join(dir, 'declared-version.mjs')
     writeFileSync(
       launcher,
-      `Object.defineProperty(process.versions, 'node', { value: '24.20.0' })\n` +
+      `Object.defineProperty(process.versions, 'node', { value: '24.22.0' })\n` +
         `process.argv = [process.execPath, 'bazilion', '--version']\n` +
         `await import(${JSON.stringify(pathToFileURL(join(import.meta.dirname, entry)).href)})\n`,
     )
@@ -119,7 +113,7 @@ for (const [surface, entry] of [
       expect(result.signal, `fixture retained at ${dir}`).toBeNull()
       expect(result.status).toBe(1)
       expect(result.stderr).toContain(`requires Node.js ${SUPPORTED_NODE_RANGE}`)
-      expect(result.stderr).toContain('received 24.20.0')
+      expect(result.stderr).toContain('received 24.22.0')
       expect(existsSync(home)).toBe(false)
       expect(readdirSync(dir)).toEqual(['declared-version.mjs'])
       accepted = true

@@ -21,9 +21,9 @@ import { startTestServer, stopSettledTestServer, type TestServer } from './serve
 const recipe = join(import.meta.dirname, '../../../examples/content-team')
 const templatePath = join(recipe, 'team-template.json')
 const roles = ['coordinator', 'researcher', 'writer', 'designer'] as const
-const docker = process.env.BAZILION_TEST_DOCKER === '1'
+const docker = process.platform === 'linux' && process.env.BAZILION_TEST_DOCKER === '1'
 // Operator-turn capture and owned worker settlement now cover both supported POSIX hosts.
-const portable = process.platform === 'linux' || process.platform === 'darwin'
+const portable = process.platform === 'linux' // Docker execution is Linux-only.
 const WAKE_MARKER = '[[bazilion:inbox-wake]]'
 
 // Public-shaped fixture page with an embedded injection attempt. Loopback

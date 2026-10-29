@@ -48,7 +48,7 @@ afterEach(async () => {
   rmSync(home, { recursive: true, force: true })
 })
 
-describe.skipIf(process.env.BAZILION_TEST_DOCKER !== '1')(
+describe.skipIf(process.platform !== 'linux' || process.env.BAZILION_TEST_DOCKER !== '1')(
   'coding Docker lifecycle recovery',
   () => {
     test('acknowledges create before start and preserves the real command exit code', async () => {

@@ -42,7 +42,7 @@ import { type RepositoryContextHost, repositoryContextIntegration } from './repo
 //   - inter-agent messaging, triggers, scheduler (core + apps/web)
 //   - memory backend (we wrap it as a pi customTool via `createBazilionCustomTools`)
 
-import { existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, realpathSync, statSync, writeFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import type { ResolvedAgent } from '@bazilion/api-types'
 import type { AgentMessage, ThinkingLevel } from '@earendil-works/pi-agent-core'
@@ -76,6 +76,12 @@ import { buildSystemPrompt, loadPromptSkills } from '../session/prompt.ts'
 import type { BashApprovalHost } from '../shell/approval.ts'
 import { codingContainerCwd } from '../shell/coding.ts'
 import type { ProtectedDockerRuntime } from '../shell/docker.ts'
+import {
+  createNativeSessionShellTools,
+  type NativeSessionExecution,
+  snapshotNativeSessionExecution,
+} from '../shell/native-tooling.ts'
+import { resolveShellSecurityConfig } from '../shell/security.ts'
 import { createProtectedSessionShellTools, createSessionShellTools } from '../shell/tooling.ts'
 import type {
   BrowserHost,
@@ -93,6 +99,7 @@ import { protectedRuntimeSecrets, redactJsonValue } from '../worker/runtime.ts'
 import { createBazilionCustomTools, createProtectedBazilionCustomTools } from './tools.ts'
 
 export interface CreateBazilionSessionOptions {
+  nativeExecution?: NativeSessionExecution
   dockerLifecycle?: import('../shell/docker.ts').DockerResourceLifecycle
   preparedDocker?: ProtectedDockerRuntime
   repositoryContext?: import('@bazilion/api-types').RepositoryContextReport
@@ -180,6 +187,7 @@ export interface BazilionSessionHandle {
 }
 
 export interface CreateProtectedBazilionSessionOptions {
+  nativeExecution?: NativeSessionExecution
   dockerLifecycle?: import('../shell/docker.ts').DockerResourceLifecycle
   repositoryContext?: import('@bazilion/api-types').RepositoryContextReport
   codingHost?: CodingHost
@@ -189,7 +197,7 @@ export interface CreateProtectedBazilionSessionOptions {
   runtime: ProtectedProviderWorkerRuntime
   paths: ProtectedWorkerPaths
   scratch: MinimalWorkerScratch
-  docker: ProtectedDockerRuntime
+  docker?: ProtectedDockerRuntime
   memory: MemoryBackend
   messagingHost: MessagingHost
   userMdHost: UserMdHost
@@ -216,6 +224,12 @@ export interface CreateRestrictedReviewSessionOptions {
 
 const PROTECTED_MODEL_CWD = '/workspace'
 const REVIEW_MODEL_CWD = '/review'
+const PROTECTED_NATIVE_BASE_SYSTEM_PROMPT = `You are an assistant operating inside Bazilion's protected
+Agent runtime. Use only the tools exposed for this turn. Coding commands execute through the
+daemon-admitted native OS sandbox in the Team workspace. Team memory and admitted inputs are
+read-only. TCP/UDP, including localhost, are denied; pipes and private per-job pathname Unix IPC
+are available. Direct host coding tools, Docker and VM fallback are unavailable. Show the native
+workspace paths clearly and report missing tools or unavailable protection rather than bypassing it.`
 const PROTECTED_BASE_SYSTEM_PROMPT = `You are an assistant operating inside Bazilion's protected
 Agent runtime. Use only the tools exposed for this turn. Coding commands execute in an ephemeral,
 network-disabled Docker container whose Team workspace is /workspace. Host paths and host tools are
@@ -228,6 +242,18 @@ not available. Be concise and show container paths clearly when working with fil
 export async function createBazilionSession(
   opts: CreateBazilionSessionOptions,
 ): Promise<BazilionSessionHandle> {
+  const native =
+    opts.nativeExecution === undefined
+      ? undefined
+      : snapshotNativeSessionExecution(opts.nativeExecution)
+  if (
+    native &&
+    (opts.restricted ||
+      opts.preparedDocker ||
+      opts.dockerLifecycle ||
+      resolveShellSecurityConfig(opts.env).sandboxMode === 'docker')
+  )
+    throw new Error('Native session rejects another execution backend or restricted mode')
   const {
     agent,
     paths,
@@ -277,23 +303,29 @@ export async function createBazilionSession(
   // boundary). In Docker mode only the containerized bash is exposed and the
   // directory is its sole read/write bind mount. Private identity/soul files
   // live in `agent.dir` and are reached through scoped `home_*` tools.
-  const cwd = agent.team.path
+  const cwd = native ? realpathSync(agent.team.path) : agent.team.path
+  const modelCwd = native ? join(cwd, native.cwd) : cwd
   if (!existsSync(cwd)) mkdirSync(cwd, { recursive: true })
 
   const promptSkills = restricted ? [] : loadPromptSkills(paths.skillsDir, agent.skills)
   const uploadsDir = join(agent.agent.dir, 'uploads')
   const shellTools = restricted
     ? null
-    : createSessionShellTools(cwd, env, {
-        preparedDocker: opts.preparedDocker,
-        dockerLifecycle: opts.dockerLifecycle,
-        ...(existsSync(uploadsDir) ? { inputsDir: uploadsDir } : {}),
-        skillMounts: promptSkills.map((skill) => ({
-          source: skill.hostDir,
-          target: skill.sandboxDir,
-        })),
-        approvalHost: bashApprovalHost,
-      })
+    : native
+      ? {
+          ...createNativeSessionShellTools(modelCwd, native.cwd, native.host),
+          config: { sandboxMode: 'native' as const, approvalMode: 'dangerous' as const },
+        }
+      : createSessionShellTools(cwd, env, {
+          preparedDocker: opts.preparedDocker,
+          dockerLifecycle: opts.dockerLifecycle,
+          ...(existsSync(uploadsDir) ? { inputsDir: uploadsDir } : {}),
+          skillMounts: promptSkills.map((skill) => ({
+            source: skill.hostDir,
+            target: skill.sandboxDir,
+          })),
+          approvalHost: bashApprovalHost,
+        })
 
   // Session file under the agent's own directory. Keeping it under
   // `agents/<id>/sessions/` makes `bazilion uninstall` (reset tier) already
@@ -304,8 +336,8 @@ export async function createBazilionSession(
   mkdirSync(sessionDir, { recursive: true })
   const existing = restricted ? null : explicitConversationFile(sessionDir, opts.conversation)
   const sessionManager = existing
-    ? SessionManager.open(existing, sessionDir, cwd)
-    : SessionManager.create(cwd, sessionDir)
+    ? SessionManager.open(existing, sessionDir, modelCwd)
+    : SessionManager.create(modelCwd, sessionDir)
 
   // In-memory settings: auto-compaction off (we trigger compaction manually
   // via /compact), retry on with Bazilion-tuned caps matching what withRetry
@@ -331,6 +363,7 @@ export async function createBazilionSession(
     buildSystemPrompt(agent, {
       skills: promptSkills,
       sandboxMode: shellTools?.config.sandboxMode ?? 'off',
+      ...(native ? { modelWorkspace: cwd } : {}),
       // Guide iff the browser tools are admitted — the same host presence
       // that registers `browser_*` in createBazilionCustomTools (T10).
       ...(opts.browserHost ? { browserGuide: true } : {}),
@@ -345,7 +378,7 @@ export async function createBazilionSession(
         )
       : undefined
   const resourceLoader = new DefaultResourceLoader({
-    cwd,
+    cwd: modelCwd,
     agentDir: join(paths.home, 'pi'),
     settingsManager,
     noExtensions: true,
@@ -403,6 +436,7 @@ export async function createBazilionSession(
         root: cwd,
         context: repository.resolve,
         docker: opts.preparedDocker,
+        native: native?.host,
         lifecycle: opts.dockerLifecycle,
         approval: shellTools.config.approvalMode === 'dangerous',
         approvalHost: bashApprovalHost,
@@ -415,7 +449,7 @@ export async function createBazilionSession(
   const allowedTools = [...(shellTools?.hostToolNames ?? []), ...customTools.map((t) => t.name)]
 
   const { session } = await createAgentSession({
-    cwd,
+    cwd: modelCwd,
     agentDir: join(paths.home, 'pi'),
     model,
     thinkingLevel: toPiThinkingLevel(restricted?.reasoningLevel ?? agent.reasoningLevel),
@@ -459,10 +493,16 @@ export async function createBazilionSession(
   }
 }
 
-/** Build the closed Docker-only normal session used by protected invocations. */
+/** Build a closed protected session using exactly one daemon-admitted execution backend. */
 export async function createProtectedBazilionSession(
   opts: CreateProtectedBazilionSessionOptions,
 ): Promise<BazilionSessionHandle> {
+  const native =
+    opts.nativeExecution === undefined
+      ? undefined
+      : snapshotNativeSessionExecution(opts.nativeExecution)
+  if (Boolean(native) === Boolean(opts.docker) || (native && opts.dockerLifecycle))
+    throw new Error('Protected session requires exactly one execution backend')
   const { providerName, modelId } = splitModelString(opts.agent.model)
   if (providerName !== opts.runtime.providerName || modelId !== opts.runtime.modelId) {
     throw new Error('protected Agent model does not match the prepared provider runtime')
@@ -487,24 +527,38 @@ export async function createProtectedBazilionSession(
     opts.runtime.modelId,
     opts.runtime.baseUrl,
   )
-  const shellTools = createProtectedSessionShellTools(
-    opts.paths.teamDir,
-    opts.docker,
-    opts.bashApprovalHost,
-    opts.dockerLifecycle,
-  )
-  const modelCwd = codingContainerCwd(opts.docker.coding?.cwd ?? '.')
+  const nativeRoot = native ? realpathSync(opts.paths.teamDir) : opts.paths.teamDir
+  const docker = opts.docker
+  let shellTools:
+    | ReturnType<typeof createNativeSessionShellTools>
+    | ReturnType<typeof createProtectedSessionShellTools>
+  let modelCwd: string
+  if (native) {
+    modelCwd = join(nativeRoot, native.cwd)
+    shellTools = createNativeSessionShellTools(modelCwd, native.cwd, native.host)
+  } else if (docker) {
+    modelCwd = codingContainerCwd(docker.coding?.cwd ?? '.')
+    shellTools = createProtectedSessionShellTools(
+      opts.paths.teamDir,
+      docker,
+      opts.bashApprovalHost,
+      opts.dockerLifecycle,
+    )
+  } else {
+    throw new Error('Protected execution backend is unavailable')
+  }
 
   mkdirSync(opts.paths.sessionDir, { recursive: true })
   const existing = explicitConversationFile(opts.paths.sessionDir, opts.conversation)
   const sessionManager = existing
-    ? SessionManager.open(existing, opts.paths.sessionDir, opts.paths.teamDir)
-    : SessionManager.create(opts.paths.teamDir, opts.paths.sessionDir)
+    ? SessionManager.open(existing, opts.paths.sessionDir, native ? modelCwd : opts.paths.teamDir)
+    : SessionManager.create(native ? modelCwd : opts.paths.teamDir, opts.paths.sessionDir)
   const settingsManager = createInMemorySettingsManager()
   const bazilionPrompt = redactJsonValue(
     buildSystemPrompt(opts.agent, {
       skills: opts.paths.skills,
-      sandboxMode: 'docker',
+      sandboxMode: native ? 'native' : 'docker',
+      ...(native ? { modelWorkspace: nativeRoot } : {}),
       homeDocuments: opts.paths.homeDocuments,
     }),
     protectedRuntimeSecrets(opts.runtime),
@@ -514,7 +568,7 @@ export async function createProtectedBazilionSession(
       ? repositoryContextIntegration(
           redactJsonValue(opts.repositoryContext, protectedRuntimeSecrets(opts.runtime)),
           opts.repositoryContextHost,
-          PROTECTED_MODEL_CWD,
+          native ? nativeRoot : PROTECTED_MODEL_CWD,
         )
       : undefined
   const resourceLoader = new DefaultResourceLoader({
@@ -526,7 +580,7 @@ export async function createProtectedBazilionSession(
     noPromptTemplates: true,
     noThemes: true,
     noContextFiles: true,
-    systemPrompt: PROTECTED_BASE_SYSTEM_PROMPT,
+    systemPrompt: native ? PROTECTED_NATIVE_BASE_SYSTEM_PROMPT : PROTECTED_BASE_SYSTEM_PROMPT,
     appendSystemPrompt: bazilionPrompt ? [bazilionPrompt] : undefined,
   })
   if (repository) resourceLoader.getAgentsFiles = repository.files
@@ -553,16 +607,17 @@ export async function createProtectedBazilionSession(
     bazilionTools.push(
       ...codingTools({
         host: opts.codingHost,
-        root: opts.paths.teamDir,
+        root: nativeRoot ?? opts.paths.teamDir,
         context: repository.resolve,
-        docker: opts.docker,
+        docker,
+        native: native?.host,
         lifecycle: opts.dockerLifecycle,
         approval: true,
         approvalHost: opts.bashApprovalHost,
         secrets: () => redactionSecrets,
       }),
     )
-  if (!shellTools.customBash) throw new Error('protected Docker bash tool is unavailable')
+  if (!shellTools.customBash) throw new Error('protected bash tool is unavailable')
   const customTools = [...bazilionTools, shellTools.customBash]
   const { session } = await createAgentSession({
     cwd: modelCwd,

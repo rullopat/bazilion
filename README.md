@@ -12,7 +12,7 @@ Per-turn subprocess execution with worker↔daemon Node-IPC for messaging, ChatG
 
 ## Quickstart
 
-The source/unreleased candidate requires **Node 24.22.0+ within 24.x, or 26.12.1+ within 26.x**.
+The source/unreleased candidate supports **Node 26 only: 26.12.1+ within 26.x** (`^26.12.1`).
 The primary development/CI toolchain is **Node 26.12.1 + pnpm 12.15.0**. Earlier releases and other
 major lines are refused before opening Bazilion state; the admitted baselines include upstream
 native cleanup-hook and SQLite backup-completion fixes. See `docs/upgrades.md`. **Published 0.24.0 supports ordinary chat on Linux and macOS.**
@@ -25,19 +25,16 @@ explicit identity/source revalidation. This is not an atomic filesystem snapshot
 platform parity: hardened Git inspection and MCP stdio remain Linux-only, and unknown worker
 ownership remains blocked. See [repository context](docs/repository-context.md).
 
-**Unreleased 0.25 candidate:** Apple Silicon hardened Git, native-owned MCP stdio, process
-retirement, managed browsing and protected Docker execution are implemented. Actual latest-stable
-**macOS 27.0.1 arm64** passes installed CLI/API/web and local ARM Docker trials on both exact Node
-baselines, including real desktop and non-GUI browser cases. This bounded qualification is not
-full release readiness or a 0.25 announcement. The revised implementation passes all ten hosted CI
-jobs on the previous baselines, but latest-stable source qualification exposed an upstream
-**Node 26.4.0 SQLite backup completion bug**; new-baseline qualification and unrelated release
-acceptance remain open.
-Node 24.22.0 contains the upstream fix; the first fixed 26.x release is 26.9.0. The operator has
-chosen the latest published 26.x, **26.12.1**, as the new minimum/baseline. Its latest-stable Mac
-qualification is still pending; earlier 26.4.0 observations are not relabelled. The separately audited core technical floor is
-**macOS 13.5**, not an execution claim
-for older releases; browser/Git/Docker prerequisites still apply. See [BAZ-072](docs/backlog/in_progress/BAZ-072-apple-silicon-feature-parity.md).
+**Unreleased 0.25 candidate:** Apple Silicon hardened Git, daemon-owned MCP stdio, managed browsing
+and native protected execution are implemented. **macOS Docker/VM execution is removed**; protected
+Mac turns use native Seatbelt admission and refuse unavailable protection without fallback. Linux
+retains its separately selected Docker backend as well as native Bubblewrap/seccomp execution.
+Actual native/source trials on **macOS 27.0.1 arm64** cover exact Node **26.12.1**.
+Earlier Node 24 trials are historical; Node 24 support and routine qualification are retired.
+Installed, desktop and broader release acceptance remain unfinished; this is not a 0.25 announcement.
+Historical Docker and Node 26.4.0 observations are not current qualification. The separately audited
+core technical floor is **macOS 13.5**, not an execution claim for older releases; native, browser
+and Git prerequisites still apply. See [BAZ-072](docs/backlog/in_progress/BAZ-072-apple-silicon-feature-parity.md).
 
 **Windows is unsupported.** It is untested end to end, no CI covers it, and repository-context
 admission still refuses it. A contributor who wants Windows support maintains it; the PowerShell
@@ -90,7 +87,7 @@ Other provider env vars: `OPENAI_API_KEY`, `GEMINI_API_KEY`, `LMSTUDIO_URL`/`LMS
 ## Develop from source
 
 Contributors: clone the repo and run `mise install` for pinned **Node 26.12.1 + pnpm 12.15.0**.
-Node 24.22.0+ within 24.x remains supported. Without mise/Corepack, install the matching pnpm with
+Only the Node 26 line is supported. Without mise/Corepack, install the matching pnpm with
 `npm install -g pnpm@12.15.0`.
 The exact development versions are pinned in `mise.toml`; with mise, run `mise install` and prefix
 commands with `mise exec --`. After changing Node versions, rebuild native dependencies before

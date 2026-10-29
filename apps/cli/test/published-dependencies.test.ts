@@ -29,14 +29,17 @@ test('published CLI declares the tested web SSR runtime dependencies', () => {
   }
 })
 
-test('CLI and daemon require Node releases with the fixed cleanup-hook API', () => {
+test('all owned workspaces require the Node 26-only runtime baseline', () => {
   for (const relative of [
     '../../../package.json',
     '../package.json',
     '../../daemon/package.json',
+    '../../web/package.json',
+    '../../../packages/api-types/package.json',
+    '../../../packages/client/package.json',
   ]) {
     const manifest = JSON.parse(readFileSync(join(import.meta.dirname, relative), 'utf8'))
-    expect(manifest.engines.node, relative).toBe('^24.22.0 || ^26.12.1')
+    expect(manifest.engines.node, relative).toBe('^26.12.1')
   }
 })
 

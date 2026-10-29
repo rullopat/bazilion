@@ -145,7 +145,7 @@ test('restore revalidates captured verification evidence instead of replaying it
       leaseOwner: 'daemon-before-backup',
       leaseMs: 60_000,
     })
-    saveCodingCommand(db, {
+    const receipt: Parameters<typeof saveCodingCommand>[1] = {
       id: 'receipt',
       agentId: 'tester',
       teamId: 'example',
@@ -168,7 +168,8 @@ test('restore revalidates captured verification evidence instead of replaying it
       diagnostic: '',
       truncated: false,
       reason: null,
-    })
+    }
+    saveCodingCommand(db, receipt)
     recordVerificationCheckOutcome(db, {
       attemptId: ranClaim?.attempt.id ?? '',
       ordinal: 0,
@@ -181,6 +182,35 @@ test('restore revalidates captured verification evidence instead of replaying it
       attemptId: ranClaim?.attempt.id ?? '',
       leaseOwner: 'daemon-before-backup',
       state: 'completed',
+      now: now + 1,
+    })
+    request('already-uncertain', 'snap-kept', now)
+    const uncertainClaim = claimVerificationAttempt(db, {
+      requestId: 'already-uncertain',
+      leaseOwner: 'daemon-before-backup',
+      leaseMs: 60_000,
+    })
+    const uncertainAttemptId = uncertainClaim?.attempt.id ?? ''
+    saveCodingCommand(db, {
+      ...receipt,
+      id: 'uncertain-receipt',
+      turnId: uncertainAttemptId,
+      toolCallId: 'uncertain-tool',
+      state: 'interrupted',
+      exitCode: null,
+    })
+    recordVerificationCheckOutcome(db, {
+      attemptId: uncertainAttemptId,
+      ordinal: 0,
+      state: 'unknown',
+      commandId: 'uncertain-receipt',
+      finishedAt: now + 1,
+    })
+    finishVerificationAttempt(db, {
+      attemptId: uncertainAttemptId,
+      leaseOwner: 'daemon-before-backup',
+      state: 'uncertain',
+      error: 'original uncertain facts',
       now: now + 1,
     })
 
@@ -216,6 +246,17 @@ test('restore revalidates captured verification evidence instead of replaying it
     expect(listVerificationAttempts(db, 'ran')[0]).toMatchObject({
       state: 'uncertain',
       error: 'evidence was invalidated by a backup restore',
+    })
+    expect(listVerificationCheckOutcomes(db, uncertainAttemptId)[0]).toMatchObject({
+      state: 'unknown',
+      commandId: null,
+      exitCode: null,
+    })
+    expect(getVerificationRequest(db, 'example', 'already-uncertain')?.state).toBe('uncertain')
+    expect(listVerificationAttempts(db, 'already-uncertain')[0]).toMatchObject({
+      state: 'uncertain',
+      error: 'original uncertain facts',
+      finishedAt: now + 1,
     })
     expect(openClaim?.attempt.id).toBeTruthy()
   } finally {

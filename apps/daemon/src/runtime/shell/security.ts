@@ -4,7 +4,7 @@ export type { CommandRisk, CommandRiskCode, CommandRiskSeverity } from '@bazilio
 
 export type CommandRiskSpan = CommandRisk['span']
 
-export type BashSandboxMode = 'off' | 'docker'
+export type BashSandboxMode = 'off' | 'docker' | 'native'
 
 export type BashApprovalPolicy = 'off' | 'dangerous'
 
@@ -416,9 +416,9 @@ export function resolveShellSecurityConfig(
   env: Readonly<NodeJS.ProcessEnv> = process.env,
 ): ShellSecurityConfig {
   const rawMode = env.BAZILION_BASH_SANDBOX?.trim() ?? ''
-  if (rawMode !== '' && rawMode !== 'off' && rawMode !== 'docker') {
+  if (rawMode !== '' && rawMode !== 'off' && rawMode !== 'docker' && rawMode !== 'native') {
     throw new ShellSecurityConfigError(
-      `BAZILION_BASH_SANDBOX must be "off" or "docker", received: ${rawMode}`,
+      `BAZILION_BASH_SANDBOX must be "off", "docker" or "native", received: ${rawMode}`,
     )
   }
 
@@ -437,8 +437,8 @@ export function resolveShellSecurityConfig(
   }
 
   return {
-    sandboxMode: rawMode === 'docker' ? 'docker' : 'off',
-    approvalMode: rawApproval === 'dangerous' ? 'dangerous' : 'off',
+    sandboxMode: rawMode === 'native' ? 'native' : rawMode === 'docker' ? 'docker' : 'off',
+    approvalMode: rawMode === 'native' || rawApproval === 'dangerous' ? 'dangerous' : 'off',
     sandboxImage: rawImage || DEFAULT_BASH_SANDBOX_IMAGE,
     envAllowlist: parseEnvAllowlist(env.BAZILION_BASH_SANDBOX_ENV_ALLOWLIST),
   }

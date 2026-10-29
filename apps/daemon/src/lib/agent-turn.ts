@@ -25,6 +25,7 @@ import { getCtx } from './ctx.ts'
 import { createImageGenerationHost } from './image-generation.ts'
 import { resolveMcpForTurn } from './mcp/resolve.ts'
 import { createDbMessagingHost } from './messaging-host.ts'
+import { isPreparedProtectedNativeExecution } from './native-execution/protected.ts'
 import { createOrdinaryWebSearchHost } from './ordinary-web-search.ts'
 import { type LiveQuestionHost, questionServiceFor } from './question-service.ts'
 import {
@@ -126,6 +127,12 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
         contextBusy = false
       }
     }
+    const selectedNative =
+      turn.configuredNative ??
+      (isPreparedProtectedNativeExecution(turn.protectedExecution)
+        ? turn.protectedExecution
+        : undefined)
+    const nativeSecrets = () => [authToken, ...codingSecrets(mergedEnvSupplier())]
     // BAZ-044 requester side: this turn may hand its current change to a Team specialist. Bound to the
     // turn's own agent, so a worker cannot request verification as anyone else.
     const verificationRequestHost = createVerificationRequestHost({
@@ -134,6 +141,7 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
       agentId: agent.agent.id,
       teamId: agent.team.id,
       turnId,
+      ...(selectedNative ? { native: selectedNative.host, secrets: nativeSecrets } : {}),
       assertActive: () => {
         if (!ownsActiveAgent(agent.agent.id, turn.controller)) throw new Error('Coding turn ended')
       },
@@ -158,14 +166,21 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
       teamId: agent.team.id,
       turnId,
       root: agent.team.path,
-      posture: turn.protectedExecution ? 'protected' : selectedDocker ? 'docker' : 'host',
+      posture: selectedNative
+        ? 'native'
+        : turn.protectedExecution
+          ? 'protected'
+          : selectedDocker
+            ? 'docker'
+            : 'host',
       imageId: selectedDocker?.imageId ?? null,
+      ...(selectedNative ? { native: selectedNative.host } : {}),
       values: selectedDocker?.coding?.env ?? {},
       context: repositoryContextHost,
       assertActive: () => {
         if (!ownsActiveAgent(agent.agent.id, turn.controller)) throw new Error('Coding turn ended')
       },
-      secrets: codingSecrets(mergeSecretsIntoEnv(db, authToken)),
+      secrets: selectedNative ? nativeSecrets : codingSecrets(mergeSecretsIntoEnv(db, authToken)),
     })
     const repositoryContext = await repositoryContextHost(turn.repositoryContext.target)
     requireCompleteRepositoryContext(repositoryContext)
@@ -235,7 +250,12 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
         {
           kind: 'configured_operator_http',
           imageGenerationEnabled: !!imageGenerationHost,
-          containerNamespace,
+          ...(selectedNative
+            ? {
+                nativeExecution: selectedNative.nativeExecution,
+                nativeVerificationRequestEnabled: true,
+              }
+            : { containerNamespace }),
           ...(turn.configuredDocker ? { configuredDocker: turn.configuredDocker } : {}),
           repositoryContext,
           agent,
@@ -255,7 +275,11 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
           env,
           signal: turn.controller.signal,
           resourceLifecycle: preparedWorkerLifecycle(turn),
-          containerHost: dockerEngine ? containerHost(dockerEngine) : undefined,
+          ...(selectedNative
+            ? { nativeExecutionHost: selectedNative.host, nativeExecutionSecrets: nativeSecrets }
+            : dockerEngine
+              ? { containerHost: containerHost(dockerEngine) }
+              : {}),
           repositoryContextHost,
           codingHost,
           messagingHost,
@@ -280,12 +304,17 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
         throw new Error('protected surface requires protected preparation')
       }
       const prepared = turn.protectedExecution
+      const native = prepared.backend === 'native' ? prepared : undefined
+      const docker = prepared.backend === 'docker' ? prepared.docker : undefined
+      if (!native && !docker) throw new Error('protected execution backend is unavailable')
       frames = spawnWorkerTurn(
         {
           kind: 'protected',
           imageGenerationEnabled: !!imageGenerationHost,
           webSearchEnabled: !!webSearchHost,
-          containerNamespace,
+          ...(native
+            ? { nativeExecution: native.nativeExecution, nativeVerificationRequestEnabled: true }
+            : { containerNamespace, docker }),
           repositoryContext,
           agent,
           message: turn.message,
@@ -296,13 +325,16 @@ export async function* runAgentTurn(turn: PreparedAgentTurn): AsyncGenerator<Cha
           ...(questionHost ? { questionEnabled: true } : {}),
           runtime: prepared.runtime,
           paths: prepared.paths,
-          docker: prepared.docker,
           webFetchEnabled: true,
         },
         {
           signal: turn.controller.signal,
           resourceLifecycle: preparedWorkerLifecycle(turn),
-          containerHost: containerHost(prepared.docker),
+          ...(native
+            ? { nativeExecutionHost: native.host, nativeExecutionSecrets: nativeSecrets }
+            : docker
+              ? { containerHost: containerHost(docker) }
+              : {}),
           repositoryContextHost,
           codingHost,
           messagingHost,

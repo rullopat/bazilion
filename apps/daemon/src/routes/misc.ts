@@ -47,6 +47,7 @@ import { checkProtectedDockerReadiness } from '../runtime/shell/docker.ts'
 import {
   DEFAULT_BASH_SANDBOX_IMAGE,
   resolveShellSecurityConfig,
+  ShellSecurityConfigError,
 } from '../runtime/shell/security.ts'
 
 export const miscRouter = new Hono()
@@ -172,13 +173,25 @@ miscRouter.get('/health/details', async (c) => {
   let shellSecurity: HealthReport['shellSecurity']
   try {
     const shellConfig = resolveShellSecurityConfig(effectiveEnv)
+    if (process.platform === 'darwin' && shellConfig.sandboxMode === 'docker')
+      throw new ShellSecurityConfigError(
+        'Docker execution is not supported on macOS. Select native execution.',
+      )
     shellSecurity = {
       ok: true,
       sandboxMode: shellConfig.sandboxMode,
       approvalMode: shellConfig.approvalMode,
-      sandboxImage: shellConfig.sandboxImage,
+      sandboxImage:
+        process.platform === 'darwin' || shellConfig.sandboxMode === 'native'
+          ? null
+          : shellConfig.sandboxImage,
       hostCodingTools: shellConfig.sandboxMode === 'off',
-      network: shellConfig.sandboxMode === 'docker' ? 'none' : 'host',
+      network:
+        shellConfig.sandboxMode === 'native'
+          ? 'denied-ip'
+          : shellConfig.sandboxMode === 'docker'
+            ? 'none'
+            : 'host',
     }
   } catch (err) {
     shellSecurity = {
@@ -188,13 +201,14 @@ miscRouter.get('/health/details', async (c) => {
   }
 
   const protectedDockerImage = shellSecurity.ok
-    ? shellSecurity.sandboxImage
+    ? (shellSecurity.sandboxImage ?? DEFAULT_BASH_SANDBOX_IMAGE)
     : DEFAULT_BASH_SANDBOX_IMAGE
-  const protectedDockerProbe = shellSecurity.ok
-    ? await protectedDockerReadiness.get(protectedDockerImage, () =>
-        checkProtectedDockerReadiness({ image: protectedDockerImage }),
-      )
-    : null
+  const protectedDockerProbe =
+    process.platform !== 'darwin' && shellSecurity.ok && shellSecurity.sandboxMode !== 'native'
+      ? await protectedDockerReadiness.get(protectedDockerImage, () =>
+          checkProtectedDockerReadiness({ image: protectedDockerImage }),
+        )
+      : null
   const protectedDocker = protectedDockerProbe
     ? protectedDockerProbe.ready
       ? { ready: true, image: protectedDockerProbe.image, reason: null }
@@ -205,6 +219,13 @@ miscRouter.get('/health/details', async (c) => {
         }
     : { ready: false, image: protectedDockerImage, reason: null }
   const executionSecurity = projectExecutionSecurity({
+    nativeProtected: process.platform === 'darwin',
+    nativeBackend:
+      process.platform === 'linux' && ['x64', 'arm64'].includes(process.arch)
+        ? 'linux-bwrap'
+        : process.platform === 'darwin' && process.arch === 'arm64'
+          ? 'darwin-seatbelt'
+          : null,
     configuredOperatorHttp: {
       shellSecurity,
       dockerImage: protectedDockerImage,
@@ -276,6 +297,8 @@ miscRouter.get('/health/details', async (c) => {
 
 function publicShellSecurityError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error)
+  if (message === 'Docker execution is not supported on macOS. Select native execution.')
+    return message
   if (message.includes('BAZILION_BASH_SANDBOX_ENV_ALLOWLIST')) {
     return 'Shell environment allowlist contains an invalid or unsafe variable name.'
   }
@@ -286,7 +309,7 @@ function publicShellSecurityError(error: unknown): string {
     return 'Dangerous-command approval must be "off" or "dangerous".'
   }
   if (message.includes('BAZILION_BASH_SANDBOX')) {
-    return 'Sandbox mode must be "off" or "docker".'
+    return 'Sandbox mode must be "off", "native" or "docker" (Linux only).'
   }
   return 'Shell-security configuration is invalid.'
 }

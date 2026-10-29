@@ -13,6 +13,10 @@ Engineer-to-engineer walkthrough of how a chat turn actually runs, end to end.
 > transcript and the only persistent record — there is no separate `runs` /
 > `events` audit table.
 
+macOS protected coding uses native execution, never Docker or a Linux VM. Ordinary explicit host
+mode remains unisolated; a stored macOS `docker` selection refuses instead of being reinterpreted.
+Linux retains its separately selected Docker backend. See [coding environments](coding-environments.md).
+
 ## 1. Request → subprocess boundary
 
 A chat turn starts at `POST /api/agents/:id/chat` (the daemon at `apps/daemon`). The route hands off to `apps/daemon/src/lib/agent-turn.ts:runAgentTurn`. Admission resolves policy,
@@ -112,7 +116,17 @@ abortSession = () => void session.abort()
 - Bazilion's custom tool list via `createBazilionCustomTools` (memory_*, home_*, web_*, bootstrap_done, optional messaging via the `messagingHost`) — see `apps/daemon/src/runtime/pi/tools.ts`.
 - The provider/model pair from the registry, with `apiKey` (caller-supplied for OAuth providers, env-derived for API-key ones), plus the agent's `reasoning_level`.
 
-Docker mode is an opt-in confinement boundary, not just a different process launcher. The Team
+The unreleased 0.25 path also accepts explicit `BAZILION_BASH_SANDBOX=native`. Canonical turn
+preparation admits native inputs under the owned workspace before model work; inbox preparation
+precedes message claims. Configured, scheduled and inbox callers route Bash/coding commands through
+that same bound executor, never host tools or Docker fallback. The selector is rechecked before input;
+changing it refuses the prepared turn. Native risk gating is mandatory, including unattended
+auto-denial. Shutdown fences and drains acknowledged, still-unregistered inbox readiness before
+workspace/DB release. Actual Linux/Mac trials cover both exact Node baselines with synthetic provider
+transport. This is not installed-client or live-provider qualification. See
+[native execution](native-execution-design.md) for denial, ownership and API limits.
+
+Docker mode remains an opt-in confinement boundary pending approved conditional retirement, not just a different process launcher. The Team
 workspace is mounted read/write at `/workspace`, but its `memory/` subtree is over-mounted
 read-only to `bash` (the scoped `memory_*` tools still own memory writes). Non-image attachments
 saved under the Agent's private `uploads/` directory are exposed read-only at `/inputs`, and the

@@ -235,7 +235,7 @@ See [coding evidence](coding-evidence.md) and [publication](publication.md).
 
 ## Maintenance boundaries
 
-- Supported CLI/daemon Node lines are `^24.22.0 || ^26.12.1`, checked before application bootstrap.
+- The supported CLI/daemon Node line is `^26.12.1`, checked before application bootstrap.
 - CLI/web management parity is required; shared wire contracts live in `packages/api-types`.
 - `apps/web/src/lib/daemon-client.ts` is server-only; browser-safe constants live separately.
 - Backup/restore validates the identity pair, schema and blob digests; managed browser profiles

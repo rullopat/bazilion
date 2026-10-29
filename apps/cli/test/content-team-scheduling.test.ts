@@ -24,7 +24,7 @@ import { startTestServer, stopSettledTestServer, type TestServer } from './serve
 // cadence remains an operator decision. Live/human lanes are unrun and not scheduled.
 const recipe = join(import.meta.dirname, '../../../examples/content-team')
 const roles = ['coordinator', 'researcher', 'writer', 'designer'] as const
-const docker = process.env.BAZILION_TEST_DOCKER === '1'
+const docker = process.platform === 'linux' && process.env.BAZILION_TEST_DOCKER === '1'
 const WAKE_MARKER = '[[bazilion:inbox-wake]]'
 
 let mock: MockLlm

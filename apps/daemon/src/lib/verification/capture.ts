@@ -1,16 +1,12 @@
 import type {
   VerificationBlocker,
-  VerificationCheckInput,
   VerificationEnvironmentFacts,
   VerificationReport,
   VerificationRequest as VerificationRequestWire,
   VerificationSummary,
 } from '@bazilion/api-types'
-import { codingRelativePath } from '../../core/coding-environment/config.ts'
 import type { BazilionDb } from '../../core/db/client.ts'
 import type { Paths } from '../../core/paths.ts'
-import { get as getAgent } from '../../core/repos/agents.ts'
-import { getSourceSnapshot } from '../../core/repos/source-snapshots.ts'
 import {
   createVerificationRequest,
   getVerificationRequest,
@@ -22,131 +18,57 @@ import {
 import { resolveShellSecurityConfig } from '../../runtime/shell/security.ts'
 import { resolveTeamCodingEnvironment } from '../coding-environment/resolve.ts'
 import { readSnapshotApplicability, requireTeam } from '../git-review/service.ts'
+import {
+  type VerificationCaptureIntent,
+  validateVerificationCaptureInputs,
+} from './capture-input.ts'
+import {
+  consumeNativeVerificationCapture,
+  type NativeVerificationCapture,
+  prepareNativeOperatorVerificationCapture,
+} from './native-capture.ts'
+import { NativeVerificationPreparationError } from './native-error.ts'
 
-// BAZ-044: capture one verification request from an Agent or the operator.
-//
-// Capture validates the *actual* inputs rather than the caller's description of them: the snapshot
-// must exist in this Team inside its window, the specialist must be a live member of the same Team,
-// and the environment is the one the Team is admitted into right now. Anything unavailable is
-// reported as a blocker — never substituted, and never captured as a request that will fail later.
-
-export type VerificationCaptureIntent = {
-  teamId: string
-  recipientAgentId: string
-  snapshotId: string
-  checks: readonly VerificationCheckInput[]
-  summary?: string | null
-  sourceSessionId?: string | null
-  messageId?: string | null
-  /** Declared, bounded locations a check may write generated output to. */
-  writablePaths?: string[]
-} & (
-  | { requesterKind: 'agent'; requesterAgentId: string }
-  | { requesterKind: 'operator'; requesterAgentId?: null }
-)
-
+export type { VerificationCaptureIntent } from './capture-input.ts'
 export type VerificationCaptureResult =
   | { kind: 'captured'; request: VerificationRequestRecord }
   | { kind: 'blocked'; blocker: VerificationBlocker }
 
-/** Capture a request, or explain precisely why it cannot be executed. */
+/** Actual inputs are validated; only a nominal readiness observation can supply native facts. */
 export function captureVerificationRequest(
   db: BazilionDb,
   paths: Paths,
   intent: VerificationCaptureIntent,
   env: NodeJS.ProcessEnv = process.env,
+  native?: NativeVerificationCapture,
 ): VerificationCaptureResult {
-  const team = safeTeam(db, paths, intent.teamId)
-  if (!team) return blocked('unsupported', 'the request does not name a known Team')
-
-  const recipient = getAgent(db, intent.recipientAgentId)
-  if (!recipient) return blocked('recipient_unavailable', 'the selected specialist does not exist')
-  if (recipient.teamId !== team.id) {
-    // Sharing a backend is not sharing a Team: cross-Team handoff is out of scope for this story.
-    return blocked('recipient_not_same_team', 'the selected specialist belongs to another Team')
-  }
-  if (recipient.status === 'archived') {
-    return blocked('recipient_unavailable', 'the selected specialist is archived')
-  }
-
-  if (intent.requesterKind === 'agent') {
-    const requester = getAgent(db, intent.requesterAgentId)
-    if (!requester) return blocked('requester_unavailable', 'the requesting Agent does not exist')
-    if (requester.teamId !== team.id) {
-      return blocked('requester_unavailable', 'the requesting Agent belongs to another Team')
-    }
-    if (requester.id === recipient.id) {
-      return blocked('unsupported', 'a specialist cannot verify its own request')
-    }
-  }
-
-  const snapshot = getSourceSnapshot(db, team.id, intent.snapshotId)
-  if (!snapshot) {
+  const validation = validateVerificationCaptureInputs(db, paths, intent)
+  if (validation.kind === 'blocked') return validation
+  let environment: VerificationEnvironmentFacts | null
+  try {
+    environment =
+      native === undefined
+        ? admittedEnvironment(db, validation.teamId, env)
+        : consumeNativeVerificationCapture(native, db, paths, intent)
+  } catch {
     return blocked(
-      'snapshot_unavailable',
-      'the captured change is unknown in this Team or past its retention window',
+      'environment_unavailable',
+      'the native capture observation is unavailable or does not match this request',
     )
   }
-  if (!snapshot.complete) {
-    return blocked(
-      'snapshot_incomplete',
-      'the captured change has incomplete coverage, so a result could not be tied to it',
-    )
-  }
-
-  const environment = admittedEnvironment(db, team.id, env)
-  if (!environment) {
+  if (!environment)
     return blocked(
       'environment_unavailable',
       'the Team has no usable admitted environment to freeze with the request',
     )
-  }
-  if (intent.writablePaths && intent.writablePaths.length > 0) {
-    // Team-relative, inside the workspace, and never the workspace root: these name where a check is
-    // expected to write generated output, so they must not be an escape hatch out of the Team.
-    const bounded: string[] = []
-    for (const path of intent.writablePaths) {
-      if (typeof path !== 'string' || path.length === 0 || path.length > 1_000) {
-        return blocked('unsupported', 'declared writable paths are outside their bounded contract')
-      }
-      if (path.startsWith('/') || path.startsWith('~') || path.includes('\\')) {
-        return blocked('unsupported', `declared writable path must be Team-relative: ${path}`)
-      }
-      const parts = path.split('/').filter((part) => part && part !== '.')
-      if (parts.length === 0 || parts.some((part) => part === '..')) {
-        return blocked(
-          'unsupported',
-          `declared writable path must be inside the workspace: ${path}`,
-        )
-      }
-      bounded.push(parts.join('/'))
-    }
-    if (bounded.length > 16) {
-      return blocked('unsupported', 'too many declared writable paths')
-    }
-    environment.writablePaths = bounded
-  }
-  // BAZ-045: a check's working directory is scoped here, where a refusal costs nothing, rather than
-  // only in the executor, where an out-of-workspace `cwd` threw mid-run and surfaced as a check that
-  // mysteriously did not execute. `codingRelativePath` is the daemon's existing rule for this — the
-  // executor keeps its copy as the last line of defence, not the only one.
-  for (const check of intent.checks) {
-    try {
-      codingRelativePath(check.cwd)
-    } catch {
-      return blocked(
-        'unsupported',
-        `a check working directory must be a path inside the workspace: ${String(check.cwd)}`,
-      )
-    }
-  }
-
+  if (validation.writablePaths.length) environment.writablePaths = validation.writablePaths
+  const snapshot = validation.snapshot
   try {
     const request = createVerificationRequest(db, {
-      teamId: team.id,
+      teamId: validation.teamId,
       requesterKind: intent.requesterKind,
       requesterAgentId: intent.requesterKind === 'agent' ? intent.requesterAgentId : null,
-      recipientAgentId: recipient.id,
+      recipientAgentId: validation.recipientAgentId,
       messageId: intent.messageId ?? null,
       sourceSessionId: intent.sourceSessionId ?? null,
       snapshotId: snapshot.snapshotId,
@@ -159,17 +81,41 @@ export function captureVerificationRequest(
     })
     return { kind: 'captured', request }
   } catch (error) {
-    // A rejected request is a blocker with the reason the store gave, not a silent retry.
     return blocked('unsupported', error instanceof Error ? error.message : 'invalid request')
   }
 }
 
-/**
- * The environment the request is frozen against.
- *
- * Passive selection only: nothing here runs Docker, a version command or project code, so capturing
- * a request never has side effects on the repository.
- */
+/** Native readiness/capture primitive; public callers use the tracked selected-capture boundary. */
+export async function captureNativeOperatorVerificationRequest(
+  db: BazilionDb,
+  paths: Paths,
+  intent: VerificationCaptureIntent,
+  signal: AbortSignal | undefined,
+  secrets: () => readonly string[],
+  assertSelection?: () => void,
+): Promise<VerificationCaptureResult> {
+  try {
+    const prepared = await prepareNativeOperatorVerificationCapture({
+      db,
+      paths,
+      intent,
+      signal,
+      secrets,
+      assertSelection,
+    })
+    if (prepared.kind === 'blocked') return prepared
+    return captureVerificationRequest(db, paths, prepared.intent, undefined, prepared.capture)
+  } catch (error) {
+    return blocked(
+      'environment_unavailable',
+      error instanceof NativeVerificationPreparationError && !error.cleanupConfirmed
+        ? 'Native readiness cleanup is unconfirmed; workspace recovery is required.'
+        : 'The Team has no usable native environment to freeze with the request.',
+    )
+  }
+}
+
+/** Legacy passive selection. Native facts never come from configuration or an image label. */
 export function admittedEnvironment(
   db: BazilionDb,
   teamId: string,
@@ -177,26 +123,20 @@ export function admittedEnvironment(
 ): VerificationEnvironmentFacts | null {
   try {
     const security = resolveShellSecurityConfig(env)
+    if (security.sandboxMode === 'native') return null
     const resolved = resolveTeamCodingEnvironment(db, teamId, env)
     if (!resolved.image) return null
     return {
       image: resolved.image,
       sandbox: security.sandboxMode === 'docker' ? 'docker' : 'off',
-      ...(resolved.coding ? { cwd: resolved.coding.cwd } : {}),
-      ...(resolved.coding ? { env: { ...resolved.coding.env } } : {}),
+      ...(resolved.coding ? { cwd: resolved.coding.cwd, env: { ...resolved.coding.env } } : {}),
     }
   } catch {
-    // An unusable stored environment is a blocker, not a reason to invent a default.
     return null
   }
 }
 
-/**
- * Compose one row: the contract, its checks, and every attempt with its outcomes.
- *
- * Shared by the list and the detail view so the two surfaces cannot report different facts — the only
- * difference between them is whether applicability is established.
- */
+/** Shared report composition: one immutable contract and the outcomes of every attempt. */
 export function readVerificationSummary(
   db: BazilionDb,
   paths: Paths,
@@ -221,8 +161,7 @@ export function readVerificationSummary(
       ordinal: outcome.ordinal,
       state: outcome.state,
       commandId: outcome.commandId,
-      // Executed, but no receipt pointer: the receipt was pruned or expired, which is different from
-      // never having recorded one.
+      // Known execution can outlive its pruned receipt; unknown alone cannot prove execution.
       receiptUnavailable:
         outcome.commandId === null &&
         ['succeeded', 'failed', 'timed_out', 'cancelled'].includes(outcome.state),
@@ -244,13 +183,7 @@ export function readVerificationSummary(
   }
 }
 
-/**
- * Compose the detail view: the summary plus current applicability.
- *
- * Applicability is three-valued and never a pass — a comparison shows that the source changed, not that
- * the change was relevant — and it is computed here rather than in the list because it means walking the
- * live tree against the capture.
- */
+/** Three-valued applicability is a comparison, never a pass or relevance claim. */
 export async function readVerificationReport(
   db: BazilionDb,
   paths: Paths,
@@ -298,11 +231,9 @@ export function toWireRequest(record: VerificationRequestRecord): VerificationRe
     expiresAt: record.expiresAt,
   }
 }
-
 function blocked(reason: VerificationBlocker['reason'], detail: string): VerificationCaptureResult {
   return { kind: 'blocked', blocker: { reason, detail } }
 }
-
 function safeTeam(db: BazilionDb, paths: Paths, teamId: string) {
   try {
     return requireTeam(db, paths, teamId)

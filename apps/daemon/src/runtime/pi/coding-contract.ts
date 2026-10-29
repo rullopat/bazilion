@@ -7,12 +7,18 @@ import type {
   CodingCommandReceipt,
   CodingEnvironmentSnapshot,
   CodingReceiptView,
+  NativeExecutionCapture,
   SourceSnapshotCaptureResult,
 } from '@bazilion/api-types'
 export type CodingRequest =
   | { action: 'environment'; target: string }
   | { action: 'start'; toolCallId: string; input: CodingCommandInput }
-  | { action: 'finish'; id: string; outcome: CodingCommandOutcome }
+  | {
+      action: 'finish'
+      id: string
+      outcome: CodingCommandOutcome
+      capture?: NativeExecutionCapture
+    }
   | { action: 'read'; id: string; messageId?: string }
   | { action: 'log'; id: string; messageId?: string; offset?: number; limit?: number }
   | { action: 'log-search'; id: string; messageId?: string; query: string }

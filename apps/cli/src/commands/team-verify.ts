@@ -8,11 +8,13 @@ import { defineCommand } from 'citty'
 import { createClient } from '../client.ts'
 import { columnize } from '../columnize.ts'
 import { collectFlagValues } from '../repeatable-args.ts'
+import { verificationEnvironmentLabel } from '../verification-presentation.ts'
 
 // `bazilion team verify` — specialist verification of a captured code change (BAZ-044).
 //
-// Creating a request does not run anything: the verification state machine claims it, revalidates
-// the change, and executes only the checks captured here. This command never widens a request, and a
+// Creating a request does not execute its captured checks. Native capture first admits fixed
+// readiness probes; the verification state machine then claims it, revalidates the change, and
+// executes only the checks captured here. This command never widens a request, and a
 // blocked capture prints the reason it could not be honoured.
 
 const slug = {
@@ -45,7 +47,7 @@ function printReport(report: VerificationReport): void {
     })`,
   )
   console.log(`  specialist: ${request.recipientAgentId}   requested by: ${requester}`)
-  console.log(`  environment: ${request.environment.image} (shell ${request.environment.sandbox})`)
+  console.log(`  environment: ${verificationEnvironmentLabel(request.environment)}`)
   console.log(
     `  applicability: ${
       report.applicability.comparison === 'identical'

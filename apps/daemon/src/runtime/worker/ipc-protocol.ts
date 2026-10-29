@@ -22,6 +22,8 @@ import type {
 import type { ToolResultPart } from '../tools/types.ts'
 
 export type RpcMethod =
+  | 'nativeExecute'
+  | 'nativeCancel'
   | 'coding'
   | 'repositoryContext'
   | 'webSearch'
@@ -189,6 +191,8 @@ export interface ResultHost {
 }
 
 export type RpcArgs =
+  | { method: 'nativeCancel'; args: import('@bazilion/api-types').NativeExecutionCancelRequest }
+  | { method: 'nativeExecute'; args: import('@bazilion/api-types').NativeExecutionRequest }
   | { method: 'coding'; args: import('../pi/coding-contract.ts').CodingRequest }
   | {
       method: 'containerBeforeCreate' | 'containerAfterCreate' | 'containerAfterRemove'
@@ -237,6 +241,8 @@ export type RpcArgs =
   | { method: 'bashApproval'; args: BashApprovalArgs }
 
 export type RpcResult =
+  | { method: 'nativeCancel'; value: import('@bazilion/api-types').NativeExecutionCancelResult }
+  | { method: 'nativeExecute'; value: import('@bazilion/api-types').NativeExecutionResult }
   | { method: 'generateImages'; value: import('@bazilion/api-types').ImageGenerationOutput }
   | { method: 'webSearch'; value: WebSearchOutput }
   | { method: 'coding'; value: import('../pi/coding-contract.ts').CodingResponse }
@@ -287,7 +293,32 @@ export type IpcRequest = { type: 'rpc'; id: string } & RpcArgs
 
 export type IpcReply =
   | { type: 'rpc-reply'; id: string; ok: true; result: unknown }
-  | { type: 'rpc-reply'; id: string; ok: false; error: string }
+  | {
+      type: 'rpc-reply'
+      id: string
+      ok: false
+      error: string
+      nativeFailure?: import('@bazilion/api-types').NativeExecutionFailure
+    }
+
+export type IpcNativeOutput = {
+  type: 'rpc-output'
+  id: string
+} & import('@bazilion/api-types').NativeExecutionOutput
+
+/** Only a daemon-prepared turn host; no caller-selected backend, root, profile or credentials. */
+export interface NativeExecutionHost {
+  cancel(toolCallId: string): boolean
+  exec(
+    request: import('@bazilion/api-types').NativeExecutionRequest,
+    output: (
+      stream: 'stdout' | 'stderr',
+      bytes: Buffer,
+      capture?: import('@bazilion/api-types').NativeExecutionCapture,
+    ) => void,
+    signal?: AbortSignal,
+  ): Promise<import('@bazilion/api-types').NativeExecutionResult>
+}
 
 /**
  * The host-side surface the worker delegates messaging operations to. The
@@ -398,6 +429,8 @@ export interface VerificationHost {
     requestId: string,
     attemptId: string,
     ordinal: number,
+    /** Parent transport lifetime only; never supplied in worker RPC arguments. */
+    signal?: AbortSignal,
   ): Promise<import('../tools/verification.ts').VerificationCheckRun>
 }
 

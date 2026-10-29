@@ -19,11 +19,11 @@ export function ExecutionSecurityCard({ status }: { status: ExecutionSecurityRep
         <section className="rounded-md border bg-muted/20 p-3">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <h3 className="font-semibold">Configured operator HTTP</h3>
-            <StatusBadge ok={false}>legacy · unprotected</StatusBadge>
+            <StatusBadge ok={false}>{configured.codingSurface==='native'?'native coding · ordinary capabilities':'legacy · unprotected'}</StatusBadge>
           </div>
           <dl className="space-y-2 text-sm">
             <StatusRow label="Coding surface" value={codingSurfaceLabel(configured.codingSurface)} />
-            <StatusRow label="Docker image" value={configured.dockerImage} mono />
+            {configured.dockerImage!==null&&<StatusRow label="Docker image" value={configured.dockerImage} mono />}
             <StatusRow label="Browser" value={configured.browser} />
             <StatusRow label="MCP" value={configured.mcp} />
           </dl>
@@ -43,7 +43,7 @@ export function ExecutionSecurityCard({ status }: { status: ExecutionSecurityRep
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <h3 className="font-semibold">Protected unattended turns</h3>
             <StatusBadge ok={protectedTurns.baseRuntimeReady}>
-              {protectedTurns.baseRuntimeReady
+              {protectedTurns.codingSurface==='native'?'per-turn admission required':protectedTurns.baseRuntimeReady
                 ? 'base runtime ready'
                 : 'base runtime unavailable'}
             </StatusBadge>
@@ -53,7 +53,8 @@ export function ExecutionSecurityCard({ status }: { status: ExecutionSecurityRep
             surface.
           </p>
           <dl className="space-y-2 text-sm">
-            <StatusRow label="Coding surface" value="Docker only" />
+            <StatusRow label="Coding surface" value={protectedTurns.codingSurface==='native'?'Native OS sandbox':'Docker only'} />
+            {protectedTurns.codingSurface==='native'?<><StatusRow label="Native backend" value={protectedTurns.native.backend??'Unsupported platform'}/><StatusRow label="Native readiness" value="Not checked — requires per-turn admission"/></>:<>
             <StatusRow
               label="Docker"
               value={protectedTurns.docker.ready ? 'ready' : 'unavailable'}
@@ -62,7 +63,7 @@ export function ExecutionSecurityCard({ status }: { status: ExecutionSecurityRep
             <StatusRow label="Docker image" value={protectedTurns.docker.image} mono />
             {protectedTurns.docker.reason && (
               <StatusRow label="Docker reason" value={protectedTurns.docker.reason} />
-            )}
+            )}</>}
             <StatusRow
               label="OpenAI Codex enabled"
               value={yesNo(protectedTurns.openaiCodex.enabled)}
@@ -146,6 +147,7 @@ function codingSurfaceLabel(
 ) {
   if (surface === 'host') return 'Host tools'
   if (surface === 'docker') return 'Docker only'
+  if(surface==='native')return 'Native OS sandbox'
   return 'Unavailable'
 }
 

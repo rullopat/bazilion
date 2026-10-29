@@ -1,4 +1,4 @@
-import type { VerificationCheckState } from '@bazilion/api-types'
+import type { VerificationCheckState, VerificationEnvironmentFacts } from '@bazilion/api-types'
 import type { ToolHandler } from './types.ts'
 
 // BAZ-044: the specialist's entire execution capability.
@@ -42,7 +42,10 @@ export interface VerificationRequestReceipt {
 }
 
 export interface VerificationRequestHost {
-  capture(intent: VerificationRequestIntent): Promise<VerificationRequestReceipt>
+  capture(
+    intent: VerificationRequestIntent,
+    signal?: AbortSignal,
+  ): Promise<VerificationRequestReceipt>
 }
 
 /** One declared check, as the specialist sees it. */
@@ -58,11 +61,12 @@ export interface VerificationBriefCheck {
   exitCode: number | null
 }
 
+type BriefEnvironment<T> = T extends unknown ? Omit<T, 'env' | 'writablePaths'> : never
 export interface VerificationBrief {
   requestId: string
   summary: string | null
   snapshot: { id: string; complete: boolean; head: string | null; baseOid: string }
-  environment: { image: string; sandbox: 'off' | 'docker'; cwd?: string }
+  environment: BriefEnvironment<VerificationEnvironmentFacts>
   /** Named, bounded locations a check may write generated output to. */
   writablePaths: string[]
   checks: VerificationBriefCheck[]
@@ -87,7 +91,10 @@ export interface VerificationCapabilityHost {
    * Invoke one declared check. The host refuses an undeclared ordinal, a second invocation of a
    * settled check, and every request that would widen the captured command or environment.
    */
-  invoke(ordinal: number, context?: { toolCallId: string }): Promise<VerificationCheckRun>
+  invoke(
+    ordinal: number,
+    context?: { toolCallId: string; signal?: AbortSignal },
+  ): Promise<VerificationCheckRun>
 }
 
 export class VerificationCapabilityError extends Error {

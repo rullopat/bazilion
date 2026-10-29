@@ -84,6 +84,222 @@ function hostFor(
   })
 }
 
+test.each([
+  'timed_out',
+  'cancelled',
+  'unknown',
+] as const)('receipt-backed %s is execution evidence, never a pass or a no-execution failure', async (state) => {
+  const env = makeTestEnv()
+  try {
+    const request = seed(env)
+    const claim = claimVerificationAttempt(env.db, {
+      requestId: request.id,
+      leaseOwner: 'owner-a',
+      leaseMs: 60_000,
+    })
+    const attemptId = claim?.attempt.id ?? ''
+    // Executor/store contract fixture, not a native-sandbox execution claim.
+    env.db.raw.run(
+      `INSERT INTO coding_commands (id,team_id,agent_id,turn_id,tool_call_id,state,created_at,receipt_json) VALUES ('cmd-uncertain',?,'tester',?,'call',?,1,'{}')`,
+      [env.teamId, attemptId, state === 'unknown' ? 'interrupted' : state],
+    )
+    const host = hostFor(
+      env,
+      request,
+      attemptId,
+      executor({
+        state,
+        commandId: 'cmd-uncertain',
+        exitCode: null,
+        output: 'retained executor facts',
+        truncated: false,
+      }),
+    )
+    await expect(host.invoke(0)).resolves.toMatchObject({
+      state,
+      commandId: 'cmd-uncertain',
+      exitCode: null,
+    })
+    await expect(host.invoke(0)).rejects.toThrow('already reported')
+    const expected = state === 'unknown' ? 'uncertain' : 'completed'
+    expect(
+      settleVerificationAttempt(env.db, {
+        attemptId,
+        requestId: request.id,
+        leaseOwner: 'owner-a',
+      }),
+    ).toBe(expected)
+    expect(getVerificationRequest(env.db, env.teamId, request.id)?.state).toBe(expected)
+    expect(listVerificationCheckOutcomes(env.db, attemptId)[0]).toMatchObject({
+      state,
+      commandId: 'cmd-uncertain',
+      exitCode: null,
+    })
+    expect(
+      claimVerificationAttempt(env.db, {
+        requestId: request.id,
+        leaseOwner: 'automatic',
+        leaseMs: 60_000,
+      }),
+    ).toBeNull()
+    // Retention expiry does not erase the executor state or make it runnable again.
+    env.db.raw.run("DELETE FROM coding_commands WHERE id='cmd-uncertain'")
+    expect(listVerificationCheckOutcomes(env.db, attemptId)[0]).toMatchObject({
+      state,
+      commandId: null,
+    })
+  } finally {
+    env.cleanup()
+  }
+})
+
+test('unknown dominates otherwise completed evidence; pruning a timeout receipt does not erase execution', async () => {
+  for (const unknown of [false, true]) {
+    const env = makeTestEnv()
+    try {
+      const request = seed(env)
+      const claim = claimVerificationAttempt(env.db, {
+        requestId: request.id,
+        leaseOwner: 'owner-a',
+        leaseMs: 60_000,
+      })
+      const attemptId = claim?.attempt.id ?? ''
+      for (const [id, state] of [
+        ['cmd-first', 'timed_out'],
+        ['cmd-second', 'interrupted'],
+      ]) {
+        env.db.raw.run(
+          `INSERT INTO coding_commands (id,team_id,agent_id,turn_id,tool_call_id,state,created_at,receipt_json) VALUES (?,?,'tester',?,?,?,1,'{}')`,
+          [id, env.teamId, attemptId, id, state],
+        )
+      }
+      const host = hostFor(env, request, attemptId, {
+        async run(input) {
+          return {
+            commandId: input.command === 'pnpm test' ? 'cmd-first' : 'cmd-second',
+            state: input.command === 'pnpm test' ? 'timed_out' : 'unknown',
+            exitCode: null,
+            output: '',
+            truncated: false,
+          }
+        },
+      })
+      await host.invoke(0)
+      if (unknown) await host.invoke(1)
+      env.db.raw.run("DELETE FROM coding_commands WHERE id='cmd-first'")
+      expect(
+        settleVerificationAttempt(env.db, {
+          attemptId,
+          requestId: request.id,
+          leaseOwner: 'owner-a',
+        }),
+      ).toBe(unknown ? 'uncertain' : 'completed')
+      expect(listVerificationCheckOutcomes(env.db, attemptId)[0]).toMatchObject({
+        state: 'timed_out',
+        commandId: null,
+      })
+      if (unknown)
+        expect(listVerificationCheckOutcomes(env.db, attemptId)[1]).toMatchObject({
+          state: 'unknown',
+          commandId: 'cmd-second',
+        })
+    } finally {
+      env.cleanup()
+    }
+  }
+})
+
+test('concurrent invocations of one declared ordinal cannot execute twice', async () => {
+  const env = makeTestEnv()
+  let release = () => {}
+  const pending = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  let first: Promise<unknown> | undefined
+  try {
+    const request = seed(env)
+    const claim = claimVerificationAttempt(env.db, {
+      requestId: request.id,
+      leaseOwner: 'owner-a',
+      leaseMs: 60_000,
+    })
+    const attemptId = claim?.attempt.id ?? ''
+    env.db.raw.run(
+      `INSERT INTO coding_commands (id,team_id,agent_id,turn_id,tool_call_id,state,created_at,receipt_json) VALUES ('cmd-once',?,'tester',?,'call','succeeded',1,'{}')`,
+      [env.teamId, attemptId],
+    )
+    let calls = 0
+    const host = hostFor(env, request, attemptId, {
+      async run() {
+        if (++calls !== 1) throw new Error('executor reentered')
+        await pending
+        return {
+          state: 'succeeded',
+          commandId: 'cmd-once',
+          exitCode: 0,
+          output: '',
+          truncated: false,
+        }
+      },
+    })
+    first = host.invoke(0)
+    await expect(host.invoke(0)).rejects.toThrow('already invoked')
+    expect(calls).toBe(1)
+  } finally {
+    release()
+    await first
+    env.cleanup()
+  }
+})
+
+test('an executor exception is unknown and cannot replay through a fresh host or automatic claim', async () => {
+  const env = makeTestEnv()
+  try {
+    const request = seed(env)
+    const claim = claimVerificationAttempt(env.db, {
+      requestId: request.id,
+      leaseOwner: 'owner-a',
+      leaseMs: 60_000,
+    })
+    const attemptId = claim?.attempt.id ?? ''
+    let calls = 0
+    const checkExecutor: VerificationCheckExecutor = {
+      async run() {
+        calls++
+        throw new Error('executor cleanup unavailable')
+      },
+    }
+    await expect(hostFor(env, request, attemptId, checkExecutor).invoke(0)).rejects.toThrow(
+      'executor cleanup unavailable',
+    )
+    expect(listVerificationCheckOutcomes(env.db, attemptId)[0]).toMatchObject({
+      state: 'unknown',
+      commandId: null,
+      exitCode: null,
+    })
+    await expect(hostFor(env, request, attemptId, checkExecutor).invoke(0)).rejects.toThrow(
+      "already reported 'unknown'",
+    )
+    expect(calls).toBe(1)
+    expect(
+      settleVerificationAttempt(env.db, {
+        attemptId,
+        requestId: request.id,
+        leaseOwner: 'owner-a',
+      }),
+    ).toBe('uncertain')
+    expect(
+      claimVerificationAttempt(env.db, {
+        requestId: request.id,
+        leaseOwner: 'automatic',
+        leaseMs: 60_000,
+      }),
+    ).toBeNull()
+  } finally {
+    env.cleanup()
+  }
+})
+
 test('a check runs with the captured values and records its receipt', async () => {
   const env = makeTestEnv()
   try {
@@ -121,6 +337,7 @@ test('a check runs with the captured values and records its receipt', async () =
     // The executed command is the captured one, verbatim — the caller supplied nothing.
     expect(seen).toEqual([
       {
+        ordinal: 1,
         command: 'pnpm test failing',
         cwd: '/workspace',
         timeoutMs: 5_000,
@@ -178,13 +395,14 @@ test('the daemon is authoritative: undeclared, repeated and receiptless outcomes
     await expect(receiptless.invoke(1)).rejects.toThrow(VerificationCapabilityError)
     expect(
       listVerificationCheckOutcomes(env.db, attemptId).find((row) => row.ordinal === 1),
-    ).toMatchObject({ state: 'not_executed' })
+    ).toMatchObject({ state: 'unknown', commandId: null })
+    await expect(receiptless.invoke(1)).rejects.toThrow("already reported 'unknown'")
   } finally {
     env.cleanup()
   }
 })
 
-test('a blocked check is explicit, keeps no receipt, and stays runnable', async () => {
+test('a blocked check is explicit, keeps no receipt, and cannot repeat within its attempt', async () => {
   const env = makeTestEnv()
   try {
     const request = seed(env)
@@ -210,6 +428,7 @@ test('a blocked check is explicit, keeps no receipt, and stays runnable', async 
     const run = await host.invoke(0)
     expect(run).toMatchObject({ state: 'blocked', commandId: null, exitCode: null })
     expect(run.output).toContain('pnpm is unavailable')
+    await expect(host.invoke(0)).rejects.toThrow("already reported 'blocked'")
     expect(listVerificationCheckOutcomes(env.db, attemptId)[0]).toMatchObject({
       state: 'blocked',
       commandId: null,

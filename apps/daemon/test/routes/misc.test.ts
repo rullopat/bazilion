@@ -1,7 +1,8 @@
 import type { HealthReport } from '@bazilion/api-types'
-import { afterEach, expect, test } from 'vitest'
+import { afterEach, expect, test, vi } from 'vitest'
 import { projectPlatformCapabilities } from '../../src/lib/platform-capabilities.ts'
 import { miscRouter } from '../../src/routes/misc.ts'
+import * as dockerReadiness from '../../src/runtime/shell/docker.ts'
 
 const originalEnforcement = process.env.BAZILION_TEAM_POLICY_ENFORCEMENT
 const originalSandbox = process.env.BAZILION_BASH_SANDBOX
@@ -80,6 +81,34 @@ test('health reports active enforcement when requested by a release-ready build'
     releaseReady: true,
     degraded: false,
   })
+})
+
+test('native detailed health reports only passive selection and never probes Docker', async () => {
+  process.env.BAZILION_BASH_SANDBOX = 'native'
+  const probe = vi.spyOn(dockerReadiness, 'checkProtectedDockerReadiness')
+  try {
+    const response = await miscRouter.request('/health/details')
+    expect(response.status).toBe(200)
+    const report = (await response.json()) as HealthReport
+    expect(report.shellSecurity).toMatchObject({
+      ok: true,
+      sandboxMode: 'native',
+      sandboxImage: null,
+      approvalMode: 'dangerous',
+      network: 'denied-ip',
+      hostCodingTools: false,
+    })
+    expect(report.executionSecurity.protectedUnattendedTurns).toMatchObject({
+      codingSurface: 'native',
+      docker: null,
+      native: { readiness: 'not_checked' },
+      baseRuntimeReady: false,
+    })
+    expect(report.executionSecurity.configuredOperatorHttp.dockerImage).toBe(null)
+    expect(probe).not.toHaveBeenCalled()
+  } finally {
+    probe.mockRestore()
+  }
 })
 
 test('health reports the default-off host shell posture', async () => {
@@ -202,7 +231,9 @@ test('health fails closed on an invalid shell-security mode', async () => {
 
   expect(report.ok).toBe(false)
   expect(report.shellSecurity.ok).toBe(false)
-  expect(report.shellSecurity.error).toBe('Sandbox mode must be "off" or "docker".')
+  expect(report.shellSecurity.error).toBe(
+    'Sandbox mode must be "off", "native" or "docker" (Linux only).',
+  )
   expect(JSON.stringify(report)).not.toContain('raw-shell-mode-sentinel')
 })
 
@@ -285,7 +316,9 @@ test('public health exposes only booleans and fixed diagnostics for configured s
   })
   expect(report.providers.ollama).toEqual({ customEndpointConfigured: true })
   expect(report.webSearch).toEqual({ braveConfigured: true, searxngConfigured: true })
-  expect(report.shellSecurity.error).toBe('Sandbox mode must be "off" or "docker".')
+  expect(report.shellSecurity.error).toBe(
+    'Sandbox mode must be "off", "native" or "docker" (Linux only).',
+  )
   const serialized = JSON.stringify(report)
   for (const sentinel of sentinels) expect(serialized).not.toContain(sentinel)
   expect(serialized).not.toContain('bravePreview')

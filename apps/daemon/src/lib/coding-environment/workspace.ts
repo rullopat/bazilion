@@ -92,7 +92,7 @@ function view(row: WriterRow): WorkspaceWriter {
 export class WorkspaceCoordinator {
   readonly identity = randomUUID()
   private readonly leases = new Set<string>()
-  private readonly issued = new WeakSet<WorkspaceLease>()
+  private readonly issued = new WeakMap<WorkspaceLease, string>()
   constructor(private readonly db: BazilionDb) {}
 
   claim(teamId: string, registeredRoot: string, kind: WorkspaceWriter['kind']): WorkspaceLease {
@@ -110,7 +110,8 @@ export class WorkspaceCoordinator {
         const recovery = row.daemon_identity !== this.identity || row.state === 'recovery'
         if (recovery || exclusive || row.exclusive === 1) throw new WorkspaceBusyError(recovery)
       }
-      const id = randomUUID()
+      const id = randomUUID(),
+        createdAt = Date.now()
       this.db.raw.run(
         `INSERT INTO workspace_writers
         (id, team_id, root_path, root_identity, daemon_identity, kind, exclusive, state, created_at)
@@ -123,12 +124,15 @@ export class WorkspaceCoordinator {
           this.identity,
           kind,
           exclusive ? 1 : 0,
-          Date.now(),
+          createdAt,
         ],
       )
       this.leases.add(id)
       const lease = new WorkspaceLease(this, { id, teamId, ...root, kind, resources: [] })
-      this.issued.add(lease)
+      this.issued.set(
+        lease,
+        JSON.stringify([id, teamId, root.root, root.rootIdentity, this.identity, kind, createdAt]),
+      )
       return lease
     })
   }
@@ -143,6 +147,27 @@ export class WorkspaceCoordinator {
       lease.writer.rootIdentity !== root.rootIdentity
     )
       throw new Error('Workspace lease does not match this turn')
+  }
+
+  /** Fresh admission only. Cleanup deliberately does not require an active writer. */
+  assertActiveLease(lease: WorkspaceLease, teamId: string, registeredRoot: string): void {
+    this.assertLease(lease, teamId, registeredRoot)
+    const row = this.db.raw
+      .query<WriterRow & { binding: string }, [string]>(`SELECT *,
+      json_array(id,team_id,root_path,root_identity,daemon_identity,kind,created_at) AS binding
+      FROM workspace_writers WHERE id=?`)
+      .get(lease.writer.id)
+    if (
+      row?.state !== 'active' ||
+      row.recovery_mode !== 'owned' ||
+      row.binding !== this.issued.get(lease) ||
+      row.team_id !== teamId ||
+      row.root_path !== lease.writer.root ||
+      row.root_identity !== lease.writer.rootIdentity ||
+      row.daemon_identity !== this.identity ||
+      row.kind !== lease.writer.kind
+    )
+      throw new Error('Workspace lease admission changed')
   }
 
   /** Return only abandoned/unconfirmed writers; absence of a process is not inferred from age. */

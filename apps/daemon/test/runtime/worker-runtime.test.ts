@@ -1212,7 +1212,10 @@ function tempRoot(): string {
   return root
 }
 
-function protectedSpec(root: string, accessToken = 'initial-access-token'): ProtectedWorkerSpec {
+function protectedSpec(
+  root: string,
+  accessToken = 'initial-access-token',
+): ProtectedWorkerSpec & { docker: ProtectedDockerRuntime } {
   const agentDir = join(root, 'agents', 'agent-1')
   const teamDir = join(root, 'teams', 'team-1')
   const memoryDir = join(teamDir, 'memory')

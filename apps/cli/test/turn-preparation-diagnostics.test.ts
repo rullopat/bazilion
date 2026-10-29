@@ -77,18 +77,21 @@ test('an unsafe repository-context input reports the actual refusal, not a Linux
   expect(mock.callCount()).toBe(0)
 })
 
-test('missing protected Docker prerequisites return the closed refusal before provider use, never HTTP 500 or host execution', async () => {
-  if (!server || !mock) throw new Error('missing fixture')
-  const configured = await server.cli(['config', 'set', 'BAZILION_BASH_SANDBOX', 'docker'])
-  expect(configured.exitCode, configured.stderr).toBe(0)
-  const response = await chat()
-  expect(response.status).toBe(409)
-  const body = await response.json()
-  expect(body).toEqual({
-    code: 'protected_execution_unavailable',
-    error:
-      'Protected Docker runtime is unavailable (engine). Run `bazilion doctor` for remediation.',
-  })
-  expect(JSON.stringify(body)).not.toContain('synthetic-local-fixture')
-  expect(mock.callCount()).toBe(0)
-})
+test.skipIf(process.platform !== 'linux')(
+  'missing protected Docker prerequisites return the closed refusal before provider use, never HTTP 500 or host execution',
+  async () => {
+    if (!server || !mock) throw new Error('missing fixture')
+    const configured = await server.cli(['config', 'set', 'BAZILION_BASH_SANDBOX', 'docker'])
+    expect(configured.exitCode, configured.stderr).toBe(0)
+    const response = await chat()
+    expect(response.status).toBe(409)
+    const body = await response.json()
+    expect(body).toEqual({
+      code: 'protected_execution_unavailable',
+      error:
+        'Protected Docker runtime is unavailable (engine). Run `bazilion doctor` for remediation.',
+    })
+    expect(JSON.stringify(body)).not.toContain('synthetic-local-fixture')
+    expect(mock.callCount()).toBe(0)
+  },
+)

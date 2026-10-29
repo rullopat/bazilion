@@ -18,6 +18,7 @@ import {
   type DockerResourceLifecycle,
   type ProtectedDockerRuntime,
 } from '../shell/docker.ts'
+import type { NativeExecutionHost } from '../worker/ipc-protocol.ts'
 import type { CodingHost } from './coding-contract.ts'
 import type { RepositoryContextHost } from './repository-context.ts'
 
@@ -27,6 +28,7 @@ export function codingTools(input: {
   root: string
   context: RepositoryContextHost
   docker?: ProtectedDockerRuntime
+  native?: NativeExecutionHost
   lifecycle?: DockerResourceLifecycle
   approval: boolean
   approvalHost?: BashApprovalHost
@@ -39,7 +41,9 @@ export function codingTools(input: {
 }): ToolDefinition[] {
   const readSecrets = (): readonly string[] =>
     typeof input.secrets === 'function' ? input.secrets() : (input.secrets ?? [])
-  const hostOperations = input.docker ? null : createLocalBashOperations()
+  const native = input.native
+  if (input.docker && native) throw new Error('Coding execution backend is ambiguous')
+  const hostOperations = input.docker || input.native ? null : createLocalBashOperations()
   return [
     {
       name: 'coding_environment',
@@ -117,24 +121,51 @@ export function codingTools(input: {
           })
         }
         let outcome: CodingCommandOutcome
+        let captureTruncated = false
+        const capture = native ? { observedBytes: 0, redacted: false } : undefined
         try {
-          if (input.approval)
+          if (input.approval && !input.native)
             await requireBashApproval(command.command, toolCallId, signal, input.approvalHost)
           signal?.throwIfAborted()
           const cwd = resolveCodingDirectory(input.root, command.cwd)
-          const operations: BashOperations = input.docker
-            ? createPreparedDockerBashOperations(
-                {
-                  ...input.docker,
-                  coding: {
-                    revision: input.docker.coding?.revision ?? 0,
-                    cwd: command.cwd,
-                    env: input.docker.coding?.env ?? {},
-                  },
+          const operations: BashOperations | null = native
+            ? {
+                async exec(text, _cwd, options) {
+                  const value = await native.exec(
+                    {
+                      toolCallId,
+                      command: text,
+                      cwd: command.cwd,
+                      timeoutMs: command.timeoutSeconds * 1000,
+                    },
+                    (_stream, bytes, producer) => {
+                      if (capture) {
+                        capture.observedBytes =
+                          producer?.observedBytes ?? capture.observedBytes + bytes.length
+                        capture.redacted ||= producer?.redacted === true
+                      }
+                      options.onData(bytes)
+                    },
+                    options.signal,
+                  )
+                  captureTruncated = value.stdoutTruncated || value.stderrTruncated
+                  return { exitCode: value.code }
                 },
-                input.lifecycle,
-              )
-            : hostOperations!
+              }
+            : input.docker
+              ? createPreparedDockerBashOperations(
+                  {
+                    ...input.docker,
+                    coding: {
+                      revision: input.docker.coding?.revision ?? 0,
+                      cwd: command.cwd,
+                      env: input.docker.coding?.env ?? {},
+                    },
+                  },
+                  input.lifecycle,
+                )
+              : hostOperations
+          if (!operations) throw new Error('Coding execution backend unavailable')
           const result = await operations.exec(
             command.command,
             input.docker ? input.root : cwd.path,
@@ -148,6 +179,7 @@ export function codingTools(input: {
             },
           )
           emitProgress(true)
+          const retained = output.finish()
           outcome = {
             state:
               result.exitCode === 0
@@ -156,27 +188,41 @@ export function codingTools(input: {
                   ? 'interrupted'
                   : 'failed',
             exitCode: result.exitCode,
-            ...output.finish(),
+            ...retained,
+            truncated: retained.truncated || captureTruncated,
             reason: result.exitCode === null ? 'exit_unavailable' : null,
           }
         } catch (error) {
           const message = error instanceof Error ? error.message : 'Command execution unavailable'
+          const failure =
+            error && typeof error === 'object'
+              ? (error as { code?: unknown; cleanupConfirmed?: unknown })
+              : undefined
           const state =
-            signal?.aborted || message === 'aborted'
-              ? 'cancelled'
-              : message.startsWith('timeout:')
+            failure?.cleanupConfirmed === false
+              ? 'interrupted'
+              : failure?.code === 'timed_out'
                 ? 'timed_out'
-                : error instanceof BashApprovalDeniedError
-                  ? 'blocked'
-                  : /cleanup|teardown/i.test(message)
-                    ? 'interrupted'
-                    : 'blocked'
+                : failure?.code === 'cancelled'
+                  ? 'cancelled'
+                  : failure?.code === 'approval_denied'
+                    ? 'blocked'
+                    : signal?.aborted || message === 'aborted'
+                      ? 'cancelled'
+                      : message.startsWith('timeout:')
+                        ? 'timed_out'
+                        : error instanceof BashApprovalDeniedError
+                          ? 'blocked'
+                          : /cleanup|teardown/i.test(message)
+                            ? 'interrupted'
+                            : 'blocked'
           outcome = { state, exitCode: null, ...output.finish(), reason: message }
         }
         const receipt = (await input.host.invoke({
           action: 'finish',
           id: started.id,
           outcome,
+          ...(capture ? { capture } : {}),
         })) as CodingCommandReceipt
         return {
           content: [{ type: 'text', text: JSON.stringify(receipt) }],

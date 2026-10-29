@@ -13,7 +13,7 @@ import {
 import { extractAgentId } from './helpers.ts'
 import { startTestServer, stopSettledTestServer, type TestServer } from './server-fixture.ts'
 
-const docker = process.env.BAZILION_TEST_DOCKER === '1'
+const docker = process.platform === 'linux' && process.env.BAZILION_TEST_DOCKER === '1'
 
 describe.skipIf(!docker)('actual Docker command approval over daemon HTTP and worker IPC', () => {
   let mock: MockLlm | undefined
