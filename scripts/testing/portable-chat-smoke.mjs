@@ -101,12 +101,18 @@ export async function qualifyPortableChat({
       ['mcp_http', 'supported'],
     ],
   )
-  // Passive native status is not a successful admission. Linux's retained Docker projection
-  // still reflects its actual readiness probe; all surfaces must tell the same bounded story.
+  // Mac host execution is not isolation. Linux's native/Docker projections retain their
+  // independent readiness contracts; unavailable protection never becomes host execution.
   const protectedTurns = health.executionSecurity.protectedUnattendedTurns
   const nativeProtected = protectedTurns.codingSurface === 'native'
-  if (process.platform === 'darwin') assert.equal(nativeProtected, true)
-  if (nativeProtected) {
+  if (process.platform === 'darwin') {
+    assert.equal(protectedTurns.codingSurface, 'unavailable')
+    assert.equal(protectedTurns.docker, null)
+    assert.equal(protectedTurns.native, undefined)
+    assert.equal(health.protectedWorkBaselineReady, false)
+    assert.equal(health.executionSecurity.configuredOperatorHttp.codingSurface, 'host')
+    assert.match(protectedTurns.remediation, /no qualified isolation backend/)
+  } else if (nativeProtected) {
     assert.equal(protectedTurns.docker, null)
     assert.equal(protectedTurns.native.readiness, 'not_checked')
     assert.equal(health.protectedWorkBaselineReady, false)

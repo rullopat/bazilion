@@ -3,7 +3,8 @@ import type { NativeExecutionAdmission } from '@bazilion/api-types'
 import { codingRelativePath } from '../../core/coding-environment/config.ts'
 import { assertNativeExecutionFacts } from '../../core/coding-environment/native-facts.ts'
 
-/** Closed wire metadata only. Successful parsing is NOT live native admission or availability. */
+/** Closed runtime metadata only, never support, launch or signalling authority.
+ * Deferred Mac facts can still be parsed; product admission refuses them independently. */
 export function assertNativeExecutionAdmission(
   value: unknown,
 ): asserts value is NativeExecutionAdmission {

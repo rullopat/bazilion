@@ -50,6 +50,11 @@ import {
   type VerificationWorkerOwnership,
 } from '../../lib/verification/worker-ownership.ts'
 import { BashApprovalDeniedError } from '../shell/approval.ts'
+import {
+  MAC_DOCKER_EXECUTION_UNAVAILABLE,
+  MAC_NATIVE_EXECUTION_UNAVAILABLE,
+  MAC_PROTECTED_EXECUTION_UNAVAILABLE,
+} from '../shell/platform-support.ts'
 import { resolveShellSecurityConfig } from '../shell/security.ts'
 import { type ApiKeyRefreshTurnContext, refreshApiKeyForTurn } from './api-key-refresh.ts'
 import type {
@@ -706,15 +711,20 @@ function nativeWorkerBinding(spec: WorkerTurnSpec): NativeWorkerBinding {
 }
 
 function assertSpawnCombination(spec: SpecWithCapabilityHost, opts: SpawnWorkerOpts): void {
-  if (
-    process.platform === 'darwin' &&
-    ((spec.kind === 'protected' && spec.docker) ||
-      (spec.kind === 'configured_operator_http' &&
-        (spec.configuredDocker ||
-          resolveShellSecurityConfig((opts as ConfiguredSpawnWorkerOpts).env).sandboxMode ===
-            'docker')))
-  )
-    throw new Error('Docker execution is not supported on macOS. Select native execution.')
+  if (process.platform === 'darwin') {
+    if (spec.kind === 'protected' || spec.kind === 'specialist_verification')
+      throw new Error(MAC_PROTECTED_EXECUTION_UNAVAILABLE)
+    if (spec.kind === 'configured_operator_http') {
+      const selected = resolveShellSecurityConfig(
+        (opts as ConfiguredSpawnWorkerOpts).env,
+      ).sandboxMode
+      if (spec.nativeExecution || opts.nativeExecutionHost || selected === 'native')
+        throw new Error(MAC_NATIVE_EXECUTION_UNAVAILABLE)
+      if (spec.configuredDocker || selected === 'docker')
+        throw new Error(MAC_DOCKER_EXECUTION_UNAVAILABLE)
+    }
+    // Reviewer-only kinds retain their existing closed, non-coding tool surface below.
+  }
   if (
     spec.kind === 'configured_operator_http' &&
     (opts as ConfiguredSpawnWorkerOpts).env !== undefined &&

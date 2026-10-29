@@ -260,12 +260,42 @@ test('optional defaults retain authenticated API and CLI parity without executin
   const file = join(server.home, 'optional-defaults.json')
   const config = {
     backend: 'docker',
-    image: 'bazilion-coding:node24-pnpm10',
+    image: 'bazilion-coding:node26-pnpm12',
     cwd: '.',
     env: { CI: 'true' },
   }
   writeFileSync(file, JSON.stringify({ expectedRevision: 0, config }))
   const saved = await server.cli(['team', 'environment', 'configure', 'default', '--file', file])
+  if (process.platform === 'darwin') {
+    expect(saved.exitCode).not.toBe(0)
+    expect(`${saved.stdout}${saved.stderr}`).toContain('not supported on macOS')
+    const native = { ...config, backend: 'native', image: undefined }
+    writeFileSync(file, JSON.stringify({ expectedRevision: 0, config: native }))
+    const refused = await server.cli([
+      'team',
+      'environment',
+      'configure',
+      'default',
+      '--file',
+      file,
+    ])
+    expect(refused.exitCode).not.toBe(0)
+    expect(`${refused.stdout}${refused.stderr}`).toContain('deferred and unqualified')
+    const shown = await server.cli(['team', 'environment', 'show', 'default'])
+    expect(shown.exitCode, shown.stderr).toBe(0)
+    expect(JSON.parse(shown.stdout)).toMatchObject({
+      supportedBackends: [],
+      environment: null,
+      configuredExecution: 'host',
+      image: null,
+    })
+    const url = `${server.url}/api/teams/default/coding-environment`
+    expect((await fetch(url)).status).toBe(401)
+    const response = await fetch(url, { headers: { authorization: `Bearer ${server.token}` } })
+    expect(await response.json()).toEqual(JSON.parse(shown.stdout))
+    expect(requests).toBe(before)
+    return
+  }
   expect(saved.exitCode, saved.stderr).toBe(0)
   expect(JSON.parse(saved.stdout)).toMatchObject({ revision: 1, config })
   const shown = await server.cli(['team', 'environment', 'show', 'default'])

@@ -167,8 +167,11 @@ Git inspection and MCP stdio retain Linux-only admission. Unreleased BAZ-072 add
 macOS Git worktree capture and public-libproc-owned macOS MCP stdio while preserving Linux
 inspection/retirement paths. Unknown ownership remains blocked. Owned workers and managed
 headed/non-GUI browsing passed actual macOS 26.6.2 arm64 checks on both Node baselines, including
-private native browser keychains and reset/relaunch without personal keychain access. Protected
-execution and latest-stable integrated macOS acceptance remain in progress. See
+private native browser keychains and reset/relaunch without personal keychain access. Generic native
+Mac shell isolation is now deferred/unqualified. Ordinary Mac operator coding is trusted unisolated
+host execution; isolation-required protected coding and specialist checks refuse without fallback.
+Existing closed reviewer-only workers have no shell/coding surface and keep their separate contract.
+Linux native/retained Docker and installed/latest-stable integrated acceptance remain required. See
 [repository context](repository-context.md), [BAZ-057](backlog/done/BAZ-057-portable-safe-reads.md)
 and [coding environments](coding-environments.md).
 

@@ -105,24 +105,20 @@ jobs:
       - name: Build native worker and trusted helper artifacts
         run: pnpm --filter bazilion build
 
-      - name: Test native protected execution instead of a macOS Docker VM
-        env:
-          BAZILION_TEST_NATIVE: '1'
+      # Generic native Mac isolation is deferred/unqualified, not a passed replacement gate.
+      # Host execution remains explicitly unisolated; protected work must refuse without fallback.
+      - name: Test trusted host operation and protected-unavailable admission
         run: >-
           pnpm vitest run --fileParallelism=false
           apps/daemon/test/lib/macos-docker-removal.test.ts
-          apps/daemon/test/core/native-runtime.test.ts
-          apps/daemon/test/runtime/native-turn.integration.test.ts
-          apps/daemon/test/runtime/native-worker.integration.test.ts
-          apps/daemon/test/runtime/native-preparation.integration.test.ts
-          apps/daemon/test/runtime/native-selected-turns.integration.test.ts
-          apps/daemon/test/runtime/native-user-queue.integration.test.ts
-          apps/daemon/test/runtime/native-mcp-retirement.integration.test.ts
-          apps/daemon/test/runtime/native-verification-api.integration.test.ts
-          apps/daemon/test/runtime/native-verification-dispatch.integration.test.ts
-          apps/daemon/test/runtime/native-verification-lifecycle.integration.test.ts
-          apps/daemon/test/runtime/native-darwin-lifetime.integration.test.ts
-          apps/daemon/test/runtime/native-darwin-worker-retirement.integration.test.ts
+          apps/daemon/test/lib/trusted-macos-admission.test.ts
+          apps/daemon/test/lib/agent-coding.test.ts
+          apps/cli/test/agent-coding.test.ts
+          apps/daemon/test/lib/execution-security-status.test.ts
+          apps/daemon/test/lib/platform-capabilities.test.ts
+          apps/daemon/test/routes/misc.test.ts
+          apps/cli/test/config-page.test.ts
+          apps/cli/test/portable-chat.test.ts
 
       - name: Test hardened Git, owned MCP stdio and worker retirement
         run: >-
@@ -168,7 +164,6 @@ jobs:
       - name: Test actual headed, headless and non-GUI managed browser
         env:
           BAZILION_TEST_BROWSER: '1'
-          BAZILION_TEST_NATIVE: '1'
           BAZILION_TEST_BROWSER_HEADED: '1'
           BAZILION_TEST_BROWSER_DIAGNOSTICS: '1'
           BAZILION_TEST_PRIVILEGED_NONGUI: '1'
@@ -176,7 +171,6 @@ jobs:
           pnpm vitest run --fileParallelism=false
           apps/daemon/test/lib/browser-managed.integration.test.ts
           apps/cli/test/browser-research.test.ts
-          apps/daemon/test/runtime/native-platform-tools.integration.test.ts
 
   linux-native:
     name: Linux native security (Node ${{ matrix.node }})

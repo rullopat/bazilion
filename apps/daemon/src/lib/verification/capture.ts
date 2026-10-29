@@ -15,6 +15,7 @@ import {
   listVerificationChecks,
   type VerificationRequestRecord,
 } from '../../core/repos/verification-requests.ts'
+import { MAC_PROTECTED_EXECUTION_UNAVAILABLE } from '../../runtime/shell/platform-support.ts'
 import { resolveShellSecurityConfig } from '../../runtime/shell/security.ts'
 import { resolveTeamCodingEnvironment } from '../coding-environment/resolve.ts'
 import { readSnapshotApplicability, requireTeam } from '../git-review/service.ts'
@@ -42,6 +43,8 @@ export function captureVerificationRequest(
   env: NodeJS.ProcessEnv = process.env,
   native?: NativeVerificationCapture,
 ): VerificationCaptureResult {
+  if (process.platform === 'darwin')
+    return blocked('unsupported', MAC_PROTECTED_EXECUTION_UNAVAILABLE)
   const validation = validateVerificationCaptureInputs(db, paths, intent)
   if (validation.kind === 'blocked') return validation
   let environment: VerificationEnvironmentFacts | null

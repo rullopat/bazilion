@@ -167,7 +167,7 @@ describe('execution-security projection', () => {
   test.each<[ProtectedDockerReadinessReason, string]>([
     [
       'unsupported platform',
-      'Use native execution on macOS, or a Linux host with local Docker support.',
+      'Protected Docker execution requires a Linux host with local Docker support. Trusted Mac host execution is not isolation.',
     ],
     [
       'Docker executable is unavailable',

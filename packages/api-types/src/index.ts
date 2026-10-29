@@ -1003,6 +1003,12 @@ export interface ExecutionSecurityReport {
         docker: null
         native: { backend: 'linux-bwrap' | 'darwin-seatbelt' | null; readiness: 'not_checked' }
       }
+    | {
+        /** No qualified isolation backend: protected work refuses, never uses host execution. */
+        codingSurface: 'unavailable'
+        docker: null
+        native?: never
+      }
   )
 }
 

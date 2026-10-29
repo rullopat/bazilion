@@ -6,6 +6,7 @@ import type { VerificationBlocker, VerificationEnvironmentFacts } from '@bazilio
 import { validateCodingEnvironmentConfig } from '../../core/coding-environment/config.ts'
 import type { BazilionDb } from '../../core/db/client.ts'
 import type { Paths } from '../../core/paths.ts'
+import { MAC_NATIVE_EXECUTION_UNAVAILABLE } from '../../runtime/shell/platform-support.ts'
 import { workspaceLifecycle } from '../coding-environment/lifecycle.ts'
 import { resolveTeamNativeCodingEnvironment } from '../coding-environment/resolve.ts'
 import { workspaceIdentity } from '../coding-environment/workspace.ts'
@@ -82,6 +83,11 @@ export async function prepareNativeAgentVerificationCapture(input: {
   binding: NativeWorkerBinding
   secrets: () => readonly string[]
 }): Promise<PreparedNativeCaptureResult> {
+  if (process.platform === 'darwin')
+    return {
+      kind: 'blocked',
+      blocker: { reason: 'unsupported', detail: MAC_NATIVE_EXECUTION_UNAVAILABLE },
+    }
   const options = Object.freeze({ ...input })
   const validation = validateVerificationCaptureInputs(options.db, options.paths, options.intent)
   if (validation.kind === 'blocked') return validation
@@ -146,6 +152,11 @@ export async function prepareNativeOperatorVerificationCapture(input: {
   assertSelection?: () => void
   secrets: () => readonly string[]
 }): Promise<PreparedNativeCaptureResult> {
+  if (process.platform === 'darwin')
+    return {
+      kind: 'blocked',
+      blocker: { reason: 'unsupported', detail: MAC_NATIVE_EXECUTION_UNAVAILABLE },
+    }
   const options = Object.freeze({ ...input })
   const { db, paths } = options
   const validation = validateVerificationCaptureInputs(db, paths, options.intent)

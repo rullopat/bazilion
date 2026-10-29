@@ -26,17 +26,31 @@ Pi owns the model/tool loop and canonical session transcript. Bazilion supplies 
 context and the execution adapter. Existing Bazilion-managed skills remain available; this change
 does not activate ambient Pi extensions or repository-provided executable plugins.
 
-## Explicit native selection (unreleased 0.25 work)
+## Trusted Mac host execution and explicit Linux isolation (unreleased 0.25)
 
-`BAZILION_BASH_SANDBOX=native`, or the same Agent Shell Security setting in Config, now selects
-native coding for operator HTTP turns and protected scheduled/inbox turns. Saving Team defaults
-alone does not select a backend. Host mode `off` remains visibly unisolated; legacy Docker behavior
-remains during the approved conditional cutover, not as a native prerequisite or fallback.
+| Platform/posture | Current behavior |
+| --- | --- |
+| Mac operator work, `off` | Trusted **unisolated host execution**; commands use the OS user's filesystem/network permissions |
+| Mac native/Docker selection | Refuses; generic native Mac isolation is deferred/unqualified and Mac Docker remains removed |
+| Mac isolation-required protected coding or specialist checks | Unavailable; never downgraded to host execution |
+| Linux `native` | Bubblewrap plus mandatory seccomp and per-turn owned admission |
+| Linux `docker` | Independently selected retained backend; never a prerequisite/fallback for native |
 
-Linux requires the admitted unprivileged Bubblewrap and mandatory seccomp boundary. Apple Silicon
-macOS uses deprecated Seatbelt through `/usr/bin/sandbox-exec`; see the API and support limits in
-[native execution](native-execution-design.md). Missing mechanisms, toolchain drift or unsafe inputs
-refuse. Do not assume arbitrary host tools or the whole host library tree are available.
+Select `off` explicitly through Agent Shell Security / `bazilion config set BAZILION_BASH_SANDBOX off`
+for trusted host work. Approvals and tool guards are not an OS sandbox. Stored native/Docker choices
+are not rewritten as host execution. Team defaults alone do not select a backend; on Mac, optional
+isolation defaults cannot be saved/activated and existing choices remain visible as unavailable.
+
+Mac protected normal turns (including isolation-required schedules, inbox, Telegram and approval
+delivery) and command-executing specialist verification refuse before execution. Existing closed
+reviewer-only workers admit no shell/coding capability and retain their own provider-minimal and
+fixed-tool contract; background invocation alone does not make a new shell-isolation requirement.
+Ordinary MCP/browser and guarded Git keep their independent admission/ownership protections.
+
+The native behavior below applies to supported **Linux** execution. The retained Seatbelt design is
+[deferred development history](native-execution-design.md), not supported Mac containment. Missing
+Linux mechanisms, toolchain drift or unsafe inputs refuse; arbitrary host tools or whole host library
+trees are not implied.
 
 Native `bash` and `coding_command` share one daemon-owned executor. Host-backed file tools are hidden;
 Team memory, skills and admitted uploads are read-only to commands. Only closed Team environment
@@ -46,11 +60,11 @@ Native always uses dangerous-command approval: interactive turns may approve onc
 auto-deny. Ordinary separately admitted browser/MCP capabilities are not confined by the coding
 sandbox; protected/restricted workers still deny them.
 
-Health, doctor and Config report native selection as **Not checked** until real per-turn admission,
+On Linux, health, doctor and Config report native selection as **Not checked** until real per-turn admission,
 not an image or readiness badge. Unknown ownership/cleanup retains the resource and writer; persisted
 receipts do not authorize signalling. Agent-requested native verification uses its bound producing
 turn and the two-tool specialist. Operator capture through the existing HTTP/CLI/web verification
-surface now runs fixed readiness probes and positively retires them before storing native facts;
+surface on Linux runs fixed readiness probes and positively retires them before storing native facts;
 it does not execute the captured checks. JSON cannot supply environment facts or impersonate an Agent.
 Capture is fenced/drained during shutdown. Backend changes refuse rather than substituting legacy
 host/Docker execution; completed history is not rewritten. CLI/web distinguish captured native facts
@@ -63,15 +77,18 @@ attempt is never converted into success merely because later same-live-owner tea
 never replay its effects merely because a later capture is empty.
 
 Queued operator input keeps its configured posture; approved deliveries and bound Telegram queue
-input use protected native execution. Communication approval grants the captured input, not a shell
+input require their protected backend. They refuse on Mac when isolation is required; they do not
+reuse ordinary host admission. Communication approval grants the captured input, not a shell
 risk exemption: queued dangerous commands still auto-deny. Holds, pause and duplicate/denied decisions
 cannot execute the input. Topic/owner/credential rebinding refuses delayed Telegram execution.
 Cancellation reporting recognizes known abort messages only after an actual worker cancellation
 signal; unconfirmed cleanup still requires recovery rather than a cancellation/success claim.
 
-Actual Linux and both exact Mac Node baselines now exercise configured workers, real scheduled/inbox
-ticks and shutdown during acknowledged native readiness. Provider transport is synthetic loopback;
-installed-client, live-provider, integrated browser and final cutover qualification remain separate.
+Historical native Mac source trials exercised configured workers, scheduled/inbox ticks and shutdown,
+but did not qualify Mac isolation; failed CI and uncertain cleanup remain failed evidence. Current
+Mac coverage exercises trusted host execution, protected refusal and retained independent boundaries.
+Linux retains actual native execution checks. Synthetic loopback providers are not live-provider
+acceptance; installed-client, desktop/browser and main-process restart/restore qualification remain separate.
 
 ## Missing prerequisites
 
@@ -84,21 +101,21 @@ its existing authority. If a package must be downloaded, a service is unavailabl
 lacks a required tool, it should name the missing prerequisite and yield. It cannot silently switch
 to host execution. Network-enabled dependency provisioning is outside this feature.
 
-Docker execution is **Linux-only**. macOS protected work uses native execution, including when
-ordinary configured host mode remains explicitly unisolated. A stored `docker` selection on macOS
-is refused, never silently converted into another backend. No Docker Desktop, Colima or Linux VM
-is needed or supported for Mac execution.
+Docker execution is **Linux-only**. macOS isolation-required protected work is unavailable because
+native Mac isolation is deferred/unqualified. Explicit/stored native or Docker selections refuse,
+never silently convert to trusted host execution. No Docker Desktop, Colima or Linux VM is restored,
+required or authorized for Mac support.
 
 A local toolchain image is an installation prerequisite for Linux Docker execution, not a per-task
 checklist. The supplied [Dockerfile](../examples/coding-environment/Dockerfile) contains Node and
 pnpm. Build it explicitly from a source checkout:
 
 ```sh
-docker build --pull=false -t bazilion-coding:node24-pnpm10 examples/coding-environment
+docker build --pull=false -t bazilion-coding:node26-pnpm12 examples/coding-environment
 ```
 
 The image build requires its base image and package-manager artifacts to be available. Set
-`BAZILION_BASH_SANDBOX_IMAGE=bazilion-coding:node24-pnpm10` for the installation. Ordinary Agent
+`BAZILION_BASH_SANDBOX_IMAGE=bazilion-coding:node26-pnpm12` for the installation. Ordinary Agent
 turns use Docker when `BAZILION_BASH_SANDBOX=docker`; protected turns always use their protected
 runtime. Host execution remains host execution under its existing policy.
 

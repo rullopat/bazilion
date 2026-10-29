@@ -1,6 +1,15 @@
-# Native command isolation — approved design and feasibility gate
+# Native command isolation — Linux support and deferred Mac design
 
-**Status: approved native backends, closed worker admission and source integration implemented; native CI and installed/latest-stable qualification in progress.**
+**Current support decision, 2026-10-29:** generic native Mac isolation is deferred and unqualified,
+not a requirement or a passed gate for trusted Mac operation. Product admission refuses Mac native
+and Docker selections and isolation-required work; it never silently uses host execution instead.
+Ordinary Mac operator work is explicitly trusted/unisolated. Existing closed reviewer-only workers
+have no shell/coding capability; MCP/browser/Git retain independent protections. Linux native and
+retained Linux Docker coverage remain required. See [coding environments](coding-environments.md).
+
+**Historical design status:** approved native backends, closed worker admission and source integration
+were implemented; Mac native CI failed and installed/latest-stable native qualification did not finish.
+The Mac design/experiments below are retained development history, not current supported admission.
 The operator approved the base review on 2026-10-26 and both refinements in section 8 on 2026-10-27,
 separately from goal confirmation. This is the
 approved validation-first design for [BAZ-072](backlog/in_progress/BAZ-072-apple-silicon-feature-parity.md),
@@ -14,7 +23,7 @@ Use one daemon-owned execution contract with different native OS backends:
 | Platform | Candidate | Docker / Linux VM | Current assessment |
 | --- | --- | --- | --- |
 | Linux | Unprivileged Bubblewrap namespaces plus mandatory seccomp policy | Neither required | Established kernel mechanisms; integration and actual qualification still required |
-| Apple Silicon macOS | `/usr/bin/sandbox-exec` / Seatbelt, with Bazilion-authored policy and owned launch supervision | Neither required | Deprecated-API risk remains; the accepted live-observer lifetime foundation is observed, but integrated qualification is pending |
+| Apple Silicon macOS | Deferred `/usr/bin/sandbox-exec` / Seatbelt implementation | Neither restored nor authorized | Unqualified; no supported native admission. Historical observations do not establish containment or retirement support |
 
 Bubblewrap uses the host Linux kernel's namespace features, also used by containers. It is not
 Docker, an OCI image service or a VM. Native Mac commands would use the Mac kernel and Mac tools,
@@ -35,8 +44,10 @@ optional backend instead is a separate decision, with explicit retained-backend 
 
 **macOS-specific disposition, 2026-10-29:** the operator explicitly requested removal of all Mac
 Docker support/infrastructure. Mac Docker execution now refuses before CLI/socket access; protected
-Mac work selects native, while ordinary explicit host mode remains unisolated. The old Mac VM CI
-job is removed, its applicable Docker cases remain on Linux, and native tests cover the Mac matrix.
+Mac work initially selected native while explicit host mode remained unisolated. That native
+selection/qualification requirement is now superseded by the trusted-host/deferred-native decision
+above. The old Mac VM CI job remains removed; applicable Docker cases remain on Linux. Mac CI now
+covers trusted host/refusal and independent ownership/browser/MCP/Git paths, not native qualification.
 The dedicated stopped private VM/data disk were deleted through Colima after manager identity/state
 checks; matching live helpers were absent before private tools/caches were removed. No VM restart,
 personal Docker access, receipt-derived signalling or historical DB-row/marker deletion occurred.
@@ -84,9 +95,11 @@ the entire partial inventory is discarded, never admitted or patched. Stable/inc
 partial responses, non-ESRCH errors and own-identity failure remain unknown. Hosted revalidation of
 that refinement (`0d02dcc`, run 40894638537) passes eight jobs but still fails seven/38 Mac native
 cases. A retained worker exhausts both captures with `first_drift` and cannot confirm canonical
-teardown. Native CI remains unqualified; other failures are not all explained. Work is paused for
-an operator decision on a bounded consistency-proof refinement for host PID churn. No budget,
-signalling rule, assertion, sandbox permission or release condition is broadened. Original failed captures remain unchanged. A preceding
+teardown. Native Mac CI remains unqualified; other failures are not all explained. The operator
+subsequently chose trusted Mac operation and deferred generic native Mac isolation rather than
+another lifetime-proof redesign. The goal resumed under that explicit scope reduction. No budget,
+signalling rule, retained assertion or sandbox permission is weakened; removed qualification
+requirements are deferred, not passes. Original failed captures remain unchanged. A preceding
 Node 26 queue cancellation still remains a retained 42/43 source failure (`uncertain`, not
 `cancelled`), with original cause unestablished. These fixes do not explain or erase it.
 
@@ -171,7 +184,7 @@ policies, notably Ubuntu's AppArmor user-namespace restrictions, can prevent set
 condition. Do not change global sysctls, install privileged helpers or weaken the profile as an
 automatic remediation. Any disposable-CI prerequisite configuration must be separately approved.
 
-## 3. macOS backend: restrictions and conditional lifetime proof
+## 3. Deferred macOS backend: historical restrictions and conditional lifetime proof
 
 Seatbelt can apply deny-by-default filesystem, process/IPC and network policy to a command and its
 inheriting children. Both Codex and Anthropic's runtime use this native route. That is useful
@@ -248,8 +261,9 @@ report missing tools; never start a Linux VM to satisfy them automatically.
 
 Current relevant boundaries are:
 
-- `lib/protected-execution.ts`: branded, one-use daemon admission selects native on macOS and
-  explicitly selected native on Linux; Linux Docker remains transitional under its unchanged disposition.
+- `lib/protected-execution.ts`: branded, one-use daemon admission refuses isolation-required Mac
+  execution. Linux admits explicitly selected native or retained Docker under its unchanged disposition.
+  The former Mac selection flow remains deferred implementation history, not supported admission.
 - `runtime/shell/tooling.ts`: native/Docker selection removes all seven host-backed Pi coding tools.
 - `runtime/pi/coding.ts`: `coding_command` has its own executor selection in addition to `bash`.
 - `lib/verification/executor.ts`: captured specialist checks execute daemon-side, not through the
@@ -297,7 +311,7 @@ Any resulting upgrade-matrix expectation change must be justified and approved, 
 a failure green. Backend retirement likewise requires existing resources to be safely settled,
 not discarded during cutover.
 
-## 5. Required qualification and CI transition
+## 5. Historical native qualification and CI transition — Mac requirement deferred
 
 The initial design review used source inspection only. The subsequent private Mac probes in
 section 7 are bounded feasibility observations, not completion of this qualification matrix or
@@ -333,7 +347,7 @@ Node 24 compatibility and qualification are retired. Prior Node 24, Node 26.4.0 
 observations stay historical. No Node substitution, skipped native
 case or older hosted OS can replace actual latest-stable Mac qualification.
 
-## 6. Approved decisions and remaining gates
+## 6. Historical approved decisions and gates — superseded by current support decision
 
 1. **Native candidates approved:** Linux Bubblewrap + mandatory seccomp; Mac Seatbelt subject to
    its documented support risk and the blocking lifecycle/network proof.

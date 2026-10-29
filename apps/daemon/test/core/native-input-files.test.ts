@@ -1,9 +1,11 @@
 import {
   chmodSync,
+  chownSync,
   fstatSync,
   mkdtempSync,
   realpathSync,
   rmSync,
+  statSync,
   symlinkSync,
   unlinkSync,
   writeFileSync,
@@ -67,8 +69,17 @@ test('group/world-writable and setid trusted executables are not admitted', () =
   fixture((root) => {
     const path = join(root, 'executable')
     writeFileSync(path, 'not executed')
+    // macOS inherits the directory GID, which need not be one of this user's groups.
+    // An unprivileged chmod can then silently strip SGID. Calibrate an owned fixture,
+    // not system permissions, and prove each unsafe bit actually exists before refusal.
+    const uid = process.getuid?.(),
+      gid = process.getgid?.()
+    if (uid === undefined || gid === undefined)
+      throw new Error('POSIX fixture identity unavailable')
+    chownSync(path, uid, gid)
     for (const mode of [0o777, 0o4755, 0o2755, 0o600]) {
       chmodSync(path, mode)
+      expect(statSync(path).mode & 0o7777).toBe(mode)
       expect(() => captureNativeFile({ path, executable: true })).toThrow('refused')
     }
   })

@@ -6,6 +6,7 @@ import { afterEach, expect, test, vi } from 'vitest'
 import { createProfile, resolveAgent, spawnAgent } from '../../src/core/index.ts'
 import { workspaceLifecycle } from '../../src/lib/coding-environment/lifecycle.ts'
 import type { NativeTurnExecution } from '../../src/lib/native-execution/turn.ts'
+import { MAC_PROTECTED_EXECUTION_UNAVAILABLE } from '../../src/runtime/shell/platform-support.ts'
 import { assertNativeExecutionAdmission } from '../../src/runtime/worker/native-contract.ts'
 import {
   createMinimalWorkerScratch,
@@ -208,7 +209,8 @@ test('metadata and a copied structural native host cannot start a provider worke
       /* must refuse before spawn */
     }
   }
-  await expect(run(undefined)).rejects.toThrow('refused')
+  const rejection = process.platform === 'darwin' ? MAC_PROTECTED_EXECUTION_UNAVAILABLE : 'refused'
+  await expect(run(undefined)).rejects.toThrow(rejection)
   await expect(
     run({
       facts: metadata().facts,
@@ -223,7 +225,7 @@ test('metadata and a copied structural native host cannot start a provider worke
         return true
       },
     }),
-  ).rejects.toThrow('refused')
+  ).rejects.toThrow(rejection)
   expect(beforeSpawn).not.toHaveBeenCalled()
   expect(beforeInput).not.toHaveBeenCalled()
   expect(existsSync(marker)).toBe(false)
@@ -267,7 +269,11 @@ test('restricted verification input and spawn options reject native execution, i
       /* no process */
     }
   }
-  await expect(run()).rejects.toThrow('rejects nativeExecutionHost')
+  await expect(run()).rejects.toThrow(
+    process.platform === 'darwin'
+      ? MAC_PROTECTED_EXECUTION_UNAVAILABLE
+      : 'rejects nativeExecutionHost',
+  )
 })
 
 test.each([

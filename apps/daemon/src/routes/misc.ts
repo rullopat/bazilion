@@ -45,6 +45,11 @@ import {
 import { getOpenAICodexStatus, loadProviderConfigFromEnv } from '../runtime/index.ts'
 import { checkProtectedDockerReadiness } from '../runtime/shell/docker.ts'
 import {
+  MAC_DOCKER_EXECUTION_UNAVAILABLE,
+  MAC_NATIVE_EXECUTION_UNAVAILABLE,
+  MAC_PROTECTED_EXECUTION_UNAVAILABLE,
+} from '../runtime/shell/platform-support.ts'
+import {
   DEFAULT_BASH_SANDBOX_IMAGE,
   resolveShellSecurityConfig,
   ShellSecurityConfigError,
@@ -173,9 +178,11 @@ miscRouter.get('/health/details', async (c) => {
   let shellSecurity: HealthReport['shellSecurity']
   try {
     const shellConfig = resolveShellSecurityConfig(effectiveEnv)
-    if (process.platform === 'darwin' && shellConfig.sandboxMode === 'docker')
+    if (process.platform === 'darwin' && shellConfig.sandboxMode !== 'off')
       throw new ShellSecurityConfigError(
-        'Docker execution is not supported on macOS. Select native execution.',
+        shellConfig.sandboxMode === 'native'
+          ? MAC_NATIVE_EXECUTION_UNAVAILABLE
+          : MAC_DOCKER_EXECUTION_UNAVAILABLE,
       )
     shellSecurity = {
       ok: true,
@@ -219,13 +226,12 @@ miscRouter.get('/health/details', async (c) => {
         }
     : { ready: false, image: protectedDockerImage, reason: null }
   const executionSecurity = projectExecutionSecurity({
-    nativeProtected: process.platform === 'darwin',
+    protectedUnavailableReason:
+      process.platform === 'darwin' ? MAC_PROTECTED_EXECUTION_UNAVAILABLE : undefined,
     nativeBackend:
       process.platform === 'linux' && ['x64', 'arm64'].includes(process.arch)
         ? 'linux-bwrap'
-        : process.platform === 'darwin' && process.arch === 'arm64'
-          ? 'darwin-seatbelt'
-          : null,
+        : null,
     configuredOperatorHttp: {
       shellSecurity,
       dockerImage: protectedDockerImage,
@@ -297,7 +303,7 @@ miscRouter.get('/health/details', async (c) => {
 
 function publicShellSecurityError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error)
-  if (message === 'Docker execution is not supported on macOS. Select native execution.')
+  if (message === MAC_DOCKER_EXECUTION_UNAVAILABLE || message === MAC_NATIVE_EXECUTION_UNAVAILABLE)
     return message
   if (message.includes('BAZILION_BASH_SANDBOX_ENV_ALLOWLIST')) {
     return 'Shell environment allowlist contains an invalid or unsafe variable name.'

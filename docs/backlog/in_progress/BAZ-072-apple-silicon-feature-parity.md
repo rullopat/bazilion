@@ -10,11 +10,64 @@ target_release: '0.25.0'
 
 # BAZ-072 — Apple Silicon macOS feature parity with Linux
 
-## Current design and qualification decision
+## Current support scope and acceptance — 2026-10-29 amendment
 
-**Incomplete; design/ABI/IPC-only approval, native backends and source integration are complete;
-maintained Node 26-only support cleanup is implemented; native CI and installed/latest-stable
-qualification remain in progress.**
+**In progress; trusted Apple Silicon Mac operation is the target. Generic native Mac isolation is
+deferred and unqualified, not a passed gate or a remaining delivery prerequisite.** Preserve goal
+`mvl23iep-1w7ib6`, draft PR #82 and the four completed implementation/design milestones; do not
+restart their approvals or relabel historical failures.
+
+- Ordinary Mac operator work is explicitly trusted **unisolated host execution** (`off`). Shell
+  commands use host filesystem/network permissions; approvals and tool guards are not containment.
+- Native/Docker selections refuse, including saved/stale choices; no silent host downgrade or
+  Agent-controlled experimental opt-in. Mac Docker/VM/private tooling remain removed.
+- Isolation-required normal protected coding and specialist command checks refuse before provider,
+  process or tool effects. Existing closed reviewer-only workers admit no coding/shell capability;
+  preserving those independent restricted workers is not an unisolated coding fallback.
+- Preserve daemon-owned MCP, worker ownership/recovery, browser lifecycle/security, guarded Git,
+  credentials, Team Policy and approvals. Linux native and retained Linux Docker remain required.
+- Keep Node **26.12.1**, range **`^26.12.1`**, pnpm **12.15.0**; Node 24 stays retired. No new Mac
+  isolation backend, infrastructure, privileges, provider spend, fallback or weaker cleanup is approved.
+
+Current implementation adds early native/protected/refusal guards, an explicit `unavailable`
+protected report with no Docker/native readiness, trusted-host CLI/web labels, platform-aware defaults
+and Config rejection, and supported-host/refusal CI instead of mandatory Mac native positives.
+Structural metadata/proxy parsing is not admission and retains history/development utility.
+
+Current verification: Linux full checks pass **3,179/77 platform skips** plus four headless probes,
+477 security cases, types/lint/build after the reviewer-only preservation correction. Revised physical
+**macOS 27.0.1 arm64 / Node 26.12.1** source checks pass **2,710/181 platform skips**, plus four
+headless probes. The removed native requirements are deferred, not passes. Initial support-transition
+runs failed on stale expectations and an over-broad reviewer guard; those were fixed while preserving
+Linux assertions. An unrelated trusted-file fixture silently lost SGID under an inherited nonmember
+GID; the fixture now explicitly uses the owner's own group and verifies each requested unsafe bit
+before testing refusal. The original failed calibration remains historical evidence.
+Hosted qualification of this revised support matrix is pending.
+
+### Remaining required delivery acceptance
+
+1. Finish current Node 26 host/refusal/native-Linux CI, unrelated security, retained Linux Docker,
+   types/lint/build/packaging and actual authenticated CLI/API management parity.
+2. Qualify installed CLI/API/web trusted-host journeys on actual latest-stable Apple Silicon Mac,
+   supported coding/MCP/guarded Git, actual browser desktop/non-GUI, and real main-process shutdown,
+   restart and restore. Hosted labels/source results do not replace installed/latest-stable acceptance.
+3. Qualify retained Linux protected execution and Mac isolation-required refusals; preserve queues,
+   Team Policy, approvals and ownership. Keep applicable live-provider/site/image acceptance and
+   access/spend limits distinct; missing evidence stays unfinished.
+4. Reconcile support diagnostics/guides and prior applicable auditor objections, safely commit/push,
+   and request completion audit only with the revised evidence. No merge, release, deployment,
+   package-version bump or full-0.25-readiness claim.
+
+The native design/experiment record below is historical and superseded wherever it requires native
+Mac delivery or promises parity without platform refusals. In particular, run **40894638537** at
+`0d02dcc` remains a failure (seven/38 Mac native cases, including two `first_drift` captures with
+unconfirmed cleanup); deferral neither explains every failure nor releases uncertain resources.
+
+## Historical native design and qualification decision — superseded delivery scope
+
+**Historical implementation status:** design/ABI/IPC approval, native backends and source integration
+were implemented; Node 26-only cleanup was implemented. Mac native CI/installed qualification did
+not complete and is not current product support.
 On 2026-10-29 the operator retired Node 24 compatibility and routine qualification. Current support
 is **Node 26.12.1+ within 26.x only** (`^26.12.1`), with exact development/qualification baseline
 **26.12.1** and pnpm **12.15.0**. Earlier dual-baseline observations below are historical, not an
@@ -521,7 +574,7 @@ pnpm **12.15.0**. The current amendment is Node **26.12.1 only**, range **`^26.1
 new-baseline or native-sandbox evidence. Implementation `9d1bc31` passed all ten jobs in
 CI `40242186202` on its then-current baselines; that remains a scoped historical result.
 
-## User outcome and release intent
+## Historical user outcome and release intent — superseded by current support scope
 
 As an operator on an Apple Silicon Mac, I want the same Bazilion capabilities as on Linux,
 without macOS-only feature refusals or a requirement to move coding, MCP or protected work to Linux.
@@ -533,7 +586,7 @@ supported. It supersedes none of the shipped 0.24 limits until replacements are 
 qualified. See [BAZ-057](../done/BAZ-057-portable-safe-reads.md) and
 [released support](../../releases.md).
 
-## Agreed support policy and technical floor
+## Historical support policy; technical-floor evidence retained
 
 - Hardware: native macOS arm64 on Apple Silicon. Intel and Rosetta qualification are not required;
   this does not call for adding new Intel runtime refusals.
@@ -561,7 +614,7 @@ qualified. See [BAZ-057](../done/BAZ-057-portable-safe-reads.md) and
   prerequisites replace Docker/image requirements only for the approved new native path; existing
   Docker behavior is not silently removed or reinterpreted during design review.
 
-## Concrete implementation scope
+## Historical native implementation scope
 
 ### 1. Safe repository access and hardened Git
 
@@ -627,7 +680,7 @@ Linux observations are not transferable evidence. Keep direct OpenAI/OpenRouter 
 where they are also unqualified on Linux. Provider-backed tests require separately authorized
 credentials/spend; this story does not authorize paid calls or use of personal accounts.
 
-## Acceptance criteria and release gates
+## Historical native acceptance criteria — not current delivery gates
 
 1. Document the audited technical minimum separately from the tested OS. CI and installed-release
    jobs run on the latest stable macOS available for qualification, assert actual `darwin`/`arm64`
@@ -659,7 +712,7 @@ credentials/spend; this story does not authorize paid calls or use of personal a
 8. Publish 0.25.0 only after these gates pass for the agreed support matrix. The release statement
    is **macOS Apple Silicon feature parity with Linux**, not an unbounded “100% compatible” claim.
 
-## Open work and sequencing
+## Historical open work and sequencing — superseded
 
 - Preserve Git, MCP stdio, owned-worker and managed-browser implementations and scoped historical
   acceptance. Docker-backed protected/background observations remain historical, not proof of
@@ -676,7 +729,7 @@ credentials/spend; this story does not authorize paid calls or use of personal a
   goal is not all eight release gates and does not authorize publication, website deployment or
   version bumps. Keep concise outcomes here and in CI/PR records, not progress/evidence sidecars.
 
-## As built
+## Historical as-built evidence and unresolved failures
 
 The initial Git increment extended the single hardened inspector while retaining Linux fd-relative
 access and adding a bounded private-worktree backend for macOS. Ignore-aware guarded copying,

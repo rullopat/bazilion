@@ -112,10 +112,13 @@ provider secret or Agent capability. Privileged session provisioning is disposab
 product never elevates privileges. Native headed/non-GUI browsing, reset/relaunch and lifecycle
 checks passed on macOS 26.6.2 arm64 with both Node baselines. Historical 27.0.1 trials included local ARM Docker and the older Node 26.4.0 baseline; do not
 relabel them as current acceptance. macOS Docker/VM execution and its private tooling are removed
-by operator request. Protected Mac turns select native even with ordinary host mode off; explicit
-Docker selections refuse without CLI/socket access or fallback. Linux Docker remains intact. Current
-native source trials cover Node 26.12.1; Node 24 trials are historical. Installed/headed and broader
-acceptance remain open.
+by operator request. Generic native Mac isolation is now deferred/unqualified and unavailable in
+supported admission. Explicit native/Docker choices refuse, never become host mode. Ordinary Mac
+operator coding is trusted unisolated host execution (`off`); isolation-required unattended coding
+and specialist checks refuse. Existing closed reviewer-only workers never acquire coding/shell
+capabilities and retain their independent admission. Preserve MCP/browser/Git ownership separately.
+Linux native and Linux Docker remain intact. Current trusted-host source checks use Node 26.12.1;
+Node 24/native Mac experiments remain historical. Installed/headed and broader acceptance remain open.
 The audited core macOS floor is 13.5 (Node), not a claim that older OS versions were tested.
 
 XNU can omit restricted-app environment bytes from `KERN_PROCARGS2` under SIP. An argv-only

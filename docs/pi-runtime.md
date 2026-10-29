@@ -47,6 +47,10 @@ guarded installed trials also pass native admission, catalog and descendant reti
 trials pass **26.12.1** on physical Mac and Linux. Earlier Node 24 observations remain historical;
 Node 24 support and routine qualification are retired. macOS Docker/VM execution is
 removed; older Docker/TCG and installed observations are history, not current native acceptance.
+Generic native Mac shell isolation is deferred/unqualified; trusted host operation and protected
+refusals do not retire this independent daemon-owned MCP process-lifecycle contract. Closed
+reviewer-only SDK workers retain their fixed-tool/minimal-provider restrictions without gaining
+shell/coding capabilities. Linux native and retained Docker qualification remain independent.
 Broader installed/desktop BAZ-072 qualification remains separate. Neither persisted receipts nor a dependency availability flag grants
 signalling authority. Legacy SSE is retired and its old schema requires clean rebootstrap. See [MCP](mcp.md) and
 [upgrades](upgrades.md).

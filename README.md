@@ -25,11 +25,15 @@ explicit identity/source revalidation. This is not an atomic filesystem snapshot
 platform parity: hardened Git inspection and MCP stdio remain Linux-only, and unknown worker
 ownership remains blocked. See [repository context](docs/repository-context.md).
 
-**Unreleased 0.25 candidate:** Apple Silicon hardened Git, daemon-owned MCP stdio, managed browsing
-and native protected execution are implemented. **macOS Docker/VM execution is removed**; protected
-Mac turns use native Seatbelt admission and refuse unavailable protection without fallback. Linux
-retains its separately selected Docker backend as well as native Bubblewrap/seccomp execution.
-Actual native/source trials on **macOS 27.0.1 arm64** cover exact Node **26.12.1**.
+**Unreleased 0.25 candidate:** Apple Silicon hardened Git, daemon-owned MCP stdio and managed
+browsing are implemented. Ordinary Mac coding is **trusted host execution, unisolated**: use
+`BAZILION_BASH_SANDBOX=off`. Generic native Mac isolation is **deferred and unqualified**;
+explicit native/Docker choices refuse rather than becoming host execution. **Mac Docker/VM
+execution remains removed.** Isolation-required unattended coding and specialist checks are
+unavailable on Mac; existing closed reviewer-only workers have no shell/coding capability and
+retain their independent restrictions. Linux retains separately selected Docker and native
+Bubblewrap/seccomp backends. Current trusted-host source checks run on **macOS 27.0.1 arm64 /
+Node 26.12.1**; earlier native experiments remain unqualified history.
 Earlier Node 24 trials are historical; Node 24 support and routine qualification are retired.
 Installed, desktop and broader release acceptance remain unfinished; this is not a 0.25 announcement.
 Historical Docker and Node 26.4.0 observations are not current qualification. The separately audited

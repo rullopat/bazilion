@@ -81,6 +81,10 @@ import {
   type NativeSessionExecution,
   snapshotNativeSessionExecution,
 } from '../shell/native-tooling.ts'
+import {
+  MAC_NATIVE_EXECUTION_UNAVAILABLE,
+  MAC_PROTECTED_EXECUTION_UNAVAILABLE,
+} from '../shell/platform-support.ts'
 import { resolveShellSecurityConfig } from '../shell/security.ts'
 import { createProtectedSessionShellTools, createSessionShellTools } from '../shell/tooling.ts'
 import type {
@@ -242,6 +246,8 @@ not available. Be concise and show container paths clearly when working with fil
 export async function createBazilionSession(
   opts: CreateBazilionSessionOptions,
 ): Promise<BazilionSessionHandle> {
+  if (process.platform === 'darwin' && opts.nativeExecution !== undefined)
+    throw new Error(MAC_NATIVE_EXECUTION_UNAVAILABLE)
   const native =
     opts.nativeExecution === undefined
       ? undefined
@@ -497,6 +503,7 @@ export async function createBazilionSession(
 export async function createProtectedBazilionSession(
   opts: CreateProtectedBazilionSessionOptions,
 ): Promise<BazilionSessionHandle> {
+  if (process.platform === 'darwin') throw new Error(MAC_PROTECTED_EXECUTION_UNAVAILABLE)
   const native =
     opts.nativeExecution === undefined
       ? undefined
@@ -648,6 +655,8 @@ export async function createProtectedBazilionSession(
 export async function createRestrictedReviewSession(
   opts: CreateRestrictedReviewSessionOptions,
 ): Promise<BazilionSessionHandle> {
+  // Closed reviewer tools never admit shell/coding execution; native shell deferral does not
+  // disable this existing provider-minimal capability surface.
   const modelRuntime = await createProtectedPiRuntime({
     providerName: opts.runtime.providerName,
     modelId: opts.runtime.modelId,

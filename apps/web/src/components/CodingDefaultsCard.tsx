@@ -44,9 +44,14 @@ export function CodingDefaultsCard({ teamId }: { teamId: string }) {
         execution, never switches to host or another sandbox. Host turns remain unisolated.
       </p>
       {error && <p role="alert">{error}</p>}
+      {status?.supportedBackends?.length === 0 && <p role="status" className="text-sm text-muted-foreground my-3">No qualified isolation backend is available on this platform. Native macOS isolation is deferred and unqualified. Trusted host execution is unisolated and does not activate these defaults; saved backend choices are not converted.</p>}
       {status && (
         <form className="space-y-3" onSubmit={async (e) => {
           e.preventDefault()
+          if (status.supportedBackends && !status.supportedBackends.includes(backend)) {
+            setError('This backend is unavailable; protected execution cannot use trusted host mode.')
+            return
+          }
           setBusy(true)
           setError('')
           try {
@@ -63,9 +68,10 @@ export function CodingDefaultsCard({ teamId }: { teamId: string }) {
         }}>
           <label className="block text-sm">Defaults backend
             <select className="block w-full rounded border p-2 mt-1" value={backend} onChange={e => setBackend(e.target.value as 'native' | 'docker')}>
-              <option value="native">Native OS sandbox</option>
+              {(status.supportedBackends??['native','docker']).includes('native') && <option value="native">Native OS sandbox (Linux)</option>}
+              {backend==='native' && status.supportedBackends && !status.supportedBackends.includes('native') && <option value="native" disabled>Native isolation — unavailable/unqualified</option>}
               {(status.supportedBackends??['native','docker']).includes('docker') && <option value="docker">Docker (Linux)</option>}
-              {backend==='docker' && status.supportedBackends && !status.supportedBackends.includes('docker') && <option value="docker" disabled>Saved backend unavailable on this platform—select native</option>}
+              {backend==='docker' && status.supportedBackends && !status.supportedBackends.includes('docker') && <option value="docker" disabled>Saved Docker backend unavailable on this platform</option>}
             </select>
           </label>
           {backend === 'docker' && (status.supportedBackends??['native','docker']).includes('docker') && <label className="block text-sm">Local Docker image

@@ -15,9 +15,12 @@ export function projectPlatformCapabilities(
         id: 'ordinary_chat',
         label: 'Ordinary interactive chat',
         support: portable ? 'supported' : 'unsupported',
-        detail: portable
-          ? 'Select and test a provider, then try an Agent chat. No chat was run by this report.'
-          : unsupported,
+        detail:
+          platform === 'darwin'
+            ? 'Trusted host execution is unisolated. Select and test a provider, then try interactive chat; no chat was run by this report. Protected execution is unavailable without qualified isolation.'
+            : portable
+              ? 'Select and test a provider, then try an Agent chat. No chat was run by this report.'
+              : unsupported,
       },
       {
         id: 'git_inspection',

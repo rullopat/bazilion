@@ -864,7 +864,11 @@ describe('minimal worker runtime', () => {
             /* Must refuse before spawn. */
           }
         }
-        await expect(run()).rejects.toThrow('rejects imageGenerationHost')
+        await expect(run()).rejects.toThrow(
+          process.platform === 'darwin' && spec.kind === 'specialist_verification'
+            ? 'Protected execution is unavailable on macOS'
+            : 'rejects imageGenerationHost',
+        )
       }
     } finally {
       cleanupMinimalWorkerScratch(scratch)

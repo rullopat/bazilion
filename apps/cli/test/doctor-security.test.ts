@@ -51,8 +51,8 @@ test('doctor clearly separates configured operator HTTP from protected unattende
   }
   const output = executionSecurityDoctorLines(report).join('\n')
 
-  expect(output).toContain('configured operator HTTP (legacy · unprotected)')
-  expect(output).toContain('coding surface: host tools')
+  expect(output).toContain('configured operator HTTP (trusted host · unisolated)')
+  expect(output).toContain('coding surface: trusted host tools (unisolated)')
   expect(output).toContain('browser: enabled')
   expect(output).toContain('MCP: enabled')
   expect(output).toContain(

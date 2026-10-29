@@ -19,7 +19,7 @@ export function ExecutionSecurityCard({ status }: { status: ExecutionSecurityRep
         <section className="rounded-md border bg-muted/20 p-3">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <h3 className="font-semibold">Configured operator HTTP</h3>
-            <StatusBadge ok={false}>{configured.codingSurface==='native'?'native coding · ordinary capabilities':'legacy · unprotected'}</StatusBadge>
+            <StatusBadge ok={false}>{configured.codingSurface==='host'?'trusted host · unisolated':configured.codingSurface==='native'?'native coding · ordinary capabilities':'ordinary capabilities'}</StatusBadge>
           </div>
           <dl className="space-y-2 text-sm">
             <StatusRow label="Coding surface" value={codingSurfaceLabel(configured.codingSurface)} />
@@ -28,8 +28,9 @@ export function ExecutionSecurityCard({ status }: { status: ExecutionSecurityRep
             <StatusRow label="MCP" value={configured.mcp} />
           </dl>
           <p className="mt-3 text-xs text-muted-foreground">
-            This compatibility branch is for operator requests; Telegram and unattended delivery
-            never select it.
+            Operator requests only; unattended sources never select this branch. Host execution is
+            unisolated: shell commands use host filesystem and network permissions. Approvals and
+            tool guards are not an OS sandbox.
           </p>
         </section>
 
@@ -53,8 +54,8 @@ export function ExecutionSecurityCard({ status }: { status: ExecutionSecurityRep
             surface.
           </p>
           <dl className="space-y-2 text-sm">
-            <StatusRow label="Coding surface" value={protectedTurns.codingSurface==='native'?'Native OS sandbox':'Docker only'} />
-            {protectedTurns.codingSurface==='native'?<><StatusRow label="Native backend" value={protectedTurns.native.backend??'Unsupported platform'}/><StatusRow label="Native readiness" value="Not checked — requires per-turn admission"/></>:<>
+            <StatusRow label="Coding surface" value={protectedTurns.codingSurface==='unavailable'?'Unavailable — no qualified isolation backend':protectedTurns.codingSurface==='native'?'Native OS sandbox':'Docker only'} />
+            {protectedTurns.codingSurface==='native'?<><StatusRow label="Native backend" value={protectedTurns.native.backend??'Unsupported platform'}/><StatusRow label="Native readiness" value="Not checked — requires per-turn admission"/></>:protectedTurns.codingSurface==='unavailable'?<StatusRow label="Admission" value="Refuses — no trusted-host fallback"/>:<>
             <StatusRow
               label="Docker"
               value={protectedTurns.docker.ready ? 'ready' : 'unavailable'}
@@ -145,7 +146,7 @@ function StatusRow({
 function codingSurfaceLabel(
   surface: ExecutionSecurityReport['configuredOperatorHttp']['codingSurface'],
 ) {
-  if (surface === 'host') return 'Host tools'
+  if (surface === 'host') return 'Trusted host tools (unisolated)'
   if (surface === 'docker') return 'Docker only'
   if(surface==='native')return 'Native OS sandbox'
   return 'Unavailable'

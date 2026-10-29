@@ -12,6 +12,7 @@ import {
   type VerificationClaim,
 } from '../../core/repos/verification-requests.ts'
 import { authorizeCommunication } from '../../core/team-policy/authorization.ts'
+import { MAC_PROTECTED_EXECUTION_UNAVAILABLE } from '../../runtime/shell/platform-support.ts'
 import { workspaceLifecycle } from '../coding-environment/lifecycle.ts'
 import { WorkspaceBusyError, type WorkspaceLease } from '../coding-environment/workspace.ts'
 import {
@@ -92,6 +93,8 @@ export async function admitVerificationRequest(
     return null
   }
   const blockedReason = async (): Promise<VerificationBlocker | null> => {
+    if (process.platform === 'darwin')
+      return blocker('unsupported', MAC_PROTECTED_EXECUTION_UNAVAILABLE)
     const selectionIssue = backendIssue()
     if (selectionIssue) return selectionIssue
     const team = safeTeam(db, paths, request.teamId)

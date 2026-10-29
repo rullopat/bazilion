@@ -13,9 +13,13 @@ Engineer-to-engineer walkthrough of how a chat turn actually runs, end to end.
 > transcript and the only persistent record — there is no separate `runs` /
 > `events` audit table.
 
-macOS protected coding uses native execution, never Docker or a Linux VM. Ordinary explicit host
-mode remains unisolated; a stored macOS `docker` selection refuses instead of being reinterpreted.
-Linux retains its separately selected Docker backend. See [coding environments](coding-environments.md).
+Ordinary macOS operator coding uses explicitly trusted **unisolated host execution** (`off`).
+Generic native Mac isolation is deferred/unqualified; native and Docker selections refuse without
+fallback. Isolation-required protected coding, scheduled/inbox/Telegram delivery and specialist
+command checks cannot become host execution to restore availability. Existing closed reviewer-only
+workers have no shell/coding surface and keep their separate provider/capability restrictions.
+MCP, browser and guarded Git retain their own admission and ownership. Linux keeps its native and
+separately selected Docker backends. See [coding environments](coding-environments.md).
 
 ## 1. Request → subprocess boundary
 

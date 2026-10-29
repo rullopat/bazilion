@@ -21,6 +21,7 @@ import {
   listVerificationChecks,
 } from '../../core/repos/verification-requests.ts'
 import { BashApprovalDeniedError, requireBashApproval } from '../../runtime/shell/approval.ts'
+import { MAC_PROTECTED_EXECUTION_UNAVAILABLE } from '../../runtime/shell/platform-support.ts'
 import { assertNativeExecutionAdmission } from '../../runtime/worker/native-contract.ts'
 import { dispatchNativeExecution } from '../../runtime/worker/native-execution-dispatch.ts'
 import { ownsActiveAgent } from '../agent-cancel.ts'
@@ -110,6 +111,8 @@ const blocked = (
 export async function prepareNativeVerificationExecutor(
   input: PrepareNativeVerificationExecutor,
 ): Promise<PreparedNativeVerificationExecutor> {
+  if (process.platform === 'darwin')
+    throw new ProtectedExecutionUnavailableError(MAC_PROTECTED_EXECUTION_UNAVAILABLE)
   const options = Object.freeze({ ...input })
   const { db, lease, controller } = options
   const lifetime = new AbortController()

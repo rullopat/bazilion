@@ -155,7 +155,9 @@ export function executionSecurityDoctorLines(
   const lines = [
     configured.codingSurface === 'native'
       ? 'configured operator HTTP (native coding · ordinary capabilities)'
-      : 'configured operator HTTP (legacy · unprotected)',
+      : configured.codingSurface === 'host'
+        ? 'configured operator HTTP (trusted host · unisolated)'
+        : 'configured operator HTTP (ordinary capabilities)',
   ]
 
   if (!report.shellSecurity.ok) {
@@ -189,9 +191,11 @@ export function executionSecurityDoctorLines(
       )
     } else {
       lines.push(
-        '  - coding surface: host tools',
-        '    approval is a host-execution tripwire, not a filesystem sandbox',
-        '    set BAZILION_BASH_SANDBOX=native to opt into OS sandboxing',
+        '  - coding surface: trusted host tools (unisolated)',
+        '    shell commands use host filesystem and network permissions; approval is not containment',
+        protectedTurns.codingSurface === 'unavailable'
+          ? '    no qualified local protected backend is available; native macOS isolation is deferred'
+          : '    BAZILION_BASH_SANDBOX=native selects Linux OS isolation, subject to per-turn admission',
       )
     }
   }
@@ -208,14 +212,19 @@ export function executionSecurityDoctorLines(
           `  - native backend: ${protectedTurns.native.backend ?? 'unsupported platform'}`,
           '  - native readiness: Not checked (requires per-turn workspace admission)',
         ]
-      : [
-          '  - coding surface: Docker only',
-          checkLine(
-            `Docker ready (${protectedTurns.docker.image})`,
-            protectedTurns.docker.ready,
-            protectedTurns.docker.reason ?? undefined,
-          ),
-        ]),
+      : protectedTurns.codingSurface === 'unavailable'
+        ? [
+            '  - coding surface: unavailable — no qualified isolation backend',
+            '    protected work refuses; no trusted-host fallback',
+          ]
+        : [
+            '  - coding surface: Docker only',
+            checkLine(
+              `Docker ready (${protectedTurns.docker.image})`,
+              protectedTurns.docker.ready,
+              protectedTurns.docker.reason ?? undefined,
+            ),
+          ]),
     checkLine('OpenAI Codex enabled', protectedTurns.openaiCodex.enabled),
     checkLine('ChatGPT connected', protectedTurns.openaiCodex.connected),
     `  - OpenAI access: ${openAIAccessStatus(protectedTurns.openaiCodex)}`,

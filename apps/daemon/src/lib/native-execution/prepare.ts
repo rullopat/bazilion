@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { NativeExecutionAdmission, ResolvedAgent } from '@bazilion/api-types'
 import { mergeSecretsIntoEnv, resolveAgent } from '../../core/index.ts'
+import { MAC_NATIVE_EXECUTION_UNAVAILABLE } from '../../runtime/shell/platform-support.ts'
 import type { ProtectedWorkerPaths } from '../../runtime/worker/runtime.ts'
 import { isActiveAgent, ownsActiveAgent } from '../agent-cancel.ts'
 import { prepareAgentExecutionPaths } from '../agent-execution-inputs.ts'
@@ -64,6 +65,8 @@ export async function prepareAgentNativeInputs(
   input: ResolvedAgent,
   inputOptions: PrepareAgentNativeInputsOptions,
 ): Promise<PreparedAgentNativeInputs> {
+  if (process.platform === 'darwin')
+    throw new ProtectedExecutionUnavailableError(MAC_NATIVE_EXECUTION_UNAVAILABLE)
   const options = Object.freeze({ ...inputOptions })
   const agent = resolveAgent(ctx.db, ctx.paths, input.agent.id)
   if (!matches(agent, input)) throw unavailable()

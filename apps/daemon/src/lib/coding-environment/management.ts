@@ -6,6 +6,11 @@ import {
 import type { BazilionDb } from '../../core/db/client.ts'
 import { getCodingEnvironment, putCodingEnvironment } from '../../core/repos/coding-environment.ts'
 import { resolveCodingDirectory } from '../../runtime/coding-directory.ts'
+import {
+  MAC_DOCKER_EXECUTION_UNAVAILABLE,
+  MAC_NATIVE_EXECUTION_UNAVAILABLE,
+  supportedIsolationBackends,
+} from '../../runtime/shell/platform-support.ts'
 import { resolveShellSecurityConfig } from '../../runtime/shell/security.ts'
 import { workspaceLifecycle } from './lifecycle.ts'
 import { overlappingWorkspaceRoots, workspaceIdentity } from './workspace.ts'
@@ -32,9 +37,11 @@ export async function configureTeamCodingEnvironment(
   input: unknown,
 ) {
   const config = validateCodingEnvironmentConfig(input)
-  if (process.platform === 'darwin' && config.backend === 'docker')
+  if (process.platform === 'darwin')
     throw new CodingEnvironmentValidationError(
-      'Docker execution is not supported on macOS. Select native execution.',
+      config.backend === 'native'
+        ? MAC_NATIVE_EXECUTION_UNAVAILABLE
+        : MAC_DOCKER_EXECUTION_UNAVAILABLE,
     )
   return mutateTeamWorkspace(db, team, () => {
     resolveCodingDirectory(team.path, config.cwd)
@@ -56,7 +63,7 @@ export async function codingEnvironmentStatus(
   const environment = getCodingEnvironment(db, team.id),
     config = resolveShellSecurityConfig(env)
   return {
-    supportedBackends: process.platform === 'linux' ? ['native', 'docker'] : ['native'],
+    supportedBackends: supportedIsolationBackends(),
     environment,
     configuredExecution: config.sandboxMode === 'off' ? 'host' : config.sandboxMode,
     image:

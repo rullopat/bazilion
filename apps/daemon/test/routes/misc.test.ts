@@ -3,6 +3,11 @@ import { afterEach, expect, test, vi } from 'vitest'
 import { projectPlatformCapabilities } from '../../src/lib/platform-capabilities.ts'
 import { miscRouter } from '../../src/routes/misc.ts'
 import * as dockerReadiness from '../../src/runtime/shell/docker.ts'
+import {
+  MAC_DOCKER_EXECUTION_UNAVAILABLE,
+  MAC_NATIVE_EXECUTION_UNAVAILABLE,
+  MAC_PROTECTED_EXECUTION_UNAVAILABLE,
+} from '../../src/runtime/shell/platform-support.ts'
 
 const originalEnforcement = process.env.BAZILION_TEAM_POLICY_ENFORCEMENT
 const originalSandbox = process.env.BAZILION_BASH_SANDBOX
@@ -90,6 +95,19 @@ test('native detailed health reports only passive selection and never probes Doc
     const response = await miscRouter.request('/health/details')
     expect(response.status).toBe(200)
     const report = (await response.json()) as HealthReport
+    if (process.platform === 'darwin') {
+      expect(report.shellSecurity).toEqual({ ok: false, error: MAC_NATIVE_EXECUTION_UNAVAILABLE })
+      expect(report.executionSecurity.configuredOperatorHttp.codingSurface).toBe('unavailable')
+      expect(report.executionSecurity.protectedUnattendedTurns).toMatchObject({
+        codingSurface: 'unavailable',
+        docker: null,
+        baseRuntimeReady: false,
+        remediation: MAC_PROTECTED_EXECUTION_UNAVAILABLE,
+      })
+      expect(report.executionSecurity.protectedUnattendedTurns).not.toHaveProperty('native')
+      expect(probe).not.toHaveBeenCalled()
+      return
+    }
     expect(report.shellSecurity).toMatchObject({
       ok: true,
       sandboxMode: 'native',
@@ -139,7 +157,7 @@ test('health reports the opt-in Docker confinement posture', async () => {
   if (process.platform === 'darwin') {
     expect(report.shellSecurity).toEqual({
       ok: false,
-      error: 'Docker execution is not supported on macOS. Select native execution.',
+      error: MAC_DOCKER_EXECUTION_UNAVAILABLE,
     })
     return
   }
@@ -203,7 +221,9 @@ test('health separates configured operator HTTP from protected unattended execut
     codingSurface: 'host',
   })
   const protectedTurns = report.executionSecurity.protectedUnattendedTurns
-  expect(protectedTurns.codingSurface).toBe(process.platform === 'darwin' ? 'native' : 'docker')
+  expect(protectedTurns.codingSurface).toBe(
+    process.platform === 'darwin' ? 'unavailable' : 'docker',
+  )
   expect(protectedTurns.browser).toBe('denied')
   expect(protectedTurns.mcp).toBe('denied')
   expect(typeof protectedTurns.baseRuntimeReady).toBe('boolean')

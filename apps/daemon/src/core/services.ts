@@ -565,7 +565,7 @@ export const SERVICES: ServiceDef[] = [
     displayName: 'Agent Shell Security',
     category: 'service',
     team: 'Agent Runtime',
-    hint: 'Explicit host, native OS sandbox or Linux-only Docker execution. Host mode remains unisolated; native selection requires per-turn admission.',
+    hint: 'Trusted host execution is unisolated. Native and Docker isolation are Linux-only; macOS native isolation is deferred and protected Mac work is unavailable.',
     fields: [
       {
         envVar: 'BAZILION_BASH_APPROVAL',
@@ -581,7 +581,7 @@ export const SERVICES: ServiceDef[] = [
         label: 'Sandbox mode',
         placeholder: 'off',
         description:
-          'Use off (unisolated host tools), native (Bubblewrap/seccomp on Linux, Seatbelt on Apple Silicon macOS) or transitional docker (Linux only; unavailable on macOS). Native bash/coding commands deny IP networking and hide host file tools; missing protection refuses without fallback.',
+          'Use off for trusted unisolated host tools. Linux can select native (Bubblewrap/seccomp) or transitional docker. Native macOS isolation is deferred and unqualified; macOS supports only off. Protected work never falls back to host execution.',
       },
       {
         envVar: 'BAZILION_BASH_SANDBOX_IMAGE',

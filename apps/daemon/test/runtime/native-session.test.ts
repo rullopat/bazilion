@@ -5,7 +5,7 @@ import type { CodingCommandReceipt, NativeExecutionRequest } from '@bazilion/api
 import type { Api, AssistantMessage, Model } from '@earendil-works/pi-ai'
 import { createAssistantMessageEventStream } from '@earendil-works/pi-ai'
 import { SessionManager } from '@earendil-works/pi-coding-agent'
-import { afterEach, expect, test, vi } from 'vitest'
+import { afterEach, expect, test as platformTest, vi } from 'vitest'
 import { createProfile, resolveAgent, spawnAgent } from '../../src/core/index.ts'
 import { resolveRepositoryContext } from '../../src/lib/repository-context/index.ts'
 import type { MemoryBackend } from '../../src/runtime/memory/types.ts'
@@ -21,6 +21,9 @@ import type { NativeExecutionHost } from '../../src/runtime/worker/ipc-protocol.
 import { createMinimalWorkerScratch } from '../../src/runtime/worker/runtime.ts'
 import { makeTestEnv } from '../core/helpers.ts'
 
+// Supported native SDK admission is Linux-only. Mac refusal has dedicated coverage;
+// these synthetic proxy contracts remain mandatory on Linux, not Mac qualification.
+const test = platformTest.skipIf(process.platform !== 'linux')
 const cleanups: Array<() => void> = []
 afterEach(() => {
   for (const cleanup of cleanups.splice(0)) cleanup()

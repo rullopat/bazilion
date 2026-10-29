@@ -3,9 +3,11 @@ import { resolveAgent } from '../../core/index.ts'
 import type { VerificationRequestRecord } from '../../core/repos/verification-requests.ts'
 import type { SpecialistVerificationWorkerSpec } from '../../runtime/index.ts'
 import { spawnVerificationWorker } from '../../runtime/index.ts'
+import { MAC_PROTECTED_EXECUTION_UNAVAILABLE } from '../../runtime/shell/platform-support.ts'
 import type { VerificationCapabilityHost } from '../../runtime/tools/verification.ts'
 import type { VerificationHost } from '../../runtime/worker/ipc-protocol.ts'
 import { getCtx } from '../ctx.ts'
+import { ProtectedExecutionUnavailableError } from '../protected-execution-error.ts'
 import { resolveProtectedProviderRuntime } from '../protected-provider.ts'
 import {
   assertTrustedVerificationInvocation,
@@ -32,6 +34,8 @@ export async function prepareVerificationTurn(input: {
   request: VerificationRequestRecord
   attemptId: string
 }): Promise<PreparedVerificationTurn> {
+  if (process.platform === 'darwin')
+    throw new ProtectedExecutionUnavailableError(MAC_PROTECTED_EXECUTION_UNAVAILABLE)
   const { db, paths, authToken } = getCtx()
   const resolved = resolveAgent(db, paths, input.request.recipientAgentId)
   if (resolved.agent.id !== input.request.recipientAgentId) {

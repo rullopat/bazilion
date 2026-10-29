@@ -8,6 +8,7 @@ import {
   type ProtectedDockerRuntime,
   preflightProtectedDockerRuntime,
 } from '../runtime/shell/docker.ts'
+import { MAC_PROTECTED_EXECUTION_UNAVAILABLE } from '../runtime/shell/platform-support.ts'
 import { SANDBOX_INPUTS_DIR, SANDBOX_MEMORY_DIR } from '../runtime/shell/tooling.ts'
 import type {
   ProtectedProviderWorkerRuntime,
@@ -78,11 +79,9 @@ export async function prepareProtectedExecution(
   agent: ResolvedAgent,
   options: PrepareProtectedExecutionOptions | PrepareNativeProtectedExecutionOptions = {},
 ): Promise<PreparedProtectedExecution> {
-  if (options.backend === 'native') return prepareProtectedNativeExecution(getCtx(), agent, options)
   if (process.platform === 'darwin')
-    throw new ProtectedExecutionUnavailableError(
-      'Docker execution is not supported on macOS. Select native execution.',
-    )
+    throw new ProtectedExecutionUnavailableError(MAC_PROTECTED_EXECUTION_UNAVAILABLE)
+  if (options.backend === 'native') return prepareProtectedNativeExecution(getCtx(), agent, options)
   const signal = options.signal
   if (signal?.aborted) throw new Error('cancelled')
   const { db, authToken } = getCtx()

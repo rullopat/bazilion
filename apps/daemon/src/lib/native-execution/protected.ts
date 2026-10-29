@@ -1,4 +1,5 @@
 import type { ResolvedAgent } from '@bazilion/api-types'
+import { MAC_PROTECTED_EXECUTION_UNAVAILABLE } from '../../runtime/shell/platform-support.ts'
 import type { ProtectedProviderWorkerRuntime } from '../../runtime/worker/runtime.ts'
 import { workspaceLifecycle } from '../coding-environment/lifecycle.ts'
 import type { DaemonCtx } from '../ctx.ts'
@@ -42,6 +43,8 @@ export async function prepareProtectedNativeExecution(
   agent: ResolvedAgent,
   options: PrepareAgentNativeInputsOptions,
 ): Promise<PreparedProtectedNativeExecution> {
+  if (process.platform === 'darwin')
+    throw new ProtectedExecutionUnavailableError(MAC_PROTECTED_EXECUTION_UNAVAILABLE)
   const captured = Object.freeze({ ...options })
   captured.controller.signal.throwIfAborted()
   workspaceLifecycle(ctx.db).coordinator.assertActiveLease(

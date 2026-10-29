@@ -9,19 +9,17 @@ import {
   preflightProtectedDockerRuntime,
   terminateRecordedContainer,
 } from '../../src/runtime/shell/docker.ts'
+import { MAC_PROTECTED_EXECUTION_UNAVAILABLE } from '../../src/runtime/shell/platform-support.ts'
 
 const platform = Object.getOwnPropertyDescriptor(process, 'platform')
 afterEach(() => {
   if (platform) Object.defineProperty(process, 'platform', platform)
 })
-test('macOS protected execution is native even when ordinary host mode remains off; Docker is not reinterpreted', () => {
-  expect(resolveProtectedExecutionBackend({}, 'darwin')).toBe('native')
-  expect(resolveProtectedExecutionBackend({ BAZILION_BASH_SANDBOX: 'native' }, 'darwin')).toBe(
-    'native',
-  )
-  expect(() =>
-    resolveProtectedExecutionBackend({ BAZILION_BASH_SANDBOX: 'docker' }, 'darwin'),
-  ).toThrow('not supported on macOS')
+test('macOS protected execution refuses in every configured mode without host fallback', () => {
+  for (const mode of ['off', 'native', 'docker'])
+    expect(() =>
+      resolveProtectedExecutionBackend({ BAZILION_BASH_SANDBOX: mode }, 'darwin'),
+    ).toThrow(MAC_PROTECTED_EXECUTION_UNAVAILABLE)
   expect(resolveProtectedExecutionBackend({}, 'linux')).toBe('docker')
   expect(resolveProtectedExecutionBackend({ BAZILION_BASH_SANDBOX: 'docker' }, 'linux')).toBe(
     'docker',
@@ -55,7 +53,7 @@ test('macOS Docker admission and execution refuse before executable/socket looku
 })
 test('macOS passive host-mode status never probes or advertises a Docker protected backend', () => {
   const report = projectExecutionSecurity({
-    nativeProtected: true,
+    protectedUnavailableReason: MAC_PROTECTED_EXECUTION_UNAVAILABLE,
     nativeBackend: 'darwin-seatbelt',
     configuredOperatorHttp: {
       shellSecurity: {
@@ -81,10 +79,11 @@ test('macOS passive host-mode status never probes or advertises a Docker protect
     dockerImage: null,
   })
   expect(report.protectedUnattendedTurns).toMatchObject({
-    codingSurface: 'native',
+    codingSurface: 'unavailable',
     docker: null,
     baseRuntimeReady: false,
-    native: { backend: 'darwin-seatbelt', readiness: 'not_checked' },
+    remediation: MAC_PROTECTED_EXECUTION_UNAVAILABLE,
   })
+  expect(report.protectedUnattendedTurns).not.toHaveProperty('native')
   expect(JSON.stringify(report)).not.toContain('must-not-appear')
 })

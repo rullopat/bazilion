@@ -32,6 +32,10 @@ import {
   listCatalogModelsSync,
   loadProviderConfigFromEnv,
 } from '../runtime/index.ts'
+import {
+  MAC_DOCKER_EXECUTION_UNAVAILABLE,
+  MAC_NATIVE_EXECUTION_UNAVAILABLE,
+} from '../runtime/shell/platform-support.ts'
 
 export const configRouter = new Hono()
 
@@ -188,6 +192,21 @@ configRouter.put('/fields/:envVar', async (c) => {
   const body = (await c.req.json().catch(() => null)) as { value?: unknown } | null
   if (!body || typeof body.value !== 'string') {
     return c.json({ error: 'body must be {"value": "<string>"}' }, 400)
+  }
+  if (
+    process.platform === 'darwin' &&
+    envVar === 'BAZILION_BASH_SANDBOX' &&
+    (body.value === 'native' || body.value === 'docker')
+  ) {
+    return c.json(
+      {
+        error:
+          body.value === 'native'
+            ? MAC_NATIVE_EXECUTION_UNAVAILABLE
+            : MAC_DOCKER_EXECUTION_UNAVAILABLE,
+      },
+      400,
+    )
   }
   if (body.value && found.field.options && !found.field.options.includes(body.value)) {
     return c.json({ error: `Choose one of: ${found.field.options.join(', ')}` }, 400)
