@@ -10,6 +10,7 @@
 #include <sys/types.h>
 #include <sys/sysctl.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 
 /* Controlled canary only. Self expiry is never settlement or signalling authority. */
@@ -69,7 +70,14 @@ int main(int argc, char **argv) {
   if (fd < 0) _exit(7);
   dprintf(fd, "{\"pid\":%d,\"parent\":%d,\"group\":%d,\"session\":%d,\"denyAttach\":%d,\"denyErrno\":%d}\n", getpid(), getppid(), getpgrp(), getsid(0), deny_attach, deny_errno);
   int linger = argc == 3 && !strcmp(argv[2], "linger");
-  for (int tick = 0; tick < (linger ? 600 : 300); tick++) {
+  struct timespec begin, now;
+  if (linger && clock_gettime(CLOCK_MONOTONIC, &begin) != 0) _exit(9);
+  for (int tick = 0; ; tick++) {
+    if (linger) {
+      if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) _exit(9);
+      double elapsed = (double)(now.tv_sec - begin.tv_sec) + (double)(now.tv_nsec - begin.tv_nsec) / 1000000000.0;
+      if (elapsed >= 6.0) break;
+    } else if (tick >= 300) break;
     if (write(fd, "x", 1) != 1) break;
     usleep(10000);
   }

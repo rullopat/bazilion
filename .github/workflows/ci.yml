@@ -111,6 +111,7 @@ jobs:
         run: >-
           pnpm vitest run --fileParallelism=false
           apps/daemon/test/lib/macos-docker-removal.test.ts
+          apps/daemon/test/core/native-runtime.test.ts
           apps/daemon/test/runtime/native-turn.integration.test.ts
           apps/daemon/test/runtime/native-worker.integration.test.ts
           apps/daemon/test/runtime/native-preparation.integration.test.ts
@@ -179,9 +180,9 @@ jobs:
 
   linux-native:
     name: Linux native security (Node ${{ matrix.node }})
-    # This runner permits unprivileged user namespaces without changing host sysctls/AppArmor.
-    # The version is a CI prerequisite, not a qualification claim for arbitrary Linux hosts.
-    runs-on: ubuntu-22.04
+    # Native pidfd ownership needs the exported libc ABI (glibc >=2.36); 22.04 lacks it.
+    # Use the stock 24.04 policy, never alter user-namespace sysctls or AppArmor to admit tests.
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     strategy:
       fail-fast: false
@@ -214,6 +215,8 @@ jobs:
           sudo install -o root -g root -m 0755 bwrap-build/bwrap /usr/bin/bwrap
           test "$(stat -c '%u:%a' /usr/bin/bwrap)" = 0:755
           /usr/bin/bwrap --version
+          getconf GNU_LIBC_VERSION
+          if test -r /etc/apparmor.d/bwrap; then grep -n 'userns\|profile\|unconfined' /etc/apparmor.d/bwrap; fi
           uname -a
           node -e 'console.log(process.version, process.platform, process.arch)'
       - name: Install
@@ -225,6 +228,7 @@ jobs:
           BAZILION_TEST_NATIVE: '1'
         run: >-
           pnpm vitest run --fileParallelism=false
+          apps/daemon/test/core/native-runtime.test.ts
           apps/daemon/test/runtime/native-*.integration.test.ts
           apps/daemon/test/runtime/linux-native-worker-owner.integration.test.ts
           apps/daemon/test/runtime/linux-worker-fd-census.integration.test.ts

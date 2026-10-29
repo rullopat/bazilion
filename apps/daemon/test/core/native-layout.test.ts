@@ -156,7 +156,8 @@ test('host service socket nodes are refused without connecting to them', async (
     const server = createServer()
     await new Promise<void>((resolve, reject) => {
       server.once('error', reject)
-      server.listen(join(root, 'host-service.sock'), resolve)
+      // The standard macOS TMPDIR prefix leaves little sockaddr pathname space.
+      server.listen(join(root, 's'), resolve)
     })
     try {
       await expect(captureNativeLayout(options)).rejects.toMatchObject({ reason: 'special_file' })

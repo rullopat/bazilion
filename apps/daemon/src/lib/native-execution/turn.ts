@@ -220,7 +220,10 @@ try{fs.writeFileSync(${JSON.stringify(readonlyFile)},'forbidden')}catch(error){p
 try{fs.readFileSync(${JSON.stringify(outside)})}catch(error){proof.outside=blocked(error)}
 await new Promise(resolve=>{const socket=net.connect({host:'127.0.0.1',port:${address.port}});socket.once('error',error=>{proof.tcp=['EPERM','EACCES'].includes(error.code);resolve()});socket.once('connect',()=>{socket.end();resolve()})})
 await new Promise(resolve=>{const socket=dgram.createSocket('udp4');socket.once('error',error=>{proof.udp=['EPERM','EACCES'].includes(error.code);try{socket.close()}catch{}resolve()});socket.bind(0,'127.0.0.1',()=>{socket.close();resolve()})})
-const local=path.join(process.env.TMPDIR,'probe.sock'),server=net.createServer(socket=>socket.end('private-native-ipc'))
+// Unix sockaddr path limits apply to the supplied name, not the resolved directory. Keep the
+// same admitted private IPC root/policy while avoiding long macOS TMPDIR prefixes.
+process.chdir(process.env.TMPDIR)
+const local='probe.sock',server=net.createServer(socket=>socket.end('private-native-ipc'))
 await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(local,resolve)})
 let answer=''
 await new Promise((resolve,reject)=>{const client=net.connect(local);client.once('error',reject);client.on('data',bytes=>answer+=bytes.toString());client.once('end',resolve)})

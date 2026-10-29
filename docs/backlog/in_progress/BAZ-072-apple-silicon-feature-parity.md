@@ -38,6 +38,27 @@ Private operational launchers now accept Node 26 only. Old Node 24 runtime/depen
 uncertain or historical fixtures remain forensic retention, not maintained support; no ownership
 rows, markers, retained resources or personal runtimes were removed for compatibility cleanup.
 
+Checkpoint `2c5cb4c` is committed/pushed and PR #82 remains draft. First hosted run
+[40867667276](https://github.com/rullopat/bazilion/actions/runs/40867667276) **failed**: five jobs
+passed (both guarded installers, Linux Docker, upgrade matrix and security), while both general
+collections and both native lanes failed. The old 0.23/0.24 schema refusals now have actual hosted
+prior-code seeding evidence; the fresh-current control is labelled idempotent reopen, not upgrade.
+
+Concrete corrections preserve enforcement: Linux CI selects a libc ABI exporting the required
+pidfd functions, the seccomp fixture keeps the host's actual read-only loader layout, and native
+readiness uses a relative socket name within the same admitted IPC root. A controlled long-TMPDIR
+counterfactual reproduced the original `unavailable` result; its new real regression passes without
+changing policy or command cwd. The detached canary uses monotonic six-second expiry rather than
+counted sleeps; no cleanup/test deadline is increased. Actual runtime-capture checks move into the
+explicit native lanes; missing prerequisites still fail there. Thirteen Docker-backed spawn cases
+remain fully asserted on Linux, with actual Mac native worker counterparts rather than fake Docker.
+Expanded physical Node 26 Mac source checks pass **89 cases / 13 Linux-Docker-only skips**, and
+59 focused Linux plus 477 standalone security cases pass. An outer combined-command timeout cut
+off an earlier security attempt; that attempt has no verdict and is not a failed/passed backend run.
+The previous expanded Node 26 source run remains **42 passed / one failed**: cancellation settled
+`uncertain` instead of expected `cancelled`; original cause is unestablished and the fixture remains
+retained. Later green checks neither explain nor erase it. Hosted revalidation of the fixes is pending.
+
 The preceding Node 24 source attempt remains **21 passed / one failed**: readiness recorded drift
 then unknown scoped identity and retained its unconfirmed resource. Its cause is not established;
 retirement is not a pass, a cleanup authorization or proof it cannot affect Node 26.

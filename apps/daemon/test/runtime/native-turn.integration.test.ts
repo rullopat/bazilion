@@ -534,6 +534,36 @@ test.skipIf(!enabled)(
 )
 
 test.skipIf(!enabled)(
+  'private Unix readiness works beneath long TMPDIR paths without widening the admitted IPC root',
+  async () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'native-long-ipc-')))
+    const long = join(root, 'x'.repeat(100))
+    mkdirSync(long, { mode: 0o700 })
+    const previous = process.env.TMPDIR
+    let settled = false
+    try {
+      process.env.TMPDIR = long
+      await fixture(async (turn) => {
+        expect(
+          (
+            await turn.exec(
+              { toolCallId: 'long-path', command: 'printf private-ipc', cwd: '.', timeoutMs: 5000 },
+              () => {},
+            )
+          ).code,
+        ).toBe(0)
+      })
+      settled = true
+    } finally {
+      if (previous === undefined) delete process.env.TMPDIR
+      else process.env.TMPDIR = previous
+      if (settled) rmSync(root, { recursive: true })
+    }
+  },
+  20_000,
+)
+
+test.skipIf(!enabled)(
   'closed turn admission refuses future effects rather than adopting a new native runtime',
   async () => {
     await fixture(async (turn) => {

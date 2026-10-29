@@ -53,7 +53,19 @@ types/lint/build and genuine packed-library offline consumers. The preceding Nod
 21 passed/one readiness failure, drift then unknown scoped identity. The new detached-writer control requires positive canonical live-owned recovery after
 natural expiry, never expiry as authority. These source results are not installed or hosted-CI
 acceptance. Native CI now has a pinned non-setuid Bubblewrap Linux lane without host sysctl/policy
-relaxation and explicit real Mac suites; those workflow edits have not yet run on hosted CI.
+relaxation and explicit real Mac suites. The first hosted candidate run failed, not passed: its
+22.04 native lane lacked the required libc ABI, the raw seccomp fixture assumed Arch's loader
+layout, and Mac cases exposed absolute Unix-socket length and fixture/posture assumptions.
+Readiness now uses a relative socket name after changing only its trusted canary's cwd to the same
+admitted private IPC root; policy/rights and real command cwd are unchanged. A calibrated long-path
+counterfactual failed before this fix; the new real regression passes on Linux and Mac. The canary
+writer's intended six-second expiry now uses monotonic time, not scheduler-dependent sleep counts;
+cleanup still requires fresh live-owned proof with unchanged bounds. Native runtime-capture cases
+are selected explicitly in both native lanes, not skipped based on missing prerequisites. Retired
+Docker-backed spawn fixtures retain all assertions on Linux; Mac native counterparts run separately.
+Expanded physical Mac source checks pass 89 cases/13 explicitly Linux-Docker-only skips. A preceding
+Node 26 queue cancellation still remains a retained 42/43 source failure (`uncertain`, not
+`cancelled`), with original cause unestablished. These fixes do not explain or erase it.
 
 ## 1. Threat model and common policy
 
@@ -127,7 +139,9 @@ ABI; it does not by itself supply the required filesystem view and process lifet
 upstream best-effort compatibility examples must not be copied into Bazilion's fail-closed policy.
 Likewise, seccomp alone is not a complete sandbox.
 
-Prerequisites include usable unprivileged namespaces and the pinned native components. Some Linux
+Prerequisites include usable unprivileged namespaces, the pinned native components and the exported
+libc `pidfd_open`/`pidfd_send_signal` ABI (glibc provides it from 2.36). Kernel support alone is not
+sufficient for this closed binding; unavailable symbols refuse, without PID/group fallback. Some Linux
 policies, notably Ubuntu's AppArmor user-namespace restrictions, can prevent setup. Report that
 condition. Do not change global sysctls, install privileged helpers or weaken the profile as an
 automatic remediation. Any disposable-CI prerequisite configuration must be separately approved.

@@ -7,6 +7,10 @@ import {
   retainNativeRuntime,
 } from '../../src/lib/native-execution/runtime.ts'
 import { snapshotNativeViewOptions } from '../../src/lib/native-execution/view-options.ts'
+import { nativeIntegrationEnabled } from '../fixtures/native-platform.ts'
+
+// These two cases capture the actual installed backend, not a dependency-free unit fixture.
+const nativeRuntimeTest = test.skipIf(!nativeIntegrationEnabled)
 
 async function fixture(visit: (root: string) => Promise<void>) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'native-runtime-')))
@@ -17,47 +21,53 @@ async function fixture(visit: (root: string) => Promise<void>) {
     throw new Error(`Frozen native runtime failed; retained ${root}`, { cause })
   }
 }
-test('frozen runtime facts exclude private staging paths and retained loans defer closure', async () => {
-  await fixture(async (root) => {
-    const first = join(root, 'one'),
-      second = join(root, 'two')
-    mkdirSync(first, { mode: 0o700 })
-    mkdirSync(second, { mode: 0o700 })
-    const a = await prepareNativeRuntime(first),
-      b = await prepareNativeRuntime(second)
-    try {
-      expect(a.facts).toEqual(b.facts)
-      expect(JSON.stringify(a.facts)).not.toContain(root)
-      expect(() => retainNativeRuntime({ ...a })).toThrow('refused')
-      const loan = retainNativeRuntime(a)
-      expect(a.close()).toBe(false)
-      expect(() => retainNativeRuntime(a)).toThrow('refused')
-      await a.revalidate()
-      loan.release()
-      expect(a.close()).toBe(true)
-      await expect(a.revalidate()).rejects.toThrow('refused')
-    } finally {
-      a.close()
-      b.close()
-    }
-  })
-})
-test('staged trusted code drift refuses instead of refreshing a frozen runtime', async () => {
-  await fixture(async (root) => {
-    const control = join(root, 'runtime')
-    mkdirSync(control, { mode: 0o700 })
-    const runtime = await prepareNativeRuntime(control),
-      fingerprint = runtime.facts.fingerprint
-    try {
-      chmodSync(runtime.entry.entryPath, 0o600)
-      writeFileSync(runtime.entry.entryPath, 'modified controlled template')
-      await expect(runtime.revalidate()).rejects.toThrow('refused')
-      expect(runtime.facts.fingerprint).toBe(fingerprint)
-    } finally {
-      expect(runtime.close()).toBe(true)
-    }
-  })
-})
+nativeRuntimeTest(
+  'frozen runtime facts exclude private staging paths and retained loans defer closure',
+  async () => {
+    await fixture(async (root) => {
+      const first = join(root, 'one'),
+        second = join(root, 'two')
+      mkdirSync(first, { mode: 0o700 })
+      mkdirSync(second, { mode: 0o700 })
+      const a = await prepareNativeRuntime(first),
+        b = await prepareNativeRuntime(second)
+      try {
+        expect(a.facts).toEqual(b.facts)
+        expect(JSON.stringify(a.facts)).not.toContain(root)
+        expect(() => retainNativeRuntime({ ...a })).toThrow('refused')
+        const loan = retainNativeRuntime(a)
+        expect(a.close()).toBe(false)
+        expect(() => retainNativeRuntime(a)).toThrow('refused')
+        await a.revalidate()
+        loan.release()
+        expect(a.close()).toBe(true)
+        await expect(a.revalidate()).rejects.toThrow('refused')
+      } finally {
+        a.close()
+        b.close()
+      }
+    })
+  },
+)
+nativeRuntimeTest(
+  'staged trusted code drift refuses instead of refreshing a frozen runtime',
+  async () => {
+    await fixture(async (root) => {
+      const control = join(root, 'runtime')
+      mkdirSync(control, { mode: 0o700 })
+      const runtime = await prepareNativeRuntime(control),
+        fingerprint = runtime.facts.fingerprint
+      try {
+        chmodSync(runtime.entry.entryPath, 0o600)
+        writeFileSync(runtime.entry.entryPath, 'modified controlled template')
+        await expect(runtime.revalidate()).rejects.toThrow('refused')
+        expect(runtime.facts.fingerprint).toBe(fingerprint)
+      } finally {
+        expect(runtime.close()).toBe(true)
+      }
+    })
+  },
+)
 test('view role/config snapshots cannot adopt later mutations to the caller object', () => {
   const source = {
     root: '/private/job',

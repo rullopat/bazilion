@@ -39,7 +39,11 @@ test('actual doctor exits zero for a healthy install while retaining unavailable
   expect(result.exitCode, result.stderr).toBe(0)
   expect(result.stdout).toContain('install is healthy ✓')
   expect(result.stdout).toContain('ordinary chat execution: not checked')
-  expect(result.stdout).toContain('protected unattended baseline: unavailable')
+  expect(result.stdout).toContain(
+    process.platform === 'darwin'
+      ? 'protected unattended baseline: not checked'
+      : 'protected unattended baseline: unavailable',
+  )
   expect(result.stdout).toContain('remediation:')
   expect(result.stdout).toContain('✓ MCP: denied')
   expect(result.stdout).toContain(`platform support: ${report.platformCapabilities.platform}`)

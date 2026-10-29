@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process'
 import {
   closeSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   openSync,
@@ -66,9 +67,9 @@ test.skipIf(!enabled)(
         '--symlink',
         'usr/lib',
         '/lib',
-        '--symlink',
-        'usr/lib',
-        '/lib64',
+        // Ubuntu's loader lives under /usr/lib64 (Arch uses /usr/lib). Preserve the host's
+        // real read-only /lib64 view rather than inventing a different interpreter location.
+        ...(existsSync('/lib64') ? ['--ro-bind', '/lib64', '/lib64'] : []),
         '--proc',
         '/proc',
         '--dev',

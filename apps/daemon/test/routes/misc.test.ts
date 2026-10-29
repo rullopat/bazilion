@@ -122,7 +122,7 @@ test('health reports the default-off host shell posture', async () => {
     ok: true,
     sandboxMode: 'off',
     approvalMode: 'off',
-    sandboxImage: 'debian:bookworm-slim',
+    sandboxImage: process.platform === 'darwin' ? null : 'debian:bookworm-slim',
     hostCodingTools: true,
     network: 'host',
   })
@@ -136,6 +136,13 @@ test('health reports the opt-in Docker confinement posture', async () => {
     shellSecurity: unknown
   }
 
+  if (process.platform === 'darwin') {
+    expect(report.shellSecurity).toEqual({
+      ok: false,
+      error: 'Docker execution is not supported on macOS. Select native execution.',
+    })
+    return
+  }
   expect(report.shellSecurity).toEqual({
     ok: true,
     sandboxMode: 'docker',
@@ -176,7 +183,7 @@ test('health separates configured operator HTTP from protected unattended execut
       protectedUnattendedTurns: {
         baseRuntimeReady: boolean
         codingSurface: string
-        docker: { ready: boolean; reason: string | null }
+        docker: { ready: boolean; reason: string | null } | null
         browser: string
         mcp: string
         openaiCodex: {
@@ -196,7 +203,7 @@ test('health separates configured operator HTTP from protected unattended execut
     codingSurface: 'host',
   })
   const protectedTurns = report.executionSecurity.protectedUnattendedTurns
-  expect(protectedTurns.codingSurface).toBe('docker')
+  expect(protectedTurns.codingSurface).toBe(process.platform === 'darwin' ? 'native' : 'docker')
   expect(protectedTurns.browser).toBe('denied')
   expect(protectedTurns.mcp).toBe('denied')
   expect(typeof protectedTurns.baseRuntimeReady).toBe('boolean')
@@ -211,11 +218,16 @@ test('health separates configured operator HTTP from protected unattended execut
   expect(protectedTurns.openaiCodex.refreshOnNextTurn).toBe(
     protectedTurns.openaiCodex.connected && !protectedTurns.openaiCodex.accessCurrent,
   )
-  // The provider-neutral baseline depends on Docker. OAuth readiness is a
-  // separate per-provider diagnostic, not a gate on other providers.
-  expect(protectedTurns.baseRuntimeReady).toBe(protectedTurns.docker.ready)
+  // Native passive status never claims admission; retained Linux Docker reports its actual probe.
+  if (process.platform === 'darwin') {
+    expect(protectedTurns.docker).toBe(null)
+    expect(protectedTurns.baseRuntimeReady).toBe(false)
+  } else {
+    if (!protectedTurns.docker) throw new Error('Linux Docker projection missing')
+    expect(protectedTurns.baseRuntimeReady).toBe(protectedTurns.docker.ready)
+    expect(Object.keys(protectedTurns.docker).sort()).toEqual(['image', 'ready', 'reason'])
+  }
   expect(report.protectedWorkBaselineReady).toBe(protectedTurns.baseRuntimeReady)
-  expect(Object.keys(protectedTurns.docker).sort()).toEqual(['image', 'ready', 'reason'])
   if (protectedTurns.remediation) {
     expect(protectedTurns.remediation).not.toMatch(/bearer|api[_-]?key|token|password/i)
   } else expect(protectedTurns.baseRuntimeReady).toBe(true)
