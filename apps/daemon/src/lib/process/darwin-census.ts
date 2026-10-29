@@ -219,7 +219,23 @@ export class DarwinCensusReader {
       for (const pid of first) {
         if (this.overBudget(started)) return unknown('budget')
         const row = this.row(pid)
-        if ('kind' in row) return row
+        if ('kind' in row) {
+          // A missing row is never omitted. Only an independently complete changed PID set
+          // establishes explicit drift; discard the entire partial inventory and let the
+          // caller's existing two-capture limit decide whether a fresh full capture is possible.
+          if (pid !== this.pid && ['identity_esrch', 'short_esrch'].includes(row.reason)) {
+            if (this.overBudget(started)) return unknown('budget')
+            const after = this.pids()
+            if (this.overBudget(started)) return unknown('budget')
+            if (
+              Array.isArray(after) &&
+              (first.length !== after.length ||
+                first.some((value, index) => value !== after[index]))
+            )
+              return unknown('drift')
+          }
+          return row
+        }
         rows.push(row)
       }
       const last = this.pids()

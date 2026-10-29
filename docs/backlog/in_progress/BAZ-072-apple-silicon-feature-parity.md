@@ -99,9 +99,16 @@ an empty domain. Stable/incomplete brackets, owner failure, partial responses, o
 two failed captures still hold. A real outside child exits through its original stdin EOF between
 the first vector and scoped query: exactly two captures settle, the command writes once, and no
 PID is signalled. The actual double-drift controls still hold until later canonical teardown.
-Current local checks pass **3,164 Linux/77 platform skips** plus four headless probes, 477 security,
-types/lint/build, and **133 physical Mac checks/13 Linux-Docker-only skips**. Hosted qualification
-of this bounded classification fix is pending; original queue uncertainty is not reclassified.
+[40890459678](https://github.com/rullopat/bazilion/actions/runs/40890459678) passes that real regression
+and all eight other jobs, but Mac native still fails **15/38 cases**. An outside inventory's zero-byte
+ESRCH also masked independently observable PID-list drift. It now checks a fresh complete PID list
+within the same 500 ms budget: only changed membership classifies drift, the entire partial inventory
+is discarded, and only the existing second full capture may follow. Stable/incomplete lists, partial
+responses, non-ESRCH errors, own-identity failure and exhausted budgets stay unknown. No process row
+is omitted, effect replayed, PID signalled, deadline extended or third capture allowed.
+Current local checks pass **3,169 Linux/77 platform skips** plus four headless probes, 477 security,
+types/lint/build, and **138 physical Mac checks/13 Linux-Docker-only skips**. Hosted qualification
+of the outside-inventory classification fix is pending; original queue uncertainty is not reclassified.
 
 The preceding Node 24 source attempt remains **21 passed / one failed**: readiness recorded drift
 then unknown scoped identity and retained its unconfirmed resource. Its cause is not established;

@@ -314,6 +314,68 @@ test.each([
   expect(f.reader.inventory()).toEqual({ kind: 'unknown', reason: 'identity' })
 })
 
+test.each([
+  'identity',
+  'short',
+] as const)('outside missing %s row requires an independently complete changed PID set to classify drift', (operation) => {
+  const f = fixture(),
+    original = f.outside[operation]
+  const pids = vi.spyOn(f.outside, 'pids')
+  vi.spyOn(f.outside, operation).mockImplementation((pid, buffer) => {
+    if (pid === 200) {
+      f.setListed([1, 100, 101, 102])
+      return { bytes: 0, errno: ESRCH }
+    }
+    return original(pid, buffer)
+  })
+  expect(f.reader.inventory()).toEqual({ kind: 'unknown', reason: 'drift' })
+  expect(pids).toHaveBeenCalledTimes(2)
+})
+
+test.each([
+  EACCES,
+  EPERM,
+])('outside error %d never becomes drift despite changed PID membership', (errno) => {
+  const f = fixture(),
+    original = f.outside.identity
+  vi.spyOn(f.outside, 'identity').mockImplementation((pid, buffer) => {
+    if (pid === 200) {
+      f.setListed([1, 100, 101, 102])
+      return { bytes: 0, errno }
+    }
+    return original(pid, buffer)
+  })
+  expect(f.reader.inventory()).toEqual({
+    kind: 'unknown',
+    reason: errno === EPERM ? 'identity_eperm' : 'identity_eacces',
+  })
+})
+
+test('outside missing-row drift classification cannot extend its budget or mask own-identity failure', () => {
+  const f = fixture(),
+    original = f.outside.identity
+  let clock = 0
+  const reader = new DarwinCensusReader(f.outside, 100, () => clock)
+  const spy = vi.spyOn(f.outside, 'identity').mockImplementation((pid, buffer) => {
+    if (pid === 200) {
+      clock = 501
+      f.setListed([1, 100, 101, 102])
+      return { bytes: 0, errno: ESRCH }
+    }
+    return original(pid, buffer)
+  })
+  expect(reader.inventory()).toEqual({ kind: 'unknown', reason: 'budget' })
+  clock = 0
+  spy.mockImplementation((pid, buffer) => {
+    if (pid === 100) {
+      f.setListed([1, 100, 101])
+      return { bytes: 0, errno: ESRCH }
+    }
+    return original(pid, buffer)
+  })
+  expect(reader.inventory()).toEqual({ kind: 'unknown', reason: 'identity_esrch' })
+})
+
 test('scoped owner inspection failure cannot become retry-classifiable ESRCH', () => {
   const f = fixture(),
     first = inventory(f.reader),

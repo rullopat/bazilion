@@ -77,8 +77,13 @@ existing second full capture: no partial view can establish an empty domain. Sta
 brackets, partial responses, owner failure, other errors and two failed captures still hold.
 An actual outside-child EOF/exit control verifies this with exactly two captures and one command
 effect; actual double-drift controls retain uncertainty. Current physical source checks pass
-133 cases/13 Linux-Docker-only skips; hosted revalidation remains pending. No budget, signalling
-rule or sandbox permission is broadened. Original failed captures remain unchanged. A preceding
+138 cases/13 Linux-Docker-only skips. Hosted `6aee20c` passes the real bracket regression and eight
+other jobs but still fails 15/38 Mac cases. Outside-inventory zero-byte ESRCH can likewise classify
+explicit drift only when a fresh complete PID list independently changes within the same budget;
+the entire partial inventory is discarded, never admitted or patched. Stable/incomplete lists,
+partial responses, non-ESRCH errors and own-identity failure remain unknown. Hosted revalidation of
+that outside-inventory refinement is pending. No budget, signalling rule or sandbox permission is
+broadened. Original failed captures remain unchanged. A preceding
 Node 26 queue cancellation still remains a retained 42/43 source failure (`uncertain`, not
 `cancelled`), with original cause unestablished. These fixes do not explain or erase it.
 
