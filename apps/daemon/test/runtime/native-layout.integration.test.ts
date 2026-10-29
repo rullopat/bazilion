@@ -1,5 +1,13 @@
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -108,9 +116,7 @@ test.skipIf(!enabled)(
         '--symlink',
         'usr/lib',
         '/lib',
-        '--symlink',
-        'usr/lib',
-        '/lib64',
+        ...(existsSync('/lib64') ? ['--ro-bind', '/lib64', '/lib64'] : []),
         '--proc',
         '/proc',
         '--dev',

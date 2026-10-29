@@ -88,7 +88,20 @@ static int escaped_writer(void) {
 int main(int argc, char **argv) {
   if (argc == 2 && !strcmp(argv[1], "escaped-writer")) return escaped_writer();
   int fd3 = fd_error(3), fd4 = fd_error(4), inherited_fds = 0;
-  for (int fd = 3; fd < 1024; fd++) if (fd_error(fd) != EBADF) inherited_fds++;
+  char inherited_sample[256] = ""; size_t sample_used = 0;
+  for (int fd = 3; fd < 1024; fd++) {
+    int error = fd_error(fd);
+    if (error == EBADF) continue;
+    inherited_fds++;
+    /* Bounded self-FD diagnostics only, never paths, bytes or signalling authority. */
+    if (inherited_fds <= 8 && sample_used < sizeof(inherited_sample)) {
+      int flags = fcntl(fd, F_GETFD);
+      int length = snprintf(inherited_sample + sample_used, sizeof(inherited_sample) - sample_used,
+        "%s{\"fd\":%d,\"flags\":%d,\"errno\":%d}", inherited_fds > 1 ? "," : "", fd, flags, error);
+      if (length < 0 || (size_t)length >= sizeof(inherited_sample) - sample_used) return 10;
+      sample_used += (size_t)length;
+    }
+  }
   errno = 0; syscall(9999); int unknown_error = errno;
   errno = 0; syscall(SYS_unshare, 0); int unshare_error = errno;
   errno = 0; syscall(SYS_setns, -1, 0); int setns_error = errno;
@@ -121,10 +134,10 @@ int main(int argc, char **argv) {
     }
     fclose(status);
   }
-  printf("{\"ipv4Tcp\":%d,\"ipv4Udp\":%d,\"ipv6Tcp\":%d,\"ipv6Udp\":%d,\"netlink\":%d,\"pair\":%d,\"pathIpc\":%d,\"fd3\":%d,\"fd4\":%d,\"inheritedFds\":%d,\"unknown\":%d,\"unshare\":%d,\"setns\":%d,\"debug\":%d,\"nsIoctl\":%d,\"terminal\":%d,\"clone3\":%d,\"forkSetsid\":%d,\"seccomp\":%d,\"noNewPrivs\":%d,\"zeroCaps\":%s,\"initMem\":%d,\"initMemRead\":%d,\"pid\":%d,\"workspaceWrite\":%d,\"memoryWrite\":%d,\"parentCanaryPresent\":%s}\n",
+  printf("{\"ipv4Tcp\":%d,\"ipv4Udp\":%d,\"ipv6Tcp\":%d,\"ipv6Udp\":%d,\"netlink\":%d,\"pair\":%d,\"pathIpc\":%d,\"fd3\":%d,\"fd4\":%d,\"inheritedFds\":%d,\"inheritedFdSample\":[%s],\"unknown\":%d,\"unshare\":%d,\"setns\":%d,\"debug\":%d,\"nsIoctl\":%d,\"terminal\":%d,\"clone3\":%d,\"forkSetsid\":%d,\"seccomp\":%d,\"noNewPrivs\":%d,\"zeroCaps\":%s,\"initMem\":%d,\"initMemRead\":%d,\"pid\":%d,\"workspaceWrite\":%d,\"memoryWrite\":%d,\"parentCanaryPresent\":%s}\n",
     socket_error(AF_INET, SOCK_STREAM), socket_error(AF_INET, SOCK_DGRAM),
     socket_error(AF_INET6, SOCK_STREAM), socket_error(AF_INET6, SOCK_DGRAM),
-    socket_error(AF_NETLINK, SOCK_RAW), private_pair(), private_path(), fd3, fd4, inherited_fds,
+    socket_error(AF_NETLINK, SOCK_RAW), private_pair(), private_path(), fd3, fd4, inherited_fds, inherited_sample,
     unknown_error, unshare_error, setns_error, debug_error, ns_ioctl_error, terminal_error,
     clone3_error, fork_ok, prctl(PR_GET_SECCOMP, 0, 0, 0, 0), prctl(PR_GET_NO_NEW_PRIVS, 0, 0, 0, 0),
     zero_capabilities && capability_fields == 5 ? "true" : "false", init_mem_error, init_read_error, getpid(), path_write_error("/work/probe.txt"),

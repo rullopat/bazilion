@@ -1,4 +1,4 @@
-import { readFileSync, writeSync } from 'node:fs'
+import { closeSync, readdirSync, readFileSync, writeSync } from 'node:fs'
 
 // Trusted single-use bootstrap, staged as JavaScript outside confinement. There is no model
 // command/profile/backend argument. Bash receives command bytes only after daemon admission.
@@ -39,6 +39,22 @@ try {
     if (values.length !== 1 || values[0]?.[1]?.trim() !== expected)
       throw new Error('Native entry unavailable')
   }
+  // Do not assume libc/execve closes inherited manager, gate, file or runtime descriptors.
+  // Enumerate only this trusted process's readonly /proc view, close every non-stdio entry,
+  // and acknowledge readiness only afterwards. The enumerator's already-closed FD is EBADF.
+  const descriptors = readdirSync('/proc/self/fd')
+  if (descriptors.length > 4096) throw new Error('Native entry unavailable')
+  for (const name of descriptors) {
+    if (!/^(0|[1-9][0-9]*)$/.test(name)) throw new Error('Native entry unavailable')
+    const fd = Number(name)
+    if (!Number.isSafeInteger(fd)) throw new Error('Native entry unavailable')
+    if (fd < 3) continue
+    try {
+      closeSync(fd)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EBADF') throw error
+    }
+  }
   const marker = Buffer.from(`BAZILION_NATIVE_READY:${nonce}\n`)
   if (writeSync(1, marker) !== marker.length) throw new Error('Native entry unavailable')
   // execve replaces this trusted bootstrap; no control descriptors or supervisor memory are
@@ -50,5 +66,6 @@ try {
   )
 } catch {
   writeSync(2, 'Native entry unavailable\n')
-  process.exitCode = 1
+  // No event-loop continuation after descriptor retirement if execve refuses.
+  process.exit(1)
 }

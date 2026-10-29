@@ -70,7 +70,20 @@ release authority or budgets. Original captures are not rewritten.
 Current local Node 26 checks pass **3,160 Linux / 76 gated skips** plus four headless probes,
 477 security, types/lint/build, and **128 physical Mac checks / 13 Linux-Docker-only skips**.
 Original failure histories and source queue `uncertain` outcome remain unchanged. Hosted
-revalidation of the fixed kernel binding/closed diagnostics is pending.
+revalidation of the fixed kernel binding/closed diagnostics produced
+[40882740681](https://github.com/rullopat/bazilion/actions/runs/40882740681), still not a pass:
+Linux native improves to **66 passed/two failed** (another fixture loader assumption and two
+unexpected inherited FDs); Mac native remains **29 passed/eight failed**, with explicit ESRCH and
+repeated drift retaining uncertainty. Both general jobs stopped on optional-variable narrowing in
+new negative-test callbacks; that assertion-only TypeScript error is fixed without weakening tests.
+
+The Linux bootstrap now enumerates its own bounded readonly `/proc/self/fd` view and explicitly
+closes every non-stdio descriptor before its ready marker, rather than assuming exec/libc will do
+so. The zero-FD assertion remains; bounded FD-number/flag/error diagnostics contain no paths or
+content. The remaining alias fixture uses the host's actual readonly loader layout. Fourteen real
+local Linux executor/layout/seccomp checks plus types/lint pass; hosted validation is pending.
+No additional Mac census attempts, broader policy, guessed signalling or historical result changes
+are authorized by these fixes. Mac CI availability under PID churn remains unresolved.
 
 The preceding Node 24 source attempt remains **21 passed / one failed**: readiness recorded drift
 then unknown scoped identity and retained its unconfirmed resource. Its cause is not established;

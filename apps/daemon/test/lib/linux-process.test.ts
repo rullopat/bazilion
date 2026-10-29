@@ -43,7 +43,8 @@ test.skipIf(process.platform !== 'linux')(
     let calls: ReturnType<typeof getLinuxPidfdCalls> | undefined
     let fd: number | undefined
     try {
-      calls = getLinuxPidfdCalls()
+      const api = getLinuxPidfdCalls()
+      calls = api
       const pid = child.pid
       if (!pid) throw new Error('test child unavailable')
       const fact = inspectLinuxProcess(pid)
@@ -55,9 +56,9 @@ test.skipIf(process.platform !== 'linux')(
       expect(handle.fd).toBeGreaterThanOrEqual(0)
       fd = handle.fd
       expect(calls.state(fd)).toBe('live')
-      expect(() => calls.open(0)).toThrow('unavailable')
-      expect(() => calls.signal(-1, 'SIGTERM')).toThrow('unavailable')
-      expect(() => calls.signal(handle.fd, 'SIGUSR1' as never)).toThrow('unavailable')
+      expect(() => api.open(0)).toThrow('unavailable')
+      expect(() => api.signal(-1, 'SIGTERM')).toThrow('unavailable')
+      expect(() => api.signal(handle.fd, 'SIGUSR1' as never)).toThrow('unavailable')
       expect(calls.state(fd)).toBe('live')
       // Actual original ChildProcess + unchanged native birth precede this controlled signal.
       expect(inspectLinuxProcess(pid)?.start).toBe(fact?.start)
