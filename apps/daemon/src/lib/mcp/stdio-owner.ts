@@ -87,6 +87,23 @@ export class OwnedStdioTransport extends StdioTransport {
   private retirement?: Promise<void>
   private inspection?: ProcessInspector
   private admissionStarted = false
+  private retirementPhase:
+    | 'idle'
+    | 'admission'
+    | 'inventory'
+    | 'owner_check'
+    | 'signal_anchor'
+    | 'term'
+    | 'term_wait'
+    | 'kill'
+    | 'kill_wait'
+    | 'handle_wait'
+    | 'sdk_close'
+    | 'settled' = 'idle'
+  /** Closed diagnostic facts only: no PID, command, path, credential or cleanup authority. */
+  retirementObservation() {
+    return Object.freeze({ phase: this.retirementPhase })
+  }
   override async start(): Promise<void> {
     if (this.admissionStarted || this.retirement)
       throw new Error('MCP stdio transport already started or retired')
@@ -119,18 +136,23 @@ export class OwnedStdioTransport extends StdioTransport {
     return this.retirement
   }
   private async retire(): Promise<void> {
+    this.retirementPhase = 'admission'
     if (this.ownedPid === undefined || !this.inspection) {
       // No admitted native child means no numeric-group signalling is safe. Native close is
       // harmless only if Pi has no child handle (e.g. refusal before spawn or a failed spawn).
       if (this.pid !== undefined) throw new Error('MCP subprocess ownership unknown')
+      this.retirementPhase = 'sdk_close'
       await super.close()
+      this.retirementPhase = 'settled'
       return
     }
     const inspection = this.inspection
     const pid = this.ownedPid
     const leader = this.leader
+    this.retirementPhase = 'inventory'
     let survivors = inspection.group(pid)
     if (survivors.length) {
+      this.retirementPhase = 'owner_check'
       const current = leader ? inspection.member(pid) : null
       if (
         !leader ||
@@ -143,6 +165,7 @@ export class OwnedStdioTransport extends StdioTransport {
         throw new Error('MCP process ownership unknown; retirement required')
       const anchored = survivors
       const signal = (kind: NodeJS.Signals) => {
+        this.retirementPhase = 'signal_anchor'
         const anchor = anchored.find((a) => {
           const now = inspection.member(a.pid)
           return (
@@ -156,6 +179,7 @@ export class OwnedStdioTransport extends StdioTransport {
         })
         if (!anchor) throw new Error('MCP process ownership changed; retirement required')
         try {
+          this.retirementPhase = kind === 'SIGTERM' ? 'term' : 'kill'
           process.kill(-pid, kind)
         } catch (e) {
           if ((e as NodeJS.ErrnoException).code !== 'ESRCH')
@@ -163,12 +187,14 @@ export class OwnedStdioTransport extends StdioTransport {
         }
       }
       signal('SIGTERM')
+      this.retirementPhase = 'term_wait'
       const grace = performance.now() + 500
       while (survivors.length && performance.now() < grace) {
         await new Promise((resolve) => setTimeout(resolve, 10))
         survivors = inspection.group(pid)
       }
       if (survivors.length) signal('SIGKILL')
+      this.retirementPhase = 'kill_wait'
       const deadline = performance.now() + 2000
       while (survivors.length && performance.now() < deadline) {
         await new Promise((resolve) => setTimeout(resolve, 10))
@@ -178,10 +204,13 @@ export class OwnedStdioTransport extends StdioTransport {
     }
     // Pi's child close callback clears pid before emitting transport close. Only
     // then is native close incapable of signaling a later reused numeric group.
+    this.retirementPhase = 'handle_wait'
     const deadline = performance.now() + 2000
     while (this.pid !== undefined && performance.now() < deadline)
       await new Promise((resolve) => setTimeout(resolve, 10))
     if (this.pid !== undefined) throw new Error('MCP native process handle has not retired')
+    this.retirementPhase = 'sdk_close'
     await super.close()
+    this.retirementPhase = 'settled'
   }
 }

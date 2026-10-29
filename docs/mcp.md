@@ -120,7 +120,9 @@ cannot silently hide a newly forked child.
 The shared owner retains the Linux `/proc` route and its normal TERM/KILL retirement rules. macOS
 uses the native observations before signalling and escalation, and still waits for the original
 Pi child handle to disappear before native close. Unknown/drifted identity or failed cleanup
-retains the slot. Stored PID numbers, restored receipts or a native-package availability label
+retains the slot. A reported stdio retirement phase is closed diagnostic metadata only; it
+contains no PID/path/credential, does not reveal raw SDK errors and never authorizes cleanup or
+a retry. Stored PID numbers, restored receipts or a native-package availability label
 never authorize signalling. These remain normal-lifecycle observations, not atomic identity
 proofs, arbitrary detached-descendant containment or abrupt-exit recovery guarantees.
 

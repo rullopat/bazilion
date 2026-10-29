@@ -83,6 +83,8 @@ test.skipIf(process.platform !== 'linux')(
     await transport.start()
     fixture.denied = true
     await expect(transport.close()).rejects.toThrow(/ownership cannot be inspected/)
+    expect(transport.retirementObservation()).toEqual({ phase: 'inventory' })
+    expect(Object.keys(transport.retirementObservation())).toEqual(['phase'])
     expect(nativeClose).not.toHaveBeenCalled()
     expect(signal).not.toHaveBeenCalled()
   },

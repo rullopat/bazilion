@@ -42,7 +42,15 @@ runs failed on stale expectations and an over-broad reviewer guard; those were f
 Linux assertions. An unrelated trusted-file fixture silently lost SGID under an inherited nonmember
 GID; the fixture now explicitly uses the owner's own group and verifies each requested unsafe bit
 before testing refusal. The original failed calibration remains historical evidence.
-Hosted qualification of this revised support matrix is pending.
+First hosted revised-matrix run
+[40924990349](https://github.com/rullopat/bazilion/actions/runs/40924990349) at `b2e4e43` passes
+both Mac jobs, both installers, Linux native, Linux Docker, upgrade and security. It **fails Ubuntu
+general collection**: the owned-stdio cancellation test retains an MCP retirement error; later
+initialization cases/afterEach also encounter retained ownership. This is not a waived retained
+capability failure or a reason to rerun unchanged code. Closed stdio retirement-phase diagnostics
+now distinguish inspection, signal/anchor, group-wait, handle-wait and SDK-close stages without
+PIDs, paths, raw SDK errors or authority. Forty-five focused MCP cases and types pass locally;
+that does not explain the hosted failure. Hosted qualification remains unfinished.
 
 ### Remaining required delivery acceptance
 
