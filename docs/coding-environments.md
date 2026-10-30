@@ -87,8 +87,11 @@ signal; unconfirmed cleanup still requires recovery rather than a cancellation/s
 Historical native Mac source trials exercised configured workers, scheduled/inbox ticks and shutdown,
 but did not qualify Mac isolation; failed CI and uncertain cleanup remain failed evidence. Current
 Mac coverage exercises trusted host execution, protected refusal and retained independent boundaries.
-Linux retains actual native execution checks. Synthetic loopback providers are not live-provider
-acceptance; installed-client, desktop/browser and main-process restart/restore qualification remain separate.
+Linux retains actual native execution checks. Installed Mac 27.0.1 arm64 / Node 26.12.1 and Linux
+native/protected command and main-process lifecycle trials supply bounded actual evidence. The
+0.25 alpha accepts the tested Mac 27.x major line; Mac headed/desktop qualification is deferred,
+not a pass or an extra release gate. Synthetic loopback providers remain distinct from unobserved
+live-provider/generated-image acceptance; public browser PNGs are not a substitute.
 
 ## Missing prerequisites
 

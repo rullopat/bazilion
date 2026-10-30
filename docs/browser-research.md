@@ -51,8 +51,20 @@ browser builds have no other account-level side effects. Bazilion then attaches 
 through CDP, like OpenClaw's managed-browser approach. It does not use
 Playwright's browser-launch defaults or attach to your personal browser. X11 and Wayland access
 are forwarded only for headed launches. Discovery also considers per-user macOS Applications
-and native-architecture full Playwright bundles, never the headless shell. Linux remains the
-released qualification platform. The macOS candidate passed headed, non-GUI, private-keychain,
+and native-architecture full Playwright bundles, never the headless shell.
+
+For the **0.25 alpha**, actual installed **macOS 27.0.1 (26A434), arm64 / Node 26.12.1** non-GUI
+qualification includes native caller-session evidence (graphic access false), private-keychain
+launch, RFC reading, snapshots, real PNG delivery, private-network denial and main-process
+shutdown/restart/restore. Stop preserves the profile; backup excludes it, and restore starts a fresh
+owned browser only on a new explicit turn. The operator accepts this observed **27.x major line**;
+a newer minor is not a release gate. **Mac headed/desktop qualification is deferred to a later
+version**, not passed or required for 0.25 publication. No personal profile/keychain, privilege or
+SSRF exception is introduced. Public-page/PNG checks do not establish live-model or arbitrary-site
+entitlement.
+
+Historical pre-amendment observations below are not current Node 26.12.1 desktop qualification.
+The macOS candidate passed headed, non-GUI, private-keychain,
 reset/relaunch, lifecycle and SSRF/service-worker checks on macOS 26.6.2 (25G83) arm64 with Node
 24.22.0 and 26.4.0. Protected/Docker suites subsequently passed on actual latest-stable
 27.0.1 (26A434) arm64 with both baselines. That target now also passes all 28 browser/CLI cases

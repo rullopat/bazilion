@@ -2,7 +2,7 @@
 
 ## Runtime requirement
 
-The source/unreleased CLI and daemon support **Node 26 only: 26.12.1+ within 26.x** (`^26.12.1`).
+The **0.25.0 alpha** CLI and daemon support **Node 26 only: 26.12.1+ within 26.x** (`^26.12.1`).
 Node 24 and other release lines refuse before application bootstrap; Node 24 compatibility and
 routine qualification are retired. The exact development/CI/qualification toolchain is
 **Node 26.12.1 + pnpm 12.15.0**. This baseline contains the upstream native cleanup-hook and SQLite
@@ -11,7 +11,7 @@ Historical published release requirements and failures below are unchanged.
 For a runtime refusal, upgrade Node; do not reset the DB, replace `auth.json` or clear ownership.
 Rebuild native dependencies when changing their Node ABI.
 
-## Unreleased native candidate: clean rebootstrap
+## 0.25.0 alpha: clean rebootstrap
 
 Native verification changes the canonical alpha schema: an `unknown` outcome may retain its own
 interrupted command receipt without claiming an exit code or confirmed cleanup. This edits

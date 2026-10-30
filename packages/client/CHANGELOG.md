@@ -1,5 +1,14 @@
 # @bazilion/client
 
+## 0.25.0
+
+### Minor Changes
+
+- Align the HTTP-only client with the 0.25.0 alpha wire contract, including native/captured coding
+  evidence and explicit unavailable protected execution. Preserve bearer-authenticated native-client
+  boundaries without daemon runtime imports. Require Node ^26.12.1; API-types and CLI are released
+  in lockstep. This package does not add a Mac isolation fallback or treat passive facts as readiness.
+
 ## 0.24.0
 
 ### Minor Changes

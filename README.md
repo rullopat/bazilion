@@ -12,7 +12,7 @@ Per-turn subprocess execution with worker↔daemon Node-IPC for messaging, ChatG
 
 ## Quickstart
 
-The source/unreleased candidate supports **Node 26 only: 26.12.1+ within 26.x** (`^26.12.1`).
+The **0.25.0 alpha candidate** supports **Node 26 only: 26.12.1+ within 26.x** (`^26.12.1`).
 The primary development/CI toolchain is **Node 26.12.1 + pnpm 12.15.0**. Earlier releases and other
 major lines are refused before opening Bazilion state; the admitted baselines include upstream
 native cleanup-hook and SQLite backup-completion fixes. See `docs/upgrades.md`. **Published 0.24.0 supports ordinary chat on Linux and macOS.**
@@ -22,20 +22,22 @@ for qualification limits and [release notes](docs/releases.md) for public-artifa
 
 The shared capture adapter keeps Linux fd-relative access and adds guarded macOS capture with
 explicit identity/source revalidation. This is not an atomic filesystem snapshot or blanket
-platform parity: hardened Git inspection and MCP stdio remain Linux-only, and unknown worker
-ownership remains blocked. See [repository context](docs/repository-context.md).
+platform parity: in published 0.24, hardened Git inspection and MCP stdio remain Linux-only.
+The 0.25 alpha adds their independently guarded Mac paths; unknown worker ownership remains blocked. See [repository context](docs/repository-context.md).
 
-**Unreleased 0.25 candidate:** Apple Silicon hardened Git, daemon-owned MCP stdio and managed
+**0.25.0 alpha candidate (publication pending):** Apple Silicon hardened Git, daemon-owned MCP stdio and managed
 browsing are implemented. Ordinary Mac coding is **trusted host execution, unisolated**: use
 `BAZILION_BASH_SANDBOX=off`. Generic native Mac isolation is **deferred and unqualified**;
 explicit native/Docker choices refuse rather than becoming host execution. **Mac Docker/VM
 execution remains removed.** Isolation-required unattended coding and specialist checks are
 unavailable on Mac; existing closed reviewer-only workers have no shell/coding capability and
 retain their independent restrictions. Linux retains separately selected Docker and native
-Bubblewrap/seccomp backends. Current trusted-host source checks run on **macOS 27.0.1 arm64 /
-Node 26.12.1**; earlier native experiments remain unqualified history.
-Earlier Node 24 trials are historical; Node 24 support and routine qualification are retired.
-Installed, desktop and broader release acceptance remain unfinished; this is not a 0.25 announcement.
+Bubblewrap/seccomp backends. Genuine installed CLI/API/web, coding/Git/MCP, non-GUI browsing and
+main-process shutdown/restart/restore are observed on **macOS 27.0.1 (26A434) arm64 / Node 26.12.1**.
+The tested **27.x major line** is sufficient for this alpha; other minors are not implied tested.
+**Mac headed/desktop-browser qualification is deferred to a later version**, explicitly untested
+for 0.25. Earlier native experiments and Node 24 trials remain historical, not current support.
+This is alpha software for operator testing, not complete platform parity or production readiness.
 Historical Docker and Node 26.4.0 observations are not current qualification. The separately audited
 core technical floor is **macOS 13.5**, not an execution claim for older releases; native, browser
 and Git prerequisites still apply. See [BAZ-072](docs/backlog/in_progress/BAZ-072-apple-silicon-feature-parity.md).
@@ -391,4 +393,4 @@ need additional compilers or utilities.
 
 - **qmd vector/hybrid search** — BM25 is wired; the semantic path (embeddings + LLM rerank) is disabled to avoid the multi-GB GGUF model download. Enable opt-in later.
 - **Mempalace memory backend** — out of scope for v1.
-- **Extended image generation** — reference-image editing, masks, precise geometry controls and direct Google image transport are deferred. Live acceptance for each advertised image route remains a release prerequisite.
+- **Extended image generation** — reference-image editing, masks, precise geometry controls and direct Google image transport are deferred. The 0.25 alpha adds no live qualification for previously unobserved provider/image routes: their validation limits remain explicit. Synthetic providers and browser PNGs are not generated-image or account-entitlement evidence.

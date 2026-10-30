@@ -14,8 +14,11 @@ target_release: '0.25.0'
 
 **In progress; trusted Apple Silicon Mac operation is the target. Generic native Mac isolation is
 deferred and unqualified, not a passed gate or a remaining delivery prerequisite.** Preserve goal
-`mvl23iep-1w7ib6`, draft PR #82 and the four completed implementation/design milestones; do not
-restart their approvals or relabel historical failures.
+`mvl23iep-1w7ib6`, delivery PR #82 and completed design/implementation/CI/installed-qualification
+evidence; do not restart their approvals or relabel historical failures. The operator now authorizes
+preparing and publishing exact **0.25.0 as alpha software for personal testing** through the existing
+reviewed release flow, including the necessary delivery/version/tag steps. Website deployment,
+new credentials/spend and unrelated releases remain outside this authority.
 
 - Ordinary Mac operator work is explicitly trusted **unisolated host execution** (`off`). Shell
   commands use host filesystem/network permissions; approvals and tool guards are not containment.
@@ -85,27 +88,31 @@ receipts are successful `linux-bwrap` native receipts with no image/host/Docker 
 real main process settles with zero workspace writers/resources. Retained Docker qualification
 remains separately covered by current hosted CI.
 
-**Latest-stable qualification remains missing.** On 2026-10-29 Apple's
-[security releases](https://support.apple.com/en-us/100100) identifies **macOS 27.2, released
-2026-10-26**, while the authorized physical Mac remains 27.0.1. The observations above qualify only
-that exact observed OS; they do not replace latest-stable or headed/desktop acceptance. No OS update,
-alternate latest-stable host or new graphical-session access is authorized. Real-provider/generated-
-image acceptance also remains unobserved without separate credentials/spend authority. The actual
+**Revised 0.25 alpha acceptance:** the operator accepts the observed **macOS 27.x major line**;
+tested **27.0.1** is sufficient. Apple's newer 27.2 minor is informational, not an OS-upgrade or
+extra qualification gate. Other minors are not implied tested or automatically incompatible.
+**Mac headed/desktop-browser qualification is deferred to a later version**, explicitly untested
+for 0.25; the actual non-GUI evidence above is retained. No new GUI access or session manufacture
+is authorized. Existing historical desktop observations are not current Node 26.12.1 acceptance.
+Real-provider/generated-image acceptance remains unobserved without separate credentials/spend
+authority; report it, without inventing a new spending prerequisite for this bounded alpha. The
 RFC read and browser PNG are narrow evidence, not model entitlement or arbitrary-site acceptance.
 
 ### Remaining required delivery acceptance
 
-1. Obtain authorized actual latest-stable **27.2 Apple Silicon** access and bounded desktop/headed
-   browser permission, then qualify the installed supported journeys and lifecycle on that target.
-   Neither the 27.0.1 observations nor older hosted images substitute for this requirement.
-2. Preserve applicable live-provider/site/image acceptance and obtain its specific access/spend
-   authority where required; existing synthetic-provider/RFC/browser-image observations do not
-   silently retire it. Keep prior failed/unconfirmed resources retained without adoption or signalling.
-3. Preserve the passing current CI, installed Linux native/protected checks and actual Mac protected
-   refusals, policy/approval boundaries and ownership. Revalidate affected code if it changes.
-4. Reconcile support diagnostics/guides and prior applicable auditor objections, safely commit/push,
-   and request completion audit only with the revised evidence. No merge, release, deployment,
-   package-version bump or full-0.25-readiness claim.
+1. Reconcile current guides/diagnostics and PR #82 with this bounded alpha scope; prepare exact
+   0.25.0 versions, release notes, clean-rebootstrap and package metadata. Preserve completed work,
+   prior failed/unconfirmed resources and applicable auditor objections.
+2. Independently review the complete candidate and pass applicable versioned release CI, security,
+   packaging/consumers, installer and upgrade checks. Revalidate meaningful changes, not the retired
+   latest-minor/headed gates. No weaker policy, approvals, ownership or cleanup assertions.
+3. Deliver PR #82 and publish exact 0.25.0 through the existing release workflow, then verify actual
+   GitHub/npm versions, tags, integrity/artifacts and bounded published consumers. Never blindly
+   replay uncertain publication or force/move tags.
+4. Reconcile final records and obtain independent completion audit with actual retained acceptance
+   and publication evidence. Headed testing and unobserved live-provider/generated-image limits stay
+   explicit follow-up, not passes. No website deployment, production-readiness or unrelated full-
+   BAZ-072 parity claim.
 
 The native design/experiment record below is historical and superseded wherever it requires native
 Mac delivery or promises parity without platform refusals. In particular, run **40894638537** at

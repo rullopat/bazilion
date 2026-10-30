@@ -5,7 +5,11 @@ not a requirement or a passed gate for trusted Mac operation. Product admission 
 and Docker selections and isolation-required work; it never silently uses host execution instead.
 Ordinary Mac operator work is explicitly trusted/unisolated. Existing closed reviewer-only workers
 have no shell/coding capability; MCP/browser/Git retain independent protections. Linux native and
-retained Linux Docker coverage remain required. See [coding environments](coding-environments.md).
+retained Linux Docker coverage remain required. The 0.25 alpha accepts the observed Mac 27.x major
+line (installed 27.0.1 / Node 26.12.1); newer minor qualification is not a gate. Mac headed/desktop
+qualification is explicitly deferred to a later version, with actual non-GUI/lifecycle evidence
+retained. The old latest-stable/desktop/native validation plan below is historical, not a new
+release prerequisite. See [coding environments](coding-environments.md).
 
 **Historical design status:** approved native backends, closed worker admission and source integration
 were implemented; Mac native CI failed and installed/latest-stable native qualification did not finish.

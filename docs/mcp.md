@@ -144,9 +144,10 @@ have observed coverage, with latest-stable desktop/non-GUI browser and installed
 passing both baselines. This is not full BAZ-072 release readiness; the story preserves hosted
 TCG deadline failures and unrelated acceptance rather than declaring every environment green.
 Those dual-Node observations are historical: current support is Node 26.12.1 only. Current installed
-26.12.1 owned-stdio/main-process trials also pass on physical 27.0.1; on 2026-10-29 Apple's latest
-stable is 27.2, whose installed qualification remains open. Generic Mac shell isolation deferral
-does not retire or qualify MCP's independent ownership contract.
+26.12.1 owned-stdio/main-process trials also pass on physical 27.0.1. The 0.25 alpha accepts this
+observed 27.x major line; newer 27.x minors are not a release gate, and Mac headed qualification
+is deferred to a later version. Generic Mac shell isolation deferral does not retire or qualify
+MCP's independent ownership contract.
 
 ## Implementation and regression coverage
 

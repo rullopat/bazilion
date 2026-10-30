@@ -117,8 +117,13 @@ supported admission. Explicit native/Docker choices refuse, never become host mo
 operator coding is trusted unisolated host execution (`off`); isolation-required unattended coding
 and specialist checks refuse. Existing closed reviewer-only workers never acquire coding/shell
 capabilities and retain their independent admission. Preserve MCP/browser/Git ownership separately.
-Linux native and Linux Docker remain intact. Current trusted-host source checks use Node 26.12.1;
-Node 24/native Mac experiments remain historical. Installed/headed and broader acceptance remain open.
+Linux native and Linux Docker remain intact. The 0.25 alpha accepts the observed Mac 27.x major
+line: installed 27.0.1 arm64 / Node 26.12.1 CLI/API/web, coding/Git/MCP, non-GUI browsing and actual
+main shutdown/restart/restore are qualified under their bounded contracts. Newer 27.x minors need
+not be qualified to release this alpha. Mac headed/desktop qualification is deferred to a later
+version, not passed; do not demand new GUI access or an OS update. Node 24/native Mac experiments
+remain historical. Unobserved real-provider/generated-image limits stay explicit; no new spend or
+credentials are authorized merely to release. Existing release CI/review/artifact gates still apply.
 The audited core macOS floor is 13.5 (Node), not a claim that older OS versions were tested.
 
 XNU can omit restricted-app environment bytes from `KERN_PROCARGS2` under SIP. An argv-only

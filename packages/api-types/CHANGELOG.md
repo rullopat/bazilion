@@ -1,5 +1,16 @@
 # @bazilion/api-types
 
+## 0.25.0
+
+### Minor Changes
+
+- Add hermetic native execution facts/failure and captured coding/verification environment shapes,
+  and an explicit protected `codingSurface: 'unavailable'` report branch. Mac trusted-host support
+  never implies qualified isolation; consumers must distinguish unavailable/deferred/not-checked
+  from readiness or successful execution. Diagnostic facts and restored receipts grant no authority.
+  Keep zero runtime dependencies and browser-safe wire exports. Require Node ^26.12.1; published
+  package versions remain aligned with the 0.25.0 CLI/client alpha.
+
 ## 0.24.0
 
 ### Minor Changes

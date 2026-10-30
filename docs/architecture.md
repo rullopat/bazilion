@@ -171,7 +171,10 @@ private native browser keychains and reset/relaunch without personal keychain ac
 Mac shell isolation is now deferred/unqualified. Ordinary Mac operator coding is trusted unisolated
 host execution; isolation-required protected coding and specialist checks refuse without fallback.
 Existing closed reviewer-only workers have no shell/coding surface and keep their separate contract.
-Linux native/retained Docker and installed/latest-stable integrated acceptance remain required. See
+Linux native/retained Docker keep independent qualification. The 0.25 alpha accepts installed
+Mac 27.0.1 arm64 / Node 26.12.1 evidence for the 27.x major line, including actual non-GUI browser
+and main-process shutdown/restart/restore. Headed/desktop qualification is deferred, not passed;
+a newer 27.x minor is not an additional release gate. See
 [repository context](repository-context.md), [BAZ-057](backlog/done/BAZ-057-portable-safe-reads.md)
 and [coding environments](coding-environments.md).
 
