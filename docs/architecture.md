@@ -163,7 +163,7 @@ not a Team Policy communication approval.
 Shipped in 0.24.0, ordinary macOS chat has actual installed CLI/API/browser qualification through a shared capture adapter: Linux retains
 fd-relative reads; macOS uses guarded public fs-safe opens plus capture-wide identity/source checks.
 This is not an atomic filesystem snapshot or complete platform parity. In that release hardened
-Git inspection and MCP stdio retain Linux-only admission. Unreleased BAZ-072 adds bounded private
+Git inspection and MCP stdio retain Linux-only admission. The 0.25 alpha adds bounded private
 macOS Git worktree capture and public-libproc-owned macOS MCP stdio while preserving Linux
 inspection/retirement paths. Unknown ownership remains blocked. Owned workers and managed
 headed/non-GUI browsing passed actual macOS 26.6.2 arm64 checks on both Node baselines, including

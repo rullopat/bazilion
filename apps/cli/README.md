@@ -8,7 +8,7 @@ Multi-agent runtime CLI — spawn LLM agents, manage profiles/teams/skills, and 
 
 ## Install
 
-The **0.25.0 alpha candidate** requires **Node 26.12.1+ within 26.x only** (`^26.12.1`).
+The **0.25.0 alpha** requires **Node 26.12.1+ within 26.x only** (`^26.12.1`).
 Earlier releases and other major lines are refused before application imports or state bootstrap.
 The admitted Node 26 baseline includes the upstream native cleanup-hook and SQLite backup-completion
 fixes; upgrading Node does not authorize resetting any Bazilion data.

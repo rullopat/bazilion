@@ -38,7 +38,7 @@ download or substitute a browser. `BROWSER_EXECUTABLE_PATH` selects one explicit
 invalid explicit path fails closed instead of falling back to another browser. The `Mode` setting
 supports `auto`, `headless`, or `headed`: on Linux, auto prefers a usable desktop display and
 otherwise uses headless; explicit headed without a display is refused, never silently changed
-to headless. The 0.25 macOS candidate combines public Security.framework caller-session graphic
+to headless. The 0.25 macOS path combines public Security.framework caller-session graphic
 permission with Quartz facts (current user, console presence and completed login): auto selects
 headed only with both, and headless when the caller's GUI session is positively unavailable.
 A logged-in console is not proof that a separate non-GUI daemon audit session can use it. Unknown native evidence requires an explicit choice.
@@ -73,7 +73,7 @@ prove software-observed native headed launch/retirement, not an independently re
 visual verdict. Broader BAZ-072 release acceptance remains separate; this evidence does not
 guarantee arbitrary browser builds or sites.
 
-On macOS the candidate creates a native keychain and native preference selection **inside each
+On macOS the browser creates a native keychain and native preference selection **inside each
 Agent's managed HOME**, with a generated owner-only secret stored beside it. The short-lived,
 ordinary-user helper uses public Security.framework calls, disables authentication UI, and receives
 the secret on stdin only after live process ownership admission. It never opens/unlocks the
@@ -102,7 +102,7 @@ or the web gateway. A local process running as the same OS user is not isolated 
 surface. Stop requests close Chromium itself and verify owned-process/group exit, rather than
 merely disconnecting Playwright. Signalling authority requires live process birth identity and
 expires at the end of bounded cleanup, including failure; disk recovery markers never authorize
-signalling. The macOS candidate uses public libproc uid and exact BSD/monotonic birth identity,
+signalling. The macOS path uses public libproc uid and exact BSD/monotonic birth identity,
 not second-resolution `ps` timestamps, and requires the launcher's live ChildProcess. Listener
 inspection also checks native birth identity before and after its bounded socket observation.
 Startup failure and uncertain cleanup fail closed.
