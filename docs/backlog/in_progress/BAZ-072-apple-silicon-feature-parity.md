@@ -37,6 +37,16 @@ protected report with no Docker/native readiness, trusted-host CLI/web labels, p
 and Config rejection, and supported-host/refusal CI instead of mandatory Mac native positives.
 Structural metadata/proxy parsing is not admission and retains history/development utility.
 
+**Versioned 0.25.0 alpha candidate:** `bad489f` aligns all three public packages and passes all nine
+[release-candidate CI jobs](https://github.com/rullopat/bazilion/actions/runs/41021756805), local
+3,114 general tests plus four headless probes, 477 security cases, types/lint/build, genuine 0.25.0
+library consumers and upgrade-harness checks. Its genuine 0.25.0 guarded installer also passes on
+physical 27.0.1 arm64 / Node 26.12.1; the versioned installed Linux native/protected trial passes
+with two successful native receipts and no retained writers/resources. Three independent read-only
+review angles find no blocking source issue. A P2 stale Git-guide paragraph is corrected and its
+focused follow-up review is clean. These reviews inspect source; the executed gates above remain
+separate evidence. Publication and actual public-artifact verification are still pending.
+
 Initial revised-scope verification: Linux full checks pass **3,179/77 platform skips** plus four headless probes,
 477 security cases, types/lint/build after the reviewer-only preservation correction. Revised physical
 **macOS 27.0.1 arm64 / Node 26.12.1** source checks pass **2,710/181 platform skips**, plus four

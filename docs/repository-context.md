@@ -122,14 +122,18 @@ a fresh capture is required to observe edits. Final context validation rechecks 
 observations and the registered root binding. These are change detectors, not an atomic snapshot
 of a concurrently hostile source tree. The source and private-copy observations are independent.
 
-Git capture/changes/identity and private-backend tests now run on the macOS source-test path, with
-a focused actual-arm64 job for both supported Node lines. The initial Git candidate passed all 67
-focused cases on actual macOS 26.6.2 arm64 with Node 24.22.0 and 26.4.0 in
-[CI](https://github.com/rullopat/bazilion/actions/runs/39955676046). CLI/web platform diagnostics
-now describe bounded macOS Git support independently of the remaining MCP stdio restriction.
-The hosted `macos-latest` image reported 26.6.2: its label does not establish latest-stable macOS
-qualification. Latest-stable release acceptance and broader coding/container/process work remain
-open; these focused checks are not a 0.25 feature-parity release qualification claim.
+Historical initial Git qualification passed all 67 focused cases on actual macOS 26.6.2 arm64
+with the then-supported Node 24.22.0 and 26.4.0 baselines in
+[CI](https://github.com/rullopat/bazilion/actions/runs/39955676046). That Git-only increment did not
+qualify MCP stdio, broader process parity or a latest-stable OS; its runner label was not evidence.
+
+The current **0.25 alpha** uses **Node 26 only** (baseline **26.12.1**, range **`^26.12.1`**) and
+accepts the observed **macOS 27.x major line**, with installed Git/CLI/API/web trials on **27.0.1 arm64**. Mac MCP stdio is independently
+admitted through native ownership; it is no longer categorically Linux-only. Generic Mac command
+isolation remains deferred, and Mac headed/desktop qualification is deferred to a later version,
+not another alpha release gate. These are bounded support claims, not complete feature parity or
+atomic source snapshots. See [release scope](releases.md) and
+[BAZ-072](backlog/in_progress/BAZ-072-apple-silicon-feature-parity.md).
 
 ## Development and acceptance
 
