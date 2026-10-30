@@ -94,14 +94,14 @@ rebootstrap, never ALTER/import/fallback adapters. Keep turn-specific tool/confi
 revalidation, no POST/tool-call replay, opening-client retirement, busy reaping and ownership
 until close settles. Linux `stdio-owner.ts` retains the surviving-descendant close guard with Pi 1.4;
 unknown identity/cleanup retains a blocked slot. Published 0.24 stdio admission refuses off-Linux.
-Unreleased BAZ-072 adds a macOS candidate using daemon-only public libproc inspection through
+The 0.25 alpha adds macOS admission using daemon-only public libproc inspection through
 pinned `koffi@3.3.3` (install scripts disabled). Preserve exact BSD and monotonic Mach birth facts,
 uid/session/group revalidation, bounded lists and unknown-state refusal before spawn or signalling;
 never substitute shell `ps`, a native-availability label, persisted PIDs or Pi's unsafe close path.
 The binding stays out of coding/chat workers and is never loaded on Linux. Streamable HTTP remains
 available. See `docs/mcp.md` and `docs/pi-runtime.md`.
 
-The unreleased macOS browser candidate requires caller audit-session graphic permission as well
+The macOS browser path requires caller audit-session graphic permission as well
 as Quartz console facts; a logged-in console does not make a separate non-GUI session graphical.
 Its native keychain lives inside each Agent's managed browser HOME, not the operator's login
 keychain. A short-lived ordinary-user Security.framework helper receives its generated secret only
@@ -192,21 +192,21 @@ ownership after restart/restore remains blocked. See `docs/repository-context.md
 `docs/agent-engine.md` and `docs/backlog/done/BAZ-057-portable-safe-reads.md` for scope.
 The historical 0.23.0 package does not have this ordinary macOS chat support.
 
-Unreleased **0.25 / BAZ-072** adds a bounded private-worktree backend to the single hardened Git
+The **0.25 / BAZ-072** alpha adds a bounded private-worktree backend to the single hardened Git
 inspector on macOS. Never give external Git the live macOS source pathname: ignore-aware guarded
 reads materialize private scratch, source observations validate independently, and snapshot file
 reads use the frozen private bytes. Linux retains its fd-pinned worktree. Unsafe/oversized layouts
 still refuse; the Git increment does not qualify complete macOS feature parity, MCP stdio or
 worker-process parity. See `docs/repository-context.md` and the active BAZ-072 story.
 
-The 0.25 candidate also binds macOS workers to live ChildProcess authority plus daemon-only public
+The 0.25 alpha also binds macOS workers to live ChildProcess authority plus daemon-only public
 libproc observations before executable input. Group escalation needs original anchors captured while
 the parent is live; never create an anchor from a stored/restored PID. Natural output EOF and group
 absence are required for cleanup. Coded nonzero exit is not a success verdict; a forced host-command
 exit still cannot prove detached work stopped. Shutdown fences new turns and settles registered
 workers before closing resources/DB. Unknown cleanup retains its writer and private scratch.
 
-Unreleased native coding on Linux uses a separate live trusted-worker owner: actual ChildProcess,
+Linux native coding uses a separate live trusted-worker owner: actual ChildProcess,
 matched birth/uid/parent/namespaces and an original pidfd. Only workers with `hostCommands:false`
 enter it; native commands remain separately owned sandbox jobs. Require actual natural stdout/stderr
 EOF and an absent original worker group; inaccessible unrelated `/proc/*/fd` entries are not a native

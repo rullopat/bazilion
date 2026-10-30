@@ -101,7 +101,7 @@ In published **0.24.0**, hardened Git requires its Linux fd-pinned worktree. A m
 therefore reports Git `unavailable` with `git_inspection_unavailable`, independently of complete
 instructions. That released qualification does not cover the implementation below.
 
-### Unreleased 0.25 work: private macOS Git worktree
+### 0.25 alpha: private macOS Git worktree
 
 [BAZ-072](backlog/in_progress/BAZ-072-apple-silicon-feature-parity.md) adds a private worktree backend
 inside the existing hardened inspector. Linux retains its descriptor-pinned source. On macOS,

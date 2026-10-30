@@ -16,11 +16,11 @@ Rebuild native dependencies when changing their Node ABI.
 Native verification changes the canonical alpha schema: an `unknown` outcome may retain its own
 interrupted command receipt without claiming an exit code or confirmed cleanup. This edits
 `0001_init.sql` under the existing clean-install contract; there is no ALTER migration or importer.
-Published 0.23.0 and 0.24.0 schema objects therefore do not match this candidate and must refuse
+Published 0.23.0 and 0.24.0 schema objects therefore do not match 0.25.0 and must refuse
 unchanged. Preserve the entire old home and use the authorized-reset guidance below; do not reset
 merely because Node changed, or assume that old backups can be imported into the new schema.
 
-The candidate matrix requires ten genuine prior releases to refuse without changing state. A
+The 0.25 release matrix checks ten genuine prior releases refuse without changing state. A
 separate fresh-current fixture retains its sentinel and paired auth across two further healthy
 starts. That is current-schema idempotence, not an in-place upgrade from an incompatible release.
 The published 0.24.0 continuity observation below remains historical and is not relabelled.
@@ -37,8 +37,8 @@ bounded startup/state-continuity coverage, not a general transcript, backup or p
 [Final six-job CI](https://github.com/rullopat/bazilion/actions/runs/39941560898) passed this
 continuity check, unchanged-state refusals for all eight older fixtures, installed Linux/macOS
 CLI trials and offline imports/browser-only consumer types for both library tarballs.
-All three packages are now npm 0.24.0/latest; actual public archives and fresh guarded consumers
-were checked separately. See [releases](releases.md). Incompatible older homes still follow the
+At 0.24.0 publication, all three packages were npm 0.24.0/latest; actual public archives and fresh
+guarded consumers were checked separately. See [releases](releases.md). Incompatible older homes still follow the
 unchanged refusal/rebootstrap boundary below.
 
 Doctor now exits on structural installation health only. Protected automation must separately

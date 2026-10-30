@@ -1,6 +1,6 @@
 # MCP: daemon-owned Pi client
 
-Bazilion 0.24.0 uses **`@earendil-works/pi-mcp@1.4.0`** inside the daemon.
+Bazilion 0.25.0 uses **`@earendil-works/pi-mcp@1.4.0`** inside the daemon (unchanged from 0.24).
 Pi handles JSON-RPC,
 initialization, request correlation/cancellation, stdio framing and Streamable HTTP sessions.
 Bazilion retains database configuration, encrypted credentials, capability admission, bounded
@@ -18,9 +18,10 @@ bazilion mcp disable <server-id>
 bazilion mcp rm <server-id>
 ```
 
-**In published 0.24.0, stdio execution is Linux-only.** Other platforms refuse before creating a connection or spawning
-any server process; use **Streamable HTTP** instead. Registration remains portable and does not
-launch a server. HTTP MCP remains available on macOS.
+**In 0.25 alpha, stdio admission supports Linux and Apple Silicon macOS** through their independent
+native ownership checks. Unknown inspection/cleanup still refuses or retains the slot; use
+**Streamable HTTP** when stdio is unavailable. Historical published 0.24.0 stdio is Linux-only.
+Registration remains portable and does not launch a server; HTTP MCP remains available on macOS.
 
 The equivalent UI is **Config → MCP**; HTTP is `/api/mcp-servers[/:id[/test]]`.
 Bearer tokens supplied via `--token` or the UI are encrypted under `MCP_TOKEN_<id>` and are
@@ -98,7 +99,7 @@ qualified by this normal-retirement evidence. In published 0.24.0, other platfor
 before spawn rather than using Pi's native close without equivalent ownership checks. No
 all-platform stdio cleanup or abnormal-exit guarantee is claimed.
 
-## Unreleased 0.25: macOS owned stdio
+## 0.25 alpha: macOS owned stdio
 
 BAZ-072 adds a daemon-only macOS inspection backend using public `libproc` APIs through pinned
 `koffi@3.3.3`. Its platform-specific prebuilt is a declared dependency of the daemon and packed CLI;

@@ -1,18 +1,35 @@
 # Releases
 
-## 0.25.0 alpha candidate — publication pending
+## 0.25.0 — published 2026-10-30 (alpha)
 
-The revised target is **trusted Apple Silicon Mac operation**, with explicitly unisolated host
+[GitHub release](https://github.com/rullopat/bazilion/releases/tag/v0.25.0) ·
+[Upgrade guidance](upgrades.md)
+
+`bazilion`, `@bazilion/api-types` and `@bazilion/client` are **0.25.0/latest**.
+PR #82 merged as `2f1a1f059e282b41dfba83f649c2a9fa89f14be7`; the annotated umbrella tag and
+per-package tags identify that source. [Final nine-job CI](https://github.com/rullopat/bazilion/actions/runs/41024307235)
+and the existing [publication workflow](https://github.com/rullopat/bazilion/actions/runs/41025663188)
+passed. Product maturity remains **alpha**, for operator testing.
+
+This release delivers **trusted Apple Silicon Mac operation**, with explicitly unisolated host
 execution, independent hardened Git/MCP/managed-browser protections and fail-closed refusal when
 qualified isolation is required. Generic native Mac isolation is deferred/unqualified; Mac Docker/VM
 support is removed. Linux native and retained Linux Docker keep their independent safety contracts.
 
-The candidate supports **Node 26 only**, range **`^26.12.1`**, exact baseline **26.12.1**, pnpm
+The release supports **Node 26 only**, range **`^26.12.1`**, exact baseline **26.12.1**, pnpm
 **12.15.0**. Node 24 and earlier dual-baseline/VM trials are historical, not current support.
-Implementation `360d205` passes all nine revised hosted CI jobs; the versioned release candidate
-still needs its normal release checks. Actual installed Mac
-**27.0.1 (26A434), arm64** trusted-host/non-GUI and main-process lifecycle trials, plus installed
-Linux native/protected checks and Mac protected refusals, have bounded observed coverage.
+Actual installed **27.0.1 (26A434), arm64** trusted-host/non-GUI and main-process lifecycle
+trials, plus installed Linux native/protected checks and Mac protected refusals, have bounded
+observed coverage. **Genuine public CLI archives** pass guarded offline installs, CLI/API/web/MCP
+checks and owned cleanup on Linux and the accepted Mac; the public libraries pass offline runtime
+imports and browser-only type consumers. These trials disable npm lifecycle scripts and explicitly
+rebuild only project-admitted dependencies; they do not qualify unrestricted default npm scripts.
+
+All three public archives pass integrity, structure and registry ECDSA signature verification.
+The library archive bytes match the qualified candidate. The CLI differs only in proven generated
+SSR build-root metadata and its renamed-manifest reference; no general cross-build byte-equivalence
+is claimed. Registry metadata supplies no `gitHead` or build-source attestation metadata, so
+**no cryptographic build-source provenance is claimed**.
 
 For this alpha, the operator accepts the tested **macOS 27.x major line**, observed on **27.0.1**.
 Apple's newer 27.2 minor is informational, not another release gate or an OS-upgrade requirement.
@@ -22,17 +39,16 @@ non-GUI coverage is retained. Intel/Rosetta and Windows remain out of scope. Rea
 image acceptance remains unobserved without separate authorized access/spend. These limits must be
 reported, not silently converted into passes or new spending requirements for this bounded alpha.
 [BAZ-072](backlog/in_progress/BAZ-072-apple-silicon-feature-parity.md) preserves failed histories,
-unconfirmed ownership and remaining acceptance. Preparing and publishing exact **0.25.0** through
-the existing release process is authorized after applicable review/CI/artifact gates; website
-deployment is not. No production-readiness or unrelated full-parity claim follows. Published
-0.24.0 limits below remain historical fact.
+unconfirmed ownership and remaining acceptance. No website deployment was performed. The release
+does not erase failed histories, release uncertain resources, establish production readiness or
+close unrelated full-parity work. Published 0.24.0 limits below remain historical fact.
 
 ## 0.24.0
 
 [GitHub release](https://github.com/rullopat/bazilion/releases/tag/v0.24.0) ·
 [What's new](https://bazilion.com/docs/whats-new-0-24/) · [Upgrade guidance](upgrades.md)
 
-Published 2026-10-23. `bazilion`, `@bazilion/api-types` and `@bazilion/client` are **0.24.0/latest**.
+Published 2026-10-23. `bazilion`, `@bazilion/api-types` and `@bazilion/client` were published as **0.24.0/latest**.
 The annotated tag identifies `06e4c3ddd724474484a675cdadc248a8c2762be6`. Product maturity remains alpha.
 See the [changelog](../CHANGELOG.md) for ordinary macOS chat, embedded Pi 1.4.0 and independent
 installation/platform/protected-readiness diagnostics. Doctor exits on structural health only;

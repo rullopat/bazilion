@@ -26,7 +26,7 @@ Pi owns the model/tool loop and canonical session transcript. Bazilion supplies 
 context and the execution adapter. Existing Bazilion-managed skills remain available; this change
 does not activate ambient Pi extensions or repository-provided executable plugins.
 
-## Trusted Mac host execution and explicit Linux isolation (unreleased 0.25)
+## Trusted Mac host execution and explicit Linux isolation (0.25 alpha)
 
 | Platform/posture | Current behavior |
 | --- | --- |
@@ -212,7 +212,7 @@ current revision. Saving never executes commands. Allowed environment values are
 `CI=true|false`, `NO_COLOR=0|1` and `TZ=UTC`; arbitrary credentials/startup hooks are rejected.
 Defaults do not change an explicitly unprotected host turn's cwd or environment.
 
-The unreleased native configuration uses a distinct explicit choice, with no image:
+Linux native configuration uses a distinct explicit choice, with no image:
 
 ```json
 {

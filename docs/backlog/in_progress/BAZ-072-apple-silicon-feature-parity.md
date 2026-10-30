@@ -12,8 +12,8 @@ target_release: '0.25.0'
 
 ## Current support scope and acceptance — 2026-10-29 amendment
 
-**In progress; trusted Apple Silicon Mac operation is the target. Generic native Mac isolation is
-deferred and unqualified, not a passed gate or a remaining delivery prerequisite.** Preserve goal
+**The bounded 0.25.0 alpha is released; wider BAZ-072 work remains in progress. Generic native
+Mac isolation is deferred and unqualified, not a passed gate or a remaining alpha prerequisite.** Preserve goal
 `mvl23iep-1w7ib6`, delivery PR #82 and completed design/implementation/CI/installed-qualification
 evidence; do not restart their approvals or relabel historical failures. The operator now authorizes
 preparing and publishing exact **0.25.0 as alpha software for personal testing** through the existing
@@ -45,7 +45,19 @@ physical 27.0.1 arm64 / Node 26.12.1; the versioned installed Linux native/prote
 with two successful native receipts and no retained writers/resources. Three independent read-only
 review angles find no blocking source issue. A P2 stale Git-guide paragraph is corrected and its
 focused follow-up review is clean. These reviews inspect source; the executed gates above remain
-separate evidence. Publication and actual public-artifact verification are still pending.
+separate evidence. PR #82 then merged as `2f1a1f059e282b41dfba83f649c2a9fa89f14be7`; final-head
+[nine-job CI](https://github.com/rullopat/bazilion/actions/runs/41024307235) and
+[publication](https://github.com/rullopat/bazilion/actions/runs/41025663188) pass. Exact 0.25.0 is
+public on GitHub/npm latest, with annotated umbrella and package tags bound to that source.
+
+Genuine public archives verify integrity, safe structure and registry ECDSA signatures. Both public
+libraries pass offline runtime/browser-only consumers and byte-match the qualified candidate.
+The public CLI passes guarded offline install/CLI/API/web/MCP/owned-cleanup trials on Linux and
+physical 27.0.1 arm64 / Node 26.12.1. Its only candidate differences are proven generated SSR
+source-root metadata and a renamed-manifest reference. Registry metadata supplies no `gitHead` or
+build-source attestation metadata; no cryptographic build-source provenance is claimed. An initial
+CLI metadata 404 is retained as an observation; publication was not replayed, and later actual
+metadata/archives confirm visibility.
 
 Initial revised-scope verification: Linux full checks pass **3,179/77 platform skips** plus four headless probes,
 477 security cases, types/lint/build after the reviewer-only preservation correction. Revised physical
@@ -108,21 +120,21 @@ Real-provider/generated-image acceptance remains unobserved without separate cre
 authority; report it, without inventing a new spending prerequisite for this bounded alpha. The
 RFC read and browser PNG are narrow evidence, not model entitlement or arbitrary-site acceptance.
 
-### Remaining required delivery acceptance
+### Bounded alpha delivery and deferred follow-up
 
-1. Reconcile current guides/diagnostics and PR #82 with this bounded alpha scope; prepare exact
-   0.25.0 versions, release notes, clean-rebootstrap and package metadata. Preserve completed work,
-   prior failed/unconfirmed resources and applicable auditor objections.
-2. Independently review the complete candidate and pass applicable versioned release CI, security,
-   packaging/consumers, installer and upgrade checks. Revalidate meaningful changes, not the retired
-   latest-minor/headed gates. No weaker policy, approvals, ownership or cleanup assertions.
-3. Deliver PR #82 and publish exact 0.25.0 through the existing release workflow, then verify actual
-   GitHub/npm versions, tags, integrity/artifacts and bounded published consumers. Never blindly
-   replay uncertain publication or force/move tags.
-4. Reconcile final records and obtain independent completion audit with actual retained acceptance
-   and publication evidence. Headed testing and unobserved live-provider/generated-image limits stay
-   explicit follow-up, not passes. No website deployment, production-readiness or unrelated full-
-   BAZ-072 parity claim.
+1. Exact **0.25.0** is released through the reviewed existing workflow, with actual public package,
+   tag, integrity/signature and bounded consumer/install evidence above. No forced tag, blind
+   publication replay, website deployment, new credentials/spend or privilege changes.
+2. Mac **27.x**, observed **27.0.1**, satisfies this alpha's platform scope. **Headed/desktop Mac
+   qualification is deferred to a later version** and remains untested for this release. Generic
+   native Mac isolation remains unsupported/deferred; neither deferral counts as a pass.
+3. Real-provider/generated-image and arbitrary-site acceptance stays unobserved where not explicitly
+   qualified. Synthetic/public-page/browser-PNG observations do not establish entitlement or model
+   capability. No new spending requirement is invented to complete this bounded alpha.
+4. Wider BAZ-072 parity is not closed by publication. Preserve original failed histories and all
+   unconfirmed resources without adoption, signalling, marker deletion or forced cleanup. Alpha
+   delivery is not production readiness; independent completion assessment must use this revised
+   scope and actual evidence, not the superseded latest-minor/desktop/native-Mac gates.
 
 The native design/experiment record below is historical and superseded wherever it requires native
 Mac delivery or promises parity without platform refusals. In particular, run **40894638537** at
