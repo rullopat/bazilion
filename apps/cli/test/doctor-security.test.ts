@@ -8,7 +8,7 @@ import {
   platformCapabilityDoctorLines,
 } from '../src/commands/doctor.ts'
 
-const executionSecurity: ExecutionSecurityReport = {
+const executionSecurity = {
   configuredOperatorHttp: {
     protected: false,
     codingSurface: 'host',
@@ -35,7 +35,7 @@ const executionSecurity: ExecutionSecurityReport = {
     },
     remediation: 'Connect ChatGPT for OpenAI Codex on the Config page.',
   },
-}
+} satisfies ExecutionSecurityReport
 
 test('doctor clearly separates configured operator HTTP from protected unattended turns', () => {
   const report: Pick<HealthReport, 'executionSecurity' | 'shellSecurity'> = {
@@ -51,8 +51,8 @@ test('doctor clearly separates configured operator HTTP from protected unattende
   }
   const output = executionSecurityDoctorLines(report).join('\n')
 
-  expect(output).toContain('configured operator HTTP (legacy · unprotected)')
-  expect(output).toContain('coding surface: host tools')
+  expect(output).toContain('configured operator HTTP (trusted host · unisolated)')
+  expect(output).toContain('coding surface: trusted host tools (unisolated)')
   expect(output).toContain('browser: enabled')
   expect(output).toContain('MCP: enabled')
   expect(output).toContain(
@@ -118,7 +118,7 @@ test.each([
   [{ ok: false, protectedWorkBaselineReady: false }, true],
 ] as const)('doctor exit status reflects installation health independently of protected readiness: %j', (report, expected) => {
   expect(doctorHasIssues(report)).toBe(expected)
-  const output = doctorSummaryLines(report).join('\n')
+  const output = doctorSummaryLines(report, 'docker').join('\n')
   expect(output).toContain(report.ok ? 'install is healthy ✓' : 'installation issues found ✗')
   expect(output).toContain('ordinary chat execution: not checked')
   expect(output).toContain(
@@ -145,8 +145,11 @@ test.each([
   }
   expect(output).not.toContain('✓')
   if (platform === 'darwin') {
-    expect(output).toContain('MCP stdio: unsupported')
-    expect(output).toContain('Use Streamable HTTP instead')
+    expect(output).toContain('Hardened Git inspection: supported')
+    expect(output).toContain('bounded private worktree capture')
+    expect(output).toContain('MCP stdio: supported')
+    expect(output).toContain('native process ownership inspection')
+    expect(output).toContain('Use Streamable HTTP if')
     expect(output).toContain('Ordinary interactive chat: supported')
   }
 })

@@ -5,10 +5,12 @@ Codex reads it directly; Claude Code imports it from `CLAUDE.md`.
 
 ## Dev commands
 
-Supported Node lines are **24.22.0+ within 24.x or 26.4.0+ within 26.x**
-(`^24.22.0 || ^26.4.0`). Earlier/other lines are refused before bootstrap because the native
-cleanup-hook API needs the upstream fix. CLI/daemon launchers must guard before linking payloads;
-keep manifests, guards and CI aligned. pnpm 10+ is the package manager. Everything runs via `tsx`,
+Supported Node is **26.12.1+ within 26.x only** (`^26.12.1`). Node 24 support is retired;
+retain historical evidence and unsupported-version rejection tests, not compatibility branches. The primary toolchain is Node **26.12.1** and pnpm **12.15.0**,
+pinned in `mise.toml` and the root manifest. Earlier/other lines are refused before bootstrap;
+the admitted baselines include the native cleanup-hook and SQLite backup-completion fixes.
+CLI/daemon launchers must guard before linking payloads; keep manifests, guards and CI aligned.
+Everything runs via `tsx`,
 pinned as a root dev-dependency.
 
 ```sh
@@ -91,8 +93,52 @@ extensions. Legacy SSE is retired across the schema/API/CLI/web; prior schemas n
 rebootstrap, never ALTER/import/fallback adapters. Keep turn-specific tool/config/credential
 revalidation, no POST/tool-call replay, opening-client retirement, busy reaping and ownership
 until close settles. Linux `stdio-owner.ts` retains the surviving-descendant close guard with Pi 1.4;
-unknown identity/cleanup retains a blocked slot. Stdio admission refuses before spawn off-Linux;
-Streamable HTTP remains available. See `docs/mcp.md` and `docs/pi-runtime.md`.
+unknown identity/cleanup retains a blocked slot. Published 0.24 stdio admission refuses off-Linux.
+Unreleased BAZ-072 adds a macOS candidate using daemon-only public libproc inspection through
+pinned `koffi@3.3.3` (install scripts disabled). Preserve exact BSD and monotonic Mach birth facts,
+uid/session/group revalidation, bounded lists and unknown-state refusal before spawn or signalling;
+never substitute shell `ps`, a native-availability label, persisted PIDs or Pi's unsafe close path.
+The binding stays out of coding/chat workers and is never loaded on Linux. Streamable HTTP remains
+available. See `docs/mcp.md` and `docs/pi-runtime.md`.
+
+The unreleased macOS browser candidate requires caller audit-session graphic permission as well
+as Quartz console facts; a logged-in console does not make a separate non-GUI session graphical.
+Its native keychain lives inside each Agent's managed browser HOME, not the operator's login
+keychain. A short-lived ordinary-user Security.framework helper receives its generated secret only
+after live native ownership admission, with authentication UI disabled. Keep that helper packaged,
+credential-scrubbed, and fail closed; unknown retirement retains the browser owner marker. Its
+private password is owner-only profile state, excluded from backup with the profile, not a new
+provider secret or Agent capability. Privileged session provisioning is disposable-CI-only; the
+product never elevates privileges. Native headed/non-GUI browsing, reset/relaunch and lifecycle
+checks passed on macOS 26.6.2 arm64 with both Node baselines. Historical 27.0.1 trials included local ARM Docker and the older Node 26.4.0 baseline; do not
+relabel them as current acceptance. macOS Docker/VM execution and its private tooling are removed
+by operator request. Generic native Mac isolation is now deferred/unqualified and unavailable in
+supported admission. Explicit native/Docker choices refuse, never become host mode. Ordinary Mac
+operator coding is trusted unisolated host execution (`off`); isolation-required unattended coding
+and specialist checks refuse. Existing closed reviewer-only workers never acquire coding/shell
+capabilities and retain their independent admission. Preserve MCP/browser/Git ownership separately.
+Linux native and Linux Docker remain intact. The 0.25 alpha accepts the observed Mac 27.x major
+line: installed 27.0.1 arm64 / Node 26.12.1 CLI/API/web, coding/Git/MCP, non-GUI browsing and actual
+main shutdown/restart/restore are qualified under their bounded contracts. Newer 27.x minors need
+not be qualified to release this alpha. Mac headed/desktop qualification is deferred to a later
+version, not passed; do not demand new GUI access or an OS update. Node 24/native Mac experiments
+remain historical. Unobserved real-provider/generated-image limits stay explicit; no new spend or
+credentials are authorized merely to release. Existing release CI/review/artifact gates still apply.
+The audited core macOS floor is 13.5 (Node), not a claim that older OS versions were tested.
+
+XNU can omit restricted-app environment bytes from `KERN_PROCARGS2` under SIP. An argv-only
+response is **not reported**, never proof of an empty or secret-free environment. Test-only direct
+spawn observation captures the same actual options passed to `spawn`, is birth/profile-bound and
+has no wire/persistent/signalling authority. Preserve native assertions when bytes are reported;
+never disable SIP, request private entitlements or decode unrelated processes' environments to
+obtain a green check.
+
+Linux-only Docker admission budgets distinguish metadata inspection (2 s) from OCI create/probe-start
+(5 s each). The probe is fixed `true`, before model/worker admission;
+command-declared deadlines and the separate cleanup bounds are unchanged. Always forward the
+turn's AbortSignal into `prepareAgentDockerInputs` → `preflightProtectedDockerRuntime`: cancellation
+must stop active create/start and await cleanup, never wait out the readiness budget or authorize
+an unknown-resource release. No CI-only timeout override or automatic start replay.
 
 ### SQLite driver
 
@@ -139,12 +185,34 @@ repository capability. See `docs/repository-context.md` and
 Shipped in **0.24.0**, BAZ-057 adds macOS ordinary chat through a shared capture
 adapter using public `@openclaw/fs-safe@0.26.8` APIs. Preserve Linux fd-relative access;
 macOS guarded opens need capture-wide registration/directory/file/absence checks, not a
-native-mode label or an atomic-snapshot claim. Hardened Git and MCP stdio remain Linux-only.
-macOS worker settlement requires live ChildProcess authority, normal exit, natural pipe EOF
+native-mode label or an atomic-snapshot claim. In that release, hardened Git and MCP stdio remain Linux-only.
+In 0.24, macOS worker settlement requires live ChildProcess authority, normal exit, natural pipe EOF
 and an absent original group. Persisted receipts never authorize PID signalling; unknown
 ownership after restart/restore remains blocked. See `docs/repository-context.md`,
 `docs/agent-engine.md` and `docs/backlog/done/BAZ-057-portable-safe-reads.md` for scope.
 The historical 0.23.0 package does not have this ordinary macOS chat support.
+
+Unreleased **0.25 / BAZ-072** adds a bounded private-worktree backend to the single hardened Git
+inspector on macOS. Never give external Git the live macOS source pathname: ignore-aware guarded
+reads materialize private scratch, source observations validate independently, and snapshot file
+reads use the frozen private bytes. Linux retains its fd-pinned worktree. Unsafe/oversized layouts
+still refuse; the Git increment does not qualify complete macOS feature parity, MCP stdio or
+worker-process parity. See `docs/repository-context.md` and the active BAZ-072 story.
+
+The 0.25 candidate also binds macOS workers to live ChildProcess authority plus daemon-only public
+libproc observations before executable input. Group escalation needs original anchors captured while
+the parent is live; never create an anchor from a stored/restored PID. Natural output EOF and group
+absence are required for cleanup. Coded nonzero exit is not a success verdict; a forced host-command
+exit still cannot prove detached work stopped. Shutdown fences new turns and settles registered
+workers before closing resources/DB. Unknown cleanup retains its writer and private scratch.
+
+Unreleased native coding on Linux uses a separate live trusted-worker owner: actual ChildProcess,
+matched birth/uid/parent/namespaces and an original pidfd. Only workers with `hostCommands:false`
+enter it; native commands remain separately owned sandbox jobs. Require actual natural stdout/stderr
+EOF and an absent original worker group; inaccessible unrelated `/proc/*/fd` entries are not a native
+worker authority source. Signal only the original pidfd, never a restored PID or adopted descendant.
+Restored/substituted native-worker rows permanently revoke their live binding; keep blocked resources
+and handles, with no legacy-recovery fallback. Legacy host/Docker worker recovery is unchanged.
 
 ### Coding evidence: progress, retained diagnostics and change review (BAZ-041/042, shipped in v0.17.0)
 
@@ -167,8 +235,9 @@ layer and not a second transcript. Pi's session JSONL stays the authoritative co
   the change was relevant to what was tested; do not add a "verified" badge.
 - Git inspection has **one** hardened implementation, `src/lib/git/capture.ts`. Do not add a second Git
   path: it copies bounded metadata into scratch with a Bazilion-authored config, refuses unsupported
-  layouts, reaches the work tree through a pinned directory descriptor, and applies every hardening flag
-  inside `runGit` so a caller cannot forget them. Inspection never mutates the repository and never runs
+  layouts, reaches Linux source through a pinned directory descriptor (macOS uses bounded private
+  worktree scratch), and applies every hardening flag inside `runGit` so a caller cannot forget them.
+  Inspection never mutates the repository and never runs
   repository-configured helpers.
 - Review feedback is **file-level**: identity is `(team, snapshotId, path)`, with a selected line range
   carried as context only. A snapshot already records a digest per changed path, so staleness stays
@@ -235,6 +304,7 @@ API in `apps/daemon/src/core/`: `openSecrets(db, password)` and `openConfig(db)`
 
 - Biome formatter: single quotes, no semicolons, trailing commas, 2-space indent, 100-col width.
 - TS is strict with `noUncheckedIndexedAccess` and `verbatimModuleSyntax`. `.ts` extensions are required on all relative imports (`allowImportingTsExtensions: true`) — `tsx` and Vite both handle it.
+- Keep source-worker-reachable modules erasable TypeScript: the worker's native strip-only path cannot parse parameter properties or enums. Use explicit fields/assignments. Root tsc/Vitest success alone is not source-worker execution evidence.
 - `apps/web/` is excluded from the root `tsconfig.json` and from biome (it has its own Vite/TanStack-managed tooling). Run `pnpm --filter @bazilion/web typecheck` for web-only TS checks. The whole-tree `typecheck` intentionally skips it.
 - **The alpha database contract is clean-install only.** The complete canonical schema lives in
   `apps/daemon/src/core/db/migrations/0001_init.sql`. Until a stable migration contract is

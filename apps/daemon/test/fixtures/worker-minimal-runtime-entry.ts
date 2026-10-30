@@ -2,6 +2,10 @@ import { fstatSync } from 'node:fs'
 import type { ProviderMessage } from '@bazilion/api-types'
 import { createIpcApiKeyRefresher } from '../../src/runtime/worker/api-key-refresh.ts'
 import { createIpcClient } from '../../src/runtime/worker/ipc-client.ts'
+import {
+  initializeMinimalWorkerProcessEnv,
+  type MinimalWorkerScratch,
+} from '../../src/runtime/worker/runtime.ts'
 
 interface FixtureInput {
   kind: 'protected'
@@ -9,7 +13,7 @@ interface FixtureInput {
   message: string
   turnId: string
   runtime: { providerName: 'openai-codex'; apiKey: string }
-  scratch: { root: string }
+  scratch: MinimalWorkerScratch
   apiKeyRefreshEnabled: true
 }
 
@@ -30,6 +34,7 @@ async function readInput(): Promise<{ input: FixtureInput; raw: string }> {
 
 async function main(): Promise<void> {
   const { input, raw } = await readInput()
+  initializeMinimalWorkerProcessEnv(process.env, input.scratch)
   if (!input.apiKeyRefreshEnabled) throw new Error('refresh IPC was not enabled')
   if (input.message === 'native-abi-mismatch') {
     await new Promise<void>((resolve, reject) => {

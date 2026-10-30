@@ -14,6 +14,7 @@ import { isAbsolute, join, relative, sep } from 'node:path'
 import type {
   Attachment,
   BashApprovalMode,
+  NativeExecutionAdmission,
   ReasoningLevel,
   ResolvedAgent,
 } from '@bazilion/api-types'
@@ -27,6 +28,7 @@ import type { PromptSkill, ProtectedHomeDocuments } from '../session/prompt.ts'
 import { validateDockerCodingSelection } from '../shell/coding.ts'
 import type { ProtectedDockerRuntime } from '../shell/docker.ts'
 import type { InjectedMcpTool } from './ipc-protocol.ts'
+import { assertNativeExecutionAdmission } from './native-contract.ts'
 
 export const REDACTED_VALUE = '[REDACTED]'
 
@@ -56,6 +58,8 @@ export interface ProtectedWorkerPaths {
 }
 
 export interface ConfiguredOperatorHttpWorkerSpec {
+  nativeExecution?: NativeExecutionAdmission
+  nativeVerificationRequestEnabled?: true
   containerNamespace?: string
   configuredDocker?: { paths: ProtectedWorkerPaths; docker: ProtectedDockerRuntime }
   repositoryContext: import('@bazilion/api-types').RepositoryContextReport
@@ -77,6 +81,8 @@ export interface ConfiguredOperatorHttpWorkerSpec {
 }
 
 export interface ProtectedWorkerSpec {
+  nativeExecution?: NativeExecutionAdmission
+  nativeVerificationRequestEnabled?: true
   containerNamespace?: string
   repositoryContext: import('@bazilion/api-types').RepositoryContextReport
   questionEnabled?: boolean
@@ -90,7 +96,7 @@ export interface ProtectedWorkerSpec {
   bashApprovalMode: 'auto_deny'
   runtime: ProtectedProviderWorkerRuntime
   paths: ProtectedWorkerPaths
-  docker: ProtectedDockerRuntime
+  docker?: ProtectedDockerRuntime
   /** The only general web capability in the protected normal surface. */
   webFetchEnabled: true
   /** BAZ-067: discovery host present only when the operator configured a backend. */
@@ -181,8 +187,10 @@ const REASONING_LEVELS = new Set<ReasoningLevel>([
 ])
 
 const CONFIGURED_KEYS = new Set([
+  'nativeVerificationRequestEnabled',
   'containerNamespace',
   'configuredDocker',
+  'nativeExecution',
   'imageGenerationEnabled',
   'webSearchEnabled',
   'repositoryContext',
@@ -212,6 +220,7 @@ const CONFIGURED_REQUIRED_KEYS = new Set([
   'bashApprovalMode',
 ])
 const PROTECTED_KEYS = new Set([
+  'nativeVerificationRequestEnabled',
   'imageGenerationEnabled',
   'containerNamespace',
   'repositoryContext',
@@ -226,6 +235,7 @@ const PROTECTED_KEYS = new Set([
   'runtime',
   'paths',
   'docker',
+  'nativeExecution',
   'webFetchEnabled',
   'webSearchEnabled',
   'apiKeyRefreshEnabled',
@@ -235,6 +245,9 @@ const PROTECTED_REQUIRED_KEYS = new Set(
   [...PROTECTED_KEYS].filter(
     (key) =>
       key !== 'images' &&
+      key !== 'docker' &&
+      key !== 'nativeExecution' &&
+      key !== 'nativeVerificationRequestEnabled' &&
       key !== 'questionEnabled' &&
       key !== 'containerNamespace' &&
       key !== 'imageGenerationEnabled' &&
@@ -341,6 +354,20 @@ export function minimalWorkerProcessEnv(
   }
 }
 
+/**
+ * CoreFoundation can add this locale/uid bookkeeping key after exec even when the parent supplies
+ * the exact minimal environment. Remove it, rather than admitting it (or any ambient value) to
+ * the worker contract. Every remaining key and value still passes the unchanged exact validator.
+ */
+export function initializeMinimalWorkerProcessEnv(
+  env: NodeJS.ProcessEnv,
+  scratch: MinimalWorkerScratch,
+  platform: NodeJS.Platform = process.platform,
+): void {
+  if (platform === 'darwin') delete env.__CF_USER_TEXT_ENCODING
+  validateMinimalWorkerProcessEnv(env, scratch, platform)
+}
+
 export function validateMinimalWorkerProcessEnv(
   env: Readonly<NodeJS.ProcessEnv>,
   scratch: MinimalWorkerScratch,
@@ -366,6 +393,13 @@ export function parseWorkerInput(value: unknown): WorkerInput {
   const input = objectRecord(value, 'worker input')
   const kind = input.kind
   if (
+    input.nativeVerificationRequestEnabled !== undefined &&
+    (input.nativeVerificationRequestEnabled !== true ||
+      input.nativeExecution === undefined ||
+      (kind !== 'configured_operator_http' && kind !== 'protected'))
+  )
+    throw new Error('Invalid native verification requester capability')
+  if (
     input.containerNamespace !== undefined &&
     (typeof input.containerNamespace !== 'string' ||
       !/^[a-f0-9-]{36}$/.test(input.containerNamespace))
@@ -383,6 +417,11 @@ export function parseWorkerInput(value: unknown): WorkerInput {
   if (kind === 'configured_operator_http') {
     assertExactKeys(input, CONFIGURED_KEYS, 'configured worker input', CONFIGURED_REQUIRED_KEYS)
     if (!isResolvedAgent(input.agent)) throw new Error('worker: configured input requires an agent')
+    if (input.nativeExecution !== undefined) {
+      assertNativeExecutionAdmission(input.nativeExecution)
+      if (input.configuredDocker !== undefined || input.containerNamespace !== undefined)
+        throw new Error('Native worker rejects Docker inputs')
+    }
     if (input.configuredDocker !== undefined) {
       const prepared = objectRecord(input.configuredDocker, 'configured Docker inputs')
       const keys = new Set(['paths', 'docker'])
@@ -437,7 +476,13 @@ export function parseWorkerInput(value: unknown): WorkerInput {
       throw new Error('worker: protected runtime does not match the resolved Agent model')
     }
     assertProtectedWorkerPaths(input.paths, input.agent)
-    assertProtectedDockerRuntime(input.docker, input.paths as ProtectedWorkerPaths)
+    if ((input.nativeExecution !== undefined) === (input.docker !== undefined))
+      throw new Error('Protected worker requires exactly one execution backend')
+    if (input.nativeExecution !== undefined) {
+      assertNativeExecutionAdmission(input.nativeExecution)
+      if (input.containerNamespace !== undefined)
+        throw new Error('Native worker rejects Docker namespace')
+    } else assertProtectedDockerRuntime(input.docker, input.paths as ProtectedWorkerPaths)
     if (input.apiKeyRefreshEnabled !== true) {
       throw new Error('worker: protected input requires bound API key refresh')
     }
@@ -629,6 +674,10 @@ export function redactExactValues(text: string, values: readonly string[]): stri
 export class ExactValueStreamRedactor {
   readonly #values: string[] = []
   #pending = ''
+  #redacted = false
+  get redacted(): boolean {
+    return this.#redacted
+  }
 
   constructor(value: string | readonly string[]) {
     const values = typeof value === 'string' ? [value] : value
@@ -642,7 +691,7 @@ export class ExactValueStreamRedactor {
 
   push(chunk: string): string {
     const data = this.#pending + chunk
-    const maxLength = Math.max(...this.#values.map((value) => value.length))
+    const maxLength = Math.max(1, ...this.#values.map((value) => value.length))
     const cutoff = Math.max(0, data.length - (maxLength - 1))
     let output = ''
     let cursor = 0
@@ -653,6 +702,7 @@ export class ExactValueStreamRedactor {
         cursor = cutoff
         break
       }
+      this.#redacted = true
       output += data.slice(cursor, match.index) + REDACTED_VALUE
       cursor = match.index + match.value.length
     }
@@ -661,6 +711,7 @@ export class ExactValueStreamRedactor {
   }
 
   flush(): string {
+    if (this.#values.some((value) => this.#pending.includes(value))) this.#redacted = true
     const output = redactExactValues(this.#pending, this.#values)
     this.#pending = ''
     return output

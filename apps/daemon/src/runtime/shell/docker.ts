@@ -20,7 +20,10 @@ const CLEANUP_RETRY_DELAY_MS = 100
 const CLEANUP_ATTEMPTS = 3
 const DOCKER_CONTEXT_TIMEOUT_MS = 2_000
 const DOCKER_CREATE_TIMEOUT_MS = 5_000
-const DOCKER_PROBE_START_TIMEOUT_MS = 2_000
+// OCI create and probe-start perform engine/runtime setup, unlike metadata inspection.
+// Give both the same fixed admission budget on every platform. This runs only the isolated
+// readiness command, not model work; cancellation and separately bounded cleanup still apply.
+const DOCKER_PROBE_START_TIMEOUT_MS = DOCKER_CREATE_TIMEOUT_MS
 const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/
 const CONTAINER_NAME = /^[A-Za-z0-9][A-Za-z0-9_.-]+$/
 const DOCKER_CLIENT_ENV_KEYS = [
@@ -49,6 +52,28 @@ const CONTAINER_LITERAL_ENV_KEYS = new Set([
   'TMPDIR',
   'TZ',
 ])
+
+const DOCKER_PREFLIGHT_PHASES = ['engine', 'create', 'start', 'cleanup'] as const
+export type DockerPreflightPhase = (typeof DOCKER_PREFLIGHT_PHASES)[number]
+
+/** Closed failure boundary for diagnostics; never proof of execution, settlement or replay safety. */
+export class DockerPreflightError extends Error {
+  readonly phase: DockerPreflightPhase
+  readonly kind: 'failed' | 'timeout'
+
+  constructor(phase: DockerPreflightPhase, cause: unknown, kind: 'failed' | 'timeout' = 'failed') {
+    if (!DOCKER_PREFLIGHT_PHASES.includes(phase) || !['failed', 'timeout'].includes(kind))
+      throw new Error('invalid Docker preflight phase or kind')
+    super(cause instanceof Error ? cause.message : 'Docker preflight failed', { cause })
+    this.phase = phase
+    this.kind = kind
+    Object.defineProperties(this, {
+      phase: { value: phase, writable: false, configurable: false },
+      kind: { value: kind, writable: false, configurable: false },
+    })
+    this.name = 'DockerPreflightError'
+  }
+}
 
 export interface DockerResourceLifecycle {
   name(kind: 'bash' | 'preflight'): string
@@ -292,6 +317,11 @@ export function buildDockerRunSpec(input: DockerRunSpecInput): DockerRunSpec {
  * absolute executable, local Unix endpoint, socket access, immutable image id,
  * and image VOLUME policy without returning any host path or endpoint.
  */
+function assertDockerPlatform(): void {
+  if (process.platform !== 'linux')
+    throw new Error('Docker execution is supported only on Linux. Use native execution on macOS.')
+}
+
 export async function checkProtectedDockerReadiness(
   input: Pick<ProtectedDockerPreflightInput, 'image' | 'dockerPath' | 'hostEnv'>,
 ): Promise<ProtectedDockerReadiness> {
@@ -302,7 +332,8 @@ export async function checkProtectedDockerReadiness(
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     let reason: Exclude<ProtectedDockerReadiness, { ready: true }>['reason']
-    if (/numeric uid\/gid|supported only on POSIX/i.test(message)) reason = 'unsupported platform'
+    if (/numeric uid\/gid|supported only on POSIX|supported only on Linux/i.test(message))
+      reason = 'unsupported platform'
     else if (/required \/bin\/bash and \/usr\/bin\/env probe/i.test(message)) {
       reason = 'Docker preflight failed'
     } else if (/executable|ENOENT|not found|spawn/i.test(message)) {
@@ -323,6 +354,7 @@ export async function checkProtectedDockerReadiness(
 
 async function proveProtectedImageReadiness(engine: ProtectedDockerEngineRuntime): Promise<void> {
   const scratchDir = mkdtempSync(join(tmpdir(), 'bazilion-docker-readiness-'))
+  let cleanupUnconfirmed = false
   try {
     const source = await resolveMountSource(scratchDir)
     await proveProtectedContainerCreation(
@@ -330,8 +362,12 @@ async function proveProtectedImageReadiness(engine: ProtectedDockerEngineRuntime
       { source, sourceRoot: source, target: CONTAINER_WORKDIR },
       [],
     )
+  } catch (error) {
+    cleanupUnconfirmed = error instanceof DockerPreflightError && error.phase === 'cleanup'
+    throw error
   } finally {
-    rmSync(scratchDir, { recursive: true, force: true })
+    // An unresolved probe may still hold this bind source. Do not erase its private scratch.
+    if (!cleanupUnconfirmed) rmSync(scratchDir, { recursive: true, force: true })
   }
 }
 
@@ -339,10 +375,16 @@ async function proveProtectedImageReadiness(engine: ProtectedDockerEngineRuntime
 export async function preflightProtectedDockerRuntime(
   input: ProtectedDockerPreflightInput,
 ): Promise<ProtectedDockerRuntime> {
+  assertDockerPlatform()
   if (input.signal?.aborted) throw new Error('aborted')
   const coding = input.coding ? validateDockerCodingSelection(input.coding) : undefined
   if (coding) resolveCodingDirectory(input.workspaceDir, coding.cwd)
-  const engine = input.engine ?? (await preflightProtectedDockerEngine(input))
+  let engine: ProtectedDockerEngineRuntime
+  try {
+    engine = input.engine ?? (await preflightProtectedDockerEngine(input))
+  } catch (error) {
+    throw new DockerPreflightError('engine', error)
+  }
   if (engine.image !== input.image) throw new Error('Docker engine image selection changed')
   const workspaceSource = await resolveMountSource(input.workspaceDir)
   const workspaceRoot = await resolveRequiredRoot(input.workspaceRoot ?? input.workspaceDir)
@@ -388,6 +430,7 @@ export function createPreparedDockerBashOperations(
   validatePreparedDockerRuntime(runtime)
   return {
     async exec(command, cwd, { onData, signal, timeout }) {
+      assertDockerPlatform()
       const timeoutMs = resolveTimeoutMs(timeout)
       if (signal?.aborted) throw new Error('aborted')
 
@@ -453,6 +496,7 @@ export function createPreparedDockerBashOperations(
 export async function preflightProtectedDockerEngine(
   input: Pick<ProtectedDockerPreflightInput, 'image' | 'dockerPath' | 'hostEnv'>,
 ): Promise<ProtectedDockerEngineRuntime> {
+  assertDockerPlatform()
   validateImage(input.image)
   const { uid, gid } = hostIdentity()
   const hostEnv = input.hostEnv ?? process.env
@@ -501,8 +545,12 @@ async function proveProtectedContainerCreation(
     containerName,
   })
   let preflightError: unknown
+  let creationAcknowledged = false
+  let preflightFailed = false
+  let phase: 'create' | 'start' = 'create'
   try {
     await runProtectedContainerCreate(spec, { signal })
+    creationAcknowledged = true
     await lifecycle?.afterCreate(containerName)
     // `docker container create` validates the pinned image and mount/runtime
     // configuration, but it does not resolve or execute the image entrypoint.
@@ -511,27 +559,40 @@ async function proveProtectedContainerCreation(
     // prompted. The known `true` command still runs with the same no-network,
     // read-only, clean-environment policy used by protected model commands.
     await assertDockerExecutableIdentity(engine.dockerPath, engine.executableIdentity)
+    phase = 'start'
     await runProtectedContainerProbe(spec, signal)
   } catch (error) {
+    preflightFailed = true
     preflightError = error
   }
 
   try {
     await assertDockerExecutableIdentity(engine.dockerPath, engine.executableIdentity)
     if (lifecycle) await lifecycle.afterRemove(containerName)
-    else await removePreflightContainer(engine.dockerPath, containerName, dockerClientEnv)
+    else
+      await removePreflightContainer(
+        engine.dockerPath,
+        containerName,
+        dockerClientEnv,
+        creationAcknowledged,
+      )
     await assertDockerExecutableIdentity(engine.dockerPath, engine.executableIdentity)
   } catch (cleanupError) {
-    if (preflightError) {
-      throw new Error(
-        'Docker sandbox preflight failed and probe container cleanup could not be confirmed',
-        { cause: cleanupError },
-      )
-    }
-    throw cleanupError
+    throw new DockerPreflightError(
+      'cleanup',
+      preflightFailed
+        ? new Error(
+            'Docker sandbox preflight failed and probe container cleanup could not be confirmed',
+            { cause: cleanupError },
+          )
+        : cleanupError,
+    )
   }
 
-  if (preflightError) throw preflightError
+  if (preflightFailed)
+    throw preflightError instanceof DockerPreflightError
+      ? preflightError
+      : new DockerPreflightError(phase, preflightError)
 }
 
 function runProtectedContainerCreate(
@@ -587,8 +648,12 @@ function runProtectedContainerCreate(
     const timeoutError = () =>
       commandTimeout
         ? new Error(`timeout:${options?.timeout}`)
-        : new Error(
-            `Docker sandbox could not create its protected preflight container within ${DOCKER_CREATE_TIMEOUT_MS}ms`,
+        : new DockerPreflightError(
+            'create',
+            new Error(
+              `Docker sandbox could not create its protected preflight container within ${DOCKER_CREATE_TIMEOUT_MS}ms`,
+            ),
+            'timeout',
           )
 
     child.stderr?.on('data', (data: Buffer) => {
@@ -649,8 +714,12 @@ function runProtectedContainerProbe(spec: DockerRunSpec, signal?: AbortSignal): 
     }
 
     const timeoutError = () =>
-      new Error(
-        `Docker sandbox could not start its protected preflight container within ${DOCKER_PROBE_START_TIMEOUT_MS}ms`,
+      new DockerPreflightError(
+        'start',
+        new Error(
+          `Docker sandbox could not start its protected preflight container within ${DOCKER_PROBE_START_TIMEOUT_MS}ms`,
+        ),
+        'timeout',
       )
 
     child.stderr?.on('data', (data: Buffer) => {
@@ -862,6 +931,7 @@ export function createDockerBashOperations(options: DockerBashOptions): BashOper
 
   return {
     async exec(command, cwd, { onData, signal, timeout }) {
+      assertDockerPlatform()
       const timeoutMs = resolveTimeoutMs(timeout)
       if (signal?.aborted) throw new Error('aborted')
 
@@ -1499,6 +1569,7 @@ export async function terminateRecordedContainer(
   identity: DockerContainerIdentity,
   creationAcknowledged = false,
 ): Promise<boolean> {
+  if (process.platform !== 'linux') return false
   try {
     validateContainerName(identity.containerName)
     if (!identity.containerName.startsWith('bazilion-')) return false

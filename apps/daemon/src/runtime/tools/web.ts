@@ -430,7 +430,7 @@ export function protectedWebSearchTool(host: {
 
 function buildWebTools(opts: WebToolsOpts | undefined, includeSearch: boolean): ToolHandler[] {
   // Default to undici 8's fetch so search-backend HTTP shares the same
-  // stack as guardedFetch (and stays out of Node 24's bundled undici 7).
+  // stack as guardedFetch, without depending on Node's bundled undici version.
   const fetchFn = opts?.fetchImpl ?? (undiciFetch as unknown as typeof fetch)
   const env = opts?.env ?? process.env
   const allowPrivate = opts?.allowPrivate ?? false

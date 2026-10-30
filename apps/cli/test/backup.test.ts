@@ -44,7 +44,7 @@ import { resolveConversationTarget } from '../../daemon/src/lib/conversation-tar
 import { installValidatedPayload, RestoreRecoveryRequiredError } from '../src/commands/backup.ts'
 import { acquireHomeRestoreLock, daemonLivenessPath } from '../src/daemon-liveness.ts'
 import { extractAgentId, makeHome, runCli, type TestHome } from './helpers.ts'
-import { startTestServer, type TestServer } from './server-fixture.ts'
+import { restartTestServer, startTestServer, type TestServer } from './server-fixture.ts'
 
 let server: TestServer
 beforeAll(async () => {
@@ -408,6 +408,9 @@ test('backup restore extracts the tar.gz into a fresh home', async () => {
     ).exitCode,
   ).toBe(0)
   expect((await server.cli(['agent', 'review', agentId])).exitCode).toBe(0)
+  // Seed private evidence offline: the live daemon remains the sole DB writer.
+  // A completed CLI response does not fence its asynchronous review/queue finalizers.
+  await server.stop({ keepHome: true })
   const sourceDb = openDb(join(server.home, 'bazilion.db'))
   const sourcePaths = resolvePaths(server.home)
   const originalConversation = resolveConversationTarget(sourceDb, sourcePaths, agentId)
@@ -471,6 +474,7 @@ test('backup restore extracts the tar.gz into a fresh home', async () => {
     ],
   )
   sourceDb.close()
+  server = await restartTestServer(server)
   await server.cli(['config', 'set', 'LMSTUDIO_URL', 'http://backup-config.example/v1'])
   await server.cli(['config', 'set', 'OPENAI_API_KEY', 'backup-secret-value'])
   writeFileSync(join(server.home, 'agents', agentId, 'sessions', 'proof.jsonl'), '{"ok":true}\n')

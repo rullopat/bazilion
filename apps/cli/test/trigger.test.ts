@@ -225,7 +225,7 @@ test('configured-provider interval trigger materializes but fails closed without
   expect(history.exitCode).toBe(0)
   expect(history.stdout).toContain('retrying')
   expect(history.stdout).toContain('attempts: 1')
-  expect(history.stdout).toContain('Protected Docker runtime is unavailable.')
+  expect(history.stdout).toContain('Protected Docker runtime is unavailable (engine).')
   expect(mock.callCount()).toBe(0)
 })
 

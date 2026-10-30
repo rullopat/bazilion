@@ -64,13 +64,15 @@ export function invalidateRestoredCodingEvidence(
       `SELECT DISTINCT attempt.request_id AS request_id
        FROM verification_check_outcomes outcome
        JOIN verification_attempts attempt ON attempt.id = outcome.attempt_id
-       WHERE outcome.state IN ('succeeded', 'failed', 'timed_out', 'cancelled')`,
+       WHERE outcome.state IN ('succeeded', 'failed', 'timed_out', 'cancelled')
+          OR (outcome.state='unknown' AND outcome.command_id IS NOT NULL)`,
     )
     .all() as Array<{ request_id: string }>
   db.prepare(
     `UPDATE verification_check_outcomes
      SET state = 'unknown', command_id = NULL, exit_code = NULL, finished_at = ?
-     WHERE state IN ('succeeded', 'failed', 'timed_out', 'cancelled', 'not_executed')`,
+     WHERE state IN ('succeeded', 'failed', 'timed_out', 'cancelled', 'not_executed')
+        OR (state='unknown' AND command_id IS NOT NULL)`,
   ).run(restoredAt)
   const reopen = db.prepare(`UPDATE verification_requests SET state = 'uncertain' WHERE id = ?`)
   const invalidateAttempt = db.prepare(

@@ -1,16 +1,24 @@
 /** Optional durable defaults; never a prerequisite for Agent coding commands. */
 import type { SnapshotReference } from './git-review.ts'
+import type { NativeExecutionFacts } from './native-execution.ts'
 
 export interface CodingEnvironmentValues {
   CI?: 'true' | 'false'
   NO_COLOR?: '0' | '1'
   TZ?: 'UTC'
 }
-export interface CodingEnvironmentConfig {
-  image: string
-  cwd: string
-  env: CodingEnvironmentValues
-}
+export type CodingEnvironmentConfig =
+  | {
+      backend: 'native'
+      cwd: string
+      env: CodingEnvironmentValues
+    }
+  | {
+      backend: 'docker'
+      image: string
+      cwd: string
+      env: CodingEnvironmentValues
+    }
 export interface TeamCodingEnvironment {
   teamId: string
   revision: number
@@ -22,9 +30,12 @@ export interface ConfigureCodingEnvironmentRequest {
   config: CodingEnvironmentConfig
 }
 export interface CodingEnvironmentStatus {
+  /** Platform support only, not admission/readiness evidence. */
+  supportedBackends?: readonly ('native' | 'docker')[]
   environment: TeamCodingEnvironment | null
-  configuredExecution: 'host' | 'docker'
-  image: string
+  configuredExecution: 'host' | 'docker' | 'native'
+  /** Native defaults never acquire an image identity. Selection is not readiness evidence. */
+  image: string | null
   workspaceRecovery: 'none' | 'required' | 'restored'
 }
 export type CodingPurpose =
@@ -51,9 +62,18 @@ export type CodingCommandState =
   | 'timed_out'
   | 'cancelled'
   | 'interrupted'
-export interface CodingEnvironmentSnapshot {
-  posture: 'host' | 'docker' | 'protected'
-  imageId: string | null
+export type CodingEnvironmentSnapshot =
+  | ({
+      posture: 'host' | 'docker' | 'protected'
+      imageId: string | null
+      native?: never
+    } & CodingEnvironmentSnapshotDetails)
+  | ({
+      posture: 'native'
+      imageId: null
+      native: NativeExecutionFacts
+    } & CodingEnvironmentSnapshotDetails)
+interface CodingEnvironmentSnapshotDetails {
   cwd: string
   rootIdentity: string
   inputFingerprint: string | null

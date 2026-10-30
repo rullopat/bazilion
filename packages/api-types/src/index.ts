@@ -950,7 +950,7 @@ export interface PairingExchangeResponse {
 
 // --- health (doctor) ---
 
-export type ExecutionCodingSurface = 'host' | 'docker' | 'unavailable'
+export type ExecutionCodingSurface = 'host' | 'docker' | 'native' | 'unavailable'
 
 /** Closed, secret-free reasons returned by the protected Docker readiness probe. */
 export type ProtectedDockerReadinessReason =
@@ -967,7 +967,7 @@ export interface ExecutionSecurityReport {
   configuredOperatorHttp: {
     protected: false
     codingSurface: ExecutionCodingSurface
-    dockerImage: string
+    dockerImage: string | null
     browser: 'enabled' | 'disabled'
     mcp: 'enabled' | 'disabled'
   }
@@ -978,13 +978,6 @@ export interface ExecutionSecurityReport {
      * separately validates its selected normal/review model, bound refresh, and mounts/paths.
      */
     baseRuntimeReady: boolean
-    codingSurface: 'docker'
-    docker: {
-      ready: boolean
-      image: string
-      /** Null when ready or when Docker was not probed because shell configuration was invalid. */
-      reason: ProtectedDockerReadinessReason | null
-    }
     browser: 'denied'
     mcp: 'denied'
     openaiCodex: {
@@ -999,7 +992,24 @@ export interface ExecutionSecurityReport {
     }
     /** Exactly one secret-free next action when `baseRuntimeReady` is false. */
     remediation: string | null
-  }
+  } & (
+    | {
+        codingSurface: 'docker'
+        docker: { ready: boolean; image: string; reason: ProtectedDockerReadinessReason | null }
+        native?: never
+      }
+    | {
+        codingSurface: 'native'
+        docker: null
+        native: { backend: 'linux-bwrap' | 'darwin-seatbelt' | null; readiness: 'not_checked' }
+      }
+    | {
+        /** No qualified isolation backend: protected work refuses, never uses host execution. */
+        codingSurface: 'unavailable'
+        docker: null
+        native?: never
+      }
+  )
 }
 
 /** Static platform support, never a successful execution or connectivity probe. */
@@ -1052,11 +1062,11 @@ export interface HealthReport {
   shellSecurity:
     | {
         ok: true
-        sandboxMode: 'off' | 'docker'
+        sandboxMode: 'off' | 'docker' | 'native'
         approvalMode: 'off' | 'dangerous'
-        sandboxImage: string
+        sandboxImage: string | null
         hostCodingTools: boolean
-        network: 'host' | 'none'
+        network: 'host' | 'none' | 'denied-ip'
       }
     | {
         ok: false
@@ -1254,6 +1264,19 @@ export type {
   SourceSnapshotSummary,
 } from './git-review.ts'
 export { REVIEW_LIMITS } from './git-review.ts'
+export type {
+  NativeExecutionAdmission,
+  NativeExecutionBackend,
+  NativeExecutionCancelRequest,
+  NativeExecutionCancelResult,
+  NativeExecutionCapture,
+  NativeExecutionFacts,
+  NativeExecutionFailure,
+  NativeExecutionFailureObservation,
+  NativeExecutionOutput,
+  NativeExecutionRequest,
+  NativeExecutionResult,
+} from './native-execution.ts'
 export type {
   CreatePublicationRequest,
   Publication,

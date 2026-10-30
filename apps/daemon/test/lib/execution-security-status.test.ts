@@ -155,6 +155,8 @@ describe('execution-security projection', () => {
     expect(projected.protectedUnattendedTurns.remediation).toBe(
       'Fix the shell-security configuration in Config Services, then retry.',
     )
+    if (projected.protectedUnattendedTurns.codingSurface !== 'docker')
+      throw new Error('Expected Docker posture')
     expect(Object.keys(projected.protectedUnattendedTurns.docker).sort()).toEqual([
       'image',
       'ready',
@@ -165,7 +167,7 @@ describe('execution-security projection', () => {
   test.each<[ProtectedDockerReadinessReason, string]>([
     [
       'unsupported platform',
-      'Run protected unattended work on a POSIX host with local Docker support.',
+      'Protected Docker execution requires a Linux host with local Docker support. Trusted Mac host execution is not isolation.',
     ],
     [
       'Docker executable is unavailable',
@@ -197,6 +199,8 @@ describe('execution-security projection', () => {
       },
     })
 
+    if (projected.protectedUnattendedTurns.codingSurface !== 'docker')
+      throw new Error('Expected Docker posture')
     expect(projected.protectedUnattendedTurns.docker.reason).toBe(reason)
     expect(projected.protectedUnattendedTurns.remediation).toBe(remediation)
     expect(projected.protectedUnattendedTurns.remediation).not.toContain('secret-sentinel')

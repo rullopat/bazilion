@@ -1,4 +1,12 @@
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -156,7 +164,7 @@ test('an absent initial leader or an observed empty group cannot authorize signa
   expect(sent).toEqual([])
 })
 
-test.runIf(process.platform === 'linux')(
+test.runIf(process.platform === 'linux' || process.platform === 'darwin')(
   'failed cleanup revokes signalling authority before late exit or group reuse',
   { timeout: 10_000 },
   async () => {
@@ -208,7 +216,7 @@ test('CDP endpoint parsing accepts only the fresh child loopback authority and b
     expect(parseOwnedEndpoint(`DevTools listening on ${endpoint}`, 12345)).toBeNull()
 })
 
-test.runIf(process.platform === 'linux')(
+test.runIf(process.platform === 'linux' || process.platform === 'darwin')(
   'listener ownership rejects a foreign PID and a wildcard listener',
   async () => {
     for (const host of ['127.0.0.1', '0.0.0.0']) {
@@ -233,6 +241,8 @@ test('direct argv pins persistent profile, loopback CDP and proxy without Playwr
   expect(args).toContain(`--user-data-dir=${opts.profileDir}`)
   expect(args).toContain('--proxy-bypass-list=<-loopback>')
   expect(args).toContain('--proxy-server=http://127.0.0.1:43210')
+  expect(args).toContain('--disable-component-update')
+  expect(args).toContain('--disable-updater-scheduler')
   for (const banned of [
     '--no-sandbox',
     '--remote-debugging-pipe',
@@ -246,7 +256,58 @@ test('direct argv pins persistent profile, loopback CDP and proxy without Playwr
   ).toContain('--ozone-platform=wayland')
 })
 
-test.runIf(process.platform === 'linux')(
+test.runIf(process.platform === 'linux' || process.platform === 'darwin')(
+  'actual spawn input evidence is immutable and agrees with the owned child environment',
+  async () => {
+    const opts = input(
+      "require('node:fs').writeFileSync(process.env.HOME + '/received-env.json', JSON.stringify(process.env)); process.exit(1)",
+    )
+    const observed: Array<{ pid: number; environment: Readonly<NodeJS.ProcessEnv> }> = []
+    const previous = process.env.BAZILION_TEST_PARENT_ONLY
+    process.env.BAZILION_TEST_PARENT_ONLY = 'planted-not-a-credential'
+    let pid = 0
+    try {
+      await expect(
+        startOwnedBrowser(
+          opts,
+          (value) => {
+            pid = value
+          },
+          {
+            observeSpawn: (evidence) => observed.push(evidence),
+          },
+        ),
+      ).rejects.toMatchObject({ reasonCode: 'browser_start_failed' })
+      expect(observed).toHaveLength(1)
+      const evidence = observed[0]
+      if (!evidence) throw new Error('missing actual spawn observation')
+      expect(evidence.pid).toBe(pid)
+      expect(Object.isFrozen(evidence.environment)).toBe(true)
+      expect(Reflect.set(evidence.environment, 'HOME', 'must-not-change')).toBe(false)
+      expect(Object.keys(evidence.environment).sort()).toEqual(['HOME', 'LANG', 'PATH'])
+      const actual = JSON.parse(readFileSync(join(opts.home, 'received-env.json'), 'utf8'))
+      for (const [key, value] of Object.entries(evidence.environment))
+        expect(actual[key]).toBe(value)
+      expect(actual.BAZILION_TEST_PARENT_ONLY).toBeUndefined()
+      expect(
+        Object.keys(actual)
+          .filter((key) => key !== '__CF_USER_TEXT_ENCODING')
+          .sort(),
+      ).toEqual(Object.keys(evidence.environment).sort())
+      expect(probeProcessPresence(pid)).toBe('absent')
+      expect(probeProcessGroupPresence(pid)).toBe('absent')
+    } finally {
+      if (previous === undefined) delete process.env.BAZILION_TEST_PARENT_ONLY
+      else process.env.BAZILION_TEST_PARENT_ONLY = previous
+      if (pid && probeProcessGroupPresence(pid) !== 'absent') {
+        const index = homes.findIndex((home) => opts.home === join(home, 'home'))
+        if (index >= 0) homes.splice(index, 1)
+      }
+    }
+  },
+)
+
+test.runIf(process.platform === 'linux' || process.platform === 'darwin')(
   'direct startup failure reaps its owned group',
   async () => {
     let pid = 0
@@ -261,7 +322,7 @@ test.runIf(process.platform === 'linux')(
   },
 )
 
-test.runIf(process.platform === 'linux')(
+test.runIf(process.platform === 'linux' || process.platform === 'darwin')(
   'startup timeout escalates a TERM-ignoring child to KILL and proves exit',
   { timeout: 10_000 },
   async () => {
@@ -284,7 +345,7 @@ test.runIf(process.platform === 'linux')(
   },
 )
 
-test.runIf(process.platform === 'linux')(
+test.runIf(process.platform === 'linux' || process.platform === 'darwin')(
   'a child advertising an unowned debugging endpoint is refused and reaped',
   async () => {
     let pid = 0
@@ -302,7 +363,7 @@ test.runIf(process.platform === 'linux')(
   },
 )
 
-test.runIf(process.platform === 'linux')(
+test.runIf(process.platform === 'linux' || process.platform === 'darwin')(
   'a failed spawn has no listener or owned group to adopt',
   async () => {
     const opts = input()

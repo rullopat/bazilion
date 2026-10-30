@@ -96,12 +96,33 @@ export async function qualifyPortableChat({
     health.platformCapabilities.capabilities.map((c) => [c.id, c.support]),
     [
       ['ordinary_chat', 'supported'],
-      ['git_inspection', process.platform === 'linux' ? 'supported' : 'unsupported'],
-      ['mcp_stdio', process.platform === 'linux' ? 'supported' : 'unsupported'],
+      ['git_inspection', 'supported'],
+      ['mcp_stdio', 'supported'],
       ['mcp_http', 'supported'],
     ],
   )
-  if (process.platform === 'darwin') assert.equal(health.protectedWorkBaselineReady, false)
+  // Mac host execution is not isolation. Linux's native/Docker projections retain their
+  // independent readiness contracts; unavailable protection never becomes host execution.
+  const protectedTurns = health.executionSecurity.protectedUnattendedTurns
+  const nativeProtected = protectedTurns.codingSurface === 'native'
+  if (process.platform === 'darwin') {
+    assert.equal(protectedTurns.codingSurface, 'unavailable')
+    assert.equal(protectedTurns.docker, null)
+    assert.equal(protectedTurns.native, undefined)
+    assert.equal(health.protectedWorkBaselineReady, false)
+    assert.equal(health.executionSecurity.configuredOperatorHttp.codingSurface, 'host')
+    assert.match(protectedTurns.remediation, /no qualified isolation backend/)
+  } else if (nativeProtected) {
+    assert.equal(protectedTurns.docker, null)
+    assert.equal(protectedTurns.native.readiness, 'not_checked')
+    assert.equal(health.protectedWorkBaselineReady, false)
+  } else {
+    assert.equal(health.protectedWorkBaselineReady, protectedTurns.docker.ready)
+  }
+  assert.equal(
+    health.protectedWorkBaselineReady,
+    health.executionSecurity.protectedUnattendedTurns.baseRuntimeReady,
+  )
   const doctor = await runDoctor()
   assert.equal(doctor.code, 0, doctor.stderr)
   assert.ok(doctor.stdout.includes('install is healthy ✓'))
@@ -109,7 +130,7 @@ export async function qualifyPortableChat({
   assert.ok(doctor.stdout.includes(`platform support: ${health.platformCapabilities.platform}`))
   assert.ok(
     doctor.stdout.includes(
-      `protected unattended baseline: ${health.protectedWorkBaselineReady ? 'ready' : 'unavailable'}`,
+      `protected unattended baseline: ${nativeProtected ? 'not checked' : health.protectedWorkBaselineReady ? 'ready' : 'unavailable'}`,
     ),
   )
   evidence.diagnostics = {
@@ -128,7 +149,12 @@ export async function qualifyPortableChat({
     '/usr/bin/chromium-browser',
   ].find((path) => path && existsSync(path))
   assert.ok(browserPath, 'No existing UI browser; no download or fallback was attempted')
-  const browser = await chromium.launch({ executablePath: browserPath, headless: true })
+  const browser = await chromium.launch({
+    executablePath: browserPath,
+    headless: true,
+    // Test-driver profiles must not schedule an installed browser's account-wide updater either.
+    args: ['--disable-updater-scheduler'],
+  })
   try {
     const context = await browser.newContext()
     await context.route('**/*', (route) => {
@@ -163,7 +189,11 @@ export async function qualifyPortableChat({
       assert.ok(content.includes('Not checked'))
       assert.ok(
         content.includes(
-          health.protectedWorkBaselineReady ? 'Ready · per-turn checks still apply' : 'Unavailable',
+          nativeProtected
+            ? 'Not checked · per-turn admission required'
+            : health.protectedWorkBaselineReady
+              ? 'Ready · per-turn checks still apply'
+              : 'Unavailable',
         ),
       )
       for (const capability of health.platformCapabilities.capabilities) {

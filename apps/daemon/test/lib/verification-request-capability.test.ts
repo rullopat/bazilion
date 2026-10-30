@@ -66,6 +66,24 @@ function hostFor(env: TestEnv, assertActive: () => void = () => {}) {
   })
 }
 
+test('a revoked requester transport cannot capture a snapshot or request', async () => {
+  const env = repoEnv()
+  try {
+    const stop = new AbortController()
+    stop.abort()
+    await expect(
+      hostFor(env).capture(
+        { specialist: 'tester', checks: [{ command: 'printf revoked', purpose: 'revoked' }] },
+        stop.signal,
+      ),
+    ).rejects.toThrow()
+    expect(listVerificationRequests(env.db, env.teamId)).toEqual([])
+    expect(env.db.raw.query('SELECT snapshot_id FROM source_snapshots').all()).toEqual([])
+  } finally {
+    env.cleanup()
+  }
+})
+
 test('a coding turn captures its change and hands one request to a Team specialist', async () => {
   const env = repoEnv()
   try {

@@ -22,11 +22,7 @@ import {
 } from '../../runtime/shell/security.ts'
 import { buildSandboxContainerEnv, safeReadOnlyMount } from '../../runtime/shell/tooling.ts'
 import { redactJsonValue } from '../../runtime/worker/runtime.ts'
-import {
-  CODING_OUTPUT_BYTES,
-  codingSecrets,
-  diagnosticTail,
-} from '../coding-environment/diagnostics.ts'
+import { CODING_OUTPUT_BYTES, diagnosticTail } from '../coding-environment/diagnostics.ts'
 import { workspaceIdentity } from '../coding-environment/workspace.ts'
 import type { VerificationCheckExecutor, VerificationCheckExecutorResult } from './runner.ts'
 
@@ -70,16 +66,26 @@ export interface ProtectedCheckExecutorInput {
    * host-posture check.
    */
   containerLifecycle?: DockerResourceLifecycle
-  env?: NodeJS.ProcessEnv
+  env?: NodeJS.ProcessEnv | (() => NodeJS.ProcessEnv)
 }
 
 export function createProtectedCheckExecutor(
   input: ProtectedCheckExecutorInput,
 ): VerificationCheckExecutor {
-  const env = input.env ?? process.env
   return {
     async run({ command, cwd, timeoutMs }): Promise<VerificationCheckExecutorResult> {
+      if (input.request.environment.sandbox === 'native')
+        return blocked(
+          'environment_unavailable',
+          'native verification requires a genuine admitted attempt capability',
+        )
+      const env = typeof input.env === 'function' ? input.env() : (input.env ?? process.env)
       const config = resolveShellSecurityConfig(env)
+      if (config.sandboxMode === 'native')
+        return blocked(
+          'environment_unavailable',
+          'this legacy request cannot execute under native selection; capture a new native request',
+        )
       const wantsContainer = input.request.environment.sandbox === 'docker'
       const isContainer = config.sandboxMode === 'docker'
 

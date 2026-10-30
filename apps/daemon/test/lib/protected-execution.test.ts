@@ -8,13 +8,15 @@ import { makeTestEnv, type TestEnv } from '../core/helpers.ts'
 let env: TestEnv
 let preflightInputs: ProtectedDockerPreflightInput[]
 let preflightFailure: Error | null
+let preflightGate: ((input: ProtectedDockerPreflightInput) => Promise<void>) | undefined
 let agentId: string
 
-describe('protected execution preparation', () => {
+describe.skipIf(process.platform !== 'linux')('protected execution preparation', () => {
   beforeEach(async () => {
     env = makeTestEnv()
     preflightInputs = []
     preflightFailure = null
+    preflightGate = undefined
     createProfile(env.db, env.paths, {
       id: 'protected',
       defaultModel: 'openai-codex:gpt-5.6-sol',
@@ -48,6 +50,7 @@ describe('protected execution preparation', () => {
         ...actual,
         preflightProtectedDockerRuntime: async (input: ProtectedDockerPreflightInput) => {
           preflightInputs.push(input)
+          await preflightGate?.(input)
           if (preflightFailure) throw preflightFailure
           return {
             dockerPath: '/usr/bin/docker',
@@ -118,6 +121,7 @@ describe('protected execution preparation', () => {
     const resolved = resolveAgent(env.db, env.paths, agentId)
     mkdirSync(join(resolved.team.path, 'app'))
     putCodingEnvironment(env.db, env.teamId, 0, {
+      backend: 'docker',
       image: 'prepared/node:24',
       cwd: 'app',
       env: { CI: 'true', NO_COLOR: '1' },
@@ -165,6 +169,108 @@ describe('protected execution preparation', () => {
       'Protected Docker runtime is unavailable',
     )
     expect(preflightInputs).toHaveLength(1)
+  })
+
+  test('protected Docker diagnostics publish only the closed phase, never raw error material', async () => {
+    const { DockerPreflightError } = await import('../../src/runtime/shell/docker.ts')
+    preflightFailure = new DockerPreflightError(
+      'start',
+      new Error(`PRIVATE_RAW_TOKEN ${env.home} unix:///private-endpoint`),
+    )
+    const { prepareProtectedExecution } = await import('../../src/lib/protected-execution.ts')
+    const error = await prepareProtectedExecution(resolveAgent(env.db, env.paths, agentId)).then(
+      () => undefined,
+      (failure: unknown) => failure,
+    )
+    expect(error).toMatchObject({
+      code: 'protected_execution_unavailable',
+      message:
+        'Protected Docker runtime is unavailable (start). Run `bazilion doctor` for remediation.',
+    })
+    expect((error as Error).message).not.toContain('PRIVATE_RAW_TOKEN')
+    expect((error as Error).message).not.toContain(env.home)
+    expect(error).not.toHaveProperty('cause')
+    preflightFailure = new DockerPreflightError('start', new Error('PRIVATE_RAW_TOKEN'), 'timeout')
+    await expect(
+      prepareProtectedExecution(resolveAgent(env.db, env.paths, agentId)),
+    ).rejects.toMatchObject({
+      code: 'protected_execution_unavailable',
+      message:
+        'Protected Docker runtime is unavailable (start: timeout). Run `bazilion doctor` for remediation.',
+    })
+  })
+
+  test.each([
+    'configured',
+    'protected',
+  ] as const)('%s preparation forwards cancellation through live preflight and waits for cleanup', async (kind) => {
+    const { prepareAgentDockerInputs, prepareProtectedExecution } = await import(
+      '../../src/lib/protected-execution.ts'
+    )
+    const entered = Promise.withResolvers<void>()
+    const cleanup = Promise.withResolvers<void>()
+    let observedAbort = false
+    let settled = false
+    preflightGate = async (input) => {
+      entered.resolve()
+      const signal = input.signal
+      if (!signal) throw new Error('caller cancellation signal missing')
+      await new Promise<void>((_resolve, reject) => {
+        const aborted = () => {
+          observedAbort = true
+          void cleanup.promise.then(() => reject(new Error('aborted')))
+        }
+        signal.addEventListener('abort', aborted, { once: true })
+        if (signal.aborted) aborted()
+      })
+    }
+    const controller = new AbortController()
+    const prepare = kind === 'configured' ? prepareAgentDockerInputs : prepareProtectedExecution
+    const attempt = prepare(resolveAgent(env.db, env.paths, agentId), {
+      signal: controller.signal,
+    }).then(
+      (value) => {
+        settled = true
+        return { value }
+      },
+      (error: unknown) => {
+        settled = true
+        return { error }
+      },
+    )
+    await entered.promise
+    try {
+      expect(preflightInputs[0]?.signal).toBe(controller.signal)
+      controller.abort()
+      expect(observedAbort).toBe(true)
+      await Promise.resolve()
+      expect(settled).toBe(false)
+    } finally {
+      controller.abort()
+      cleanup.resolve()
+      await attempt
+    }
+    const outcome = await attempt
+    expect(outcome).not.toHaveProperty('value')
+    expect(outcome).toMatchObject({ error: { code: 'protected_execution_unavailable' } })
+    expect(settled).toBe(true)
+    expect(preflightInputs).toHaveLength(1)
+  })
+
+  test.each([
+    'configured',
+    'protected',
+  ] as const)('%s preparation refuses an already-aborted signal before Docker preflight', async (kind) => {
+    const { prepareAgentDockerInputs, prepareProtectedExecution } = await import(
+      '../../src/lib/protected-execution.ts'
+    )
+    const controller = new AbortController()
+    controller.abort()
+    const prepare = kind === 'configured' ? prepareAgentDockerInputs : prepareProtectedExecution
+    await expect(
+      prepare(resolveAgent(env.db, env.paths, agentId), { signal: controller.signal }),
+    ).rejects.toThrow(/cancelled|aborted/i)
+    expect(preflightInputs).toEqual([])
   })
 
   test('returns an immutable nominal preflight that can be consumed only once', async () => {

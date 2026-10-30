@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto'
-import type { VerificationObservedWrites } from '@bazilion/api-types'
+import type { VerificationEnvironmentFacts, VerificationObservedWrites } from '@bazilion/api-types'
+import { validateCodingEnvironmentConfig } from '../coding-environment/config.ts'
+import { assertNativeExecutionFacts } from '../coding-environment/native-facts.ts'
 import { type BazilionDb, inTx } from '../db/client.ts'
 
 // BAZ-044: one typed, snapshot-bound verification request handed to a selected same-Team specialist.
@@ -79,15 +81,7 @@ export const VERIFICATION_TERMINAL_REQUEST_STATES: readonly VerificationRequestS
 ]
 
 /** The selected specialist sees exactly these environment facts; nothing is inferred from a Profile. */
-export interface VerificationEnvironment {
-  /** BAZ-040 admitted image, `docker` posture included where Docker is the shell backend. */
-  image: string
-  sandbox: 'off' | 'docker'
-  cwd?: string
-  env?: Record<string, string>
-  /** Named, bounded locations a check may write generated output to. */
-  writablePaths?: string[]
-}
+export type VerificationEnvironment = VerificationEnvironmentFacts
 
 export interface VerificationCheckInput {
   command: string
@@ -333,14 +327,7 @@ export function createVerificationRequest(
 ): VerificationRequestRecord {
   const now = input.now ?? Date.now()
   const id = input.id ?? randomUUID()
-  if (input.checks.length < 1)
-    throw new VerificationRequestError('a request needs at least one check')
-  if (input.checks.length > VERIFICATION_MAX_CHECKS) {
-    throw new VerificationRequestError(
-      `a request captures at most ${VERIFICATION_MAX_CHECKS} checks`,
-    )
-  }
-  for (const check of input.checks) validateCheck(check)
+  validateVerificationChecks(input.checks)
   validateEnvironment(input.environment)
   if (input.summary != null) {
     if (!input.summary.trim()) throw new VerificationRequestError('a summary must not be empty')
@@ -656,7 +643,7 @@ export function recordVerificationCheckOutcome(
   if (executed && !input.commandId) {
     throw new VerificationRequestError(`${input.state} requires the receipt that produced it`)
   }
-  if (!executed && input.commandId) {
+  if (!executed && input.state !== 'unknown' && input.commandId) {
     throw new VerificationRequestError(`${input.state} cannot claim a command receipt`)
   }
   if (input.exitCode != null && input.state !== 'succeeded' && input.state !== 'failed') {
@@ -668,6 +655,17 @@ export function recordVerificationCheckOutcome(
     )
     .get(input.attemptId)
   if (!attempt) return false
+  if (input.state === 'unknown' && input.commandId) {
+    const own = db.raw
+      .query<{ id: string }, [string, string]>(`SELECT c.id FROM coding_commands c
+      JOIN verification_attempts a ON a.id=?
+      JOIN verification_requests r ON r.id=a.request_id
+      WHERE c.id=? AND c.team_id=r.team_id AND c.agent_id=r.recipient_agent_id
+        AND c.turn_id=a.id AND c.state='interrupted'`)
+      .get(input.attemptId, input.commandId)
+    if (!own)
+      throw new VerificationRequestError('unknown requires its own interrupted command receipt')
+  }
   const result = db.raw.run(
     `UPDATE verification_check_outcomes
      SET state = ?, command_id = ?, exit_code = ?, started_at = ?, finished_at = ?
@@ -734,6 +732,16 @@ export function pruneVerificationRequests(db: BazilionDb, now = Date.now()): num
   return Number(result.changes)
 }
 
+export function validateVerificationChecks(checks: readonly VerificationCheckInput[]): void {
+  if (!Array.isArray(checks) || checks.length < 1)
+    throw new VerificationRequestError('a request needs at least one check')
+  if (checks.length > VERIFICATION_MAX_CHECKS)
+    throw new VerificationRequestError(
+      `a request captures at most ${VERIFICATION_MAX_CHECKS} checks`,
+    )
+  for (const check of checks) validateCheck(check)
+}
+
 function validateCheck(check: VerificationCheckInput): void {
   if (!check.command.trim()) throw new VerificationRequestError('a check requires a command')
   assertLength(check.command, VERIFICATION_LIMITS.command, 'command')
@@ -752,6 +760,32 @@ function validateCheck(check: VerificationCheckInput): void {
 }
 
 function validateEnvironment(environment: VerificationEnvironment): void {
+  if (environment.sandbox === 'native') {
+    try {
+      if (
+        environment.image !== null ||
+        environment.inputScope !== 'team-memory' ||
+        Object.keys(environment).some(
+          (key) =>
+            !['image', 'sandbox', 'native', 'inputScope', 'cwd', 'env', 'writablePaths'].includes(
+              key,
+            ),
+        )
+      )
+        throw new Error()
+      assertNativeExecutionFacts(environment.native)
+      validateCodingEnvironmentConfig({
+        backend: 'native',
+        cwd: environment.cwd,
+        env: environment.env,
+      })
+    } catch {
+      throw new VerificationRequestError('the captured native environment has invalid closed facts')
+    }
+    return
+  }
+  if (environment.native !== undefined || environment.inputScope !== undefined)
+    throw new VerificationRequestError('the admitted environment has mixed backend facts')
   if (!environment.image)
     throw new VerificationRequestError('the admitted environment has no image')
   if (environment.sandbox !== 'off' && environment.sandbox !== 'docker') {

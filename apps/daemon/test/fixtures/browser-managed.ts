@@ -7,13 +7,55 @@
 // instrumentation lives here: an instrumented loopback HTTP origin, a loopback
 // UDP listener, the owned-process probe, and a thin launch helper.
 
+import { execFile } from 'node:child_process'
 import { createSocket } from 'node:dgram'
 import { mkdirSync, readdirSync, readFileSync, readlinkSync } from 'node:fs'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
+import { promisify } from 'node:util'
 import { type BrowserContext, chromium } from 'playwright'
-import { installManagedGuards, type ManagedPostureInput } from '../../src/lib/browser/guards.ts'
+import { ensureDarwinBrowserKeychain } from '../../src/lib/browser/darwin-keychain.ts'
+import {
+  installManagedGuards,
+  type ManagedPostureInput,
+  managedBrowserEnv,
+} from '../../src/lib/browser/guards.ts'
 import { startOwnedBrowser } from '../../src/lib/browser/process.ts'
+import { getDarwinProcessInspector } from '../../src/lib/process/darwin.ts'
+import { ownedDarwinBrowserProcesses } from './browser-managed-darwin.ts'
+
+let nativeNavigationSampleRequested = false
+let uncertainFixtureOwner = false
+let pendingFixtureOperations = 0
+const spawnInputs = new Map<
+  number,
+  { profileDir: string; start?: string; environment: Readonly<NodeJS.ProcessEnv> }
+>()
+
+/** Real spawn inputs bound to this still-live native birth, never a reconstructed receipt. */
+export function observedBrowserLaunchEnvironment(profileDir: string, pid: number) {
+  const input = spawnInputs.get(pid)
+  if (!input || input.profileDir !== profileDir) throw new Error('owned spawn input unavailable')
+  if (process.platform === 'darwin') {
+    const current = getDarwinProcessInspector().member(pid)
+    if (!input.start || !current || current.start !== input.start || current.state === 'Z')
+      throw new Error('owned spawn input birth changed or unavailable')
+  }
+  return input.environment
+}
+export function fixtureOwnersConfirmed(): boolean {
+  return !uncertainFixtureOwner && pendingFixtureOperations === 0
+}
+function observeFixtureOperation<T>(operation: Promise<T>): Promise<T> {
+  pendingFixtureOperations++
+  return operation.catch(retainUncertainFixture).finally(() => {
+    pendingFixtureOperations--
+  })
+}
+function retainUncertainFixture(error: unknown): never {
+  uncertainFixtureOwner = true
+  throw error
+}
 
 export type { ManagedPostureInput } from '../../src/lib/browser/guards.ts'
 export {
@@ -34,26 +76,123 @@ export interface ManagedLaneInput extends ManagedPostureInput {
   beforeGuards?: (context: BrowserContext) => Promise<void>
 }
 
-export async function launchLaneContext(input: ManagedLaneInput): Promise<BrowserContext> {
+export function launchLaneContext(input: ManagedLaneInput): Promise<BrowserContext> {
+  return observeFixtureOperation(launchLaneContextInner(input))
+}
+
+async function launchLaneContextInner(input: ManagedLaneInput): Promise<BrowserContext> {
   if (input.denialArgs !== undefined) {
-    // Exposure control ONLY, not evidence for the product launch adapter.
-    return chromium.launchPersistentContext(input.profileDir, {
-      executablePath: input.executablePath,
-      headless: input.headless,
-      chromiumSandbox: true,
-      args: [...input.denialArgs],
-    })
+    // Exposure control ONLY, not evidence for the product launch adapter. Keep credentials and
+    // native private keychain admission identical; WebRTC denials are the experiment's variable.
+    const env = managedBrowserEnv(input)
+    if (process.platform === 'darwin')
+      await ensureDarwinBrowserKeychain(input.home, 8000).catch(retainUncertainFixture)
+    const context = await chromium
+      .launchPersistentContext(input.profileDir, {
+        executablePath: input.executablePath,
+        headless: input.headless,
+        chromiumSandbox: true,
+        env,
+        ignoreDefaultArgs: ['--use-mock-keychain'],
+        // This control removes only the WebRTC denials under comparison. Starting an installed
+        // browser updater is not part of that experiment and may alter the runner-user account.
+        args: ['--disable-updater-scheduler', ...input.denialArgs],
+      })
+      .catch(retainUncertainFixture)
+    const close = context.close.bind(context)
+    context.close = (options) => observeFixtureOperation(close(options))
+    return context
   }
   mkdirSync(input.home, { recursive: true, mode: 0o700 })
+  let diagnosticBytes = 0
+  const diagnostic = (text: string) => {
+    if (process.env.BAZILION_TEST_BROWSER_DIAGNOSTICS !== '1' || diagnosticBytes >= 64 * 1024)
+      return
+    const bounded = text
+      .slice(0, 64 * 1024 - diagnosticBytes)
+      .replace(/ws:\/\/127\.0\.0\.1:\d+\/devtools\/browser\/[^\s]+/g, '[private-cdp]')
+    diagnosticBytes += bounded.length
+    console.log('[controlled-browser-diagnostic]', bounded)
+  }
   const owned = await startOwnedBrowser(input, () => {}, {
+    observeStderr: diagnostic,
+    observeSpawn: ({ pid, environment }) => {
+      const start =
+        process.platform === 'darwin' ? getDarwinProcessInspector().member(pid)?.start : undefined
+      if (process.platform === 'darwin' && !start)
+        throw new Error('owned spawn evidence has no native birth')
+      spawnInputs.set(pid, { profileDir: input.profileDir, start, environment })
+    },
     installGuards: async (context) => {
+      const observe = (page: import('playwright').Page) => {
+        page.on('request', (request) => {
+          diagnostic(`request: ${request.method()} ${request.url()}`)
+          if (
+            process.platform !== 'darwin' ||
+            nativeNavigationSampleRequested ||
+            process.env.BAZILION_TEST_BROWSER_DIAGNOSTICS !== '1' ||
+            !request.url().endsWith('/sw-page')
+          )
+            return
+          nativeNavigationSampleRequested = true
+          // Read-only diagnostics for this controlled fixture. No sudo, process signalling,
+          // preferences/keychain changes, or mock keychain/encryption switch is permitted.
+          setTimeout(async () => {
+            try {
+              const inspector = getDarwinProcessInspector()
+              const candidates = ownedBrowserProcesses(input.profileDir).filter(
+                (p) => p.kind === 'root' || p.cmdline.includes('network.mojom.NetworkService'),
+              )
+              for (const child of candidates.slice(0, 2)) {
+                const before = inspector.member(child.pid)
+                if (!before) continue
+                try {
+                  const { stdout } = await promisify(execFile)(
+                    '/usr/bin/sample',
+                    [String(child.pid), '1', '1'],
+                    { timeout: 8000, maxBuffer: 2 * 1024 * 1024 },
+                  )
+                  const after = inspector.member(child.pid)
+                  if (!after || before.start !== after.start || before.uid !== after.uid) {
+                    diagnostic('native sample discarded: observed process birth changed')
+                    continue
+                  }
+                  const lines = stdout
+                    .split('\n')
+                    .filter((line) =>
+                      /Keychain|keychain|SecItem|OSCrypt|SafeStorage|Security|Cookie|cookie|Thread_|dispatch_sync|mach_msg|semaphore|ConditionVariable|WaitableEvent|CFRunLoop/.test(
+                        line,
+                      ),
+                    )
+                  diagnostic(`native sample (${child.kind}):\n${lines.slice(0, 120).join('\n')}`)
+                } catch (error) {
+                  diagnostic(`native sample unavailable: ${String(error).slice(0, 1000)}`)
+                }
+              }
+            } catch (error) {
+              diagnostic(`native sample evidence unavailable: ${String(error).slice(0, 1000)}`)
+            }
+          }, 2000).unref()
+        })
+        page.on('response', (response) =>
+          diagnostic(`response: ${response.status()} ${response.url()}`),
+        )
+        page.on('requestfailed', (request) =>
+          diagnostic(`request failed: ${request.url()} ${request.failure()?.errorText}`),
+        )
+        page.on('console', (message) => diagnostic(`console: ${message.type()} ${message.text()}`))
+      }
+      if (process.env.BAZILION_TEST_BROWSER_DIAGNOSTICS === '1') {
+        context.on('page', observe)
+        for (const page of context.pages()) observe(page)
+      }
       await input.beforeGuards?.(context)
       await installManagedGuards(context)
     },
-  })
+  }).catch(retainUncertainFixture)
   // Test convenience: context.close must retire the child, not just disconnect.
   const ctx = owned.context
-  ctx.close = () => owned.close()
+  ctx.close = () => observeFixtureOperation(owned.close())
   return ctx
 }
 
@@ -176,7 +315,7 @@ export async function createUdpProbe(): Promise<UdpProbe> {
   }
 }
 
-// --- owned-process probe (Linux) ---
+// --- actual owned-process evidence (Linux / Darwin) ---
 
 export interface OwnedBrowserProcess {
   pid: number
@@ -187,15 +326,18 @@ export interface OwnedBrowserProcess {
   /** The full cmdline as one string — reliable for child-process matching. */
   cmdline: string
   environ: string[]
+  /** False is unreported, not evidence of an empty or secret-free environment. */
+  environmentReported: boolean
   kind: 'root' | 'child'
 }
 
 /**
  * Find the browser processes owned by a launch, keyed on the exact profile
  * path in their argv — the narrow ownership probe the plan names (never broad
- * process-name matching). Linux-only, like the reviewed lane.
+ * process-name matching). Darwin uses bounded public libproc/sysctl evidence, not ps text.
  */
 export function ownedBrowserProcesses(profileDir: string): OwnedBrowserProcess[] {
+  if (process.platform === 'darwin') return ownedDarwinBrowserProcesses(profileDir)
   const found: OwnedBrowserProcess[] = []
   let entries: string[]
   try {
@@ -221,8 +363,10 @@ export function ownedBrowserProcesses(profileDir: string): OwnedBrowserProcess[]
       // EACCES on restricted kernels: keep the process, drop the exe detail.
     }
     let environ: string[] = []
+    let environmentReported = false
     try {
       environ = readFileSync(`/proc/${pid}/environ`, 'utf8').split('\0').filter(Boolean)
+      environmentReported = true
     } catch {
       // Not a descendant, or exited between scans.
     }
@@ -233,6 +377,7 @@ export function ownedBrowserProcesses(profileDir: string): OwnedBrowserProcess[]
       argv,
       cmdline,
       environ,
+      environmentReported,
       kind: cmdline.includes('--type=') ? 'child' : 'root',
     })
   }

@@ -1,23 +1,33 @@
-import { join } from 'node:path'
 import type { ResolvedAgent } from '@bazilion/api-types'
 import { mergeSecretsIntoEnv } from '../core/index.ts'
-import { loadPromptSkills, loadProtectedHomeDocuments } from '../runtime/index.ts'
-import { ensureContainedRealDirectory, resolveRealDirectory } from '../runtime/safe-files.ts'
 import type { DockerCodingSelection } from '../runtime/shell/coding.ts'
 import {
+  DockerPreflightError,
   type DockerReadOnlyMount,
   type DockerResourceLifecycle,
   type ProtectedDockerRuntime,
   preflightProtectedDockerRuntime,
 } from '../runtime/shell/docker.ts'
+import { MAC_PROTECTED_EXECUTION_UNAVAILABLE } from '../runtime/shell/platform-support.ts'
 import { SANDBOX_INPUTS_DIR, SANDBOX_MEMORY_DIR } from '../runtime/shell/tooling.ts'
 import type {
   ProtectedProviderWorkerRuntime,
   ProtectedWorkerPaths,
 } from '../runtime/worker/runtime.ts'
-import { prepareInputFilesDirectory } from './attachments.ts'
+import { prepareAgentExecutionPaths } from './agent-execution-inputs.ts'
+import { workspaceLifecycle } from './coding-environment/lifecycle.ts'
 import { resolveTeamCodingEnvironment } from './coding-environment/resolve.ts'
+import type { DaemonCtx } from './ctx.ts'
 import { getCtx } from './ctx.ts'
+import type { PrepareAgentNativeInputsOptions } from './native-execution/prepare.ts'
+import {
+  assertPreparedProtectedNativeExecution,
+  consumePreparedProtectedNativeExecution,
+  isPreparedProtectedNativeExecution,
+  type PreparedProtectedNativeExecution,
+  prepareProtectedNativeExecution,
+} from './native-execution/protected.ts'
+import { resolveProtectedExecutionBackend } from './native-execution/selection.ts'
 import {
   ProtectedExecutionUnavailableError,
   resolveProtectedProviderRuntime,
@@ -28,8 +38,17 @@ const preparedProtectedExecutionBrand: unique symbol = Symbol(
 )
 const preparedProtectedExecutions = new WeakSet<object>()
 const consumedProtectedExecutions = new WeakSet<object>()
+const selectedBackends = new WeakMap<object, 'native' | 'docker'>()
+const selectedBackend = (ctx: DaemonCtx) =>
+  resolveProtectedExecutionBackend(mergeSecretsIntoEnv(ctx.db, ctx.authToken))
 
-export interface PreparedProtectedExecution {
+export type PreparedProtectedExecution =
+  | PreparedDockerProtectedExecution
+  | PreparedProtectedNativeExecution
+export interface PreparedDockerProtectedExecution {
+  readonly backend: 'docker'
+  readonly nativeExecution?: never
+  readonly host?: never
   readonly [preparedProtectedExecutionBrand]: true
   readonly runtime: ProtectedProviderWorkerRuntime
   readonly paths: ProtectedWorkerPaths
@@ -38,16 +57,31 @@ export interface PreparedProtectedExecution {
 }
 
 export interface PrepareProtectedExecutionOptions {
+  readonly backend?: 'docker'
   dockerLifecycle?: DockerResourceLifecycle
   includeUploads?: boolean
   signal?: AbortSignal
 }
 
+export interface PrepareNativeProtectedExecutionOptions extends PrepareAgentNativeInputsOptions {
+  readonly backend: 'native'
+}
 /** Resolve and preflight every capability needed by one protected normal turn. */
+export function prepareProtectedExecution(
+  agent: ResolvedAgent,
+  options: PrepareNativeProtectedExecutionOptions,
+): Promise<PreparedProtectedNativeExecution>
+export function prepareProtectedExecution(
+  agent: ResolvedAgent,
+  options?: PrepareProtectedExecutionOptions,
+): Promise<PreparedDockerProtectedExecution>
 export async function prepareProtectedExecution(
   agent: ResolvedAgent,
-  options: PrepareProtectedExecutionOptions = {},
+  options: PrepareProtectedExecutionOptions | PrepareNativeProtectedExecutionOptions = {},
 ): Promise<PreparedProtectedExecution> {
+  if (process.platform === 'darwin')
+    throw new ProtectedExecutionUnavailableError(MAC_PROTECTED_EXECUTION_UNAVAILABLE)
+  if (options.backend === 'native') return prepareProtectedNativeExecution(getCtx(), agent, options)
   const signal = options.signal
   if (signal?.aborted) throw new Error('cancelled')
   const { db, authToken } = getCtx()
@@ -58,12 +92,62 @@ export async function prepareProtectedExecution(
   if (signal?.aborted) throw new Error('cancelled')
   const prepared = {
     [preparedProtectedExecutionBrand]: true as const,
+    backend: 'docker' as const,
     ...provider,
     ...inputs,
   }
   Object.defineProperty(prepared, preparedProtectedExecutionBrand, { enumerable: false })
   deepFreezePreparedProtectedExecution(prepared)
   preparedProtectedExecutions.add(prepared)
+  return prepared
+}
+
+export { assertSelectedNativeBackend } from './native-execution/selection.ts'
+
+/** Before approved cutover retain legacy Docker selection; native never falls back. */
+export async function prepareSelectedProtectedExecution(
+  agent: ResolvedAgent,
+  options: Omit<PrepareAgentNativeInputsOptions, 'assertSelection'> & {
+    readonly expectedBackend?: 'native' | 'docker'
+  },
+): Promise<PreparedProtectedExecution> {
+  const ctx = getCtx(),
+    backend = selectedBackend(ctx)
+  if (options.expectedBackend !== undefined && options.expectedBackend !== backend)
+    throw new ProtectedExecutionUnavailableError(
+      'Protected execution selection changed; prepare a new turn.',
+    )
+  const prepared =
+    backend === 'native'
+      ? await prepareProtectedExecution(agent, {
+          lease: options.lease,
+          controller: options.controller,
+          turnId: options.turnId,
+          includeUploads: options.includeUploads,
+          backend: 'native',
+          assertSelection: () => {
+            if (selectedBackend(ctx) !== backend)
+              throw new ProtectedExecutionUnavailableError(
+                'Protected execution selection changed; prepare a new turn.',
+              )
+          },
+        })
+      : await prepareProtectedExecution(agent, {
+          backend: 'docker',
+          signal: options.controller.signal,
+          includeUploads: options.includeUploads,
+          dockerLifecycle: workspaceLifecycle(ctx.db).containers(options.lease),
+        })
+  if (selectedBackend(ctx) !== backend) {
+    const native = isPreparedProtectedNativeExecution(prepared) ? prepared : undefined
+    const closed = native ? await native.close().catch(() => false) : true
+    await workspaceLifecycle(ctx.db).release(options.lease)
+    if (!closed && native) await native.close().catch(() => false)
+    throw new ProtectedExecutionUnavailableError(
+      'Protected execution selection changed; prepare a new turn.',
+    )
+  }
+  selectedBackends.set(prepared, backend)
   return prepared
 }
 
@@ -74,36 +158,8 @@ export async function prepareAgentDockerInputs(
 ): Promise<{ paths: ProtectedWorkerPaths; docker: ProtectedDockerRuntime }> {
   options.signal?.throwIfAborted()
   const { db, paths, authToken } = getCtx()
-  let memoryDir: string
-  let sessionDir: string
-  let uploadsDir: string | undefined
-  let homeDocuments: ReturnType<typeof loadProtectedHomeDocuments>
-  try {
-    resolveRealDirectory(agent.agent.dir)
-    memoryDir = ensureContainedRealDirectory(join(agent.team.path, 'memory'), agent.team.path, {
-      create: true,
-    })
-    sessionDir = ensureContainedRealDirectory(join(agent.agent.dir, 'sessions'), agent.agent.dir, {
-      create: true,
-    })
-    uploadsDir = options.includeUploads ? prepareInputFilesDirectory(agent.agent.dir) : undefined
-    homeDocuments = loadProtectedHomeDocuments(agent.agent.dir)
-  } catch {
-    throw new ProtectedExecutionUnavailableError(
-      'Protected Agent paths are unavailable or unsafe. Run `bazilion doctor` for remediation.',
-    )
-  }
-
-  const skills = loadPromptSkills(paths.skillsDir, agent.skills)
-  const workerPaths: ProtectedWorkerPaths = {
-    agentDir: agent.agent.dir,
-    teamDir: agent.team.path,
-    memoryDir,
-    sessionDir,
-    ...(uploadsDir ? { uploadsDir } : {}),
-    skills,
-    homeDocuments,
-  }
+  const workerPaths = prepareAgentExecutionPaths(paths, agent, options.includeUploads)
+  const { memoryDir, uploadsDir, skills } = workerPaths
 
   let image: string
   let coding: DockerCodingSelection | undefined
@@ -140,15 +196,21 @@ export async function prepareAgentDockerInputs(
   try {
     docker = await preflightProtectedDockerRuntime({
       image,
+      signal: options.signal,
       lifecycle: options.dockerLifecycle,
       ...(coding ? { coding } : {}),
       workspaceDir: agent.team.path,
       workspaceRoot: agent.team.path,
       readOnlyMounts,
     })
-  } catch {
+  } catch (error) {
+    // Publish only the daemon-authored boundary, never the Docker error/cause or host paths.
+    const phase =
+      error instanceof DockerPreflightError
+        ? ` (${error.phase}${error.kind === 'timeout' ? ': timeout' : ''})`
+        : ''
     throw new ProtectedExecutionUnavailableError(
-      'Protected Docker runtime is unavailable. Run `bazilion doctor` for remediation.',
+      `Protected Docker runtime is unavailable${phase}. Run \`bazilion doctor\` for remediation.`,
     )
   }
   options.signal?.throwIfAborted()
@@ -158,12 +220,18 @@ export async function prepareAgentDockerInputs(
 export function assertPreparedProtectedExecution(
   value: unknown,
   agent: ResolvedAgent,
+  turnId?: string,
 ): asserts value is PreparedProtectedExecution {
+  if (isPreparedProtectedNativeExecution(value)) {
+    if (!turnId) throw new Error('native protected execution requires its bound turn')
+    assertPreparedProtectedNativeExecution(value, agent, turnId)
+    return
+  }
   if (
     typeof value !== 'object' ||
     value === null ||
     !preparedProtectedExecutions.has(value) ||
-    (value as Partial<PreparedProtectedExecution>)[preparedProtectedExecutionBrand] !== true
+    (value as Partial<PreparedDockerProtectedExecution>)[preparedProtectedExecutionBrand] !== true
   ) {
     throw new Error('protected execution was not prepared by the daemon')
   }
@@ -184,7 +252,18 @@ export function assertPreparedProtectedExecution(
 export function consumePreparedProtectedExecution(
   value: unknown,
   agent: ResolvedAgent,
+  turnId?: string,
 ): asserts value is PreparedProtectedExecution {
+  const selected = value && typeof value === 'object' ? selectedBackends.get(value) : undefined
+  if (selected && selectedBackend(getCtx()) !== selected)
+    throw new ProtectedExecutionUnavailableError(
+      'Protected execution selection changed; prepare a new turn.',
+    )
+  if (isPreparedProtectedNativeExecution(value)) {
+    if (!turnId) throw new Error('native protected execution requires its bound turn')
+    consumePreparedProtectedNativeExecution(value, agent, turnId)
+    return
+  }
   assertPreparedProtectedExecution(value, agent)
   if (consumedProtectedExecutions.has(value)) {
     throw new Error('protected execution preflight has already been consumed')

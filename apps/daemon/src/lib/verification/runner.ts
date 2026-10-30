@@ -31,7 +31,7 @@ import { VerificationCapabilityError } from '../../runtime/tools/verification.ts
 export interface VerificationCheckExecutorResult {
   /** BAZ-041 receipt id; absent only when nothing was executed. */
   commandId: string | null
-  state: 'succeeded' | 'failed' | 'blocked' | 'timed_out' | 'cancelled'
+  state: 'succeeded' | 'failed' | 'blocked' | 'timed_out' | 'cancelled' | 'unknown'
   exitCode: number | null
   output: string
   truncated: boolean
@@ -45,6 +45,8 @@ export interface VerificationCheckExecutor {
    * cancellation, isolation and output policy. The executor receives only captured values.
    */
   run(input: {
+    /** Parent-selected captured ordinal; never a command override. Native execution requires it. */
+    ordinal?: number
     command: string
     cwd: string
     timeoutMs: number
@@ -65,6 +67,8 @@ export interface VerificationHostInput {
 /** Build the host bound to one claimed attempt. */
 export function createVerificationHost(input: VerificationHostInput): VerificationCapabilityHost {
   const { db, request, attemptId, executor } = input
+  // At most the eight captured ordinals. Fence before awaiting an executor, not after its result.
+  const invoked = new Set<number>()
 
   return {
     async read(): Promise<VerificationBrief> {
@@ -94,18 +98,31 @@ export function createVerificationHost(input: VerificationHostInput): Verificati
           head: request.head,
           baseOid: request.baseOid,
         },
-        environment: {
-          image: request.environment.image,
-          sandbox: request.environment.sandbox,
-          ...(request.environment.cwd ? { cwd: request.environment.cwd } : {}),
-        },
+        environment:
+          request.environment.sandbox === 'native'
+            ? {
+                image: null,
+                sandbox: 'native',
+                native: request.environment.native,
+                inputScope: 'team-memory',
+                cwd: request.environment.cwd,
+              }
+            : {
+                image: request.environment.image,
+                sandbox: request.environment.sandbox,
+                ...(request.environment.cwd ? { cwd: request.environment.cwd } : {}),
+              },
         writablePaths: request.environment.writablePaths ?? [],
         checks,
         applicability: input.applicability,
       }
     },
 
-    async invoke(ordinal: number): Promise<VerificationCheckRun> {
+    async invoke(
+      ordinal: number,
+      context?: { toolCallId: string; signal?: AbortSignal },
+    ): Promise<VerificationCheckRun> {
+      const signal = context?.signal
       const declared = listVerificationChecks(db, request.id).find(
         (check) => check.ordinal === ordinal,
       )
@@ -123,49 +140,60 @@ export function createVerificationHost(input: VerificationHostInput): Verificati
         )
       }
 
+      if (invoked.has(ordinal))
+        throw new VerificationCapabilityError(
+          `check ${ordinal} was already invoked and cannot be run again`,
+        )
+      invoked.add(ordinal)
       const startedAt = Date.now()
-      let result: VerificationCheckExecutorResult
       try {
-        result = await executor.run({
+        const result = await executor.run({
+          ordinal: declared.ordinal,
+          ...(signal ? { signal } : {}),
           command: declared.command,
           cwd: declared.cwd,
           timeoutMs: declared.timeoutMs,
           purpose: 'verification',
           writablePaths: request.environment.writablePaths ?? [],
         })
+        const state = normalizeState(result.state)
+        // An executor reporting an executed/uncertain command must name its actual receipt.
+        if (state === 'blocked' && result.commandId)
+          throw new VerificationCapabilityError('a blocked check cannot claim a command receipt')
+        if (state !== 'blocked' && !result.commandId) {
+          throw new VerificationCapabilityError(
+            `a ${state} check must report the receipt that produced it`,
+          )
+        }
+        const recorded = recordVerificationCheckOutcome(db, {
+          attemptId,
+          ordinal,
+          state,
+          commandId: state === 'blocked' ? null : result.commandId,
+          exitCode: state === 'succeeded' || state === 'failed' ? result.exitCode : null,
+          startedAt,
+          finishedAt: Date.now(),
+        })
+        if (!recorded) throw new VerificationCapabilityError(`check ${ordinal} was already settled`)
+        return {
+          ordinal,
+          state,
+          commandId: state === 'blocked' ? null : result.commandId,
+          exitCode: state === 'succeeded' || state === 'failed' ? result.exitCode : null,
+          output: result.output,
+          truncated: result.truncated,
+        }
       } catch (error) {
-        // A throwing executor reported no outcome. The check keeps `not_executed` so it stays
-        // runnable, and the reason is surfaced rather than converted into a fabricated failure.
-        throw error instanceof Error ? error : new Error('verification check failed to start')
-      }
-
-      const state = normalizeState(result.state)
-      // An executed outcome must name its receipt and a non-executed one must not. The store
-      // enforces this too; checking here keeps the refusal close to the executor contract.
-      if (state !== 'blocked' && !result.commandId) {
-        throw new VerificationCapabilityError(
-          `a ${state} check must report the receipt that produced it`,
-        )
-      }
-      const recorded = recordVerificationCheckOutcome(db, {
-        attemptId,
-        ordinal,
-        state,
-        commandId: state === 'blocked' ? null : result.commandId,
-        exitCode: state === 'succeeded' || state === 'failed' ? result.exitCode : null,
-        startedAt,
-        finishedAt: Date.now(),
-      })
-      if (!recorded) {
-        throw new VerificationCapabilityError(`check ${ordinal} was already settled`)
-      }
-      return {
-        ordinal,
-        state,
-        commandId: state === 'blocked' ? null : result.commandId,
-        exitCode: state === 'succeeded' || state === 'failed' ? result.exitCode : null,
-        output: result.output,
-        truncated: result.truncated,
+        // A throw proves neither non-execution nor cleanup. Retain an unknown outcome, without
+        // inventing a receipt, and never reopen this ordinal. An already-settled row is immutable.
+        recordVerificationCheckOutcome(db, {
+          attemptId,
+          ordinal,
+          state: 'unknown',
+          startedAt,
+          finishedAt: Date.now(),
+        })
+        throw error instanceof Error ? error : new Error('verification check outcome unavailable')
       }
     },
   }
@@ -222,12 +250,21 @@ export function settleVerificationAttempt(
   }
   const settled = listVerificationCheckOutcomes(db, input.attemptId)
   const executed = settled.filter((outcome) =>
-    ['succeeded', 'failed'].includes(outcome.state),
+    ['succeeded', 'failed', 'timed_out', 'cancelled'].includes(outcome.state),
   ).length
   // Nothing ran at all: the verification did not happen, so it is a failure of the attempt rather
   // than a result about the change.
-  const state: 'completed' | 'failed' = executed > 0 ? 'completed' : 'failed'
-  const error = state === 'failed' ? 'no captured check executed' : null
+  const uncertain = settled.some((outcome) => outcome.state === 'unknown')
+  const state: 'completed' | 'failed' | 'uncertain' = uncertain
+    ? 'uncertain'
+    : executed > 0
+      ? 'completed'
+      : 'failed'
+  const error = uncertain
+    ? 'captured check execution or cleanup is uncertain'
+    : state === 'failed'
+      ? 'no captured check executed'
+      : null
   const finished = finishVerificationAttempt(db, {
     attemptId: input.attemptId,
     leaseOwner: input.leaseOwner,

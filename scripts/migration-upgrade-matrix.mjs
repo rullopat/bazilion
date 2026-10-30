@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Genuine prior-release compatibility fixtures, not a product recovery mechanism.
-// Reopen the unchanged 0.23 schema; retain all eight older clean-install refusals.
+// Native execution changes the canonical alpha schema: prior published homes refuse unchanged.
+// A separately labelled fresh-current fixture preserves positive idempotent-reopen coverage.
 // Importing this module is inert; controlled harness tests do not run the matrix.
 
 import { spawn } from 'node:child_process'
@@ -21,7 +22,9 @@ import { DatabaseSync } from 'node:sqlite'
 import { pathToFileURL } from 'node:url'
 
 export const DEFAULT_MATRIX = [
-  { tag: 'v0.23.0', expect: 'upgrade' },
+  { tag: 'current', expect: 'reopen' },
+  { tag: 'v0.24.0', expect: 'refuse' },
+  { tag: 'v0.23.0', expect: 'refuse' },
   { tag: 'v0.22.0', expect: 'refuse' },
   { tag: 'v0.21.0-beta.5', expect: 'refuse' },
   { tag: 'v0.21.0-beta.4', expect: 'refuse' },
@@ -291,17 +294,20 @@ export function assertFixtureContinuity(home, tag, authSha256) {
 }
 
 async function entry(repo, { tag, expect }) {
+  const isCurrent = tag === 'current'
   if (
-    !/^v\d+\.\d+\.\d+(?:-(?:beta|alpha|rc)\.\d+)?$/.test(tag) ||
-    !['upgrade', 'refuse'].includes(expect)
+    isCurrent
+      ? expect !== 'reopen'
+      : !/^v\d+\.\d+\.\d+(?:-(?:beta|alpha|rc)\.\d+)?$/.test(tag) ||
+        !['upgrade', 'refuse'].includes(expect)
   ) {
     throw new Error('invalid fixture matrix entry')
   }
   const base = mkdtempSync(join(tmpdir(), 'bazilion-matrix-'))
-  const source = join(base, 'source')
+  const source = isCurrent ? repo : join(base, 'source')
   const state = join(base, 'state')
   const home = join(state, 'home')
-  mkdirSync(source)
+  if (!isCurrent) mkdirSync(source)
   mkdirSync(state)
   const env = fixtureEnv(base)
   const children = []
@@ -323,14 +329,16 @@ async function entry(repo, { tag, expect }) {
   try {
     // A tag archive contains genuine tracked release sources but no shared
     // worktree/Git credential config, hooks or global prune operation.
-    const archive = join(base, 'source.tar')
-    await runOwned(
-      'git',
-      ['-c', 'core.hooksPath=/dev/null', 'archive', '--format=tar', `--output=${archive}`, tag],
-      { cwd: repo, env },
-    )
-    await runOwned('tar', ['-xf', archive, '-C', source], { env })
-    await runOwned('pnpm', ['install', '--frozen-lockfile'], { cwd: source, env })
+    if (!isCurrent) {
+      const archive = join(base, 'source.tar')
+      await runOwned(
+        'git',
+        ['-c', 'core.hooksPath=/dev/null', 'archive', '--format=tar', `--output=${archive}`, tag],
+        { cwd: repo, env },
+      )
+      await runOwned('tar', ['-xf', archive, '-C', source], { env })
+      await runOwned('pnpm', ['install', '--frozen-lockfile'], { cwd: source, env })
+    }
     const seeded = await boot(source)
     const seedClose = await seeded.stop()
     if (seedClose.forced || seedClose.signal || seedClose.code !== 0)
@@ -410,7 +418,7 @@ async function entry(repo, { tag, expect }) {
       console.log(`${tag}: sentinel and paired auth retained across two healthy boots`)
       console.log(
         JSON.stringify({
-          kind: 'prior-home-upgrade',
+          kind: isCurrent ? 'current-home-reopen' : 'prior-home-upgrade',
           tag,
           seedExit: { code: seedClose.code, signal: seedClose.signal, forced: seedClose.forced },
           beforeLedger,
@@ -449,8 +457,9 @@ export async function main() {
     : DEFAULT_MATRIX
   if (!Array.isArray(matrix) || matrix.length === 0 || matrix.length > 32)
     throw new Error('invalid fixture matrix')
-  // This script runs prior-release code/install hooks. Execute only in a
-  // disposable host/namespace with an explicitly approved install/network path.
+  // Prior-release entries run their genuine code/install hooks: execute those only in a
+  // disposable host/namespace with an approved install/network path. The current-only entry
+  // uses the already-installed checkout and a private fresh home, never a prior-release adapter.
   for (const item of matrix) await entry(process.cwd(), item)
   console.log('compatibility matrix: all selected entries passed')
 }

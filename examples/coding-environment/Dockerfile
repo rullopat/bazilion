@@ -1,5 +1,5 @@
 # Explicit operator preparation only. Bazilion never runs this build or pulls its base image.
-FROM node:24.13.0-bookworm-slim@sha256:4660b1ca8b28d6d1906fd644abe34b2ed81d15434d26d845ef0aced307cf4b6f
-RUN npm install --global pnpm@10.28.2
+FROM node:26.12.1-bookworm-slim@sha256:28147155d47dc31abe0a46e0d12b59b2fb3d0a2dcc5dc65fce76a074180b16fe
+RUN npm install --global pnpm@12.15.0
 RUN npm cache clean --force
 WORKDIR /workspace

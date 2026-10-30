@@ -1,14 +1,22 @@
 import type { VerificationCheckInput } from '@bazilion/api-types'
 import type { BazilionDb } from '../../core/db/client.ts'
 import type { Paths } from '../../core/paths.ts'
+import { get as getAgent } from '../../core/repos/agents.ts'
 import type {
   VerificationRequestHost,
   VerificationRequestIntent,
   VerificationRequestReceipt,
 } from '../../runtime/tools/verification.ts'
-import { captureTeamSnapshot } from '../git-review/service.ts'
+import { captureTeamSnapshot, requireTeam } from '../git-review/service.ts'
+import {
+  assertBoundNativeTurnForWorker,
+  assertNativeTurn,
+  type NativeTurnExecution,
+} from '../native-execution/turn.ts'
 import { resolveTeamMember } from '../team-member.ts'
-import { captureVerificationRequest } from './capture.ts'
+import { captureVerificationRequest, type VerificationCaptureIntent } from './capture.ts'
+import { assertVerificationCommandSecrets } from './capture-input.ts'
+import { prepareNativeAgentVerificationCapture } from './native-capture.ts'
 
 // BAZ-044: the requester's half of the loop.
 //
@@ -28,16 +36,80 @@ export interface VerificationRequestCapabilityInput {
   agentId: string
   teamId: string
   turnId: string
+  native?: NativeTurnExecution
+  secrets?: () => readonly string[]
   /** Re-checked before the snapshot is taken, so a finished turn cannot capture anything. */
   assertActive: () => void
 }
 
+const nativeHosts = new WeakMap<object, VerificationRequestCapabilityInput>()
+export function isNativeVerificationRequestHost(value: unknown): boolean {
+  return !!value && typeof value === 'object' && nativeHosts.has(value)
+}
+/** Parent-side admission only; the worker's actual native binding is consumed before input. */
+export function assertNativeVerificationRequestHost(
+  value: unknown,
+  binding: { agentId: string; teamId: string; turnId: string; native: NativeTurnExecution },
+): asserts value is VerificationRequestHost {
+  if (!value || typeof value !== 'object')
+    throw new Error('Native verification requester is unavailable')
+  const owner = nativeHosts.get(value)
+  if (
+    !owner ||
+    owner.native !== binding.native ||
+    owner.agentId !== binding.agentId ||
+    owner.teamId !== binding.teamId ||
+    owner.turnId !== binding.turnId
+  )
+    throw new Error('Native verification requester is unavailable')
+  owner.assertActive()
+  assertNativeTurn(owner.native)
+  const actor = getAgent(owner.db, owner.agentId)
+  if (!actor || actor.teamId !== owner.teamId || actor.status === 'archived')
+    throw new Error('Native verification requester is unavailable')
+}
 export function createVerificationRequestHost(
-  input: VerificationRequestCapabilityInput,
+  options: VerificationRequestCapabilityInput,
 ): VerificationRequestHost {
-  return {
-    async capture(intent: VerificationRequestIntent): Promise<VerificationRequestReceipt> {
-      input.assertActive()
+  const input = Object.freeze({ ...options })
+  if (input.native) {
+    assertNativeTurn(input.native)
+    if (typeof input.secrets !== 'function')
+      throw new Error('Native verification requester requires live secret refusal')
+  }
+  const readNativeSecrets = () => {
+    if (!input.secrets) throw new Error('Native verification requester secrets unavailable')
+    return input.secrets()
+  }
+  const nativeBinding = input.native
+    ? {
+        agentId: input.agentId,
+        teamId: input.teamId,
+        turnId: input.turnId,
+        registeredRoot: requireTeam(input.db, input.paths, input.teamId).path,
+        admission: { cwd: input.native.cwd, facts: input.native.facts },
+      }
+    : undefined
+  const check = () => {
+    input.assertActive()
+    if (input.native && nativeBinding) assertBoundNativeTurnForWorker(input.native, nativeBinding)
+  }
+  const host: VerificationRequestHost = {
+    async capture(
+      raw: VerificationRequestIntent,
+      signal?: AbortSignal,
+    ): Promise<VerificationRequestReceipt> {
+      const intent = {
+        ...raw,
+        checks: raw.checks.map((value) => ({ ...value })),
+        ...(raw.writablePaths ? { writablePaths: [...raw.writablePaths] } : {}),
+      }
+      const assertRequestActive = () => {
+        signal?.throwIfAborted()
+        check()
+      }
+      assertRequestActive()
+      if (input.native) assertVerificationCommandSecrets(intent, readNativeSecrets())
       // Captured now, for this turn: the request must describe the change the requester is looking at,
       // not a capture it happened to know an id for.
       const captured = await captureTeamSnapshot(input.db, input.paths, input.teamId, {
@@ -46,7 +118,7 @@ export function createVerificationRequestHost(
         turnId: input.turnId,
         toolCallId: `request_verification:${input.turnId}`,
       })
-      input.assertActive()
+      assertRequestActive()
       if (!captured.snapshot.complete) {
         // An incomplete capture cannot support a claim about the change, so it is refused with the
         // reasons rather than handed to a specialist as if it were exact.
@@ -74,7 +146,7 @@ export function createVerificationRequestHost(
         cwd: check.cwd?.trim() || '.',
         timeoutMs: Math.max(1, Math.round((check.timeoutSeconds ?? 120) * 1000)),
       }))
-      const result = captureVerificationRequest(input.db, input.paths, {
+      const captureIntent: VerificationCaptureIntent = {
         teamId: input.teamId,
         requesterKind: 'agent',
         requesterAgentId: input.agentId,
@@ -86,7 +158,30 @@ export function createVerificationRequestHost(
         ...(intent.writablePaths && intent.writablePaths.length > 0
           ? { writablePaths: intent.writablePaths }
           : {}),
-      })
+      }
+      const native =
+        input.native && nativeBinding
+          ? await prepareNativeAgentVerificationCapture({
+              db: input.db,
+              paths: input.paths,
+              intent: captureIntent,
+              host: input.native,
+              binding: nativeBinding,
+              secrets: readNativeSecrets,
+            })
+          : undefined
+      if (native?.kind === 'blocked')
+        throw new Error(
+          `verification was not requested: ${native.blocker.reason} — ${native.blocker.detail}`,
+        )
+      assertRequestActive()
+      const result = captureVerificationRequest(
+        input.db,
+        input.paths,
+        native?.intent ?? captureIntent,
+        undefined,
+        native?.capture,
+      )
       // A refusal is a result with a reason: nothing was written, and the model must not be told
       // otherwise.
       if (result.kind === 'blocked') {
@@ -109,4 +204,6 @@ export function createVerificationRequestHost(
       }
     },
   }
+  if (input.native) nativeHosts.set(host, input)
+  return Object.freeze(host)
 }

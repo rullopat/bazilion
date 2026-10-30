@@ -22,7 +22,8 @@ export const teamEnvironmentCommand = defineCommand({
         file: {
           type: 'string',
           required: true,
-          description: 'JSON {expectedRevision,config:{image,cwd,env}}',
+          description:
+            'JSON {expectedRevision,config:{backend:"native"|"docker",cwd,env,image?}}; image is Docker-only',
         },
       },
       async run({ args }) {

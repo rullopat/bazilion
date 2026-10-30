@@ -12,7 +12,7 @@ A thin `fetch` wrapper over the Bazilion HTTP API: bearer auth (with rotating-to
 npm install @bazilion/client @bazilion/api-types
 ```
 
-Requires Node 24+ (or any runtime with `fetch`, `TextDecoder`, and async iteration).
+Node runtime support is `^26.12.1` only. Browser/native consumers still use the portable HTTP client with `fetch`, `TextDecoder`, and async iteration.
 
 ## Usage
 

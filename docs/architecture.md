@@ -162,8 +162,19 @@ not a Team Policy communication approval.
 
 Shipped in 0.24.0, ordinary macOS chat has actual installed CLI/API/browser qualification through a shared capture adapter: Linux retains
 fd-relative reads; macOS uses guarded public fs-safe opens plus capture-wide identity/source checks.
-This is not an atomic filesystem snapshot or complete platform parity. Hardened Git inspection and
-MCP stdio retain Linux-only admission; unknown process ownership remains blocked. See
+This is not an atomic filesystem snapshot or complete platform parity. In that release hardened
+Git inspection and MCP stdio retain Linux-only admission. Unreleased BAZ-072 adds bounded private
+macOS Git worktree capture and public-libproc-owned macOS MCP stdio while preserving Linux
+inspection/retirement paths. Unknown ownership remains blocked. Owned workers and managed
+headed/non-GUI browsing passed actual macOS 26.6.2 arm64 checks on both Node baselines, including
+private native browser keychains and reset/relaunch without personal keychain access. Generic native
+Mac shell isolation is now deferred/unqualified. Ordinary Mac operator coding is trusted unisolated
+host execution; isolation-required protected coding and specialist checks refuse without fallback.
+Existing closed reviewer-only workers have no shell/coding surface and keep their separate contract.
+Linux native/retained Docker keep independent qualification. The 0.25 alpha accepts installed
+Mac 27.0.1 arm64 / Node 26.12.1 evidence for the 27.x major line, including actual non-GUI browser
+and main-process shutdown/restart/restore. Headed/desktop qualification is deferred, not passed;
+a newer 27.x minor is not an additional release gate. See
 [repository context](repository-context.md), [BAZ-057](backlog/done/BAZ-057-portable-safe-reads.md)
 and [coding environments](coding-environments.md).
 
@@ -230,7 +241,7 @@ See [coding evidence](coding-evidence.md) and [publication](publication.md).
 
 ## Maintenance boundaries
 
-- Supported CLI/daemon Node lines are `^24.22.0 || ^26.4.0`, checked before application bootstrap.
+- The supported CLI/daemon Node line is `^26.12.1`, checked before application bootstrap.
 - CLI/web management parity is required; shared wire contracts live in `packages/api-types`.
 - `apps/web/src/lib/daemon-client.ts` is server-only; browser-safe constants live separately.
 - Backup/restore validates the identity pair, schema and blob digests; managed browser profiles

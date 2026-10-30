@@ -5,7 +5,7 @@ export type InstallationReadiness = Pick<
   'ok' | 'platformCapabilities' | 'protectedWorkBaselineReady'
 >
 
-export function InstallationReadinessCard({ report }: { report: InstallationReadiness }) {
+export function InstallationReadinessCard({ report,codingSurface }: { report: InstallationReadiness;codingSurface:HealthReport['executionSecurity']['protectedUnattendedTurns']['codingSurface'] }) {
   return (
     <section
       aria-label="Installation and platform support"
@@ -39,7 +39,7 @@ export function InstallationReadinessCard({ report }: { report: InstallationRead
           <dd
             className={`mt-1 font-semibold ${report.protectedWorkBaselineReady ? 'text-success' : 'text-warning'}`}
           >
-            {report.protectedWorkBaselineReady ? 'Ready · per-turn checks still apply' : 'Unavailable'}
+            {codingSurface==='native'?'Not checked · per-turn admission required':report.protectedWorkBaselineReady ? 'Ready · per-turn checks still apply' : 'Unavailable'}
           </dd>
           <dd className="mt-1 text-xs text-muted-foreground">
             See Execution security below for prerequisites and remediation. This is separate from

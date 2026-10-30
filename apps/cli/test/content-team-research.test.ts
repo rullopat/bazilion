@@ -12,7 +12,7 @@ import {
   startLmStudioMock,
 } from './fixtures/mock-lmstudio.ts'
 import { schedulingEvidence } from './fixtures/scheduling-evidence.ts'
-import { startTestServer, type TestServer } from './server-fixture.ts'
+import { startTestServer, stopSettledTestServer, type TestServer } from './server-fixture.ts'
 
 // Second composed BAZ-064 slice: the researcher side. Canned model again —
 // this proves the protected inbox-wake plumbing and refusal boundaries, NOT
@@ -21,10 +21,9 @@ import { startTestServer, type TestServer } from './server-fixture.ts'
 const recipe = join(import.meta.dirname, '../../../examples/content-team')
 const templatePath = join(recipe, 'team-template.json')
 const roles = ['coordinator', 'researcher', 'writer', 'designer'] as const
-const docker = process.env.BAZILION_TEST_DOCKER === '1'
-// Even a never-woken turn first delivers through an operator turn, whose
-// repository-context preparation is Linux-only until BAZ-057.
-const linux = process.platform === 'linux'
+const docker = process.platform === 'linux' && process.env.BAZILION_TEST_DOCKER === '1'
+// Operator-turn capture and owned worker settlement now cover both supported POSIX hosts.
+const portable = process.platform === 'linux' // Docker execution is Linux-only.
 const WAKE_MARKER = '[[bazilion:inbox-wake]]'
 
 // Public-shaped fixture page with an embedded injection attempt. Loopback
@@ -259,6 +258,7 @@ beforeAll(async () => {
   const deadSocket = join(tmpdir(), randomUUID(), 'docker.sock')
   const baseEnv = {
     LMSTUDIO_URL: mock.url,
+    LMSTUDIO_API_KEY: 'synthetic-lmstudio-fixture-key',
     BAZILION_TEAM_POLICY_ENFORCEMENT: 'on',
     BAZILION_IMAGE_GENERATION: 'off',
     BAZILION_SCHEDULER_TICK_MS: '200',
@@ -279,15 +279,23 @@ beforeAll(async () => {
 }, 120_000)
 
 afterAll(async () => {
-  await locked.stop()
-  await full.stop()
+  const stopped = await Promise.allSettled([
+    stopSettledTestServer(locked),
+    stopSettledTestServer(full),
+  ])
   await mock.stop()
   webFixture.close()
   searx.close()
+  const failures = stopped.filter((result) => result.status === 'rejected')
+  if (failures.length)
+    throw new AggregateError(
+      failures.map((result) => result.reason),
+      'protected fixture settlement failed',
+    )
   schedulingEvidence('research-fixtures-stopped', { daemonsClosed: true, mockClosed: true })
 })
 
-test.skipIf(!linux)(
+test.skipIf(!portable)(
   'dead protected runtime: delegation is delivered but never wakes the specialist',
   async () => {
     const brief = 'Please retrieve the orchid page and summarize it.'
@@ -425,6 +433,10 @@ test.runIf(docker)(
     expect(dumped).toContain('PATH=')
     for (const forbidden of [
       full.token,
+      'synthetic-lmstudio-fixture-key',
+      'LMSTUDIO_API_KEY=',
+      'BAZILION_WEB_SEARCH_URL=',
+      searxUrl,
       'OPENAI_API_KEY=',
       'OPENROUTER_API_KEY=',
       'BRAVE_API_KEY=',

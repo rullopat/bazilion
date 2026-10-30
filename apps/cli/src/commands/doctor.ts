@@ -123,7 +123,11 @@ export const doctorCommand = defineCommand({
     const hasAgents = (r.database?.ok ? r.database.totalAgents : 0) > 0
 
     console.log()
-    for (const line of doctorSummaryLines(r)) console.log(line)
+    for (const line of doctorSummaryLines(
+      r,
+      r.executionSecurity.protectedUnattendedTurns.codingSurface,
+    ))
+      console.log(line)
     if (doctorHasIssues(r)) process.exit(1)
     // Counts are setup guidance, never proof that a chat/provider will work.
     if (!hasProfiles || !hasAgents) {
@@ -148,7 +152,13 @@ export function executionSecurityDoctorLines(
 ): string[] {
   const configured = report.executionSecurity.configuredOperatorHttp
   const protectedTurns = report.executionSecurity.protectedUnattendedTurns
-  const lines = ['configured operator HTTP (legacy · unprotected)']
+  const lines = [
+    configured.codingSurface === 'native'
+      ? 'configured operator HTTP (native coding · ordinary capabilities)'
+      : configured.codingSurface === 'host'
+        ? 'configured operator HTTP (trusted host · unisolated)'
+        : 'configured operator HTTP (ordinary capabilities)',
+  ]
 
   if (!report.shellSecurity.ok) {
     lines.push(checkLine('valid shell-security configuration', false, report.shellSecurity.error))
@@ -165,7 +175,13 @@ export function executionSecurityDoctorLines(
       )
     }
 
-    if (report.shellSecurity.sandboxMode === 'docker') {
+    if (report.shellSecurity.sandboxMode === 'native') {
+      lines.push(
+        '  - coding surface: native OS sandbox',
+        '    host coding tools hidden · IP networking denied · private job Unix IPC allowed',
+        '    no Docker or host fallback; actual protection and ownership are admitted separately for each turn',
+      )
+    } else if (report.shellSecurity.sandboxMode === 'docker') {
       lines.push(
         `  - coding surface: Docker only (${report.shellSecurity.sandboxImage})`,
         '    workspace-only writable mount · bounded inputs/skills/memory read-only · network disabled',
@@ -175,9 +191,11 @@ export function executionSecurityDoctorLines(
       )
     } else {
       lines.push(
-        '  - coding surface: host tools',
-        '    approval is a host-execution tripwire, not a filesystem sandbox',
-        '    set BAZILION_BASH_SANDBOX=docker to opt in',
+        '  - coding surface: trusted host tools (unisolated)',
+        '    shell commands use host filesystem and network permissions; approval is not containment',
+        protectedTurns.codingSurface === 'unavailable'
+          ? '    no qualified local protected backend is available; native macOS isolation is deferred'
+          : '    BAZILION_BASH_SANDBOX=native selects Linux OS isolation, subject to per-turn admission',
       )
     }
   }
@@ -185,13 +203,28 @@ export function executionSecurityDoctorLines(
 
   lines.push(
     'protected unattended turns baseline (Telegram, schedules, inbox, approvals)',
-    checkLine('protected base runtime ready', protectedTurns.baseRuntimeReady),
-    '  - coding surface: Docker only',
-    checkLine(
-      `Docker ready (${protectedTurns.docker.image})`,
-      protectedTurns.docker.ready,
-      protectedTurns.docker.reason ?? undefined,
-    ),
+    protectedTurns.codingSurface === 'native'
+      ? '  - protected base runtime: Not checked'
+      : checkLine('protected base runtime ready', protectedTurns.baseRuntimeReady),
+    ...(protectedTurns.codingSurface === 'native'
+      ? [
+          '  - coding surface: native OS sandbox',
+          `  - native backend: ${protectedTurns.native.backend ?? 'unsupported platform'}`,
+          '  - native readiness: Not checked (requires per-turn workspace admission)',
+        ]
+      : protectedTurns.codingSurface === 'unavailable'
+        ? [
+            '  - coding surface: unavailable — no qualified isolation backend',
+            '    protected work refuses; no trusted-host fallback',
+          ]
+        : [
+            '  - coding surface: Docker only',
+            checkLine(
+              `Docker ready (${protectedTurns.docker.image})`,
+              protectedTurns.docker.ready,
+              protectedTurns.docker.reason ?? undefined,
+            ),
+          ]),
     checkLine('OpenAI Codex enabled', protectedTurns.openaiCodex.enabled),
     checkLine('ChatGPT connected', protectedTurns.openaiCodex.connected),
     `  - OpenAI access: ${openAIAccessStatus(protectedTurns.openaiCodex)}`,
@@ -221,13 +254,16 @@ export function platformCapabilityDoctorLines(
 
 export function doctorSummaryLines(
   report: Pick<HealthReport, 'ok' | 'protectedWorkBaselineReady'>,
+  codingSurface: HealthReport['executionSecurity']['protectedUnattendedTurns']['codingSurface'],
 ): string[] {
   return [
     report.ok ? 'install is healthy ✓' : 'installation issues found ✗',
     'ordinary chat execution: not checked — select/test a provider and try an Agent chat',
-    report.protectedWorkBaselineReady
-      ? 'protected unattended baseline: ready — per-turn checks still apply'
-      : 'protected unattended baseline: unavailable — see reasons and remediation above',
+    codingSurface === 'native'
+      ? 'protected unattended baseline: not checked — per-turn admission required'
+      : report.protectedWorkBaselineReady
+        ? 'protected unattended baseline: ready — per-turn checks still apply'
+        : 'protected unattended baseline: unavailable — see reasons and remediation above',
     'doctor exit status covers installation health only; it does not authorize execution.',
   ]
 }

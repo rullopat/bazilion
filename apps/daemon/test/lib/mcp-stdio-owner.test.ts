@@ -52,7 +52,7 @@ afterEach(() => {
   vi.useRealTimers()
 })
 test.each([
-  'darwin',
+  'freebsd',
   'win32',
 ] as const)('direct owned transport refuses controlled %s before Pi can spawn', async (platform) => {
   vi.stubGlobal('process', { ...process, platform })
@@ -83,6 +83,8 @@ test.skipIf(process.platform !== 'linux')(
     await transport.start()
     fixture.denied = true
     await expect(transport.close()).rejects.toThrow(/ownership cannot be inspected/)
+    expect(transport.retirementObservation()).toEqual({ phase: 'inventory' })
+    expect(Object.keys(transport.retirementObservation())).toEqual(['phase'])
     expect(nativeClose).not.toHaveBeenCalled()
     expect(signal).not.toHaveBeenCalled()
   },

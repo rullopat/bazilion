@@ -45,8 +45,14 @@ import {
 import { getOpenAICodexStatus, loadProviderConfigFromEnv } from '../runtime/index.ts'
 import { checkProtectedDockerReadiness } from '../runtime/shell/docker.ts'
 import {
+  MAC_DOCKER_EXECUTION_UNAVAILABLE,
+  MAC_NATIVE_EXECUTION_UNAVAILABLE,
+  MAC_PROTECTED_EXECUTION_UNAVAILABLE,
+} from '../runtime/shell/platform-support.ts'
+import {
   DEFAULT_BASH_SANDBOX_IMAGE,
   resolveShellSecurityConfig,
+  ShellSecurityConfigError,
 } from '../runtime/shell/security.ts'
 
 export const miscRouter = new Hono()
@@ -172,13 +178,27 @@ miscRouter.get('/health/details', async (c) => {
   let shellSecurity: HealthReport['shellSecurity']
   try {
     const shellConfig = resolveShellSecurityConfig(effectiveEnv)
+    if (process.platform === 'darwin' && shellConfig.sandboxMode !== 'off')
+      throw new ShellSecurityConfigError(
+        shellConfig.sandboxMode === 'native'
+          ? MAC_NATIVE_EXECUTION_UNAVAILABLE
+          : MAC_DOCKER_EXECUTION_UNAVAILABLE,
+      )
     shellSecurity = {
       ok: true,
       sandboxMode: shellConfig.sandboxMode,
       approvalMode: shellConfig.approvalMode,
-      sandboxImage: shellConfig.sandboxImage,
+      sandboxImage:
+        process.platform === 'darwin' || shellConfig.sandboxMode === 'native'
+          ? null
+          : shellConfig.sandboxImage,
       hostCodingTools: shellConfig.sandboxMode === 'off',
-      network: shellConfig.sandboxMode === 'docker' ? 'none' : 'host',
+      network:
+        shellConfig.sandboxMode === 'native'
+          ? 'denied-ip'
+          : shellConfig.sandboxMode === 'docker'
+            ? 'none'
+            : 'host',
     }
   } catch (err) {
     shellSecurity = {
@@ -188,13 +208,14 @@ miscRouter.get('/health/details', async (c) => {
   }
 
   const protectedDockerImage = shellSecurity.ok
-    ? shellSecurity.sandboxImage
+    ? (shellSecurity.sandboxImage ?? DEFAULT_BASH_SANDBOX_IMAGE)
     : DEFAULT_BASH_SANDBOX_IMAGE
-  const protectedDockerProbe = shellSecurity.ok
-    ? await protectedDockerReadiness.get(protectedDockerImage, () =>
-        checkProtectedDockerReadiness({ image: protectedDockerImage }),
-      )
-    : null
+  const protectedDockerProbe =
+    process.platform !== 'darwin' && shellSecurity.ok && shellSecurity.sandboxMode !== 'native'
+      ? await protectedDockerReadiness.get(protectedDockerImage, () =>
+          checkProtectedDockerReadiness({ image: protectedDockerImage }),
+        )
+      : null
   const protectedDocker = protectedDockerProbe
     ? protectedDockerProbe.ready
       ? { ready: true, image: protectedDockerProbe.image, reason: null }
@@ -205,6 +226,12 @@ miscRouter.get('/health/details', async (c) => {
         }
     : { ready: false, image: protectedDockerImage, reason: null }
   const executionSecurity = projectExecutionSecurity({
+    protectedUnavailableReason:
+      process.platform === 'darwin' ? MAC_PROTECTED_EXECUTION_UNAVAILABLE : undefined,
+    nativeBackend:
+      process.platform === 'linux' && ['x64', 'arm64'].includes(process.arch)
+        ? 'linux-bwrap'
+        : null,
     configuredOperatorHttp: {
       shellSecurity,
       dockerImage: protectedDockerImage,
@@ -276,6 +303,8 @@ miscRouter.get('/health/details', async (c) => {
 
 function publicShellSecurityError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error)
+  if (message === MAC_DOCKER_EXECUTION_UNAVAILABLE || message === MAC_NATIVE_EXECUTION_UNAVAILABLE)
+    return message
   if (message.includes('BAZILION_BASH_SANDBOX_ENV_ALLOWLIST')) {
     return 'Shell environment allowlist contains an invalid or unsafe variable name.'
   }
@@ -286,7 +315,7 @@ function publicShellSecurityError(error: unknown): string {
     return 'Dangerous-command approval must be "off" or "dangerous".'
   }
   if (message.includes('BAZILION_BASH_SANDBOX')) {
-    return 'Sandbox mode must be "off" or "docker".'
+    return 'Sandbox mode must be "off", "native" or "docker" (Linux only).'
   }
   return 'Shell-security configuration is invalid.'
 }

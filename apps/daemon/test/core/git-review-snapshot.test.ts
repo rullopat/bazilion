@@ -64,15 +64,26 @@ async function capture(
   const directory = new ContextDirectory(root)
   const found = findRepositoryRoot([directory])
   if (!found) throw new Error('fixture is not a repository')
-  const captured = await captureRepositoryGit(found)
+  let captured: CapturedGit | undefined
   try {
-    const base = await resolveComparisonBase(captured, 'HEAD')
-    const identity = await readRepositoryIdentity(captured)
-    await fn(captured, (input) => captureSourceSnapshot(captured, base, identity, input))
+    captured = await captureRepositoryGit(found)
+    const admitted = captured
+    const base = await resolveComparisonBase(admitted, 'HEAD')
+    const identity = await readRepositoryIdentity(admitted)
+    await fn(admitted, (input) => captureSourceSnapshot(admitted, base, identity, input))
   } finally {
-    captured.cleanup()
+    captured?.cleanup()
     directory.close()
   }
+}
+
+async function freshSnapshot(): Promise<SourceSnapshot> {
+  let result: SourceSnapshot | undefined
+  await capture(async (_captured, snapshot) => {
+    result = await snapshot()
+  })
+  if (!result) throw new Error('fixture did not capture a snapshot')
+  return result
 }
 
 test('a clean tree produces a complete snapshot identified by HEAD and the index', async () => {
@@ -108,16 +119,17 @@ test('dirty content is fingerprinted by bytes, and the id depends only on the st
     expect(again.id).toBe(first.id)
     expect(again.capturedAt).toBeGreaterThanOrEqual(first.capturedAt)
 
-    writeFileSync(join(root, 'src/app.txt'), 'one\ntwo\nFOUR\n')
-    const edited = await snapshot()
-    expect(edited.id).not.toBe(first.id)
-    expect(compareSnapshots(first, edited)).toBe('changed')
     expect(compareSnapshots(first, again)).toBe('identical')
-    // Modification times cannot distinguish a real edit from a touch, so they are never consulted:
-    // reverting the bytes must restore the identity, even though mtime moved on.
-    writeFileSync(join(root, 'src/app.txt'), 'one\ntwo\nthree\n')
-    expect((await snapshot()).id).toBe(first.id)
   })
+  const first = await freshSnapshot()
+  writeFileSync(join(root, 'src/app.txt'), 'one\ntwo\nFOUR\n')
+  const edited = await freshSnapshot()
+  expect(edited.id).not.toBe(first.id)
+  expect(compareSnapshots(first, edited)).toBe('changed')
+  // Refresh means a new capture on either backend; macOS never rereads live bytes into an old one.
+  // Reverting content restores identity even though filesystem modification times moved on.
+  writeFileSync(join(root, 'src/app.txt'), 'one\ntwo\nthree\n')
+  expect((await freshSnapshot()).id).toBe(first.id)
 })
 
 test('staging is captured in the index digest without reading file content', async () => {
@@ -187,12 +199,17 @@ test('a changed path that is not a regular file cannot be fingerprinted', async 
   repo()
   rmSync(join(root, 'src/app.txt'))
   symlinkSync('/etc/hostname', join(root, 'src/app.txt'))
-  await capture(async (_captured, snapshot) => {
-    const linked = await snapshot()
-    expect(linked.complete).toBe(false)
-    expect(linked.entries[0]).toMatchObject({ kind: 'not_regular', digest: null })
-    expect(linked.withheld.notRegular).toBe(1)
-  })
+  if (process.platform === 'darwin') {
+    // A private tree cannot safely materialize external links; refuse before running Git at all.
+    await expect(capture(async () => {})).rejects.toThrow('unsupported_git_worktree')
+  } else {
+    await capture(async (_captured, snapshot) => {
+      const linked = await snapshot()
+      expect(linked.complete).toBe(false)
+      expect(linked.entries[0]).toMatchObject({ kind: 'not_regular', digest: null })
+      expect(linked.withheld.notRegular).toBe(1)
+    })
+  }
 })
 
 test('a deleted tracked file is recorded as deleted rather than missing', async () => {
@@ -266,24 +283,27 @@ test('a capture is a frozen view: a writer mid-capture cannot move what it sees'
   }
 })
 
-test('a fresh capture does see the writer, so the freeze is per-capture not permanent', async () => {
+test('a fresh capture sees edits while each worktree backend retains its read contract', async () => {
   repo()
   writeFileSync(join(root, 'src/app.txt'), 'first\n')
   const directory = new ContextDirectory(root)
   const found = findRepositoryRoot([directory])
   if (!found) throw new Error('fixture is not a repository')
   const captured = await captureRepositoryGit(found)
+  let first: SourceSnapshot
   try {
     const base = await resolveComparisonBase(captured, 'HEAD')
     const identity = await readRepositoryIdentity(captured)
-    const first = await captureSourceSnapshot(captured, base, identity)
+    first = await captureSourceSnapshot(captured, base, identity)
     writeFileSync(join(root, 'src/app.txt'), 'second\n')
-    const second = await captureSourceSnapshot(captured, base, identity)
-    // The frozen metadata is shared, but the worktree is read live, so content changes are seen.
-    expect(second.id).not.toBe(first.id)
-    expect(second.entries[0]?.digest).not.toBe(first.entries[0]?.digest)
+    const withinCapture = await captureSourceSnapshot(captured, base, identity)
+    // Linux retains its live fd-pinned source; the private backend retains frozen file bytes.
+    expect(withinCapture.id === first.id).toBe(captured.root !== directory)
   } finally {
     captured.cleanup()
     directory.close()
   }
+  const refreshed = await freshSnapshot()
+  expect(refreshed.id).not.toBe(first.id)
+  expect(refreshed.entries[0]?.digest).not.toBe(first.entries[0]?.digest)
 })

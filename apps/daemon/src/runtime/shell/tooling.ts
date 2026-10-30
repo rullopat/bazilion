@@ -120,6 +120,8 @@ export function createSessionShellTools(
   options: SessionShellToolOptions = {},
 ): SessionShellTools {
   const config = resolveShellSecurityConfig(env)
+  if (config.sandboxMode === 'native')
+    throw new Error('Native coding requires a genuine daemon-admitted native execution host')
   if (options.preparedDocker) {
     if (config.sandboxMode !== 'docker')
       throw new Error('Prepared coding environment cannot execute on the host')

@@ -6,7 +6,12 @@ import type {
 } from '../../runtime/shell/docker.ts'
 import type { WorkerResourceLifecycle } from '../../runtime/worker/spawn.ts'
 import { WorkspaceRecovery } from './recovery.ts'
-import { WorkspaceResources } from './resources.ts'
+import {
+  type NativeCommandIdentity,
+  type NativeCommandOwner,
+  type NativeCommandView,
+  WorkspaceResources,
+} from './resources.ts'
 import { WorkspaceCoordinator, type WorkspaceLease } from './workspace.ts'
 
 const KEY = Symbol.for('bazilion.workspace-lifecycle')
@@ -45,15 +50,60 @@ class WorkspaceLifecycle {
   }
 
   worker(lease: WorkspaceLease): WorkerResourceLifecycle {
+    return this.workerLifecycle(lease, false)
+  }
+
+  /** Native coding has no host-command child surface; its trusted worker needs live ownership. */
+  nativeWorker(lease: WorkspaceLease): WorkerResourceLifecycle {
+    return this.workerLifecycle(lease, true)
+  }
+
+  private workerLifecycle(
+    lease: WorkspaceLease,
+    nativeExecution: boolean,
+  ): WorkerResourceLifecycle {
     let id: string | undefined
     return {
+      beforeSpawn: () =>
+        nativeExecution
+          ? this.resources.assertNativeWorkerReady()
+          : this.resources.assertWorkerReady(),
+      ...(nativeExecution && process.platform === 'linux'
+        ? {
+            signal: (signal: 'SIGTERM' | 'SIGKILL') => {
+              if (id === undefined) throw new Error('Worker signal ownership is not registered')
+              this.resources.signalNativeWorker(id, signal)
+            },
+          }
+        : {}),
+      beforeSignal: () => {
+        if (id === undefined) throw new Error('Worker signal ownership is not registered')
+        this.resources.beforeWorkerSignal(id)
+      },
       beforeInput: (pid, hostCommands, child) => {
         if (id) throw new Error('Worker resource already registered')
-        id = this.resources.registerWorker(lease, pid, hostCommands, child)
+        id = this.resources.registerWorker(lease, pid, hostCommands, child, nativeExecution)
       },
       afterExit: async (observedNormalExit) =>
         id === undefined || this.resources.cleanupResource(id, observedNormalExit),
     }
+  }
+
+  /** Private per-job binding. The intent is durable before the launcher can cross its spawn fence. */
+  native(
+    lease: WorkspaceLease,
+    backend: NativeCommandIdentity['backend'],
+    definition: string,
+    view?: NativeCommandView,
+  ) {
+    const registration = this.resources.registerNativeIntent(lease, backend, definition, view)
+    return Object.freeze({
+      beforeSpawn: () => this.resources.beginNativeSpawn(registration),
+      bind: (owner: NativeCommandOwner) => this.resources.bindNativeOwner(registration, owner),
+      afterCreation: () => this.resources.acknowledgeNativeCreation(registration),
+      cancelBeforeSpawn: () => this.resources.cancelNativeBeforeSpawn(registration),
+      afterExit: () => this.resources.cleanupResource(registration.id),
+    })
   }
 
   containers(

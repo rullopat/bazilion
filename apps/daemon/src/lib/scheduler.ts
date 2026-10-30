@@ -53,7 +53,12 @@ import {
 } from './communication.ts'
 import { matchesCron, type ParsedCron, parseCron } from './cron.ts'
 import { getCtx } from './ctx.ts'
-import { prepareProtectedExecution } from './protected-execution.ts'
+import { inboxAttemptId } from './inbox-attempt.ts'
+import { isPreparedProtectedNativeExecution } from './native-execution/protected.ts'
+import {
+  type PreparedProtectedExecution,
+  prepareSelectedProtectedExecution,
+} from './protected-execution.ts'
 import { protectedFailureMessage, protectedFrameFailure } from './protected-failure.ts'
 import { dispatchableReviews, dispatchReviewPacket } from './review/dispatch.ts'
 import { dispatchClaimableReviews } from './review-dispatcher.ts'
@@ -67,15 +72,25 @@ interface SchedulerState {
   timer: NodeJS.Timeout | null
   firing: Set<string>
   cronCache: Map<string, ParsedCron>
-  /** pinned onStop for graceful shutdown (tests) */
+  /** Includes readiness and lifecycle waiters before Agent-turn registration. */
+  inFlight: Set<Promise<void>>
+  preparing: Set<AbortController>
   stopped: boolean
+  stopPromise?: Promise<void>
 }
 
 function state(): SchedulerState {
   const g = globalThis as unknown as Record<symbol, SchedulerState | undefined>
   let s = g[SCHEDULER_KEY]
   if (!s) {
-    s = { timer: null, firing: new Set(), cronCache: new Map(), stopped: false }
+    s = {
+      timer: null,
+      firing: new Set(),
+      cronCache: new Map(),
+      inFlight: new Set(),
+      preparing: new Set(),
+      stopped: false,
+    }
     g[SCHEDULER_KEY] = s
   }
   return s
@@ -122,7 +137,7 @@ function scheduledOccurrence(t: AgentTrigger, now: number): number {
 async function fireTrigger(dispatch: TriggerDispatch): Promise<void> {
   const s = state()
   const key = `trigger-dispatch:${dispatch.id}`
-  if (s.firing.has(key)) return
+  if (s.stopped || s.firing.has(key)) return
   s.firing.add(key)
   let releaseOwnedLease: (() => void) | undefined
   let registeredAgentId: string | undefined
@@ -143,6 +158,7 @@ async function fireTrigger(dispatch: TriggerDispatch): Promise<void> {
   try {
     const ctx = getCtx()
     releaseOwnedLease = await acquireAgentLifecycleLease(dispatch.agentId)
+    if (s.stopped) return
     const claimedDispatch = triggerDispatchRepo.claim(ctx.db, dispatch.id)
     if (!claimedDispatch) return
 
@@ -367,20 +383,22 @@ function buildInboxPrompt(
 async function fireInboxWake(agentId: string): Promise<void> {
   const s = state()
   const key = `msg-wake:${agentId}`
-  if (s.firing.has(key)) return
+  if (s.stopped || s.firing.has(key)) return
   const ctx = getCtx()
   s.firing.add(key)
   const releaseLease = await acquireAgentLifecycleLease(agentId)
   // Skip agents with an active turn — they'll pick up the messages on their
   // next natural turn or via the next tick after the current one ends.
-  if (isActiveAgent(agentId)) {
+  if (s.stopped || isActiveAgent(agentId)) {
     releaseLease()
     s.firing.delete(key)
     return
   }
   const controller = new AbortController()
+  s.preparing.add(controller)
   let registered = false
   let handoffStarted = false
+  let heldProtected: PreparedProtectedExecution | undefined
   let workspaceLease: WorkspaceLease | undefined
   try {
     // Readiness must be established before `claimDeliverableInbox` marks the
@@ -392,13 +410,13 @@ async function fireInboxWake(agentId: string): Promise<void> {
       resolvedAgent.team.path,
       'agent',
     )
-    const protectedExecution = await prepareProtectedExecution(
-      resolveAgent(ctx.db, ctx.paths, agentId),
-      {
-        signal: controller.signal,
-        dockerLifecycle: workspaceLifecycle(ctx.db).containers(workspaceLease),
-      },
-    )
+    controller.signal.throwIfAborted()
+    const protectedExecution = await prepareSelectedProtectedExecution(resolvedAgent, {
+      lease: workspaceLease,
+      controller,
+    })
+    heldProtected = protectedExecution
+    controller.signal.throwIfAborted()
     const conversation = resolveConversationTarget(ctx.db, ctx.paths, agentId)
     const msgs = claimDeliverableInbox(
       ctx.db,
@@ -421,7 +439,7 @@ async function fireInboxWake(agentId: string): Promise<void> {
       if (sender) fromNames.set(fid, sender.name)
     }
     const prompt = buildInboxPrompt(agentId, msgs, fromNames)
-    const attemptId = `${agentId}:${msgs.map((message) => message.id).join(',')}`
+    const attemptId = inboxAttemptId(agentId, msgs)
     const invocation = createTrustedTurnInvocation({
       kind: 'inbox_wake',
       authorization: {
@@ -472,12 +490,19 @@ async function fireInboxWake(agentId: string): Promise<void> {
       }),
     )
   } finally {
-    if (workspaceLease) await workspaceLifecycle(ctx.db).release(workspaceLease)
-    s.firing.delete(key)
+    try {
+      const native = isPreparedProtectedNativeExecution(heldProtected) ? heldProtected : undefined
+      const closed = native ? await native.close().catch(() => false) : true
+      if (workspaceLease) await workspaceLifecycle(ctx.db).release(workspaceLease)
+      if (!closed && native) await native.close().catch(() => false)
+    } finally {
+      s.preparing.delete(controller)
+      s.firing.delete(key)
+    }
   }
 }
 
-async function tick(): Promise<void> {
+async function runTick(): Promise<void> {
   const s = state()
   if (s.stopped) return
   const now = Date.now()
@@ -493,10 +518,12 @@ async function tick(): Promise<void> {
     return
   }
   for (const t of triggers) {
+    if (s.stopped) return
     if (isDue(t, now, s.cronCache)) {
       const occurrence = scheduledOccurrence(t, now)
       const release = await acquireAgentLifecycleLease(t.agentId)
       try {
+        if (s.stopped) return
         if (!triggerDispatchRepo.hasOpenForTrigger(ctx.db, t.id)) {
           const conversation = resolveConversationTarget(ctx.db, ctx.paths, t.agentId)
           ctx.db.raw.transaction(() => {
@@ -523,6 +550,7 @@ async function tick(): Promise<void> {
       }
     }
   }
+  if (s.stopped) return
   const work: Promise<void>[] = []
   for (const dispatch of triggerDispatchRepo.listClaimable(ctx.db, now)) {
     work.push(fireTrigger(dispatch))
@@ -555,26 +583,44 @@ async function tick(): Promise<void> {
   await Promise.allSettled(work)
 }
 
+function tick(): Promise<void> {
+  const s = state()
+  if (s.stopped) return Promise.resolve()
+  const pending = runTick()
+  s.inFlight.add(pending)
+  const settled = () => {
+    s.inFlight.delete(pending)
+  }
+  void pending.then(settled, settled)
+  return pending
+}
+
 export function startScheduler(): void {
   const s = state()
   // Replace any existing timer unconditionally so a duplicate startScheduler
   // call (e.g. test teamPolicy calling getCtx twice) doesn't leave stale loops.
   if (s.timer) clearInterval(s.timer)
   s.stopped = false
+  s.stopPromise = undefined
   s.timer = setInterval(() => {
-    void tick()
+    void tick().catch(() => console.warn(JSON.stringify({ event: 'scheduler_tick_failed' })))
   }, TICK_MS)
   // Unref so the scheduler never blocks process exit in tests.
   if (typeof s.timer.unref === 'function') s.timer.unref()
 }
 
-export function stopScheduler(): void {
+/** Fence admissions synchronously; settle readiness and dispatch finalizers before DB close. */
+export function stopScheduler(): Promise<void> {
   const s = state()
+  if (s.stopPromise) return s.stopPromise
   s.stopped = true
   if (s.timer) {
     clearInterval(s.timer)
     s.timer = null
   }
+  s.stopPromise = Promise.allSettled([...s.inFlight]).then(() => {})
+  for (const controller of s.preparing) controller.abort()
+  return s.stopPromise
 }
 
 // Exposed for tests that want to drive the loop manually rather than wait
@@ -597,5 +643,8 @@ export function _resetSchedulerForTest(): void {
   s.timer = null
   s.firing.clear()
   s.cronCache.clear()
+  s.inFlight.clear()
+  s.preparing.clear()
+  s.stopPromise = undefined
   s.stopped = false
 }

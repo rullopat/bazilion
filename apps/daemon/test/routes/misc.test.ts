@@ -1,7 +1,13 @@
 import type { HealthReport } from '@bazilion/api-types'
-import { afterEach, expect, test } from 'vitest'
+import { afterEach, expect, test, vi } from 'vitest'
 import { projectPlatformCapabilities } from '../../src/lib/platform-capabilities.ts'
 import { miscRouter } from '../../src/routes/misc.ts'
+import * as dockerReadiness from '../../src/runtime/shell/docker.ts'
+import {
+  MAC_DOCKER_EXECUTION_UNAVAILABLE,
+  MAC_NATIVE_EXECUTION_UNAVAILABLE,
+  MAC_PROTECTED_EXECUTION_UNAVAILABLE,
+} from '../../src/runtime/shell/platform-support.ts'
 
 const originalEnforcement = process.env.BAZILION_TEAM_POLICY_ENFORCEMENT
 const originalSandbox = process.env.BAZILION_BASH_SANDBOX
@@ -82,6 +88,47 @@ test('health reports active enforcement when requested by a release-ready build'
   })
 })
 
+test('native detailed health reports only passive selection and never probes Docker', async () => {
+  process.env.BAZILION_BASH_SANDBOX = 'native'
+  const probe = vi.spyOn(dockerReadiness, 'checkProtectedDockerReadiness')
+  try {
+    const response = await miscRouter.request('/health/details')
+    expect(response.status).toBe(200)
+    const report = (await response.json()) as HealthReport
+    if (process.platform === 'darwin') {
+      expect(report.shellSecurity).toEqual({ ok: false, error: MAC_NATIVE_EXECUTION_UNAVAILABLE })
+      expect(report.executionSecurity.configuredOperatorHttp.codingSurface).toBe('unavailable')
+      expect(report.executionSecurity.protectedUnattendedTurns).toMatchObject({
+        codingSurface: 'unavailable',
+        docker: null,
+        baseRuntimeReady: false,
+        remediation: MAC_PROTECTED_EXECUTION_UNAVAILABLE,
+      })
+      expect(report.executionSecurity.protectedUnattendedTurns).not.toHaveProperty('native')
+      expect(probe).not.toHaveBeenCalled()
+      return
+    }
+    expect(report.shellSecurity).toMatchObject({
+      ok: true,
+      sandboxMode: 'native',
+      sandboxImage: null,
+      approvalMode: 'dangerous',
+      network: 'denied-ip',
+      hostCodingTools: false,
+    })
+    expect(report.executionSecurity.protectedUnattendedTurns).toMatchObject({
+      codingSurface: 'native',
+      docker: null,
+      native: { readiness: 'not_checked' },
+      baseRuntimeReady: false,
+    })
+    expect(report.executionSecurity.configuredOperatorHttp.dockerImage).toBe(null)
+    expect(probe).not.toHaveBeenCalled()
+  } finally {
+    probe.mockRestore()
+  }
+})
+
 test('health reports the default-off host shell posture', async () => {
   process.env.BAZILION_BASH_SANDBOX = 'off'
   const response = await miscRouter.request('/health/details')
@@ -93,7 +140,7 @@ test('health reports the default-off host shell posture', async () => {
     ok: true,
     sandboxMode: 'off',
     approvalMode: 'off',
-    sandboxImage: 'debian:bookworm-slim',
+    sandboxImage: process.platform === 'darwin' ? null : 'debian:bookworm-slim',
     hostCodingTools: true,
     network: 'host',
   })
@@ -107,6 +154,13 @@ test('health reports the opt-in Docker confinement posture', async () => {
     shellSecurity: unknown
   }
 
+  if (process.platform === 'darwin') {
+    expect(report.shellSecurity).toEqual({
+      ok: false,
+      error: MAC_DOCKER_EXECUTION_UNAVAILABLE,
+    })
+    return
+  }
   expect(report.shellSecurity).toEqual({
     ok: true,
     sandboxMode: 'docker',
@@ -147,7 +201,7 @@ test('health separates configured operator HTTP from protected unattended execut
       protectedUnattendedTurns: {
         baseRuntimeReady: boolean
         codingSurface: string
-        docker: { ready: boolean; reason: string | null }
+        docker: { ready: boolean; reason: string | null } | null
         browser: string
         mcp: string
         openaiCodex: {
@@ -167,7 +221,9 @@ test('health separates configured operator HTTP from protected unattended execut
     codingSurface: 'host',
   })
   const protectedTurns = report.executionSecurity.protectedUnattendedTurns
-  expect(protectedTurns.codingSurface).toBe('docker')
+  expect(protectedTurns.codingSurface).toBe(
+    process.platform === 'darwin' ? 'unavailable' : 'docker',
+  )
   expect(protectedTurns.browser).toBe('denied')
   expect(protectedTurns.mcp).toBe('denied')
   expect(typeof protectedTurns.baseRuntimeReady).toBe('boolean')
@@ -182,11 +238,16 @@ test('health separates configured operator HTTP from protected unattended execut
   expect(protectedTurns.openaiCodex.refreshOnNextTurn).toBe(
     protectedTurns.openaiCodex.connected && !protectedTurns.openaiCodex.accessCurrent,
   )
-  // The provider-neutral baseline depends on Docker. OAuth readiness is a
-  // separate per-provider diagnostic, not a gate on other providers.
-  expect(protectedTurns.baseRuntimeReady).toBe(protectedTurns.docker.ready)
+  // Native passive status never claims admission; retained Linux Docker reports its actual probe.
+  if (process.platform === 'darwin') {
+    expect(protectedTurns.docker).toBe(null)
+    expect(protectedTurns.baseRuntimeReady).toBe(false)
+  } else {
+    if (!protectedTurns.docker) throw new Error('Linux Docker projection missing')
+    expect(protectedTurns.baseRuntimeReady).toBe(protectedTurns.docker.ready)
+    expect(Object.keys(protectedTurns.docker).sort()).toEqual(['image', 'ready', 'reason'])
+  }
   expect(report.protectedWorkBaselineReady).toBe(protectedTurns.baseRuntimeReady)
-  expect(Object.keys(protectedTurns.docker).sort()).toEqual(['image', 'ready', 'reason'])
   if (protectedTurns.remediation) {
     expect(protectedTurns.remediation).not.toMatch(/bearer|api[_-]?key|token|password/i)
   } else expect(protectedTurns.baseRuntimeReady).toBe(true)
@@ -202,7 +263,9 @@ test('health fails closed on an invalid shell-security mode', async () => {
 
   expect(report.ok).toBe(false)
   expect(report.shellSecurity.ok).toBe(false)
-  expect(report.shellSecurity.error).toBe('Sandbox mode must be "off" or "docker".')
+  expect(report.shellSecurity.error).toBe(
+    'Sandbox mode must be "off", "native" or "docker" (Linux only).',
+  )
   expect(JSON.stringify(report)).not.toContain('raw-shell-mode-sentinel')
 })
 
@@ -285,7 +348,9 @@ test('public health exposes only booleans and fixed diagnostics for configured s
   })
   expect(report.providers.ollama).toEqual({ customEndpointConfigured: true })
   expect(report.webSearch).toEqual({ braveConfigured: true, searxngConfigured: true })
-  expect(report.shellSecurity.error).toBe('Sandbox mode must be "off" or "docker".')
+  expect(report.shellSecurity.error).toBe(
+    'Sandbox mode must be "off", "native" or "docker" (Linux only).',
+  )
   const serialized = JSON.stringify(report)
   for (const sentinel of sentinels) expect(serialized).not.toContain(sentinel)
   expect(serialized).not.toContain('bravePreview')

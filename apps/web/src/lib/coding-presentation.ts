@@ -6,6 +6,17 @@ export function codingFailureSummary(diagnostic: string): string | null {
   return error.length > 240 ? `${error.slice(0, 237)}…` : error
 }
 
+/** Historical admission metadata, never an availability or verification verdict. */
+export function nativeCodingRuntimeLabel(value:unknown):string {
+  if(!value||typeof value!=='object')return 'Native runtime (details unavailable)'
+  const facts=value as Record<string,unknown>
+  if(!['linux-bwrap','darwin-seatbelt'].includes(String(facts.backend)) ||
+    !['x64','arm64'].includes(String(facts.architecture)) ||
+    typeof facts.nodeVersion!=='string' || !/^v\d+\.\d+\.\d+$/.test(facts.nodeVersion))
+    return 'Native runtime (details unavailable)'
+  return `Native runtime: ${facts.backend} · ${facts.architecture} · Node ${facts.nodeVersion}`
+}
+
 export const PRIVATE_CODING_HISTORY =
   'Coding context or command evidence retained privately. Captured transport output follows its communication approval; ask the Agent for the relevant result.'
 

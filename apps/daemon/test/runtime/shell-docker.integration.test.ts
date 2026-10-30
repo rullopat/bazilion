@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import { createDockerBashOperations } from '../../src/runtime/shell/docker.ts'
 
 const execFileAsync = promisify(execFile)
-const dockerEnabled = process.env.BAZILION_TEST_DOCKER === '1'
+const dockerEnabled = process.platform === 'linux' && process.env.BAZILION_TEST_DOCKER === '1'
 const dockerPath = process.env.BAZILION_TEST_DOCKER_PATH ?? 'docker'
 const image = process.env.BAZILION_TEST_DOCKER_IMAGE ?? 'debian:bookworm-slim'
 
@@ -20,7 +20,21 @@ beforeEach(() => {
   mkdirSync(workspace)
 })
 
-afterEach(() => {
+afterEach(async () => {
+  if (dockerEnabled) {
+    let remaining: string[] | undefined
+    try {
+      remaining = await containersWithPrefix(`bazilion-bash-${process.pid}-`)
+    } catch {
+      /* UNKNOWN is not absence. */
+    }
+    if (!remaining || remaining.length > 0) {
+      console.warn(
+        `[docker integration] retained workspace with unconfirmed container ownership: ${testDir}`,
+      )
+      throw new Error('Docker integration cleanup requires positive exact-scope container absence')
+    }
+  }
   rmSync(testDir, { recursive: true, force: true })
 })
 

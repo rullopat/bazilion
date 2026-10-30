@@ -2,6 +2,30 @@ import { McpClient } from '@earendil-works/pi-mcp'
 import { createInMemoryTransportPair } from '@earendil-works/pi-mcp/testing'
 import { expect, test, vi } from 'vitest'
 import { retainTransport, retireMcpClient } from '../../src/lib/mcp/retirement.ts'
+import { OwnedStdioTransport } from '../../src/lib/mcp/stdio-owner.ts'
+
+test('retirement diagnostics disclose only owned stdio phase, never raw SDK close errors', async () => {
+  const client = new McpClient({ name: 'fixture', version: '1' })
+  const transport = new OwnedStdioTransport({ command: '/must-not-start' })
+  const close = vi
+    .spyOn(transport, 'close')
+    .mockRejectedValue(new Error('SYNTHETIC_BEARER /private/fixture/url'))
+  try {
+    const failure = await retireMcpClient(client, transport).then(
+      () => undefined,
+      (error) => error,
+    )
+    expect(failure).toBeInstanceOf(Error)
+    expect(failure.message).toBe(
+      'MCP retirement incomplete; ownership retained (stdio phase: idle)',
+    )
+    expect(failure.message).not.toContain('SYNTHETIC_BEARER')
+    expect(failure).not.toHaveProperty('cause')
+    expect(close).toHaveBeenCalledTimes(1)
+  } finally {
+    close.mockRestore()
+  }
+})
 
 test.each([
   false,

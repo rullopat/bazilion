@@ -3,15 +3,18 @@ import { resolveAgent } from '../../core/index.ts'
 import type { VerificationRequestRecord } from '../../core/repos/verification-requests.ts'
 import type { SpecialistVerificationWorkerSpec } from '../../runtime/index.ts'
 import { spawnVerificationWorker } from '../../runtime/index.ts'
+import { MAC_PROTECTED_EXECUTION_UNAVAILABLE } from '../../runtime/shell/platform-support.ts'
 import type { VerificationCapabilityHost } from '../../runtime/tools/verification.ts'
 import type { VerificationHost } from '../../runtime/worker/ipc-protocol.ts'
 import { getCtx } from '../ctx.ts'
+import { ProtectedExecutionUnavailableError } from '../protected-execution-error.ts'
 import { resolveProtectedProviderRuntime } from '../protected-provider.ts'
 import {
   assertTrustedVerificationInvocation,
   createTrustedVerificationInvocation,
   type TrustedRestrictedVerificationInvocation,
 } from '../turn-invocation.ts'
+import type { VerificationWorkerOwnership } from './worker-ownership.ts'
 
 // BAZ-044: prepare and run one restricted verification turn.
 //
@@ -20,6 +23,8 @@ import {
 // ordinary writable coding turn.
 
 export interface PreparedVerificationTurn {
+  /** Parent-only; no native execution capability is sent to the specialist. */
+  requiresOwnership: boolean
   invocation: TrustedRestrictedVerificationInvocation
   spec: SpecialistVerificationWorkerSpec
   refreshApiKey: (providerName: string) => Promise<string>
@@ -29,6 +34,8 @@ export async function prepareVerificationTurn(input: {
   request: VerificationRequestRecord
   attemptId: string
 }): Promise<PreparedVerificationTurn> {
+  if (process.platform === 'darwin')
+    throw new ProtectedExecutionUnavailableError(MAC_PROTECTED_EXECUTION_UNAVAILABLE)
   const { db, paths, authToken } = getCtx()
   const resolved = resolveAgent(db, paths, input.request.recipientAgentId)
   if (resolved.agent.id !== input.request.recipientAgentId) {
@@ -51,6 +58,7 @@ export async function prepareVerificationTurn(input: {
     resolved.agent.reasoningLevel,
   )
   return {
+    requiresOwnership: input.request.environment.sandbox === 'native',
     invocation,
     spec: {
       kind: 'specialist_verification',
@@ -95,9 +103,9 @@ export function bindVerificationCapability(
       assertBound(requestId, attemptId)
       return host.read()
     },
-    run: async (requestId, attemptId, ordinal) => {
+    run: async (requestId, attemptId, ordinal, signal) => {
       assertBound(requestId, attemptId)
-      return host.invoke(ordinal)
+      return host.invoke(ordinal, { toolCallId: '', ...(signal ? { signal } : {}) })
     },
   }
 }
@@ -106,6 +114,7 @@ export function executePreparedVerification(
   prepared: PreparedVerificationTurn,
   opts: {
     verificationHost: VerificationHost
+    verificationOwnership?: VerificationWorkerOwnership
     signal: AbortSignal
     /** Internal integration-test override, forwarded to the worker spawner. */
     workerEntryPath?: string
@@ -114,10 +123,13 @@ export function executePreparedVerification(
   // The claim is consumed by rendering it once: a prepared turn cannot be run twice, so a retry
   // must go through a fresh attempt rather than reusing this one.
   assertTrustedVerificationInvocation(prepared.invocation)
+  if (prepared.requiresOwnership && !opts.verificationOwnership)
+    throw new Error('Native verification requires live worker ownership')
   return spawnVerificationWorker(prepared.spec, {
     signal: opts.signal,
     apiKeyRefreshHost: { refresh: prepared.refreshApiKey },
     verificationHost: opts.verificationHost,
+    ...(opts.verificationOwnership ? { verificationOwnership: opts.verificationOwnership } : {}),
     ...(opts.workerEntryPath ? { workerEntryPath: opts.workerEntryPath } : {}),
   })
 }

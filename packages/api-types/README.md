@@ -12,7 +12,7 @@ This package is the canonical source of truth for everything that crosses the da
 npm install @bazilion/api-types
 ```
 
-Requires Node 24+ (or any TypeScript ≥5.0 environment).
+Node tooling supports `^26.12.1` only. The hermetic wire types remain usable in any TypeScript ≥5.0 environment.
 
 ## When to use this directly
 

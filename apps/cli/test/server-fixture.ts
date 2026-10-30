@@ -305,6 +305,25 @@ async function bootTestServer(
   }
 }
 
+/** Stop a protected fixture without erasing unresolved writers, bind sources or receipts. */
+export async function stopSettledTestServer(server: TestServer): Promise<void> {
+  await server.stop({ keepHome: true })
+  const db = openDb(resolvePaths(server.home).db)
+  let writers: number | undefined
+  try {
+    writers = db.raw
+      .query<{ count: number }, []>('SELECT count(*) AS count FROM workspace_writers')
+      .get()?.count
+  } finally {
+    db.close()
+  }
+  if (writers !== 0) {
+    console.warn(`[protected fixture] retained unconfirmed workspace/receipts: ${server.home}`)
+    throw new Error('protected fixture cleanup requires confirmed workspace settlement')
+  }
+  await rmWithRetry(server.home)
+}
+
 /**
  * Windows keeps handles open past process exit (AV scanning, late watchers),
  * so an immediate recursive rm can fail with EPERM/EBUSY/ENOTEMPTY. Retry a

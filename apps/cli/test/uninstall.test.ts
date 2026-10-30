@@ -11,7 +11,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from 'node:fs'
-import { homedir, tmpdir } from 'node:os'
+import { tmpdir } from 'node:os'
 import { dirname, join, parse } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { acquireHomeRestoreLock, daemonLivenessPath } from '../src/daemon-liveness.ts'
@@ -22,9 +22,19 @@ const cliEntry = join(import.meta.dirname, '..', 'src', 'index.ts')
 const interruptedUninstallEntry = join(import.meta.dirname, 'fixtures', 'interrupted-uninstall.ts')
 const STRIP_TYPES_ARGS = ['--experimental-strip-types', '--no-warnings']
 
-function runUninstall(args: string[], home: string, input?: string): CliResult {
+function runUninstall(
+  args: string[],
+  home: string,
+  input?: string,
+  context?: { userHome: string; cwd: string },
+): CliResult {
   const result = spawnSync(process.execPath, [...STRIP_TYPES_ARGS, cliEntry, ...args], {
-    env: { ...process.env, BAZILION_HOME: home },
+    env: {
+      ...process.env,
+      ...(context ? { HOME: context.userHome, USERPROFILE: context.userHome } : {}),
+      BAZILION_HOME: home,
+    },
+    cwd: context?.cwd,
     input,
     encoding: 'utf8',
   })
@@ -473,21 +483,34 @@ describe('uninstall command', () => {
   it('refuses filesystem root, the user home, the current directory, and aliases to them', () => {
     const h = makeHome()
     const rootAlias = join(h.home, 'root-alias')
+    // Separate branches make every refusal independently observable even when the operator's
+    // HOME and checkout share an ancestor. Never exercise deletion against the personal HOME.
+    const userHome = join(h.home, 'user-tree', 'home')
+    const cwd = join(h.home, 'project-tree', 'repo')
+    mkdirSync(userHome, { recursive: true })
+    mkdirSync(cwd, { recursive: true })
+    writeFileSync(join(userHome, 'keep'), 'home sentinel')
+    writeFileSync(join(cwd, 'keep'), 'cwd sentinel')
     try {
-      symlinkSync(parse(process.cwd()).root, rootAlias, 'dir')
+      symlinkSync(parse(cwd).root, rootAlias, 'dir')
       for (const [target, reason] of [
-        [parse(process.cwd()).root, 'filesystem root'],
-        [homedir(), 'user home directory'],
-        [process.cwd(), 'current working directory'],
+        [parse(cwd).root, 'filesystem root'],
+        [userHome, 'user home directory'],
+        [cwd, 'current working directory'],
         [rootAlias, 'filesystem root'],
-        [dirname(homedir()), 'an ancestor of the user home directory'],
-        [dirname(process.cwd()), 'an ancestor of the current working directory'],
+        [dirname(userHome), 'an ancestor of the user home directory'],
+        [dirname(cwd), 'an ancestor of the current working directory'],
       ] as const) {
-        const result = runUninstall(['uninstall', '--yes', '--home', target], h.home)
+        const result = runUninstall(['uninstall', '--yes', '--home', target], h.home, undefined, {
+          userHome,
+          cwd,
+        })
         expect(result.exitCode, target).not.toBe(0)
         expect(result.stderr + result.stdout, target).toContain(
           `refusing to uninstall from ${reason}`,
         )
+        expect(readFileSync(join(userHome, 'keep'), 'utf8')).toBe('home sentinel')
+        expect(readFileSync(join(cwd, 'keep'), 'utf8')).toBe('cwd sentinel')
       }
     } finally {
       h.cleanup()

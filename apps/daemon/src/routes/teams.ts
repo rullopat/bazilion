@@ -49,9 +49,6 @@ import {
 } from '../core/repos/review-packets.ts'
 import {
   getVerificationRequest,
-  listVerificationAttempts,
-  listVerificationCheckOutcomes,
-  listVerificationChecks,
   listVerificationRequests,
   setRequestState,
   type VerificationRequestRecord,
@@ -100,13 +97,9 @@ import { buildFileLink, openFileLink } from '../lib/review/file-link.ts'
 import { readRevisionContentAvailability } from '../lib/review/revision.ts'
 import { validateTopicNameFormat } from '../lib/telegram/naming.ts'
 import { syncGroupTopicNames } from '../lib/telegram/topic-rename.ts'
-import {
-  captureVerificationRequest,
-  readVerificationReport,
-  readVerificationSummary,
-  toWireRequest,
-} from '../lib/verification/capture.ts'
+import { readVerificationReport, readVerificationSummary } from '../lib/verification/capture.ts'
 import { cancelVerificationDispatch } from '../lib/verification/dispatch.ts'
+import { captureSelectedOperatorVerificationRequest } from '../lib/verification/selected-capture.ts'
 import { qmdBackend } from '../runtime/index.ts'
 
 // 12 KB cap — enough for a rich USER.md, small enough that it can't silently
@@ -1265,7 +1258,8 @@ teamsRouter.get('/:id/verifications', async (c) => {
 })
 
 teamsRouter.post('/:id/verifications', async (c) => {
-  const { db, paths } = getCtx()
+  const ctx = getCtx(),
+    { db, paths } = ctx
   c.header('Cache-Control', 'no-store')
   const body: unknown = await c.req.json().catch(() => null)
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
@@ -1273,6 +1267,17 @@ teamsRouter.post('/:id/verifications', async (c) => {
   }
   const input = body as Partial<CreateVerificationRequest>
   if (
+    Object.keys(input).some(
+      (key) =>
+        ![
+          'recipientAgentId',
+          'snapshotId',
+          'checks',
+          'summary',
+          'sourceSessionId',
+          'writablePaths',
+        ].includes(key),
+    ) ||
     typeof input.recipientAgentId !== 'string' ||
     typeof input.snapshotId !== 'string' ||
     !Array.isArray(input.checks) ||
@@ -1288,17 +1293,21 @@ teamsRouter.post('/:id/verifications', async (c) => {
     return c.json({ error: 'Invalid verification request' }, 400)
   }
   try {
-    const result = captureVerificationRequest(db, paths, {
-      teamId: c.req.param('id'),
-      requesterKind: 'operator',
-      requesterAgentId: null,
-      recipientAgentId: input.recipientAgentId,
-      snapshotId: input.snapshotId,
-      checks: input.checks,
-      summary: typeof input.summary === 'string' ? input.summary : null,
-      sourceSessionId: typeof input.sourceSessionId === 'string' ? input.sourceSessionId : null,
-      ...(Array.isArray(input.writablePaths) ? { writablePaths: input.writablePaths } : {}),
-    })
+    const result = await captureSelectedOperatorVerificationRequest(
+      ctx,
+      {
+        teamId: c.req.param('id'),
+        requesterKind: 'operator',
+        requesterAgentId: null,
+        recipientAgentId: input.recipientAgentId,
+        snapshotId: input.snapshotId,
+        checks: input.checks,
+        summary: typeof input.summary === 'string' ? input.summary : null,
+        sourceSessionId: typeof input.sourceSessionId === 'string' ? input.sourceSessionId : null,
+        ...(Array.isArray(input.writablePaths) ? { writablePaths: input.writablePaths } : {}),
+      },
+      c.req.raw.signal,
+    )
     // A blocker is a result with a reason, not a failure: it says which input could not be honoured.
     if (result.kind === 'blocked') return c.json({ blocked: result.blocker }, 409)
     return c.json({ request: await report(db, paths, result.request) }, 201)

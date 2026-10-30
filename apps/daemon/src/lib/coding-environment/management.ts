@@ -1,11 +1,18 @@
 import type { CodingEnvironmentStatus, Team } from '@bazilion/api-types'
-import { validateCodingEnvironmentConfig } from '../../core/coding-environment/config.ts'
+import {
+  CodingEnvironmentValidationError,
+  validateCodingEnvironmentConfig,
+} from '../../core/coding-environment/config.ts'
 import type { BazilionDb } from '../../core/db/client.ts'
 import { getCodingEnvironment, putCodingEnvironment } from '../../core/repos/coding-environment.ts'
 import { resolveCodingDirectory } from '../../runtime/coding-directory.ts'
+import {
+  MAC_DOCKER_EXECUTION_UNAVAILABLE,
+  MAC_NATIVE_EXECUTION_UNAVAILABLE,
+  supportedIsolationBackends,
+} from '../../runtime/shell/platform-support.ts'
 import { resolveShellSecurityConfig } from '../../runtime/shell/security.ts'
 import { workspaceLifecycle } from './lifecycle.ts'
-import { resolveTeamCodingEnvironment } from './resolve.ts'
 import { overlappingWorkspaceRoots, workspaceIdentity } from './workspace.ts'
 /** Purely synchronous mutation after asynchronous recovery/admission; no child resources. */
 export async function mutateTeamWorkspace<T>(
@@ -30,6 +37,12 @@ export async function configureTeamCodingEnvironment(
   input: unknown,
 ) {
   const config = validateCodingEnvironmentConfig(input)
+  if (process.platform === 'darwin')
+    throw new CodingEnvironmentValidationError(
+      config.backend === 'native'
+        ? MAC_NATIVE_EXECUTION_UNAVAILABLE
+        : MAC_DOCKER_EXECUTION_UNAVAILABLE,
+    )
   return mutateTeamWorkspace(db, team, () => {
     resolveCodingDirectory(team.path, config.cwd)
     return putCodingEnvironment(db, team.id, expectedRevision, config)
@@ -47,11 +60,18 @@ export async function codingEnvironmentStatus(
     .find(
       (writer) => writer.teamId === team.id || overlappingWorkspaceRoots(root.root, writer.root),
     )
+  const environment = getCodingEnvironment(db, team.id),
+    config = resolveShellSecurityConfig(env)
   return {
-    environment: getCodingEnvironment(db, team.id),
-    configuredExecution:
-      resolveShellSecurityConfig(env).sandboxMode === 'docker' ? 'docker' : 'host',
-    image: resolveTeamCodingEnvironment(db, team.id, env).image,
+    supportedBackends: supportedIsolationBackends(),
+    environment,
+    configuredExecution: config.sandboxMode === 'off' ? 'host' : config.sandboxMode,
+    image:
+      process.platform === 'darwin' ||
+      config.sandboxMode === 'native' ||
+      environment?.config.backend === 'native'
+        ? null
+        : (environment?.config.image ?? config.sandboxImage),
     workspaceRecovery: recovery ? (recovery.restored ? 'restored' : 'required') : 'none',
   }
 }

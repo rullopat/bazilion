@@ -20,16 +20,46 @@
 // exit within `killGraceMs`, we SIGKILL it.
 
 import { type ChildProcess, spawn } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { isAbsolute } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import type { ChatFrame } from '@bazilion/api-types'
+import {
+  NativeCommandError,
+  nativeCommandFailureObservation,
+} from '../../lib/native-execution/command.ts'
+import {
+  assertBoundNativeTurnForWorker,
+  assertNativeTurn,
+  bindNativeWorkerApproval,
+  consumeNativeTurnForWorker,
+  type NativeTurnExecution,
+  type NativeWorkerBinding,
+} from '../../lib/native-execution/turn.ts'
 import { formatNativeModuleAbiMismatch } from '../../lib/native-module-error.ts'
 import { isOrdinaryWebSearchHost } from '../../lib/ordinary-web-search.ts'
+import {
+  assertNativeVerificationRequestHost,
+  isNativeVerificationRequestHost,
+} from '../../lib/verification/request-capability.ts'
+import {
+  assertVerificationWorkerOwnership,
+  consumeVerificationWorkerOwnership,
+  type VerificationWorkerOwnership,
+} from '../../lib/verification/worker-ownership.ts'
+import { BashApprovalDeniedError } from '../shell/approval.ts'
+import {
+  MAC_DOCKER_EXECUTION_UNAVAILABLE,
+  MAC_NATIVE_EXECUTION_UNAVAILABLE,
+  MAC_PROTECTED_EXECUTION_UNAVAILABLE,
+} from '../shell/platform-support.ts'
+import { resolveShellSecurityConfig } from '../shell/security.ts'
 import { type ApiKeyRefreshTurnContext, refreshApiKeyForTurn } from './api-key-refresh.ts'
 import type {
   ApiKeyRefreshHost,
+  BashApprovalArgs,
   BashApprovalHost,
   BashApprovalResult,
   BrowserHost,
@@ -39,6 +69,11 @@ import type {
   MessagingHost,
   UserMdHost,
 } from './ipc-protocol.ts'
+import { assertNativeExecutionAdmission } from './native-contract.ts'
+import {
+  dispatchNativeExecution,
+  type NativeRpcOutputContext,
+} from './native-execution-dispatch.ts'
 import { sanitizeQuestionWorkerFrame } from './question-frames.ts'
 import {
   type ConfiguredOperatorHttpWorkerSpec,
@@ -153,11 +188,17 @@ type SpecWithCapabilityHost =
   | StaticReviewWorkerSpec
 
 export interface WorkerResourceLifecycle {
+  beforeSpawn?(): void
+  beforeSignal?(): void
+  /** Optional original-live pidfd sender, never a receipt/PID fallback. */
+  signal?(signal: 'SIGTERM' | 'SIGKILL'): void
   beforeInput(pid: number, hostCommands?: boolean, child?: ChildProcess): void
   afterExit(observedNormalExit?: boolean): Promise<boolean>
 }
 
 interface CommonSpawnWorkerOpts {
+  nativeExecutionHost?: NativeTurnExecution
+  nativeExecutionSecrets?: () => readonly string[]
   imageGenerationHost?: import('./ipc-protocol.ts').ImageGenerationHost
   webSearchHost?: import('./ipc-protocol.ts').WebSearchHost
   containerHost?: import('./ipc-protocol.ts').ContainerLifecycleHost
@@ -241,6 +282,8 @@ export interface StaticReviewSpawnWorkerOpts extends CommonSpawnWorkerOpts {
 
 /** A verification turn gets exactly one extra host — the capability — and nothing else. */
 export interface SpecialistVerificationSpawnWorkerOpts extends CommonSpawnWorkerOpts {
+  /** Nominal parent-owned observation only; never a tool host or worker input. */
+  verificationOwnership?: VerificationWorkerOwnership
   apiKeyRefreshHost: ApiKeyRefreshHost
   verificationHost: import('./ipc-protocol.ts').VerificationHost
 }
@@ -299,6 +342,7 @@ async function* spawnWorker(
   let env: NodeJS.ProcessEnv
   let input: WorkerInput
   let serializedInput: string
+  let resourceLifecycle: WorkerResourceLifecycle | undefined
   try {
     env =
       spec.kind === 'configured_operator_http'
@@ -335,6 +379,12 @@ async function* spawnWorker(
     ) {
       throw new Error('minimal worker input exceeded the maximum size')
     }
+    if (!isRestrictedWorkerKind(spec) && spec.nativeExecution)
+      consumeNativeTurnForWorker(opts.nativeExecutionHost, nativeWorkerBinding(spec))
+    const ownership = (opts as SpecialistVerificationSpawnWorkerOpts).verificationOwnership
+    if (spec.kind === 'specialist_verification' && ownership !== undefined)
+      resourceLifecycle = consumeVerificationWorkerOwnership(ownership, spec)
+    else if (!isRestrictedWorkerKind(spec)) resourceLifecycle = opts.resourceLifecycle
   } catch (error) {
     if (scratch) cleanupMinimalWorkerScratch(scratch)
     throw error
@@ -348,7 +398,6 @@ async function* spawnWorker(
   const stderrRedactor =
     accessTokens.length > 0 ? new ExactValueStreamRedactor(accessTokens) : undefined
 
-  const resourceLifecycle = isRestrictedWorkerKind(spec) ? undefined : opts.resourceLifecycle
   let resourceCleanup: Promise<boolean> | undefined
   const cleanupResources = () =>
     (resourceCleanup ??=
@@ -357,6 +406,7 @@ async function* spawnWorker(
         .catch(() => false) ?? Promise.resolve(true))
   let child: ChildProcess
   try {
+    resourceLifecycle?.beforeSpawn?.()
     child = spawn(process.execPath, workerSpawnArgs(requestedEntry), {
       env,
       detached: resourceLifecycle !== undefined,
@@ -410,7 +460,21 @@ async function* spawnWorker(
       stderrRedactor?.add(token)
     },
   )
-  attachIpcHandler(child, hosts, () => accessTokens)
+  const ipc = attachIpcHandler(
+    child,
+    hosts,
+    () => accessTokens,
+    (pendingVerification) => {
+      ipcLifetime.abort()
+      if (pendingVerification) {
+        frames.push({
+          kind: 'fatal',
+          error: 'Verification worker disconnected during a captured check',
+        })
+        onAbort()
+      }
+    },
+  )
   child.once('error', (error) => {
     frames.push({
       kind: 'fatal',
@@ -436,20 +500,49 @@ async function* spawnWorker(
     : Promise.resolve()
   const grace = opts.killGraceMs ?? DEFAULT_KILL_GRACE_MS
   let killTimer: NodeJS.Timeout | null = null
-  const onAbort = (): void => {
-    ipcLifetime.abort()
+  let abortStarted = false
+  let abortDrain: Promise<void> | undefined
+  const signalOwnedWorker = (): void => {
     if (child.exitCode !== null || child.signalCode !== null) return
     try {
-      child.kill('SIGTERM')
+      resourceLifecycle?.beforeSignal?.()
+    } catch {
+      // Revoke input, not ownership: a denied guard never authorizes a PID signal. A trusted
+      // bootstrap still waiting on stdin can exit naturally; settlement remains independent.
+      child.stdin?.end()
+      return
+    }
+    try {
+      if (resourceLifecycle?.signal) resourceLifecycle.signal('SIGTERM')
+      else child.kill('SIGTERM')
     } catch {}
     killTimer = setTimeout(() => {
       if (child.exitCode === null && child.signalCode === null) {
         try {
-          child.kill('SIGKILL')
+          resourceLifecycle?.beforeSignal?.()
+        } catch {
+          return
+        }
+        try {
+          if (resourceLifecycle?.signal) resourceLifecycle.signal('SIGKILL')
+          else child.kill('SIGKILL')
         } catch {}
       }
     }, grace)
     killTimer.unref()
+  }
+  const onAbort = (): void => {
+    ipcLifetime.abort()
+    if (abortStarted) return
+    abortStarted = true
+    const ownedVerification =
+      spec.kind === 'specialist_verification' &&
+      (opts as SpecialistVerificationSpawnWorkerOpts).verificationOwnership !== undefined
+    if (ownedVerification && ipc.pendingVerification()) {
+      // Do not destabilize the native census by retiring its IPC owner concurrently. Native
+      // execution keeps its existing retirement bound; Worker TERM→KILL grace is unchanged.
+      abortDrain = ipc.drainVerification().then(signalOwnedWorker, signalOwnedWorker)
+    } else signalOwnedWorker()
   }
   if (opts.signal?.aborted) onAbort()
   else opts.signal?.addEventListener('abort', onAbort)
@@ -465,17 +558,51 @@ async function* spawnWorker(
   )
   let emittedFatal = false
   let diagnosticReported = false
+  let executableInputReleased = false
 
   try {
+    opts.signal?.throwIfAborted()
     if (!child.stdout) throw new Error('worker spawn: stdout pipe missing')
     if (resourceLifecycle) {
       if (!child.pid) throw new Error('Worker PID unavailable')
       const hostCommands =
-        spec.kind === 'configured_operator_http' && env.BAZILION_BASH_SANDBOX !== 'docker'
-      if (process.platform === 'darwin')
-        resourceLifecycle.beforeInput(child.pid, hostCommands, child)
-      else resourceLifecycle.beforeInput(child.pid, hostCommands)
+        spec.kind === 'configured_operator_http' &&
+        !spec.nativeExecution &&
+        env.BAZILION_BASH_SANDBOX !== 'docker'
+      resourceLifecycle.beforeInput(child.pid, hostCommands, child)
     }
+    if (!isRestrictedWorkerKind(spec) && spec.nativeExecution) {
+      const binding = nativeWorkerBinding(spec)
+      assertBoundNativeTurnForWorker(opts.nativeExecutionHost, binding)
+      const mode = spec.bashApprovalMode
+      bindNativeWorkerApproval(opts.nativeExecutionHost, binding, {
+        async requestApproval(request) {
+          const signal = AbortSignal.any([
+            ipcLifetime.signal,
+            ...(request.signal ? [request.signal] : []),
+          ])
+          signal.throwIfAborted()
+          // Classifier output and Actor/turn/mode come from this daemon binding, never RPC fields.
+          const decision = await requestBashApproval(
+            {
+              id: randomUUID(),
+              agentId: binding.agentId,
+              teamId: binding.teamId,
+              turnId: binding.turnId,
+              toolCallId: request.toolCallId,
+              command: request.command,
+              risks: [...request.risks],
+              mode,
+            },
+            { ...hosts, ipcSignal: signal },
+          ).catch(() => undefined)
+          signal.throwIfAborted()
+          return decision?.decision === 'allow' ? 'approved' : 'denied'
+        },
+      })
+    }
+    opts.signal?.throwIfAborted()
+    executableInputReleased = true
     child.stdin?.write(serializedInput)
     child.stdin?.end()
     const stdoutTask = pumpWorkerFrames(
@@ -519,6 +646,19 @@ async function* spawnWorker(
     // child's scratch tree out from under a still-running process: terminate
     // it first, wait for descriptor closure, then erase the per-turn tree.
     if (child.exitCode === null && child.signalCode === null) onAbort()
+    await abortDrain
+    const nativeConfirmed = opts.nativeExecutionHost
+      ? await opts.nativeExecutionHost.close().catch(() => false)
+      : true
+    if (!executableInputReleased) {
+      // No Agent instructions crossed the input fence. Let the trusted bootstrap consume EOF
+      // before recording its natural exit; do not cache a live-child cleanup refusal as final.
+      child.stdin?.end()
+      child.stdout?.resume() // Observe actual bootstrap EOF; never substitute local destruction.
+      try {
+        await waitForExit
+      } catch {}
+    }
     const resourcesConfirmed = await cleanupResources()
     try {
       await waitForExit
@@ -534,7 +674,10 @@ async function* spawnWorker(
     try {
       child.disconnect()
     } catch {}
-    if (scratch) cleanupMinimalWorkerScratch(scratch)
+    if (scratch && resourcesConfirmed && nativeConfirmed) cleanupMinimalWorkerScratch(scratch)
+    if (!nativeConfirmed)
+      // biome-ignore lint/correctness/noUnsafeFinally: Native uncertainty retains both scratch and writer despite a successful worker.
+      throw new Error('Native cleanup could not be confirmed; workspace recovery required')
     if (!resourcesConfirmed)
       // biome-ignore lint/correctness/noUnsafeFinally: Unconfirmed resource teardown must override a successful worker result.
       throw new Error('Worker cleanup could not be confirmed; workspace recovery required')
@@ -556,8 +699,87 @@ function isRestrictedWorkerKind(
   )
 }
 
+function nativeWorkerBinding(spec: WorkerTurnSpec): NativeWorkerBinding {
+  if (!spec.nativeExecution) throw new Error('Native worker description missing')
+  return {
+    agentId: spec.agent.agent.id,
+    turnId: spec.turnId,
+    teamId: spec.agent.team.id,
+    registeredRoot: spec.agent.team.path,
+    admission: spec.nativeExecution,
+  }
+}
+
 function assertSpawnCombination(spec: SpecWithCapabilityHost, opts: SpawnWorkerOpts): void {
+  if (process.platform === 'darwin') {
+    if (spec.kind === 'protected' || spec.kind === 'specialist_verification')
+      throw new Error(MAC_PROTECTED_EXECUTION_UNAVAILABLE)
+    if (spec.kind === 'configured_operator_http') {
+      const selected = resolveShellSecurityConfig(
+        (opts as ConfiguredSpawnWorkerOpts).env,
+      ).sandboxMode
+      if (spec.nativeExecution || opts.nativeExecutionHost || selected === 'native')
+        throw new Error(MAC_NATIVE_EXECUTION_UNAVAILABLE)
+      if (spec.configuredDocker || selected === 'docker')
+        throw new Error(MAC_DOCKER_EXECUTION_UNAVAILABLE)
+    }
+    // Reviewer-only kinds retain their existing closed, non-coding tool surface below.
+  }
+  if (
+    spec.kind === 'configured_operator_http' &&
+    (opts as ConfiguredSpawnWorkerOpts).env !== undefined &&
+    resolveShellSecurityConfig((opts as ConfiguredSpawnWorkerOpts).env).sandboxMode === 'native' &&
+    !spec.nativeExecution
+  )
+    throw new Error('Native selection requires a bound native execution capability')
   const record = opts as unknown as Record<string, unknown>
+  if ('verificationOwnership' in record) {
+    if (spec.kind !== 'specialist_verification')
+      throw new Error(`${spec.kind} rejects verificationOwnership`)
+    assertVerificationWorkerOwnership(record.verificationOwnership, spec)
+  }
+  if (!isRestrictedWorkerKind(spec)) {
+    if (spec.nativeExecution !== undefined) {
+      assertNativeExecutionAdmission(spec.nativeExecution)
+      assertNativeTurn(opts.nativeExecutionHost)
+      if (
+        typeof opts.nativeExecutionSecrets !== 'function' ||
+        (process.platform === 'linux' && !hostHasMethods(opts.resourceLifecycle, ['signal'])) ||
+        !hostHasMethods(opts.resourceLifecycle, [
+          'beforeSpawn',
+          'beforeSignal',
+          'beforeInput',
+          'afterExit',
+        ]) ||
+        'containerHost' in record ||
+        spec.containerNamespace !== undefined ||
+        (spec.kind === 'configured_operator_http' &&
+          (spec.configuredDocker ||
+            resolveShellSecurityConfig((opts as ConfiguredSpawnWorkerOpts).env).sandboxMode ===
+              'docker')) ||
+        (spec.kind === 'protected' && spec.docker)
+      )
+        throw new Error('Native worker requires exclusive bound execution, redaction and ownership')
+      if (
+        Boolean(spec.nativeVerificationRequestEnabled) !== Boolean(record.verificationRequestHost)
+      )
+        throw new Error('Native verification requester requires its bound host')
+      if (record.verificationRequestHost)
+        assertNativeVerificationRequestHost(record.verificationRequestHost, {
+          agentId: spec.agent.agent.id,
+          teamId: spec.agent.team.id,
+          turnId: spec.turnId,
+          native: opts.nativeExecutionHost as NativeTurnExecution,
+        })
+    } else if ('nativeExecutionHost' in record || 'nativeExecutionSecrets' in record)
+      throw new Error('Worker rejects unrequested native execution capability')
+  }
+  if (
+    !isRestrictedWorkerKind(spec) &&
+    !spec.nativeExecution &&
+    isNativeVerificationRequestHost(record.verificationRequestHost)
+  )
+    throw new Error('Worker rejects unrequested native verification requester')
   if (
     !isRestrictedWorkerKind(spec) &&
     (Boolean(spec.imageGenerationEnabled) !== Boolean(record.imageGenerationHost) ||
@@ -603,6 +825,8 @@ function assertSpawnCombination(spec: SpecWithCapabilityHost, opts: SpawnWorkerO
     }
   } else {
     for (const forbidden of [
+      'nativeExecutionHost',
+      'nativeExecutionSecrets',
       'questionHost',
       'messagingHost',
       'userMdHost',
@@ -678,6 +902,8 @@ function spawnHosts(
   }
   const restricted = isRestrictedWorkerKind(spec)
   return {
+    nativeExecutionHost: restricted ? undefined : opts.nativeExecutionHost,
+    nativeExecutionSecrets: restricted ? undefined : opts.nativeExecutionSecrets,
     questionHost: restricted ? undefined : questionHost,
     containerHost: restricted ? undefined : opts.containerHost,
     codingHost: restricted ? undefined : opts.codingHost,
@@ -747,6 +973,8 @@ function parseFrame(line: string, accessTokens: readonly string[]): ChatFrame {
 }
 
 export interface IpcHosts {
+  nativeExecutionHost?: import('./ipc-protocol.ts').NativeExecutionHost
+  nativeExecutionSecrets?: () => readonly string[]
   ordinarySearch?: boolean
   imageGenerationHost?: import('./ipc-protocol.ts').ImageGenerationHost
   webSearchHost?: import('./ipc-protocol.ts').WebSearchHost
@@ -777,24 +1005,59 @@ function attachIpcHandler(
   child: ChildProcess,
   hosts: IpcHosts,
   accessTokens: () => readonly string[],
-): void {
+  onDisconnect: (pendingVerification: boolean) => void,
+): { pendingVerification(): boolean; drainVerification(): Promise<void> } {
+  const verificationRuns = new Set<Promise<void>>()
+  child.once('disconnect', () => onDisconnect(verificationRuns.size > 0))
   child.on('message', (msg: unknown) => {
     if (!isIpcRequest(msg)) return
-    void dispatchWorkerRpc(msg, hosts).then((reply) => {
-      try {
-        // A successful refresh is the one IPC payload explicitly allowed to
-        // carry the new token. Every other daemon reply is sanitized before it
-        // enters the worker, including bounded refresh failures.
-        const safeReply =
-          msg.method === 'refreshApiKey' && reply.ok
-            ? reply
-            : redactJsonValue(reply, accessTokens())
-        child.send?.(safeReply)
-      } catch {
-        // child may have exited between request and reply — drop silently
-      }
+    const verification = msg.method === 'verificationRun'
+    const operation: Promise<void> = dispatchWorkerRpc(msg, hosts, {
+      assertActive() {
+        hosts.ipcSignal?.throwIfAborted()
+        if (!child.connected || child.exitCode !== null || child.signalCode !== null)
+          throw new Error('Native worker transport unavailable')
+      },
+      secrets: () => hosts.nativeExecutionSecrets?.() ?? accessTokens(),
+      ...(hosts.ipcSignal ? { signal: hosts.ipcSignal } : {}),
+      send(part) {
+        return new Promise<void>((resolve, reject) => {
+          if (!child.connected || !child.send) {
+            reject(new Error('Native worker transport unavailable'))
+            return
+          }
+          child.send({ type: 'rpc-output', id: msg.id, ...part }, undefined, undefined, (error) =>
+            error ? reject(error) : resolve(),
+          )
+        })
+      },
     })
+      .then((reply) => {
+        try {
+          // A successful refresh is the one IPC payload explicitly allowed to
+          // carry the new token. Every other daemon reply is sanitized before it
+          // enters the worker, including bounded refresh failures.
+          const safeReply =
+            msg.method === 'refreshApiKey' && reply.ok
+              ? reply
+              : redactJsonValue(reply, accessTokens())
+          if (child.connected) child.send?.(safeReply)
+        } catch {
+          // child may have exited between request and reply — drop silently
+        }
+      })
+      .finally(() => {
+        if (verification) verificationRuns.delete(operation)
+      })
+      .catch(() => {})
+    if (verification) verificationRuns.add(operation)
   })
+  return {
+    pendingVerification: () => verificationRuns.size > 0,
+    async drainVerification() {
+      await Promise.allSettled([...verificationRuns])
+    },
+  }
 }
 
 function isIpcRequest(msg: unknown): msg is IpcRequest {
@@ -808,10 +1071,47 @@ function require<T>(host: T | undefined, kind: string, method: string): T {
   return host
 }
 
-export async function dispatchWorkerRpc(req: IpcRequest, hosts: IpcHosts): Promise<IpcReply> {
+export async function dispatchWorkerRpc(
+  req: IpcRequest,
+  hosts: IpcHosts,
+  nativeOutput?: NativeRpcOutputContext,
+): Promise<IpcReply> {
   try {
     let result: unknown
     switch (req.method) {
+      case 'nativeCancel': {
+        hosts.ipcSignal?.throwIfAborted()
+        if (
+          !req.args ||
+          Object.keys(req.args).join(',') !== 'toolCallId' ||
+          typeof req.args.toolCallId !== 'string' ||
+          !req.args.toolCallId ||
+          req.args.toolCallId.length > 256
+        )
+          throw new Error('Invalid native cancellation request')
+        const host = require(hosts.nativeExecutionHost, 'nativeExecution', req.method)
+        assertNativeTurn(host)
+        nativeOutput?.assertActive()
+        result = { requested: host.cancel(req.args.toolCallId) }
+        break
+      }
+      case 'nativeExecute': {
+        hosts.ipcSignal?.throwIfAborted()
+        if (
+          !nativeOutput ||
+          !hosts.nativeExecutionSecrets ||
+          !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(req.id)
+        )
+          throw new Error('Native worker transport unavailable')
+        const host = require(hosts.nativeExecutionHost, 'nativeExecution', req.method)
+        assertNativeTurn(host)
+        nativeOutput.assertActive()
+        result = await dispatchNativeExecution(req.args, host, {
+          ...nativeOutput,
+          secrets: hosts.nativeExecutionSecrets,
+        })
+        break
+      }
       case 'containerBeforeCreate':
       case 'containerAfterCreate':
       case 'containerAfterRemove': {
@@ -999,22 +1299,27 @@ export async function dispatchWorkerRpc(req: IpcRequest, hosts: IpcHosts): Promi
         )
         break
       case 'verificationCapture':
+        hosts.ipcSignal?.throwIfAborted()
         result =
           await require(hosts.verificationRequestHost, 'verificationRequestHost', req.method).capture(
             req.args,
+            hosts.ipcSignal,
           )
         break
       case 'verificationRead':
+        hosts.ipcSignal?.throwIfAborted()
         result = await require(hosts.verificationHost, 'verification', req.method).read(
           req.args.requestId,
           req.args.attemptId,
         )
         break
       case 'verificationRun':
+        hosts.ipcSignal?.throwIfAborted()
         result = await require(hosts.verificationHost, 'verification', req.method).run(
           req.args.requestId,
           req.args.attemptId,
           req.args.ordinal,
+          hosts.ipcSignal,
         )
         break
       case 'refreshApiKey':
@@ -1027,26 +1332,54 @@ export async function dispatchWorkerRpc(req: IpcRequest, hosts: IpcHosts): Promi
         if (typeof result === 'string') hosts.onApiKeyRefreshed?.(result)
         break
       case 'bashApproval': {
-        const handle = require(hosts.bashApprovalHost, 'bashApproval', req.method).begin(
-          req.args,
-          hosts.ipcSignal,
-        )
-        hosts.onBashApproval?.(handle.approval)
-        const decision = await handle.decision
-        result = decision
-        if (handle.approval.status === 'pending') {
-          hosts.onBashApproval?.({
-            ...handle.approval,
-            status: approvalStatusForDecision(decision),
-          })
-        }
+        if (hosts.nativeExecutionHost) throw new Error('Native approval is daemon-owned')
+        result = await requestBashApproval(req.args, hosts)
         break
       }
     }
     return { type: 'rpc-reply', id: req.id, ok: true, result }
   } catch (err) {
+    if (req.method === 'nativeExecute' || req.method === 'nativeCancel') {
+      const observation =
+        err instanceof NativeCommandError ? nativeCommandFailureObservation(err) : undefined
+      const nativeFailure =
+        err instanceof NativeCommandError
+          ? {
+              code: err.code,
+              cleanupConfirmed: err.cleanupConfirmed,
+              ...(observation ? { observation } : {}),
+            }
+          : err instanceof BashApprovalDeniedError
+            ? { code: 'approval_denied' as const, cleanupConfirmed: true }
+            : { code: 'unavailable' as const, cleanupConfirmed: false }
+      return {
+        type: 'rpc-reply',
+        id: req.id,
+        ok: false,
+        error:
+          err instanceof BashApprovalDeniedError
+            ? 'Dangerous native command denied'
+            : `Native execution ${nativeFailure.code}`,
+        nativeFailure,
+      }
+    }
     return { type: 'rpc-reply', id: req.id, ok: false, error: (err as Error).message }
   }
+}
+
+async function requestBashApproval(
+  args: BashApprovalArgs,
+  hosts: IpcHosts,
+): Promise<BashApprovalResult> {
+  const handle = require(hosts.bashApprovalHost, 'bashApproval', 'bashApproval').begin(
+    args,
+    hosts.ipcSignal,
+  )
+  hosts.onBashApproval?.(handle.approval)
+  const decision = await handle.decision
+  if (handle.approval.status === 'pending')
+    hosts.onBashApproval?.({ ...handle.approval, status: approvalStatusForDecision(decision) })
+  return decision
 }
 
 function approvalStatusForDecision(

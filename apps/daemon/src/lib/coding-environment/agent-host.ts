@@ -26,6 +26,11 @@ import type { CodingHost, CodingRequest } from '../../runtime/pi/coding-contract
 import type { RepositoryContextHost } from '../../runtime/pi/repository-context.ts'
 import { deliverableInbox } from '../communication.ts'
 import { captureTeamSnapshot } from '../git-review/service.ts'
+import {
+  assertBoundNativeTurnForWorker,
+  assertNativeTurn,
+  type NativeTurnExecution,
+} from '../native-execution/turn.ts'
 import { ContextDirectory } from '../repository-context/files.ts'
 import { requireCompleteRepositoryContext } from '../repository-context/index.ts'
 import {
@@ -44,11 +49,40 @@ export function createCodingHost(input: {
   root: string
   posture: CodingEnvironmentSnapshot['posture']
   imageId: string | null
+  native?: NativeTurnExecution
   values: unknown
   context: RepositoryContextHost
   assertActive: () => void
-  secrets: readonly string[]
+  secrets: readonly string[] | (() => readonly string[])
 }): CodingHost {
+  const posture = input.posture,
+    imageId = input.imageId,
+    native = input.native
+  if (posture === 'native') {
+    if (imageId !== null) throw new Error('Native coding environment cannot name a Docker image')
+    assertNativeTurn(native)
+  } else if (native !== undefined) throw new Error('Coding environment backend is ambiguous')
+  const readSecrets = (): readonly string[] =>
+    typeof input.secrets === 'function' ? input.secrets() : input.secrets
+  const binding = native
+    ? {
+        agentId: input.agentId,
+        turnId: input.turnId,
+        teamId: input.teamId,
+        registeredRoot: input.root,
+        admission: { cwd: native.cwd, facts: native.facts },
+      }
+    : undefined
+  const assertReceiptScope = () => {
+    input.assertActive()
+    const agent = agentRepo.get(input.db, input.agentId)
+    if (!agent || agent.teamId !== input.teamId || agent.status === 'archived')
+      throw new Error('Coding receipt turn unavailable')
+  }
+  const assertScope = () => {
+    input.assertActive()
+    if (native && binding) assertBoundNativeTurnForWorker(native, binding)
+  }
   const active = new Set<string>()
   const calls = new Set<string>()
   let starting = false
@@ -90,7 +124,7 @@ export function createCodingHost(input: {
     return { receipt, producer: false }
   }
   async function snapshot(target: string): Promise<CodingEnvironmentSnapshot> {
-    input.assertActive()
+    assertScope()
     codingRelativePath(target)
     resolveCodingDirectory(input.root, target)
     const report = await input.context(target)
@@ -101,7 +135,7 @@ export function createCodingHost(input: {
       const sources: unknown[] = [
         report.instructions.files.map((file) => [file.path, file.sha256]),
         report.commands.sources,
-        input.values,
+        native ? { runtime: native.facts, cwd: native.cwd, env: native.env } : input.values,
       ]
       let current = dir
       let bytes = 0
@@ -124,16 +158,35 @@ export function createCodingHost(input: {
     } finally {
       dir.close()
     }
-    input.assertActive()
-    return {
-      posture: input.posture,
-      imageId: input.imageId,
+    assertScope()
+    const common = {
       cwd: target,
       rootIdentity: report.rootIdentity ?? 'unavailable',
       inputFingerprint: fingerprint,
       capturedAt: Date.now(),
+    }
+    if (native)
+      return {
+        ...common,
+        posture: 'native',
+        imageId: null,
+        native: native.facts,
+        restrictions: [
+          'Native OS sandbox; not a container or VM.',
+          'TCP/UDP, including localhost, denied; pipes and private per-job pathname Unix IPC only.',
+          'Read-only Team memory and admitted inputs; per-command private scratch.',
+          'Frozen runtime/toolchain and scrubbed environment; no ambient credentials or host caches.',
+          'No host/Docker fallback; unknown ownership or cleanup blocks workspace reuse.',
+          'No aggregate CPU/RAM/process quota guarantee.',
+        ],
+      }
+    if (posture === 'native') throw new Error('Native coding authority unavailable')
+    return {
+      ...common,
+      posture,
+      imageId,
       restrictions:
-        input.posture === 'host'
+        posture === 'host'
           ? [
               'Host execution under existing shell policy; not isolated.',
               'Resolve new scopes before editing.',
@@ -147,8 +200,11 @@ export function createCodingHost(input: {
   }
   return {
     async invoke(raw: CodingRequest) {
-      input.assertActive()
       if (!raw || typeof raw !== 'object') throw new Error('Invalid coding request')
+      // Finalize already-issued evidence after executor settlement/failure, without authorizing any
+      // new effect or treating a stopped/blocked native admission as available.
+      if (raw.action === 'finish') assertReceiptScope()
+      else assertScope()
       if (raw.action === 'environment') return snapshot(raw.target)
       if (raw.action === 'snapshot') {
         if (
@@ -196,7 +252,7 @@ export function createCodingHost(input: {
         )
           throw new Error('Invalid or repeated coding tool call')
         const command = validateCodingCommand(raw.input)
-        if (input.secrets.some((secret) => secret && command.command.includes(secret)))
+        if (readSecrets().some((secret) => secret && command.command.includes(secret)))
           throw new Error('Command contains protected credential material')
         starting = true
         try {
@@ -233,7 +289,8 @@ export function createCodingHost(input: {
           !receipt ||
           !active.has(raw.id) ||
           receipt.turnId !== input.turnId ||
-          receipt.agentId !== input.agentId
+          receipt.agentId !== input.agentId ||
+          receipt.teamId !== input.teamId
         )
           throw new Error('Coding operation does not belong to this active turn')
         const value: CodingCommandOutcome = raw.outcome
@@ -252,12 +309,25 @@ export function createCodingHost(input: {
           (value.state === 'failed' && (value.exitCode === null || value.exitCode === 0))
         )
           throw new Error('Invalid coding terminal evidence')
+        const capture = raw.capture
+        if (
+          (native && !capture) ||
+          (capture &&
+            (!native ||
+              typeof capture !== 'object' ||
+              Object.keys(capture).sort().join(',') !== 'observedBytes,redacted' ||
+              !Number.isSafeInteger(capture.observedBytes) ||
+              capture.observedBytes < 0 ||
+              capture.observedBytes > 2 * 1024 * 1024 ||
+              typeof capture.redacted !== 'boolean'))
+        )
+          throw new Error('Native coding capture facts unavailable')
         // Retain up to the BAZ-041 window, but keep the receipt's established 64 KiB tail.
-        const diagnostic = new CodingDiagnostics(input.secrets, CODING_RETAINED_BYTES)
+        const diagnostic = new CodingDiagnostics(readSecrets(), CODING_RETAINED_BYTES)
         diagnostic.append(Buffer.from(value.diagnostic))
         const retained = diagnostic.finish()
         const tail = diagnosticTail(retained.diagnostic, CODING_OUTPUT_BYTES)
-        const reason = new CodingDiagnostics(input.secrets)
+        const reason = new CodingDiagnostics(readSecrets())
         reason.append(Buffer.from(value.reason ?? ''))
         Object.assign(receipt, {
           state: value.state,
@@ -280,6 +350,7 @@ export function createCodingHost(input: {
         } catch {
           receipt.sourceAfter = null
         }
+        assertReceiptScope()
         saveCodingCommand(input.db, receipt)
         // Retention is best-effort evidence maintenance. A persistence failure must not
         // turn a completed command into a failed one; the log simply reads unavailable.
@@ -291,8 +362,8 @@ export function createCodingHost(input: {
             turnId: input.turnId,
             toolCallId: receipt.toolCallId,
             diagnostic: retained.diagnostic,
-            observedBytes: retained.observedBytes,
-            redacted: retained.redacted,
+            observedBytes: capture?.observedBytes ?? retained.observedBytes,
+            redacted: retained.redacted || capture?.redacted === true,
             truncated: retained.truncated || value.truncated,
           })
         } catch {
@@ -309,7 +380,7 @@ export function createCodingHost(input: {
         try {
           current = await snapshot(receipt.input.cwd)
         } catch {
-          input.assertActive()
+          assertScope()
           return { receipt, applicability: 'unknown' }
         }
         const applicability =
@@ -321,6 +392,7 @@ export function createCodingHost(input: {
                 current.rootIdentity !== receipt.environment.rootIdentity ||
                 current.posture !== receipt.environment.posture ||
                 current.imageId !== receipt.environment.imageId ||
+                current.native?.fingerprint !== receipt.environment.native?.fingerprint ||
                 current.inputFingerprint !== receipt.environment.inputFingerprint
               ? 'stale'
               : 'fresh'

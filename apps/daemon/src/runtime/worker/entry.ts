@@ -17,14 +17,10 @@ import {
 } from '../pi/session.ts'
 import { ourToolToPiTool } from '../pi/tools.ts'
 import type { BashApprovalHost as ShellBashApprovalHost } from '../shell/approval.ts'
-import {
-  type ReviewCapabilityHost,
-  type ReviewRequestHost,
-  reviewRequestTool,
-  reviewTools,
-} from '../tools/review.ts'
+import { type ReviewCapabilityHost, type ReviewRequestHost, reviewTools } from '../tools/review.ts'
 import { type VerificationRequestHost, verificationTools } from '../tools/verification.ts'
 import { createIpcApiKeyRefresher } from './api-key-refresh.ts'
+import { workerFailureMessage } from './cancellation.ts'
 import { createIpcClient, type WorkerIpcCall } from './ipc-client.ts'
 import type {
   BashApprovalResult,
@@ -35,12 +31,13 @@ import type {
   UserMdHost,
   UserMdWriteResult,
 } from './ipc-protocol.ts'
+import { createIpcNativeExecutionHost } from './native-execution-client.ts'
 import { WorkerOutput } from './output.ts'
 import {
+  initializeMinimalWorkerProcessEnv,
   parseWorkerInput,
   protectedRuntimeSecrets,
   redactJsonValue,
-  validateMinimalWorkerProcessEnv,
   type WorkerInput,
 } from './runtime.ts'
 
@@ -356,6 +353,9 @@ async function createSessionForInput(
       : undefined
     const handle = await createBazilionSession({
       agent: input.agent,
+      nativeExecution: input.nativeExecution
+        ? { cwd: input.nativeExecution.cwd, host: createIpcNativeExecutionHost(ipcCall) }
+        : undefined,
       preparedDocker: input.configuredDocker?.docker,
       dockerLifecycle: createIpcDockerLifecycle(input.containerNamespace, ipcCall),
       conversation: input.conversation,
@@ -370,7 +370,10 @@ async function createSessionForInput(
       userMdHost,
       // The requester's halves of specialist verification and review. Only the configured/browser-enabled
       // worker kind reaches this builder, and it is an ordinary coding turn.
-      verificationRequestHost: createIpcVerificationRequestHost(ipcCall),
+      verificationRequestHost:
+        !input.nativeExecution || input.nativeVerificationRequestEnabled
+          ? createIpcVerificationRequestHost(ipcCall)
+          : undefined,
       reviewRequestHost: createIpcReviewRequestHost(ipcCall),
       imageGenerationHost,
       webSearchHost,
@@ -463,12 +466,18 @@ async function createSessionForInput(
     paths: input.paths,
     scratch: input.scratch,
     docker: input.docker,
+    nativeExecution: input.nativeExecution
+      ? { cwd: input.nativeExecution.cwd, host: createIpcNativeExecutionHost(ipcCall) }
+      : undefined,
     dockerLifecycle: createIpcDockerLifecycle(input.containerNamespace, ipcCall),
     memory,
     messagingHost,
     userMdHost,
     bashApprovalHost,
-    verificationRequestHost: createIpcVerificationRequestHost(ipcCall),
+    verificationRequestHost:
+      !input.nativeExecution || input.nativeVerificationRequestEnabled
+        ? createIpcVerificationRequestHost(ipcCall)
+        : undefined,
     reviewRequestHost: createIpcReviewRequestHost(ipcCall),
     askUser: input.questionEnabled
       ? (toolCallId, question) => ipcCall('askUser', { toolCallId, question })
@@ -505,7 +514,7 @@ async function main(): Promise<void> {
   const input = await readInput()
   if (aborted) return exitWorker(0)
   if (input.kind !== 'configured_operator_http') {
-    validateMinimalWorkerProcessEnv(process.env, input.scratch)
+    initializeMinimalWorkerProcessEnv(process.env, input.scratch)
   }
   const initialAccessTokens =
     input.kind === 'configured_operator_http'
@@ -571,7 +580,14 @@ async function main(): Promise<void> {
       reviewState.recordValidationFailure()
       if (reviewState.validationFailures() >= 2) void session?.abort()
     }
-    for (const event of translatePiEvent(piEvent)) emit({ kind: 'event', event })
+    for (const event of translatePiEvent(piEvent))
+      emit({
+        kind: 'event',
+        event:
+          event.type === 'error'
+            ? { ...event, error: workerFailureMessage(event.error, aborted) }
+            : event,
+      })
   })
 
   try {
@@ -607,7 +623,10 @@ async function main(): Promise<void> {
       emit({ kind: 'done', messages: piMessagesToProviderView(session.agent.state.messages) })
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
+    const message = workerFailureMessage(
+      error instanceof Error ? error.message : String(error),
+      aborted,
+    )
     if (!aborted) emit({ kind: 'event', event: { type: 'error', error: message } })
     emit({ kind: 'fatal', error: message })
     process.exitCode = 1

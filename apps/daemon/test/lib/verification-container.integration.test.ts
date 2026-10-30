@@ -6,7 +6,6 @@ import type { BazilionDb } from '../../src/core/db/client.ts'
 import {
   createVerificationRequest,
   getVerificationRequest,
-  type VerificationRequestRecord,
 } from '../../src/core/repos/verification-requests.ts'
 import { workspaceLifecycle } from '../../src/lib/coding-environment/lifecycle.ts'
 import { captureTeamSnapshot } from '../../src/lib/git-review/service.ts'
@@ -21,7 +20,7 @@ import { makeTestEnv, type TestEnv } from '../core/helpers.ts'
 // Gated on `BAZILION_TEST_DOCKER=1` like the other real-Docker suites. Skipped by default, because a
 // missing Docker must not turn into a passing test that proves nothing.
 
-const dockerEnabled = process.env.BAZILION_TEST_DOCKER === '1'
+const dockerEnabled = process.platform === 'linux' && process.env.BAZILION_TEST_DOCKER === '1'
 const image = process.env.BAZILION_TEST_DOCKER_IMAGE ?? 'debian:bookworm-slim'
 
 function seed(db: BazilionDb, teamId: string): void {
@@ -93,7 +92,23 @@ async function containerEnv(command: string): Promise<ContainerEnv> {
     checks: [{ command, cwd: '.', purpose: 'suite', timeoutMs: 60_000 }],
   })
 
-  return { ...env, requestId: request.id }
+  return {
+    ...env,
+    requestId: request.id,
+    cleanup() {
+      const writers = env.db.raw
+        .query<{ count: number }, []>('SELECT count(*) AS count FROM workspace_writers')
+        .get()?.count
+      if (writers !== 0) {
+        env.db.close()
+        console.warn(
+          `[verification container] retained unconfirmed workspace/receipts: ${env.home}`,
+        )
+        throw new Error('verification fixture cleanup requires confirmed workspace settlement')
+      }
+      env.cleanup()
+    },
+  }
 }
 
 interface ExecuteResult {
@@ -221,6 +236,6 @@ describe.skipIf(!dockerEnabled)('verification container posture', () => {
 
 describe.skipIf(dockerEnabled)('verification container posture (skipped)', () => {
   test('real-Docker observation requires BAZILION_TEST_DOCKER=1', () => {
-    expect(process.env.BAZILION_TEST_DOCKER).not.toBe('1')
+    expect(process.platform !== 'linux' || process.env.BAZILION_TEST_DOCKER !== '1').toBe(true)
   })
 })

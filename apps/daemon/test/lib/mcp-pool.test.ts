@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -248,7 +248,7 @@ test('daemon revalidation after asynchronous admission prevents stale dispatch',
   expect(count(f, 'tools/call')).toBe(0)
 })
 test.each([
-  'darwin',
+  'freebsd',
   'win32',
 ] as const)('stdio refuses before native start on controlled %s while HTTP remains available', async (platform) => {
   vi.stubGlobal('process', { ...process, platform })
@@ -273,7 +273,7 @@ test.each([
   expect((await discoverMcpTools(http, opts))[0]?.rawName).toBe('foo')
 })
 
-test.skipIf(process.platform !== 'linux')(
+test.skipIf(!['linux', 'darwin'].includes(process.platform))(
   'Pi stdio receives only daemon-supplied env and retires the whole process group',
   async () => {
     const dir = mkdtempSync(join(tmpdir(), 'baz-mcp-stdio-'))
@@ -327,5 +327,76 @@ test.skipIf(process.platform !== 'linux')(
       if (old === undefined) delete process.env.MCP_FIXTURE_AMBIENT
       else process.env.MCP_FIXTURE_AMBIENT = old
     }
+  },
+)
+
+function ownedStdioFixture(mode: 'hold-call' | 'hold-initialize' | 'fail-initialize') {
+  const dir = mkdtempSync(join(tmpdir(), 'baz-mcp-stdio-'))
+  dirs.push(dir)
+  const pidFile = join(dir, 'descendant.pid')
+  const server: McpServerConfig = {
+    id: `stdio_${mode.replaceAll('-', '_')}`,
+    name: 'owned_stdio',
+    transport: 'stdio',
+    command: process.execPath,
+    args: [fileURLToPath(new URL('../fixtures/mcp-stdio.mjs', import.meta.url)), pidFile, mode],
+    url: null,
+  }
+  return { server, pidFile }
+}
+
+test.skipIf(!['linux', 'darwin'].includes(process.platform))(
+  'owned stdio cancellation retains busy ownership, reports uncertainty and never replays the call',
+  async () => {
+    const { server, pidFile } = ownedStdioFixture('hold-call')
+    const controller = new AbortController()
+    const options = { env: {}, idleMs: 1000, signal: controller.signal }
+    const tools = await discoverMcpTools(server, options)
+    const host = createMcpHost({
+      servers: new Map([[server.id, server]]),
+      tools,
+      optsFor: () => options,
+    })
+    const call = host.invoke(server.id, 'foo', {})
+    const rejected = expect(call).rejects.toThrow(/may have taken effect.*Not replayed/)
+    await vi.waitFor(() => expect(existsSync(`${pidFile}.calls`)).toBe(true))
+    expect(resources().mcp.get(server.id)?.busy).toBe(1)
+    await reapIdleResources(Date.now() + 5000)
+    expect(resources().mcp.has(server.id)).toBe(true)
+    controller.abort()
+    await rejected
+    await expect(host.invoke(server.id, 'foo', {})).rejects.toThrow(/uncertain effect/)
+    expect(readFileSync(`${pidFile}.calls`, 'utf8')).toBe('1')
+    // Surface the cached retirement error if cancellation retained ownership. This does not
+    // retry close or force-release the slot; a rejected retirement must still fail the test.
+    await closeMcpConnection(server.id)
+    expect(resources().mcp.has(server.id)).toBe(false)
+  },
+)
+
+test.skipIf(!['linux', 'darwin'].includes(process.platform))(
+  'owned stdio retirement during initialization cannot publish an opening client',
+  async () => {
+    const { server, pidFile } = ownedStdioFixture('hold-initialize')
+    const opening = getOrCreateMcpConnection(server, { env: {}, idleMs: 1000 })
+    const rejected = expect(opening).rejects.toThrow(/discovery failed/)
+    await vi.waitFor(() => expect(existsSync(`${pidFile}.initialize`)).toBe(true))
+    await closeMcpConnection(server.id)
+    await rejected
+    expect(resources().mcp.has(server.id)).toBe(false)
+    expect(existsSync(`${pidFile}.calls`)).toBe(false)
+  },
+)
+
+test.skipIf(!['linux', 'darwin'].includes(process.platform))(
+  'owned stdio initialization failure retires its descendants before releasing the slot',
+  async () => {
+    const { server, pidFile } = ownedStdioFixture('fail-initialize')
+    await expect(getOrCreateMcpConnection(server, { env: {}, idleMs: 1000 })).rejects.toThrow(
+      /discovery failed/,
+    )
+    expect(existsSync(`${pidFile}.initialize`)).toBe(true)
+    expect(resources().mcp.has(server.id)).toBe(false)
+    expect(existsSync(`${pidFile}.calls`)).toBe(false)
   },
 )

@@ -151,6 +151,22 @@ test('shell sandbox settings are configurable through the shared CLI and web ser
   ])
 
   const set = await server.cli(['config', 'set', 'BAZILION_BASH_SANDBOX', 'docker'])
+  if (process.platform === 'darwin') {
+    expect(set.exitCode).not.toBe(0)
+    expect(`${set.stdout}${set.stderr}`).toContain('not supported on macOS')
+    const native = await server.cli(['config', 'set', 'BAZILION_BASH_SANDBOX', 'native'])
+    expect(native.exitCode).not.toBe(0)
+    expect(`${native.stdout}${native.stderr}`).toContain('deferred and unqualified')
+    const host = await server.cli(['config', 'set', 'BAZILION_BASH_SANDBOX', 'off'])
+    expect(host.exitCode, host.stderr).toBe(0)
+    const updated = await findService('shell-security')
+    expect(updated.fields.find((field) => field.envVar === 'BAZILION_BASH_SANDBOX')).toMatchObject({
+      kind: 'config',
+      set: true,
+      value: 'off',
+    })
+    return
+  }
   expect(set.exitCode).toBe(0)
   expect(set.stdout).toMatch(/BAZILION_BASH_SANDBOX.*docker/)
 

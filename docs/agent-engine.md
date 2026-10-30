@@ -13,6 +13,14 @@ Engineer-to-engineer walkthrough of how a chat turn actually runs, end to end.
 > transcript and the only persistent record — there is no separate `runs` /
 > `events` audit table.
 
+Ordinary macOS operator coding uses explicitly trusted **unisolated host execution** (`off`).
+Generic native Mac isolation is deferred/unqualified; native and Docker selections refuse without
+fallback. Isolation-required protected coding, scheduled/inbox/Telegram delivery and specialist
+command checks cannot become host execution to restore availability. Existing closed reviewer-only
+workers have no shell/coding surface and keep their separate provider/capability restrictions.
+MCP, browser and guarded Git retain their own admission and ownership. Linux keeps its native and
+separately selected Docker backends. See [coding environments](coding-environments.md).
+
 ## 1. Request → subprocess boundary
 
 A chat turn starts at `POST /api/agents/:id/chat` (the daemon at `apps/daemon`). The route hands off to `apps/daemon/src/lib/agent-turn.ts:runAgentTurn`. Admission resolves policy,
@@ -55,15 +63,27 @@ Stdio is `['pipe','pipe','pipe','ipc']`:
 
 Cancellation is keyed by **agentId** (not runId — there are no runIds anymore, since the runs table is gone). The agent-cancel registry is pinned to `globalThis[Symbol.for('bazilion.agent-cancel.registry')]` so module reloads don't replace it. `POST /api/agents/:id/cancel` looks up the controller and aborts it; the parent's abort handler calls `child.kill('SIGTERM')`, arms a 3s timer, and SIGKILLs if the child doesn't exit.
 
-### Ordinary-worker ownership (shipped in 0.24.0)
+### Worker ownership (0.24 baseline; 0.25 candidate)
 
-Linux retains its recorded `/proc` process identity/retirement path. macOS instead retains the actual
-daemon-owned ChildProcess before input delivery. A normal code-zero exit, natural EOF on stdout and
-stderr, and absence of its original process group must all be observed before releasing the writer.
-Locally destroying pipes does not prove EOF. Persisted receipts are not authority to signal a PID;
-restart/restore without live authority, abnormal exits and unknown settlement stay blocked. This
-removes the Linux-only process-registration blocker without promising arbitrary-descendant cleanup.
-See [workspace recovery](workspace-recovery.md) and [BAZ-057](backlog/done/BAZ-057-portable-safe-reads.md).
+Linux retains its recorded `/proc` process identity/retirement path. The 0.24 macOS ordinary-chat
+port used a live ChildProcess observer requiring a normal code-zero exit, natural EOF and original
+group absence. The 0.25 candidate adds daemon-only public libproc birth/uid/session/group inspection:
+readiness is checked before spawn and the actual child is recorded before executable input.
+Original-group descendants become signalling anchors only while that parent is live, before
+termination. Later group escalation revalidates an original anchor; unknown descendants are not
+adopted after the leader exits. Stored/restored receipts cannot reconstruct that live authority.
+
+Cleanup requires natural stdout/stderr EOF, observed child closure and an absent original group.
+A coded nonzero exit may establish cleanup, never successful execution. A forced host-command
+exit still cannot prove independently detached host work stopped. Locally destroyed pipes, missing
+live owners and unknown inspection retain the writer; private scratch is not erased under
+unconfirmed resources. Management does not guess PID ownership or force-clear records.
+
+Daemon shutdown fences scheduler admissions and new turn registrations, aborts active controllers
+including inbox readiness before registration, and drains tracked scheduler/lifecycle waiters and
+registered turns before closing browser/MCP resources and the DB, within the existing shutdown cap. An interrupted/uncertain cleanup remains a durable recovery blocker after restart.
+See [workspace recovery](workspace-recovery.md), the active BAZ-072 story and the historical
+[BAZ-057](backlog/done/BAZ-057-portable-safe-reads.md) qualification limits.
 
 ## 2. Child bootstrap (`worker/entry.ts`)
 
@@ -100,7 +120,17 @@ abortSession = () => void session.abort()
 - Bazilion's custom tool list via `createBazilionCustomTools` (memory_*, home_*, web_*, bootstrap_done, optional messaging via the `messagingHost`) — see `apps/daemon/src/runtime/pi/tools.ts`.
 - The provider/model pair from the registry, with `apiKey` (caller-supplied for OAuth providers, env-derived for API-key ones), plus the agent's `reasoning_level`.
 
-Docker mode is an opt-in confinement boundary, not just a different process launcher. The Team
+The unreleased 0.25 path also accepts explicit `BAZILION_BASH_SANDBOX=native`. Canonical turn
+preparation admits native inputs under the owned workspace before model work; inbox preparation
+precedes message claims. Configured, scheduled and inbox callers route Bash/coding commands through
+that same bound executor, never host tools or Docker fallback. The selector is rechecked before input;
+changing it refuses the prepared turn. Native risk gating is mandatory, including unattended
+auto-denial. Shutdown fences and drains acknowledged, still-unregistered inbox readiness before
+workspace/DB release. Actual Linux/Mac trials cover both exact Node baselines with synthetic provider
+transport. This is not installed-client or live-provider qualification. See
+[native execution](native-execution-design.md) for denial, ownership and API limits.
+
+Docker mode remains an opt-in confinement boundary pending approved conditional retirement, not just a different process launcher. The Team
 workspace is mounted read/write at `/workspace`, but its `memory/` subtree is over-mounted
 read-only to `bash` (the scoped `memory_*` tools still own memory writes). Non-image attachments
 saved under the Agent's private `uploads/` directory are exposed read-only at `/inputs`, and the

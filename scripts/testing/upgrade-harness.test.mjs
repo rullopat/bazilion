@@ -58,9 +58,11 @@ async function server(t, status, body) {
   return `http://127.0.0.1:${s.address().port}/api/health`
 }
 
-test('import is inert and defaults cover 0.23 reopening plus all eight prior-schema refusals', () => {
+test('import is inert; current reopens and all ten prior schemas retain clean-install refusals', () => {
   assert.deepEqual(DEFAULT_MATRIX, [
-    { tag: 'v0.23.0', expect: 'upgrade' },
+    { tag: 'current', expect: 'reopen' },
+    { tag: 'v0.24.0', expect: 'refuse' },
+    { tag: 'v0.23.0', expect: 'refuse' },
     { tag: 'v0.22.0', expect: 'refuse' },
     { tag: 'v0.21.0-beta.5', expect: 'refuse' },
     { tag: 'v0.21.0-beta.4', expect: 'refuse' },

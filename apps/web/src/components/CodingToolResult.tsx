@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { codingFailureSummary, PRIVATE_CODING_HISTORY } from '../lib/coding-presentation'
+import { codingFailureSummary, nativeCodingRuntimeLabel, PRIVATE_CODING_HISTORY } from '../lib/coding-presentation'
 import { fetchRetainedCodingLog, type RetainedCodingLog } from '../lib/coding-log'
 import {
   fetchSnapshotApplicability,
@@ -113,7 +113,7 @@ export function CodingToolResult({
         <summary className="cursor-pointer">
           Environment: {value.posture} · {value.cwd}
         </summary>
-        <p className="break-all">{value.imageId ?? 'Host runtime'}</p>
+        <p className="break-all">{value.posture==='native'?nativeCodingRuntimeLabel(value.native):(value.imageId ?? 'Host runtime')}</p>
         {Array.isArray(value.restrictions) &&
           value.restrictions
             .filter((x) => typeof x === 'string')
@@ -161,6 +161,7 @@ export function CodingToolResult({
           before={receipt.sourceBefore ?? null}
         />
         {receipt.environment?.imageId && <p className="break-all">{receipt.environment.imageId}</p>}
+        {receipt.environment?.posture==='native'&&<p>{nativeCodingRuntimeLabel(receipt.environment.native)}</p>}
       </details>
     </div>
   )

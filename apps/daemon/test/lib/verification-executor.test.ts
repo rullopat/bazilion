@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, test } from 'vitest'
 import type { BazilionDb } from '../../src/core/db/client.ts'
@@ -95,6 +95,88 @@ function executorFor(env: TestEnv, request: VerificationRequestRecord, secrets: 
     env: { BAZILION_BASH_SANDBOX: 'off' },
   })
 }
+
+test('a legacy executor reads live daemon selection and cannot run host work after native is selected', async () => {
+  const env = makeTestEnv()
+  try {
+    seed(env.db, env.teamId)
+    const command = 'printf forbidden > must-not-run',
+      request = await requestFor(env, command)
+    let live: NodeJS.ProcessEnv = { BAZILION_BASH_SANDBOX: 'off' }
+    const executor = createProtectedCheckExecutor({
+      db: env.db,
+      paths: env.paths,
+      request,
+      attemptId: 'attempt-1',
+      teamPath: env.paths.teamDir(env.teamId),
+      secrets: () => [],
+      env: () => live,
+    })
+    live = { BAZILION_BASH_SANDBOX: 'native' }
+    expect(
+      await executor.run({
+        command,
+        cwd: '.',
+        timeoutMs: 5000,
+        purpose: 'verification',
+        writablePaths: [],
+      }),
+    ).toMatchObject({
+      state: 'blocked',
+      commandId: null,
+      blocker: { reason: 'environment_unavailable' },
+    })
+    expect(existsSync(join(env.paths.teamDir(env.teamId), 'must-not-run'))).toBe(false)
+    expect(env.db.raw.query('SELECT id FROM coding_commands').all()).toEqual([])
+  } finally {
+    env.cleanup()
+  }
+})
+
+test('native verification metadata cannot fall through to host execution without genuine attempt admission', async () => {
+  const env = makeTestEnv()
+  try {
+    seed(env.db, env.teamId)
+    const command = 'printf forbidden > must-not-run'
+    const base = await requestFor(env, command)
+    const request = createVerificationRequest(env.db, {
+      ...base,
+      id: 'native-refusal',
+      environment: {
+        sandbox: 'native',
+        image: null,
+        inputScope: 'team-memory',
+        cwd: '.',
+        env: {},
+        native: {
+          backend: 'linux-bwrap',
+          architecture: 'x64',
+          nodeVersion: 'v26.12.1',
+          kernelRelease: 'synthetic-metadata-only',
+          fingerprint: 'a'.repeat(64),
+          policyFingerprint: 'b'.repeat(64),
+        },
+      },
+      checks: [{ command, cwd: '.', purpose: 'test', timeoutMs: 5000 }],
+    })
+    const result = await executorFor(env, request).run({
+      command,
+      cwd: '.',
+      timeoutMs: 5000,
+      purpose: 'verification',
+      writablePaths: [],
+    })
+    expect(result).toMatchObject({
+      state: 'blocked',
+      commandId: null,
+      blocker: { reason: 'environment_unavailable' },
+    })
+    expect(existsSync(join(env.paths.teamDir(env.teamId), 'must-not-run'))).toBe(false)
+    expect(env.db.raw.query('SELECT id FROM coding_commands').all()).toEqual([])
+  } finally {
+    env.cleanup()
+  }
+})
 
 test('a passing check records a succeeded outcome and its receipt', async () => {
   const env = makeTestEnv()

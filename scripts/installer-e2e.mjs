@@ -18,8 +18,8 @@
 //   - macOS: ordinary installed CLI/API/browser turns with the inline provider.
 //   - Windows: unsupported; the explicit safe-read refusal remains tested.
 //
-// The website's install.sh/install.ps1 mostly ensure Node 24 (CI brings its
-// own). The guarded profile checked here is: npm global install with scripts off →
+// This harness brings the pinned Node 26 runtime; public website runtime bootstrappers are
+// not exercised here. The guarded profile is: npm global install with scripts off →
 // explicit admitted offline rebuilds →
 // `bazilion serve` bootstraps a fresh BAZILION_HOME → CLI configures the
 // provider → agent spawn → one-shot turn → `uninstall --yes` leaves the home
@@ -782,6 +782,48 @@ try {
     }
   } finally {
     await packedMcp.close()
+  }
+
+  if (SUPPORTS_AGENT_TURNS) {
+    step('packed owned MCP stdio: native admission, catalog and descendant retirement')
+    const script = join(fixtureRoot, 'mcp-stdio-fixture.mjs')
+    const pidFile = join(fixtureRoot, 'mcp-stdio-descendant.pid')
+    writeFileSync(
+      script,
+      readFileSync(new URL('../apps/daemon/test/fixtures/mcp-stdio.mjs', import.meta.url)),
+      { mode: 0o600 },
+    )
+    const { token } = JSON.parse(readFileSync(join(home, 'auth.json'), 'utf8'))
+    const response = await fetch(`http://127.0.0.1:${daemonPort}/api/mcp-servers`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${token}`,
+        origin: `http://127.0.0.1:${daemonPort}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        name: 'packed_stdio',
+        transport: 'stdio',
+        command: process.execPath,
+        args: [script, pidFile],
+      }),
+      signal: AbortSignal.timeout(30_000),
+    })
+    const registered = await response.json()
+    const serverId = registered.server?.id
+    if (!response.ok || !serverId) {
+      fail('packed owned stdio registration', `HTTP ${response.status}`)
+    } else {
+      try {
+        const tested = await run(process.execPath, [bazilionBin, 'mcp', 'test', serverId])
+        if (tested.code !== 0 || !tested.stdout.includes('foo') || !existsSync(pidFile))
+          fail('packed owned stdio catalog', tested.stderr + tested.stdout)
+      } finally {
+        const removed = await run(process.execPath, [bazilionBin, 'mcp', 'rm', serverId])
+        if (removed.code !== 0)
+          fail('packed owned stdio retirement', removed.stderr + removed.stdout)
+      }
+    }
   }
 
   step('one-shot chat turn through the deterministic provider')

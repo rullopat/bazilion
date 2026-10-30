@@ -1,5 +1,28 @@
 # bazilion
 
+## 0.25.0
+
+### Minor Changes
+
+- Add trusted, explicitly unisolated Apple Silicon Mac coding with hardened private-worktree Git,
+  native-owned daemon MCP stdio, private-keychain managed browsing and conservative worker recovery.
+  Genuine installed CLI/API/web and non-GUI/main-process lifecycle trials pass on macOS 27.0.1
+  arm64 / Node 26.12.1. Mac desktop/headed qualification is deferred to a later version; generic
+  native Mac isolation stays deferred/unqualified. Mac Docker/VM execution is removed. Unsupported
+  native/Docker selections and isolation-required Mac coding refuse without host fallback.
+
+  Add Linux unprivileged Bubblewrap/mandatory-seccomp native execution, protected worker ownership,
+  bounded native command/verification evidence and actual runtime readiness while retaining Linux
+  Docker and independent policy/approval/security guards. Unknown cleanup retains resources.
+
+  Require Node ^26.12.1 and retire Node 24; pin development/CI to Node 26.12.1 / pnpm 12.15.0.
+  The alpha schema requires clean rebootstrap: genuine 0.24.0 and older homes refuse unchanged,
+  without in-place migrations or old-backup import. Preserve the entire old home/auth pair first.
+
+  This is alpha software for operator testing, not full platform parity or production readiness.
+  Synthetic providers, public-page reading and browser PNGs do not qualify unobserved live-model,
+  generated-image or arbitrary-site capabilities. Embedded Pi remains explicitly admitted 1.4.0.
+
 ## 0.24.0
 
 ### Minor Changes

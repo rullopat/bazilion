@@ -3,7 +3,7 @@ import { writeSync } from 'node:fs'
 // Keep this dependency-free guard before application imports. The daemon owns
 // its own copy: CLI runtime code must not import daemon internals. Contract tests
 // bind both copies and the manifests to the same supported stable release lines.
-export const SUPPORTED_NODE_RANGE = '^24.22.0 || ^26.4.0'
+export const SUPPORTED_NODE_RANGE = '^26.12.1'
 
 export function isSupportedNodeVersion(version: string): boolean {
   if (version !== version.trim()) return false
@@ -13,7 +13,7 @@ export function isSupportedNodeVersion(version: string): boolean {
   const minor = Number(match[2])
   const patch = Number(match[3])
   if (![major, minor, patch].every(Number.isSafeInteger)) return false
-  return (major === 24 && minor >= 22) || (major === 26 && minor >= 4)
+  return major === 26 && (minor > 12 || (minor === 12 && patch >= 1))
 }
 
 if (!isSupportedNodeVersion(process.versions.node)) {

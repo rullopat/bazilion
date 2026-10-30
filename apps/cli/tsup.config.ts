@@ -10,7 +10,7 @@ import {
 import { join } from 'node:path'
 import { defineConfig } from 'tsup'
 
-// Five ESM bundles, plus guarded cli.js/daemon.js launchers written below.
+// ESM payloads, plus guarded cli.js/daemon.js launchers written below.
 // The public launchers check the runtime before dynamically linking application
 // dependencies; a banner alone cannot run before static external ESM imports.
 // Payloads and resources remain siblings in dist/, preserving relative paths.
@@ -22,6 +22,9 @@ export default defineConfig({
     'daemon-main': '../daemon/src/main.ts',
     'runtime-version': 'src/runtime-version.ts',
     worker: '../daemon/src/runtime/worker/entry.ts',
+    'browser-keychain': '../daemon/src/lib/browser/darwin-keychain-entry.mjs',
+    'native-linux-entry': '../daemon/src/runtime/shell/native/linux-entry.ts',
+    'native-darwin-entry': '../daemon/src/runtime/shell/native/darwin-entry.ts',
     'web-server': 'src/web-server.ts',
   },
   format: ['esm'],

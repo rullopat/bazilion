@@ -7,6 +7,7 @@ import {
   lstatSync,
   opendirSync,
   openSync,
+  readlinkSync,
   realpathSync,
   type Stats,
 } from 'node:fs'
@@ -51,9 +52,14 @@ export function relativeParts(target: string): string[] {
   return parts
 }
 
-function component(name: string): void {
-  if (!name || name === '.' || name === '..' || /[/\\\0]/.test(name))
+const literalComponentToken = Symbol('context-directory.literal-posix-component')
+function literalComponent(name: string): void {
+  if (!name || name === '.' || name === '..' || /[/\0]/.test(name))
     throw new ContextReadError('unsafe_target')
+}
+function component(name: string): void {
+  literalComponent(name)
+  if (name.includes('\\')) throw new ContextReadError('unsafe_target')
 }
 
 /**
@@ -74,9 +80,11 @@ export class ContextDirectory {
   private readonly children: ContextDirectory[] = []
   private listing: string | undefined
   private readonly observedFiles = new Map<string, string | null>()
+  private readonly observedMetadata = new Map<string, string | null>()
+  private readonly observedLinks = new Map<string, string>()
   private closed = false
 
-  constructor(registeredPath: string, label = '.', parent?: ContextDirectory) {
+  constructor(registeredPath: string, label = '.', parent?: ContextDirectory, token?: symbol) {
     const platform = parent?.platform ?? process.platform
     if (platform !== 'linux' && platform !== 'darwin')
       throw new ContextReadError('safe_reads_unavailable')
@@ -84,7 +92,10 @@ export class ContextDirectory {
     this.registeredPath = registeredPath
     this.label = label
     this.parent = parent
-    if (parent) component(registeredPath)
+    if (parent) {
+      if (token === literalComponentToken) literalComponent(registeredPath)
+      else component(registeredPath)
+    }
     parent?.assertCurrent()
     const canonicalPath = parent
       ? join(parent.canonicalPath, registeredPath)
@@ -161,6 +172,48 @@ export class ContextDirectory {
     )
     this.children.push(child)
     return child
+  }
+
+  /** Bounded walkers can release a child after validating it instead of retaining an entire tree of FDs. */
+  async visitDirectory(
+    name: string,
+    visit: (directory: ContextDirectory) => Promise<void>,
+  ): Promise<void> {
+    literalComponent(name)
+    const child = new ContextDirectory(
+      name,
+      this.label === '.' ? name : `${this.label}/${name}`,
+      this,
+      literalComponentToken,
+    )
+    try {
+      await visit(child)
+      child.validate()
+    } finally {
+      child.close()
+    }
+  }
+
+  /** Observe metadata without opening/reading file content; retain it for capture-wide validation. */
+  metadata(name: string): BigIntStats | null {
+    literalComponent(name)
+    const stat = this.observe(name)
+    this.observedMetadata.set(name, stat ? `${stamp(stat)}:${stat.mode}:${stat.nlink}` : null)
+    return stat
+  }
+
+  /** Read the link itself through this capture, never open its target. */
+  readLink(name: string): string {
+    literalComponent(name)
+    const before = this.observe(name)
+    if (!before?.isSymbolicLink()) throw new ContextReadError('unsafe_file')
+    const target = readlinkSync(join(this.path, name))
+    const after = this.observe(name)
+    if (!after?.isSymbolicLink() || stamp(before) !== stamp(after))
+      throw new ContextReadError('source_changed')
+    this.observedMetadata.set(name, `${stamp(before)}:${before.mode}:${before.nlink}`)
+    this.observedLinks.set(name, target)
+    return target
   }
 
   entry(name: string): Stats | null {
@@ -268,7 +321,8 @@ export class ContextDirectory {
     }
   }
 
-  validate(skipGit = false, names?: ReadonlySet<string>): void {
+  /** Retained/registered directory identity only; does not require mutable workspace contents to stay frozen. */
+  validateIdentity(): void {
     this.assertCurrent()
     const currentPath = this.parent
       ? join(this.parent.path, this.registeredPath)
@@ -276,6 +330,13 @@ export class ContextDirectory {
     const stat = lstatSync(currentPath, { bigint: true })
     if (!stat.isDirectory() || identity(stat) !== identity(this.originalIdentity))
       throw new ContextReadError('root_changed')
+    const retained = fstatSync(this.fd, { bigint: true })
+    if (!retained.isDirectory() || identity(retained) !== identity(this.originalIdentity))
+      throw new ContextReadError('root_changed')
+  }
+
+  validate(skipGit = false, names?: ReadonlySet<string>): void {
+    this.validateIdentity()
     if (this.listing !== undefined && JSON.stringify(this.listNames()) !== this.listing)
       throw new ContextReadError('source_changed')
     for (const [name, previous] of this.observedFiles) {
@@ -283,6 +344,19 @@ export class ContextDirectory {
       const current = this.observe(name)
       if ((current ? stamp(current) : null) !== previous)
         throw new ContextReadError('source_changed')
+    }
+    for (const [name, previous] of this.observedMetadata) {
+      if (names && !names.has(name)) continue
+      const current = this.observe(name)
+      if ((current ? `${stamp(current)}:${current.mode}:${current.nlink}` : null) !== previous)
+        throw new ContextReadError('source_changed')
+    }
+    for (const [name, target] of this.observedLinks) {
+      if (names && !names.has(name)) continue
+      this.assertCurrent()
+      if (readlinkSync(join(this.path, name)) !== target)
+        throw new ContextReadError('source_changed')
+      this.assertCurrent()
     }
     for (const child of this.children) {
       if (!skipGit || !child.label.split('/').includes('.git')) child.validate(skipGit, names)

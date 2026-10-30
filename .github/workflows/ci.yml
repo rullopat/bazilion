@@ -37,7 +37,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v6
         with:
-          node-version: '24.22.0'
+          node-version: '26.12.1'
           cache: pnpm
 
       - name: Install
@@ -70,6 +70,213 @@ jobs:
         continue-on-error: true
         run: pnpm changeset status --since=origin/main
 
+  macos-parity:
+    name: macOS arm64 runtime parity (Node ${{ matrix.node }})
+    runs-on: macos-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['26.12.1']
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+
+      # A runner label is not an OS-version/architecture observation. Retain the actual values;
+      # release qualification must separately confirm this is the latest stable macOS available.
+      - name: Assert and report actual Apple Silicon environment
+        run: |
+          sw_vers
+          uname -m
+          node -e "console.log(process.version, process.platform, process.arch); if (process.platform !== 'darwin' || process.arch !== 'arm64') process.exit(1)"
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build native worker and trusted helper artifacts
+        run: pnpm --filter bazilion build
+
+      # Generic native Mac isolation is deferred/unqualified, not a passed replacement gate.
+      # Host execution remains explicitly unisolated; protected work must refuse without fallback.
+      - name: Test trusted host operation and protected-unavailable admission
+        run: >-
+          pnpm vitest run --fileParallelism=false
+          apps/daemon/test/lib/macos-docker-removal.test.ts
+          apps/daemon/test/lib/trusted-macos-admission.test.ts
+          apps/daemon/test/lib/agent-coding.test.ts
+          apps/cli/test/agent-coding.test.ts
+          apps/daemon/test/lib/execution-security-status.test.ts
+          apps/daemon/test/lib/platform-capabilities.test.ts
+          apps/daemon/test/routes/misc.test.ts
+          apps/cli/test/config-page.test.ts
+          apps/cli/test/portable-chat.test.ts
+
+      - name: Test hardened Git, owned MCP stdio and worker retirement
+        run: >-
+          pnpm vitest run
+          apps/daemon/test/core/git-capture.test.ts
+          apps/daemon/test/core/git-private-worktree.test.ts
+          apps/daemon/test/core/git-review-changes.test.ts
+          apps/daemon/test/core/git-review-identity.test.ts
+          apps/daemon/test/core/git-review-snapshot.test.ts
+          apps/daemon/test/core/repository-context-capture.test.ts
+          apps/daemon/test/lib/darwin-process.test.ts
+          apps/daemon/test/lib/darwin-process-native.test.ts
+          apps/daemon/test/lib/mcp-darwin-owner.test.ts
+          apps/daemon/test/lib/mcp-stdio-owner.test.ts
+          apps/daemon/test/lib/mcp-pool.test.ts
+          apps/daemon/test/lib/mcp-retirement.test.ts
+          apps/daemon/test/lib/mcp-call.test.ts
+          apps/daemon/test/runtime/observed-child.test.ts
+          apps/daemon/test/lib/darwin-worker-owner.test.ts
+          apps/daemon/test/lib/darwin-worker-native.test.ts
+          apps/daemon/test/lib/agent-shutdown.test.ts
+          apps/daemon/test/core/darwin-workspace-ownership.test.ts
+          apps/daemon/test/core/workspace-recovery.test.ts
+          apps/daemon/test/runtime/worker-runtime.test.ts
+          apps/cli/test/portable-chat.test.ts
+          apps/daemon/test/lib/darwin-gui.test.ts
+          apps/daemon/test/lib/browser-darwin-owner.test.ts
+          apps/daemon/test/lib/browser-darwin-evidence.test.ts
+          apps/daemon/test/lib/browser-ci-session.test.ts
+          apps/daemon/test/lib/browser-darwin-keychain.test.ts
+          apps/daemon/test/lib/browser-darwin-keychain-owner.test.ts
+          apps/daemon/test/lib/browser-executable.test.ts
+          apps/daemon/test/lib/browser-process.test.ts
+          apps/daemon/test/lib/browser-profile.test.ts
+          apps/daemon/test/lib/browser-launch.test.ts
+          apps/daemon/test/lib/browser-lifecycle.test.ts
+
+      # Private keychains are admitted by the ordinary product path inside each browser HOME.
+      # Only creating the fixture's process-private non-GUI audit session needs CI privilege;
+      # the helper permanently drops to the runner user before any app/browser code.
+      # Actual direct-owned Chrome, not synthetic transport responses or public/provider traffic.
+      # A missing installed browser, unusable GUI or refused non-GUI child session is a failure.
+      - name: Test actual headed, headless and non-GUI managed browser
+        env:
+          BAZILION_TEST_BROWSER: '1'
+          BAZILION_TEST_BROWSER_HEADED: '1'
+          BAZILION_TEST_BROWSER_DIAGNOSTICS: '1'
+          BAZILION_TEST_PRIVILEGED_NONGUI: '1'
+        run: >-
+          pnpm vitest run --fileParallelism=false
+          apps/daemon/test/lib/browser-managed.integration.test.ts
+          apps/cli/test/browser-research.test.ts
+
+  linux-native:
+    name: Linux native security (Node ${{ matrix.node }})
+    # This image permits unprivileged namespaces without modifying host sysctls/AppArmor.
+    # The fixed pidfd kernel binding does not require glibc 2.36's optional exported wrappers.
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['26.12.1']
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+      - name: Build pinned non-setuid Bubblewrap prerequisite
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends build-essential meson ninja-build pkg-config libcap-dev
+          cd "$RUNNER_TEMP"
+          curl --fail --silent --show-error --location --max-time 60 \
+            https://github.com/containers/bubblewrap/releases/download/v0.13.1/bubblewrap-0.13.1.tar.xz \
+            -o bubblewrap.tar.xz
+          echo '0e85c8702248b8dd64144f594147553650cdd0e4c951690345faace79c217c4d  bubblewrap.tar.xz' | sha256sum --check --strict
+          tar -xf bubblewrap.tar.xz
+          meson setup bwrap-build bubblewrap-0.13.1 -Dtests=false -Dman=disabled -Dselinux=disabled -Dbash_completion=disabled -Dzsh_completion=disabled
+          meson compile -C bwrap-build
+          sudo install -o root -g root -m 0755 bwrap-build/bwrap /usr/bin/bwrap
+          test "$(stat -c '%u:%a' /usr/bin/bwrap)" = 0:755
+          /usr/bin/bwrap --version
+          getconf GNU_LIBC_VERSION
+          if test -r /etc/apparmor.d/bwrap; then grep -n 'userns\|profile\|unconfined' /etc/apparmor.d/bwrap; fi
+          uname -a
+          node -e 'console.log(process.version, process.platform, process.arch)'
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Build native worker and trusted helpers
+        run: pnpm --filter bazilion build
+      - name: Test actual native confinement and canonical execution
+        env:
+          BAZILION_TEST_NATIVE: '1'
+        run: >-
+          pnpm vitest run --fileParallelism=false
+          apps/daemon/test/core/native-runtime.test.ts
+          apps/daemon/test/runtime/native-*.integration.test.ts
+          apps/daemon/test/runtime/linux-native-worker-owner.integration.test.ts
+          apps/daemon/test/runtime/linux-worker-fd-census.integration.test.ts
+
+  linux-docker-regression:
+    # macOS Docker/VM execution is removed. Retain every applicable Docker case on Linux.
+    name: Linux Docker regression (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['26.12.1']
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Prepare the existing Linux Docker engine
+        run: |
+          test "$(uname -s)" = Linux
+          docker info --format 'engine={{.ServerVersion}} os={{.OSType}} arch={{.Architecture}}'
+          docker pull debian:bookworm-slim
+      - name: Test Linux Docker isolation, recovery, approvals and scheduling
+        env:
+          BAZILION_TEST_DOCKER: '1'
+          BAZILION_TEST_SCHEDULING_EVIDENCE: '1'
+          BAZILION_TEST_DAEMON_STDERR_DIR: ${{ runner.temp }}/protected-daemon-stderr
+        run: |
+          mkdir -p "$BAZILION_TEST_DAEMON_STDERR_DIR"
+          pnpm vitest run --fileParallelism=false \
+            apps/daemon/test/runtime/shell-docker.integration.test.ts \
+            apps/daemon/test/runtime/coding-recovery.integration.test.ts \
+            apps/cli/test/content-team-research.test.ts \
+            apps/cli/test/docker-approval.integration.test.ts \
+            apps/cli/test/turn-preparation-diagnostics.test.ts \
+            apps/cli/test/content-team-scheduling.test.ts \
+            apps/daemon/test/lib/verification-container.integration.test.ts
+      - name: Retain bounded daemon diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-docker-node-${{ matrix.node }}-stderr
+          path: ${{ runner.temp }}/protected-daemon-stderr
+          if-no-files-found: ignore
+          retention-days: 3
+
   installer-e2e:
     name: Fresh-machine installer E2E (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -91,7 +298,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v6
         with:
-          node-version: '24.22.0'
+          node-version: '26.12.1'
           cache: pnpm
 
       - name: Install
@@ -136,7 +343,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v6
         with:
-          node-version: '24.22.0'
+          node-version: '26.12.1'
           cache: pnpm
 
       - name: Install
@@ -167,7 +374,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v6
         with:
-          node-version: '24.22.0'
+          node-version: '26.12.1'
           cache: pnpm
 
       - name: Install

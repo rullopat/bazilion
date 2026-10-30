@@ -235,10 +235,9 @@ async function closeDispatcher(d: Dispatcher | null): Promise<void> {
 export async function guardedFetch(opts: GuardedFetchOptions): Promise<GuardedFetchResult> {
   // Use undici's own fetch (not globalThis.fetch) so the `dispatcher` Agent
   // we attach below is the same undici major version as the fetch impl
-  // consuming it. Node 24 ships undici 7.x as its built-in fetch; mixing
-  // a standalone undici 8.x Agent with the 7.x dispatcher fails with
-  // `UND_ERR_INVALID_ARG: invalid onRequestStart method` because the
-  // diagnostics-channel handler signatures changed between majors.
+  // consuming it. Node's bundled implementation can differ from the standalone
+  // package. Keep fetch and Agent coupled rather than relying on compatible
+  // dispatcher or diagnostics-channel handler signatures across versions.
   const fetcher: FetchLike = opts.fetchImpl ?? (undiciFetch as unknown as FetchLike)
   const admissionLimit = opts.admissionMaxBodyBytes ?? 3 * 1024 * 1024
   if (

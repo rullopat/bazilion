@@ -32,11 +32,28 @@ multimodal results. Bazilion retains:
 - Ownership until close settles; uncertain effects are never permission to replay a tool call.
 - No ambient `mcp.json`, shell interpolation, automatic OAuth or resource discovery.
 
-Streamable HTTP is portable. Stdio is **Linux-only**, refused before allocation or spawn on
-other platforms. Pi's native close can settle after its leader exits while descendants
-survive; `lib/mcp/stdio-owner.ts` guards anchored Linux descendant retirement. Unknown identity
-or cleanup retains a blocked slot, not a native-close fallback. Legacy SSE is retired and its
-old schema requires clean rebootstrap. See [MCP](mcp.md) and [upgrades](upgrades.md).
+Streamable HTTP is portable. In published **0.24.0**, stdio is Linux-only. Unreleased BAZ-072
+adds macOS owned stdio backed by public libproc identity/group inspection through pinned Koffi;
+its install script remains disabled and the binding is never loaded on Linux. Native readiness
+is checked before allocating a client/slot or spawning a server. Missing/unknown inspection
+never falls back to shell `ps` or unguarded native close.
+
+Pi's native close can settle after its leader exits while descendants survive;
+`lib/mcp/stdio-owner.ts` guards anchored retirement and retains Linux's existing `/proc` route.
+Unknown identity or cleanup retains a blocked slot. Native/protocol checks passed on actual
+macOS 26.6.2 arm64 with both supported Node baselines. Latest-stable **27.0.1 (26A434) arm64**
+guarded installed trials also pass native admission, catalog and descendant retirement on
+**24.22.0 / 26.4.0** historically. Current native-integrated stdio/descendant/cancellation source
+trials pass **26.12.1** on physical Mac and Linux. Earlier Node 24 observations remain historical;
+Node 24 support and routine qualification are retired. macOS Docker/VM execution is
+removed; older Docker/TCG and installed observations are history, not current native acceptance.
+Generic native Mac shell isolation is deferred/unqualified; trusted host operation and protected
+refusals do not retire this independent daemon-owned MCP process-lifecycle contract. Closed
+reviewer-only SDK workers retain their fixed-tool/minimal-provider restrictions without gaining
+shell/coding capabilities. Linux native and retained Docker qualification remain independent.
+Broader installed/desktop BAZ-072 qualification remains separate. Neither persisted receipts nor a dependency availability flag grants
+signalling authority. Legacy SSE is retired and its old schema requires clean rebootstrap. See [MCP](mcp.md) and
+[upgrades](upgrades.md).
 
 ## Auxiliary capabilities
 

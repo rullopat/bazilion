@@ -1,3 +1,5 @@
+import type { CodingEnvironmentValues } from '@bazilion/api-types'
+import { CodingEnvironmentValidationError } from '../../core/coding-environment/config.ts'
 import type { BazilionDb } from '../../core/db/client.ts'
 import { getCodingEnvironment } from '../../core/repos/coding-environment.ts'
 import {
@@ -15,6 +17,10 @@ export function resolveTeamCodingEnvironment(
   const fallback = resolveShellSecurityConfig(env).sandboxImage
   const environment = getCodingEnvironment(db, teamId)
   if (!environment) return { image: fallback }
+  if (environment.config.backend !== 'docker')
+    throw new CodingEnvironmentValidationError(
+      'Saved native defaults cannot select Docker execution',
+    )
   return {
     image: environment.config.image,
     coding: validateDockerCodingSelection({
@@ -22,5 +28,28 @@ export function resolveTeamCodingEnvironment(
       cwd: environment.config.cwd,
       env: environment.config.env,
     }),
+  }
+}
+
+export interface NativeCodingSelection {
+  readonly revision: number
+  readonly cwd: string
+  readonly env: CodingEnvironmentValues
+}
+/** Passive native defaults only: no image inference, executable discovery or readiness claim. */
+export function resolveTeamNativeCodingEnvironment(
+  db: BazilionDb,
+  teamId: string,
+): NativeCodingSelection {
+  const environment = getCodingEnvironment(db, teamId)
+  if (!environment) return { revision: 0, cwd: '.', env: {} }
+  if (environment.config.backend !== 'native')
+    throw new CodingEnvironmentValidationError(
+      'Saved Docker defaults cannot select native execution',
+    )
+  return {
+    revision: environment.revision,
+    cwd: environment.config.cwd,
+    env: { ...environment.config.env },
   }
 }

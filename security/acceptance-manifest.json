@@ -2,6 +2,468 @@
   "version": 1,
   "cases": [
     {
+      "id": "SQLITE-BACKUP-FINAL-REQUEST-COMPLETION",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/core/sqlite-backup-completion.test.ts",
+      "test": "SQLite backup drains completion when it is the final active child request"
+    },
+    {
+      "id": "DOCKER-ADMISSION-RESPONSIVE-OCI-START",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/runtime/shell-docker.test.ts",
+      "test": "protected Docker preflight and pinned execution > admits responsive OCI startup beyond the metadata-inspection budget without retrying"
+    },
+    {
+      "id": "DOCKER-ADMISSION-START-HARD-BOUND",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/runtime/shell-docker.test.ts",
+      "test": "protected Docker preflight and pinned execution > bounds an unresponsive executable probe and force-removes its exact container"
+    },
+    {
+      "id": "DOCKER-ADMISSION-CLEANUP-BOUND-UNCHANGED",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/runtime/shell-docker.test.ts",
+      "test": "protected Docker preflight and pinned execution > bounds preflight cleanup failures and never returns a protected runtime"
+    },
+    {
+      "id": "DOCKER-ADMISSION-CANCEL-CREATE",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/runtime/shell-docker.test.ts",
+      "test": "protected Docker preflight and pinned execution > preflight cancellation during create waits for registered container removal"
+    },
+    {
+      "id": "DOCKER-ADMISSION-CANCEL-START",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/runtime/shell-docker.test.ts",
+      "test": "protected Docker preflight and pinned execution > preflight cancellation during start waits for registered container removal"
+    },
+    {
+      "id": "DOCKER-COMMAND-CREATE-TIMEOUT-PRESERVED",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/runtime/shell-docker.test.ts",
+      "test": "protected Docker preflight and pinned execution > registered timeout during create never starts project code and awaits cleanup"
+    },
+    {
+      "id": "DOCKER-COMMAND-CREATE-ABORT-PRESERVED",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/runtime/shell-docker.test.ts",
+      "test": "protected Docker preflight and pinned execution > registered abort during create never starts project code and awaits cleanup"
+    },
+    {
+      "id": "CONFIGURED-ADMISSION-CALLER-CANCELLATION",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/protected-execution.test.ts",
+      "test": "protected execution preparation > configured preparation forwards cancellation through live preflight and waits for cleanup"
+    },
+    {
+      "id": "PROTECTED-ADMISSION-CALLER-CANCELLATION",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/protected-execution.test.ts",
+      "test": "protected execution preparation > protected preparation forwards cancellation through live preflight and waits for cleanup"
+    },
+    {
+      "id": "CONFIGURED-ADMISSION-PREABORT-REFUSAL",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/protected-execution.test.ts",
+      "test": "protected execution preparation > configured preparation refuses an already-aborted signal before Docker preflight"
+    },
+    {
+      "id": "PROTECTED-ADMISSION-PREABORT-REFUSAL",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/protected-execution.test.ts",
+      "test": "protected execution preparation > protected preparation refuses an already-aborted signal before Docker preflight"
+    },
+    {
+      "id": "DOCKER-READINESS-UNACKNOWLEDGED-MISS-RETAINS-SCRATCH",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/runtime/shell-docker.test.ts",
+      "test": "protected Docker preflight and pinned execution > a missing unacknowledged readiness create retains private scratch for late materialization"
+    },
+    {
+      "id": "DOCKER-READINESS-UNKNOWN-RETAINS-SCRATCH",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/runtime/shell-docker.test.ts",
+      "test": "protected Docker preflight and pinned execution > readiness retains its private bind source when exact-container cleanup is unconfirmed"
+    },
+    {
+      "id": "DOCKER-PREFLIGHT-CLOSED-IMMUTABLE-PHASE",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/runtime/shell-docker.test.ts",
+      "test": "protected Docker preflight and pinned execution > preflight failure phases are closed and cannot be mutated into raw diagnostics"
+    },
+    {
+      "id": "DOCKER-PREFLIGHT-NONERROR-ACK-REFUSAL",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/runtime/shell-docker.test.ts",
+      "test": "protected Docker preflight and pinned execution > non-Error create acknowledgement failure cannot admit a protected runtime"
+    },
+    {
+      "id": "PROTECTED-PREFLIGHT-PHASE-NO-RAW-MATERIAL",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/protected-execution.test.ts",
+      "test": "protected execution preparation > protected Docker diagnostics publish only the closed phase, never raw error material"
+    },
+    {
+      "id": "MACOS-CONTEXT-REFUSAL-ACTUAL-BOUNDARY",
+      "owner": "BAZ-072",
+      "file": "apps/cli/test/turn-preparation-diagnostics.test.ts",
+      "test": "an unsafe repository-context input reports the actual refusal, not a Linux-only claim"
+    },
+    {
+      "id": "PROTECTED-ADMISSION-CLOSED-HTTP-REFUSAL",
+      "owner": "BAZ-072",
+      "file": "apps/cli/test/turn-preparation-diagnostics.test.ts",
+      "test": "missing protected Docker prerequisites return the closed refusal before provider use, never HTTP 500 or host execution"
+    },
+    {
+      "id": "BROWSER-CI-PRIVILEGE-NO-OPERATOR-SESSION",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/browser-ci-session.test.ts",
+      "test": "non-GUI privileged fixture refuses ordinary operator and self-hosted sessions"
+    },
+    {
+      "id": "BROWSER-CI-PRIVILEGE-CALLER-ADMISSION",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/browser-ci-session.test.ts",
+      "test": "non-GUI privileged fixture refuses the wrong platform, architecture and privileged parent"
+    },
+    {
+      "id": "BROWSER-CI-PRIVILEGE-NO-ROOT-APPLICATION",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/browser-ci-session.test.ts",
+      "test": "authorized CI fixture executes no loader or application module before privilege drop"
+    },
+    {
+      "id": "BROWSER-NATIVE-TAB-ACTIVATION-LEASE",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/browser-lifecycle.test.ts",
+      "test": "tab selection awaits native activation before publishing a new observation"
+    },
+    {
+      "id": "BROWSER-NATIVE-TAB-ACTIVATION-FAILURE-REVOKES",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/browser-lifecycle.test.ts",
+      "test": "failed native tab activation revokes previous refs without dispatching an action"
+    },
+    {
+      "id": "BROWSER-MACOS-KEYCHAIN-UNCERTAIN-SERVICE-EFFECTS",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/browser-darwin-keychain-owner.test.ts",
+      "test": "private keychain timeout with unacknowledged external effects retains recovery ownership"
+    },
+    {
+      "id": "BROWSER-MACOS-CALLER-GRAPHIC-PERMISSION",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/darwin-gui.test.ts",
+      "test": "caller audit-session graphic permission is required independently of console facts"
+    },
+    {
+      "id": "BROWSER-MACOS-PRIVATE-KEYCHAIN-DIRECTORIES",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/browser-darwin-keychain.test.ts",
+      "test": "private browser keychain refuses redirected HOME/library/preference slots"
+    },
+    {
+      "id": "BROWSER-MACOS-PRIVATE-KEYCHAIN-SECRET",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/browser-darwin-keychain.test.ts",
+      "test": "private browser keychain secret refuses symlinks, hardlinks and public permissions"
+    },
+    {
+      "id": "BROWSER-MACOS-PRIVATE-KEYCHAIN-NATIVE-STATE",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/browser-darwin-keychain.test.ts",
+      "test": "private browser keychain refuses redirected native preference and database files"
+    },
+    {
+      "id": "BROWSER-MACOS-PRIVATE-KEYCHAIN-DIAGNOSTICS",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/browser-darwin-keychain.test.ts",
+      "test": "keychain diagnostics disclose only closed native phases and numeric status"
+    },
+    {
+      "id": "BROWSER-MACOS-KEYCHAIN-CHILD-ADMISSION",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/browser-darwin-keychain-owner.test.ts",
+      "test": "private keychain helper admits live ownership before secret input and copies no ambient credential"
+    },
+    {
+      "id": "BROWSER-MACOS-KEYCHAIN-UNKNOWN-BIRTH",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/browser-darwin-keychain-owner.test.ts",
+      "test": "private keychain helper sends no executable input and retains recovery on unknown native birth"
+    },
+    {
+      "id": "BROWSER-MACOS-KEYCHAIN-UNKNOWN-SETTLEMENT",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/browser-darwin-keychain-owner.test.ts",
+      "test": "private keychain helper success cannot override unknown descendant/EOF settlement"
+    },
+    {
+      "id": "BROWSER-MACOS-KEYCHAIN-EXECUTOR-FAILURE",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/browser-darwin-keychain-owner.test.ts",
+      "test": "private keychain helper coded failure remains failure even after complete cleanup"
+    },
+    {
+      "id": "BROWSER-MACOS-KEYCHAIN-TIMEOUT-NO-FALLBACK",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/browser-darwin-keychain-owner.test.ts",
+      "test": "private keychain helper timeout remains failure after owned retirement, never a browser fallback"
+    },
+    {
+      "id": "BROWSER-MACOS-NATIVE-EVIDENCE-UNEXPECTED-ENV",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/browser-darwin-evidence.test.ts",
+      "test": "native browser evidence never removes an unexpected real environment variable"
+    },
+    {
+      "id": "BROWSER-MACOS-LIVE-GROUP-ADMISSION",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/browser-darwin-owner.test.ts",
+      "test": "Darwin browser group authority cannot be reconstructed from a stored PID"
+    },
+    {
+      "id": "BROWSER-MACOS-READINESS-BEFORE-SPAWN",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/browser-darwin-owner.test.ts",
+      "test": "Darwin browser native readiness refuses before profile preparation or spawn"
+    },
+    {
+      "id": "BROWSER-MACOS-UNKNOWN-GROUP-RETAINS",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/browser-darwin-owner.test.ts",
+      "test": "unknown Darwin browser-group inspection is not an absent-group recovery proof"
+    },
+    {
+      "id": "BROWSER-QUARTZ-UNKNOWN-NO-GUESS",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/darwin-gui.test.ts",
+      "test": "unknown Quartz facts cannot be downgraded to a proven headless session"
+    },
+    {
+      "id": "BROWSER-MACOS-HEADED-NO-FALLBACK",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/browser-executable.test.ts",
+      "test": "a proven non-GUI macOS session refuses headed mode without fallback"
+    },
+    {
+      "id": "WORKER-MACOS-BOOTSTRAP-EXACT-ENV",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/runtime/worker-runtime.test.ts",
+      "test": "minimal worker runtime > minimal bootstrap strips only Darwin bookkeeping before unchanged exact validation"
+    },
+    {
+      "id": "MACOS-WORKER-LIVE-CHILD-ADMISSION",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/darwin-worker-owner.test.ts",
+      "test": "a stored native receipt cannot replace the actual ChildProcess at admission"
+    },
+    {
+      "id": "MACOS-WORKER-BIRTH-REUSE",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/darwin-worker-owner.test.ts",
+      "test": "Darwin worker birth reuse cannot authorize signalling or cleanup"
+    },
+    {
+      "id": "MACOS-WORKER-SIGNAL-ANCHOR-DRIFT",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/darwin-worker-owner.test.ts",
+      "test": "Darwin worker anchor drift at the signalling boundary refuses escalation and release"
+    },
+    {
+      "id": "MACOS-WORKER-UNKNOWN-OWNERSHIP",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/darwin-worker-owner.test.ts",
+      "test": "unknown native inspection cannot authorize group signalling or release"
+    },
+    {
+      "id": "SCHEDULER-SHUTDOWN-PRECLAIM-READINESS-DRAIN",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/scheduler.test.ts",
+      "test": "durable scheduler dispatches > shutdown aborts and drains unregistered inbox readiness before workspace/DB close"
+    },
+    {
+      "id": "SCHEDULER-SHUTDOWN-LIFECYCLE-WAITER-FENCE",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/scheduler.test.ts",
+      "test": "durable scheduler dispatches > shutdown drains lifecycle waiters without admitting a late inbox preflight or claim"
+    },
+    {
+      "id": "BROWSER-NATIVE-ENV-OMISSION-NOT-EMPTY",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/browser-darwin-evidence.test.ts",
+      "test": "argv-only native evidence is unreported, never proof of an empty or secret-free environment"
+    },
+    {
+      "id": "BROWSER-ACTUAL-SPAWN-INPUT-EVIDENCE",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/browser-process.test.ts",
+      "test": "actual spawn input evidence is immutable and agrees with the owned child environment"
+    },
+    {
+      "id": "WORKER-SHUTDOWN-ADMISSION-FENCE",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/agent-shutdown.test.ts",
+      "test": "shutdown fences new turns and waits for synchronous and asynchronous owner settlement"
+    },
+    {
+      "id": "WORKER-OWNERSHIP-READINESS-BEFORE-INPUT",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/runtime/worker-runtime.test.ts",
+      "test": "minimal worker runtime > worker ownership readiness failure refuses before executable input"
+    },
+    {
+      "id": "WORKER-RESOURCE-CONFIRMATION-IDENTITY",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/core/workspace-recovery.test.ts",
+      "test": "resource identity drift during cleanup cannot grant a confirmation"
+    },
+    {
+      "id": "WORKER-RESOURCE-CONFIRMATION-CREATION",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/core/workspace-recovery.test.ts",
+      "test": "resource acknowledgement drift during cleanup cannot grant a confirmation"
+    },
+    {
+      "id": "WORKER-RESOURCE-CONFIRMATION-RESTORE",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/core/workspace-recovery.test.ts",
+      "test": "resource restored drift during cleanup cannot grant a confirmation"
+    },
+    {
+      "id": "WORKER-LIVE-OBSERVATION-NO-MUTATION",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/runtime/observed-child.test.ts",
+      "test": "a returned observation cannot mutate the retained live-child evidence"
+    },
+    {
+      "id": "WORKER-LOCAL-CLOSE-NOT-EOF",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/runtime/observed-child.test.ts",
+      "test": "locally destroyed output pipes do not prove remote EOF"
+    },
+    {
+      "id": "WORKER-CODED-FAILURE-NOT-SUCCESS",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/darwin-worker-owner.test.ts",
+      "test": "a coded worker failure may confirm cleanup without becoming a success verdict"
+    },
+    {
+      "id": "MACOS-MCP-NATIVE-ADMISSION",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/mcp-darwin-owner.test.ts",
+      "test": "unavailable Darwin native inspection refuses before Pi can spawn"
+    },
+    {
+      "id": "MACOS-MCP-NATIVE-SLOT-ADMISSION",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/mcp-darwin-owner.test.ts",
+      "test": "unavailable Darwin inspection refuses pool admission before allocating a resource slot"
+    },
+    {
+      "id": "MACOS-MCP-UNKNOWN-CLOSE",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/mcp-darwin-owner.test.ts",
+      "test": "Darwin inspection failure retains ownership without unsafe native-close fallback"
+    },
+    {
+      "id": "MACOS-MCP-ANCHOR-REUSE",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/mcp-darwin-owner.test.ts",
+      "test": "Darwin anchor reuse between TERM and KILL refuses escalation and slot release"
+    },
+    {
+      "id": "MACOS-PROCESS-NO-WALL-CLOCK-FALLBACK",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/darwin-process.test.ts",
+      "test": "denied or unavailable monotonic birth evidence cannot fall back to a wall-clock anchor"
+    },
+    {
+      "id": "MACOS-PROCESS-PERMISSION-ABI-UNKNOWN",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/darwin-process.test.ts",
+      "test": "Darwin permission errors, partial ABI responses and invalid fields are unknown, not absent"
+    },
+    {
+      "id": "MACOS-PROCESS-ENUMERATION-FORK-RACE",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/darwin-process.test.ts",
+      "test": "a leader disappearing during enumeration cannot hide a newly forked Darwin group member"
+    },
+    {
+      "id": "MACOS-PROCESS-SESSION-DRIFT",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/darwin-process.test.ts",
+      "test": "inconsistent Darwin session membership cannot become an empty-group receipt"
+    },
+    {
+      "id": "MACOS-PROCESS-PID-LIST-UNKNOWN",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/darwin-process.test.ts",
+      "test": "duplicate and invalid native PID lists refuse instead of hiding ambiguous membership"
+    },
+    {
+      "id": "MCP-STDIO-CANCELLATION-BUSY-NO-REPLAY",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/mcp-pool.test.ts",
+      "test": "owned stdio cancellation retains busy ownership, reports uncertainty and never replays the call"
+    },
+    {
+      "id": "MCP-STDIO-OPENING-RETIREMENT",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/mcp-pool.test.ts",
+      "test": "owned stdio retirement during initialization cannot publish an opening client"
+    },
+    {
+      "id": "MCP-STDIO-FAILED-INITIALIZATION",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/mcp-pool.test.ts",
+      "test": "owned stdio initialization failure retires its descendants before releasing the slot"
+    },
+    {
+      "id": "MACOS-GIT-IGNORE-NO-FOLLOW",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/core/git-private-worktree.test.ts",
+      "test": "ignored dependency trees are skipped without following links or copying their bytes"
+    },
+    {
+      "id": "MACOS-GIT-REGISTERED-ROOT-BINDING",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/core/git-private-worktree.test.ts",
+      "test": "a registered root link works, but retargeting cannot validate the capture"
+    },
+    {
+      "id": "MACOS-GIT-SOURCE-MUTATION",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/core/git-private-worktree.test.ts",
+      "test": "source mutation during materialization cannot return a successful capture"
+    },
+    {
+      "id": "MACOS-GIT-BOUNDED-WORKTREE",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/core/git-private-worktree.test.ts",
+      "test": "oversized files refuse instead of creating a truncated successful view"
+    },
+    {
+      "id": "MACOS-GIT-NO-REPOSITORY-HELPERS",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/core/git-private-worktree.test.ts",
+      "test": "repository-configured executable helpers cannot run against the private tree"
+    },
+    {
+      "id": "MACOS-GIT-FROZEN-SNAPSHOT-BYTES",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/core/git-private-worktree.test.ts",
+      "test": "source snapshots fingerprint private bytes and a fresh capture detects later edits"
+    },
+    {
+      "id": "MACOS-GIT-CAPTURE-DISPOSAL",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/core/git-private-worktree.test.ts",
+      "test": "cleanup removes the private bytes and prevents further Git invocations"
+    },
+    {
       "id": "DIAGNOSTICS-HEALTH-AUTH-SEPARATION",
       "owner": "BAZ-071",
       "file": "apps/cli/test/doctor.test.ts",
@@ -2022,6 +2484,12 @@
       "owner": "BAZ-069",
       "file": "apps/daemon/test/lib/browser-process.test.ts",
       "test": "startup timeout escalates a TERM-ignoring child to KILL and proves exit"
+    },
+    {
+      "id": "BROWSER-RETIREMENT-CLOSED-DIAGNOSTIC",
+      "owner": "BAZ-072",
+      "file": "apps/daemon/test/lib/browser-launch.test.ts",
+      "test": "unresolved process retirement reports its closed step without leaking its cause"
     },
     {
       "id": "BROWSER-DIRECT-UNCERTAIN-EXIT-RETAINED",

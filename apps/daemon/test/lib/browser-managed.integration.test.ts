@@ -1,7 +1,7 @@
 // T01 — managed-browser adapter verification lane (BAZ-069).
 //
 // OPT-IN: this suite only runs with BAZILION_TEST_BROWSER=1 and a provisioned
-// supported browser on Linux. Without the gate it skips with a reason; with
+// supported browser on Linux or Apple Silicon macOS. Without the gate it skips with a reason; with
 // the gate and a missing browser it FAILS (never silently skips). It never
 // touches a public site: every destination is a loopback fixture, and the
 // security assertions are exactly that those fixtures record ZERO hits.
@@ -20,9 +20,19 @@
 //   download denial, bounded capture, cookie persistence across graceful
 //   restart, and no surviving owned processes after close.
 
-import { existsSync, mkdtempSync, readdirSync, realpathSync, rmSync } from 'node:fs'
+import { execFile } from 'node:child_process'
+import {
+  existsSync,
+  globSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import type { BrowserContext, Page } from 'playwright'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 import { type Paths, resolvePaths } from '../../src/core/paths.ts'
@@ -42,13 +52,17 @@ import {
   readSingletonLockPid,
 } from '../../src/lib/browser/profile.ts'
 import { closeSsrfProxy, getSsrfProxy } from '../../src/lib/browser/proxy.ts'
+import { probeDarwinGuiSession } from '../../src/lib/process/darwin-gui.ts'
 import { resources } from '../../src/lib/resources.ts'
+import { nonGuiFixtureCommand } from '../fixtures/browser-ci-session.ts'
 import {
   createInstrumentedOrigin,
   createUdpProbe,
+  fixtureOwnersConfirmed,
   type InstrumentedOrigin,
   launchLaneContext,
   MANAGED_DENIAL_ARGS,
+  observedBrowserLaunchEnvironment,
   ownedBrowserProcesses,
   type UdpProbe,
 } from '../fixtures/browser-managed.ts'
@@ -77,18 +91,33 @@ const contextProfile = join(contextSlot, 'user-data')
 let instrumented: InstrumentedOrigin
 let postureCtx: BrowserContext | null = null
 let contextCtx: BrowserContext | null = null
+let uncertainNonGuiFixture = false
 
 async function sleep(ms: number): Promise<void> {
   await new Promise((r) => setTimeout(r, ms))
 }
 
-async function waitForNoOwnedProcesses(profileDir: string, ms = 8_000): Promise<void> {
+async function waitForNoOwnedProcesses(
+  profileDir: string,
+  ms = 8_000,
+  alsoAbsent: () => boolean = () => true,
+): Promise<void> {
   const deadline = Date.now() + ms
+  let lastError: unknown
   while (Date.now() < deadline) {
-    if (ownedBrowserProcesses(profileDir).length === 0) return
+    try {
+      if (ownedBrowserProcesses(profileDir).length === 0 && alsoAbsent()) return
+      lastError = undefined
+    } catch (error) {
+      // An exit can temporarily make argv/path inspection unavailable. Waiting for a fresh
+      // positive absence observation is allowed; treating that UNKNOWN as empty is not.
+      lastError = error
+    }
     await sleep(250)
   }
-  throw new Error(`owned browser processes for ${profileDir} did not exit within ${ms}ms`)
+  throw new Error(`owned browser processes for ${profileDir} did not exit within ${ms}ms`, {
+    cause: lastError,
+  })
 }
 
 async function activePage(ctx: BrowserContext): Promise<Page> {
@@ -132,15 +161,46 @@ run('managed browser adapter lane (BAZILION_TEST_BROWSER=1)', () => {
     // assertion; if it failed partway, still try to retire everything here
     // without letting a stalled close hang the hook (a known proxy-close
     // defect T05 exists to fix — never let it obscure the suite result).
-    const bestEffort = async (p: Promise<unknown> | undefined) => {
-      if (!p) return
-      await Promise.race([p.catch(() => {}), new Promise((r) => setTimeout(r, 10_000))])
+    const bestEffort = async (p: Promise<unknown> | undefined): Promise<boolean> => {
+      if (!p) return true
+      let timer: ReturnType<typeof setTimeout> | undefined
+      const confirmed = await Promise.race([
+        p.then(
+          () => true,
+          () => false,
+        ),
+        new Promise<false>((resolve) => {
+          timer = setTimeout(() => resolve(false), 10_000)
+        }),
+      ])
+      clearTimeout(timer)
+      return confirmed
     }
-    await bestEffort(postureCtx?.close().catch(() => {}))
-    await bestEffort(contextCtx?.close().catch(() => {}))
+    const closed = await Promise.all([
+      bestEffort(postureCtx?.close()),
+      bestEffort(contextCtx?.close()),
+      ...[...resources().browsers.values()].map((entry) => bestEffort(entry.close())),
+    ])
     await bestEffort(instrumented?.close())
     await bestEffort(closeSsrfProxy())
-    rmSync(scratch, { recursive: true, force: true })
+    let absent = false
+    try {
+      await waitForNoOwnedProcesses(scratch)
+      absent = globSync('*/browsers/*/owner.json', { cwd: scratch }).length === 0
+    } catch {
+      /* Unknown inspection/markers retain all fixture slots. */
+    }
+    const confirmed =
+      closed.every(Boolean) && fixtureOwnersConfirmed() && !uncertainNonGuiFixture && absent
+    if (confirmed) rmSync(scratch, { recursive: true, force: true })
+    else
+      console.warn(
+        `[browser-managed] retained fixture profiles with unconfirmed ownership: ${scratch}`,
+      )
+    expect(
+      confirmed,
+      'fixture cleanup requires confirmed ownership; never erase uncertain slots',
+    ).toBe(true)
   }, 60_000)
 
   test('argv pins direct local spawn: sandbox on, owned loopback CDP, proxy, denials, explicit binary', {
@@ -160,6 +220,7 @@ run('managed browser adapter lane (BAZILION_TEST_BROWSER=1)', () => {
     expect(argv).toContain(`--user-data-dir=${postureProfile}`)
     expect(root!.exe).toBeTruthy()
     expect(root!.exe).not.toMatch(/headless[_-]?shell/i)
+    expect(argv).not.toContain('--use-mock-keychain')
     expect(root!.exe).toMatch(/chrom/i)
     expect(existsSync(realpathSync(exePath))).toBe(true)
 
@@ -168,7 +229,17 @@ run('managed browser adapter lane (BAZILION_TEST_BROWSER=1)', () => {
     expect(argv).not.toContain('--no-sandbox')
     expect(procs.some((p) => p.cmdline.includes('--no-sandbox'))).toBe(false)
     expect(argv).not.toContain('--disable-web-security')
-    expect(procs.some((p) => p.cmdline.includes('--type=zygote'))).toBe(true)
+    if (process.platform === 'linux') {
+      expect(procs.some((p) => p.cmdline.includes('--type=zygote'))).toBe(true)
+    } else if (process.platform === 'darwin') {
+      // macOS has Seatbelt clients, not Linux's zygote architecture. Chromium's public
+      // seatbelt_exec protocol requires this inherited policy channel before sandbox init.
+      expect(
+        procs.some(
+          (p) => p.cmdline.includes('--type=renderer') && /--seatbelt-client=\d+/.test(p.cmdline),
+        ),
+      ).toBe(true)
+    } else throw new Error('actual browser sandbox evidence is unavailable on this platform')
 
     // Nonzero loopback listener, directly spawned (not Playwright launch defaults).
     expect(argv.some((a) => /^--remote-debugging-port=[1-9]\d*$/.test(a))).toBe(true)
@@ -204,36 +275,45 @@ run('managed browser adapter lane (BAZILION_TEST_BROWSER=1)', () => {
   }, () => {
     const root = ownedBrowserProcesses(postureProfile).find((p) => p.kind === 'root')
     expect(root).toBeTruthy()
-    const env = root!.environ
-    const keys = env.map((e) => e.split('=')[0] ?? '')
-
-    // Nothing ambient leaks: no planted provider secret, no proxy vars.
-    expect(env.some((e) => e.includes('sk-ant-t01-planted-not-a-real-key'))).toBe(false)
-    for (const banned of [
-      'HTTP_PROXY',
-      'HTTPS_PROXY',
-      'ALL_PROXY',
-      'NO_PROXY',
-      'XDG_CONFIG_HOME',
-    ]) {
-      expect(keys).not.toContain(banned)
+    const verifyEnvironment = (env: string[]) => {
+      const keys = env.map((entry) => entry.split('=')[0] ?? '')
+      expect(env.some((entry) => entry.includes('sk-ant-t01-planted-not-a-real-key'))).toBe(false)
+      for (const banned of [
+        'HTTP_PROXY',
+        'HTTPS_PROXY',
+        'ALL_PROXY',
+        'NO_PROXY',
+        'XDG_CONFIG_HOME',
+      ])
+        expect(keys).not.toContain(banned)
+      // Preserve every original assertion for both actual spawn inputs and reported native
+      // strings. Only distro-wrapper CHROME_* additions are admitted; never filter unknowns.
+      expect(keys).toContain('PATH')
+      expect(keys).toContain('LANG')
+      const allowed =
+        /^(PATH|HOME|LANG|DISPLAY|XAUTHORITY|WAYLAND_DISPLAY|XDG_RUNTIME_DIR|CHROME_[A-Z0-9_]+)$/
+      expect(keys.filter((key) => !allowed.test(key))).toEqual([])
+      expect(env).toContain(`HOME=${join(postureSlot, 'home')}`)
+      // Chrome singleton sockets require the ordinary short OS temp path.
+      expect(keys).not.toContain('TMPDIR')
     }
-
-    // Everything present is the allowlist, display access when headed, or
-    // CHROME_* vars added by the executable's own distro wrapper (Arch's
-    // /usr/bin/chromium is a shell script that sets CHROME_WRAPPER,
-    // CHROME_DESKTOP and CHROME_VERSION_EXTRA before exec'ing the real
-    // binary — observed; it adds nothing else and removes nothing). TMPDIR is
-    // deliberately absent: Chromium's singleton socket path is capped by
-    // sockaddr_un (~104 bytes) and an in-slot TMPDIR aborts deep-path
-    // launches (T01-verified 2026-09-25).
-    expect(keys).toContain('PATH')
-    expect(keys).toContain('LANG')
-    const allowed =
-      /^(PATH|HOME|LANG|DISPLAY|XAUTHORITY|WAYLAND_DISPLAY|XDG_RUNTIME_DIR|CHROME_[A-Z0-9_]+)$/
-    expect(keys.every((k) => allowed.test(k))).toBe(true)
-    expect(env).toContain(`HOME=${join(postureSlot, 'home')}`)
-    expect(keys).not.toContain('TMPDIR')
+    const supplied = observedBrowserLaunchEnvironment(postureProfile, root!.pid)
+    verifyEnvironment(
+      Object.entries(supplied).map(([key, value]) => {
+        expect(typeof value).toBe('string')
+        return `${key}=${value}`
+      }),
+    )
+    if (root!.environmentReported) verifyEnvironment(root!.environ)
+    else {
+      // XNU can intentionally omit restricted-app environment bytes under SIP. Actual direct
+      // spawn inputs above remain observed; the native view is explicitly NOT checked.
+      expect(process.platform).toBe('darwin')
+      expect(root!.environ).toEqual([])
+      console.log(
+        'browser environment: actual owned spawn inputs checked; native view not reported',
+      )
+    }
   })
 
   test('loopback HTTP/iframe/WebSocket/popup egress hits zero instrumented targets', {
@@ -1289,6 +1369,51 @@ run('managed browser adapter lane (BAZILION_TEST_BROWSER=1)', () => {
     }
   })
 
+  test('selecting an existing tab activates its native page before observation and navigation', {
+    timeout: 60_000,
+  }, async () => {
+    const paths = resolvePaths(join(scratch, 'native-tab-selection'))
+    const agentId = 'native-tab-selection'
+    const admission = { paths, agentId, teamId: 'tab-team' }
+    const config = {
+      mode: 'headless' as const,
+      executablePath: exePath,
+      allowPrivate: true,
+      idleMs: 60_000,
+      maxSessions: 4,
+    }
+    const deps = { daemonInstanceId: 'native-tab-fixture' }
+    const invoke = (action: string, args: Record<string, unknown> = {}) =>
+      invokeBrowserAction(agentId, action, args, config, admission, deps)
+    try {
+      await invoke('navigate', { url: instrumented.downloadPage })
+      await invoke('tabs', { op: 'new', url: instrumented.bigPage })
+      const context = resources().browsers.get(agentId)?.handle?.context
+      if (!context) throw new Error('fixture browser not running')
+      const first = context.pages()[0]
+      const second = context.pages()[1]
+      if (!first || !second) throw new Error('fixture tabs missing')
+      await second.bringToFront()
+      expect(await second.evaluate('document.visibilityState')).toBe('visible')
+      const selected = await invoke('tabs', { op: 'select', tabId: 'tab-1' })
+      expect(selected[0]).toMatchObject({
+        type: 'text',
+        text: expect.stringContaining('tab tab-1'),
+      })
+      expect(await first.evaluate('document.visibilityState')).toBe('visible')
+      const target = `${instrumented.origin}/selected-tab`
+      const navigated = await invoke('navigate', { url: target })
+      expect(navigated[0]).toMatchObject({
+        type: 'text',
+        text: expect.stringContaining('instrumented origin'),
+      })
+      expect(first.url()).toBe(target)
+      expect(second.url()).toBe(instrumented.bigPage)
+    } finally {
+      await closeBrowserSession(agentId)
+    }
+  })
+
   test('cancelling active browser navigation retires the real owned process and marker', {
     timeout: 60_000,
   }, async () => {
@@ -1330,11 +1455,28 @@ run('managed browser adapter lane (BAZILION_TEST_BROWSER=1)', () => {
         admission,
         deps,
       )
-      const rejected = expect(pending).rejects.toThrow(/cancelled/)
-      await requestStarted
+      // Observe immediately without creating a detached rejecting assertion. If navigation
+      // fails before the held route, report that original failure rather than waiting for the
+      // test deadline and emitting an unrelated unhandled cancellation assertion.
+      const outcome = pending.then(
+        (value) => ({ ok: true as const, value }),
+        (error: unknown) => ({ ok: false as const, error }),
+      )
+      await Promise.race([
+        requestStarted,
+        outcome.then((result) => {
+          throw new Error('navigation settled before reaching the controlled held route', {
+            cause: result.ok ? undefined : result.error,
+          })
+        }),
+      ])
       expect(entry.busy).toBe(1)
       signal.abort()
-      await rejected
+      const result = await outcome
+      expect(result.ok).toBe(false)
+      if (result.ok) throw new Error('cancelled navigation unexpectedly completed')
+      expect(result.error).toBeInstanceOf(Error)
+      expect((result.error as Error).message).toMatch(/cancelled/)
       release()
       await waitForNoOwnedProcesses(profileDir)
       expect(entry.busy).toBe(0)
@@ -1408,15 +1550,23 @@ run('managed browser adapter lane (BAZILION_TEST_BROWSER=1)', () => {
     const root = ownedBrowserProcesses(profileDir()).find((p) => p.kind === 'root')
     expect(root).toBeTruthy()
     process.kill(root!.pid, 'SIGKILL')
-    await waitForNoOwnedProcesses(profileDir())
     expect(readMarker()).toMatchObject({ phase: 'running' })
-    const assessed = assessBrowserProfile(
-      paths,
-      { agentId: 'prod-agent', teamId: 'prod-team' },
-      { daemonInstanceId: 'daemon-b' },
-    )
-    expect(assessed.state).toBe('ready')
-    expect(assessed.staleOwner).toBe(true)
+    let assessed: ReturnType<typeof assessBrowserProfile> | undefined
+    await waitForNoOwnedProcesses(profileDir(), 8_000, () => {
+      // Some retiring members carry no profile argv. Require the production assessment's
+      // positive PID AND original-group absence too, inside the same existing bound. This
+      // is observation only: no marker deletion, forced reconciliation or launch retry.
+      assessed = assessBrowserProfile(
+        paths,
+        { agentId: 'prod-agent', teamId: 'prod-team' },
+        { daemonInstanceId: 'daemon-b' },
+      )
+      if (assessed.state !== 'ready')
+        throw new Error(assessed.detail ?? 'original browser group remains unconfirmed')
+      return assessed.staleOwner
+    })
+    expect(assessed?.state).toBe('ready')
+    expect(assessed?.staleOwner).toBe(true)
 
     // The next launch (as the new daemon) reclaims the stale marker and works.
     const relaunched = await launchProd('daemon-b')
@@ -1428,10 +1578,50 @@ run('managed browser adapter lane (BAZILION_TEST_BROWSER=1)', () => {
     expect(readMarker()).toBeNull()
   })
 
+  test.runIf(process.platform === 'darwin')(
+    'actual non-GUI child selects headless, refuses headed, launches and retires managed browser',
+    { timeout: 45_000 },
+    async () => {
+      const before = probeDarwinGuiSession()
+      const home = join(scratch, 'actual-nongui-child')
+      mkdirSync(home, { mode: 0o700 })
+      const entry = fileURLToPath(new URL('../fixtures/browser-nongui.mjs', import.meta.url))
+      const { command, args, env } = nonGuiFixtureCommand(entry, exePath, home)
+      uncertainNonGuiFixture = true
+      const stdout = await new Promise<string>((resolve, reject) => {
+        execFile(
+          command,
+          args,
+          {
+            timeout: 35_000,
+            maxBuffer: 64 * 1024,
+            env,
+          },
+          (error, stdout, stderr) => {
+            if (error)
+              reject(new Error(`controlled non-GUI child failed: ${error.message}; ${stderr}`))
+            else resolve(stdout)
+          },
+        )
+      })
+      expect(JSON.parse(stdout.trim())).toEqual({
+        availability: 'unavailable',
+        mode: 'headless',
+        headedRefused: true,
+        screenshot: true,
+        closed: true,
+        graphicAccess: false,
+      })
+      expect(probeDarwinGuiSession()).toBe(before)
+      uncertainNonGuiFixture = false
+    },
+  )
+
   test.runIf(process.env.BAZILION_TEST_BROWSER_HEADED === '1')(
     'headed direct launch opens a local window without headless or pipe flags',
     { timeout: 30_000 },
     async () => {
+      if (process.platform === 'darwin') expect(probeDarwinGuiSession()).toBe('available')
       const paths = resolvePaths(join(scratch, 'headed-launch'))
       const handle = await launchManagedBrowser({
         paths,

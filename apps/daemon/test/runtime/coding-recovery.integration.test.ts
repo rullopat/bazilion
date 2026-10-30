@@ -30,11 +30,25 @@ beforeEach(() => {
 })
 afterEach(async () => {
   for (const fn of cleanup.splice(0)) await fn().catch(() => {})
-  db.close()
+  // Cleanup commands are not proof that an unacknowledged/unknown writer settled. Retain the
+  // DB and workspace when its persisted lifecycle still refuses release; never erase evidence
+  // or a live bind source just to finish a test hook.
+  let writers: number | undefined
+  try {
+    writers = db.raw
+      .query<{ count: number }, []>('SELECT count(*) AS count FROM workspace_writers')
+      .get()?.count
+  } finally {
+    db.close()
+  }
+  if (writers !== 0) {
+    console.warn(`[coding recovery integration] retained unresolved workspace/receipts: ${home}`)
+    throw new Error('coding recovery fixture retains an unconfirmed workspace writer')
+  }
   rmSync(home, { recursive: true, force: true })
 })
 
-describe.skipIf(process.env.BAZILION_TEST_DOCKER !== '1')(
+describe.skipIf(process.platform !== 'linux' || process.env.BAZILION_TEST_DOCKER !== '1')(
   'coding Docker lifecycle recovery',
   () => {
     test('acknowledges create before start and preserves the real command exit code', async () => {

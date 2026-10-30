@@ -18,7 +18,7 @@ bazilion mcp disable <server-id>
 bazilion mcp rm <server-id>
 ```
 
-**Stdio execution is Linux-only.** Other platforms refuse before creating a connection or spawning
+**In published 0.24.0, stdio execution is Linux-only.** Other platforms refuse before creating a connection or spawning
 any server process; use **Streamable HTTP** instead. Registration remains portable and does not
 launch a server. HTTP MCP remains available on macOS.
 
@@ -94,9 +94,60 @@ failure; ownership cannot disappear before cleanup settles or after it rejects.
 
 These are observed normal-lifecycle checks, not atomic `/proc`/PID proofs or containment of
 processes that detach into another session. Abrupt daemon exit/Pi's emergency exit hook is not
-qualified by this normal-retirement evidence. Other platforms refuse stdio before spawn rather
-than using Pi's native close without equivalent ownership checks. No portable stdio cleanup or
-abnormal-exit guarantee is claimed.
+qualified by this normal-retirement evidence. In published 0.24.0, other platforms refuse stdio
+before spawn rather than using Pi's native close without equivalent ownership checks. No
+all-platform stdio cleanup or abnormal-exit guarantee is claimed.
+
+## Unreleased 0.25: macOS owned stdio
+
+BAZ-072 adds a daemon-only macOS inspection backend using public `libproc` APIs through pinned
+`koffi@3.3.3`. Its platform-specific prebuilt is a declared dependency of the daemon and packed CLI;
+Koffi's install/build script remains **disabled**. There is no compiler invocation, `ps` fallback,
+private Node binding, ambient MCP configuration or worker-side native connection.
+
+Before allocating a stdio client/slot or spawning a server, admission checks actual native access
+to the daemon's process identity and group listing. Missing bindings, denied/incomplete reads or
+unsupported layouts fail closed. This readiness check does not run during passive platform reports.
+
+The closed native surface reads `PROC_PIDTBSDINFO`, `RUSAGE_INFO_V0`, process-group membership and
+session ids. An anchor combines exact BSD seconds/microseconds with monotonic Mach birth time,
+parent, uid, group and session observations; it never relies on a wall-clock/second-resolution
+PID stamp alone. Composite observations are rechecked. Groups are bounded to 16,384 members and
+500 ms per inspection; malformed, duplicate, truncated or denied results are unknown. An empty
+live-member result receives another group-list check so a leader disappearing during enumeration
+cannot silently hide a newly forked child.
+
+The shared owner retains the Linux `/proc` route and its normal TERM/KILL retirement rules. macOS
+uses the native observations before signalling and escalation, and still waits for the original
+Pi child handle to disappear before native close. Unknown/drifted identity or failed cleanup
+retains the slot. A reported stdio retirement phase is closed diagnostic metadata only; it
+contains no PID/path/credential, does not reveal raw SDK errors and never authorizes cleanup or
+a retry. Stored PID numbers, restored receipts or a native-package availability label
+never authorize signalling. These remain normal-lifecycle observations, not atomic identity
+proofs, arbitrary detached-descendant containment or abrupt-exit recovery guarantees.
+
+Implementation `21ab568` passed all eight jobs in
+[CI](https://github.com/rullopat/bazilion/actions/runs/39979009335). On actual **macOS 26.6.2 arm64**,
+both Node **24.22.0** and **26.4.0** passed the 153-case focused Git/process/MCP collection (four
+legacy Linux `/proc`-mock cases remain Linux-only, with separate Darwin coverage). Native cases
+check real process birth/group facts; protocol cases cover tool calls, busy/cancelled turns,
+initialization failure and opening-client retirement. The guarded installed macOS trial also
+passed packaged stdio discovery and descendant retirement without enabling lifecycle scripts.
+The expanded security gate passed all 418 required cases on Linux.
+
+CLI/web platform diagnostics and management help now describe native-owned macOS stdio, while
+actual native inspection still gates every connection. This is bounded normal-lifecycle evidence,
+not complete 0.25 feature parity: the initial hosted image reported 26.6.2. Subsequent actual
+then-latest **27.0.1 (26A434) arm64** (confirmed 2026-10-25) guarded installed trials pass native stdio admission,
+catalog and descendant retirement on **24.22.0 / 26.4.0**. Worker and protected milestones also
+have observed coverage, with latest-stable desktop/non-GUI browser and installed journeys now
+passing both baselines. This is not full BAZ-072 release readiness; the story preserves hosted
+TCG deadline failures and unrelated acceptance rather than declaring every environment green.
+Those dual-Node observations are historical: current support is Node 26.12.1 only. Current installed
+26.12.1 owned-stdio/main-process trials also pass on physical 27.0.1. The 0.25 alpha accepts this
+observed 27.x major line; newer 27.x minors are not a release gate, and Mac headed qualification
+is deferred to a later version. Generic Mac shell isolation deferral does not retire or qualify
+MCP's independent ownership contract.
 
 ## Implementation and regression coverage
 
@@ -105,6 +156,9 @@ The daemon-owned implementation is in `apps/daemon/src/lib/mcp/`. Regression fix
 - `apps/daemon/test/lib/mcp-{call,pool,stdio-owner,retirement}.test.ts`: local real Pi HTTP/stdio composition,
   pagination, pooling, tool drift, busy reaping, opening retirement, cancellation, no replay,
   credential/redirect boundaries, descendant shutdown and pure reused-identity refusals.
+- `apps/daemon/test/lib/darwin-process{,-native}.test.ts` and `mcp-darwin-owner.test.ts`: public-ABI
+  parsing, monotonic identity, bounded/unknown process observations and guarded Darwin retirement;
+  native-only cases run on actual macOS, not platform simulation.
 - `apps/daemon/test/routes/mcp.test.ts`: schema/API retirement, encrypted write-only credentials,
   stale config/revocation, credential rotation and namespace collisions.
 - `apps/cli/test/mcp.test.ts`: SSE rejection before any client/auth lookup and correct help.

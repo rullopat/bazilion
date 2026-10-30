@@ -4,15 +4,34 @@ A failed or interrupted turn can leave a recorded writer blocking its Team with
 `workspace_recovery_required`. The block protects against overlapping writes; restarting the daemon
 or acknowledging an error does not prove that work stopped.
 
-## macOS ownership (shipped in 0.24.0)
+## macOS ownership (0.24 baseline; 0.25 candidate)
 
-Ordinary macOS chat uses a live daemon-owned ChildProcess observer, not Linux `/proc` identity.
-Normal exit, natural output-pipe EOF and an absent original process group permit recorded cleanup.
-A locally closed pipe, an abnormal exit or a persisted receipt without its live owner does not.
-After daemon restart or restore, missing live authority remains recovery-required; management
-never guesses PID ownership or force-clears the record. This is not arbitrary detached-host-writer
-recovery. See
-[BAZ-057](backlog/done/BAZ-057-portable-safe-reads.md) for qualification limits.
+The 0.24 ordinary-chat port uses a live daemon-owned ChildProcess observer, not Linux `/proc`.
+The 0.25 candidate adds public libproc birth/uid/session/group observations and bounded retirement
+of original-group descendants captured while their parent is live. A receipt cannot create a new
+live owner or signalling anchor. Native readiness is checked before spawn; identity is recorded
+before executable input.
+
+Recorded cleanup requires observed closure, natural output EOF and original-group absence. A coded
+nonzero exit can confirm cleanup, not task success. A forced host-command exit cannot prove detached
+host work stopped; a locally closed pipe cannot prove EOF. Unknown descendants, inspection errors
+and missing live authority remain blocked, including after restart/restore. Management never guesses
+PID ownership or force-clears records. This is not arbitrary detached-host-writer recovery. See
+[BAZ-057](backlog/done/BAZ-057-portable-safe-reads.md) for historical qualification limits and the
+active BAZ-072 story for current candidate evidence.
+
+## Linux native coding workers (unreleased 0.25)
+
+The native coding worker is trusted SDK/control-plane code with no host-command tool surface;
+sandboxed commands have their own independent resource owners. The daemon binds its actual child,
+Linux birth/uid/parent/namespaces and original pidfd before input. Signals target that pidfd only.
+Cleanup requires natural stdout/stderr EOF, exited pidfd and positive original-group absence. Group
+absence alone, locally destroyed pipes or another process's FD visibility are not cleanup proofs.
+
+A stored `owned-linux-native-child` identity cannot construct live authority. Restart/restore,
+substituted bindings and lost original handles remain blocked; no receipt or census PID is adopted.
+Legacy host/Docker worker recovery retains its existing stricter global endpoint inspection. This
+is not arbitrary detached-host-job recovery or a claim that the provider worker itself is sandboxed.
 
 ## Inspect and attempt supported cleanup
 
@@ -39,8 +58,8 @@ Both routes require owner/admin authorization, including read-only reports:
 - **Recovery required, no blocker code:** recorded cleanup can be attempted. The writer remains
   blocking until every selected resource has a persisted cleanup confirmation.
 - **Unconfirmed host commands:** host commands may detach and outlive a failed turn. Guaranteed
-  recovery from those failures is **not supported in 0.23.0** and is not added by the 0.24
-  ordinary-chat port; the workspace remains blocked.
+  recovery from those failures was **not supported in 0.23.0**, was not added by the 0.24
+  ordinary-chat port and remains outside the 0.25 native-owner candidate; the workspace stays blocked.
 - **Unconfirmed worker:** management will not signal it or manufacture a confirmation. Existing
   lifecycle cleanup must establish the confirmation first.
 - **Missing/inconsistent records:** ownership cannot be established, so cleanup stays blocked.

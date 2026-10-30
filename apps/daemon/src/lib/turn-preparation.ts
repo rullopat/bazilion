@@ -14,16 +14,26 @@ import {
 import { acquireAgentLifecycleLease } from './agent-lifecycle-lease.ts'
 import { saveInputFiles } from './attachments.ts'
 import { workspaceLifecycle } from './coding-environment/lifecycle.ts'
-import { resolveTeamCodingEnvironment } from './coding-environment/resolve.ts'
+import {
+  resolveTeamCodingEnvironment,
+  resolveTeamNativeCodingEnvironment,
+} from './coding-environment/resolve.ts'
 import type { WorkspaceLease } from './coding-environment/workspace.ts'
 import { authorizeUserIngress } from './communication.ts'
 import { resolveConversationTarget } from './conversation-target.ts'
 import { getCtx } from './ctx.ts'
 import {
+  type PreparedAgentNativeInputs,
+  prepareAgentNativeInputs,
+} from './native-execution/prepare.ts'
+import { isPreparedProtectedNativeExecution } from './native-execution/protected.ts'
+import { resolveProtectedExecutionBackend } from './native-execution/selection.ts'
+import {
+  assertSelectedNativeBackend,
   consumePreparedProtectedExecution,
   type PreparedProtectedExecution,
   prepareAgentDockerInputs,
-  prepareProtectedExecution,
+  prepareSelectedProtectedExecution,
 } from './protected-execution.ts'
 import { type QuestionResponseRoute, resolveQuestionRoute } from './question-route.ts'
 import {
@@ -65,6 +75,7 @@ export interface PrepareAgentTurnInput {
  */
 export interface PreparedAgentTurn {
   readonly configuredDocker?: Awaited<ReturnType<typeof prepareAgentDockerInputs>>
+  readonly configuredNative?: PreparedAgentNativeInputs
   readonly repositoryContext: import('@bazilion/api-types').RepositoryContextReport
   readonly questionRoute?: QuestionResponseRoute
   readonly [preparedTurnBrand]: true
@@ -87,6 +98,10 @@ export async function prepareAgentTurn(input: PrepareAgentTurnInput): Promise<Pr
   assertTrustedTurnInvocation(input.invocation)
   const { agentId, message: inputMessage, attachments } = input.invocation.turn
   const { db, paths, authToken } = getCtx()
+  const suppliedProtected = input.protectedExecution
+  const suppliedNative = isPreparedProtectedNativeExecution(suppliedProtected)
+    ? suppliedProtected
+    : undefined
   const preclaimedInvocation = invocationHasPreclaimedRegistration(input.invocation)
     ? input.invocation
     : undefined
@@ -97,6 +112,7 @@ export async function prepareAgentTurn(input: PrepareAgentTurnInput): Promise<Pr
   const releaseLease = preclaimed?.releaseLease ?? (await acquireAgentLifecycleLease(agentId))
   let registered = preclaimedInvocation !== undefined
   let workspaceLease: WorkspaceLease | undefined
+  let heldNative: PreparedAgentNativeInputs | undefined = suppliedNative
 
   try {
     // Scheduler/inbox claims are already this Agent's active registration.
@@ -199,17 +215,37 @@ export async function prepareAgentTurn(input: PrepareAgentTurnInput): Promise<Pr
     )
     const images = attachments.filter((attachment) => attachment.mimeType.startsWith('image/'))
     const documents = attachments.filter((attachment) => !attachment.mimeType.startsWith('image/'))
-    if (input.protectedExecution) {
+    if (suppliedProtected) {
       if (surface !== 'protected' || documents.length > 0) {
         throw new Error('preflighted protected execution does not match this turn')
       }
+      consumePreparedProtectedExecution(
+        suppliedProtected,
+        agent,
+        input.invocation.authorization.attemptId,
+      )
     }
     const mergedEnv = mergeSecretsIntoEnv(db, authToken)
-    const usesDocker =
-      surface === 'protected' || resolveShellSecurityConfig(mergedEnv).sandboxMode === 'docker'
-    const selectedCoding = usesDocker
-      ? resolveTeamCodingEnvironment(db, agent.team.id, mergedEnv).coding
-      : undefined
+    const shellConfig = resolveShellSecurityConfig(mergedEnv)
+    if (process.platform === 'darwin' && shellConfig.sandboxMode === 'docker')
+      resolveProtectedExecutionBackend(mergedEnv)
+    if (suppliedProtected?.backend === 'docker' && shellConfig.sandboxMode === 'native')
+      throw new Error('Prepared Docker execution does not match native selection')
+    const selectedBackend =
+      suppliedProtected?.backend ??
+      (shellConfig.sandboxMode === 'native'
+        ? 'native'
+        : surface === 'protected'
+          ? resolveProtectedExecutionBackend(mergedEnv)
+          : shellConfig.sandboxMode === 'docker'
+            ? 'docker'
+            : 'host')
+    const selectedCoding =
+      selectedBackend === 'native'
+        ? resolveTeamNativeCodingEnvironment(db, agent.team.id)
+        : selectedBackend === 'docker'
+          ? resolveTeamCodingEnvironment(db, agent.team.id, mergedEnv).coding
+          : undefined
     const repositoryContext = await resolveRepositoryContext({
       teamId: agent.team.id,
       root: agent.team.path,
@@ -217,29 +253,46 @@ export async function prepareAgentTurn(input: PrepareAgentTurnInput): Promise<Pr
     })
     requireCompleteRepositoryContext(repositoryContext)
     const protectedExecution =
-      input.protectedExecution ??
+      suppliedProtected ??
       (surface === 'protected'
-        ? await prepareProtectedExecution(agent, {
+        ? await prepareSelectedProtectedExecution(agent, {
+            includeUploads: documents.length > 0,
+            controller,
+            lease: workspaceLease,
+            expectedBackend: selectedBackend === 'native' ? 'native' : 'docker',
+            turnId: input.invocation.authorization.attemptId,
+          })
+        : undefined)
+    if (isPreparedProtectedNativeExecution(protectedExecution)) heldNative = protectedExecution
+    if (protectedExecution && !suppliedProtected)
+      consumePreparedProtectedExecution(
+        protectedExecution,
+        agent,
+        input.invocation.authorization.attemptId,
+      )
+    const configuredNative =
+      surface === 'configured_operator_http' && selectedBackend === 'native'
+        ? await prepareAgentNativeInputs(getCtx(), agent, {
+            lease: workspaceLease,
+            controller,
+            turnId: input.invocation.authorization.attemptId,
+            includeUploads: documents.length > 0,
+            assertSelection: () => assertSelectedNativeBackend(getCtx()),
+          })
+        : undefined
+    if (configuredNative) heldNative = configuredNative
+    const configuredDocker =
+      surface === 'configured_operator_http' && selectedBackend === 'docker'
+        ? await prepareAgentDockerInputs(agent, {
             includeUploads: documents.length > 0,
             signal: controller.signal,
             dockerLifecycle: workspaceLifecycle(db).containers(workspaceLease),
           })
-        : undefined)
-    if (protectedExecution) consumePreparedProtectedExecution(protectedExecution, agent)
-    const configuredUsesDocker =
-      surface === 'configured_operator_http' &&
-      resolveShellSecurityConfig(mergeSecretsIntoEnv(db, authToken)).sandboxMode === 'docker'
-    const configuredDocker = configuredUsesDocker
-      ? await prepareAgentDockerInputs(agent, {
-          includeUploads: documents.length > 0,
-          signal: controller.signal,
-          dockerLifecycle: workspaceLifecycle(db).containers(workspaceLease),
-        })
-      : undefined
+        : undefined
     const fileNote = saveInputFiles(
       agent.agent.dir,
       documents,
-      surface === 'protected' || configuredUsesDocker
+      protectedExecution?.backend === 'docker' || configuredDocker
         ? {
             referenceDir: SANDBOX_INPUTS_DIR,
             ...(protectedExecution?.paths.uploadsDir
@@ -260,6 +313,7 @@ export async function prepareAgentTurn(input: PrepareAgentTurnInput): Promise<Pr
       conversation,
       repositoryContext,
       ...(configuredDocker ? { configuredDocker } : {}),
+      ...(configuredNative ? { configuredNative } : {}),
       message,
       images,
       invocation: input.invocation,
@@ -276,7 +330,9 @@ export async function prepareAgentTurn(input: PrepareAgentTurnInput): Promise<Pr
     preparedTurns.add(prepared)
     return prepared
   } catch (error) {
+    const closed = heldNative ? await heldNative.close().catch(() => false) : true
     if (workspaceLease) await workspaceLifecycle(db).release(workspaceLease)
+    if (!closed && heldNative) await heldNative.close().catch(() => false)
     if (registered) unregisterAgent(agentId)
     throw error
   } finally {
@@ -293,14 +349,24 @@ export function preparedContainerLease(turn: PreparedAgentTurn): WorkspaceLease 
 export function preparedWorkerLifecycle(turn: PreparedAgentTurn) {
   const lease = workspaceLeases.get(turn)
   if (!lease) throw new Error('Prepared workspace ownership is unavailable')
-  return workspaceLifecycle(getCtx().db).worker(lease)
+  const services = workspaceLifecycle(getCtx().db)
+  return turn.configuredNative || isPreparedProtectedNativeExecution(turn.protectedExecution)
+    ? services.nativeWorker(lease)
+    : services.worker(lease)
 }
 
 export async function releasePreparedAgentTurn(turn: PreparedAgentTurn): Promise<void> {
   const lease = workspaceLeases.get(turn)
   if (lease) {
     workspaceLeases.delete(turn)
+    const native =
+      turn.configuredNative ??
+      (isPreparedProtectedNativeExecution(turn.protectedExecution)
+        ? turn.protectedExecution
+        : undefined)
+    const closed = native ? await native.close().catch(() => false) : true
     await workspaceLifecycle(getCtx().db).release(lease)
+    if (!closed && native) await native.close().catch(() => false)
   }
   if (ownsActiveAgent(turn.agent.agent.id, turn.controller)) unregisterAgent(turn.agent.agent.id)
 }

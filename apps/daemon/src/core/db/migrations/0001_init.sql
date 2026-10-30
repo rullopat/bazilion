@@ -1044,12 +1044,14 @@ CREATE TABLE verification_check_outcomes (
   finished_at INTEGER,
   PRIMARY KEY (attempt_id, ordinal),
   CHECK ((state = 'not_executed') = (finished_at IS NULL)),
-  -- A skipped, blocked or interrupted check must not borrow a receipt from another run. Stated
-  -- one-directionally on purpose: `command_id` is ON DELETE SET NULL, so a required-non-null rule here
-  -- would make a referenced receipt impossible to prune — and pruning runs on every command save, so
+  -- A skipped or blocked check cannot claim execution. An unknown check can retain its own
+  -- interrupted receipt without claiming an exit code or confirmed cleanup. Receipt scope is
+  -- checked by the repository. Stated one-directionally: `command_id` is ON DELETE SET NULL, so a
+  -- required-non-null rule would make a referenced receipt impossible to prune — pruning runs on every
+  -- command save, so
   -- the failure would spread to every later receipt in the Team. An executed outcome whose receipt was
   -- pruned therefore keeps its state and exit code with no receipt pointer.
-  CHECK (command_id IS NULL OR state IN ('succeeded', 'failed', 'timed_out', 'cancelled')),
+  CHECK (command_id IS NULL OR state IN ('succeeded', 'failed', 'timed_out', 'cancelled', 'unknown')),
   CHECK (exit_code IS NULL OR state IN ('succeeded', 'failed'))
 );
 CREATE INDEX verification_check_outcomes_command ON verification_check_outcomes(command_id);

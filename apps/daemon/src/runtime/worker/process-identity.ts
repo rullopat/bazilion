@@ -60,8 +60,11 @@ export function captureWorkerProcess(pid: number): WorkerProcessIdentity {
   }
 }
 
-/** A detached descendant can leave the group while retaining a worker's output endpoint. */
-function outputsReleased(identity: WorkerProcessIdentity): boolean {
+/**
+ * Read-only endpoint visibility fact, never signalling or release authority. A detached descendant
+ * can leave the group retaining an endpoint; inaccessible newer processes conservatively refuse.
+ */
+export function observeWorkerOutputRelease(identity: WorkerProcessIdentity): boolean {
   if (!Array.isArray(identity.outputHandles) || !Number.isSafeInteger(identity.uid)) return false
   if (identity.outputHandles.some((handle) => !/^(?:pipe|socket):\[\d+\]$/.test(handle)))
     return false
@@ -152,7 +155,7 @@ export async function terminateWorkerProcess(
     while (Date.now() < deadline) {
       const current = members(identity)
       if (current === null) return false
-      if (current.length === 0 && outputsReleased(identity))
+      if (current.length === 0 && observeWorkerOutputRelease(identity))
         return !identity.hostCommands || observedNormalExit
       if (!killed && Date.now() > deadline - 2500) {
         try {

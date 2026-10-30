@@ -1,5 +1,32 @@
 # Releases
 
+## 0.25.0 alpha candidate — publication pending
+
+The revised target is **trusted Apple Silicon Mac operation**, with explicitly unisolated host
+execution, independent hardened Git/MCP/managed-browser protections and fail-closed refusal when
+qualified isolation is required. Generic native Mac isolation is deferred/unqualified; Mac Docker/VM
+support is removed. Linux native and retained Linux Docker keep their independent safety contracts.
+
+The candidate supports **Node 26 only**, range **`^26.12.1`**, exact baseline **26.12.1**, pnpm
+**12.15.0**. Node 24 and earlier dual-baseline/VM trials are historical, not current support.
+Implementation `360d205` passes all nine revised hosted CI jobs; the versioned release candidate
+still needs its normal release checks. Actual installed Mac
+**27.0.1 (26A434), arm64** trusted-host/non-GUI and main-process lifecycle trials, plus installed
+Linux native/protected checks and Mac protected refusals, have bounded observed coverage.
+
+For this alpha, the operator accepts the tested **macOS 27.x major line**, observed on **27.0.1**.
+Apple's newer 27.2 minor is informational, not another release gate or an OS-upgrade requirement.
+Other minors are not implied tested or automatically incompatible. **Mac headed/desktop-browser
+qualification is deferred to a later version**, explicitly untested for this release; actual
+non-GUI coverage is retained. Intel/Rosetta and Windows remain out of scope. Real-provider/generated-
+image acceptance remains unobserved without separate authorized access/spend. These limits must be
+reported, not silently converted into passes or new spending requirements for this bounded alpha.
+[BAZ-072](backlog/in_progress/BAZ-072-apple-silicon-feature-parity.md) preserves failed histories,
+unconfirmed ownership and remaining acceptance. Preparing and publishing exact **0.25.0** through
+the existing release process is authorized after applicable review/CI/artifact gates; website
+deployment is not. No production-readiness or unrelated full-parity claim follows. Published
+0.24.0 limits below remain historical fact.
+
 ## 0.24.0
 
 [GitHub release](https://github.com/rullopat/bazilion/releases/tag/v0.24.0) ·

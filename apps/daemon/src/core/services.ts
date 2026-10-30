@@ -565,7 +565,7 @@ export const SERVICES: ServiceDef[] = [
     displayName: 'Agent Shell Security',
     category: 'service',
     team: 'Agent Runtime',
-    hint: 'Optional dangerous-command approval and Docker isolation. Disabled by default.',
+    hint: 'Trusted host execution is unisolated. Native and Docker isolation are Linux-only; macOS native isolation is deferred and protected Mac work is unavailable.',
     fields: [
       {
         envVar: 'BAZILION_BASH_APPROVAL',
@@ -573,7 +573,7 @@ export const SERVICES: ServiceDef[] = [
         label: 'Dangerous-command approval',
         placeholder: 'off',
         description:
-          'Use off (current behavior) or dangerous (classified bash commands require per-call approval before execution).',
+          'Legacy host/Docker: off or dangerous (classified commands require per-call approval). Native always uses the dangerous-command gate; unattended turns auto-deny, interactive turns may approve once.',
       },
       {
         envVar: 'BAZILION_BASH_SANDBOX',
@@ -581,7 +581,7 @@ export const SERVICES: ServiceDef[] = [
         label: 'Sandbox mode',
         placeholder: 'off',
         description:
-          'Use off (current host tools) or docker (containerized bash only; host-backed coding tools are hidden).',
+          'Use off for trusted unisolated host tools. Linux can select native (Bubblewrap/seccomp) or transitional docker. Native macOS isolation is deferred and unqualified; macOS supports only off. Protected work never falls back to host execution.',
       },
       {
         envVar: 'BAZILION_BASH_SANDBOX_IMAGE',
@@ -597,7 +597,7 @@ export const SERVICES: ServiceDef[] = [
         label: 'Extra environment allowlist',
         placeholder: 'MY_SAFE_VARIABLE,ANOTHER_SAFE_VARIABLE',
         description:
-          'Optional comma-separated variable names copied into the container. Provider credentials remain excluded unless explicitly named.',
+          'Docker-only comma-separated variable names copied into the container. Native execution ignores this allowlist and accepts only the closed Team environment flags; provider credentials never enter native command environments.',
       },
       {
         envVar: 'BAZILION_AGENT_LOOP_MAX_HOPS',

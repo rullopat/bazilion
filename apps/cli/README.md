@@ -8,13 +8,24 @@ Multi-agent runtime CLI — spawn LLM agents, manage profiles/teams/skills, and 
 
 ## Install
 
-Requires **Node 24.22.0+ within 24.x, or 26.4.0+ within 26.x**. Earlier releases and other
-major lines are refused before application imports or state bootstrap. This floor includes the
-upstream native cleanup-hook fix; upgrading Node does not authorize resetting any Bazilion data.
+The **0.25.0 alpha candidate** requires **Node 26.12.1+ within 26.x only** (`^26.12.1`).
+Earlier releases and other major lines are refused before application imports or state bootstrap.
+The admitted Node 26 baseline includes the upstream native cleanup-hook and SQLite backup-completion
+fixes; upgrading Node does not authorize resetting any Bazilion data.
 
-Version 0.24 adds ordinary macOS chat, qualified on macOS arm64 / Node 24.22.0, alongside Linux.
-Windows is unsupported. Hardened Git inspection and MCP stdio still require Linux; macOS can use
-Streamable HTTP MCP. Guarded repository reads are not atomic snapshots or a general sandbox.
+Version 0.25 adds trusted **unisolated** Apple Silicon Mac coding, hardened private-worktree Git
+and owned MCP stdio alongside portable Streamable HTTP. Genuine installed CLI/API/web and non-GUI/
+main-process lifecycle trials pass on **macOS 27.0.1 arm64 / Node 26.12.1**; the tested 27.x major
+line is sufficient for this alpha. Mac headed/desktop qualification is deferred to a later version.
+Mac native isolation is deferred/unqualified, and Mac Docker/VM execution is removed; explicit
+native/Docker selections and isolation-required coding refuse without host fallback. Linux retains
+Bubblewrap/mandatory-seccomp native execution and independent Docker support. Guarded reads are not
+atomic snapshots. Windows is unsupported; alpha is not production readiness.
+
+**Existing 0.24.0 and older homes require an explicit clean rebootstrap**, not an in-place migration.
+First stop the old daemon safely and preserve the entire old home, paired DB/auth.json and external
+Team work. A runtime/schema refusal does not authorize deleting state. See the repository's
+[upgrade guidance](https://github.com/rullopat/bazilion/blob/main/docs/upgrades.md).
 
 ```sh
 npx bazilion dashboard     # one-shot
@@ -99,7 +110,8 @@ The web UI is bundled into the published `bazilion` package and starts with:
 bazilion dashboard
 ```
 
-For source development, clone the repo and run the daemon plus Vite dev server. Node 24.22.0+ within 24.x or 26.4.0+ within 26.x, and pnpm 10+, are required; if `corepack` is unavailable, install pnpm directly with `npm install -g pnpm`.
+For source development, clone the repo and run `mise install` for pinned Node **26.12.1** and
+pnpm **12.15.0**, then run the daemon plus Vite dev server. Node 24 is no longer supported. Without mise/Corepack, install pnpm with `npm install -g pnpm@12.15.0`.
 
 ```sh
 git clone https://github.com/rullopat/bazilion

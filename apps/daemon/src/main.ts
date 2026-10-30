@@ -14,11 +14,13 @@ import {
   IncompatibleDatabaseError,
   resolvePaths,
 } from './core/index.ts'
+import { stopAgentTurns } from './lib/agent-cancel.ts'
 import { closeCtxForShutdown, getCtx, IncompatibleBootstrapIdentityError } from './lib/ctx.ts'
 import { acquireDaemonLiveness } from './lib/daemon-liveness.ts'
 import { startNotifications } from './lib/notifications.ts'
 import { isLoopbackHost, resolvePublicOrigin } from './lib/public-origin.ts'
 import { shutdownResources } from './lib/resources.ts'
+import { stopScheduler } from './lib/scheduler.ts'
 import {
   isTelegramBotRunning,
   maybeStartTelegramBot,
@@ -26,6 +28,7 @@ import {
   stopTelegramBot,
 } from './lib/telegram/bot.ts'
 import { startUserQueuePump } from './lib/user-queue-pump.ts'
+import { stopNativeVerificationCaptures } from './lib/verification/capture-admissions.ts'
 
 const host = process.env.HOST ?? '127.0.0.1'
 const port = Number.parseInt(process.env.PORT ?? '4321', 10)
@@ -117,6 +120,9 @@ const shutdown = (signal: NodeJS.Signals): void => {
   if (shuttingDown) return
   shuttingDown = true
   notificationPump?.stop()
+  const nativeCapturesStop = stopNativeVerificationCaptures()
+  const schedulerStop = stopScheduler()
+  const turnsStop = stopAgentTurns()
   const queueStop = queuePump?.stop() ?? Promise.resolve()
   console.log(`\nbazilion daemon caught ${signal}, shutting down…`)
   // Stop the telegram bot before HTTP server close — the in-flight getUpdates
@@ -128,13 +134,13 @@ const shutdown = (signal: NodeJS.Signals): void => {
         console.error('telegram: stop on shutdown failed:', e instanceof Error ? e.message : e),
       )
     : Promise.resolve()
-  // Close long-lived resources (browser sessions, MCP connections) in parallel
-  // with the bot stop. Best-effort — never block shutdown on them.
-  const resourcesStop = shutdownResources().catch((e) =>
-    console.error('resources: shutdown failed:', e instanceof Error ? e.message : e),
-  )
+  // Drain scheduler readiness/lifecycle waiters as well as registered workers while
+  // IPC hosts and DB remain available. Unknown cleanup stays durably blocked.
+  const resourcesStop = Promise.all([schedulerStop, turnsStop, queueStop, nativeCapturesStop])
+    .then(() => shutdownResources())
+    .catch((e) => console.error('resources: shutdown failed:', e instanceof Error ? e.message : e))
   Promise.race([
-    Promise.all([botStop, resourcesStop, queueStop]),
+    Promise.all([botStop, resourcesStop]),
     new Promise((r) => setTimeout(r, 30_000)), // hard cap: don't wait forever
   ]).finally(() => {
     server.close((err) => {
