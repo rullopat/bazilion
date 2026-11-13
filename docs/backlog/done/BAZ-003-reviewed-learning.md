@@ -25,7 +25,7 @@ choose, and every lesson can be edited, rejected or revoked later.
 - A lesson is `private` (added to the Agent's system prompt, up to 8,000 characters in total) or
   `shared` (written to the Team's memory as `lessons/<id>.md`).
 - Proposals wait for you: approve, edit, reject, or later revoke an approved one.
-- A failed review is tried up to three times, then shows in Attention as `review_failure`;
+- A review runs once; a failed one shows in Attention as `review_failure` until the next scheduled review;
   waiting proposals show as `lesson_proposal`.
 
 ## As built
